@@ -2,6 +2,8 @@
 import { type PaymentFrequency } from "../types/domain";
 
 export type DomexPdfResult = {
+  isRefresh?: boolean | null;
+  refreshOriginalContractNumber?: string | null;
   contractNumber?: string | null;
   clientName?: string | null;
   policyStartDate?: string | null;
@@ -105,6 +107,36 @@ const pickLastLongNumber = (value: string | null | undefined): string | null => 
   const matches = value.match(/\b\d{6,}\b/g);
   if (!matches?.length) return null;
   return matches[matches.length - 1] ?? null;
+};
+
+const pickFirstLongNumber = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const matches = value.match(/\b\d{6,}\b/g);
+  if (!matches?.length) return null;
+  return matches[0] ?? null;
+};
+
+const pickDomexReplacementOriginalContractNumber = (
+  lines: string[],
+  asciiLines: string[]
+): string | null => {
+  for (let idx = 0; idx < asciiLines.length; idx++) {
+    const asciiLine = asciiLines[idx] ?? "";
+    if (!/nahrada\s+smlouvy/i.test(asciiLine)) continue;
+
+    const currentLineNumber = pickFirstLongNumber(lines[idx] ?? "");
+    if (currentLineNumber) return currentLineNumber;
+
+    // V horním bloku náhrady je pod spojenými popisky řádek se dvěma čísly.
+    // Levý sloupec patří nahrazované smlouvě, pravý nové pojistné smlouvě.
+    for (let step = 1; step <= 3; step++) {
+      const nextLine = lines[idx + step] ?? "";
+      if (!nextLine) continue;
+      const nextLineNumber = pickFirstLongNumber(nextLine);
+      if (nextLineNumber) return nextLineNumber;
+    }
+  }
+  return null;
 };
 
 const pickDomexPolicyContractNumber = (lines: string[], asciiLines: string[]): string | null => {
@@ -215,6 +247,16 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
   const ascii = stripDiacritics(normalized).toLowerCase();
 
   const result: DomexPdfResult = {};
+
+  // Náhrada smlouvy -> číslo nahrazované smlouvy.
+  const replacementOriginalContractNumber = pickDomexReplacementOriginalContractNumber(
+    lines,
+    asciiLines
+  );
+  if (replacementOriginalContractNumber) {
+    result.isRefresh = true;
+    result.refreshOriginalContractNumber = replacementOriginalContractNumber;
+  }
 
   // Číslo smlouvy / nabídky
   const contractFromPolicyLabel = pickDomexPolicyContractNumber(lines, asciiLines);

@@ -74,8 +74,24 @@ export function CalculatorAmountAndActionsSection({
   const showContractActionButtons = !tipsterModeEnabled && showContractActions;
   const showManualEntryButton = !tipsterModeEnabled && showManualEntryOption;
   const showHeading = showAmountInput || showComfortControls;
-  const tipActionButtonClass =
-    "ui-focus inline-flex items-center gap-2 rounded-full border border-fuchsia-500/55 bg-[linear-gradient(135deg,#e879f9_0%,#a21caf_100%)] px-5 py-2.5 text-sm font-bold text-[#f8fafc] shadow-[0_12px_24px_rgba(162,28,175,0.34)] transition hover:-translate-y-0.5 hover:border-fuchsia-400 hover:shadow-[0_16px_30px_rgba(162,28,175,0.4)]";
+  const contractActionButtonBaseClass =
+    "ui-focus inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0";
+  const tipContractActionButtonClass = `${contractActionButtonBaseClass} border-fuchsia-500/65 bg-[linear-gradient(135deg,#e879f9_0%,#a21caf_100%)] shadow-[0_12px_24px_rgba(162,28,175,0.28)]`;
+  const activeTipContractActionButtonClass = `${tipContractActionButtonClass} ring-2 ring-fuchsia-200`;
+  const refreshContractActionButtonClass = `${contractActionButtonBaseClass} border-sky-500/70 bg-[linear-gradient(135deg,#38bdf8_0%,#2563eb_100%)] shadow-[0_12px_24px_rgba(37,99,235,0.24)]`;
+  const activeRefreshContractActionButtonClass = `${refreshContractActionButtonClass} ring-2 ring-sky-200`;
+  const changeContractActionButtonClass = `${contractActionButtonBaseClass} border-emerald-500/70 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] shadow-[0_12px_24px_rgba(5,150,105,0.24)]`;
+  const canUseOriginalReplacement = product === "neon" || product === "domex" || product === "cppAuto";
+  const originalReplacementButtonLabel =
+    product === "neon"
+      ? refreshOriginalOpen
+        ? "Refresh zapnutý"
+        : "Refresh smlouvy"
+      : refreshOriginalOpen
+        ? "Náhrada zapnutá"
+        : "Náhrada";
+  const originalReplacementProductLabel =
+    product === "domex" ? "DOMEX" : product === "cppAuto" ? "ČPP Auto" : "ČPP ŽP NEON";
 
   if (!showAmountInput && !showComfortControls && !showContractActionButtons && !showManualEntryButton) {
     return null;
@@ -178,34 +194,34 @@ export function CalculatorAmountAndActionsSection({
                 type="button"
                 onClick={onOpenTipContractModal}
                 aria-pressed={hasTipContractConfig}
-                className={tipActionButtonClass}
+                className={hasTipContractConfig ? activeTipContractActionButtonClass : tipContractActionButtonClass}
               >
                 <Tag size={17} strokeWidth={2.4} className="shrink-0" aria-hidden="true" />
                 Smlouva z TIPU
               </button>
-              {isLifeProduct && product === "neon" && (
+              {canUseOriginalReplacement && (
                 <button
                   type="button"
                   onClick={onToggleRefreshOriginal}
                   aria-pressed={refreshOriginalOpen}
-                  className={tipActionButtonClass}
+                  className={refreshOriginalOpen ? activeRefreshContractActionButtonClass : refreshContractActionButtonClass}
                 >
                   <RefreshCcw size={17} strokeWidth={2.4} className="shrink-0" aria-hidden="true" />
-                  {refreshOriginalOpen ? "Refresh zapnutý" : "Refresh smlouvy"}
+                  {originalReplacementButtonLabel}
                 </button>
               )}
               {isLifeProduct && (
                 <button
                   type="button"
                   onClick={onPrepareEndorsement}
-                  className={tipActionButtonClass}
+                  className={changeContractActionButtonClass}
                 >
                   <Repeat2 size={17} strokeWidth={2.4} className="shrink-0" aria-hidden="true" />
                   Změna
                 </button>
               )}
             </div>
-            {isLifeProduct && product === "neon" && refreshOriginalOpen && (
+            {canUseOriginalReplacement && refreshOriginalOpen && (
               <div className="mt-3 space-y-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
                   Číslo původní smlouvy
@@ -240,7 +256,7 @@ export function CalculatorAmountAndActionsSection({
                       aria-valuenow={refreshOriginalLookupProgress}
                     >
                       <div
-                        className="h-full rounded-full bg-[linear-gradient(90deg,#e879f9_0%,#a21caf_100%)] transition-[width] duration-200"
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#38bdf8_0%,#2563eb_100%)] transition-[width] duration-200"
                         style={{ width: `${refreshOriginalLookupProgress}%` }}
                       />
                     </div>
@@ -253,7 +269,7 @@ export function CalculatorAmountAndActionsSection({
                 )}
                 {refreshOriginalLookupStatus === "wrongProduct" && (
                   <p className="text-[11px] font-semibold text-amber-700">
-                    Smlouva je evidována, ale není vedena jako ČPP ŽP NEON.
+                    Smlouva je evidována, ale není vedena jako {originalReplacementProductLabel}.
                   </p>
                 )}
                 {refreshOriginalLookupStatus === "notFound" && (
@@ -296,7 +312,7 @@ export function CalculatorAmountAndActionsSection({
   }
 
   return (
-    <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+    <section className="rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
       {content}
     </section>
   );

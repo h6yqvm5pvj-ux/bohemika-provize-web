@@ -164,13 +164,11 @@ export function CalculatorResultsSection({
   return (
     <div className="self-start space-y-3 lg:sticky lg:top-6">
       {topTools}
-      <section className="relative space-y-4 overflow-hidden rounded-[1.85rem] border border-violet-200 bg-white px-4 py-4 text-slate-900 shadow-[0_16px_34px_rgba(76,29,149,0.12)] sm:px-5 sm:py-5">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#6d28d9_0%,#a855f7_52%,#c4b5fd_100%)]" aria-hidden="true" />
-        <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full bg-violet-100/70 blur-3xl" aria-hidden="true" />
-        <div className="pointer-events-none absolute -left-20 bottom-0 h-44 w-44 rounded-full bg-emerald-100/45 blur-3xl" aria-hidden="true" />
+      <section className="relative space-y-4 overflow-hidden rounded-[1.35rem] border border-slate-300 bg-white/95 px-4 py-4 text-slate-900 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-5">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#94a3b8_58%,#e2e8f0_100%)]" aria-hidden="true" />
         <div className="relative flex items-center justify-between gap-3">
           <h2 className="inline-flex items-center gap-2 text-lg font-bold text-slate-950">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-700">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700">
               <BarChart3 size={19} strokeWidth={2.2} aria-hidden="true" />
             </span>
             <span>Výsledky</span>
@@ -181,7 +179,7 @@ export function CalculatorResultsSection({
               type="button"
               onClick={onOpenCoefModal}
               disabled={unsupported}
-              className={`inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100 sm:text-sm ${
+              className={`ui-btn-secondary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm ${
                 unsupported ? "opacity-60 cursor-not-allowed" : ""
               }`}
             >
@@ -193,7 +191,7 @@ export function CalculatorResultsSection({
               <button
                 type="button"
                 onClick={onToggleTipsterPercentPanel}
-                className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+                className="ui-btn-secondary ui-focus inline-flex items-center rounded-full px-3 py-2 text-sm"
                 aria-pressed={tipsterPercentPanelOpen}
                 aria-label="Nastavit procenta pro tipaře"
               >
@@ -204,12 +202,12 @@ export function CalculatorResultsSection({
         </div>
 
         {tipsterModeEnabled && tipsterPercentPanelOpen && (
-          <div className="relative space-y-3 rounded-2xl border border-violet-100 bg-violet-50/70 px-3 py-3">
+          <div className="relative space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <label className="block text-xs uppercase tracking-wide text-slate-500">
                 Zobrazované procento provize
               </label>
-              <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-sm font-bold text-violet-800">
+              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-sm font-bold text-slate-900">
                 {tipsterPercent} %
               </span>
             </div>
@@ -218,7 +216,7 @@ export function CalculatorResultsSection({
               <button
                 type="button"
                 onClick={() => void onPersistTipsterPercent(tipsterPercent - 5)}
-                className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+                className="ui-btn-secondary ui-focus rounded-lg bg-white px-2.5 py-1.5 text-sm"
                 aria-label="Snížit o 5 procentních bodů"
               >
                 −5
@@ -237,14 +235,14 @@ export function CalculatorResultsSection({
                     void onPersistTipsterPercent(Number((event.currentTarget as HTMLInputElement).value) || 0);
                   }
                 }}
-                className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-violet-100 accent-violet-700"
+                className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-slate-900"
                 aria-label="Nastavit procento tipařské provize"
               />
 
               <button
                 type="button"
                 onClick={() => void onPersistTipsterPercent(tipsterPercent + 5)}
-                className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+                className="ui-btn-secondary ui-focus rounded-lg bg-white px-2.5 py-1.5 text-sm"
                 aria-label="Zvýšit o 5 procentních bodů"
               >
                 +5
@@ -262,7 +260,7 @@ export function CalculatorResultsSection({
                     className={`ui-chip ui-focus rounded-full px-2.5 py-1 text-xs font-semibold transition ${
                       active
                         ? "ui-chip-active"
-                        : "border-violet-200 bg-white text-violet-800 hover:border-violet-300 hover:bg-violet-100"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-100"
                     }`}
                   >
                     {preset} %
@@ -281,7 +279,7 @@ export function CalculatorResultsSection({
                 value={tipsterPercent}
                 onChange={(event) => onTipsterPercentDraft(Number(event.target.value) || 0)}
                 onBlur={() => void onPersistTipsterPercent(tipsterPercent)}
-                className="w-20 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                className="w-20 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
               />
             </div>
           </div>
@@ -310,7 +308,7 @@ export function CalculatorResultsSection({
           if (tipsterModeEnabled) {
             return (
               <div className="relative space-y-2">
-                <div className="flex items-center justify-between gap-3 border-b border-violet-100 py-3">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-3">
                   <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
                     <span className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
                       <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
@@ -322,7 +320,7 @@ export function CalculatorResultsSection({
                   </span>
                 </div>
 
-                <div className="flex items-end justify-between gap-3 border-t border-violet-100 pt-4">
+                <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-4">
                   <span className="font-semibold text-slate-700">Celkem</span>
                   <AnimatedMoneyValue
                     value={tipsterImmediateCommission}
@@ -347,7 +345,7 @@ export function CalculatorResultsSection({
                 return (
                   <div
                     key={idx}
-                    className="flex items-center justify-between gap-3 border-b border-violet-100 py-3"
+                    className="flex items-center justify-between gap-3 border-b border-slate-200 py-3"
                   >
                     <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
                       {iconSrc && (
@@ -394,7 +392,7 @@ export function CalculatorResultsSection({
                   product === "koopmajetekobcan" ||
                   product === "maxdomov") &&
                 paymentBasedTotalsMemo ? (
-                  <div className="w-full space-y-2 border-t border-violet-100 pt-4">
+                  <div className="w-full space-y-2 border-t border-slate-200 pt-4">
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-semibold text-slate-700">
                         Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
@@ -413,7 +411,7 @@ export function CalculatorResultsSection({
                     </div>
                   </div>
                 ) : (
-                  <div className="w-full border-t border-violet-100 pt-4">
+                  <div className="w-full border-t border-slate-200 pt-4">
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-semibold text-slate-700">
                         Celkem{tipContractConfig ? " po TIPU" : ""}
@@ -437,10 +435,9 @@ export function CalculatorResultsSection({
             onClick={onSaveContract}
             disabled={!canSaveContract || saving}
             aria-busy={saving}
-            className="group relative inline-flex min-w-[168px] items-center justify-center gap-2 overflow-hidden rounded-full border border-[#111827] bg-[#111827] px-7 py-2.5 text-sm font-black text-[#f8fafc] shadow-[0_16px_34px_rgba(15,23,42,0.26)] transition hover:-translate-y-0.5 hover:border-[#1f2937] hover:bg-[#1f2937] hover:shadow-[0_20px_44px_rgba(15,23,42,0.34)] active:translate-y-0 disabled:cursor-not-allowed disabled:border-[#334155] disabled:bg-[#334155] disabled:text-[#f8fafc] disabled:opacity-100 disabled:shadow-[0_12px_26px_rgba(15,23,42,0.2)] disabled:hover:translate-y-0"
+            className="ui-btn-primary ui-focus inline-flex min-w-[168px] items-center justify-center gap-2 rounded-full px-7 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <span className="pointer-events-none absolute inset-0 -translate-x-[115%] bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.34)_45%,transparent_78%)] transition-transform duration-500 ease-out group-hover:translate-x-[120%]" aria-hidden="true" />
-            <span className="relative z-10 inline-flex h-5 w-5 items-center justify-center" aria-hidden="true">
+            <span className="inline-flex h-5 w-5 items-center justify-center" aria-hidden="true">
               {saving ? (
                 <Loader2 size={14} strokeWidth={2.2} className="shrink-0 animate-spin" />
               ) : (
@@ -452,7 +449,7 @@ export function CalculatorResultsSection({
           {lastSavedContractHref && (
             <Link
               href={lastSavedContractHref}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#111827] bg-[#111827] px-4 py-2 text-sm font-black text-[#f8fafc] shadow-[0_14px_30px_rgba(15,23,42,0.24)] transition hover:-translate-y-0.5 hover:border-[#1f2937] hover:bg-[#1f2937] hover:shadow-[0_18px_38px_rgba(15,23,42,0.3)]"
+              className="ui-btn-primary ui-focus inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm"
             >
               <FileText size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               Zobrazit smlouvu

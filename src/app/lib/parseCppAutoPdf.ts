@@ -2,6 +2,8 @@
 import { type PaymentFrequency } from "../types/domain";
 
 export type CppAutoPdfResult = {
+  isRefresh?: boolean | null;
+  refreshOriginalContractNumber?: string | null;
   contractNumber?: string | null;
   clientName?: string | null;
   policyStartDate?: string | null;
@@ -24,6 +26,16 @@ export type CppAutoPdfResult = {
   carAddonEso?: boolean | null;
   carAddonGlass?: boolean | null;
 };
+
+type PositionedTextItem = {
+  str: string;
+  x: number;
+  y: number;
+  width: number;
+};
+
+const LINE_Y_TOLERANCE = 2;
+const WORD_GAP_THRESHOLD = 1.5;
 
 const toDateInput = (value: string | null | undefined): string | null => {
   if (!value) return null;
@@ -146,6 +158,120 @@ const findLabelIndexes = (asciiLines: string[], label: RegExp): number[] => {
   return indexes;
 };
 
+const pickFirstLongNumber = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const matches = value.match(/\b\d{6,}\b/g);
+  if (!matches?.length) return null;
+  return matches[0] ?? null;
+};
+
+const pickLastLongNumber = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const matches = value.match(/\b\d{6,}\b/g);
+  if (!matches?.length) return null;
+  return matches[matches.length - 1] ?? null;
+};
+
+const pickCppAutoReplacementOriginalContractNumber = (
+  lines: string[],
+  asciiLines: string[]
+): string | null => {
+  for (let idx = 0; idx < asciiLines.length; idx++) {
+    const asciiLine = asciiLines[idx] ?? "";
+    if (!/nahrada\s+smlouvy/i.test(asciiLine)) continue;
+
+    const currentLineNumber = pickFirstLongNumber(lines[idx] ?? "");
+    if (currentLineNumber) return currentLineNumber;
+
+    for (let step = 1; step <= 3; step++) {
+      const nextLine = lines[idx + step] ?? "";
+      if (!nextLine) continue;
+      const nextLineNumber = pickFirstLongNumber(nextLine);
+      if (nextLineNumber) return nextLineNumber;
+    }
+  }
+  return null;
+};
+
+const pickCppAutoPolicyContractNumber = (
+  lines: string[],
+  asciiLines: string[]
+): string | null => {
+  for (let idx = 0; idx < asciiLines.length; idx++) {
+    const asciiLine = asciiLines[idx] ?? "";
+    if (
+      !/cislo\s+pojistne\s+smlouvy/i.test(asciiLine) &&
+      !/cislo\s+navrhu\s+pojistne\s+smlouvy/i.test(asciiLine)
+    ) {
+      continue;
+    }
+
+    const currentLineNumber = pickLastLongNumber(lines[idx] ?? "");
+    if (currentLineNumber) return currentLineNumber;
+
+    for (let step = 1; step <= 3; step++) {
+      const nextLine = lines[idx + step] ?? "";
+      if (!nextLine) continue;
+      const nextLineNumber = pickLastLongNumber(nextLine);
+      if (nextLineNumber) return nextLineNumber;
+    }
+  }
+  return null;
+};
+
+const extractLayoutLinesFromTextItems = (
+  rawItems: Array<{ str?: unknown; transform?: number[]; width?: number }>
+): string[] => {
+  const items: PositionedTextItem[] = rawItems
+    .map((item) => {
+      const str = typeof item?.str === "string" ? item.str : "";
+      return {
+        str: str.trim(),
+        x: item?.transform?.[4] ?? 0,
+        y: item?.transform?.[5] ?? 0,
+        width: item?.width ?? 0,
+      };
+    })
+    .filter((item) => item.str.length > 0)
+    .sort((a, b) => {
+      if (Math.abs(a.y - b.y) > LINE_Y_TOLERANCE) return b.y - a.y;
+      return a.x - b.x;
+    });
+
+  const rows: { y: number; items: PositionedTextItem[] }[] = [];
+  items.forEach((item) => {
+    let row = rows.find((candidate) => Math.abs(candidate.y - item.y) <= LINE_Y_TOLERANCE);
+    if (!row) {
+      row = { y: item.y, items: [] };
+      rows.push(row);
+    }
+    row.items.push(item);
+  });
+  rows.sort((a, b) => b.y - a.y);
+
+  return rows
+    .map((row) => {
+      row.items.sort((a, b) => a.x - b.x);
+      let line = "";
+      let prevEndX = 0;
+      let hasPrev = false;
+      row.items.forEach((item) => {
+        if (!hasPrev) {
+          line += item.str;
+          prevEndX = item.x + item.width;
+          hasPrev = true;
+          return;
+        }
+        const gap = item.x - prevEndX;
+        if (gap > WORD_GAP_THRESHOLD) line += " ";
+        line += item.str;
+        prevEndX = item.x + item.width;
+      });
+      return line.replace(/\s+/g, " ").trim();
+    })
+    .filter(Boolean);
+};
+
 const readNearestValueByLabel = (
   lines: string[],
   asciiLines: string[],
@@ -240,15 +366,22 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
 
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
   const pagesText: string[] = [];
+  const layoutLines: string[] = [];
 
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    const text = content.items
-      .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
+    const rawItems = (content.items ?? []) as Array<{
+      str?: unknown;
+      transform?: number[];
+      width?: number;
+    }>;
+    const text = rawItems
+      .map((item) => (typeof item?.str === "string" ? item.str : ""))
       .filter(Boolean)
       .join("\n");
     pagesText.push(text);
+    layoutLines.push(...extractLayoutLinesFromTextItems(rawItems));
   }
 
   const fullText = pagesText.join("\n");
@@ -259,13 +392,30 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   const asciiLines = lines.map((line) => stripDiacritics(line).toLowerCase());
   const normalized = fullText.replace(/\s+/g, " ").trim();
   const ascii = stripDiacritics(normalized).toLowerCase();
+  const layoutAsciiLines = layoutLines.map((line) => stripDiacritics(line).toLowerCase());
 
   const result: CppAutoPdfResult = {};
 
-  // Číslo smlouvy – vezmeme poslední číslo po hlavičce "Číslo návrhu..."
+  // Náhrada smlouvy -> číslo nahrazované smlouvy.
+  const replacementOriginalContractNumber = pickCppAutoReplacementOriginalContractNumber(
+    layoutLines,
+    layoutAsciiLines
+  );
+  if (replacementOriginalContractNumber) {
+    result.isRefresh = true;
+    result.refreshOriginalContractNumber = replacementOriginalContractNumber;
+  }
+
+  // Číslo smlouvy – v horním bloku bereme pravý sloupec "Číslo pojistné smlouvy".
+  const layoutContractNumber = pickCppAutoPolicyContractNumber(layoutLines, layoutAsciiLines);
+  if (layoutContractNumber) {
+    result.contractNumber = layoutContractNumber;
+  }
+
+  // Fallback: vezmeme poslední číslo po hlavičce "Číslo návrhu..."
   const pageOne = pagesText[0] ?? "";
-  const splitAfterHeading = pageOne.split(/Číslo\s+n[áa]vrhu\s+pojistn[eé]\s+smlouvy/i);
-  if (splitAfterHeading.length > 1) {
+  const splitAfterHeading = pageOne.split(/Číslo\s+(?:n[áa]vrhu\s+)?pojistn[eé]\s+smlouvy/i);
+  if (!result.contractNumber && splitAfterHeading.length > 1) {
     const nums = splitAfterHeading[1].match(/\b\d{6,}\b/g);
     if (nums?.length) {
       result.contractNumber = nums[nums.length - 1];
@@ -273,7 +423,9 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   }
   // Fallback: nejčastější 10místné číslo v celém PDF
   if (!result.contractNumber) {
-    const matches = fullText.match(/\b\d{8,12}\b/g) ?? [];
+    const matches = (fullText.match(/\b\d{8,12}\b/g) ?? []).filter(
+      (item) => item !== result.refreshOriginalContractNumber
+    );
     const counts = new Map<string, number>();
     matches.forEach((n) => counts.set(n, (counts.get(n) ?? 0) + 1));
     const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);

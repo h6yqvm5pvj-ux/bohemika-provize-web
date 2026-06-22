@@ -60,8 +60,8 @@ export function CalculatorContractDetailsSection({
   if (!isVisible) return null;
 
   return (
-    <section className="relative overflow-hidden rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
-      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#94a3b8_56%,#e2e8f0_100%)]" aria-hidden="true" />
+    <section className="relative overflow-hidden rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#94a3b8_58%,#e2e8f0_100%)]" aria-hidden="true" />
       <h2 className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-slate-900">
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700">
           <FileText size={14} strokeWidth={2} aria-hidden="true" />

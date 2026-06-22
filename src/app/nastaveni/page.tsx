@@ -4,48 +4,22 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
-  Apple,
-  AtSign,
-  ArrowRight,
-  BellRing,
   Calculator,
-  CalendarDays,
-  CarFront,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CircleHelp,
-  Clock3,
-  Download,
   Building2,
   ExternalLink,
-  FileText,
-  Fingerprint,
   Globe,
   Globe2,
-  HeartPulse,
-  Home,
-  KeyRound,
-  Maximize2,
   Mail,
   MapPin,
-  Minimize2,
-  Landmark,
   PhoneCall,
-  Play,
-  ShieldCheck,
   Snail,
-  Sparkles,
-  TrendingUp,
   Upload,
-  UserRound,
-  UsersRound,
   QrCode as QrCodeIcon,
-  Wrench,
   X,
   Zap,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 
 import type { User as FirebaseUser } from "firebase/auth";
 import {
@@ -64,8 +38,6 @@ import QRCode from "qrcode";
 
 import { auth } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
-import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
-import { PremiumOnlineCardPreview } from "@/components/PremiumOnlineCardPreview";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import {
@@ -88,18 +60,53 @@ import {
   DEFAULT_FONT_THEME,
   FONT_THEME_EVENT,
   FONT_THEME_LOCAL_STORAGE_KEY,
-  FONT_THEME_OPTIONS,
   applyFontThemeToRoot,
   resolveFontTheme,
   type FontTheme,
 } from "@/lib/fontTheme";
 import type { Position, CommissionMode } from "../types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
+import { AccountSecurityPanel } from "./components/AccountSecurityPanel";
+import { CareerTimelinePanel } from "./components/CareerTimelinePanel";
+import { DesignSettingsPanel } from "./components/DesignSettingsPanel";
+import { NotificationsSettingsPanel } from "./components/NotificationsSettingsPanel";
+import { OnlineCardSettingsPanel } from "./components/OnlineCardSettingsPanel";
+import { ProfileSettingsPanel } from "./components/ProfileSettingsPanel";
+import { SubscriptionSettingsPanel } from "./components/SubscriptionSettingsPanel";
+import { UserRequestsPanel } from "./components/UserRequestsPanel";
 import {
-  INTRANET_SECTIONS,
-  INTRANET_SECTION_KEYS,
+  DEFAULT_NOTIFICATION_SETTINGS,
+  INTRANET_NOTIFICATION_SECTIONS,
+  normalizeNotificationSettings,
   type IntranetSectionKey,
-} from "../intranet/sections";
+  type NotificationSettings,
+} from "./notificationSettings";
+import {
+  type SubscriptionEffectiveState,
+  type SubscriptionMeResponse,
+  type SubscriptionPaymentRow,
+  type SubscriptionPlanValue,
+  type SubscriptionSnapshot,
+  type SubscriptionStatusValue,
+} from "./subscriptionSettings";
+import {
+  USER_REQUEST_AGENCY_NUMBER_MAX_LEN,
+  USER_REQUEST_CORPORATE_EMAIL_MAX_LEN,
+  USER_REQUEST_FULL_NAME_MAX_LEN,
+  USER_REQUEST_MANAGER_EMAIL_MAX_LEN,
+  USER_REQUEST_MESSAGE_MAX_LEN,
+  USER_REQUEST_MESSAGE_MIN_LEN,
+  USER_REQUEST_STEPS,
+  sortUserRequestsByActivity,
+  type UserRequestCreateApiResponse,
+  type UserRequestDeleteApiResponse,
+  type UserRequestPayload,
+  type UserRequestPriority,
+  type UserRequestUpdateApiResponse,
+  type UserRequestsApiResponse,
+  type UserRequestsView,
+  type UserRequestSubject,
+} from "./userRequestSettings";
 
 const POSITIONS: { id: Position; label: string }[] = [
   { id: "poradce1", label: "Poradce 1" },
@@ -125,11 +132,6 @@ const COMMISSION_MODES: { id: CommissionMode; label: string }[] = [
   { id: "accelerated", label: "Zrychlený" },
   { id: "standard", label: "Běžný" },
 ];
-
-const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
-  "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
-const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
-  "https://play.google.com/store/apps/details?id=com.azure.authenticator";
 
 type PositionTimelineItem = {
   id: string;
@@ -198,151 +200,6 @@ const parsePositionTimeline = (value: unknown): PositionTimelineItem[] => {
   return rows;
 };
 
-type NotificationSettings = {
-  types: {
-    newContract: boolean;
-    anniversary: boolean;
-    unpaid: boolean;
-    team: boolean;
-    intranet: boolean;
-    weeklyTeamReport: boolean;
-  };
-  channels: {
-    email: boolean;
-    push: boolean;
-  };
-  intranet: {
-    mode: "all" | "selected";
-    sections: IntranetSectionKey[];
-  };
-};
-
-type NotificationTypeKey = keyof NotificationSettings["types"];
-
-type NotificationTypeOption = {
-  id: NotificationTypeKey;
-  label: string;
-  icon: LucideIcon;
-};
-
-const NOTIFICATION_TYPE_OPTIONS: readonly NotificationTypeOption[] = [
-  { id: "newContract", label: "Nová smlouva", icon: FileText },
-  { id: "anniversary", label: "Výročí", icon: CalendarDays },
-  { id: "unpaid", label: "Nezaplaceno", icon: Landmark },
-  { id: "team", label: "Týmové akce", icon: UsersRound },
-  { id: "intranet", label: "Intranet", icon: Sparkles },
-  { id: "weeklyTeamReport", label: "Týdenní report týmu", icon: TrendingUp },
-];
-
-const INTRANET_SECTION_ICON_BY_KEY: Record<IntranetSectionKey, LucideIcon> = {
-  zivot: HeartPulse,
-  majetek: Home,
-  auto: CarFront,
-  odpovednost: ShieldCheck,
-  cizinci: UserRound,
-  cestovko: Sparkles,
-  investice: TrendingUp,
-  zlato: Landmark,
-  obecne: Wrench,
-  pomoc: CircleHelp,
-};
-
-const INTRANET_NOTIFICATION_SECTIONS = INTRANET_SECTIONS.map(
-  (section) => section.key
-);
-
-const normalizeIntranetSectionList = (value: unknown): IntranetSectionKey[] => {
-  if (!Array.isArray(value)) return [];
-  const out = new Set<IntranetSectionKey>();
-  value.forEach((raw) => {
-    if (typeof raw !== "string") return;
-    const key = raw.trim() as IntranetSectionKey;
-    if (!INTRANET_SECTION_KEYS.has(key)) return;
-    out.add(key);
-  });
-  return [...out];
-};
-
-const normalizeNotificationSettings = (
-  value: unknown
-): NotificationSettings => {
-  const raw =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  const typesInput =
-    raw.types && typeof raw.types === "object" && !Array.isArray(raw.types)
-      ? (raw.types as Record<string, unknown>)
-      : {};
-  const channelsInput =
-    raw.channels && typeof raw.channels === "object" && !Array.isArray(raw.channels)
-      ? (raw.channels as Record<string, unknown>)
-      : {};
-  const intranetInput =
-    raw.intranet && typeof raw.intranet === "object" && !Array.isArray(raw.intranet)
-      ? (raw.intranet as Record<string, unknown>)
-      : {};
-
-  const mode = intranetInput.mode === "selected" ? "selected" : "all";
-  const selectedSections = normalizeIntranetSectionList(intranetInput.sections);
-
-  return {
-    types: {
-      newContract:
-        typeof typesInput.newContract === "boolean"
-          ? typesInput.newContract
-          : true,
-      anniversary:
-        typeof typesInput.anniversary === "boolean"
-          ? typesInput.anniversary
-          : true,
-      unpaid:
-        typeof typesInput.unpaid === "boolean" ? typesInput.unpaid : true,
-      team: typeof typesInput.team === "boolean" ? typesInput.team : true,
-      intranet:
-        typeof typesInput.intranet === "boolean"
-          ? typesInput.intranet
-          : true,
-      weeklyTeamReport:
-        typeof typesInput.weeklyTeamReport === "boolean"
-          ? typesInput.weeklyTeamReport
-          : true,
-    },
-    channels: {
-      email:
-        typeof channelsInput.email === "boolean" ? channelsInput.email : true,
-      push:
-        typeof channelsInput.push === "boolean" ? channelsInput.push : true,
-    },
-    intranet: {
-      mode,
-      sections:
-        mode === "selected"
-          ? selectedSections
-          : [...INTRANET_NOTIFICATION_SECTIONS],
-    },
-  };
-};
-
-const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
-  types: {
-    newContract: true,
-    anniversary: true,
-    unpaid: true,
-    team: true,
-    intranet: true,
-    weeklyTeamReport: true,
-  },
-  channels: {
-    email: true,
-    push: true,
-  },
-  intranet: {
-    mode: "all",
-    sections: [...INTRANET_NOTIFICATION_SECTIONS],
-  },
-};
-
 const SETTINGS_KEYS = {
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
@@ -370,103 +227,8 @@ const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: "design", label: "Design" },
 ];
 
-type SubscriptionEffectiveState = "active" | "grace" | "blocked";
-type SubscriptionStatusValue = "active" | "expired" | "unpaid" | "none";
-type SubscriptionPlanValue = "monthly" | "semiannual" | "yearly" | "unlimited";
-
-type SubscriptionPaymentRow = {
-  id: string;
-  plan: string;
-  amountCzk: number;
-  periodFrom: string;
-  periodUntil: string;
-  note: string | null;
-  createdAtMs: number | null;
-  createdByEmail: string | null;
-};
-
-type SubscriptionMeResponse = {
-  ok?: boolean;
-  subscription?: {
-    status?: SubscriptionStatusValue;
-    effectiveState?: SubscriptionEffectiveState;
-    reason?: string;
-    plan?: SubscriptionPlanValue | null;
-    paidFrom?: string | null;
-    paidUntil?: string | null;
-    graceUntil?: string | null;
-  };
-  payments?: SubscriptionPaymentRow[];
-};
-
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
-
-const formatDateTime = (valueMs: number | null | undefined): string => {
-  if (!valueMs || !Number.isFinite(valueMs)) return "—";
-  return new Date(valueMs).toLocaleString("cs-CZ");
-};
-
-const formatIsoDay = (value: string | null | undefined): string => {
-  if (!value) return "—";
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
-};
-
-const formatMoneyCzk = (value: number): string =>
-  new Intl.NumberFormat("cs-CZ", {
-    style: "currency",
-    currency: "CZK",
-    maximumFractionDigits: 0,
-  }).format(value);
-
-const SUBSCRIPTION_PLAN_LABELS: Record<SubscriptionPlanValue, string> = {
-  monthly: "Měsíční",
-  semiannual: "Pololetní",
-  yearly: "Roční",
-  unlimited: "Neomezený",
-};
-
-type SubscriptionPriceCard = {
-  id: Exclude<SubscriptionPlanValue, "unlimited">;
-  title: string;
-  description: string;
-  priceLabel: string;
-  cadenceLabel: string;
-  footerLabel: string;
-  footerEmphasis: string;
-};
-
-const SUBSCRIPTION_PRICE_CARDS: readonly SubscriptionPriceCard[] = [
-  {
-    id: "monthly",
-    title: "Měsíční předplatné",
-    description: "Flexibilní přístup ke všem funkcím aplikace bez dlouhého závazku.",
-    priceLabel: "300 Kč",
-    cadenceLabel: "za měsíc",
-    footerLabel: "Délka období",
-    footerEmphasis: "1 měsíc",
-  },
-  {
-    id: "semiannual",
-    title: "Pololetní předplatné",
-    description: "Šest měsíců přístupu s nižší cenou oproti měsíční platbě.",
-    priceLabel: "1.590 Kč",
-    cadenceLabel: "na 6 měsíců",
-    footerLabel: "Úspora proti měsíčnímu",
-    footerEmphasis: "210 Kč",
-  },
-  {
-    id: "yearly",
-    title: "Roční předplatné",
-    description: "Celoroční přístup za nejlepší cenu pro pravidelné používání.",
-    priceLabel: "2.800 Kč",
-    cadenceLabel: "na 12 měsíců",
-    footerLabel: "Úspora proti měsíčnímu",
-    footerEmphasis: "800 Kč",
-  },
-];
 
 const hasNonEmptyToken = (value: unknown): boolean =>
   typeof value === "string" && value.trim().length > 0;
@@ -801,66 +563,6 @@ type OnlineCardOfficePhotoUploadResponse = {
   error?: string;
 };
 
-type UserRequestSubject = "userCreation" | "other";
-type UserRequestPriority = "normal" | "urgent";
-type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
-type UserRequestsView = "create" | "history";
-
-type UserCreationRequestDraft = {
-  fullName: string | null;
-  agencyNumber: string | null;
-  managerEmail: string | null;
-  position: Position | null;
-  commissionMode: CommissionMode;
-};
-
-type UserRequestPayload = {
-  id: string;
-  requesterEmail: string;
-  subject: UserRequestSubject;
-  requestedCorporateEmail: string | null;
-  requestedUserDraft: UserCreationRequestDraft | null;
-  message: string;
-  priority: UserRequestPriority;
-  status: UserRequestStatus;
-  feedback: string | null;
-  createdUserEmail: string | null;
-  createdUserUid: string | null;
-  createdAtMs: number;
-  updatedAtMs: number;
-  decidedAtMs: number | null;
-  decidedByEmail: string | null;
-};
-
-type UserRequestsApiResponse = {
-  ok?: boolean;
-  requests?: UserRequestPayload[];
-};
-
-type UserRequestCreateApiResponse = {
-  ok?: boolean;
-  request?: UserRequestPayload;
-  error?: string;
-};
-
-type UserRequestUpdateApiResponse = {
-  ok?: boolean;
-  request?: UserRequestPayload;
-  error?: string;
-};
-
-type UserRequestDeleteApiResponse = {
-  ok?: boolean;
-  id?: string;
-  error?: string;
-};
-
-const USER_REQUEST_MESSAGE_MIN_LEN = 5;
-const USER_REQUEST_MESSAGE_MAX_LEN = 2500;
-const USER_REQUEST_CORPORATE_EMAIL_MAX_LEN = 180;
-const USER_REQUEST_MANAGER_EMAIL_MAX_LEN = 180;
-const USER_REQUEST_FULL_NAME_MAX_LEN = 120;
-const USER_REQUEST_AGENCY_NUMBER_MAX_LEN = 80;
 const AGENCY_NUMBER_MAX_LEN = 80;
 const PHONE_NUMBER_MAX_LEN = 40;
 const PROFILE_ICO_MAX_LEN = 8;
@@ -868,81 +570,6 @@ const PROFILE_ICO_MAX_LEN = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const isValidEmail = (value: string): boolean => EMAIL_RE.test(value);
-
-const USER_REQUEST_SUBJECT_LABEL: Record<UserRequestSubject, string> = {
-  userCreation: "Založení uživatele",
-  other: "Jiné",
-};
-
-const USER_REQUEST_PRIORITY_LABEL: Record<UserRequestPriority, string> = {
-  normal: "Běžná",
-  urgent: "Urgentní",
-};
-
-const USER_REQUEST_STATUS_LABEL: Record<UserRequestStatus, string> = {
-  pending: "Čeká",
-  needsInfo: "Potřeba doplnit",
-  accepted: "Akceptováno",
-  rejected: "Odmítnuto",
-};
-
-const USER_REQUEST_STATUS_CLASS: Record<UserRequestStatus, string> = {
-  pending: "border-amber-300 bg-amber-50 text-amber-800",
-  needsInfo: "border-sky-300 bg-sky-50 text-sky-800",
-  accepted: "border-emerald-300 bg-emerald-50 text-emerald-700",
-  rejected: "border-rose-300 bg-rose-50 text-rose-700",
-};
-
-const USER_REQUEST_STEPS = [
-  { id: "type", label: "Typ" },
-  { id: "details", label: "Údaje" },
-  { id: "message", label: "Odeslání" },
-] as const;
-
-const USER_REQUEST_SLA_NORMAL_MS = 72 * 60 * 60 * 1000;
-const USER_REQUEST_SLA_URGENT_MS = 8 * 60 * 60 * 1000;
-
-const sortUserRequestsByActivity = (rows: UserRequestPayload[]): UserRequestPayload[] =>
-  [...rows].sort((a, b) => {
-    const aActivity = Math.max(a.updatedAtMs || 0, a.createdAtMs || 0);
-    const bActivity = Math.max(b.updatedAtMs || 0, b.createdAtMs || 0);
-    return bActivity - aActivity;
-  });
-
-const formatDurationCompact = (durationMs: number): string => {
-  if (!Number.isFinite(durationMs) || durationMs <= 0) return "0 min";
-  const totalMinutes = Math.floor(durationMs / 60_000);
-  if (totalMinutes < 60) return `${totalMinutes} min`;
-  const totalHours = Math.floor(totalMinutes / 60);
-  if (totalHours < 24) return `${totalHours} h`;
-  const totalDays = Math.floor(totalHours / 24);
-  return `${totalDays} d`;
-};
-
-const formatSlaLimit = (priority: UserRequestPriority): string =>
-  priority === "urgent" ? "8 h" : "3 dny";
-
-const buildUserRequestSlaInfo = (request: UserRequestPayload, nowMs: number) => {
-  const status = request.status;
-  const waitingStatuses: UserRequestStatus[] = ["pending", "needsInfo"];
-  const waiting = waitingStatuses.includes(status);
-  const sinceMs = waiting ? request.updatedAtMs || request.createdAtMs : null;
-  const elapsedMs =
-    sinceMs && Number.isFinite(sinceMs) ? Math.max(0, nowMs - sinceMs) : 0;
-
-  const slaLimitMs =
-    request.priority === "urgent" ? USER_REQUEST_SLA_URGENT_MS : USER_REQUEST_SLA_NORMAL_MS;
-  const isUrgentPending = status === "pending" && request.priority === "urgent";
-  const isOverdueUrgent =
-    isUrgentPending && elapsedMs > slaLimitMs;
-
-  return {
-    waiting,
-    elapsedLabel: formatDurationCompact(elapsedMs),
-    slaLimitLabel: formatSlaLimit(request.priority),
-    isOverdueUrgent,
-  };
-};
 
 const EXPECTED_MFA_ERROR_CODES = new Set<string>([
   "auth/wrong-password",
@@ -1096,14 +723,8 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
-  const [subscriptionSnapshot, setSubscriptionSnapshot] = useState<{
-    status: SubscriptionStatusValue;
-    effectiveState: SubscriptionEffectiveState;
-    plan: SubscriptionPlanValue | null;
-    paidFrom: string | null;
-    paidUntil: string | null;
-    graceUntil: string | null;
-  } | null>(null);
+  const [subscriptionSnapshot, setSubscriptionSnapshot] =
+    useState<SubscriptionSnapshot | null>(null);
   const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPaymentRow[]>([]);
   const [showCareerTimelineHelp, setShowCareerTimelineHelp] = useState(false);
   const [userRequestsView, setUserRequestsView] =
@@ -3738,2656 +3359,290 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "profile" && !timelineSetupRequired && (
-              <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.10)] lg:col-span-2">
-                <div className="grid min-h-[460px] lg:grid-cols-[300px_minmax(0,1fr)]">
-                  <aside className="relative overflow-hidden bg-[#07111f] p-5 text-white sm:p-6">
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#38bdf8_0%,#34d399_52%,#a3e635_100%)]" />
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(14,165,233,0.16)_0%,rgba(7,17,31,0)_38%,rgba(52,211,153,0.13)_100%)]" />
-
-                    <div className="relative z-10 flex h-full flex-col justify-between gap-8">
-                      <div className="space-y-5">
-                        <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-emerald-100">
-                          <UserRound size={14} strokeWidth={2} aria-hidden="true" />
-                          Profil poradce
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className="flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-[20px] border border-white/20 bg-white text-2xl font-bold text-slate-950 shadow-[0_18px_36px_rgba(0,0,0,0.28)]">
-                            {profileInitial}
-                          </div>
-                          <h2 className="break-words text-[1.85rem] font-bold leading-tight text-white">
-                            {profileDisplayName}
-                          </h2>
-                        </div>
-                      </div>
-
-                      <div className="rounded-[22px] border border-white/12 bg-white/[0.07] p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-950">
-                            <ShieldCheck size={17} strokeWidth={2} aria-hidden="true" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                              Bohemka.App
-                            </p>
-                            <p className="mt-1 text-sm font-semibold leading-snug text-slate-100">
-                              Osobní profil
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </aside>
-
-                  <form
-                    className="flex min-w-0 flex-col bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void handleSaveProfile();
-                    }}
-                  >
-                    <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
-                            <ShieldCheck size={14} strokeWidth={2} className="text-emerald-600" aria-hidden="true" />
-                            Údaje účtu
-                          </div>
-                          <h3 className="mt-3 text-2xl font-bold leading-tight text-slate-950">
-                            Kontaktní profil
-                          </h3>
-                        </div>
-
-                        {profileStatus ? (
-                          <p
-                            className={`w-fit rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                              profileStatus.type === "success"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : profileStatus.type === "info"
-                                  ? "border-slate-200 bg-white text-slate-700"
-                                  : "border-rose-200 bg-rose-50 text-rose-700"
-                            }`}
-                          >
-                            {profileStatus.message}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
-                      <div className="grid gap-3 md:grid-cols-3">
-                        <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
-                                Úplnost profilu
-                              </p>
-                              <p className="mt-1 text-2xl font-black text-emerald-950">
-                                {profileCompletionPercent} %
-                              </p>
-                            </div>
-                            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-[0_10px_20px_rgba(16,185,129,0.16)]">
-                              <CheckCircle2 size={21} strokeWidth={2.2} aria-hidden="true" />
-                            </span>
-                          </div>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
-                            <div
-                              className="h-full rounded-full bg-emerald-600"
-                              style={{ width: `${profileCompletionPercent}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Pozice a režim
-                          </p>
-                          <p className="mt-2 text-sm font-black text-slate-950">
-                            {profilePositionLabel}
-                          </p>
-                          <p className="mt-1 text-xs font-semibold text-slate-500">
-                            Provize: {commissionModeLabel}
-                          </p>
-                        </div>
-
-                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Přímý manažer
-                          </p>
-                          <p className="mt-2 text-sm font-black text-slate-950">
-                            {managerNameDisplay}
-                          </p>
-                          <p className="mt-1 text-xs font-semibold text-slate-500">
-                            {managerEmailDisplay
-                              ? managerEmailDisplay
-                              : "Není doplněn v týmové hierarchii"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 space-y-6 px-5 py-5 sm:px-7 sm:py-6">
-                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        <div className="xl:col-span-2">
-                          <label className="mb-2 block text-xs font-semibold text-slate-600">
-                            Jméno a příjmení
-                          </label>
-                          <div className="relative">
-                            <UserRound
-                              size={17}
-                              strokeWidth={2}
-                              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                              aria-hidden="true"
-                            />
-                            <input
-                              type="text"
-                              className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
-                              value={fullName}
-                              onChange={(event) => {
-                                setFullName(event.target.value.slice(0, PROFILE_FULL_NAME_MAX_LEN));
-                                setProfileStatus(null);
-                              }}
-                              placeholder="Jméno a příjmení"
-                              maxLength={PROFILE_FULL_NAME_MAX_LEN}
-                              disabled={profileSaving}
-                            />
-                          </div>
-                          <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                            Toto jméno se používá v PDF, pomůckách, exportech, notifikacích a týmových přehledech.
-                          </p>
-                        </div>
-
-                        <div className="xl:col-span-2">
-                          <label className="mb-2 block text-xs font-semibold text-slate-600">
-                            E-mail
-                          </label>
-                          <div className="flex min-h-[54px] items-center gap-3 rounded-[18px] border border-slate-200 bg-slate-100/80 px-4 py-3 text-sm font-semibold text-slate-700">
-                            <Mail size={17} strokeWidth={2} className="shrink-0 text-slate-500" aria-hidden="true" />
-                            <span className="min-w-0 break-all">{userEmail}</span>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="mb-2 block text-xs font-semibold text-slate-600">
-                            Agenturní číslo
-                          </label>
-                          <div className="relative">
-                            <Landmark
-                              size={17}
-                              strokeWidth={2}
-                              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                              aria-hidden="true"
-                            />
-                            <input
-                              type="text"
-                              inputMode="text"
-                              className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
-                              value={agencyNumber}
-                              onChange={(event) => {
-                                setAgencyNumber(event.target.value);
-                                setProfileStatus(null);
-                              }}
-                              placeholder="Doplň agenturní číslo"
-                              maxLength={AGENCY_NUMBER_MAX_LEN}
-                              disabled={profileSaving}
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="mb-2 block text-xs font-semibold text-slate-600">
-                            IČO
-                          </label>
-                          <div className="relative">
-                            <Building2
-                              size={17}
-                              strokeWidth={2}
-                              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                              aria-hidden="true"
-                            />
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 pr-4 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
-                              value={ico}
-                              onChange={(event) => {
-                                setIco(
-                                  event.target.value.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
-                                );
-                                setProfileStatus(null);
-                              }}
-                              placeholder="12345678"
-                              maxLength={PROFILE_ICO_MAX_LEN}
-                              disabled={profileSaving}
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="mb-2 block text-xs font-semibold text-slate-600">
-                            Tel. číslo
-                          </label>
-                          <div className="relative">
-                            <PhoneCall
-                              size={17}
-                              strokeWidth={2}
-                              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                              aria-hidden="true"
-                            />
-                            <input
-                              type="tel"
-                              inputMode="tel"
-                              className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 pr-4 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
-                              value={phoneNumber}
-                              onChange={(event) => {
-                                setPhoneNumber(event.target.value);
-                                setProfileStatus(null);
-                              }}
-                              placeholder="777 123 456"
-                              maxLength={PHONE_NUMBER_MAX_LEN}
-                              disabled={profileSaving}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                              <Wrench size={17} strokeWidth={2} aria-hidden="true" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-sm font-bold text-slate-950">Servis aplikace</h4>
-                              <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                                Obnoví lokální PWA cache bez mazání profilu a smluv.
-                              </p>
-                              {appCacheStatus ? (
-                                <p
-                                  className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
-                                    appCacheStatus.type === "success"
-                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                      : appCacheStatus.type === "info"
-                                        ? "border-slate-200 bg-white text-slate-700"
-                                        : "border-rose-200 bg-rose-50 text-rose-700"
-                                  }`}
-                                >
-                                  {appCacheStatus.message}
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleClearAppCache();
-                            }}
-                            disabled={appCacheClearing}
-                            className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <Wrench size={16} strokeWidth={2} aria-hidden="true" />
-                            {appCacheClearing ? "Obnovuji..." : "Obnovit cache aplikace"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-7">
-                      <button
-                        type="submit"
-                        disabled={profileSaving}
-                        className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-950 bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto sm:min-w-[180px]"
-                      >
-                        <ShieldCheck size={17} strokeWidth={2} aria-hidden="true" />
-                        {profileSaving ? "Ukládám..." : "Uložit profil"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </section>
+                <ProfileSettingsPanel
+                  profileInitial={profileInitial}
+                  profileDisplayName={profileDisplayName}
+                  profileStatus={profileStatus}
+                  completionPercent={profileCompletionPercent}
+                  positionLabel={profilePositionLabel}
+                  commissionModeLabel={commissionModeLabel}
+                  managerNameDisplay={managerNameDisplay}
+                  managerEmailDisplay={managerEmailDisplay}
+                  fieldClass={fieldClass}
+                  fullName={fullName}
+                  userEmail={userEmail}
+                  agencyNumber={agencyNumber}
+                  ico={ico}
+                  phoneNumber={phoneNumber}
+                  appCacheStatus={appCacheStatus}
+                  appCacheClearing={appCacheClearing}
+                  profileSaving={profileSaving}
+                  fullNameMaxLength={PROFILE_FULL_NAME_MAX_LEN}
+                  agencyNumberMaxLength={AGENCY_NUMBER_MAX_LEN}
+                  icoMaxLength={PROFILE_ICO_MAX_LEN}
+                  phoneNumberMaxLength={PHONE_NUMBER_MAX_LEN}
+                  onFullNameChange={(value) => {
+                    setFullName(value);
+                    setProfileStatus(null);
+                  }}
+                  onAgencyNumberChange={(value) => {
+                    setAgencyNumber(value);
+                    setProfileStatus(null);
+                  }}
+                  onIcoChange={(value) => {
+                    setIco(value);
+                    setProfileStatus(null);
+                  }}
+                  onPhoneNumberChange={(value) => {
+                    setPhoneNumber(value);
+                    setProfileStatus(null);
+                  }}
+                  onClearAppCache={handleClearAppCache}
+                  onSaveProfile={handleSaveProfile}
+                />
               )}
 
               {activeTab === "career" && (
-              <section
-                id="timeline-kariery"
-                className="relative h-full space-y-4 overflow-hidden scroll-mt-24 rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-5 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:px-6 sm:py-6 lg:col-span-2"
-              >
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                      <Sparkles size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                      <span>Historie Kariéry</span>
-                    </h2>
-                    <p className="text-xs text-slate-500">
-                      Nastav období od-do. Kalkulačka pak sama předvyplní pozici podle data sjednání.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowCareerTimelineHelp(true)}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      <CircleHelp size={13} strokeWidth={2.2} aria-hidden="true" />
-                      Nápověda
-                    </button>
-                    {positionTimelineLocked ? (
-                      <button
-                        type="button"
-                        onClick={unlockPositionTimeline}
-                        className="rounded-full border border-slate-900 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-100"
-                      >
-                        Změna
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={addPositionTimelineRow}
-                        className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
-                      >
-                        Přidat pozici
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {showCareerTimelineHelp && (
-                  <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4"
-                    onClick={() => setShowCareerTimelineHelp(false)}
-                  >
-                    <div
-                      className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_20px_50px_rgba(15,23,42,0.3)] sm:px-6"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.16em] text-slate-900">
-                          <CircleHelp size={14} strokeWidth={2.2} className="text-slate-600" />
-                          Nápověda
-                        </h3>
-                        <button
-                          type="button"
-                          onClick={() => setShowCareerTimelineHelp(false)}
-                          className="rounded-full border border-slate-300 p-1.5 text-slate-600 transition hover:bg-slate-100"
-                          aria-label="Zavřít nápovědu"
-                        >
-                          <X size={14} strokeWidth={2.4} />
-                        </button>
-                      </div>
-
-                      <p className="text-sm leading-relaxed text-slate-700">
-                        Zadej historii své kariéry, najdeš ji v Maxxu pod odkazem{" "}
-                        <a
-                          href="https://sjednatel.bohemiaservis.cz/broker-card"
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="inline-flex items-center gap-1 font-semibold text-slate-900 underline underline-offset-2"
-                        >
-                          https://sjednatel.bohemiaservis.cz/broker-card
-                          <ExternalLink size={13} strokeWidth={2.2} aria-hidden="true" />
-                        </a>
-                        . Záložka kariéra.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {positionTimelineDraft.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">
-                    Historii kariéry zatím nemáš nastavenou. Najdeš ji v Maxxu pod odkazem{" "}
-                    <a
-                      href="https://sjednatel.bohemiaservis.cz/broker-card"
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="font-semibold text-slate-900 underline underline-offset-2"
-                    >
-                      https://sjednatel.bohemiaservis.cz/broker-card
-                    </a>
-                    . Záložka kariéra. Přidej stupně kliknutím na tlačítko Přidat pozici, přidávej od
-                    nejstarší po aktuální tak jako v Maxxu.
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                          {positionTimelineDraft.map((row, rowIndex) => {
-                            const rowRangeError = hasInvalidRangeOrder(
-                              row.validFrom.trim(),
-                              row.validTo.trim()
-                            );
-                            const isLastDraftRow =
-                              rowIndex === positionTimelineDraft.length - 1;
-                            const rowOpenEndedNotLast =
-                              !row.validTo.trim() && !isLastDraftRow;
-                            return (
-                            <div
-                              key={row.id}
-                              className={`rounded-2xl border bg-white px-3 py-3 shadow-[0_6px_16px_rgba(15,23,42,0.05)] ${
-                                rowRangeError || rowOpenEndedNotLast
-                                  ? "border-rose-300"
-                                  : "border-slate-300"
-                              }`}
-                            >
-                              <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_150px_auto]">
-                          <select
-                            value={row.position}
-                            onChange={(e) =>
-                              updatePositionTimelineRow(row.id, {
-                                position: e.target.value as Position,
-                              })
-                            }
-                            disabled={positionTimelineLocked}
-                            className={`${fieldClass} ${
-                              positionTimelineLocked
-                                ? "cursor-not-allowed bg-slate-100 text-slate-500"
-                                : ""
-                            }`}
-                          >
-                            {POSITIONS.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.label}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="date"
-                            value={row.validFrom}
-                            onChange={(e) =>
-                              updatePositionTimelineRow(row.id, { validFrom: e.target.value })
-                            }
-                            disabled={positionTimelineLocked}
-                            className={`${fieldClass} ${
-                              positionTimelineLocked
-                                ? "cursor-not-allowed bg-slate-100 text-slate-500"
-                                : ""
-                            }`}
-                            title="Platí od"
-                          />
-                          <input
-                            type="date"
-                            value={row.validTo}
-                            onChange={(e) =>
-                              updatePositionTimelineRow(row.id, { validTo: e.target.value })
-                            }
-                            disabled={positionTimelineLocked}
-                            className={`${fieldClass} ${
-                              positionTimelineLocked
-                                ? "cursor-not-allowed bg-slate-100 text-slate-500"
-                                : ""
-                            }`}
-                            title="Platí do"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePositionTimelineRow(row.id)}
-                            disabled={positionTimelineLocked}
-                            className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                          >
-                            Smazat
-                              </button>
-                              </div>
-                              {rowRangeError && (
-                                <p className="mt-2 text-xs font-medium text-rose-700">
-                                  Datum DO nemůže být dřív než datum OD.
-                                </p>
-                              )}
-                              {rowOpenEndedNotLast && (
-                                <p className="mt-2 text-xs font-medium text-rose-700">
-                                  Současnost (prázdné DO) může být jen u posledního řádku.
-                                </p>
-                              )}
-                              {isLastDraftRow &&
-                                (!row.validTo.trim() || !positionTimelineLocked) && (
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  {row.validTo.trim() ? (
-                                    positionTimelineLocked ? null : (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        updatePositionTimelineRow(row.id, { validTo: "" })
-                                      }
-                                      className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200"
-                                    >
-                                      Nastavit DO: současnost
-                                    </button>
-                                    )
-                                  ) : (
-                                    <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                                      Poslední pozice běží do současnosti
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )})}
-                        </div>
-                      )}
-
-                {positionTimelineError ? (
-                  <p className="text-xs font-medium text-rose-700">{positionTimelineError}</p>
-                ) : null}
-
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {positionTimelineSaved ? (
-                    <span className="text-xs font-semibold text-emerald-700">Uloženo</span>
-                  ) : null}
-                  {positionTimelineLocked ? (
-                    <button
-                      type="button"
-                      onClick={unlockPositionTimeline}
-                      className="rounded-xl border border-slate-900 bg-white px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-100"
-                    >
-                      Změna
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void savePositionTimeline()}
-                      disabled={positionTimelineSaving}
-                      className="rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {positionTimelineSaving ? "Ukládám..." : "Uložit timeline"}
-                    </button>
-                  )}
-                </div>
-              </section>
+                <CareerTimelinePanel
+                  positions={POSITIONS}
+                  rows={positionTimelineDraft}
+                  fieldClass={fieldClass}
+                  locked={positionTimelineLocked}
+                  saving={positionTimelineSaving}
+                  saved={positionTimelineSaved}
+                  error={positionTimelineError}
+                  helpOpen={showCareerTimelineHelp}
+                  onHelpOpen={() => setShowCareerTimelineHelp(true)}
+                  onHelpClose={() => setShowCareerTimelineHelp(false)}
+                  onAddRow={addPositionTimelineRow}
+                  onUnlock={unlockPositionTimeline}
+                  onUpdateRow={updatePositionTimelineRow}
+                  onRemoveRow={removePositionTimelineRow}
+                  onSave={savePositionTimeline}
+                />
               )}
 
               {activeTab === "notifications" && !timelineSetupRequired && (
-              <section className={`h-full space-y-5 lg:col-span-2 ${panelClass}`}>
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#06b6d4_0%,#3b82f6_45%,#6366f1_100%)]" />
-
-                <div className="relative z-10 space-y-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                        <BellRing size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                        <span>Notifikace</span>
-                      </h2>
-                      <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                        Push oprávnění, typy upozornění a intranet sekce na jednom místě.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
-                        Aktivní typy: {enabledNotificationTypes}/6
-                      </span>
-                      <span
-                        className={`rounded-full px-3 py-1 text-[11px] font-semibold border shadow-[0_8px_18px_rgba(15,23,42,0.08)] ${
-                          fcmActive
-                            ? "border-emerald-700 bg-emerald-600 text-[#f8fafc]"
-                            : "border-rose-700 bg-rose-600 text-[#f8fafc]"
-                        }`}
-                      >
-                        {fcmActive ? "Push aktivní" : "Push neaktivní"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)]">
-                    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white/95 shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
-                      <div className="flex flex-col gap-2 border-b border-slate-200/80 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Push
-                          </div>
-                          <h3 className="mt-1 text-xl font-bold tracking-[-0.015em] text-slate-900">
-                            Zařízení a typy upozornění
-                          </h3>
-                        </div>
-                        <span className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
-                          Prohlížeč:{" "}
-                          {pushPermission === "granted"
-                            ? "povoleno"
-                            : pushPermission === "denied"
-                              ? "zamítnuto"
-                              : pushPermission === "default"
-                                ? "nepotvrzeno"
-                                : "nepodporováno"}
-                        </span>
-                      </div>
-
-                      <div className="divide-y divide-slate-200/80">
-                        <div className="grid gap-4 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                          <div>
-                            <div className="text-sm font-semibold text-slate-900">Push pro toto zařízení</div>
-                            <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                              Zapnutí vytvoří webový token pro aktuální prohlížeč.
-                            </p>
-                          </div>
-                          {!pushSupported ? (
-                            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
-                              Prohlížeč web push nepodporuje.
-                            </div>
-                          ) : (
-                            <div className="grid gap-2 sm:min-w-[260px] sm:grid-cols-2">
-                              <button
-                                type="button"
-                                onClick={() => void handleEnableBrowserPush()}
-                                disabled={pushBusy}
-                                className="rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_12px_24px_rgba(16,185,129,0.22)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {pushBusy ? "Nastavuju…" : "Zapnout"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleDisableBrowserPush()}
-                                disabled={pushBusy}
-                                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                Vypnout
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="px-4 py-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-semibold text-slate-900">Typy notifikací</div>
-                              <p className="mt-1 text-xs text-slate-500">
-                                Vyber, které události mají chodit jako push.
-                              </p>
-                            </div>
-                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-800">
-                              {enabledNotificationTypes}/6
-                            </span>
-                          </div>
-
-                          <div className="mt-3 grid gap-x-5 sm:grid-cols-2">
-                            {NOTIFICATION_TYPE_OPTIONS.map((t) => {
-                              const active = notificationSettings.types[t.id];
-                              const Icon = t.icon;
-                              return (
-                                <button
-                                  key={t.id}
-                                  type="button"
-                                  onClick={() => toggleNotificationType(t.id)}
-                                  role="switch"
-                                  aria-checked={active}
-                                  className="flex min-h-[54px] w-full items-center justify-between gap-3 border-b border-slate-100 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:text-slate-950"
-                                >
-                                  <span className="inline-flex min-w-0 items-center gap-2.5">
-                                    <span
-                                      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
-                                        active
-                                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                          : "border-slate-200 bg-slate-50 text-slate-500"
-                                      }`}
-                                    >
-                                      <Icon className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                                    </span>
-                                    <span className="min-w-0 truncate">{t.label}</span>
-                                  </span>
-                                  <span
-                                    className={`relative inline-flex h-7 w-12 shrink-0 rounded-full border transition ${active ? notificationToggleOnClass : notificationToggleOffClass}`}
-                                    aria-hidden="true"
-                                  >
-                                    <span
-                                      className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.25)] transition-all ${active ? "left-[26px]" : "left-[2px]"}`}
-                                    />
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                          <div>
-                            <div className="text-sm font-semibold text-slate-900">Testovací push</div>
-                            <p className="mt-1 text-xs text-slate-500">
-                              Ověř, že push chodí přes webový token tohoto účtu.
-                            </p>
-                            {testPushStatus ? (
-                              <p className="mt-2 text-[11px] text-slate-600">{testPushStatus}</p>
-                            ) : null}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleTestPush}
-                            className="rounded-xl border border-slate-900 bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] px-4 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_12px_24px_rgba(29,78,216,0.2)] transition hover:brightness-95"
-                          >
-                            Odeslat test
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <aside className="overflow-hidden rounded-[28px] border border-slate-200 bg-white/95 shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
-                      <div className="border-b border-slate-200/80 px-4 py-4">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                          Intranet
-                        </div>
-                        <h3 className="mt-1 text-xl font-bold tracking-[-0.015em] text-slate-900">
-                          Sekce příspěvků
-                        </h3>
-                        <p className="mt-1 text-sm text-slate-600">
-                          Nastavení sekcí, ze kterých mají chodit push notifikace.
-                        </p>
-                      </div>
-
-                      <div className="divide-y divide-slate-200/80">
-                        <div className="px-4 py-4">
-                          <div className="inline-flex w-full rounded-xl border border-slate-200 bg-slate-100/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-                            <button
-                              type="button"
-                              onClick={() => void setIntranetNotificationMode("all")}
-                              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                                notificationSettings.intranet.mode === "all"
-                                  ? "bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] text-[#f8fafc] shadow-[0_10px_22px_rgba(29,78,216,0.24)]"
-                                  : "text-slate-700 hover:bg-white"
-                              }`}
-                            >
-                              Všechny sekce
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void setIntranetNotificationMode("selected")}
-                              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                                notificationSettings.intranet.mode === "selected"
-                                  ? "bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] text-[#f8fafc] shadow-[0_10px_22px_rgba(29,78,216,0.24)]"
-                                  : "text-slate-700 hover:bg-white"
-                              }`}
-                            >
-                              Jen vybrané
-                            </button>
-                          </div>
-                        </div>
-
-                        {notificationSettings.intranet.mode === "selected" ? (
-                          <div className="px-4 py-2">
-                            {INTRANET_SECTIONS.map((section) => {
-                              const active =
-                                notificationSettings.intranet.sections.includes(section.key);
-                              const Icon = INTRANET_SECTION_ICON_BY_KEY[section.key];
-                              return (
-                                <button
-                                  key={section.key}
-                                  type="button"
-                                  onClick={() =>
-                                    void toggleIntranetNotificationSection(section.key)
-                                  }
-                                  role="switch"
-                                  aria-checked={active}
-                                  className="flex min-h-[52px] w-full items-center justify-between gap-3 border-b border-slate-100 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:text-slate-950"
-                                >
-                                  <span className="inline-flex min-w-0 items-center gap-2.5">
-                                    <span
-                                      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
-                                        active
-                                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                          : "border-slate-200 bg-slate-50 text-slate-500"
-                                      }`}
-                                    >
-                                      <Icon className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                                    </span>
-                                    <span className="min-w-0 truncate">{section.label}</span>
-                                  </span>
-                                  <span
-                                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition ${active ? notificationToggleOnClass : notificationToggleOffClass}`}
-                                    aria-hidden="true"
-                                  >
-                                    <span
-                                      className={`absolute top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full bg-white shadow-[0_2px_6px_rgba(15,23,42,0.25)] transition-all ${active ? "left-[22px]" : "left-[2px]"}`}
-                                    />
-                                  </span>
-                                </button>
-                              );
-                            })}
-                            {notificationSettings.intranet.sections.length === 0 ? (
-                              <p className="py-3 text-[11px] text-amber-700">
-                                Není vybraná žádná sekce, intranet push nebude chodit.
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <div className="px-4 py-4 text-sm leading-relaxed text-slate-600">
-                            Push notifikace budou chodit ze všech intranetových sekcí.
-                          </div>
-                        )}
-                      </div>
-                    </aside>
-                  </div>
-                </div>
-              </section>
+                <NotificationsSettingsPanel
+                  className={panelClass}
+                  settings={notificationSettings}
+                  enabledTypesCount={enabledNotificationTypes}
+                  fcmActive={fcmActive}
+                  pushPermission={pushPermission}
+                  pushSupported={pushSupported}
+                  pushBusy={pushBusy}
+                  toggleOnClass={notificationToggleOnClass}
+                  toggleOffClass={notificationToggleOffClass}
+                  testPushStatus={testPushStatus}
+                  onEnableBrowserPush={handleEnableBrowserPush}
+                  onDisableBrowserPush={handleDisableBrowserPush}
+                  onToggleType={toggleNotificationType}
+                  onTestPush={handleTestPush}
+                  onSetIntranetMode={setIntranetNotificationMode}
+                  onToggleIntranetSection={toggleIntranetNotificationSection}
+                />
               )}
 
               {activeTab === "onlineCard" && !timelineSetupRequired && (
-              <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#4c1d95_0%,#7c3aed_48%,#c084fc_100%)]" />
-                <div className="space-y-5">
-                  {onlineCardStudioPublishPanel}
-
-                  <div className="space-y-4 rounded-[30px] border border-violet-100 bg-white px-4 py-4 shadow-[0_20px_60px_rgba(88,28,135,0.08)] sm:px-5 sm:py-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                          <Globe size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                          <span>Online Vizitka Studio</span>
-                        </h2>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Klikni přímo do náhledu a upravuj obsah naživo. Pod hlavní vizitkou níže
-                          najdeš i sekce profi stránky poradce.
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
-                          Živý náhled
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setOnlineCardStudioFullscreen(true)}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-black"
-                        >
-                          <Maximize2 size={12} strokeWidth={2.2} aria-hidden="true" />
-                          Rozbalit editor
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="online-card-studio-preview space-y-4">
-                      <PremiumOnlineCardPreview
-                        editable
-                        layout="fullWidth"
-                        density="compact"
-                        showContactSection={false}
-                        value={{
-                          fullName: onlineCardDraft.fullName,
-                          title: onlineCardDraft.title,
-                          phone: onlineCardDraft.phone,
-                          email: onlineCardDraft.email,
-                          website: onlineCardDraft.website,
-                          ico: onlineCardDraft.ico,
-                          bio: onlineCardDraft.bio,
-                          location: onlineCardDraft.location,
-                          officeLabel: onlineCardDraft.officeLabel,
-                          officePhotos: onlineCardDraft.officePhotos,
-                        }}
-                        meetingCta={{
-                          label: "Sjednat schůzku",
-                          onClick: handlePreviewMeetingCta,
-                        }}
-                        onPatch={(patch) => updateOnlineCardDraft(patch)}
-                      />
-
-                      <p className="text-[11px] text-slate-500">
-                        Přímá editace náhledu upravuje pole vizitky. Odeslání změn do profilu proveď
-                        tlačítkem Uložit vizitku.
-                      </p>
-
-                      <AdvisorProfileSections />
-                      {onlineCardStudioOfficeSection}
-                      {onlineCardStudioContactSection}
-                    </div>
-                  </div>
-
-                </div>
-
-                {onlineCardStudioFullscreen && (
-                  <div className="fixed inset-0 z-[80] bg-slate-950/25 p-2 backdrop-blur-[2px] sm:p-4">
-                    <div className="mx-auto flex h-full w-full max-w-[1560px] flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-[linear-gradient(170deg,#f8fafc_0%,#f1f5f9_48%,#eef2ff_100%)] shadow-[0_32px_100px_rgba(15,23,42,0.2)]">
-                      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
-                            Online Vizitka Studio
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Režim přes celou stránku. Esc = zavřít.
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void handleSaveOnlineCard()}
-                            disabled={onlineCardSaving || !onlineCardPublishReady}
-                            className="inline-flex items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {onlineCardSaving ? "Ukládám..." : "Uložit vizitku"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setOnlineCardStudioFullscreen(false)}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                          >
-                            <Minimize2 size={12} strokeWidth={2.2} aria-hidden="true" />
-                            Zavřít
-                          </button>
-                        </div>
-                      </header>
-
-                      <div className="flex-1 overflow-y-auto p-3 sm:p-5">
-                        <div className="w-full space-y-4">
-                          <div className="online-card-studio-preview space-y-4">
-                            <PremiumOnlineCardPreview
-                              editable
-                              layout="fullWidth"
-                              showContactSection={false}
-                              value={{
-                                fullName: onlineCardDraft.fullName,
-                                title: onlineCardDraft.title,
-                                phone: onlineCardDraft.phone,
-                                email: onlineCardDraft.email,
-                                website: onlineCardDraft.website,
-                                ico: onlineCardDraft.ico,
-                                bio: onlineCardDraft.bio,
-                                location: onlineCardDraft.location,
-                                officeLabel: onlineCardDraft.officeLabel,
-                                officePhotos: onlineCardDraft.officePhotos,
-                              }}
-                              meetingCta={{
-                                label: "Sjednat schůzku",
-                                onClick: handlePreviewMeetingCta,
-                              }}
-                              onPatch={(patch) => updateOnlineCardDraft(patch)}
-                            />
-                            <AdvisorProfileSections />
-                            {onlineCardStudioOfficeSection}
-                            {onlineCardStudioContactSection}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {onlineCardQrOpen ? (
-                  <div className="fixed inset-0 z-[92] flex items-end justify-center bg-slate-950/40 p-2 backdrop-blur-[2px] sm:items-center sm:p-4">
-                    <div className="w-full max-w-[460px] rounded-[26px] border border-slate-200 bg-white p-4 shadow-[0_30px_80px_rgba(15,23,42,0.3)] sm:p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            QR kód vizitky
-                          </p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            Naskenuj nebo stáhni QR pro sdílení veřejné URL.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setOnlineCardQrOpen(false)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100"
-                          aria-label="Zavřít QR dialog"
-                        >
-                          <X size={14} strokeWidth={2.2} />
-                        </button>
-                      </div>
-
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                        {onlineCardQrLoading ? (
-                          <p className="text-center text-xs text-slate-500">Generuji QR kód…</p>
-                        ) : null}
-
-                        {!onlineCardQrLoading && onlineCardQrDataUrl ? (
-                          <Image
-                            src={onlineCardQrDataUrl}
-                            alt="QR kód veřejné vizitky"
-                            width={340}
-                            height={340}
-                            className="mx-auto h-auto w-full max-w-[340px] rounded-xl border border-slate-200 bg-white p-2"
-                          />
-                        ) : null}
-
-                        {onlineCardQrError ? (
-                          <p className="text-center text-xs text-rose-700">{onlineCardQrError}</p>
-                        ) : null}
-                      </div>
-
-                      <p className="mt-3 break-all text-[11px] text-slate-500">{onlineCardPublicUrl}</p>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={handleDownloadOnlineCardQr}
-                          disabled={!onlineCardQrDataUrl}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Stáhnout QR
-                          <Download size={12} strokeWidth={2.2} aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setOnlineCardQrOpen(false)}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                        >
-                          Zavřít
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </section>
+                <OnlineCardSettingsPanel
+                  className={panelClass}
+                  draft={onlineCardDraft}
+                  publishPanel={onlineCardStudioPublishPanel}
+                  officeSection={onlineCardStudioOfficeSection}
+                  contactSection={onlineCardStudioContactSection}
+                  fullscreen={onlineCardStudioFullscreen}
+                  saving={onlineCardSaving}
+                  publishReady={onlineCardPublishReady}
+                  qrOpen={onlineCardQrOpen}
+                  qrLoading={onlineCardQrLoading}
+                  qrDataUrl={onlineCardQrDataUrl}
+                  qrError={onlineCardQrError}
+                  publicUrl={onlineCardPublicUrl}
+                  onDraftPatch={(patch) => updateOnlineCardDraft(patch)}
+                  onPreviewMeetingCta={handlePreviewMeetingCta}
+                  onFullscreenChange={setOnlineCardStudioFullscreen}
+                  onSave={handleSaveOnlineCard}
+                  onQrClose={() => setOnlineCardQrOpen(false)}
+                  onDownloadQr={handleDownloadOnlineCardQr}
+                />
               )}
 
               {activeTab === "requests" && !timelineSetupRequired && (
-              <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_52%,#c084fc_100%)]" />
-                <div className="grid gap-3 md:grid-cols-2">
-                  {([
-                    {
-                      id: "create",
-                      title: "Vytvořit žádost",
-                      subtitle: "Nová žádost krok za krokem",
-                      icon: ShieldCheck,
-                    },
-                    {
-                      id: "history",
-                      title: "Podané žádosti",
-                      subtitle: `${userRequests.length} záznamů v historii`,
-                      icon: Clock3,
-                    },
-                  ] as const).map((item) => {
-                    const active = userRequestsView === item.id;
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setUserRequestsView(item.id);
-                          setUserRequestStatus(null);
-                          if (item.id === "history") void loadUserRequests();
-                        }}
-                        className={`group relative overflow-hidden rounded-[26px] border px-4 py-4 text-left transition ${
-                          active
-                            ? "border-violet-300 bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_54%,#a855f7_100%)] text-white shadow-[0_22px_46px_rgba(124,58,237,0.34)]"
-                            : "border-violet-200 bg-[linear-gradient(135deg,#faf5ff_0%,#f5f3ff_100%)] text-slate-900 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_18px_34px_rgba(124,58,237,0.16)]"
-                        }`}
-                      >
-                        <span className="relative z-10 flex items-center gap-3">
-                          <span
-                            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
-                              active
-                                ? "border-white/25 bg-white/14 text-white"
-                                : "border-violet-200 bg-white text-violet-700"
-                            }`}
-                          >
-                            <Icon size={20} strokeWidth={2.2} aria-hidden="true" />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-base font-bold leading-tight">
-                              {item.title}
-                            </span>
-                            <span
-                              className={`mt-0.5 block text-xs font-semibold ${
-                                active ? "text-violet-100" : "text-violet-700"
-                              }`}
-                            >
-                              {item.subtitle}
-                            </span>
-                          </span>
-                        </span>
-                        <span
-                          className={`pointer-events-none absolute right-3 top-3 h-16 w-16 rounded-full blur-2xl ${
-                            active ? "bg-white/18" : "bg-violet-300/25"
-                          }`}
-                        />
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {userRequestStatus && userRequestsView === "history" ? (
-                  <div
-                    className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
-                      userRequestStatus.type === "success"
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : userRequestStatus.type === "info"
-                          ? "border-slate-200 bg-slate-50 text-slate-700"
-                          : "border-rose-200 bg-rose-50 text-rose-700"
-                    }`}
-                  >
-                    {userRequestStatus.message}
-                  </div>
-                ) : null}
-
-                {userRequestsView === "create" ? (
-                  <div className="space-y-4 rounded-[26px] border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_100%)] px-4 py-4 shadow-[0_18px_42px_rgba(88,28,135,0.10)] sm:px-5 sm:py-5">
-                    <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                      <ShieldCheck size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                      <span>Nová žádost</span>
-                    </h2>
-                    {editingUserRequestId ? (
-                      <div className="flex flex-col gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 sm:flex-row sm:items-center sm:justify-between">
-                        <span>Upravuješ vrácenou žádost k doplnění.</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            resetUserRequestForm();
-                            setUserRequestStatus(null);
-                          }}
-                          className="inline-flex items-center justify-center rounded-full border border-sky-300 bg-white px-3 py-1 font-semibold text-sky-800 transition hover:bg-sky-100"
-                        >
-                          Zrušit úpravu
-                        </button>
-	                      </div>
-	                    ) : null}
-
-                    <div className="rounded-[22px] border border-violet-200 bg-slate-950 px-3 py-3 shadow-[0_16px_36px_rgba(15,23,42,0.18)]">
-                      <div
-                        className="grid gap-2"
-                        style={{
-                          gridTemplateColumns: `repeat(${USER_REQUEST_STEPS.length}, minmax(0, 1fr))`,
-                        }}
-                      >
-                        {USER_REQUEST_STEPS.map((stepItem, index) => {
-                          const stepDone = currentUserRequestStep > index;
-                          const stepActive = currentUserRequestStep === index;
-                          return (
-                            <div key={stepItem.id} className="flex flex-col items-center gap-1 text-center">
-                              <span
-                                className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition ${
-                                  stepDone
-                                    ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
-                                    : stepActive
-                                      ? "border-violet-200/80 bg-violet-400/35 text-white"
-                                      : "border-white/20 bg-white/[0.04] text-violet-200/65"
-                                }`}
-                              >
-                                {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
-                              </span>
-                              <span
-                                className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                                  stepActive || stepDone ? "text-white" : "text-violet-200/60"
-                                }`}
-                              >
-                                {stepItem.label}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] transition-[width] duration-300"
-                          style={{ width: `${requestStepperProgress}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {userRequestStatus && currentUserRequestStepId !== "message" ? (
-                      <p
-                        className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${
-                          userRequestStatus.type === "success"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : userRequestStatus.type === "info"
-                              ? "border-sky-200 bg-sky-50 text-sky-800"
-                              : "border-rose-200 bg-rose-50 text-rose-700"
-                        }`}
-                      >
-                        {userRequestStatus.message}
-                      </p>
-                    ) : null}
-
-                    {currentUserRequestStepId === "type" ? (
-                      <div className="space-y-3 rounded-2xl border border-violet-100 bg-white px-3 py-3">
-                        <div className="space-y-2">
-                          <div className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            Předmět
-                          </div>
-                          <div
-                            className="grid grid-cols-1 gap-3 md:grid-cols-2"
-                            role="radiogroup"
-                            aria-label="Předmět žádosti"
-                          >
-                            {([
-                              {
-                                id: "userCreation",
-                                label: USER_REQUEST_SUBJECT_LABEL.userCreation,
-                                description: "Založení účtu pro nového poradce nebo tipaře.",
-                                icon: UsersRound,
-                              },
-                              {
-                                id: "other",
-                                label: USER_REQUEST_SUBJECT_LABEL.other,
-                                description: "Jiný požadavek pro administraci aplikace.",
-                                icon: FileText,
-                              },
-                            ] as const).map((option) => {
-                              const selected = userRequestSubject === option.id;
-                              const Icon = option.icon;
-                              return (
-                                <button
-                                  key={option.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setUserRequestSubject(option.id);
-                                    setUserRequestStatus(null);
-                                  }}
-                                  role="radio"
-                                  aria-checked={selected}
-                                  className={`group flex min-h-[118px] items-start gap-3 rounded-[22px] border px-4 py-4 text-left transition ${
-                                    selected
-                                      ? "border-violet-400 bg-[linear-gradient(135deg,#ede9fe_0%,#f5f3ff_100%)] text-slate-950 shadow-[0_16px_34px_rgba(124,58,237,0.18)]"
-                                      : "border-slate-200 bg-white text-slate-800 hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/50 hover:shadow-[0_12px_24px_rgba(88,28,135,0.10)]"
-                                  }`}
-                                >
-                                  <span
-                                    className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
-                                      selected
-                                        ? "border-violet-300 bg-violet-600 text-white"
-                                        : "border-slate-200 bg-slate-50 text-violet-700 group-hover:border-violet-200 group-hover:bg-white"
-                                    }`}
-                                  >
-                                    <Icon size={20} strokeWidth={2.2} aria-hidden="true" />
-                                  </span>
-                                  <span className="min-w-0">
-                                    <span className="flex items-center gap-2 text-base font-bold leading-tight">
-                                      {option.label}
-                                      {selected ? (
-                                        <CheckCircle2
-                                          size={16}
-                                          strokeWidth={2.2}
-                                          className="shrink-0 text-violet-700"
-                                          aria-hidden="true"
-                                        />
-                                      ) : null}
-                                    </span>
-                                    <span className="mt-1 block text-sm leading-relaxed text-slate-500">
-                                      {option.description}
-                                    </span>
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {currentUserRequestStepId === "details" && userRequestSubject === "userCreation" && (
-                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            Firemní e-mail
-                          </label>
-                          <input
-                            type="email"
-                            className={fieldClass}
-                            value={userRequestCorporateEmail}
-                            onChange={(e) => {
-                              setUserRequestCorporateEmail(e.target.value);
-                              setUserRequestStatus(null);
-                            }}
-                            placeholder="jmeno.prijmeni@bohemika.eu"
-                            maxLength={USER_REQUEST_CORPORATE_EMAIL_MAX_LEN}
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            Jméno a příjmení
-                          </label>
-                          <input
-                            type="text"
-                            className={fieldClass}
-                            value={userRequestFullName}
-                            onChange={(e) => {
-                              setUserRequestFullName(e.target.value);
-                              setUserRequestStatus(null);
-                            }}
-                            placeholder="Jméno Příjmení"
-                            maxLength={USER_REQUEST_FULL_NAME_MAX_LEN}
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            Agenturní číslo
-                          </label>
-                          <input
-                            type="text"
-                            inputMode="text"
-                            className={fieldClass}
-                            value={userRequestAgencyNumber}
-                            onChange={(e) => {
-                              setUserRequestAgencyNumber(e.target.value);
-                              setUserRequestStatus(null);
-                            }}
-                            placeholder="Volitelné agenturní číslo"
-                            maxLength={USER_REQUEST_AGENCY_NUMBER_MAX_LEN}
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            E-mail přímého nadřízeného
-                          </label>
-                          <input
-                            type="email"
-                            className={fieldClass}
-                            value={userRequestManagerEmail}
-                            onChange={(e) => {
-                              setUserRequestManagerEmail(e.target.value);
-                              setUserRequestStatus(null);
-                            }}
-                            placeholder="jmeno.prijmeni@bohemika.eu"
-                            maxLength={USER_REQUEST_MANAGER_EMAIL_MAX_LEN}
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            Režim provizí
-                          </label>
-                          <div
-                            className="inline-flex w-full rounded-2xl border border-slate-300 bg-slate-100 p-1"
-                            role="radiogroup"
-                            aria-label="Režim provizí žádosti"
-                          >
-                            {COMMISSION_MODES.map((m) => {
-                              const active = userRequestMode === m.id;
-                              const isAccelerated = m.id === "accelerated";
-                              return (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setUserRequestMode(m.id);
-                                    setUserRequestStatus(null);
-                                  }}
-                                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                                    active
-                                      ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
-                                      : "border border-transparent text-slate-600 hover:text-slate-900"
-                                  }`}
-                                  role="radio"
-                                  aria-checked={active}
-                                >
-                                  {isAccelerated ? (
-                                    <Zap
-                                      size={14}
-                                      strokeWidth={2.2}
-                                      className={active ? "text-amber-500" : "text-amber-600"}
-                                      aria-hidden="true"
-                                    />
-                                  ) : (
-                                    <Snail
-                                      size={14}
-                                      strokeWidth={2.2}
-                                      className={active ? "text-slate-600" : "text-slate-500"}
-                                      aria-hidden="true"
-                                    />
-                                  )}
-                                  {m.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <p className="text-[11px] text-slate-500">
-                          Heslo nenastavuješ. Po schválení žádosti ho nastaví admin.
-                        </p>
-	                      </div>
-	                    )}
-
-                    {currentUserRequestStepId === "details" && userRequestSubject !== "userCreation" ? (
-                      <div className="space-y-2 rounded-2xl border border-violet-100 bg-white px-3 py-3">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          Text žádosti
-                        </label>
-                        <textarea
-                          className={`${fieldClass} min-h-[160px] resize-y`}
-                          value={userRequestMessage}
-                          onChange={(e) => {
-                            setUserRequestMessage(e.target.value);
-                            setUserRequestStatus(null);
-                          }}
-                          placeholder="Napiš, co potřebuješ vyřešit."
-                          maxLength={USER_REQUEST_MESSAGE_MAX_LEN}
-                        />
-                        <p className="text-[11px] text-slate-500">
-                          {requestMessageLength}/{USER_REQUEST_MESSAGE_MAX_LEN} znaků (minimum{" "}
-                          {USER_REQUEST_MESSAGE_MIN_LEN}).
-                        </p>
-                      </div>
-                    ) : null}
-
-                    {currentUserRequestStepId === "type" ? (
-	                    <div className="space-y-1.5">
-	                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-	                        Priorita
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {(["normal", "urgent"] as UserRequestPriority[]).map((priority) => {
-                          const active = userRequestPriority === priority;
-                          return (
-                            <button
-                              key={priority}
-                              type="button"
-                              onClick={() => setUserRequestPriority(priority)}
-                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                                active
-                                  ? "border-slate-900 bg-slate-900 text-white"
-                                  : toggleOffClass
-                              }`}
-                            >
-                              {USER_REQUEST_PRIORITY_LABEL[priority]}
-                            </button>
-                          );
-	                        })}
-	                      </div>
-	                    </div>
-                    ) : null}
-
-                    {currentUserRequestStepId === "message" && userRequestSubject === "userCreation" ? (
-	                    <div className="space-y-1.5">
-	                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-	                        Popis žádosti
-                      </label>
-                      <textarea
-                        className={`${fieldClass} min-h-[120px] resize-y`}
-                        value={userRequestMessage}
-                        onChange={(e) => {
-                          setUserRequestMessage(e.target.value);
-                          setUserRequestStatus(null);
-                        }}
-                        placeholder="Napiš prosím detaily žádosti."
-                        maxLength={USER_REQUEST_MESSAGE_MAX_LEN}
-                      />
-                      <p className="text-[11px] text-slate-500">
-                        {requestMessageLength}/{USER_REQUEST_MESSAGE_MAX_LEN} znaků (minimum{" "}
-	                        {USER_REQUEST_MESSAGE_MIN_LEN}).
-	                      </p>
-	                    </div>
-                    ) : null}
-
-                    {currentUserRequestStepId === "message" && userRequestSubject !== "userCreation" ? (
-                      <div className="space-y-2 rounded-2xl border border-violet-100 bg-white px-3 py-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          Kontrola textu
-                        </div>
-                        <p className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-relaxed text-slate-700">
-                          {userRequestMessage.trim()}
-                        </p>
-                      </div>
-                    ) : null}
-
-	                    {currentUserRequestStepId === "message" ? (
-		                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-	                      {userRequestStatus && (
-                        <p
-                          className={`text-xs ${
-                            userRequestStatus.type === "success"
-                              ? "text-emerald-700"
-                              : userRequestStatus.type === "info"
-                                ? "text-slate-700"
-                                : "text-rose-700"
-                          }`}
-                        >
-                          {userRequestStatus.message}
-                        </p>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void handleSubmitUserRequest()}
-                        disabled={userRequestSubmitting || !canSubmitUserRequest}
-                        className="inline-flex items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {userRequestSubmitting
-                          ? editingUserRequestId
-                            ? "Odesílám změny..."
-                            : "Odesílám..."
-                          : editingUserRequestId
-                            ? "Uložit a odeslat znovu"
-	                            : "Odeslat"}
-	                      </button>
-		                    </div>
-                    ) : null}
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-violet-100 pt-3">
-                      <p className="text-xs font-semibold text-violet-700">
-                        Krok {currentUserRequestStep + 1} / {USER_REQUEST_STEPS.length}
-                      </p>
-                      <div className="ml-auto flex items-center gap-2">
-                        {currentUserRequestStep > 0 ? (
-                          <button
-                            type="button"
-                            onClick={goToPreviousUserRequestStep}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white px-4 py-2 text-sm font-semibold text-violet-800 transition hover:bg-violet-50"
-                          >
-                            <ChevronLeft size={15} strokeWidth={2.2} aria-hidden="true" />
-                            Zpět
-                          </button>
-                        ) : null}
-                        {currentUserRequestStep < USER_REQUEST_STEPS.length - 1 ? (
-                          <button
-                            type="button"
-                            onClick={goToNextUserRequestStep}
-                            disabled={!requestCurrentStepCanContinue}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
-                          >
-                            Pokračovat
-                            <ChevronRight size={15} strokeWidth={2.2} aria-hidden="true" />
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-	                  </div>
-                ) : null}
-
-                {userRequestsView === "history" ? (
-	                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
-                        Podané žádosti
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={() => void loadUserRequests()}
-                        disabled={userRequestsLoading}
-                        className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {userRequestsLoading ? "Načítám..." : "Obnovit"}
-                      </button>
-                    </div>
-
-                    {userRequestsError ? (
-                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                        {userRequestsError}
-                      </div>
-                    ) : null}
-
-                    {!userRequestsLoading && userRequests.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-xs text-slate-500">
-                        Zatím nemáš podané žádosti.
-                      </div>
-                    ) : null}
-
-                    <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
-                      {userRequests.map((request) => {
-                        const slaInfo = buildUserRequestSlaInfo(request, userRequestsNowMs);
-                        const cancellableByRequester =
-                          request.status === "pending" || request.status === "needsInfo";
-                        const decisionDurationMs =
-                          request.decidedAtMs && Number.isFinite(request.decidedAtMs)
-                            ? Math.max(0, request.decidedAtMs - request.createdAtMs)
-                            : 0;
-
-                        return (
-                          <article
-                            key={request.id}
-                            className={`rounded-xl border px-3 py-3 ${
-                              slaInfo.isOverdueUrgent
-                                ? "border-rose-300 bg-rose-50"
-                                : "border-slate-200 bg-slate-50"
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-xs font-semibold text-slate-800">
-                                {USER_REQUEST_SUBJECT_LABEL[request.subject]}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                                    USER_REQUEST_STATUS_CLASS[request.status]
-                                  }`}
-                                >
-                                  {USER_REQUEST_STATUS_LABEL[request.status]}
-                                </span>
-                                {request.status === "needsInfo" ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleStartEditUserRequest(request)}
-                                    disabled={Boolean(userRequestDeletingId) || userRequestSubmitting}
-                                    className="rounded-full border border-sky-300 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    Doplnit
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => void handleDeleteUserRequest(request.id)}
-                                  disabled={userRequestDeletingId === request.id}
-                                  className="rounded-full border border-rose-300 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {userRequestDeletingId === request.id
-                                    ? "Mažu..."
-                                    : cancellableByRequester
-                                      ? "Stornovat"
-                                      : "Smazat"}
-                                </button>
-                              </div>
-                            </div>
-
-                            <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
-                              {request.message}
-                            </p>
-
-                            <dl className="mt-3 space-y-1 text-[11px] text-slate-500">
-                              <div className="flex flex-wrap items-baseline gap-1">
-                                <dt className="font-semibold text-slate-600">Priorita:</dt>
-                                <dd>{USER_REQUEST_PRIORITY_LABEL[request.priority]}</dd>
-                              </div>
-                              {slaInfo.waiting ? (
-                                <div className="flex flex-wrap items-baseline gap-1">
-                                  <dt className="font-semibold text-slate-600">Čeká:</dt>
-                                  <dd
-                                    className={
-                                      slaInfo.isOverdueUrgent
-                                        ? "font-semibold text-rose-700"
-                                        : "text-slate-600"
-                                    }
-                                  >
-                                    {slaInfo.elapsedLabel} (SLA {slaInfo.slaLimitLabel})
-                                  </dd>
-                                </div>
-                              ) : (
-                                <div className="flex flex-wrap items-baseline gap-1">
-                                  <dt className="font-semibold text-slate-600">Vyřízeno za:</dt>
-                                  <dd>{formatDurationCompact(decisionDurationMs)}</dd>
-                                </div>
-                              )}
-                              {request.requestedCorporateEmail ? (
-                                <div className="flex flex-wrap items-baseline gap-1">
-                                  <dt className="font-semibold text-slate-600">Firemní e-mail:</dt>
-                                  <dd>{request.requestedCorporateEmail}</dd>
-                                </div>
-                              ) : null}
-                              {request.requestedUserDraft ? (
-                                <>
-                                  {request.requestedUserDraft.fullName ? (
-                                    <div className="flex flex-wrap items-baseline gap-1">
-                                      <dt className="font-semibold text-slate-600">Jméno:</dt>
-                                      <dd>{request.requestedUserDraft.fullName}</dd>
-                                    </div>
-                                  ) : null}
-                                  {request.requestedUserDraft.agencyNumber ? (
-                                    <div className="flex flex-wrap items-baseline gap-1">
-                                      <dt className="font-semibold text-slate-600">Agenturní číslo:</dt>
-                                      <dd>{request.requestedUserDraft.agencyNumber}</dd>
-                                    </div>
-                                  ) : null}
-                                  {request.requestedUserDraft.managerEmail ? (
-                                    <div className="flex flex-wrap items-baseline gap-1">
-                                      <dt className="font-semibold text-slate-600">Nadřízený:</dt>
-                                      <dd>{request.requestedUserDraft.managerEmail}</dd>
-                                    </div>
-                                  ) : null}
-                                  <div className="flex flex-wrap items-baseline gap-1">
-                                    <dt className="font-semibold text-slate-600">Režim:</dt>
-                                    <dd>
-                                      {COMMISSION_MODES.find(
-                                        (m) => m.id === request.requestedUserDraft?.commissionMode
-                                      )?.label ?? request.requestedUserDraft.commissionMode}
-                                    </dd>
-                                  </div>
-                                </>
-                              ) : null}
-                              {request.createdUserEmail ? (
-                                <div className="flex flex-wrap items-baseline gap-1">
-                                  <dt className="font-semibold text-slate-600">Vytvořený účet:</dt>
-                                  <dd>{request.createdUserEmail}</dd>
-                                </div>
-                              ) : null}
-                              <div className="flex flex-wrap items-baseline gap-1">
-                                <dt className="font-semibold text-slate-600">Vytvořeno:</dt>
-                                <dd>{formatDateTime(request.createdAtMs)}</dd>
-                              </div>
-                              <div className="flex flex-wrap items-baseline gap-1">
-                                <dt className="font-semibold text-slate-600">Zpětná vazba:</dt>
-                                <dd>
-                                  {request.feedback?.trim()
-                                    ? request.feedback
-                                    : "Zatím bez zpětné vazby."}
-                                </dd>
-                              </div>
-                            </dl>
-                          </article>
-                        );
-                      })}
-	                    </div>
-	                  </div>
-                ) : null}
-	              </section>
+                <UserRequestsPanel
+                  className={panelClass}
+                  fieldClass={fieldClass}
+                  toggleOffClass={toggleOffClass}
+                  commissionModes={COMMISSION_MODES}
+                  view={userRequestsView}
+                  requests={userRequests}
+                  requestsLoading={userRequestsLoading}
+                  requestsError={userRequestsError}
+                  requestStatus={userRequestStatus}
+                  editingRequestId={editingUserRequestId}
+                  currentStep={currentUserRequestStep}
+                  currentStepId={currentUserRequestStepId}
+                  stepperProgress={requestStepperProgress}
+                  requestCurrentStepCanContinue={requestCurrentStepCanContinue}
+                  canSubmitRequest={canSubmitUserRequest}
+                  userRequestSubmitting={userRequestSubmitting}
+                  deletingRequestId={userRequestDeletingId}
+                  subject={userRequestSubject}
+                  corporateEmail={userRequestCorporateEmail}
+                  fullName={userRequestFullName}
+                  agencyNumber={userRequestAgencyNumber}
+                  managerEmail={userRequestManagerEmail}
+                  mode={userRequestMode}
+                  priority={userRequestPriority}
+                  message={userRequestMessage}
+                  requestMessageLength={requestMessageLength}
+                  userRequestsNowMs={userRequestsNowMs}
+                  onViewChange={(nextView) => {
+                    setUserRequestsView(nextView);
+                    setUserRequestStatus(null);
+                    if (nextView === "history") void loadUserRequests();
+                  }}
+                  onCancelEdit={() => {
+                    resetUserRequestForm();
+                    setUserRequestStatus(null);
+                  }}
+                  onSubjectChange={(nextSubject) => {
+                    setUserRequestSubject(nextSubject);
+                    setUserRequestStatus(null);
+                  }}
+                  onCorporateEmailChange={(value) => {
+                    setUserRequestCorporateEmail(value);
+                    setUserRequestStatus(null);
+                  }}
+                  onFullNameChange={(value) => {
+                    setUserRequestFullName(value);
+                    setUserRequestStatus(null);
+                  }}
+                  onAgencyNumberChange={(value) => {
+                    setUserRequestAgencyNumber(value);
+                    setUserRequestStatus(null);
+                  }}
+                  onManagerEmailChange={(value) => {
+                    setUserRequestManagerEmail(value);
+                    setUserRequestStatus(null);
+                  }}
+                  onModeChange={(nextMode) => {
+                    setUserRequestMode(nextMode);
+                    setUserRequestStatus(null);
+                  }}
+                  onPriorityChange={setUserRequestPriority}
+                  onMessageChange={(value) => {
+                    setUserRequestMessage(value);
+                    setUserRequestStatus(null);
+                  }}
+                  onSubmit={handleSubmitUserRequest}
+                  onPreviousStep={goToPreviousUserRequestStep}
+                  onNextStep={goToNextUserRequestStep}
+                  onRefreshRequests={loadUserRequests}
+                  onStartEditRequest={handleStartEditUserRequest}
+                  onDeleteRequest={handleDeleteUserRequest}
+                />
               )}
             </div>
 
             {activeTab === "design" && !timelineSetupRequired && (
-            <section className={`space-y-3 ${compactPanelClass}`}>
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
-                <div className="space-y-2.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <div>
-                      <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
-                        Animace rozhraní
-                      </h2>
-                      <p className="text-xs text-slate-500">
-                        Přepíná pohybové efekty v aplikaci.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                        Animace
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleReduceMotionChange(!reduceMotion)}
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                          reduceMotion
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : toggleOffClass
-                        }`}
-                        aria-pressed={reduceMotion}
-                      >
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full ${
-                            reduceMotion ? "bg-white" : "bg-slate-400"
-                          }`}
-                          aria-hidden="true"
-                        />
-                        {reduceMotion ? "Animace vypnuté" : "Animace zapnuté"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
-                        Písmo napříč webem
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Přepne hlavní font pro celý web včetně panelů a detailů.
-                      </p>
-                    </div>
-
-                    <div className="grid max-w-4xl grid-cols-1 gap-2 sm:grid-cols-2">
-                      {FONT_THEME_OPTIONS.map((opt) => {
-                        const isActive = fontTheme === opt.id;
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() => void handleFontThemeChange(opt.id)}
-                            aria-pressed={isActive}
-                            className={`rounded-xl border px-3 py-2.5 text-left transition ${
-                              isActive
-                                ? "border-slate-900 bg-white shadow-[0_6px_16px_rgba(15,23,42,0.1)]"
-                                : "border-slate-300 bg-white hover:border-slate-500"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-sm font-semibold text-slate-900">
-                                {opt.label}
-                              </span>
-                              <span
-                                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                                  isActive
-                                    ? "border-slate-900 bg-slate-900 text-white"
-                                    : "border-slate-300 bg-slate-100 text-slate-600"
-                                }`}
-                              >
-                                {isActive ? "Aktivní" : "Vybrat"}
-                              </span>
-                            </div>
-                            <p className="mt-0.5 text-[11px] text-slate-500">
-                              {opt.description}
-                            </p>
-                            <span
-                              className="mt-2 block rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-base text-slate-900"
-                              style={{ fontFamily: opt.previewFamily }}
-                            >
-                              {opt.previewText}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-            </section>
+              <DesignSettingsPanel
+                className={compactPanelClass}
+                fontTheme={fontTheme}
+                reduceMotion={reduceMotion}
+                toggleOffClass={toggleOffClass}
+                onFontThemeChange={(theme) => {
+                  void handleFontThemeChange(theme);
+                }}
+                onReduceMotionChange={(value) => {
+                  void handleReduceMotionChange(value);
+                }}
+              />
             )}
 
             {activeTab === "subscription" && !timelineSetupRequired && (
-            <section className={`space-y-4 ${panelClass}`}>
-              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
-              <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                <Landmark size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                <span>Předplatné</span>
-              </h2>
-
-              <div className="space-y-4">
-                <div className="space-y-4">
-                  {subscriptionLoading ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                      Načítám údaje o předplatném…
-                    </div>
-                  ) : subscriptionError ? (
-                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      {subscriptionError}
-                    </div>
-                  ) : subscriptionSnapshot ? (
-                    <>
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                          <article className="relative isolate min-h-[102px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-4 py-2.5 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
-                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
-                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
-                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
-                            <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
-                            <div className="pointer-events-none absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,#4bd39a_0%,#9ef2cc_100%)] opacity-90" />
-                            <ShieldCheck
-                                className="pointer-events-none absolute -right-1 bottom-[-5px] h-10 w-10 text-[#d4b6f3]/35"
-                              strokeWidth={1.5}
-                              aria-hidden="true"
-                            />
-                            <div className="relative z-[1]">
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#cfb2ea]">
-                                Stav
-                              </div>
-                              <div
-                                className={`mt-1.5 inline-flex rounded-full border px-3 py-1 text-[15px] font-semibold leading-none shadow-[0_8px_18px_rgba(18,8,36,0.35)] ${
-                                  subscriptionSnapshot.effectiveState === "active"
-                                    ? "border-[#58e1af]/65 bg-[linear-gradient(135deg,rgba(26,76,59,0.9)_0%,rgba(19,56,45,0.88)_100%)] text-[#c8ffe8]"
-                                    : subscriptionSnapshot.effectiveState === "grace"
-                                      ? "border-[#f2ad63]/65 bg-[linear-gradient(135deg,rgba(73,47,25,0.9)_0%,rgba(58,36,18,0.88)_100%)] text-[#ffe0b7]"
-                                      : "border-[#f58ca6]/65 bg-[linear-gradient(135deg,rgba(72,30,46,0.9)_0%,rgba(54,22,35,0.88)_100%)] text-[#ffd0dc]"
-                                }`}
-                              >
-                                {subscriptionSnapshot.effectiveState === "active"
-                                  ? "Aktivní"
-                                  : subscriptionSnapshot.effectiveState === "grace"
-                                    ? "Ochranná lhůta"
-                                    : subscriptionSnapshot.status === "unpaid"
-                                      ? "Nezaplaceno"
-                                      : "Blokováno"}
-                              </div>
-                            </div>
-                          </article>
-
-                          <article className="relative isolate min-h-[102px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-4 py-2.5 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
-                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
-                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
-                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
-                            <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
-                            <div className="pointer-events-none absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,#c085ff_0%,#8f53dc_100%)] opacity-85" />
-                            <Clock3
-                              className="pointer-events-none absolute -right-1 bottom-[-5px] h-10 w-10 text-[#d4b6f3]/35"
-                              strokeWidth={1.5}
-                              aria-hidden="true"
-                            />
-                            <div className="relative z-[1]">
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#cfb2ea]">
-                                Tarif
-                              </div>
-                              <div className="mt-1.5 text-[27px] font-black leading-[0.95] tracking-[-0.02em] text-[#fbf7ff] [text-shadow:0_3px_18px_rgba(191,127,255,0.24)] xl:text-[24px]">
-                                {subscriptionSnapshot.plan
-                                  ? SUBSCRIPTION_PLAN_LABELS[subscriptionSnapshot.plan]
-                                  : "—"}
-                              </div>
-                            </div>
-                          </article>
-
-                          <article className="relative isolate min-h-[102px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-4 py-2.5 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
-                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
-                            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
-                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
-                            <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
-                            <div className="pointer-events-none absolute inset-x-5 top-0 h-[2px] rounded-full bg-[linear-gradient(90deg,#b27cff_0%,#67d4ff_100%)] opacity-85" />
-                            <Landmark
-                              className="pointer-events-none absolute -right-1 bottom-[-5px] h-10 w-10 text-[#d4b6f3]/35"
-                              strokeWidth={1.5}
-                              aria-hidden="true"
-                            />
-                            <div className="relative z-[1]">
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#cfb2ea]">
-                                Období
-                              </div>
-                              <div className="mt-1.5 grid grid-cols-2 gap-2">
-                                <div>
-                                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#c8aee4]">
-                                    Od
-                                  </div>
-                                  <div className="mt-0.5 text-[15px] font-black leading-tight text-[#fbf7ff] [text-shadow:0_3px_18px_rgba(191,127,255,0.24)]">
-                                    {formatIsoDay(subscriptionSnapshot.paidFrom)}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#c8aee4]">
-                                    Do
-                                  </div>
-                                  <div className="mt-0.5 text-[15px] font-black leading-tight text-[#fbf7ff] [text-shadow:0_3px_18px_rgba(191,127,255,0.24)]">
-                                    {subscriptionSnapshot.plan === "unlimited"
-                                      ? "Neomezeně"
-                                      : formatIsoDay(subscriptionSnapshot.paidUntil)}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </article>
-                      </div>
-
-                      {subscriptionSnapshot.effectiveState === "grace" ? (
-                        <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                          Předplatné je po splatnosti. Přístup běží v ochranné lhůtě do{" "}
-                          <span className="font-semibold">
-                            {formatIsoDay(subscriptionSnapshot.graceUntil)}
-                          </span>
-                          . Pro zachování přístupu uhraď platbu.
-                        </div>
-                      ) : null}
-
-                      <div className="rounded-2xl border border-white/90 bg-white/90 p-3 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/80">
-                        <h3 className="mb-2 text-sm font-semibold text-slate-900">
-                          Historie plateb
-                        </h3>
-
-                        {subscriptionPayments.length === 0 ? (
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                            Zatím není evidovaná žádná platba.
-                          </div>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full text-left text-xs text-slate-700">
-                              <thead>
-                                <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                                  <th className="px-2 py-2">Tarif</th>
-                                  <th className="px-2 py-2">Částka</th>
-                                  <th className="px-2 py-2">Období</th>
-                                  <th className="px-2 py-2">Zapsal</th>
-                                  <th className="px-2 py-2">Poznámka</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {subscriptionPayments.map((payment) => (
-                                  <tr key={payment.id} className="border-b border-slate-100 align-top">
-                                    <td className="px-2 py-2 font-semibold text-slate-900">
-                                      {payment.plan in SUBSCRIPTION_PLAN_LABELS
-                                        ? SUBSCRIPTION_PLAN_LABELS[
-                                            payment.plan as SubscriptionPlanValue
-                                          ]
-                                        : payment.plan || "—"}
-                                    </td>
-                                    <td className="px-2 py-2">{formatMoneyCzk(payment.amountCzk || 0)}</td>
-                                    <td className="px-2 py-2">
-                                      {formatIsoDay(payment.periodFrom)} – {formatIsoDay(payment.periodUntil)}
-                                    </td>
-                                    <td className="px-2 py-2">
-                                      <div>{payment.createdByEmail || "—"}</div>
-                                      <div className="text-[10px] text-slate-500">
-                                        {formatDateTime(payment.createdAtMs)}
-                                      </div>
-                                    </td>
-                                    <td className="px-2 py-2">{payment.note || "—"}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                      Předplatné zatím není nastavené.
-                    </div>
-                  )}
-                </div>
-
-                <aside className="rounded-[28px] border border-[#3a1d56] bg-[#100b17] p-4 text-[#f6edff] shadow-[0_22px_48px_rgba(16,7,28,0.42)]">
-                  <div className="inline-flex w-fit items-center rounded-full border border-[#6f3d95]/70 bg-[#1e122c] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#caa7eb]">
-                    Ceník
-                  </div>
-                  <h3 className="mt-2 text-xl font-bold text-[#fbf7ff]">
-                    Tarify předplatného
-                  </h3>
-                  <p className="mt-1 text-sm text-[#c8aee4]">
-                    Přehled aktuálních tarifů včetně délky období.
-                  </p>
-
-                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {SUBSCRIPTION_PRICE_CARDS.map((priceCard) => (
-                      <article
-                        key={priceCard.id}
-                        className="relative isolate min-h-[244px] overflow-hidden rounded-[28px] border border-[#5a2878] bg-[#150e1f] px-5 py-5 shadow-[0_26px_48px_rgba(25,8,42,0.55)] ring-1 ring-[#7a35a7]/35"
-                      >
-                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
-                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
-                        <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
-
-                        <div className="relative z-[1] flex min-h-[198px] flex-col">
-                          <div className="inline-flex w-fit items-center rounded-[7px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[16px] font-black uppercase leading-none tracking-[0.08em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.4)]">
-                            PRO
-                          </div>
-
-                          <h4 className="mt-4 text-[24px] font-black leading-tight text-[#fbf7ff]">
-                            {priceCard.title}
-                          </h4>
-                          <p className="mt-3 text-[15px] font-medium leading-[1.42] text-[#c9a7e7]">
-                            {priceCard.description}
-                          </p>
-
-                          <div className="mt-5 flex min-h-[56px] flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-[16px] bg-[linear-gradient(135deg,#ad55f3_0%,#a84ff0_100%)] px-4 text-center text-2xl font-black text-white shadow-[0_18px_34px_rgba(168,79,240,0.34)]">
-                            <span>{priceCard.priceLabel}</span>
-                            <span className="text-base font-bold text-white/85">
-                              {priceCard.cadenceLabel}
-                            </span>
-                            <ArrowRight size={24} strokeWidth={2.4} aria-hidden="true" />
-                          </div>
-
-                          <div className="mt-auto pt-5">
-                            <div className="flex min-h-[56px] flex-wrap items-center justify-center gap-2 rounded-[15px] border-2 border-[#a96bdf] bg-[#27183a]/92 px-3.5 py-2.5 text-center text-[14px] font-medium text-[#bfa3da] shadow-[0_0_18px_rgba(169,107,223,0.18)]">
-                              <span>{priceCard.footerLabel}</span>
-                              <span className="rounded-[7px] bg-[#624174] px-2.5 py-1 text-base font-black leading-none text-[#fbf7ff]">
-                                {priceCard.footerEmphasis}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </aside>
-              </div>
-            </section>
+              <SubscriptionSettingsPanel
+                className={panelClass}
+                loading={subscriptionLoading}
+                error={subscriptionError}
+                snapshot={subscriptionSnapshot}
+                payments={subscriptionPayments}
+              />
             )}
 
             {/* Zabezpečení */}
             {activeTab === "account" && !timelineSetupRequired && (
-            <section className={`space-y-5 ${panelClass}`}>
-              <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#164e63_52%,#10b981_100%)]" />
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                    <ShieldCheck size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                    <span>Zabezpečení</span>
-                  </h2>
-                  <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                    Přihlašovací údaje, heslo a druhý faktor pro tento účet.
-                  </p>
-                </div>
-                <span
-                  className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                    mfaEnabled
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-amber-200 bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      mfaEnabled ? "bg-emerald-500" : "bg-amber-500"
-                    }`}
-                    aria-hidden="true"
-                  />
-                  2FA {mfaEnabled ? "zapnuto" : "vypnuto"}
-                </span>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Stav ochrany
-                      </p>
-                      <p className="mt-1 text-2xl font-black text-slate-950">
-                        {securityScoreLabel}
-                      </p>
-                    </div>
-                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                      <ShieldCheck size={21} strokeWidth={2.2} aria-hidden="true" />
-                    </span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#10b981_100%)]"
-                      style={{ width: `${securityScorePercent}%` }}
-                    />
-                  </div>
-                </article>
-
-                <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Automatické odhlášení
-                  </p>
-                  <p className="mt-2 text-xl font-black text-slate-950">
-                    120 minut
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    Neaktivní relace se sama ukončí.
-                  </p>
-                </article>
-
-                <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Dvoufaktor
-                  </p>
-                  <p className={`mt-2 text-xl font-black ${mfaEnabled ? "text-emerald-700" : "text-amber-700"}`}>
-                    {mfaEnabled ? "Zapnuto" : "Vypnuto"}
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    Microsoft Authenticator.
-                  </p>
-                </article>
-
-                <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Passkeys
-                  </p>
-                  <p className={`mt-2 text-xl font-black ${passkeyCredentials.length > 0 ? "text-emerald-700" : "text-slate-950"}`}>
-                    {passkeySummary}
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    Face ID / Touch ID podle zařízení.
-                  </p>
-                </article>
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-[minmax(430px,1.12fr)_minmax(320px,0.88fr)] xl:items-start">
-                <div className="xl:order-2">
-                  <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
-                        <AtSign size={20} strokeWidth={2} aria-hidden="true" />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                          E-mail účtu
-                        </div>
-                        <div className="mt-1 break-all text-base font-bold text-slate-950">
-                          {userEmail}
-                        </div>
-                        <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                          Odhlášení najdeš dole v levém panelu.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 border-t border-slate-100 pt-4">
-                      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          <KeyRound size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
-                          <span>Změna hesla</span>
-                        </div>
-                        {!showPasswordForm && (
-                          <span className="text-xs text-slate-500">Ověření původním heslem</span>
-                        )}
-                      </div>
-
-                      {!showPasswordForm && (
-                        <button
-                          type="button"
-                          onClick={() => setShowPasswordForm(true)}
-                          className="inline-flex min-h-[48px] w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)] transition hover:bg-black"
-                        >
-                          <KeyRound size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                          Změnit heslo
-                        </button>
-                      )}
-
-                      {showPasswordForm && (
-                        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                          <input
-                            type="password"
-                            autoComplete="current-password"
-                            className={fieldClass}
-                            placeholder="Původní heslo"
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                          />
-                          <input
-                            type="password"
-                            autoComplete="new-password"
-                            className={fieldClass}
-                            placeholder="Nové heslo (min. 6 znaků)"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                          />
-                          <input
-                            type="password"
-                            autoComplete="new-password"
-                            className={fieldClass}
-                            placeholder="Potvrď nové heslo"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                          />
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <button
-                              type="button"
-                              onClick={handleChangePassword}
-                              disabled={changingPassword}
-                              className="inline-flex items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {changingPassword ? "Měním heslo…" : "Potvrdit změnu"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowPasswordForm(false);
-                                setCurrentPassword("");
-                                setNewPassword("");
-                                setConfirmPassword("");
-                                setPasswordStatus(null);
-                              }}
-                              className="text-xs text-slate-500 hover:text-slate-900"
-                            >
-                              Zrušit
-                            </button>
-                          </div>
-                          {passwordStatus && (
-                            <div
-                              className={`text-xs ${
-                                passwordStatus.type === "success"
-                                  ? "text-emerald-700"
-                                  : "text-rose-700"
-                              }`}
-                            >
-                              {passwordStatus.message}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mt-4 border-t border-slate-100 pt-4">
-                      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          <Fingerprint size={13} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
-                          <span>Face ID / passkeys</span>
-                        </div>
-                        <span
-                          className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                            passkeyCredentials.length > 0
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border-slate-200 bg-slate-50 text-slate-500"
-                          }`}
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              passkeyCredentials.length > 0
-                                ? "bg-emerald-500"
-                                : "bg-slate-400"
-                            }`}
-                            aria-hidden="true"
-                          />
-                          {passkeyCredentials.length > 0 ? "Aktivní" : "Nenastaveno"}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                        {passkeySupported ? (
-                          <>
-                            <input
-                              type="text"
-                              className={fieldClass}
-                              placeholder={
-                                passkeyPlatformAvailable
-                                  ? "Název zařízení (např. iPhone)"
-                                  : "Název passkey"
-                              }
-                              value={passkeyName}
-                              onChange={(event) => setPasskeyName(event.target.value)}
-                              disabled={passkeyBusy}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => void handleCreatePasskey()}
-                              disabled={passkeyBusy}
-                              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <Fingerprint size={16} strokeWidth={2} aria-hidden="true" />
-                              {passkeyBusy ? "Otevírám ověření…" : "Zapnout Face ID / passkey"}
-                            </button>
-                          </>
-                        ) : (
-                          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                            Tento prohlížeč passkeys nepodporuje.
-                          </div>
-                        )}
-
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            <span>Uložené passkeys</span>
-                            {passkeysLoading ? <span>Načítám…</span> : null}
-                          </div>
-
-                          {!passkeysLoading && passkeyCredentials.length === 0 ? (
-                            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                              Zatím není uložený žádný passkey.
-                            </div>
-                          ) : null}
-
-                          {passkeyCredentials.map((credential) => (
-                            <div
-                              key={credential.credentialId}
-                              className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-                            >
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold text-slate-900">
-                                  {credential.name}
-                                </div>
-                                <div className="mt-0.5 text-[11px] text-slate-500">
-                                  Přidáno {formatDateTime(credential.createdAtMs)}
-                                  {credential.lastUsedAtMs
-                                    ? ` · použito ${formatDateTime(credential.lastUsedAtMs)}`
-                                    : ""}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => void handleDeletePasskey(credential.credentialId)}
-                                disabled={passkeyDeletingId === credential.credentialId}
-                                className="inline-flex min-h-[36px] shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {passkeyDeletingId === credential.credentialId
-                                  ? "Odebírám…"
-                                  : "Odebrat"}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
-                        {passkeyStatus && (
-                          <div
-                            className={`rounded-2xl border px-3 py-2 text-xs ${
-                              passkeyStatus.type === "success"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : passkeyStatus.type === "info"
-                                  ? "border-slate-200 bg-white text-slate-700"
-                                  : "border-rose-200 bg-rose-50 text-rose-700"
-                            }`}
-                          >
-                            {passkeyStatus.message}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-		                  <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)] xl:order-1">
-		                    <div className="mfa-security-hero bg-[linear-gradient(135deg,#0f172a_0%,#164e63_58%,#047857_100%)] px-4 py-4 text-white sm:px-5 sm:py-5">
-	                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-	                        <div className="flex items-start gap-3">
-	                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.22)]">
-	                            <ShieldCheck size={22} strokeWidth={2} aria-hidden="true" />
-	                          </span>
-	                          <div>
-	                            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/75">
-	                              Zabezpečení
-	                            </div>
-	                            <h3 className="mt-0.5 text-lg font-black leading-tight tracking-normal text-white">
-	                              Microsoft Authenticator
-	                            </h3>
-	                            <p className="mt-1 max-w-md text-xs leading-relaxed text-white/80">
-	                              Po zadání hesla se přihlášení potvrzuje ještě jednorázovým kódem z aplikace.
-	                            </p>
-	                          </div>
-	                        </div>
-	                        <span
-	                          className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-	                            mfaEnabled
-	                              ? "border-emerald-200/70 bg-emerald-300/20 text-emerald-50"
-	                              : "border-white/25 bg-white/10 text-white"
-	                          }`}
-	                        >
-	                          <span
-	                            className={`h-2 w-2 rounded-full ${
-	                              mfaEnabled ? "bg-emerald-300" : "bg-slate-300"
-	                            }`}
-	                            aria-hidden="true"
-	                          />
-	                          {mfaEnabled ? "Zapnuto" : "Vypnuto"}
-	                        </span>
-	                      </div>
-
-	                      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-	                        <a
-	                          href={MICROSOFT_AUTHENTICATOR_APP_STORE_URL}
-	                          target="_blank"
-	                          rel="noreferrer"
-	                          aria-label="Otevřít Microsoft Authenticator v App Store"
-	                          className="group flex min-h-[58px] items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-left transition hover:border-white/40 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-	                        >
-	                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-950">
-	                            <Apple size={18} strokeWidth={2.2} aria-hidden="true" />
-	                          </span>
-	                          <span className="min-w-0 flex-1">
-	                            <span className="block text-[10px] font-semibold uppercase tracking-[0.13em] text-white/60">
-	                              Stáhnout v
-	                            </span>
-	                            <span className="block text-sm font-bold text-white">
-	                              App Store
-	                            </span>
-	                          </span>
-	                          <ExternalLink
-	                            size={14}
-	                            strokeWidth={2}
-	                            className="text-white/50 transition group-hover:text-white"
-	                            aria-hidden="true"
-	                          />
-	                        </a>
-
-	                        <a
-	                          href={MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL}
-	                          target="_blank"
-	                          rel="noreferrer"
-	                          aria-label="Otevřít Microsoft Authenticator v Google Play"
-	                          className="group flex min-h-[58px] items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-left transition hover:border-white/40 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-	                        >
-	                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#22c55e_0%,#38bdf8_54%,#818cf8_100%)] text-white">
-	                            <Play size={17} strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
-	                          </span>
-	                          <span className="min-w-0 flex-1">
-	                            <span className="block text-[10px] font-semibold uppercase tracking-[0.13em] text-white/60">
-	                              Stáhnout na
-	                            </span>
-	                            <span className="block text-sm font-bold text-white">
-	                              Google Play
-	                            </span>
-	                          </span>
-	                          <ExternalLink
-	                            size={14}
-	                            strokeWidth={2}
-	                            className="text-white/50 transition group-hover:text-white"
-	                            aria-hidden="true"
-	                          />
-	                        </a>
-	                      </div>
-	                    </div>
-
-		                    <div className="space-y-3 px-4 py-4 sm:px-5 sm:py-5">
-		                      {!mfaEnabled && !mfaEnrollmentSecret && (
-		                        <>
-		                          <input
-		                            type="password"
-		                            autoComplete="current-password"
-		                            className={fieldClass}
-		                            placeholder="Aktuální heslo pro potvrzení"
-		                            value={mfaPassword}
-		                            onChange={(e) => setMfaPassword(e.target.value)}
-		                          />
-		                          <button
-		                            type="button"
-		                            onClick={() => void handleStartMfaEnrollment()}
-		                            disabled={mfaBusy}
-		                            className="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-slate-950 bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-		                          >
-		                            {mfaBusy ? "Spouštím 2FA…" : "Zapnout 2FA"}
-		                          </button>
-		                        </>
-		                      )}
-
-	                      {mfaEnrollmentSecret && (
-	                        <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
-	                          <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
-	                            <QrCodeIcon
-	                              size={16}
-	                              strokeWidth={2}
-	                              className="mt-0.5 shrink-0 text-emerald-700"
-	                              aria-hidden="true"
-	                            />
-	                            <span>
-	                              V Microsoft Authenticator zvol Přidat účet a naskenuj QR kód.
-	                            </span>
-	                          </div>
-
-	                          <div className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-3">
-	                            {mfaQrCodeLoading && (
-	                              <p className="text-xs text-slate-500">Generuji QR kód…</p>
-	                            )}
-	                            {!mfaQrCodeLoading && mfaQrCodeDataUrl && (
-	                              <Image
-	                                src={mfaQrCodeDataUrl}
-	                                alt="QR kód pro Microsoft Authenticator"
-	                                width={220}
-	                                height={220}
-	                                unoptimized
-	                                className="rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
-	                              />
-	                            )}
-	                            {mfaQrCodeError && (
-	                              <p className="text-xs text-rose-700">{mfaQrCodeError}</p>
-	                            )}
-	                            <p className="text-center text-[11px] text-slate-500">
-	                              Pokud skenování nefunguje, použij setup key níže.
-	                            </p>
-	                          </div>
-
-	                          <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2">
-	                            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-	                              Setup key
-	                            </div>
-	                            <div className="mt-1 break-all text-xs font-semibold text-slate-900">
-	                              {mfaEnrollmentSecret.secretKey}
-	                            </div>
-	                          </div>
-
-	                          <details className="rounded-2xl border border-emerald-200 bg-white px-3 py-2">
-	                            <summary className="cursor-pointer text-[11px] font-semibold text-slate-700">
-	                              Zobrazit QR URI (pokročilé)
-	                            </summary>
-	                            <p className="mt-2 break-all text-[10px] text-slate-600">
-	                              {mfaQrCodeUri}
-	                            </p>
-	                          </details>
-
-	                          <input
-	                            type="text"
-	                            inputMode="numeric"
-	                            autoComplete="one-time-code"
-	                            className={fieldClass}
-	                            placeholder="6místný kód z aplikace"
-	                            value={mfaEnrollmentCode}
-	                            onChange={(e) =>
-	                              setMfaEnrollmentCode(
-	                                e.target.value.replace(/\D/g, "").slice(0, 8)
-	                              )
-	                            }
-	                          />
-
-	                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-	                            <button
-	                              type="button"
-	                              onClick={() => void handleConfirmMfaEnrollment()}
-	                              disabled={mfaBusy}
-	                              className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-	                            >
-	                              {mfaBusy ? "Potvrzuji…" : "Potvrdit a zapnout"}
-	                            </button>
-	                            <button
-	                              type="button"
-	                              onClick={() => {
-	                                clearMfaDraft();
-	                                setMfaStatus(null);
-	                              }}
-	                              className="inline-flex min-h-[36px] items-center justify-center rounded-xl px-3 text-xs font-semibold text-slate-500 transition hover:bg-white hover:text-slate-900"
-	                            >
-	                              Zrušit
-	                            </button>
-	                          </div>
-	                        </div>
-	                      )}
-
-		                      {mfaEnabled && !mfaEnrollmentSecret && (
-		                        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-		                          {!mfaDisableConfirmOpen ? (
-		                            <button
-		                              type="button"
-		                              onClick={() => {
-		                                setMfaDisableConfirmOpen(true);
-		                                setMfaPassword("");
-		                                setMfaReauthCode("");
-		                                setMfaStatus(null);
-		                              }}
-		                              disabled={mfaBusy}
-		                              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-		                            >
-		                              Vypnout 2FA
-		                            </button>
-		                          ) : (
-		                            <div className="space-y-3 rounded-2xl border border-rose-200 bg-white px-3 py-3">
-		                              <p className="text-[11px] text-slate-500">
-		                                {mfaTotpLabel
-		                                  ? `Aktivní faktor: ${mfaTotpLabel}`
-		                                  : "Aktivní faktor: Microsoft Authenticator"}
-		                              </p>
-		                              <p className="text-xs leading-relaxed text-slate-600">
-		                                Pro vypnutí potvrď změnu aktuálním heslem a kódem z aplikace.
-		                              </p>
-		                              <input
-		                                type="password"
-		                                autoComplete="current-password"
-		                                className={fieldClass}
-		                                placeholder="Aktuální heslo pro potvrzení"
-		                                value={mfaPassword}
-		                                onChange={(e) => setMfaPassword(e.target.value)}
-		                              />
-		                              <input
-		                                type="text"
-		                                inputMode="numeric"
-		                                autoComplete="one-time-code"
-		                                className={fieldClass}
-		                                placeholder="Aktuální 2FA kód"
-		                                value={mfaReauthCode}
-		                                onChange={(e) =>
-		                                  setMfaReauthCode(
-		                                    e.target.value.replace(/\D/g, "").slice(0, 8)
-		                                  )
-		                                }
-		                              />
-		                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-		                                <button
-		                                  type="button"
-		                                  onClick={() => void handleDisableMfa()}
-		                                  disabled={mfaBusy}
-		                                  className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-		                                >
-		                                  {mfaBusy ? "Vypínám 2FA…" : "Potvrdit vypnutí"}
-		                                </button>
-		                                <button
-		                                  type="button"
-		                                  onClick={() => {
-		                                    setMfaDisableConfirmOpen(false);
-		                                    setMfaPassword("");
-		                                    setMfaReauthCode("");
-		                                    setMfaStatus(null);
-		                                  }}
-		                                  disabled={mfaBusy}
-		                                  className="inline-flex min-h-[40px] items-center justify-center rounded-xl px-3 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-		                                >
-		                                  Zrušit
-		                                </button>
-		                              </div>
-		                            </div>
-		                          )}
-		                        </div>
-		                      )}
-
-	                      {mfaStatus && (
-	                        <div
-	                          className={`rounded-2xl border px-3 py-2 text-xs ${
-	                            mfaStatus.type === "success"
-	                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-	                              : mfaStatus.type === "info"
-	                                ? "border-slate-200 bg-slate-50 text-slate-700"
-	                                : "border-rose-200 bg-rose-50 text-rose-700"
-	                          }`}
-	                        >
-	                          {mfaStatus.message}
-	                        </div>
-	                      )}
-		                    </div>
-		                  </div>
-	                </div>
-	            </section>
+              <AccountSecurityPanel
+                className={panelClass}
+                fieldClass={fieldClass}
+                userEmail={userEmail}
+                mfaEnabled={mfaEnabled}
+                securityScoreLabel={securityScoreLabel}
+                securityScorePercent={securityScorePercent}
+                passkeySummary={passkeySummary}
+                showPasswordForm={showPasswordForm}
+                currentPassword={currentPassword}
+                newPassword={newPassword}
+                confirmPassword={confirmPassword}
+                changingPassword={changingPassword}
+                passwordStatus={passwordStatus}
+                passkeySupported={passkeySupported}
+                passkeyPlatformAvailable={passkeyPlatformAvailable}
+                passkeyCredentials={passkeyCredentials}
+                passkeysLoading={passkeysLoading}
+                passkeyBusy={passkeyBusy}
+                passkeyDeletingId={passkeyDeletingId}
+                passkeyName={passkeyName}
+                passkeyStatus={passkeyStatus}
+                mfaPassword={mfaPassword}
+                mfaBusy={mfaBusy}
+                mfaEnrollmentSecretKey={mfaEnrollmentSecret?.secretKey ?? null}
+                mfaEnrollmentCode={mfaEnrollmentCode}
+                mfaQrCodeDataUrl={mfaQrCodeDataUrl}
+                mfaQrCodeLoading={mfaQrCodeLoading}
+                mfaQrCodeError={mfaQrCodeError}
+                mfaQrCodeUri={mfaQrCodeUri}
+                mfaDisableConfirmOpen={mfaDisableConfirmOpen}
+                mfaTotpLabel={mfaTotpLabel}
+                mfaReauthCode={mfaReauthCode}
+                mfaStatus={mfaStatus}
+                onShowPasswordForm={() => setShowPasswordForm(true)}
+                onCancelPasswordChange={() => {
+                  setShowPasswordForm(false);
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setPasswordStatus(null);
+                }}
+                onCurrentPasswordChange={setCurrentPassword}
+                onNewPasswordChange={setNewPassword}
+                onConfirmPasswordChange={setConfirmPassword}
+                onChangePassword={handleChangePassword}
+                onPasskeyNameChange={setPasskeyName}
+                onCreatePasskey={handleCreatePasskey}
+                onDeletePasskey={handleDeletePasskey}
+                onMfaPasswordChange={setMfaPassword}
+                onMfaEnrollmentCodeChange={setMfaEnrollmentCode}
+                onMfaReauthCodeChange={setMfaReauthCode}
+                onStartMfaEnrollment={handleStartMfaEnrollment}
+                onConfirmMfaEnrollment={handleConfirmMfaEnrollment}
+                onCancelMfaEnrollment={() => {
+                  clearMfaDraft();
+                  setMfaStatus(null);
+                }}
+                onOpenDisableMfa={() => {
+                  setMfaDisableConfirmOpen(true);
+                  setMfaPassword("");
+                  setMfaReauthCode("");
+                  setMfaStatus(null);
+                }}
+                onCancelDisableMfa={() => {
+                  setMfaDisableConfirmOpen(false);
+                  setMfaPassword("");
+                  setMfaReauthCode("");
+                  setMfaStatus(null);
+                }}
+                onDisableMfa={handleDisableMfa}
+              />
             )}
 
           </>

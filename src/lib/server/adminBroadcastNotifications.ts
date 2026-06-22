@@ -22,7 +22,7 @@ const INVALID_TOKEN_CODES = new Set([
 ]);
 
 const ALLOWED_TARGET_PATH_RE =
-  /^\/($|(admin\/zadosti|cashflow|cuzk|intranet|jakubrauscher|kalkulacka|login|muj-tym|nastaveni|pomucky|posta|smlouvy|tipy|vizitka)(\/|$))/;
+  /^\/($|(admin\/zadosti|cashflow|cuzk|intranet|jakubrauscher|kalkulacka|klienti|login|muj-tym|nastaveni|pomucky|posta|smlouvy|tipy|vizitka)(\/|$))/;
 const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
 
 export type BroadcastTargetMode = "all" | "single" | "group";

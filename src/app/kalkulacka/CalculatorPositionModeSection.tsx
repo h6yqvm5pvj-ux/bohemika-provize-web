@@ -37,7 +37,7 @@ export function CalculatorPositionModeSection({
   if (!isVisible) return null;
 
   return (
-    <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+    <section className="rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="space-y-1">
         <label className="block text-sm font-semibold text-slate-800">Sjednána jako (pozice)</label>

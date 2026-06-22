@@ -251,7 +251,7 @@ export function CalculatorDurationAndFrequencySection({
   }
 
   return (
-    <section className="rounded-[1.35rem] border border-slate-300 bg-white/85 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+    <section className="rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
       {content}
     </section>
   );

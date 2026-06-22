@@ -1,22 +1,9 @@
 // src/app/kalkulacka/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
-import {
-  CalendarDays,
-  CheckCircle2,
-  Download,
-  FileText,
-  Lightbulb,
-  Mail,
-  Search,
-  Tag,
-  Users,
-  UserRound,
-  X,
-} from "lucide-react";
+import { Users } from "lucide-react";
 import { auth } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
@@ -138,6 +125,29 @@ import { CalculatorAmountAndActionsSection } from "./CalculatorAmountAndActionsS
 import { CalculatorContractDetailsSection } from "./CalculatorContractDetailsSection";
 import { CalculatorPositionModeSection } from "./CalculatorPositionModeSection";
 import { CalculatorResultsSection } from "./CalculatorResultsSection";
+import { ContractSaveSuccessOverlay } from "./ContractSaveSuccessOverlay";
+import {
+  CalculatorCoefficientModal,
+  type NeonCoefficientView,
+} from "./CalculatorCoefficientModal";
+import {
+  DuplicateContractModal,
+  EndorsementDraftModal,
+  SubordinatePickerModal,
+  ValidationErrorModal,
+} from "./CalculatorWorkflowModals";
+import { TipContractModal, TipContractTipsModal } from "./TipContractModals";
+import {
+  type AdvisorTipsByUserApiResponse,
+  type TipContractConfig,
+  type TipContractTipOption,
+  type TipContractTipsFilter,
+  type TipContractUserOption,
+  type TipLifecycleStatus,
+  type TipsterLookupApiResponse,
+  type TipsterLookupState,
+  type UserSearchApiResponse,
+} from "./tipContractSettings";
 
 
 // ---------- Pomocné ----------
@@ -149,22 +159,7 @@ const SETTINGS_KEYS = {
   tipsterPercent: "settings.tipsterPercent",
 };
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
-const TIP_CONTRACT_PERCENT_OPTIONS = Array.from({ length: 19 }, (_, idx) => (idx + 1) * 5);
 const EMAIL_LOOKUP_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TIP_CONTRACT_STATUS_LABELS: Record<TipLifecycleStatus, string> = {
-  pending: "Čeká na zpracování",
-  contracted: "Sjednáno",
-  failed: "Obchod neproběhl",
-};
-const TIP_CONTRACT_TIPS_FILTER_OPTIONS = [
-  { key: "all", label: "Všechny" },
-  { key: "new", label: "Nové" },
-  { key: "contracted", label: "Sjednané" },
-] as const;
-const ACCOUNT_TYPE_LABELS: Record<UserAccountType, string> = {
-  advisor: "Vázaný zástupce",
-  tipster: "Tipař",
-};
 const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   cppAuto: "/provize/cppauto.jpg",
   slaviaauto: "/provize/slaviaauto.jpg",
@@ -184,52 +179,16 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 ];
 const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
-const CONTRACT_SAVE_CONFETTI_COLORS = [
-  "#c084fc",
-  "#a855f7",
-  "#22c55e",
-  "#34d399",
-  "#fbbf24",
-  "#f472b6",
-  "#60a5fa",
-];
+const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["neon", "domex", "cppAuto"]);
 
-const CONTRACT_SAVE_CONFETTI_PIECES = Array.from({ length: 52 }, (_, index) => {
-  const angle = (index / 52) * Math.PI * 2;
-  const radius = 118 + (index % 9) * 18;
-  return {
-    x: Math.round(Math.cos(angle) * radius),
-    y: Math.round(Math.sin(angle) * radius - 26 - (index % 4) * 8),
-    rotate: ((index * 53) % 360) - 180,
-    delayMs: (index % 10) * 22,
-    color: CONTRACT_SAVE_CONFETTI_COLORS[index % CONTRACT_SAVE_CONFETTI_COLORS.length],
-    shapeClass:
-      index % 5 === 0
-        ? "h-2.5 w-2.5 rounded-full"
-        : index % 3 === 0
-          ? "h-2 w-4 rounded-[3px]"
-          : "h-3 w-1.5 rounded-[2px]",
-  };
-});
-
-const formatTipCreatedAt = (createdAtMs: number | null): string => {
-  if (!createdAtMs || !Number.isFinite(createdAtMs)) return "Datum neuvedeno";
-  try {
-    return new Intl.DateTimeFormat("cs-CZ", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date(createdAtMs));
-  } catch {
-    return "Datum neuvedeno";
-  }
-};
-
-type NeonCoefficientView = "current" | "historical";
 type CalculatorViewMode = "addContract" | "commissionOnly";
 
-function formatCoefficientNumber(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "—";
-  return value.toLocaleString("cs-CZ", { maximumFractionDigits: 6 });
+function supportsOriginalContractReplacement(product: Product): boolean {
+  return ORIGINAL_REPLACEMENT_PRODUCTS.has(product);
+}
+
+function originalReplacementLabel(product: Product): string {
+  return product === "neon" ? "Refresh" : "Náhrada";
 }
 
 function stableSerializeForIdempotency(value: unknown): string {
@@ -359,71 +318,6 @@ type SubordinateOption = {
   managerEmail: string | null;
   position: Position | null;
   commissionMode: CommissionMode | null;
-};
-
-type UserAccountType = "advisor" | "tipster";
-type TipLifecycleStatus = "pending" | "contracted" | "failed";
-type TipContractTipsFilter = (typeof TIP_CONTRACT_TIPS_FILTER_OPTIONS)[number]["key"];
-
-type TipContractUserOption = {
-  email: string;
-  name: string;
-  managerEmail: string | null;
-  accountType: UserAccountType;
-};
-
-type UserSearchApiResponse = {
-  ok?: boolean;
-  users?: TipContractUserOption[];
-  error?: string;
-};
-
-type TipsterLookupApiResponse = {
-  ok?: boolean;
-  exists?: boolean;
-  email?: string | null;
-  name?: string | null;
-  accountType?: UserAccountType | null;
-  error?: string;
-};
-
-type TipsterLookupState =
-  | { status: "idle" }
-  | { status: "checking" }
-  | { status: "found"; email: string; name: string | null; accountType: UserAccountType }
-  | { status: "notFound" }
-  | { status: "error"; message: string };
-
-type TipContractTipOption = {
-  id: string;
-  title: string;
-  product: string;
-  productLabel: string;
-  status: TipLifecycleStatus;
-  tipsterEmail: string;
-  tipsterName: string;
-  clientName: string;
-  phone: string;
-  email: string;
-  createdAtMs: number | null;
-};
-
-type AdvisorTipsByUserApiResponse = {
-  ok?: boolean;
-  items?: TipContractTipOption[];
-  error?: string;
-};
-
-type TipContractConfig = {
-  tipsterEmail: string | null;
-  tipsterName: string | null;
-  tipsterAccountType: UserAccountType | null;
-  tipsterPercent: number;
-  sourceTipId: string | null;
-  sourceTipTitle: string | null;
-  sourceTipProductLabel: string | null;
-  sourceTipClientName: string | null;
-  sourceTipCreatedAtMs: number | null;
 };
 
 type ContractNumberLiveCheckState =
@@ -1956,7 +1850,7 @@ export default function CalculatorPage() {
     const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user?.email);
     if (
       !user ||
-      product !== "neon" ||
+      !supportsOriginalContractReplacement(product) ||
       !refreshOriginalOpen ||
       !trimmedOriginalNumber ||
       trimmedOriginalNumber.length < 3 ||
@@ -2008,14 +1902,14 @@ export default function CalculatorPage() {
           return;
         }
 
-        const neonMatch =
-          matchingContracts.find((item) => item.productKey === "neon") ?? matchingContracts[0];
+        const productMatch =
+          matchingContracts.find((item) => item.productKey === product) ?? matchingContracts[0];
         const adviserName =
-          typeof neonMatch.adviserName === "string" && neonMatch.adviserName.trim()
-            ? neonMatch.adviserName.trim()
+          typeof productMatch.adviserName === "string" && productMatch.adviserName.trim()
+            ? productMatch.adviserName.trim()
             : null;
 
-        if (neonMatch.productKey !== "neon") {
+        if (productMatch.productKey !== product) {
           setRefreshOriginalLookup({ status: "wrongProduct", progress: 100, adviserName });
           return;
         }
@@ -2557,7 +2451,7 @@ export default function CalculatorPage() {
         setAmountText(String(parsed.amount));
         applied += 1;
       }
-      if (importProduct === "neon") {
+      if (supportsOriginalContractReplacement(importProduct)) {
         const parsedRefreshOriginalContractNumber =
           "refreshOriginalContractNumber" in parsed &&
           typeof parsed.refreshOriginalContractNumber === "string"
@@ -3258,7 +3152,7 @@ export default function CalculatorPage() {
   ]);
 
   useEffect(() => {
-    if (product !== "neon") {
+    if (!supportsOriginalContractReplacement(product)) {
       setRefreshOriginalOpen(false);
       setRefreshOriginalContractNumber("");
       setRefreshOriginalLookup({ status: "idle", progress: 0, adviserName: null });
@@ -3665,11 +3559,11 @@ export default function CalculatorPage() {
     const trimmedContractNumber = contractNumber.trim();
     const trimmedClientName = clientName.trim();
     const signedDateIsoDay = contractSignedDate.trim();
-    const shouldRefreshOriginalNeon =
-      product === "neon" &&
+    const shouldReplaceOriginalContract =
+      supportsOriginalContractReplacement(product) &&
       refreshOriginalOpen;
     const trimmedRefreshOriginalContractNumber = refreshOriginalContractNumber.trim();
-    if (shouldRefreshOriginalNeon && !trimmedRefreshOriginalContractNumber) {
+    if (shouldReplaceOriginalContract && !trimmedRefreshOriginalContractNumber) {
       missing.push("číslo původní smlouvy");
     }
 
@@ -4105,8 +3999,8 @@ export default function CalculatorPage() {
                     note: null,
                   }
                 : null,
-            isRefresh: shouldRefreshOriginalNeon,
-            refreshOriginalContractNumber: shouldRefreshOriginalNeon
+            isRefresh: shouldReplaceOriginalContract,
+            refreshOriginalContractNumber: shouldReplaceOriginalContract
               ? trimmedRefreshOriginalContractNumber
               : null,
           },
@@ -4121,8 +4015,8 @@ export default function CalculatorPage() {
           policyEndDate: policyEndDate.trim() || null,
           inputAmount: value,
           frequencyRaw: frequency,
-          isRefresh: shouldRefreshOriginalNeon,
-          refreshOriginalContractNumber: shouldRefreshOriginalNeon
+          isRefresh: shouldReplaceOriginalContract,
+          refreshOriginalContractNumber: shouldReplaceOriginalContract
             ? trimmedRefreshOriginalContractNumber
             : null,
         }),
@@ -4180,8 +4074,8 @@ export default function CalculatorPage() {
         }
       }
 
-      const savedMessage = shouldRefreshOriginalNeon
-        ? "Smlouva byla uložena jako Refresh a původní smlouva byla stornována ke dni počátku."
+      const savedMessage = shouldReplaceOriginalContract
+        ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ke dni počátku.`
         : "Smlouva byla uložena mezi sepsané.";
       setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);
       setSaveSuccessFlash({
@@ -4200,6 +4094,46 @@ export default function CalculatorPage() {
       console.error("Chyba při ukládání smlouvy:", errorMessage);
       setSaveMessage(errorMessage);
     } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirmDuplicateModal = async () => {
+    if (!user || !duplicateModal) return;
+    const modal = duplicateModal;
+    setDuplicateModal(null);
+    try {
+      if (modal.mode === "overwrite") {
+        const entriesToDelete = modal.entries
+          .map((entry) => ({
+            ownerEmail: normalizeEmailValue(entry.ownerEmail),
+            entryId: entry.id,
+          }))
+          .filter(
+            (entry) =>
+              entry.ownerEmail.length > 0 && entry.entryId.trim().length > 0
+          );
+        if (entriesToDelete.length > 0) {
+          const { response, data } = await requestContractsMutationWithAuth({
+            user,
+            path: "/api/contracts/bulk-delete",
+            method: "DELETE",
+            payload: { entries: entriesToDelete },
+          });
+          const apiError = getContractsMutationError({
+            response,
+            data,
+            fallback: "Smazání původních smluv selhalo.",
+          });
+          if (apiError) {
+            throw new Error(apiError);
+          }
+        }
+      }
+      await handleSaveContract(true);
+    } catch (err) {
+      console.error("Přepsání smlouvy selhalo", err);
+      setSaveMessage("Přepsání smlouvy se nepodařilo. Zkus to znovu.");
       setSaving(false);
     }
   };
@@ -4493,659 +4427,107 @@ export default function CalculatorPage() {
 
     const currentTipContractUser = getCurrentTipContractUser();
     const canShowTipContractTipsButton = currentTipContractUser?.accountType === "tipster";
+    const tipContractExampleGrossFirstYearLabel = formatMoneyResult(
+      tipContractImmediateGrossFirstYear
+    );
+    const tipContractExampleAdvisorRemainderLabel = formatMoneyResult(
+      roundToCents(
+        tipContractImmediateGrossFirstYear *
+          (1 - clampTipContractPercent(tipContractDraftPercent) / 100)
+      )
+    );
+    const tipContractApplyDisabled = (() => {
+      const normalizedDraftEmail = tipContractDraftEmail.trim().toLowerCase();
+      if (!normalizedDraftEmail) return false;
+      return (
+        tipContractLookupState.status !== "found" ||
+        tipContractLookupState.email !== normalizedDraftEmail
+      );
+    })();
   
     return (
     <AppLayout active="calc">
-      {saveSuccessFlash ? (
-        <div
-          key={contractSaveCelebrationKey}
-          className="admin-create-celebration pointer-events-none fixed inset-0 z-[120] flex items-center justify-center px-4"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          <div className="absolute inset-0 bg-slate-950/24 backdrop-blur-[5px]" />
-          <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2">
-            {CONTRACT_SAVE_CONFETTI_PIECES.map((piece, index) => (
-              <span
-                key={`${piece.x}-${piece.y}-${index}`}
-                className={`admin-create-confetti-piece absolute left-1/2 top-1/2 ${piece.shapeClass}`}
-                style={
-                  {
-                    "--admin-confetti-x": `${piece.x}px`,
-                    "--admin-confetti-y": `${piece.y}px`,
-                    "--admin-confetti-rotate": `${piece.rotate}deg`,
-                    "--admin-confetti-color": piece.color,
-                    animationDelay: `${piece.delayMs}ms`,
-                  } as CSSProperties
-                }
-              />
-            ))}
-          </div>
-          <div className="admin-create-success-stage relative flex min-h-[260px] flex-col items-center justify-center px-4 text-center">
-            <span className="admin-create-success-aura absolute inset-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full" />
-            <span className="admin-create-success-orbit absolute left-1/2 top-1/2 h-[210px] w-[210px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
-            <span className="admin-create-success-check relative mb-5 inline-flex h-24 w-24 items-center justify-center rounded-full !text-emerald-100">
-              <CheckCircle2 size={56} strokeWidth={2.4} aria-hidden="true" />
-            </span>
-            <p className="admin-create-success-kicker text-[12px] font-semibold uppercase tracking-[0.32em]">
-              Hotovo
-            </p>
-            <p className="admin-create-success-title mt-2 font-bold tracking-[-0.02em]">
-              Smlouva sepsána !
-            </p>
-          </div>
-        </div>
-      ) : null}
+      <ContractSaveSuccessOverlay
+        visible={Boolean(saveSuccessFlash)}
+        celebrationKey={contractSaveCelebrationKey}
+      />
       <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
       <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">
-      {validationError && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setValidationError(null)}
-          />
-          <div className="relative w-full max-w-sm rounded-2xl border border-slate-300 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.35)] p-5 space-y-4">
-            <div className="text-sm text-slate-900">
-              {validationError}
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setValidationError(null)}
-                className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {duplicateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setDuplicateModal(null)}
-          />
-          <div className="relative w-full max-w-md rounded-2xl border border-slate-300 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.35)] p-5 space-y-4">
-            <div className="text-sm text-slate-900 space-y-2">
-              <p>{duplicateModal.description}</p>
-              <p>
-                {duplicateModal.mode === "overwrite"
-                  ? "Můžeš ji přepsat, nebo akci zrušit."
-                  : "Může jít o duplicitu. Můžeš pokračovat uložením, nebo akci zrušit."}
-              </p>
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDuplicateModal(null)}
-                className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100 transition"
-              >
-                Zrušit
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!user || !duplicateModal) return;
-                  const modal = duplicateModal;
-                  setDuplicateModal(null);
-                  try {
-                    if (modal.mode === "overwrite") {
-                      const entriesToDelete = modal.entries
-                        .map((entry) => ({
-                          ownerEmail: normalizeEmailValue(entry.ownerEmail),
-                          entryId: entry.id,
-                        }))
-                        .filter(
-                          (entry) =>
-                            entry.ownerEmail.length > 0 && entry.entryId.trim().length > 0
-                        );
-                      if (entriesToDelete.length > 0) {
-                        const { response, data } = await requestContractsMutationWithAuth({
-                          user,
-                          path: "/api/contracts/bulk-delete",
-                          method: "DELETE",
-                          payload: { entries: entriesToDelete },
-                        });
-                        const apiError = getContractsMutationError({
-                          response,
-                          data,
-                          fallback: "Smazání původních smluv selhalo.",
-                        });
-                        if (apiError) {
-                          throw new Error(apiError);
-                        }
-                      }
-                    }
-                    // ulož znovu bez další kontroly duplicit
-                    await handleSaveContract(true);
-                  } catch (err) {
-                    console.error("Přepsání smlouvy selhalo", err);
-                    setSaveMessage("Přepsání smlouvy se nepodařilo. Zkus to znovu.");
-                    setSaving(false);
-                  }
-                }}
-                className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition"
-              >
-                {duplicateModal.mode === "overwrite" ? "Přepsat" : "Uložit i tak"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {endorsementDraft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setEndorsementDraft(null)}
-          />
-          <div className="relative w-full max-w-lg rounded-2xl border border-slate-300 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.35)] p-5 space-y-4">
-            <div className="space-y-2 text-sm text-slate-900">
-              <p>
-                Připravena změna ke smlouvě <strong>{endorsementDraft.contractNumber}</strong>.
-              </p>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 space-y-1.5 text-sm">
-                <p className="flex items-center justify-between gap-3">
-                  <span className="text-slate-600">Původní pojistné</span>
-                  <span className="font-semibold text-slate-900">
-                    {formatMoney(endorsementDraft.previousPremiumAmount)}
-                  </span>
-                </p>
-                <p className="flex items-center justify-between gap-3">
-                  <span className="text-slate-600">Nové pojistné</span>
-                  <span className="font-semibold text-slate-900">
-                    {formatMoney(endorsementDraft.newPremiumAmount)}
-                  </span>
-                </p>
-                <p className="flex items-center justify-between gap-3">
-                  <span className="text-slate-600">
-                    {endorsementDraft.changeType === "increase"
-                      ? "Navýšení"
-                      : endorsementDraft.changeType === "decrease"
-                        ? "Ponížení"
-                        : "Rozdíl"}
-                  </span>
-                  <span
-                    className={`font-semibold ${
-                      endorsementDraft.deltaAmount >= 0
-                        ? "text-emerald-700"
-                        : "text-rose-700"
-                    }`}
-                  >
-                    {endorsementDraft.deltaAmount >= 0 ? "+" : "−"}
-                    {formatMoney(Math.abs(endorsementDraft.deltaAmount))}
-                  </span>
-                </p>
-                <p className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2">
-                  <span className="text-slate-600">Provize k dodatku</span>
-                  <span className="font-semibold text-slate-900">
-                    {formatMoney(endorsementDraft.total)}
-                  </span>
-                </p>
-              </div>
-              {endorsementDraft.changeType === "decrease" && (
-                <p className="text-xs text-amber-700">
-                  Ponížení zatím neřešíme výpočtem. Dodatek se uloží s provizí 0 Kč.
-                </p>
-              )}
-              <p className="text-xs text-slate-500">
-                Dodatek bude uložen zvlášť a navázán na původní smlouvu.
-              </p>
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEndorsementDraft(null)}
-                className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100 transition"
-              >
-                Zrušit
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEndorsement}
-                disabled={saving}
-                className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? "Ukládám…" : "Uložit změnu"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ValidationErrorModal
+        message={validationError}
+        onClose={() => setValidationError(null)}
+      />
+      <DuplicateContractModal
+        modal={duplicateModal}
+        onCancel={() => setDuplicateModal(null)}
+        onConfirm={handleConfirmDuplicateModal}
+      />
+      <EndorsementDraftModal
+        draft={endorsementDraft}
+        saving={saving}
+        onCancel={() => setEndorsementDraft(null)}
+        onSave={handleSaveEndorsement}
+      />
 
-      {tipContractModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setTipContractModalOpen(false)}
-          />
-          <div className="relative w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_20px_70px_rgba(0,0,0,0.35)] space-y-4">
-            <div className="space-y-2">
-              <h3 className="text-base font-semibold text-slate-900">Smlouva z TIPU</h3>
-              <p className="text-sm text-slate-700">
-                Tipař má nárok pouze na % z okamžité provize v 1. roce.
-              </p>
-            </div>
+      <TipContractModal
+        isOpen={tipContractModalOpen}
+        draftPercent={tipContractDraftPercent}
+        draftEmail={tipContractDraftEmail}
+        lookupState={tipContractLookupState}
+        userSuggestions={tipContractUserSuggestions}
+        suggestionsLoading={tipContractSuggestionsLoading}
+        selectedTip={tipContractSelectedTip}
+        hasExistingConfig={Boolean(tipContractConfig)}
+        canShowTipsButton={canShowTipContractTipsButton}
+        exampleGrossFirstYearLabel={tipContractExampleGrossFirstYearLabel}
+        exampleAdvisorRemainderLabel={tipContractExampleAdvisorRemainderLabel}
+        onClose={() => setTipContractModalOpen(false)}
+        onPercentChange={(value) =>
+          setTipContractDraftPercent(clampTipContractPercent(value))
+        }
+        onEmailChange={handleTipContractUserInputChange}
+        onSelectUser={selectTipContractUser}
+        onLoadTips={loadTipContractTipsForSelectedUser}
+        onClear={clearTipContractSettings}
+        onApply={applyTipContractSettings}
+        applyDisabled={tipContractApplyDisabled}
+      />
 
-            <div className="space-y-2">
-              <label className="block text-xs uppercase tracking-wide text-slate-600">
-                Podíl pro tipaře
-              </label>
-              <select
-                value={tipContractDraftPercent}
-                onChange={(e) =>
-                  setTipContractDraftPercent(clampTipContractPercent(Number(e.target.value)))
-                }
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900"
-              >
-                {TIP_CONTRACT_PERCENT_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value} %
-                  </option>
-                ))}
-              </select>
-            </div>
+      <TipContractTipsModal
+        isOpen={tipContractTipsModalOpen}
+        currentUser={currentTipContractUser}
+        loading={tipContractTipsLoading}
+        error={tipContractTipsError}
+        tips={tipContractTips}
+        filteredTips={filteredTipContractTips}
+        filter={tipContractTipsFilter}
+        counts={tipContractTipCounts}
+        selectedTip={tipContractSelectedTip}
+        onClose={() => setTipContractTipsModalOpen(false)}
+        onFilterChange={setTipContractTipsFilter}
+        onSelectTip={selectTipContractTip}
+      />
 
-            <div className="space-y-2">
-              <label className="block text-xs uppercase tracking-wide text-slate-600">
-                Tipař / uživatel (e-mail nebo jméno)
-              </label>
-              <div className="relative">
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  aria-hidden="true"
-                />
-                <input
-                  type="text"
-                  value={tipContractDraftEmail}
-                  onChange={(e) => handleTipContractUserInputChange(e.target.value)}
-                  placeholder="Začni psát jméno nebo e-mail"
-                  className={`w-full rounded-xl border py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:ring-2 focus:border-slate-900 ${
-                    tipContractLookupState.status === "found"
-                      ? "border-emerald-400 bg-emerald-50 focus:ring-emerald-600"
-                      : "border-slate-300 bg-white focus:ring-slate-900"
-                  }`}
-                />
-                {(tipContractSuggestionsLoading || tipContractUserSuggestions.length > 0) && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
-                    {tipContractSuggestionsLoading && (
-                      <div className="px-3 py-2 text-xs text-slate-500">Načítám návrhy…</div>
-                    )}
-                    {tipContractUserSuggestions.map((option) => (
-                      <button
-                        key={option.email}
-                        type="button"
-                        onClick={() => selectTipContractUser(option)}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50"
-                      >
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600">
-                          {option.accountType === "tipster" ? (
-                            <Lightbulb size={16} aria-hidden="true" />
-                          ) : (
-                            <UserRound size={16} aria-hidden="true" />
-                          )}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold text-slate-900">
-                            {option.name || option.email}
-                          </span>
-                          <span className="block truncate text-xs text-slate-500">
-                            {option.email} • {ACCOUNT_TYPE_LABELS[option.accountType]}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {tipContractLookupState.status === "checking" && (
-                <p className="text-xs text-slate-500">Ověřuji uživatele…</p>
-              )}
-              {tipContractLookupState.status === "found" && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
-                    <CheckCircle2 size={14} aria-hidden="true" />
-                    {tipContractLookupState.name ?? tipContractLookupState.email}
-                    <span className="text-emerald-700/70">
-                      {ACCOUNT_TYPE_LABELS[tipContractLookupState.accountType]}
-                    </span>
-                  </span>
-                  {canShowTipContractTipsButton && (
-                    <button
-                      type="button"
-                      onClick={loadTipContractTipsForSelectedUser}
-                      className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#d946ef_0%,#9d22c9_100%)] px-3 py-1.5 text-xs font-semibold text-white shadow-[0_10px_22px_rgba(217,70,239,0.25)] transition hover:-translate-y-0.5"
-                    >
-                      <Lightbulb size={14} aria-hidden="true" />
-                      {tipContractSelectedTip ? "Změnit TIP" : "Zobrazit TIPY"}
-                    </button>
-                  )}
-                </div>
-              )}
-              {tipContractLookupState.status === "notFound" && (
-                <p className="text-xs text-rose-700">Uživatel s tímto e-mailem nebyl nalezen.</p>
-              )}
-              {tipContractLookupState.status === "error" && (
-                <p className="text-xs text-rose-700">{tipContractLookupState.message}</p>
-              )}
-              {tipContractSelectedTip && (
-                <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-950">
-                  <div className="flex items-start gap-2">
-                    <Tag size={15} className="mt-0.5 text-fuchsia-700" aria-hidden="true" />
-                    <div className="min-w-0">
-                      <p className="font-semibold">
-                        Vybraný TIP: {tipContractSelectedTip.productLabel} •{" "}
-                        {tipContractSelectedTip.clientName}
-                      </p>
-                      <p className="mt-0.5 text-fuchsia-900/75">
-                        Vytvořeno {formatTipCreatedAt(tipContractSelectedTip.createdAtMs)}.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-              <p>
-                Příklad: pokud je okamžitá provize v 1. roce {formatMoneyResult(
-                  tipContractImmediateGrossFirstYear
-                )}
-                , tipař dostane {tipContractDraftPercent} % a tobě zůstane{" "}
-                {formatMoneyResult(
-                  roundToCents(
-                    tipContractImmediateGrossFirstYear *
-                      (1 - clampTipContractPercent(tipContractDraftPercent) / 100)
-                  )
-                )}
-                .
-              </p>
-            </div>
-
-            <div className="flex flex-wrap justify-end gap-2">
-              {tipContractConfig && (
-                <button
-                  type="button"
-                  onClick={clearTipContractSettings}
-                  className="rounded-full border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition"
-                >
-                  Vypnout TIP
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setTipContractModalOpen(false)}
-                className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100 transition"
-              >
-                Zrušit
-              </button>
-              <button
-                type="button"
-                onClick={applyTipContractSettings}
-                disabled={
-                  (() => {
-                    const normalizedDraftEmail = tipContractDraftEmail.trim().toLowerCase();
-                    if (!normalizedDraftEmail) return false;
-                    return (
-                      tipContractLookupState.status !== "found" ||
-                      tipContractLookupState.email !== normalizedDraftEmail
-                    );
-                  })()
-                }
-                className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Použít
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tipContractTipsModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
-          <div
-            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
-            onClick={() => setTipContractTipsModalOpen(false)}
-          />
-          <div className="relative w-full max-w-2xl rounded-3xl border border-slate-300 bg-white p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-700">
-                  Výběr tipu
-                </p>
-                <h3 className="mt-1 text-xl font-semibold text-slate-950">
-                  Tipy od {currentTipContractUser?.name ?? currentTipContractUser?.email ?? "uživatele"}
-                </h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Vyber konkrétní tip, který se má propsat do ukládané smlouvy.
-                </p>
-              </div>
-                <button
-                  type="button"
-                  onClick={() => setTipContractTipsModalOpen(false)}
-                  className="rounded-full border border-slate-300 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
-                  aria-label="Zavřít výběr tipů"
-                >
-                  <X size={16} aria-hidden="true" />
-                </button>
-              </div>
-  
-              {!tipContractTipsLoading && !tipContractTipsError && tipContractTips.length > 0 && (
-                <div className="mt-4 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                  {TIP_CONTRACT_TIPS_FILTER_OPTIONS.map((option) => {
-                    const active = tipContractTipsFilter === option.key;
-                    return (
-                      <button
-                        key={option.key}
-                        type="button"
-                        onClick={() => setTipContractTipsFilter(option.key)}
-                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                          active
-                            ? "bg-slate-950 text-white shadow-[0_8px_16px_rgba(15,23,42,0.18)]"
-                            : "text-slate-600 hover:bg-white"
-                        }`}
-                      >
-                        {option.label}{" "}
-                        <span className={active ? "text-white/75" : "text-slate-400"}>
-                          ({tipContractTipCounts[option.key]})
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-  
-              <div className="mt-5 max-h-[56vh] space-y-3 overflow-y-auto pr-1">
-                {tipContractTipsLoading ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                    Načítám tipy…
-                  </div>
-                ) : tipContractTipsError ? (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    {tipContractTipsError}
-                  </div>
-                ) : tipContractTips.length === 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                    Od tohoto uživatele zatím nemáš žádný přijatý tip.
-                  </div>
-                ) : filteredTipContractTips.length === 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                    V tomto filtru není žádný tip.
-                  </div>
-                  ) : (
-                    filteredTipContractTips.map((tip) => {
-                      const isSelected = tipContractSelectedTip?.id === tip.id;
-                      return (
-                        <button
-                          key={tip.id}
-                          type="button"
-                          onClick={() => selectTipContractTip(tip)}
-                          className={`w-full rounded-2xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(15,23,42,0.12)] ${
-                            isSelected
-                              ? "border-fuchsia-300 bg-fuchsia-50"
-                              : "border-slate-200 bg-white hover:border-slate-300"
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-800">
-                                  <Lightbulb size={13} aria-hidden="true" />
-                                  {tip.productLabel}
-                                </span>
-                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                                  {TIP_CONTRACT_STATUS_LABELS[tip.status]}
-                                </span>
-                              </div>
-                              <h4 className="mt-2 truncate text-lg font-semibold text-slate-950">
-                                {tip.clientName}
-                              </h4>
-                              <div className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">
-                                <span className="inline-flex items-center gap-2">
-                                  <CalendarDays size={15} aria-hidden="true" />
-                                  {formatTipCreatedAt(tip.createdAtMs)}
-                                </span>
-                                {tip.phone && (
-                                  <span className="inline-flex items-center gap-2">
-                                    <UserRound size={15} aria-hidden="true" />
-                                    {tip.phone}
-                                  </span>
-                                )}
-                                {tip.email && (
-                                  <span className="inline-flex items-center gap-2 truncate">
-                                    <Mail size={15} aria-hidden="true" />
-                                    <span className="truncate">{tip.email}</span>
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <span
-                              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold ${
-                                isSelected
-                                  ? "bg-[linear-gradient(135deg,#d946ef_0%,#9d22c9_100%)] text-white"
-                                  : "border border-slate-300 bg-white text-slate-900"
-                              }`}
-                            >
-                              {isSelected ? (
-                                <CheckCircle2 size={16} aria-hidden="true" />
-                              ) : (
-                                <FileText size={16} aria-hidden="true" />
-                              )}
-                              {isSelected ? "Vybráno" : "Vybrat TIP"}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {canOverrideOwnerOnSave && subordinatePickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setSubordinatePickerOpen(false)}
-          />
-          <div className="relative w-full max-w-xl rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  Uložit smlouvu za poradce
-                </h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Vyber vlastníka smlouvy. Výpočet i uložení proběhne podle jeho profilu.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSubordinatePickerOpen(false)}
-                className="rounded-full border border-slate-300 p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-                aria-label="Zavřít výběr poradce"
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="relative mt-4">
-              <Search
-                size={15}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
-              <input
-                type="search"
-                value={subordinateSearchText}
-                onChange={(event) => setSubordinateSearchText(event.target.value)}
-                placeholder="Hledat podřízeného (jméno nebo e-mail)"
-                className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
-              />
-            </div>
-
-            {subordinateLoading ? (
-              <p className="mt-4 text-sm text-slate-600">Načítám podřízené…</p>
-            ) : subordinateLoadError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {subordinateLoadError}
-              </div>
-            ) : (
-              <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedSubordinateEmail(null);
-                    setSubordinatePickerOpen(false);
-                  }}
-                  className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                    !selectedSubordinateEmail
-                      ? "border-slate-900 bg-slate-950 text-white"
-                      : "border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Users size={14} aria-hidden="true" />
-                    <span className="font-semibold">Můj účet</span>
-                  </div>
-                  <div className="mt-0.5 text-xs opacity-80">{normalizedUserEmail}</div>
-                </button>
-
-                {filteredSubordinateOptions.map((option) => {
-                  const active = selectedSubordinateEmail === option.email;
-                  return (
-                    <button
-                      key={option.email}
-                      type="button"
-                      onClick={() => {
-                        setSelectedSubordinateEmail(option.email);
-                        setSubordinatePickerOpen(false);
-                      }}
-                      className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                        active
-                          ? "border-slate-900 bg-slate-950 text-white"
-                          : "border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
-                      }`}
-                    >
-                      <div className="font-semibold">{option.name}</div>
-                      <div className="mt-0.5 text-xs opacity-80">{option.email}</div>
-                    </button>
-                  );
-                })}
-
-                {filteredSubordinateOptions.length === 0 && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                    {subordinateSearchQuery
-                      ? "Žádný podřízený neodpovídá hledání."
-                      : "Zatím nejsou načtení žádní podřízení."}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <SubordinatePickerModal
+        isOpen={canOverrideOwnerOnSave && subordinatePickerOpen}
+        searchText={subordinateSearchText}
+        loading={subordinateLoading}
+        error={subordinateLoadError}
+        selectedEmail={selectedSubordinateEmail}
+        currentUserEmail={normalizedUserEmail}
+        options={filteredSubordinateOptions}
+        hasSearchQuery={Boolean(subordinateSearchQuery)}
+        onClose={() => setSubordinatePickerOpen(false)}
+        onSearchTextChange={setSubordinateSearchText}
+        onSelectOwnAccount={() => {
+          setSelectedSubordinateEmail(null);
+          setSubordinatePickerOpen(false);
+        }}
+        onSelectEmail={(email) => {
+          setSelectedSubordinateEmail(email);
+          setSubordinatePickerOpen(false);
+        }}
+      />
 
       <CalculatorProductPickerModal
         isOpen={productOpen}
@@ -5251,7 +4633,7 @@ export default function CalculatorPage() {
               onDrop={handlePdfDrop}
             />
 
-            <section className="rounded-[1.35rem] border border-slate-300 bg-white/90 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)] space-y-4">
+            <section className="rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)] space-y-4">
               {/* Doba trvání + platba */}
               <CalculatorDurationAndFrequencySection
                 embedded
@@ -5380,7 +4762,7 @@ export default function CalculatorPage() {
           <CalculatorResultsSection
             topTools={
               canOverrideOwnerOnSave && isAddContractMode ? (
-                <div className="rounded-2xl border border-slate-300 bg-white px-3 py-3 shadow-[0_14px_35px_rgba(15,23,42,0.08)]">
+                <div className="rounded-[1.35rem] border border-slate-300 bg-white/95 px-3 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -5393,7 +4775,7 @@ export default function CalculatorPage() {
                     <button
                       type="button"
                       onClick={() => setSubordinatePickerOpen(true)}
-                      className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-900 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800"
+                      className="ui-btn-primary ui-focus inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs"
                     >
                       <Users size={14} aria-hidden="true" />
                       Vybrat poradce
@@ -5448,240 +4830,30 @@ export default function CalculatorPage() {
         </div>
       </div>
 
-      {showCoefModal && (
-        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto px-4 py-6">
-          <button
-            type="button"
-            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-            aria-label="Zavřít koeficienty"
-            onClick={() => setShowCoefModal(false)}
-          />
-          <div
-            className={`relative z-50 w-full max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-black/30 ${
-              showAutoTermsPreview || showNeonTermsPreview ? "max-w-6xl" : "max-w-md"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="text-lg font-semibold text-slate-900">Koeficienty</h3>
-              <button
-                type="button"
-                onClick={() => setShowCoefModal(false)}
-                className="rounded-full px-2 text-slate-500 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
-                aria-label="Zavřít"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-sm text-slate-600">
-                  {product ? productLabel(product) : "—"} · pozice {positionLabel(position)}{" "}
-                  {product === "neon" && isNeonHistoricalInCoefModal
-                    ? "· historické podmínky (bez režimu)"
-                    : `· režim ${mode}`}
-                </p>
-                {product === "neon" && (
-                  <p className="text-xs font-semibold text-rose-700">
-                    {isNeonHistoricalInCoefModal
-                      ? "Historické koeficienty – platnost 01.10.2019 až 30.06.2024"
-                      : "Aktuální koeficienty – platnost od 01.07.2024"}
-                  </p>
-                )}
-                {product && isAutoProduct(product) && (
-                  <p className="text-xs font-semibold text-rose-700">
-                    Provizní podmínky aktuální od 01.04.2026
-                  </p>
-                )}
-              </div>
-
-              {product === "neon" && (
-                <div className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-slate-50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setNeonCoefficientView("current")}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                      neonCoefficientView === "current"
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-600 hover:bg-white"
-                    }`}
-                  >
-                    Aktuální
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNeonCoefficientView("historical")}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                      neonCoefficientView === "historical"
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-600 hover:bg-white"
-                    }`}
-                  >
-                    Historické
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div
-              className={`mt-4 ${
-                showNeonTermsPreview
-                  ? "grid gap-4 lg:grid-cols-[minmax(320px,0.68fr)_minmax(620px,1.32fr)]"
-                  : ""
-              }`}
-            >
-              <section className="order-1 rounded-xl border border-slate-300 bg-slate-50 p-3 space-y-3">
-                {product === "neon" ? (
-                  <div className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs leading-relaxed text-slate-700">
-                    <p className="font-bold uppercase tracking-wide text-slate-900">
-                      JAK FUNGUJE VÝPOČET?
-                    </p>
-                    <p className="mt-1">
-                      Měsíční pojistné x 12 x doba trvání smlouvy (maximálně{" "}
-                      {isNeonHistoricalInCoefModal ? "20" : "15"}) x koeficient %.
-                    </p>
-                    <p className="mt-1">
-                      Pro následnou a pečovatelskou provizi: pojistné x 12 x
-                      koeficient %.
-                    </p>
-                  </div>
-                ) : (
-                  coefExplanation && (
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      {coefExplanation}
-                    </p>
-                  )
-                )}
-
-                {product &&
-                  (product === "neon" ||
-                    product === "flexi" ||
-                    product === "maximaMaxEfekt" ||
-                    product === "pillowInjury") && (
-                    <p className="text-xs font-semibold text-rose-700">
-                      UPOZORNĚNÍ: Výpočet okamžité provize počítá s tím, že je
-                      zpracována karta klienta dle podmínek!
-                    </p>
-                  )}
-                {neonImmediatePayoutInfo && (
-                  <p className="text-xs text-slate-700 leading-relaxed">
-                    {neonImmediatePayoutInfo}
-                  </p>
-                )}
-
-                <div className="space-y-2 pt-1">
-                  {coefList.length > 0 ? (
-                    coefList.map((c, idx) => (
-                      <div
-                        key={`${c.label}-${idx}`}
-                        className="flex w-full max-w-[500px] items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                      >
-                        <span className="text-slate-600">{c.label}</span>
-                        <span className="font-semibold">{formatCoefficientNumber(c.value)}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-slate-600">
-                      Pro tento produkt nebo pozici nemám koeficienty k zobrazení.
-                    </p>
-                  )}
-                </div>
-
-                {showAutoTermsPreview && autoTermsPreviewUrl && (
-                  <div className="rounded-xl border border-slate-300 bg-slate-50 p-2 sm:p-3">
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        Provizní podmínky {product ? productLabel(product) : "Auto"} (náhled)
-                      </p>
-                      <a
-                        href={autoTermsPreviewUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                      >
-                        Otevřít v nové kartě
-                      </a>
-                    </div>
-                    <div className="h-[62vh] min-h-[460px] overflow-auto rounded-lg border border-slate-300 bg-slate-100 p-2">
-                      <Image
-                        src={autoTermsPreviewUrl}
-                        alt={`Provizní podmínky ${product ? productLabel(product) : "Auto"}`}
-                        width={1600}
-                        height={2400}
-                        className="mx-auto h-auto w-full rounded-md"
-                        sizes="(max-width: 1024px) 100vw, 1200px"
-                        priority
-                      />
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              {showNeonTermsPreview && neonTermsPreviewUrl && (
-                <aside className="order-2 rounded-xl border border-slate-300 bg-slate-50 p-2 sm:p-3">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                      Provizní podmínky NEON
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void handleNeonDocumentAction("download")}
-                      disabled={neonDocAction !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Download size={12} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                      {neonDocAction === "download"
-                        ? "Stahuji..."
-                        : "Stáhnout provizní podmínky"}
-                    </button>
-                  </div>
-                  <div className="mb-2 text-[11px] text-slate-600">
-                    <button
-                      type="button"
-                      onClick={() => void handleNeonDocumentAction("open")}
-                      disabled={neonDocAction !== null}
-                      className="font-semibold underline underline-offset-2 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {neonDocAction === "open"
-                        ? "Otevírám PDF..."
-                        : "Kompletní PDF: Otevřít v nové kartě"}
-                    </button>
-                  </div>
-
-                  {neonPreviewError && (
-                    <p className="mb-2 text-xs font-semibold text-rose-700">{neonPreviewError}</p>
-                  )}
-
-                  <div className="relative h-[70vh] min-h-[540px] overflow-hidden rounded-lg border border-slate-300 bg-white">
-                    {neonPreviewLoading ? (
-                      <div className="flex h-full items-center justify-center px-4 text-sm text-slate-600">
-                        Načítám náhled provizních podmínek...
-                      </div>
-                    ) : neonPreviewBlobUrl ? (
-                      <Image
-                        src={neonPreviewBlobUrl}
-                        alt={
-                          neonCoefficientView === "historical"
-                            ? "Náhled provizních podmínek NEON 2019"
-                            : "Náhled provizních podmínek NEON 2024"
-                        }
-                        fill
-                        sizes="100vw"
-                        unoptimized
-                        className="object-contain"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-600">
-                        Náhled se nepodařilo načíst.
-                      </div>
-                    )}
-                  </div>
-                </aside>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <CalculatorCoefficientModal
+        isOpen={showCoefModal}
+        product={product}
+        productLabel={productLabel(product)}
+        positionLabel={positionLabel(position)}
+        mode={mode}
+        coefficientView={neonCoefficientView}
+        isNeonHistorical={isNeonHistoricalInCoefModal}
+        coefExplanation={coefExplanation}
+        neonImmediatePayoutInfo={neonImmediatePayoutInfo}
+        coefList={coefList}
+        showAutoTermsValidityNote={isAutoProduct(product)}
+        showAutoTermsPreview={showAutoTermsPreview}
+        autoTermsPreviewUrl={autoTermsPreviewUrl}
+        showNeonTermsPreview={showNeonTermsPreview}
+        neonTermsPreviewUrl={neonTermsPreviewUrl}
+        neonPreviewBlobUrl={neonPreviewBlobUrl}
+        neonPreviewLoading={neonPreviewLoading}
+        neonPreviewError={neonPreviewError}
+        neonDocAction={neonDocAction}
+        onClose={() => setShowCoefModal(false)}
+        onCoefficientViewChange={setNeonCoefficientView}
+        onNeonDocumentAction={handleNeonDocumentAction}
+      />
       </div>
       </div>
     </AppLayout>

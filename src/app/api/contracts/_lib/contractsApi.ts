@@ -1665,17 +1665,21 @@ const normalizeCreateEntryPayload = ({
   if (!refreshOriginalParsed.ok) return refreshOriginalParsed;
   const isRefresh = isRefreshParsed.value === true;
   const refreshOriginalContractNumber = refreshOriginalParsed.value;
-  if (isRefresh && productParsed.value !== "neon") {
-    return { ok: false, error: "Refresh smlouvy je podporovaný jen pro produkt ČPP ŽP NEON." };
+  const supportsOriginalReplacement =
+    productParsed.value === "neon" ||
+    productParsed.value === "domex" ||
+    productParsed.value === "cppAuto";
+  if (isRefresh && !supportsOriginalReplacement) {
+    return { ok: false, error: "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto." };
   }
-  if (refreshOriginalContractNumber && productParsed.value !== "neon") {
-    return { ok: false, error: "Pole refreshOriginalContractNumber je povolené jen pro produkt ČPP ŽP NEON." };
+  if (refreshOriginalContractNumber && !supportsOriginalReplacement) {
+    return { ok: false, error: "Pole refreshOriginalContractNumber je povolené jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto." };
   }
   if (refreshOriginalContractNumber && !isRefresh) {
     return { ok: false, error: "Při vyplněném refreshOriginalContractNumber musí být isRefresh true." };
   }
   if (isRefresh && !refreshOriginalContractNumber) {
-    return { ok: false, error: "Pro Refresh je povinné číslo původní smlouvy." };
+    return { ok: false, error: "Pro Refresh/Náhradu je povinné číslo původní smlouvy." };
   }
   if (refreshOriginalContractNumber && !isValidContractNumber(refreshOriginalContractNumber)) {
     return { ok: false, error: "Pole refreshOriginalContractNumber má neplatný formát." };
@@ -5954,7 +5958,7 @@ export async function handleContractsCreate(req: NextRequest) {
         return NextResponse.json(
           {
             ok: false,
-            error: "Původní smlouva pro Refresh nebyla nalezena u vlastníka nové smlouvy.",
+            error: "Původní smlouva pro Refresh/Náhradu nebyla nalezena u vlastníka nové smlouvy.",
           },
           { status: 400 }
         );
@@ -5966,7 +5970,7 @@ export async function handleContractsCreate(req: NextRequest) {
         "";
       if (!refreshOriginalEntryId) {
         return NextResponse.json(
-          { ok: false, error: "Původní smlouva pro Refresh nemá platné entryId." },
+          { ok: false, error: "Původní smlouva pro Refresh/Náhradu nemá platné entryId." },
           { status: 400 }
         );
       }
@@ -6040,7 +6044,7 @@ export async function handleContractsCreate(req: NextRequest) {
             refreshOriginalSnap = await tx.get(refreshOriginalRef);
             if (!refreshOriginalSnap.exists) {
               const missingOriginalErr = new Error(
-                "Původní smlouva pro Refresh už nebyla nalezena."
+                "Původní smlouva pro Refresh/Náhradu už nebyla nalezena."
               ) as Error & { statusCode?: number };
               missingOriginalErr.statusCode = 400;
               throw missingOriginalErr;
@@ -6049,14 +6053,14 @@ export async function handleContractsCreate(req: NextRequest) {
             const originalData = (refreshOriginalSnap.data() ?? {}) as ContractDoc;
             if (normalizeContractEntryType(originalData.entryType ?? "contract") !== "contract") {
               const entryTypeErr = new Error(
-                "Původní záznam pro Refresh není smlouva."
+                "Původní záznam pro Refresh/Náhradu není smlouva."
               ) as Error & { statusCode?: number };
               entryTypeErr.statusCode = 400;
               throw entryTypeErr;
             }
-            if (originalData.productKey !== "neon") {
+            if (originalData.productKey !== trustedPayload.productKey) {
               const productErr = new Error(
-                "Původní smlouva pro Refresh musí být ČPP ŽP NEON."
+                "Původní smlouva pro Refresh/Náhradu musí mít stejný produkt jako nová smlouva."
               ) as Error & { statusCode?: number };
               productErr.statusCode = 400;
               throw productErr;
@@ -6066,7 +6070,7 @@ export async function handleContractsCreate(req: NextRequest) {
               refreshOriginalNumberNormalized
             ) {
               const numberErr = new Error(
-                "Původní smlouva pro Refresh neodpovídá zadanému číslu."
+                "Původní smlouva pro Refresh/Náhradu neodpovídá zadanému číslu."
               ) as Error & { statusCode?: number };
               numberErr.statusCode = 400;
               throw numberErr;
@@ -6078,7 +6082,7 @@ export async function handleContractsCreate(req: NextRequest) {
                 : "";
             if (existingReplacementEntryId && existingReplacementEntryId !== createdRef.id) {
               const linkedErr = new Error(
-                "Původní smlouva už má navazující Refresh."
+                "Původní smlouva už má navazující Refresh/Náhradu."
               ) as Error & { statusCode?: number };
               linkedErr.statusCode = 409;
               throw linkedErr;
@@ -6088,7 +6092,7 @@ export async function handleContractsCreate(req: NextRequest) {
               existingReplacementEntryId !== createdRef.id
             ) {
               const stornoErr = new Error(
-                "Původní smlouva pro Refresh už je stornovaná."
+                "Původní smlouva pro Refresh/Náhradu už je stornovaná."
               ) as Error & { statusCode?: number };
               stornoErr.statusCode = 409;
               throw stornoErr;
