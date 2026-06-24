@@ -11,7 +11,6 @@ import {
   CalendarDays,
   FileText,
   Home,
-  IdCard,
   Lightbulb,
   ReceiptText,
   Settings,
@@ -24,7 +23,6 @@ export type ActivePage =
   | "home"
   | "intranet"
   | "calc"
-  | "clients"
   | "contracts"
   | "cashflow"
   | "statements"
@@ -72,11 +70,10 @@ const NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "team", href: "/muj-tym", icon: UsersRound },
   { key: "intranet", href: "/intranet", icon: Building2 },
   { key: "calc", href: "/kalkulacka", icon: Calculator },
-  { key: "clients", href: "/klienti", icon: IdCard },
   { key: "contracts", href: "/smlouvy", icon: FileText },
   { key: "tips", href: "/tipy", icon: Lightbulb, requiresTipsters: true },
   { key: "cashflow", href: "/cashflow", icon: CalendarDays },
-  { key: "statements", href: "/provizni-vypisy", icon: ReceiptText },
+  { key: "statements", href: "/provizni-vypisy", icon: ReceiptText, requiresAdmin: true },
   { key: "tools", href: "/pomucky", icon: Wrench },
   { key: "admin", href: "/admin/zadosti", icon: ShieldCheck, requiresAdmin: true },
   { key: "settings", href: "/nastaveni", icon: Settings },

@@ -54,7 +54,6 @@ const APP_LAYOUT_COPY: Record<
       home: "Domů",
       intranet: "Intranet",
       calc: "Kalkulačka",
-      clients: "Klienti",
       contracts: "Smlouvy",
       cashflow: "Provizní kalendář",
       statements: "Provizní výpisy",
@@ -85,6 +84,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const router = useRouter();
   const isTipsRoute = pathname === "/tipy" || pathname.startsWith("/tipy/");
   const isCashflowRoute = pathname === "/cashflow";
+  const isAdminOnlyRoute = pathname === "/provizni-vypisy";
   const isTipsterAllowedRoute = pathname === "/" || isTipsRoute || isCashflowRoute;
   const showToolsBackToIndex = active === "tools" && pathname !== "/pomucky";
   const toolsBackButtonRightAligned = pathname === "/pomucky/invalidita";
@@ -102,6 +102,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [authInitTimedOut, setAuthInitTimedOut] = useState(false);
   const [language, setLanguage] = useState<AppLanguage>(DEFAULT_APP_LANGUAGE);
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
+  const [adminRoleResolved, setAdminRoleResolved] = useState(false);
   const applyResolvedLanguage = useCallback((nextLanguage: AppLanguage) => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(APP_LANGUAGE_LOCAL_STORAGE_KEY, nextLanguage);
@@ -182,6 +183,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setUser(u);
       if (!u) {
         setAdminRole(null);
+        setAdminRoleResolved(false);
       }
       setAuthReady(true);
     });
@@ -196,12 +198,16 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   useEffect(() => {
     let cancelled = false;
     if (!user) {
+      setAdminRole(null);
+      setAdminRoleResolved(false);
       return;
     }
 
-    user
-      .getIdTokenResult()
-      .then((token) => {
+    setAdminRoleResolved(false);
+
+    const loadAdminRole = async () => {
+      try {
+        const token = await user.getIdTokenResult();
         if (cancelled) return;
         setAdminRole(
           resolveAdminRoleFromClaims(
@@ -209,12 +215,18 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             token.claims as Record<string, unknown>
           )
         );
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setAdminRole(resolveAdminRoleFromClaims(user.email, null));
         }
-      });
+      } finally {
+        if (!cancelled) {
+          setAdminRoleResolved(true);
+        }
+      }
+    };
+
+    void loadAdminRole();
 
     return () => {
       cancelled = true;
@@ -429,6 +441,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     accountSetup.showMfaGraceBanner && !showPaywall;
   const timelineSetupGateActive = accountSetup.timelineSetupGateActive;
   const isAdminRequestsUser = adminRoleAtLeast(adminRole, "admin");
+  const adminOnlyRoutePending = isAdminOnlyRoute && !adminRoleResolved;
+  const adminOnlyRouteDenied =
+    isAdminOnlyRoute && adminRoleResolved && !isAdminRequestsUser;
   const shellFontClass = "font-mono";
   const subscriptionGraceUntilLabel = subscriptionEvaluation?.graceUntil
     ? formatIsoDayCz(subscriptionEvaluation.graceUntil)
@@ -436,6 +451,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const subscriptionPaidUntilLabel = subscriptionEvaluation?.paidUntil
     ? formatIsoDayCz(subscriptionEvaluation.paidUntil)
     : "";
+
+  useEffect(() => {
+    if (!user || !adminOnlyRouteDenied) return;
+    router.replace("/");
+  }, [adminOnlyRouteDenied, router, user]);
 
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
@@ -593,7 +613,19 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               }}
               onLogout={handleLogout}
             >
-              {timelineSetupGateActive ? (
+              {adminOnlyRoutePending ? (
+                <div className="flex w-full min-h-[70vh] items-center justify-center">
+                  <div className="text-sm font-medium text-slate-700">
+                    Ověřuji oprávnění…
+                  </div>
+                </div>
+              ) : adminOnlyRouteDenied ? (
+                <div className="flex w-full min-h-[70vh] items-center justify-center">
+                  <div className="text-sm font-medium text-slate-700">
+                    Přesměrovávám na domovskou stránku…
+                  </div>
+                </div>
+              ) : timelineSetupGateActive ? (
                 <div className="flex w-full min-h-[70vh] items-center justify-center">
                   <div className="text-sm font-medium text-slate-700">
                     Dokonči nastavení účtu pro pokračování.

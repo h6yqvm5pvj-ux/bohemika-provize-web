@@ -114,7 +114,7 @@ function buildStrictNonceCsp(
 }
 
 function isPrivateWorkspacePath(pathname: string): boolean {
-  return pathname === "/provizni-vypisy" || pathname.startsWith("/klienti");
+  return pathname === "/provizni-vypisy";
 }
 
 export function middleware(req: NextRequest) {
