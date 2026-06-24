@@ -20,6 +20,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
+import { COMMISSION_STATEMENTS_ENABLED } from "@/app/_provizni-vypisy/statementFeature";
 
 export type ActivePage =
   | "home"
@@ -79,7 +80,16 @@ const NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "contracts", href: "/smlouvy", icon: FileText },
   { key: "tips", href: "/tipy", icon: Lightbulb, requiresTipsters: true },
   { key: "cashflow", href: "/cashflow", icon: CalendarDays },
-  { key: "statements", href: "/provizni-vypisy", icon: ReceiptText, requiresAdmin: true },
+  ...(COMMISSION_STATEMENTS_ENABLED
+    ? [
+        {
+          key: "statements" as const,
+          href: "/provizni-vypisy",
+          icon: ReceiptText,
+          requiresAdmin: true,
+        },
+      ]
+    : []),
   { key: "tools", href: "/pomucky", icon: Wrench },
   { key: "admin", href: "/admin/zadosti", icon: ShieldCheck, requiresAdmin: true },
   { key: "settings", href: "/nastaveni", icon: Settings },

@@ -121,6 +121,10 @@ function isClientCardsPath(pathname: string): boolean {
   return pathname === "/klienti" || pathname.startsWith("/klienti/");
 }
 
+function isCommissionStatementsPath(pathname: string): boolean {
+  return pathname === "/provizni-vypisy" || pathname.startsWith("/provizni-vypisy/");
+}
+
 function isClientCardsEnabled(): boolean {
   return (
     process.env.NODE_ENV !== "production" ||
@@ -129,22 +133,37 @@ function isClientCardsEnabled(): boolean {
   );
 }
 
+function isCommissionStatementsEnabled(): boolean {
+  return (
+    process.env.NODE_ENV !== "production" ||
+    process.env.ENABLE_COMMISSION_STATEMENTS_PAGE === "1" ||
+    process.env.NEXT_PUBLIC_ENABLE_COMMISSION_STATEMENTS_PAGE === "1"
+  );
+}
+
+function privateNotFoundResponse(): NextResponse {
+  return new NextResponse("Not found", {
+    status: 404,
+    headers: {
+      "Cache-Control": "private, no-store, max-age=0",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "X-Robots-Tag": "noindex, nofollow, noarchive",
+    },
+  });
+}
+
 export function middleware(req: NextRequest) {
   const nonce = createNonce();
   const pathname = req.nextUrl.pathname.toLowerCase();
   if (isClientCardsPath(pathname) && !isClientCardsEnabled()) {
-    return new NextResponse("Not found", {
-      status: 404,
-      headers: {
-        "Cache-Control": "private, no-store, max-age=0",
-        "Cross-Origin-Resource-Policy": "same-origin",
-        "Referrer-Policy": "strict-origin-when-cross-origin",
-        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
-        "X-Content-Type-Options": "nosniff",
-        "X-Frame-Options": "DENY",
-        "X-Robots-Tag": "noindex, nofollow, noarchive",
-      },
-    });
+    return privateNotFoundResponse();
+  }
+  if (isCommissionStatementsPath(pathname) && !isCommissionStatementsEnabled()) {
+    return privateNotFoundResponse();
   }
 
   if (pathname.startsWith("/dokumenty/")) {
