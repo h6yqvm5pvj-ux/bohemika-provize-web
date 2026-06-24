@@ -23,6 +23,7 @@ export type ActivePage =
   | "home"
   | "intranet"
   | "calc"
+  | "clients"
   | "contracts"
   | "cashflow"
   | "statements"

@@ -54,6 +54,7 @@ const APP_LAYOUT_COPY: Record<
       home: "Domů",
       intranet: "Intranet",
       calc: "Kalkulačka",
+      clients: "Klienti",
       contracts: "Smlouvy",
       cashflow: "Provizní kalendář",
       statements: "Provizní výpisy",
