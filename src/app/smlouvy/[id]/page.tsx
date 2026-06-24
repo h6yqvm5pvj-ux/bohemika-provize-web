@@ -11,6 +11,7 @@ import {
   Eye,
   ExternalLink,
   FileText,
+  IdCard,
   Package,
   PencilLine,
   StickyNote,
@@ -94,6 +95,8 @@ import {
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
 import { fetchAuthedBlob } from "@/app/lib/authenticatedApi";
+import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
+import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
 import { parseAllianzAutoPdf } from "@/app/lib/parseAllianzAutoPdf";
 import { parseComfortPdf } from "@/app/lib/parseComfortPdf";
 import { parseCppAutoPdf } from "@/app/lib/parseCppAutoPdf";
@@ -3936,6 +3939,9 @@ export default function ContractDetailPage() {
   const childManagerTotalDisplay =
     isPaymentBasedProduct ? childManagerSum * paymentMultiplier : childOverrideTotal ?? 0;
   const contractAuthorName = nameFromEmail(contract?.userEmail ?? ownerEmail ?? user?.email);
+  const clientCardHref = CLIENT_CARDS_ENABLED
+    ? clientCardHrefForName(contract?.clientName ?? null)
+    : null;
 
   const meziprovisionCards: MeziprovisionCard[] = [
     ...(showMeziprovision
@@ -4262,6 +4268,16 @@ export default function ContractDetailPage() {
                     <PencilLine size={16} strokeWidth={2} aria-hidden="true" />
                     <span>Upravit údaje</span>
                   </button>
+                )}
+
+                {clientCardHref && (
+                  <Link
+                    href={clientCardHref}
+                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                  >
+                    <IdCard size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>Karta klienta</span>
+                  </Link>
                 )}
 
                 {hasAnyContractPdfAttachment && (

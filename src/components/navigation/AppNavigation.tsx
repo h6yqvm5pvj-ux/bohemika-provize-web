@@ -11,6 +11,7 @@ import {
   CalendarDays,
   FileText,
   Home,
+  IdCard,
   Lightbulb,
   ReceiptText,
   Settings,
@@ -18,6 +19,7 @@ import {
   UsersRound,
   Wrench,
 } from "lucide-react";
+import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 
 export type ActivePage =
   | "home"
@@ -71,6 +73,9 @@ const NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "team", href: "/muj-tym", icon: UsersRound },
   { key: "intranet", href: "/intranet", icon: Building2 },
   { key: "calc", href: "/kalkulacka", icon: Calculator },
+  ...(CLIENT_CARDS_ENABLED
+    ? [{ key: "clients" as const, href: "/klienti", icon: IdCard }]
+    : []),
   { key: "contracts", href: "/smlouvy", icon: FileText },
   { key: "tips", href: "/tipy", icon: Lightbulb, requiresTipsters: true },
   { key: "cashflow", href: "/cashflow", icon: CalendarDays },
