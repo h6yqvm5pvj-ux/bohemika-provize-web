@@ -5,7 +5,8 @@ import type { CashflowItem, EntryDoc } from "./types";
 export function estimatePayoutDate(
   policyStart: Date,
   agreementDate?: Date | null,
-  cutoffDay = 25
+  cutoffDay = 25,
+  payoutDay = 25
 ): Date {
   const year = policyStart.getFullYear();
   const month = policyStart.getMonth();
@@ -16,10 +17,10 @@ export function estimatePayoutDate(
     : policyStart.getDate();
 
   if (dayForCutoff > cutoffDay) {
-    return new Date(year, month + 2, 1);
+    return new Date(year, month + 2, payoutDay);
   }
 
-  return new Date(year, month + 1, 27);
+  return new Date(year, month + 1, payoutDay);
 }
 
 export function monthsBetweenPayments(freq?: PaymentFrequency | null): number {
@@ -117,9 +118,21 @@ export function generateCashflow(
       amount: it.amount ?? 0,
     }));
 
-    const immediate = items.find((item) =>
-      item.title.includes("okamžitá provize")
+    const immediateItems = items.filter(
+      (item) =>
+        item.title.includes("okamžitá provize") ||
+        item.title.includes("provize a101") ||
+        item.title.includes("provize b0301") ||
+        item.title.includes("50% z b3601") ||
+        item.title.includes("50% z b36")
     );
+    const immediate =
+      immediateItems.length > 0
+        ? {
+            title: "okamžitá provize",
+            amount: immediateItems.reduce((sum, item) => sum + item.amount, 0),
+          }
+        : null;
     const po3 = items.find((item) => item.title.includes("po 3 letech"));
     const po4 = items.find((item) => item.title.includes("po 4 letech"));
     const nasl25 = items.find((item) =>

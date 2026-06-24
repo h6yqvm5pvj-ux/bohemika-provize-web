@@ -13,6 +13,7 @@ import {
   Home,
   IdCard,
   Lightbulb,
+  ReceiptText,
   Settings,
   ShieldCheck,
   UsersRound,
@@ -26,6 +27,7 @@ export type ActivePage =
   | "clients"
   | "contracts"
   | "cashflow"
+  | "statements"
   | "team"
   | "tools"
   | "tips"
@@ -74,6 +76,7 @@ const NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "contracts", href: "/smlouvy", icon: FileText },
   { key: "tips", href: "/tipy", icon: Lightbulb, requiresTipsters: true },
   { key: "cashflow", href: "/cashflow", icon: CalendarDays },
+  { key: "statements", href: "/provizni-vypisy", icon: ReceiptText },
   { key: "tools", href: "/pomucky", icon: Wrench },
   { key: "admin", href: "/admin/zadosti", icon: ShieldCheck, requiresAdmin: true },
   { key: "settings", href: "/nastaveni", icon: Settings },

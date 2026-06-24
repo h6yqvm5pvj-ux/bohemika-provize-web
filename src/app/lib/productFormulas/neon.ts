@@ -15,6 +15,22 @@ type NeonK = {
   n5to10: number;
 };
 
+type NeonImmediateBreakdownPart = {
+  label: string;
+  amount: number;
+};
+
+export type NeonImmediateBreakdown = {
+  position: Position;
+  totalCoefficient: number;
+  a101Coefficient: number;
+  b0301Coefficient: number;
+  b3601HalfCoefficient: number;
+  includeB3601: boolean;
+  parts: NeonImmediateBreakdownPart[];
+  total: number;
+};
+
 export const NEON_HISTORICAL_VALID_FROM = "2019-10-01";
 export const NEON_CURRENT_VALID_FROM = "2024-07-01";
 export const NEON_HISTORICAL_MAX_YEARS = 20;
@@ -31,6 +47,173 @@ function normalizeIsoDay(value: string | null | undefined): string | null {
   if (date.toISOString().slice(0, 10) !== normalized) return null;
   return normalized;
 }
+
+export const NEON_IMMEDIATE_A101_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 1.2,
+  poradce2: 1.38,
+  poradce3: 1.502,
+  poradce4: 2.16,
+  poradce5: 2.4,
+  poradce6: 2.58,
+  poradce7: 2.702,
+  poradce8: 2.881,
+  poradce9: 3.002,
+  poradce10: 3.122,
+  manazer4: 2.404,
+  manazer5: 2.683,
+  manazer6: 2.962,
+  manazer7: 3.243,
+  manazer8: 3.522,
+  manazer9: 3.802,
+  manazer10: 4.083,
+};
+
+export const NEON_IMMEDIATE_B0301_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 0.444,
+  poradce2: 0.489,
+  poradce3: 0.533,
+  poradce4: 0.622,
+  poradce5: 0.645,
+  poradce6: 0.665,
+  poradce7: 0.687,
+  poradce8: 0.71,
+  poradce9: 0.73,
+  poradce10: 0.752,
+  manazer4: 0.633,
+  manazer5: 0.69,
+  manazer6: 0.747,
+  manazer7: 0.807,
+  manazer8: 0.863,
+  manazer9: 0.92,
+  manazer10: 0.987,
+};
+
+export const NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 0.4445,
+  poradce2: 0.489,
+  poradce3: 0.5335,
+  poradce4: 0.689,
+  poradce5: 0.761,
+  poradce6: 0.8,
+  poradce7: 0.8385,
+  poradce8: 0.877,
+  poradce9: 0.9165,
+  poradce10: 0.955,
+  manazer4: 0.7575,
+  manazer5: 0.8395,
+  manazer6: 0.9205,
+  manazer7: 1.0015,
+  manazer8: 1.083,
+  manazer9: 1.1635,
+  manazer10: 1.2445,
+};
+
+const roundToCents = (value: number): number => Math.round(value * 100) / 100;
+const toCents = (value: number): number => Math.round(value * 100);
+const fromCents = (value: number): number => value / 100;
+
+const isAcceleratedMode = (mode: CommissionMode | null | undefined): boolean =>
+  mode === "accelerated";
+
+export const hasNeonImmediateCoefficient = (
+  position: Position | null | undefined
+): position is Position =>
+  !!position &&
+  Number.isFinite(NEON_IMMEDIATE_A101_COEFFICIENTS[position]) &&
+  Number.isFinite(NEON_IMMEDIATE_B0301_COEFFICIENTS[position]) &&
+  Number.isFinite(NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]);
+
+export const buildNeonImmediateBreakdown = (
+  amount: number,
+  position: Position | null | undefined,
+  mode: CommissionMode | null | undefined
+): NeonImmediateBreakdown | null => {
+  if (!hasNeonImmediateCoefficient(position)) return null;
+
+  const includeB3601 = isAcceleratedMode(mode);
+  const a101Coefficient = NEON_IMMEDIATE_A101_COEFFICIENTS[position];
+  const b0301Coefficient = NEON_IMMEDIATE_B0301_COEFFICIENTS[position];
+  const b3601HalfCoefficient = includeB3601
+    ? NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]
+    : 0;
+  const totalCoefficient =
+    a101Coefficient + b0301Coefficient + b3601HalfCoefficient;
+  if (!Number.isFinite(totalCoefficient) || totalCoefficient <= 0) return null;
+  if (!Number.isFinite(a101Coefficient) || a101Coefficient < 0) return null;
+  if (!Number.isFinite(b0301Coefficient) || b0301Coefficient < 0) return null;
+  if (!Number.isFinite(b3601HalfCoefficient) || b3601HalfCoefficient < 0) return null;
+
+  const total = Number(amount);
+  if (!Number.isFinite(total) || total <= 0) return null;
+
+  const baseAmount = total / totalCoefficient;
+  const partDefs: { label: string; raw: number }[] = [
+    { label: "Provize A101", raw: baseAmount * a101Coefficient },
+    { label: "Provize B0301", raw: baseAmount * b0301Coefficient },
+    ...(includeB3601
+      ? [
+          {
+            label: "Provize 50% z B3601",
+            raw: baseAmount * b3601HalfCoefficient,
+          },
+        ]
+      : []),
+  ];
+  if (partDefs.length === 0) return null;
+
+  const partCents = partDefs.map((part) => ({
+    label: part.label,
+    cents: Math.max(0, toCents(part.raw)),
+  }));
+  const totalCents = toCents(total);
+  const lastIdx = partCents.length - 1;
+  const roundedSumCents = partCents.reduce((sum, part) => sum + part.cents, 0);
+  partCents[lastIdx].cents += totalCents - roundedSumCents;
+
+  if (partCents[lastIdx].cents < 0) {
+    let deficit = -partCents[lastIdx].cents;
+    partCents[lastIdx].cents = 0;
+    for (let idx = lastIdx - 1; idx >= 0 && deficit > 0; idx -= 1) {
+      const reduceBy = Math.min(partCents[idx].cents, deficit);
+      partCents[idx].cents -= reduceBy;
+      deficit -= reduceBy;
+    }
+    if (deficit > 0) return null;
+  }
+
+  return {
+    position,
+    totalCoefficient,
+    a101Coefficient: Math.max(0, a101Coefficient),
+    b0301Coefficient,
+    b3601HalfCoefficient,
+    includeB3601,
+    total,
+    parts: partCents.map((part) => ({
+      label: part.label,
+      amount: roundToCents(fromCents(part.cents)),
+    })),
+  };
+};
+
+const neonImmediateItems = (
+  amount: number,
+  position: Position,
+  mode: CommissionMode
+): CommissionResultItemDTO[] => {
+  const breakdown = buildNeonImmediateBreakdown(amount, position, mode);
+  if (!breakdown) return [{ title: "💸 Okamžitá provize", amount }];
+
+  return breakdown.parts.map((part) => ({
+    title: `💸 ${part.label}`,
+    amount: part.amount,
+    ...(part.label === "Provize B0301"
+      ? {
+          note: "Pro okamžité vyplacení podmíněno zpracováním karty klienta dle podmínek!",
+        }
+      : {}),
+  }));
+};
 
 export function isNeonHistoricalPeriod(
   contractSignedDateIso: string | null | undefined
@@ -517,7 +700,7 @@ export function calculateNeon(
   const total = okamzita + po3 + po4 + nasl25 * 4 + nasl510 * 6;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize", amount: okamzita },
+    ...neonImmediateItems(okamzita, position, mode),
     { title: "📅 Provize po 3 letech", amount: po3 },
     { title: "📅 Provize po 4 letech", amount: po4 },
     { title: "🔁 Následná provize (2.–5. rok)", amount: nasl25 },

@@ -11,10 +11,17 @@ import {
   isNeonHistoricalPeriod,
   neonMaxDurationYears,
   normalizeNeonDurationYears,
+  NEON_IMMEDIATE_A101_COEFFICIENTS,
+  NEON_IMMEDIATE_B0301_COEFFICIENTS,
+  NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS,
 } from "./productFormulas/neon";
 import {
   calculateFlexi,
   flexiCoefficients,
+  FLEXI_IMMEDIATE_A101_COEFFICIENTS,
+  FLEXI_IMMEDIATE_B0301_COEFFICIENTS,
+  FLEXI_IMMEDIATE_B36_HALF_COEFFICIENTS,
+  hasFlexiImmediateCoefficient,
 } from "./productFormulas/flexi";
 import {
   calculateMaxEfekt,
@@ -205,8 +212,20 @@ export function getCoefficientSummary(
   switch (product) {
     case "neon": {
       const k = neonCoefficients(position, m, contractSignedDateIso);
+      const immediateItems = [
+        { label: "Provize A101", value: NEON_IMMEDIATE_A101_COEFFICIENTS[position] / 100 },
+        { label: "Provize B0301", value: NEON_IMMEDIATE_B0301_COEFFICIENTS[position] / 100 },
+        ...(m === "accelerated"
+          ? [
+              {
+                label: "Provize 50% z B3601",
+                value: NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position] / 100,
+              },
+            ]
+          : []),
+      ];
       return [
-        { label: "Okamžitá provize", value: k.okamzita },
+        ...immediateItems,
         { label: "Provize po 3 letech", value: k.po3 },
         { label: "Provize po 4 letech", value: k.po4 },
         { label: "Následná provize (2.–5. rok)", value: k.n2to5 },
@@ -215,6 +234,26 @@ export function getCoefficientSummary(
     }
     case "flexi": {
       const k = flexiCoefficients(position, m);
+      if (hasFlexiImmediateCoefficient(position)) {
+        const immediateItems = [
+          { label: "Provize A101", value: (FLEXI_IMMEDIATE_A101_COEFFICIENTS[position] ?? 0) / 100 },
+          { label: "Provize B0301", value: (FLEXI_IMMEDIATE_B0301_COEFFICIENTS[position] ?? 0) / 100 },
+          ...(m === "accelerated"
+            ? [
+                {
+                  label: "Provize 50% z B36",
+                  value: (FLEXI_IMMEDIATE_B36_HALF_COEFFICIENTS[position] ?? 0) / 100,
+                },
+              ]
+            : []),
+        ];
+        return [
+          ...immediateItems,
+          { label: "Provize po 3 letech", value: k.po3 },
+          { label: "Provize po 4 letech", value: k.po4 },
+          { label: "Následná provize (od 6. roku)", value: k.naslednaOd6 },
+        ];
+      }
       return [
         { label: "Okamžitá provize", value: k.okamzita },
         { label: "Provize po 3 letech", value: k.po3 },

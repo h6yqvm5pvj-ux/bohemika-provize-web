@@ -65,7 +65,8 @@ function parseCzDate(value: unknown): Date | null {
 export function estimatePayoutDate(
   policyStart: Date,
   agreementDate?: Date,
-  cutoffDay = 25
+  cutoffDay = 25,
+  payoutDay = 25
 ): Date {
   const year = policyStart.getFullYear();
   const month = policyStart.getMonth(); // 0–11
@@ -79,8 +80,7 @@ export function estimatePayoutDate(
 
   // Standard: 1–25 → +1 měsíc, >25 → +2 měsíce
   const monthsToAdd = dayForCutoff > cutoffDay ? 2 : 1;
-  const firstOfMonth = new Date(year, month, 1);
-  return addMonths(firstOfMonth, monthsToAdd);
+  return new Date(year, month + monthsToAdd, payoutDay);
 }
 
 /**
@@ -141,11 +141,22 @@ export const CashflowGenerator = {
         amount: i.amount,
       }));
 
-      const immediate = items.find(
+      const immediateItems = items.filter(
         (i) =>
           i.titleLower.includes("okamžitá") ||
-          i.titleLower.includes("získatelská")
+          i.titleLower.includes("získatelská") ||
+          i.titleLower.includes("provize a101") ||
+          i.titleLower.includes("provize b0301") ||
+          i.titleLower.includes("50% z b3601") ||
+          i.titleLower.includes("50% z b36")
       );
+      const immediate =
+        immediateItems.length > 0
+          ? {
+              titleLower: "okamžitá provize",
+              amount: immediateItems.reduce((sum, item) => sum + item.amount, 0),
+            }
+          : null;
       const po3 = items.find((i) => i.titleLower.includes("po 3 letech"));
       const po4 = items.find((i) => i.titleLower.includes("po 4 letech"));
       const nasl25 = items.find((i) =>

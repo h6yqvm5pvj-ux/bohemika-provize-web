@@ -57,6 +57,7 @@ const APP_LAYOUT_COPY: Record<
       clients: "Klienti",
       contracts: "Smlouvy",
       cashflow: "Provizní kalendář",
+      statements: "Provizní výpisy",
       team: "Můj tým",
       tools: "Pomůcky",
       tips: "Tipy",

@@ -180,23 +180,24 @@ function normalizeTitle(title: string | undefined | null): string {
   return title.toLowerCase().trim();
 }
 
+function isImmediateTitle(title: string | undefined | null): boolean {
+  const normalized = normalizeTitle(title);
+  return (
+    normalized.includes("okamžitá provize") ||
+    normalized.includes("získatelská") ||
+    normalized.includes("provize a101") ||
+    normalized.includes("provize b0301") ||
+    normalized.includes("50% z b3601") ||
+    normalized.includes("50% z b36") ||
+    normalized.includes("okamžitá")
+  );
+}
+
 function immediateFromItems(items: CommissionResultItemDTO[]): number {
-  const exactImmediate = items.find((it) =>
-    normalizeTitle(it.title).includes("okamžitá provize")
-  )?.amount;
-  if (Number.isFinite(exactImmediate)) return exactImmediate ?? 0;
-
-  const acquisitive = items.find((it) =>
-    normalizeTitle(it.title).includes("získatelská")
-  )?.amount;
-  if (Number.isFinite(acquisitive)) return acquisitive ?? 0;
-
-  const fuzzyImmediate = items.find((it) =>
-    normalizeTitle(it.title).includes("okamžitá")
-  )?.amount;
-  if (Number.isFinite(fuzzyImmediate)) return fuzzyImmediate ?? 0;
-
-  return 0;
+  return items.reduce((sum, item) => {
+    if (!isImmediateTitle(item.title)) return sum;
+    return sum + (item.amount ?? 0);
+  }, 0);
 }
 
 function clamp(value: number, min: number, max: number): number {

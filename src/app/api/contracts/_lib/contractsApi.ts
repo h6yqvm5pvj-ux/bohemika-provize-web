@@ -2626,7 +2626,12 @@ const normalizeTipContractTitle = (title: string | undefined | null): string =>
 const isTipContractImmediateBaseTitle = (title: string | undefined | null): boolean => {
   const normalized = normalizeTipContractTitle(title);
   return (
-    normalized.includes("okamzita provize") || normalized.includes("ziskatelska provize")
+    normalized.includes("okamzita provize") ||
+    normalized.includes("ziskatelska provize") ||
+    normalized.includes("provize a101") ||
+    normalized.includes("provize b0301") ||
+    normalized.includes("50% z b3601") ||
+    normalized.includes("50% z b36")
   );
 };
 

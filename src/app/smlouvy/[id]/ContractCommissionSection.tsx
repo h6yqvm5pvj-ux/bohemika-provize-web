@@ -15,7 +15,6 @@ import {
 } from "./contractDetailHelpers";
 import {
   hasNeonImmediateCoefficient,
-  isImmediateCommissionTitle,
 } from "./contractDetailLogic";
 
 export type MeziprovisionCard = {
@@ -70,6 +69,33 @@ const monoChipDarkClass =
   "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white";
 const collapsibleButtonClass =
   "flex h-12 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-4 text-base font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
+const isLegacyImmediateTotalTitle = (title: string): boolean =>
+  cleanResultTitle(title).toLowerCase().includes("okamžitá provize");
+
+const isSplitImmediateProduct = (product: Product | undefined): boolean =>
+  product === "neon" || product === "flexi";
+
+const isSplitImmediateComponentTitle = (title: string): boolean => {
+  const normalizedTitle = cleanResultTitle(title).toLowerCase();
+  return (
+    normalizedTitle === "provize a101" ||
+    normalizedTitle === "provize b0301" ||
+    normalizedTitle === "provize 50% z b3601" ||
+    normalizedTitle === "provize 50% z b36"
+  );
+};
+
+const B0301_IMMEDIATE_NOTE =
+  "Pro okamžité vyplacení podmíněno zpracováním karty klienta dle podmínek!";
+
+const isB0301Title = (title: string): boolean =>
+  cleanResultTitle(title).toLowerCase() === "provize b0301";
+
+const displayNoteForCommissionItem = (item: CommissionResultItemDTO): string | undefined =>
+  isB0301Title(item.title) ? B0301_IMMEDIATE_NOTE : item.note;
+
+const sumCommissionItems = (commissionItems: CommissionResultItemDTO[]): number =>
+  commissionItems.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
 
 export function ContractCommissionSection({
   product,
@@ -89,6 +115,67 @@ export function ContractCommissionSection({
   onToggleAdvisorDetails,
   onOpenNeonImmediateBreakdown,
 }: ContractCommissionSectionProps) {
+  const renderSplitImmediateGroup = (
+    commissionItems: CommissionResultItemDTO[],
+    key: string
+  ) => {
+    const total = sumCommissionItems(commissionItems);
+
+    return (
+      <details key={key} className="group">
+        <summary
+          className={`${commissionRowClass} cursor-pointer list-none transition hover:border-slate-400 hover:bg-slate-100 [&::-webkit-details-marker]:hidden`}
+        >
+          <span className="flex min-w-0 items-start gap-3 text-base font-medium text-slate-900 sm:items-center sm:text-lg">
+            <span className="relative h-[22px] w-[22px] flex-shrink-0">
+              <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
+            </span>
+            <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
+              <span>Okamžitá provize</span>
+              <span className="ml-2 inline-flex align-middle rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                rozpis
+              </span>
+            </span>
+          </span>
+          <span className="flex items-center justify-end gap-2 whitespace-nowrap text-right text-lg font-semibold text-slate-900">
+            {formatMoney(total)}
+            <ChevronDown
+              size={18}
+              strokeWidth={2.2}
+              className="shrink-0 text-slate-500 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </span>
+        </summary>
+
+        <div className="mt-2 space-y-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+          {commissionItems.map((part) => {
+            const partNote = displayNoteForCommissionItem(part);
+
+            return (
+              <div
+                key={part.title}
+                className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+              >
+                <span className="min-w-0 text-sm font-medium text-slate-800">
+                  <span>{cleanResultTitle(part.title)}</span>
+                  {partNote && (
+                    <span className="mt-1 block text-xs font-semibold text-red-600">
+                      {partNote}
+                    </span>
+                  )}
+                </span>
+                <span className="whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
+                  {formatMoney(part.amount)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </details>
+    );
+  };
+
   const renderCommissionRow = (
     item: CommissionResultItemDTO,
     position: Position | null | undefined,
@@ -98,11 +185,12 @@ export function ContractCommissionSection({
     const icon = resultIconForTitle(item.title);
     const clickable =
       product === "neon" &&
-      isImmediateCommissionTitle(item.title) &&
+      isLegacyImmediateTotalTitle(item.title) &&
       hasNeonImmediateCoefficient(position);
     const rowClass = clickable
       ? `${commissionRowClass} w-full text-left transition hover:border-slate-400 hover:bg-slate-100`
       : commissionRowClass;
+    const itemNote = displayNoteForCommissionItem(item);
 
     const content = (
       <>
@@ -113,7 +201,12 @@ export function ContractCommissionSection({
             </span>
           )}
           <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
-            {cleanResultTitle(item.title)}
+            <span>{cleanResultTitle(item.title)}</span>
+            {itemNote && (
+              <span className="mt-1 block text-xs font-semibold text-red-600">
+                {itemNote}
+              </span>
+            )}
           </span>
         </span>
         <span className="whitespace-nowrap text-right text-lg font-semibold text-slate-900">
@@ -139,6 +232,41 @@ export function ContractCommissionSection({
       >
         {content}
       </button>
+    );
+  };
+
+  const renderCommissionRows = (
+    commissionItems: CommissionResultItemDTO[],
+    position: Position | null | undefined,
+    commissionMode: CommissionMode | null | undefined,
+    keyPrefix: string
+  ) => {
+    const splitImmediateItems =
+      isSplitImmediateProduct(product)
+        ? commissionItems.filter((item) => isSplitImmediateComponentTitle(item.title))
+        : [];
+    const hasSplitImmediate = splitImmediateItems.length > 0;
+    const regularCommissionItems = hasSplitImmediate
+      ? commissionItems.filter(
+          (item) =>
+            !isSplitImmediateComponentTitle(item.title) &&
+            !isLegacyImmediateTotalTitle(item.title)
+        )
+      : commissionItems;
+
+    return (
+      <>
+        {hasSplitImmediate &&
+          renderSplitImmediateGroup(splitImmediateItems, `${keyPrefix}-split-immediate`)}
+        {regularCommissionItems.map((item, idx) =>
+          renderCommissionRow(
+            item,
+            position,
+            commissionMode,
+            `${keyPrefix}-${idx}-${item.title}`
+          )
+        )}
+      </>
     );
   };
 
@@ -184,13 +312,11 @@ export function ContractCommissionSection({
 
                     <div className={commissionPanelClass}>
                       <div className="space-y-1">
-                        {card.items.map((item, idx) =>
-                          renderCommissionRow(
-                            item,
-                            card.position,
-                            card.mode,
-                            `${card.key}-${idx}-${item.title}`
-                          )
+                        {renderCommissionRows(
+                          card.items,
+                          card.position,
+                          card.mode,
+                          card.key
                         )}
                       </div>
 
@@ -239,13 +365,11 @@ export function ContractCommissionSection({
           </h3>
           <div className={commissionPanelClass}>
             <div className="space-y-1">
-              {adviserItems.map((item, idx) =>
-                renderCommissionRow(
-                  item,
-                  adviserBreakdownPosition,
-                  adviserBreakdownMode,
-                  `adviser-own-${idx}-${item.title}`
-                )
+              {renderCommissionRows(
+                adviserItems,
+                adviserBreakdownPosition,
+                adviserBreakdownMode,
+                "adviser-own"
               )}
             </div>
 
@@ -302,13 +426,11 @@ export function ContractCommissionSection({
           {showAdvisorDetails && (
             <div className={commissionPanelClass}>
               <div className="space-y-1">
-                {adviserItems.map((item, idx) =>
-                  renderCommissionRow(
-                    item,
-                    adviserBreakdownPosition,
-                    adviserBreakdownMode,
-                    `adviser-team-${idx}-${item.title}`
-                  )
+                {renderCommissionRows(
+                  adviserItems,
+                  adviserBreakdownPosition,
+                  adviserBreakdownMode,
+                  "adviser-team"
                 )}
               </div>
 

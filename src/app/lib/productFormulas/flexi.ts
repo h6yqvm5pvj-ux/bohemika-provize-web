@@ -15,6 +15,190 @@ type FlexiK = {
   naslednaOd6: number;
 };
 
+type FlexiImmediateBreakdownPart = {
+  label: string;
+  amount: number;
+};
+
+export type FlexiImmediateBreakdown = {
+  position: Position;
+  totalCoefficient: number;
+  a101Coefficient: number;
+  b0301Coefficient: number;
+  b36HalfCoefficient: number;
+  includeB36: boolean;
+  parts: FlexiImmediateBreakdownPart[];
+  total: number;
+};
+
+export const FLEXI_IMMEDIATE_A101_COEFFICIENTS: Partial<Record<Position, number>> = {
+  poradce1: 21.207,
+  poradce2: 23.6887,
+  poradce3: 25.7191,
+  poradce4: 32.1038,
+  poradce5: 36.097,
+  poradce6: 38.5787,
+  poradce7: 43.0908,
+  poradce8: 45.6627,
+  poradce9: 47.6029,
+  poradce10: 48.9566,
+  manazer4: 38.5787,
+  manazer5: 43.0908,
+  manazer6: 47.2871,
+  manazer7: 51.4382,
+  manazer8: 55.9504,
+  manazer9: 59.7857,
+  manazer10: 64.2978,
+};
+
+export const FLEXI_IMMEDIATE_B0301_COEFFICIENTS: Partial<Record<Position, number>> = {
+  poradce1: 5.0742,
+  poradce2: 5.668,
+  poradce3: 6.1538,
+  poradce4: 7.6815,
+  poradce5: 8.637,
+  poradce6: 9.2308,
+  poradce7: 10.3104,
+  poradce8: 10.9258,
+  poradce9: 11.39,
+  poradce10: 11.7139,
+  manazer4: 9.2308,
+  manazer5: 10.3104,
+  manazer6: 11.3144,
+  manazer7: 12.3077,
+  manazer8: 13.3873,
+  manazer9: 14.305,
+  manazer10: 15.3846,
+};
+
+export const FLEXI_IMMEDIATE_B36_HALF_COEFFICIENTS: Partial<Record<Position, number>> = {
+  poradce1: 6.46015,
+  poradce2: 7.21615,
+  poradce3: 7.8347,
+  poradce4: 9.7796,
+  poradce5: 10.99605,
+  poradce6: 11.752,
+  poradce7: 13.12655,
+  poradce8: 13.91,
+  poradce9: 14.50105,
+  poradce10: 14.9134,
+  manazer4: 11.752,
+  manazer5: 13.12655,
+  manazer6: 14.4048,
+  manazer7: 15.66935,
+  manazer8: 17.04385,
+  manazer9: 18.2122,
+  manazer10: 19.5867,
+};
+
+const FLEXI_B0301_IMMEDIATE_NOTE =
+  "Pro okamžité vyplacení podmíněno zpracováním karty klienta dle podmínek!";
+
+const roundToCents = (value: number): number => Math.round(value * 100) / 100;
+const toCents = (value: number): number => Math.round(value * 100);
+const fromCents = (value: number): number => value / 100;
+
+const isAcceleratedMode = (mode: CommissionMode | null | undefined): boolean =>
+  mode === "accelerated";
+
+export const hasFlexiImmediateCoefficient = (
+  position: Position | null | undefined
+): position is Position =>
+  !!position &&
+  Number.isFinite(FLEXI_IMMEDIATE_A101_COEFFICIENTS[position]) &&
+  Number.isFinite(FLEXI_IMMEDIATE_B0301_COEFFICIENTS[position]) &&
+  Number.isFinite(FLEXI_IMMEDIATE_B36_HALF_COEFFICIENTS[position]);
+
+export const buildFlexiImmediateBreakdown = (
+  amount: number,
+  position: Position | null | undefined,
+  mode: CommissionMode | null | undefined
+): FlexiImmediateBreakdown | null => {
+  if (!hasFlexiImmediateCoefficient(position)) return null;
+
+  const includeB36 = isAcceleratedMode(mode);
+  const a101Coefficient = FLEXI_IMMEDIATE_A101_COEFFICIENTS[position] ?? 0;
+  const b0301Coefficient = FLEXI_IMMEDIATE_B0301_COEFFICIENTS[position] ?? 0;
+  const b36HalfCoefficient = includeB36
+    ? FLEXI_IMMEDIATE_B36_HALF_COEFFICIENTS[position] ?? 0
+    : 0;
+  const totalCoefficient =
+    a101Coefficient + b0301Coefficient + b36HalfCoefficient;
+
+  if (!Number.isFinite(totalCoefficient) || totalCoefficient <= 0) return null;
+  if (!Number.isFinite(a101Coefficient) || a101Coefficient < 0) return null;
+  if (!Number.isFinite(b0301Coefficient) || b0301Coefficient < 0) return null;
+  if (!Number.isFinite(b36HalfCoefficient) || b36HalfCoefficient < 0) return null;
+
+  const total = Number(amount);
+  if (!Number.isFinite(total) || total <= 0) return null;
+
+  const baseAmount = total / totalCoefficient;
+  const partDefs: { label: string; raw: number }[] = [
+    { label: "Provize A101", raw: baseAmount * a101Coefficient },
+    { label: "Provize B0301", raw: baseAmount * b0301Coefficient },
+    ...(includeB36
+      ? [
+          {
+            label: "Provize 50% z B36",
+            raw: baseAmount * b36HalfCoefficient,
+          },
+        ]
+      : []),
+  ];
+
+  const partCents = partDefs.map((part) => ({
+    label: part.label,
+    cents: Math.max(0, toCents(part.raw)),
+  }));
+  const totalCents = toCents(total);
+  const lastIdx = partCents.length - 1;
+  const roundedSumCents = partCents.reduce((sum, part) => sum + part.cents, 0);
+  partCents[lastIdx].cents += totalCents - roundedSumCents;
+
+  if (partCents[lastIdx].cents < 0) {
+    let deficit = -partCents[lastIdx].cents;
+    partCents[lastIdx].cents = 0;
+    for (let idx = lastIdx - 1; idx >= 0 && deficit > 0; idx -= 1) {
+      const reduceBy = Math.min(partCents[idx].cents, deficit);
+      partCents[idx].cents -= reduceBy;
+      deficit -= reduceBy;
+    }
+    if (deficit > 0) return null;
+  }
+
+  return {
+    position,
+    totalCoefficient,
+    a101Coefficient,
+    b0301Coefficient,
+    b36HalfCoefficient,
+    includeB36,
+    total,
+    parts: partCents.map((part) => ({
+      label: part.label,
+      amount: roundToCents(fromCents(part.cents)),
+    })),
+  };
+};
+
+const flexiImmediateItems = (
+  amount: number,
+  position: Position,
+  mode: CommissionMode
+): CommissionResultItemDTO[] => {
+  const breakdown = buildFlexiImmediateBreakdown(amount, position, mode);
+  if (!breakdown) return [{ title: "💸 Okamžitá provize", amount }];
+
+  return breakdown.parts.map((part) => ({
+    title: `💸 ${part.label}`,
+    amount: part.amount,
+    ...(part.label === "Provize B0301"
+      ? { note: FLEXI_B0301_IMMEDIATE_NOTE }
+      : {}),
+  }));
+};
+
 export function flexiCoefficients(position: Position, mode: CommissionMode): FlexiK {
   if (mode === "accelerated") {
     switch (position) {
@@ -287,7 +471,7 @@ export function calculateFlexi(
   const total = okamzita + po3 + po4 + n6 * tailYears;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize", amount: okamzita },
+    ...flexiImmediateItems(okamzita, position, mode),
     { title: "📅 Provize po 3 letech", amount: po3 },
     { title: "📅 Provize po 4 letech", amount: po4 },
     { title: "🔁 Následná provize (od 6. roku)", amount: n6, note: `ročně × ${tailYears}` },
@@ -296,5 +480,3 @@ export function calculateFlexi(
 
   return { items, total };
 }
-
-

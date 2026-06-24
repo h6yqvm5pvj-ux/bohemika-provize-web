@@ -250,7 +250,14 @@ export function cleanResultTitle(title: string): string {
 export function resultIconForTitle(title: string): string | null {
   const t = cleanResultTitle(title).toLowerCase();
 
-  if (t.startsWith("okamžitá provize") || t.startsWith("získatelská provize")) {
+  if (
+    t.startsWith("okamžitá provize") ||
+    t.startsWith("získatelská provize") ||
+    t.startsWith("provize a101") ||
+    t.startsWith("provize b0301") ||
+    t.startsWith("provize 50% z b3601") ||
+    t.startsWith("provize 50% z b36")
+  ) {
     return "/icons/penize2.png";
   }
 

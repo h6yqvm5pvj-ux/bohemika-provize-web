@@ -976,7 +976,13 @@ export default function CalculatorPage() {
     () => product === "neon" && neonCoefficientView === "historical",
     [product, neonCoefficientView]
   );
-  const neonImmediatePayoutInfo = useMemo(() => {
+  const immediatePayoutInfo = useMemo(() => {
+    if (product === "flexi") {
+      if (mode === "accelerated") {
+        return "Okamžitá provize je součet 1. provize A101, 2. provize B0301 a 50 % z provize B36. Zbývajících 50 % z B36 zůstává jako provize po 3 letech.";
+      }
+      return "Okamžitá provize je součet 1. provize A101 a 2. provize B0301.";
+    }
     if (product !== "neon") return null;
     if (isNeonHistoricalInCoefModal) {
       return "Okamžitá provize je součet 1. provize a 2. provize po 3 měsících (Při zpracování karty klienta je provize po 3 měsících vyplacena současně s 1. provizí).";
@@ -4804,6 +4810,8 @@ export default function CalculatorPage() {
             items={items}
             tipsterImmediateCommission={tipsterImmediateCommission}
             product={product}
+            position={position}
+            mode={mode}
             paymentBasedTotalsMemo={paymentBasedTotalsMemo}
             tipContractImmediateGrossFirstYear={tipContractImmediateGrossFirstYear}
             tipContractTipsterAmountFirstYear={tipContractTipsterAmountFirstYear}
@@ -4839,7 +4847,7 @@ export default function CalculatorPage() {
         coefficientView={neonCoefficientView}
         isNeonHistorical={isNeonHistoricalInCoefModal}
         coefExplanation={coefExplanation}
-        neonImmediatePayoutInfo={neonImmediatePayoutInfo}
+        immediatePayoutInfo={immediatePayoutInfo}
         coefList={coefList}
         showAutoTermsValidityNote={isAutoProduct(product)}
         showAutoTermsPreview={showAutoTermsPreview}

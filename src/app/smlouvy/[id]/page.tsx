@@ -5212,10 +5212,17 @@ export default function ContractDetailPage() {
               {neonImmediateBreakdown.parts.map((part) => (
                 <div
                   key={part.label}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                  className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
                 >
-                  <span className="text-sm font-medium text-slate-800">{part.label}</span>
-                  <span className="text-base font-semibold text-slate-900">
+                  <span className="min-w-0 text-sm font-medium text-slate-800">
+                    <span>{part.label}</span>
+                    {part.label === "Provize B0301" && (
+                      <span className="mt-1 block text-xs font-semibold text-red-600">
+                        Pro okamžité vyplacení podmíněno zpracováním karty klienta dle podmínek!
+                      </span>
+                    )}
+                  </span>
+                  <span className="whitespace-nowrap pt-0.5 text-base font-semibold text-slate-900">
                     {formatMoney(part.amount)}
                   </span>
                 </div>

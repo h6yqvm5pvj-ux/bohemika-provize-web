@@ -23,7 +23,7 @@ type CalculatorCoefficientModalProps = {
   coefficientView: NeonCoefficientView;
   isNeonHistorical: boolean;
   coefExplanation: string;
-  neonImmediatePayoutInfo: string | null;
+  immediatePayoutInfo: string | null;
   coefList: CoefficientSummaryItem[];
   showAutoTermsValidityNote: boolean;
   showAutoTermsPreview: boolean;
@@ -53,7 +53,7 @@ export function CalculatorCoefficientModal({
   coefficientView,
   isNeonHistorical,
   coefExplanation,
-  neonImmediatePayoutInfo,
+  immediatePayoutInfo,
   coefList,
   showAutoTermsValidityNote,
   showAutoTermsPreview,
@@ -184,9 +184,9 @@ export function CalculatorCoefficientModal({
                 zpracována karta klienta dle podmínek!
               </p>
             )}
-            {neonImmediatePayoutInfo && (
+            {immediatePayoutInfo && (
               <p className="text-xs text-slate-700 leading-relaxed">
-                {neonImmediatePayoutInfo}
+                {immediatePayoutInfo}
               </p>
             )}
 

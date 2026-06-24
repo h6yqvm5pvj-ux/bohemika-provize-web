@@ -522,10 +522,16 @@ export function useHomeData({
             count += 1;
 
             const items = (data.items ?? []) as CommissionResultItemDTO[];
-            const immediateItem = items.find((it) =>
-              (it.title ?? "").toLowerCase().includes("okamžitá provize")
-            );
-            immediate += immediateItem?.amount ?? 0;
+            immediate += items.reduce((sum, item) => {
+              const title = (item.title ?? "").toLowerCase();
+              const isImmediate =
+                title.includes("okamžitá provize") ||
+                title.includes("provize a101") ||
+                title.includes("provize b0301") ||
+                title.includes("50% z b3601") ||
+                title.includes("50% z b36");
+              return isImmediate ? sum + (item.amount ?? 0) : sum;
+            }, 0);
           });
           return { count, immediate };
         };

@@ -3,11 +3,20 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { BarChart3, CheckCircle2, FileText, Loader2, Sigma } from "lucide-react";
+import { BarChart3, CheckCircle2, ChevronDown, FileText, Loader2, Sigma } from "lucide-react";
 
-import { type CommissionResultItemDTO, type Product } from "../types/domain";
+import {
+  type CommissionMode,
+  type CommissionResultItemDTO,
+  type Position,
+  type Product,
+} from "../types/domain";
 import { formatMoney } from "@/app/lib/formatters";
 import { cleanResultTitle, resultIconForTitle } from "./calculatorHelpers";
+import {
+  buildNeonImmediateBreakdown,
+  hasNeonImmediateCoefficient,
+} from "../smlouvy/[id]/contractDetailLogic";
 
 type TipContractConfigSummary = {
   tipsterPercent: number;
@@ -29,6 +38,8 @@ type CalculatorResultsSectionProps = {
   items: CommissionResultItemDTO[];
   tipsterImmediateCommission: number;
   product: Product;
+  position: Position;
+  mode: CommissionMode;
   paymentBasedTotalsMemo: { immediate: number; subsequent: number } | null;
   tipContractImmediateGrossFirstYear: number;
   tipContractTipsterAmountFirstYear: number;
@@ -51,6 +62,34 @@ function formatMoneyResult(value: number | undefined | null): string {
     maxFractionDigits: 2,
   });
 }
+
+const isLegacyImmediateTotalTitle = (title: string): boolean =>
+  cleanResultTitle(title).toLowerCase().includes("okamžitá provize");
+
+const isSplitImmediateProduct = (product: Product): boolean =>
+  product === "neon" || product === "flexi";
+
+const isSplitImmediateComponentTitle = (title: string): boolean => {
+  const normalizedTitle = cleanResultTitle(title).toLowerCase();
+  return (
+    normalizedTitle === "provize a101" ||
+    normalizedTitle === "provize b0301" ||
+    normalizedTitle === "provize 50% z b3601" ||
+    normalizedTitle === "provize 50% z b36"
+  );
+};
+
+const B0301_IMMEDIATE_NOTE =
+  "Pro okamžité vyplacení podmíněno zpracováním karty klienta dle podmínek!";
+
+const isB0301Title = (title: string): boolean =>
+  cleanResultTitle(title).toLowerCase() === "provize b0301";
+
+const displayNoteForCommissionItem = (item: CommissionResultItemDTO): string | undefined =>
+  isB0301Title(item.title) ? B0301_IMMEDIATE_NOTE : item.note;
+
+const sumCommissionItems = (commissionItems: CommissionResultItemDTO[]): number =>
+  commissionItems.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
 
 function usePrefersReducedMotion(): boolean {
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -146,6 +185,8 @@ export function CalculatorResultsSection({
   items,
   tipsterImmediateCommission,
   product,
+  position,
+  mode,
   paymentBasedTotalsMemo,
   tipContractImmediateGrossFirstYear,
   tipContractTipsterAmountFirstYear,
@@ -161,6 +202,9 @@ export function CalculatorResultsSection({
   onPersistTipsterPercent,
   onSaveContract,
 }: CalculatorResultsSectionProps) {
+  const [expandedNeonImmediateBreakdown, setExpandedNeonImmediateBreakdown] =
+    useState(false);
+
   return (
     <div className="self-start space-y-3 lg:sticky lg:top-6">
       {topTools}
@@ -335,29 +379,208 @@ export function CalculatorResultsSection({
             const title = cleanResultTitle(item.title).toLowerCase();
             return !(title === "celkem" || title.startsWith("celková provize"));
           });
+          const splitImmediateItems =
+            isSplitImmediateProduct(product)
+              ? displayItems.filter((item) => isSplitImmediateComponentTitle(item.title))
+              : [];
+          const hasSplitImmediate = splitImmediateItems.length > 0;
+          const regularDisplayItems = hasSplitImmediate
+            ? displayItems.filter(
+                (item) =>
+                  !isSplitImmediateComponentTitle(item.title) &&
+                  !isLegacyImmediateTotalTitle(item.title)
+              )
+            : displayItems;
+          const splitImmediateTotal = sumCommissionItems(splitImmediateItems);
 
           return (
             <div className="relative space-y-1">
-              {displayItems.map((item, idx) => {
-                const iconSrc = resultIconForTitle(item.title);
-                const title = cleanResultTitle(item.title);
-
-                return (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between gap-3 border-b border-slate-200 py-3"
+              {hasSplitImmediate && (
+                <div className="border-b border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedNeonImmediateBreakdown((value) => !value)}
+                    aria-expanded={expandedNeonImmediateBreakdown}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-3 text-left transition hover:bg-slate-50"
                   >
                     <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
-                      {iconSrc && (
-                        <div className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
-                          <Image src={iconSrc} alt="" fill className="object-contain" />
+                      <div className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
+                        <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
+                      </div>
+                      <span className="min-w-0">Okamžitá provize</span>
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                        rozpis
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="whitespace-nowrap text-lg font-semibold text-slate-950 sm:text-2xl">
+                        {formatMoneyResult(splitImmediateTotal)}
+                      </span>
+                      <ChevronDown
+                        size={18}
+                        strokeWidth={2.2}
+                        className={`text-slate-500 transition-transform ${
+                          expandedNeonImmediateBreakdown ? "rotate-180" : ""
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </span>
+                  </button>
+
+                  {expandedNeonImmediateBreakdown && (
+                    <div className="mb-3 space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Rozpis okamžité provize
+                      </p>
+
+                      <div className="space-y-2">
+                        {splitImmediateItems.map((part) => {
+                          const partNote = displayNoteForCommissionItem(part);
+
+                          return (
+                            <div
+                              key={part.title}
+                              className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                            >
+                              <span className="min-w-0 text-sm font-medium text-slate-800">
+                                <span>{cleanResultTitle(part.title)}</span>
+                                {partNote && (
+                                  <span className="mt-1 block text-xs font-semibold text-red-600">
+                                    {partNote}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
+                                {formatMoneyResult(part.amount)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-950 px-3 py-2 text-white">
+                        <span className="text-sm font-semibold">
+                          Celkem okamžitá provize
+                        </span>
+                        <span className="whitespace-nowrap text-lg font-bold text-emerald-300">
+                          {formatMoneyResult(splitImmediateTotal)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {regularDisplayItems.map((item, idx) => {
+                const iconSrc = resultIconForTitle(item.title);
+                const title = cleanResultTitle(item.title);
+                const canShowNeonImmediateBreakdown =
+                  product === "neon" &&
+                  isLegacyImmediateTotalTitle(item.title) &&
+                  hasNeonImmediateCoefficient(position);
+                const neonImmediateBreakdown = canShowNeonImmediateBreakdown
+                  ? buildNeonImmediateBreakdown(item.amount ?? 0, position, mode)
+                  : null;
+                const isNeonBreakdownExpanded =
+                  Boolean(neonImmediateBreakdown) && expandedNeonImmediateBreakdown;
+                const itemNote = displayNoteForCommissionItem(item);
+
+                return (
+                  <div key={idx} className="border-b border-slate-200">
+                    <button
+                      type="button"
+                      onClick={
+                        neonImmediateBreakdown
+                          ? () =>
+                              setExpandedNeonImmediateBreakdown((value) => !value)
+                          : undefined
+                      }
+                      disabled={!neonImmediateBreakdown}
+                      aria-expanded={
+                        neonImmediateBreakdown
+                          ? isNeonBreakdownExpanded
+                          : undefined
+                      }
+                      className={`flex w-full items-center justify-between gap-3 py-3 text-left ${
+                        neonImmediateBreakdown
+                          ? "rounded-xl px-2 transition hover:bg-slate-50"
+                          : "cursor-default"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
+                        {iconSrc && (
+                          <div className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
+                            <Image src={iconSrc} alt="" fill className="object-contain" />
+                          </div>
+                        )}
+                        <span className="min-w-0">
+                          <span>{title}</span>
+                          {itemNote && (
+                            <span className="mt-1 block text-xs font-semibold text-red-600">
+                              {itemNote}
+                            </span>
+                          )}
+                        </span>
+                        {neonImmediateBreakdown && (
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                            rozpis
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="whitespace-nowrap text-lg font-semibold text-slate-950 sm:text-2xl">
+                          {formatMoneyResult(item.amount)}
+                        </span>
+                        {neonImmediateBreakdown && (
+                          <ChevronDown
+                            size={18}
+                            strokeWidth={2.2}
+                            className={`text-slate-500 transition-transform ${
+                              isNeonBreakdownExpanded ? "rotate-180" : ""
+                            }`}
+                            aria-hidden="true"
+                          />
+                        )}
+                      </span>
+                    </button>
+
+                    {neonImmediateBreakdown && isNeonBreakdownExpanded && (
+                      <div className="mb-3 space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                        <p className="text-sm font-semibold text-slate-900">
+                          Rozpis okamžité provize
+                        </p>
+
+                        <div className="space-y-2">
+                          {neonImmediateBreakdown.parts.map((part) => (
+                            <div
+                              key={part.label}
+                              className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                            >
+                              <span className="min-w-0 text-sm font-medium text-slate-800">
+                                <span>{part.label}</span>
+                                {part.label === "Provize B0301" && (
+                                  <span className="mt-1 block text-xs font-semibold text-red-600">
+                                    Pro okamžité vyplacení podmíněno zpracováním karty klienta dle podmínek!
+                                  </span>
+                                )}
+                              </span>
+                              <span className="whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
+                                {formatMoneyResult(part.amount)}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      )}
-                      <span className="min-w-0">{title}</span>
-                    </span>
-                    <span className="whitespace-nowrap text-lg font-semibold text-slate-950 sm:text-2xl">
-                      {formatMoneyResult(item.amount)}
-                    </span>
+
+                        <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-950 px-3 py-2 text-white">
+                          <span className="text-sm font-semibold">
+                            Celkem okamžitá provize
+                          </span>
+                          <span className="whitespace-nowrap text-lg font-bold text-emerald-300">
+                            {formatMoneyResult(neonImmediateBreakdown.total)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

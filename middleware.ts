@@ -113,6 +113,10 @@ function buildStrictNonceCsp(
   ]).join("; ");
 }
 
+function isPrivateWorkspacePath(pathname: string): boolean {
+  return pathname === "/provizni-vypisy" || pathname.startsWith("/klienti");
+}
+
 export function middleware(req: NextRequest) {
   const nonce = createNonce();
   const pathname = req.nextUrl.pathname.toLowerCase();
@@ -155,6 +159,14 @@ export function middleware(req: NextRequest) {
   } else {
     res.headers.set("Content-Security-Policy", buildBaselineCsp(frameAncestors));
     res.headers.set("Content-Security-Policy-Report-Only", strictCsp);
+  }
+
+  if (isPrivateWorkspacePath(pathname)) {
+    res.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
+    res.headers.set("Pragma", "no-cache");
+    res.headers.set("Expires", "0");
+    res.headers.set("Vary", "Authorization, Cookie");
+    res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   }
 
   return res;
