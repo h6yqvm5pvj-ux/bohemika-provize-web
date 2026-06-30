@@ -139,6 +139,7 @@ export function CashflowAccordion({
               <div className="relative z-10 mt-4 border-t border-[#7640a6]/62 pt-4 sm:mt-5 sm:pt-5">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {yearGroup.months.map((month, monthIndex) => {
+                    const isPaidMonth = month.totalSource === "paid";
                     const monthRatio = Math.min(
                       100,
                       Math.round((month.total / maxMonthTotal) * 100)
@@ -146,7 +147,7 @@ export function CashflowAccordion({
                     const monthLabelOnly = monthLabelShort(month.label);
                     const itemCountLabel = tipsterMode
                       ? formatItemCount(month.items.length, "tip", "tipy", "tipů")
-                      : formatItemCount(month.items.length, "smlouva", "smlouvy", "smluv");
+                      : formatItemCount(month.items.length, "položka", "položky", "položek");
 
                     return (
                       <button
@@ -162,8 +163,18 @@ export function CashflowAccordion({
 
                         <div className="relative z-[1] flex h-full flex-col">
                           <div className="flex items-start justify-between gap-3">
-                            <div className="inline-flex w-fit items-center rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[11px] font-black uppercase leading-none tracking-[0.07em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
-                              {tipsterMode ? "TIP provize" : "CASHFLOW"}
+                            <div
+                              className={`inline-flex w-fit items-center rounded-[9px] px-3 py-1.5 text-[11px] font-black uppercase leading-none tracking-[0.07em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.36)] ${
+                                isPaidMonth
+                                  ? "bg-[linear-gradient(135deg,#34d399_0%,#16a34a_100%)]"
+                                  : "bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)]"
+                              }`}
+                            >
+                              {tipsterMode
+                                ? "TIP provize"
+                                : isPaidMonth
+                                ? "VYPLACENO"
+                                : "PŘEDPOKLAD"}
                             </div>
                             <div className="rounded-full border border-[#9a67d0]/80 bg-[#2e1c43]/92 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d8bcf3]">
                               {itemCountLabel}
@@ -180,14 +191,18 @@ export function CashflowAccordion({
                             <p className="mt-1.5 text-sm font-medium text-[#c9a7e7]">
                               {tipsterMode
                                 ? "Měsíční výplata podle sjednaných tipů"
+                                : isPaidMonth
+                                ? "Skutečná výplata podle provizního výpisu"
                                 : "Měsíční výplata podle aktivních smluv"}
                             </p>
                           </div>
 
-                          <div className="mt-4 flex min-h-[60px] items-center justify-between gap-3 rounded-[18px] bg-[linear-gradient(135deg,#b967ff_0%,#a95cf9_52%,#9350ea_100%)] px-4 shadow-[0_18px_34px_rgba(168,79,240,0.34)]">
+                          <div
+                            className="mt-4 flex min-h-[60px] items-center justify-between gap-3 rounded-[18px] bg-[linear-gradient(135deg,#b967ff_0%,#a95cf9_52%,#9350ea_100%)] px-4 shadow-[0_18px_34px_rgba(168,79,240,0.34)]"
+                          >
                             <div className="min-w-0">
                               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#2a1640]/78">
-                                Součet
+                                {isPaidMonth ? "Vyplaceno" : "Předpoklad"}
                               </div>
                               <div className="mt-0.5 truncate whitespace-nowrap font-mono text-[1.5rem] font-black leading-none text-[#fbf7ff] sm:text-[1.7rem]">
                                 {formatMoney(month.total)}

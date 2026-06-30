@@ -181,6 +181,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "cpphafan",
   "pillowmajetek",
   "koopmajetekobcan",
+  "koopfit",
   "maxdomov",
   "cppsimplex",
   "cppAuto",
@@ -322,7 +323,8 @@ export function getCoefficientSummary(
         },
       ];
     }
-    case "koopmajetekobcan": {
+    case "koopmajetekobcan":
+    case "koopfit": {
       return [
         {
           label: "Okamžitá provize (z platby)",

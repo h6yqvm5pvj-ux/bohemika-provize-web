@@ -12,6 +12,7 @@ export type Product =
   | "cpphafan"
   | "pillowmajetek"
   | "koopmajetekobcan"
+  | "koopfit"
   | "maxdomov"
   | "cppsimplex"
   | "cppAuto"

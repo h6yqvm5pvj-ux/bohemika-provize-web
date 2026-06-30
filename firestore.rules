@@ -396,6 +396,7 @@ service cloud.firestore {
         "cpphafan",
         "pillowmajetek",
         "koopmajetekobcan",
+        "koopfit",
         "maxdomov",
         "cppsimplex",
         "cppAuto",

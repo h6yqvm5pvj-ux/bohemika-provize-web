@@ -109,7 +109,7 @@ export function CalculatorDurationAndFrequencySection({
       )}
       <input
         type="number"
-        className="w-full rounded-[1.05rem] border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
         value={durationYears ?? ""}
         onChange={(event) => {
           const raw = event.target.value.trim();
@@ -131,13 +131,13 @@ export function CalculatorDurationAndFrequencySection({
 
   const content = (
     <>
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold text-slate-900">Parametry smlouvy</h2>
         <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
       </div>
-      <div className="space-y-4">
+      <div className="space-y-3">
         {hasContractParameterFields && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {showDurationYearsInContractFields &&
               renderDurationYearsField("block text-sm font-semibold text-slate-800")}
 
@@ -145,7 +145,7 @@ export function CalculatorDurationAndFrequencySection({
               <div className="space-y-1">
                 <label className="block text-sm font-semibold text-slate-800">Varianta produktu</label>
                 <select
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
                   value={maxCizinKomplexVariant}
                   onChange={(event) => onMaxCizinVariantChange(event.target.value as MaxCizinKomplexVariant)}
                 >
@@ -165,7 +165,7 @@ export function CalculatorDurationAndFrequencySection({
                   type="number"
                   min={durationMonthsRange(product)[0]}
                   max={durationMonthsRange(product)[1]}
-                  className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+                  className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
                     missingFields.includes("dobu trvání v měsících")
                       ? "border-rose-400/70"
                       : "border-slate-300"
@@ -191,7 +191,7 @@ export function CalculatorDurationAndFrequencySection({
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <label className="block text-sm font-semibold text-slate-800">
             <span className="inline-flex items-center gap-1.5">
               <SlidersHorizontal size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
@@ -199,7 +199,7 @@ export function CalculatorDurationAndFrequencySection({
             </span>
           </label>
           <div
-            className={`grid grid-cols-1 gap-3 ${
+            className={`grid grid-cols-1 gap-2.5 ${
               hasPaymentCompanionField ? "sm:max-w-xl sm:grid-cols-2" : "sm:max-w-xs"
             }`}
           >
@@ -207,7 +207,7 @@ export function CalculatorDurationAndFrequencySection({
               <label className="block text-xs font-semibold text-slate-700">{amountLabel}</label>
               <input
                 type="number"
-                className={`w-full rounded-[1.05rem] border bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+                className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
                   missingFields.includes("částku") ? "border-rose-400/70" : "border-slate-300"
                 }`}
                 value={amountText}
@@ -223,7 +223,7 @@ export function CalculatorDurationAndFrequencySection({
                     <label className="block text-xs font-semibold text-slate-700">Frekvence platby</label>
                     {hasFrequencyPicker ? (
                       <select
-                        className="w-full rounded-[1.05rem] border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
                         value={frequency}
                         onChange={(event) => onFrequencyChange(event.target.value as PaymentFrequency)}
                       >
@@ -234,7 +234,7 @@ export function CalculatorDurationAndFrequencySection({
                         ))}
                       </select>
                     ) : (
-                      <p className="rounded-[1.05rem] border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700">
+                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                         {defaultFrequencyText(product)}
                       </p>
                     )}
@@ -251,7 +251,7 @@ export function CalculatorDurationAndFrequencySection({
   }
 
   return (
-    <section className="rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+    <section className="rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
       {content}
     </section>
   );

@@ -212,6 +212,7 @@ function calculateCommission(
     case "pillowmajetek":
       return immediateCommission(calculatePillowMajetek(premium, "annual", pos));
     case "koopmajetekobcan":
+    case "koopfit":
       return immediateCommission(calculateKoopMajetekObcan(premium, "annual", pos));
     case "maxdomov":
       return immediateCommission(calculateMaxdomov(premium, "annual", pos));

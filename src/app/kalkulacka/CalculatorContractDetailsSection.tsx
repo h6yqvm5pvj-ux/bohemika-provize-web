@@ -60,21 +60,21 @@ export function CalculatorContractDetailsSection({
   if (!isVisible) return null;
 
   return (
-    <section className="relative overflow-hidden rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+    <section className="relative overflow-hidden rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#94a3b8_58%,#e2e8f0_100%)]" aria-hidden="true" />
-      <h2 className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-slate-900">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700">
+      <h2 className="mb-2 inline-flex items-center gap-2 text-sm font-bold text-slate-900">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700">
           <FileText size={14} strokeWidth={2} aria-hidden="true" />
         </span>
         <span>Detaily smlouvy</span>
       </h2>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <label className="block text-sm font-semibold text-slate-800">Jméno a příjmení klienta</label>
           <div className="relative">
             <input
               type="text"
-              className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:ring-2 ${
+              className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:ring-2 ${
                 missingFields.includes("jméno klienta")
                   ? "border-rose-400/70 focus:border-rose-500 focus:ring-rose-500"
                   : pdfMatchedClientName
@@ -117,7 +117,7 @@ export function CalculatorContractDetailsSection({
           <label className="block text-sm font-semibold text-slate-800">Datum sjednání smlouvy</label>
           <input
             type="date"
-            className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
               missingFields.includes("datum sjednání") ? "border-rose-400/70" : "border-slate-300"
             }`}
             value={contractSignedDate}
@@ -129,7 +129,7 @@ export function CalculatorContractDetailsSection({
           <label className="block text-sm font-semibold text-slate-800">Číslo smlouvy</label>
           <input
             type="text"
-            className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
               missingFields.includes("číslo smlouvy") ? "border-rose-400/70" : "border-slate-300"
             }`}
             value={contractNumber}
@@ -153,7 +153,7 @@ export function CalculatorContractDetailsSection({
           <label className="block text-sm font-semibold text-slate-800">Datum počátku smlouvy</label>
           <input
             type="date"
-            className={`w-full rounded-2xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
               missingFields.includes("datum počátku") ? "border-rose-400/70" : "border-slate-300"
             }`}
             value={policyStartDate}
@@ -170,7 +170,7 @@ export function CalculatorContractDetailsSection({
             <label className="block text-sm font-semibold text-slate-800">Pojištění do (volitelné)</label>
             <input
               type="date"
-              className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
               value={policyEndDate}
               onChange={(event) => onPolicyEndDateChange(event.target.value)}
             />

@@ -4,6 +4,7 @@ import { Coins, CalendarRange, Sparkles } from "lucide-react";
 
 type CashflowHeaderProps = {
   totalCashflow: number;
+  hasPaidMonthTotals?: boolean;
   showPastYears: boolean;
   onTogglePastYears: () => void;
   tipsterMode?: boolean;
@@ -11,6 +12,7 @@ type CashflowHeaderProps = {
 
 export function CashflowHeader({
   totalCashflow,
+  hasPaidMonthTotals = false,
   showPastYears,
   onTogglePastYears,
   tipsterMode = false,
@@ -64,7 +66,11 @@ export function CashflowHeader({
                   strokeWidth={2.1}
                 />
                 <div className="max-w-[18ch] pr-10 text-[11px] font-semibold uppercase leading-[1.22] tracking-[0.14em] text-[#c8aee4]">
-                  {tipsterMode ? "Celkem očekávané TIP provize" : "Celkem očekávané cashflow"}
+                  {tipsterMode
+                    ? "Celkem očekávané TIP provize"
+                    : hasPaidMonthTotals
+                    ? "Celkem cashflow"
+                    : "Celkem očekávané cashflow"}
                 </div>
                 <div className="mt-1.5 w-fit max-w-full whitespace-nowrap font-mono text-[1.75rem] font-semibold leading-none text-[#fbf7ff] sm:text-[1.95rem]">
                   {formatMoney(totalCashflow)}

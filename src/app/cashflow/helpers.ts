@@ -7,6 +7,7 @@ import {
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
 import type {
+  CashflowCommissionStatementSummary,
   CashflowItem,
   MonthGroup,
   ProductFilter,
@@ -35,6 +36,7 @@ export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
     "cpphafan",
     "pillowmajetek",
     "koopmajetekobcan",
+    "koopfit",
     "maxdomov",
     "allianzmujdomov",
   ],
@@ -128,9 +130,42 @@ export function filterPastItems(
   return cashflowItems.filter((item) => item.date >= startCurrentMonth);
 }
 
+export function filterPastStatementMonths(
+  statementsByMonthKey: Record<string, CashflowCommissionStatementSummary[]>,
+  showPastYears: boolean
+): Record<string, CashflowCommissionStatementSummary[]> {
+  if (showPastYears) return statementsByMonthKey;
+
+  const now = new Date();
+  const startYear = now.getFullYear();
+  const startMonthIndex = now.getMonth();
+  const filtered: Record<string, CashflowCommissionStatementSummary[]> = {};
+
+  for (const [key, statements] of Object.entries(statementsByMonthKey)) {
+    const match = key.match(/^(\d{4})-(\d{1,2})$/);
+    if (!match) continue;
+
+    const year = Number(match[1]);
+    const monthIndex = Number(match[2]) - 1;
+    if (!Number.isInteger(year) || !Number.isInteger(monthIndex)) continue;
+    if (monthIndex < 0 || monthIndex > 11) continue;
+    if (year < startYear || (year === startYear && monthIndex < startMonthIndex)) continue;
+
+    filtered[key] = statements;
+  }
+
+  return filtered;
+}
+
 export function normalizeContractNumberSearch(value?: string | null): string {
   return (value ?? "").replace(/[^a-z0-9]+/gi, "").trim().toLowerCase();
 }
+
+const monthKeyFromDate = (date: Date): string =>
+  `${date.getFullYear()}-${date.getMonth() + 1}`;
+
+const addMonths = (date: Date, months: number): Date =>
+  new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
 
 export function filterItemsByContractNumber(
   cashflowItems: CashflowItem[],
@@ -147,6 +182,153 @@ export function filterItemsByContractNumber(
 
     const looseContractNumber = normalizedContractNumber.replace(/^0+/, "");
     return Boolean(looseQuery) && looseContractNumber.includes(looseQuery);
+  });
+}
+
+const paidContractSetForStatements = (
+  statements: CashflowCommissionStatementSummary[] | undefined
+): Set<string> => {
+  const paidContracts = new Set<string>();
+  for (const statement of statements ?? []) {
+    for (const contractNumber of statement.paidContractNumbers ?? []) {
+      const normalized = normalizeContractNumberSearch(contractNumber);
+      if (normalized) paidContracts.add(normalized);
+    }
+  }
+  return paidContracts;
+};
+
+const paidCommissionKeySetForStatements = (
+  statements: CashflowCommissionStatementSummary[] | undefined
+): Set<string> => {
+  const paidCommissionKeys = new Set<string>();
+  for (const statement of statements ?? []) {
+    for (const key of statement.paidCommissionKeys ?? []) {
+      const normalized = key.trim().toUpperCase();
+      if (normalized) paidCommissionKeys.add(normalized);
+    }
+  }
+  return paidCommissionKeys;
+};
+
+const commissionCodesForItem = (item: CashflowItem): string[] => {
+  const codes = new Set<string>();
+  if (item.commissionCode) codes.add(item.commissionCode);
+  for (const alias of item.commissionCodeAliases ?? []) codes.add(alias);
+  return [...codes]
+    .map((code) => code.trim().toUpperCase().replace(/\s+/g, ""))
+    .filter(Boolean);
+};
+
+const hasPaidCommissionForItem = ({
+  item,
+  normalizedContractNumber,
+  paidContracts,
+  paidCommissionKeys,
+}: {
+  item: CashflowItem;
+  normalizedContractNumber: string;
+  paidContracts: Set<string>;
+  paidCommissionKeys: Set<string>;
+}): boolean => {
+  const commissionCodes = commissionCodesForItem(item);
+  const hasAnyPaidCodeForContract = [...paidCommissionKeys].some((key) =>
+    key.startsWith(`${normalizedContractNumber.toUpperCase()}:`)
+  );
+  if (commissionCodes.length > 0 && hasAnyPaidCodeForContract) {
+    return commissionCodes.some((code) =>
+      paidCommissionKeys.has(`${normalizedContractNumber.toUpperCase()}:${code}`)
+    );
+  }
+
+  return paidContracts.has(normalizedContractNumber);
+};
+
+const statementPeriodLabels = (
+  statements: CashflowCommissionStatementSummary[] | undefined
+): string[] =>
+  [...new Set((statements ?? []).map((statement) => statement.period).filter(Boolean) as string[])];
+
+export function applyStatementMissingPayoutShifts({
+  cashflowItems,
+  statementsByMonthKey,
+  enabled,
+}: {
+  cashflowItems: CashflowItem[];
+  statementsByMonthKey: Record<string, CashflowCommissionStatementSummary[]>;
+  enabled: boolean;
+}): CashflowItem[] {
+  if (!enabled) return cashflowItems;
+
+  return cashflowItems.map((item) => {
+    if (item.isTipPayout) return item;
+
+    const normalizedContractNumber = normalizeContractNumberSearch(item.contractNumber);
+    if (!normalizedContractNumber) return { ...item, payoutStatus: "predicted" };
+
+    let date = item.date;
+    let shifted = false;
+    const missedStatementPeriods: string[] = [];
+
+    for (let guard = 0; guard < 24; guard += 1) {
+      const monthKey = monthKeyFromDate(date);
+      const statements = statementsByMonthKey[monthKey];
+      if (!statements || statements.length === 0) {
+        return {
+          ...item,
+          id: shifted ? `${item.id}-shifted-${monthKey}` : item.id,
+          date,
+          payoutStatus: shifted ? "shifted" : "predicted",
+          originalDate: shifted ? item.date : null,
+          missedStatementPeriods,
+        };
+      }
+
+      const paidContracts = paidContractSetForStatements(statements);
+      const paidCommissionKeys = paidCommissionKeySetForStatements(statements);
+      if (paidContracts.size === 0) {
+        return {
+          ...item,
+          id: shifted ? `${item.id}-shifted-${monthKey}` : item.id,
+          date,
+          payoutStatus: shifted ? "shifted" : "predicted",
+          originalDate: shifted ? item.date : null,
+          missedStatementPeriods,
+        };
+      }
+
+      if (
+        hasPaidCommissionForItem({
+          item,
+          normalizedContractNumber,
+          paidContracts,
+          paidCommissionKeys,
+        })
+      ) {
+        return {
+          ...item,
+          id: shifted ? `${item.id}-paid-shifted-${monthKey}` : item.id,
+          date,
+          payoutStatus: "paid",
+          originalDate: shifted ? item.date : null,
+          missedStatementPeriods,
+        };
+      }
+
+      missedStatementPeriods.push(...statementPeriodLabels(statements));
+      date = addMonths(date, 1);
+      shifted = true;
+    }
+
+    const fallbackMonthKey = monthKeyFromDate(date);
+    return {
+      ...item,
+      id: `${item.id}-shifted-${fallbackMonthKey}`,
+      date,
+      payoutStatus: "shifted",
+      originalDate: item.date,
+      missedStatementPeriods,
+    };
   });
 }
 
@@ -171,12 +353,16 @@ export function groupItemsByMonth(
         monthIndex,
         label,
         total: 0,
+        predictedTotal: 0,
+        totalSource: "predicted",
+        statementPayoutTotal: null,
         items: [],
       });
     }
 
     const group = map.get(key)!;
     group.total += item.amount;
+    group.predictedTotal += item.amount;
     group.items.push(item);
   }
 
@@ -191,6 +377,84 @@ export function groupItemsByMonth(
   });
 
   return groups;
+}
+
+export function statementPayoutTotal(
+  statements: CashflowCommissionStatementSummary[] | undefined
+): number | null {
+  const values = (statements ?? [])
+    .map((statement) => statement.payoutTotal)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) * 100) / 100;
+}
+
+const monthGroupMetaFromKey = (
+  key: string
+): Pick<MonthGroup, "year" | "monthIndex" | "label"> | null => {
+  const match = key.match(/^(\d{4})-(\d{1,2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month)) return null;
+  if (month < 1 || month > 12) return null;
+  const monthIndex = month - 1;
+  return {
+    year,
+    monthIndex,
+    label: `${MONTH_LABELS[monthIndex]} ${year}`,
+  };
+};
+
+export function applyStatementPayoutTotalsToMonths({
+  monthGroups,
+  statementsByMonthKey,
+  enabled,
+}: {
+  monthGroups: MonthGroup[];
+  statementsByMonthKey: Record<string, CashflowCommissionStatementSummary[]>;
+  enabled: boolean;
+}): MonthGroup[] {
+  if (!enabled) return monthGroups;
+
+  const adjustedMonths: MonthGroup[] = monthGroups.map((month) => {
+    const payoutTotal = statementPayoutTotal(statementsByMonthKey[month.key]);
+    if (payoutTotal == null) return month;
+
+    return {
+      ...month,
+      total: payoutTotal,
+      totalSource: "paid",
+      statementPayoutTotal: payoutTotal,
+    };
+  });
+
+  const existingMonthKeys = new Set(adjustedMonths.map((month) => month.key));
+  for (const [key, statements] of Object.entries(statementsByMonthKey)) {
+    if (existingMonthKeys.has(key)) continue;
+
+    const payoutTotal = statementPayoutTotal(statements);
+    const meta = monthGroupMetaFromKey(key);
+    if (payoutTotal == null || !meta) continue;
+
+    adjustedMonths.push({
+      key,
+      ...meta,
+      total: payoutTotal,
+      predictedTotal: 0,
+      totalSource: "paid",
+      statementPayoutTotal: payoutTotal,
+      items: [],
+    });
+  }
+
+  adjustedMonths.sort((a, b) => {
+    if (a.year !== b.year) return a.year - b.year;
+    return a.monthIndex - b.monthIndex;
+  });
+
+  return adjustedMonths;
 }
 
 export function groupMonthsByYear(monthGroups: MonthGroup[]): YearGroup[] {

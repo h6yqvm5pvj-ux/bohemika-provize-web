@@ -361,6 +361,7 @@ export const CashflowGenerator = {
         case "domex":
         case "cpphafan":
         case "koopmajetekobcan":
+        case "koopfit":
         case "cppPPRbez": {
           const immediateDomex =
             items.find((i) =>

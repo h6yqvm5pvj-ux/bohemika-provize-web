@@ -41,6 +41,7 @@ export const CPP_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
 export const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
   "flexi",
   "koopmajetekobcan",
+  "koopfit",
   "kooperativaAuto",
   "koopcestovko",
 ]);

@@ -228,6 +228,7 @@ const SUPPORTED_PRODUCTS = new Set<Product>([
   "cpphafan",
   "pillowmajetek",
   "koopmajetekobcan",
+  "koopfit",
   "maxdomov",
   "cppsimplex",
   "cppAuto",
@@ -2698,6 +2699,7 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
       return ["quarterly", "semiannual", "annual"];
     case "pillowmajetek":
     case "koopmajetekobcan":
+    case "koopfit":
     case "pillowAuto":
     case "maxdomov":
     case "allianzmujdomov":
@@ -3382,7 +3384,8 @@ const computeItemsForProductPositionAndMode = ({
       return calculatePillowInjury(safeAmount, position, commissionMode);
     case "domex":
     case "cpphafan":
-    case "koopmajetekobcan": {
+    case "koopmajetekobcan":
+    case "koopfit": {
       const dto =
         productKey === "domex"
           ? calculateDomex(safeAmount, usedFrequency, position)

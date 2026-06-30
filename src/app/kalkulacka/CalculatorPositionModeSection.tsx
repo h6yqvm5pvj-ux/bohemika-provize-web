@@ -37,12 +37,12 @@ export function CalculatorPositionModeSection({
   if (!isVisible) return null;
 
   return (
-    <section className="rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <section className="rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div className="space-y-1">
         <label className="block text-sm font-semibold text-slate-800">Sjednána jako (pozice)</label>
         <select
-          className={`w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+          className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
             positionDisabled ? "cursor-not-allowed bg-slate-100 text-slate-500" : ""
           }`}
           value={position}
@@ -67,7 +67,7 @@ export function CalculatorPositionModeSection({
         <div className="space-y-1">
           <label className="block text-sm font-semibold text-slate-800">Režim provize</label>
           <select
-            className="w-full rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
             value={mode}
             onChange={(event) => onModeChange(event.target.value as CommissionMode)}
           >

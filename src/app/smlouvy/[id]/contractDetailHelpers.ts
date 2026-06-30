@@ -57,6 +57,7 @@ export function preloadFormulaModule(product?: Product | null) {
       import("../../lib/productFormulas/pillowMajetek");
       break;
     case "koopmajetekobcan":
+    case "koopfit":
       import("../../lib/productFormulas/koopmajetekobcan");
       break;
     case "cppPPRbez":
@@ -448,7 +449,8 @@ export async function calculateResultForPosition(
       );
       return calculatePillowMajetek(amount, freq, position);
     }
-    case "koopmajetekobcan": {
+    case "koopmajetekobcan":
+    case "koopfit": {
       const { calculateKoopMajetekObcan } = await import(
         "../../lib/productFormulas/koopmajetekobcan"
       );

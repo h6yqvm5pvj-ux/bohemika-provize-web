@@ -79,6 +79,36 @@ const DETECTION_RULES: DetectionRule[] = [
       "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“ a „HAFAN“.",
   },
   {
+    product: "koopfit",
+    mustContain: [
+      { page: "any", text: normalizeText("Kooperativa pojišťovna") },
+      { page: "any", text: normalizeText("pojištění sportovní výbavy FIT") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Kooperativa pojišťovna“ a „pojištění sportovní výbavy FIT“.",
+  },
+  {
+    product: "koopfit",
+    mustContain: [
+      { page: "any", text: normalizeText("Kooperativa pojišťovna") },
+      { page: "any", text: normalizeText("sportovní výbavy") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Kooperativa pojišťovna“ a „sportovní výbavy“.",
+  },
+  {
+    product: "koopfit",
+    mustContain: [
+      { page: "any", text: normalizeText("Kooperativa pojišťovna") },
+      { page: "any", text: normalizeText("FIT") },
+    ],
+    confidence: "medium",
+    reason:
+      "V PDF jsou nalezeny texty „Kooperativa pojišťovna“ a „FIT“.",
+  },
+  {
     product: "slaviaauto",
     mustContain: [
       { page: 1, text: normalizeText("Pojištění vozidel") },

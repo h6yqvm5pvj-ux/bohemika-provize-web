@@ -2,6 +2,7 @@
 
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { Space_Grotesk } from "next/font/google";
+import { FileText, X } from "lucide-react";
 import {
   onAuthStateChanged,
   type User as FirebaseUser,
@@ -11,18 +12,27 @@ import { AppLayout } from "@/components/AppLayout";
 import { auth } from "../firebase";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
+  applyStatementMissingPayoutShifts,
+  applyStatementPayoutTotalsToMonths,
   filterItemsByContractNumber,
   filterPastItems,
+  filterPastStatementMonths,
   groupItemsByMonth,
   groupMonthsByYear,
   normalizeContractNumberSearch,
 } from "./helpers";
-import type { CashflowItem, MonthGroup, ProductFilter, ScopeFilter } from "./types";
+import type {
+  CashflowCommissionStatementDetail,
+  CashflowCommissionStatementSummary,
+  CashflowItem,
+  MonthGroup,
+  ProductFilter,
+  ScopeFilter,
+} from "./types";
 import { useCashflowData } from "./useCashflowData";
 import { CashflowAccordion } from "./components/CashflowAccordion";
 import { CashflowFilters } from "./components/CashflowFilters";
 import { CashflowHeader } from "./components/CashflowHeader";
-import { CashflowItemModal } from "./components/CashflowItemModal";
 import { CashflowMonthModal } from "./components/CashflowMonthModal";
 import introStyles from "./cashflowIntro.module.css";
 
@@ -49,6 +59,140 @@ function introDelay(delayMs: number): CSSProperties {
   };
 }
 
+const statementMonthKey = (statement: CashflowCommissionStatementSummary): string | null => {
+  if (statement.payoutMonthKey) return statement.payoutMonthKey;
+
+  const sourceMs =
+    statement.statementDateMs ??
+    (statement.periodEndMs != null
+      ? Date.UTC(
+          new Date(statement.periodEndMs).getUTCFullYear(),
+          new Date(statement.periodEndMs).getUTCMonth() + 1,
+          1
+        )
+      : statement.periodStartMs);
+  if (sourceMs == null) return null;
+
+  const date = new Date(sourceMs);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`;
+};
+
+const statementDisplayTitle = (statement: CashflowCommissionStatementSummary): string => {
+  if (statement.statementNumber) return `Provizní výpis ${statement.statementNumber}`;
+  return statement.fileName || "Provizní výpis";
+};
+
+const buildInteractiveStatementHtml = (html: string): string => {
+  const previewStyle = `<style>
+html {
+  background: #ffffff !important;
+}
+body {
+  width: 715px !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  box-sizing: border-box !important;
+  background: #ffffff !important;
+}
+body > table.vypis_table {
+  margin: 0 auto !important;
+}
+a[href^="javascript:toggleLayer"] {
+  cursor: pointer;
+}
+</style>`;
+  const toggleScript = `<script>
+(function () {
+  window.toggleLayer = function (whichLayer) {
+    var elem = document.getElementById(whichLayer);
+    if (!elem) return false;
+    var currentDisplay = elem.style.display || window.getComputedStyle(elem).display;
+    elem.style.display = currentDisplay === "none" ? "block" : "none";
+    return false;
+  };
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    var link = target && target.closest ? target.closest("a[href^='javascript:toggleLayer']") : null;
+    if (!link) return;
+
+    var href = link.getAttribute("href") || "";
+    var match = href.match(/toggleLayer\\((?:'|")?([^'")]+)(?:'|")?\\)/);
+    if (!match || !match[1]) return;
+
+    event.preventDefault();
+    window.toggleLayer(match[1]);
+  });
+})();
+</script>`;
+  const htmlWithStyle = /<\/head>/i.test(html)
+    ? html.replace(/<\/head>/i, `${previewStyle}</head>`)
+    : `${previewStyle}${html}`;
+
+  if (/<\/body>/i.test(htmlWithStyle)) {
+    return htmlWithStyle.replace(/<\/body>/i, `${toggleScript}</body>`);
+  }
+  return `${htmlWithStyle}${toggleScript}`;
+};
+
+function CommissionStatementPreviewModal({
+  statement,
+  onClose,
+}: {
+  statement: CashflowCommissionStatementDetail | null;
+  onClose: () => void;
+}) {
+  if (!statement) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-[#08030f]/78 px-4 py-6 backdrop-blur-[7px]"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[95vh] w-[min(980px,96vw)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 text-slate-950 shadow-[0_38px_92px_rgba(2,6,23,0.38)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+              <FileText className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+              Provizní výpis
+            </div>
+            <h3 className="mt-2 truncate text-2xl font-bold tracking-tight text-slate-950">
+              {statementDisplayTitle(statement)}
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {statement.period ?? "Období nezjištěno"}
+              {statement.statementDate ? ` · vystaveno ${statement.statementDate}` : ""}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="ui-focus inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900"
+            aria-label="Zavřít náhled provizního výpisu"
+          >
+            <X className="h-5 w-5" strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-100 px-3 py-4 sm:px-5">
+          <iframe
+            title={statementDisplayTitle(statement)}
+            srcDoc={buildInteractiveStatementHtml(statement.html)}
+            sandbox="allow-scripts"
+            referrerPolicy="no-referrer"
+            className="mx-auto block h-[min(76vh,940px)] w-[840px] max-w-full rounded-xl border border-slate-300 bg-white shadow-[0_16px_38px_rgba(15,23,42,0.16)]"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CashflowPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profileReady, setProfileReady] = useState(false);
@@ -56,8 +200,11 @@ export default function CashflowPage() {
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [showPastYears, setShowPastYears] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<CashflowItem | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<MonthGroup | null>(null);
+  const [commissionStatements, setCommissionStatements] = useState<CashflowCommissionStatementSummary[]>([]);
+  const [statementPreview, setStatementPreview] = useState<CashflowCommissionStatementDetail | null>(null);
+  const [statementPreviewLoadingId, setStatementPreviewLoadingId] = useState<string | null>(null);
+  const [statementPreviewError, setStatementPreviewError] = useState<string | null>(null);
 
   const [expandedYears, setExpandedYears] = useState<Record<number, boolean>>({});
 
@@ -124,6 +271,52 @@ export default function CashflowPage() {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user) {
+      setCommissionStatements([]);
+      setStatementPreview(null);
+      setStatementPreviewError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadStatements = async () => {
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch("/api/commission-statements?limit=240", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | { ok?: boolean; items?: CashflowCommissionStatementSummary[]; error?: string }
+          | null;
+        if (!response.ok || payload?.ok !== true || !Array.isArray(payload.items)) {
+          throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
+        }
+        if (!cancelled) {
+          setCommissionStatements(payload.items);
+          setStatementPreviewError(null);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.warn("Cashflow: uložené provizní výpisy se nepodařilo načíst.", error);
+        setCommissionStatements([]);
+        setStatementPreviewError(
+          error instanceof Error ? error.message : "Provizní výpisy se nepodařilo načíst."
+        );
+      }
+    };
+
+    void loadStatements();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   const isTipsterMode = accountType === "tipster";
 
   const { loading, cashflowItems, hasTeam } = useCashflowData({
@@ -139,17 +332,25 @@ export default function CashflowPage() {
     [contractNumberQuery]
   );
 
-  const periodCashflowItems = useMemo(
+  const useStatementPayoutTotals =
+    !isTipsterMode &&
+    !contractNumberSearchActive &&
+    scopeFilter === "combined" &&
+    productFilter === "all";
+
+  // Výpisy musí posouvat nevyplacené položky ještě před filtrem minulosti,
+  // jinak by starší nevyplacená provize zmizela místo přesunu dopředu.
+  const cashflowItemsForReconciliation = useMemo(
     () =>
-      contractNumberSearchActive
+      useStatementPayoutTotals || contractNumberSearchActive
         ? cashflowItems
         : filterPastItems(cashflowItems, showPastYears),
-    [cashflowItems, contractNumberSearchActive, showPastYears]
+    [cashflowItems, contractNumberSearchActive, showPastYears, useStatementPayoutTotals]
   );
 
   const filteredCashflowItems = useMemo(
-    () => filterItemsByContractNumber(periodCashflowItems, contractNumberQuery),
-    [periodCashflowItems, contractNumberQuery]
+    () => filterItemsByContractNumber(cashflowItemsForReconciliation, contractNumberQuery),
+    [cashflowItemsForReconciliation, contractNumberQuery]
   );
 
   const contractSearchStats = useMemo(() => {
@@ -181,12 +382,78 @@ export default function CashflowPage() {
     };
   }, [contractNumberSearchActive, filteredCashflowItems]);
 
+  const statementsByMonthKey = useMemo(() => {
+    const map: Record<string, CashflowCommissionStatementSummary[]> = {};
+    commissionStatements.forEach((statement) => {
+      const key = statementMonthKey(statement);
+      if (!key) return;
+      map[key] = [...(map[key] ?? []), statement];
+    });
+    Object.values(map).forEach((items) => {
+      items.sort((a, b) => {
+        const aDate = a.statementDate ?? a.fileName;
+        const bDate = b.statementDate ?? b.fileName;
+        return aDate.localeCompare(bDate, "cs");
+      });
+    });
+    return map;
+  }, [commissionStatements]);
+
+  const periodStatementsByMonthKey = useMemo(
+    () =>
+      contractNumberSearchActive
+        ? statementsByMonthKey
+        : filterPastStatementMonths(statementsByMonthKey, showPastYears),
+    [contractNumberSearchActive, showPastYears, statementsByMonthKey]
+  );
+
+  const reconciledCashflowItems = useMemo(
+    () =>
+      applyStatementMissingPayoutShifts({
+        cashflowItems: filteredCashflowItems,
+        statementsByMonthKey,
+        enabled: useStatementPayoutTotals,
+      }),
+    [filteredCashflowItems, statementsByMonthKey, useStatementPayoutTotals]
+  );
+
+  const periodCashflowItems = useMemo(
+    () =>
+      contractNumberSearchActive
+        ? reconciledCashflowItems
+        : filterPastItems(reconciledCashflowItems, showPastYears),
+    [contractNumberSearchActive, reconciledCashflowItems, showPastYears]
+  );
+
+  const predictedMonthGroups = useMemo(
+    () => groupItemsByMonth(periodCashflowItems),
+    [periodCashflowItems]
+  );
+
   const monthGroups = useMemo(
-    () => groupItemsByMonth(filteredCashflowItems),
-    [filteredCashflowItems]
+    () =>
+      applyStatementPayoutTotalsToMonths({
+        monthGroups: predictedMonthGroups,
+        statementsByMonthKey: periodStatementsByMonthKey,
+        enabled: useStatementPayoutTotals,
+      }),
+    [predictedMonthGroups, periodStatementsByMonthKey, useStatementPayoutTotals]
   );
 
   const yearGroups = useMemo(() => groupMonthsByYear(monthGroups), [monthGroups]);
+
+  const selectedMonthForDisplay = useMemo(() => {
+    if (!selectedMonth) return null;
+    return monthGroups.find((month) => month.key === selectedMonth.key) ?? selectedMonth;
+  }, [monthGroups, selectedMonth]);
+
+  const selectedMonthStatements = useMemo(
+    () =>
+      selectedMonthForDisplay
+        ? periodStatementsByMonthKey[selectedMonthForDisplay.key] ?? []
+        : [],
+    [selectedMonthForDisplay, periodStatementsByMonthKey]
+  );
 
   const displayedExpandedYears = useMemo(() => {
     if (!contractNumberSearchActive) return expandedYears;
@@ -201,8 +468,12 @@ export default function CashflowPage() {
   }, [contractNumberSearchActive, expandedYears, yearGroups]);
 
   const totalCashflow = useMemo(
-    () => filteredCashflowItems.reduce((sum, item) => sum + item.amount, 0),
-    [filteredCashflowItems]
+    () => monthGroups.reduce((sum, month) => sum + month.total, 0),
+    [monthGroups]
+  );
+  const hasPaidMonthTotals = useMemo(
+    () => monthGroups.some((month) => month.totalSource === "paid"),
+    [monthGroups]
   );
 
   const toggleYear = (year: number) => {
@@ -219,6 +490,40 @@ export default function CashflowPage() {
     });
   };
 
+  const openStatementPreview = async (statement: CashflowCommissionStatementSummary) => {
+    if (!user) return;
+
+    setStatementPreviewError(null);
+    setStatementPreviewLoadingId(statement.id);
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(
+        `/api/commission-statements?id=${encodeURIComponent(statement.id)}&includeHtml=1`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        }
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; item?: CashflowCommissionStatementDetail; error?: string }
+        | null;
+      if (!response.ok || payload?.ok !== true || !payload.item?.html) {
+        throw new Error(payload?.error || "Provizní výpis se nepodařilo otevřít.");
+      }
+      setStatementPreview(payload.item);
+    } catch (error) {
+      console.warn("Cashflow: náhled provizního výpisu se nepodařilo otevřít.", error);
+      setStatementPreviewError(
+        error instanceof Error ? error.message : "Provizní výpis se nepodařilo otevřít."
+      );
+    } finally {
+      setStatementPreviewLoadingId(null);
+    }
+  };
+
   return (
     <AppLayout active="cashflow">
       <div className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
@@ -226,6 +531,7 @@ export default function CashflowPage() {
           <div className={introStyles.heroReveal} style={introDelay(40)}>
             <CashflowHeader
               totalCashflow={totalCashflow}
+              hasPaidMonthTotals={hasPaidMonthTotals}
               showPastYears={showPastYears}
               onTogglePastYears={() => setShowPastYears((value) => !value)}
               tipsterMode={isTipsterMode}
@@ -348,19 +654,24 @@ export default function CashflowPage() {
         </div>
 
         <CashflowMonthModal
-          month={selectedMonth}
+          month={selectedMonthForDisplay}
+          statements={selectedMonthStatements}
+          statementLoadingId={statementPreviewLoadingId}
           onClose={() => setSelectedMonth(null)}
-          onSelectItem={(item) => {
-            setSelectedMonth(null);
-            setSelectedItem(item);
-          }}
+          onOpenStatement={openStatementPreview}
           tipsterMode={isTipsterMode}
         />
 
-        <CashflowItemModal
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
+        <CommissionStatementPreviewModal
+          statement={statementPreview}
+          onClose={() => setStatementPreview(null)}
         />
+
+        {statementPreviewError && (
+          <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-[0_18px_42px_rgba(146,64,14,0.16)]">
+            {statementPreviewError}
+          </div>
+        )}
       </div>
     </AppLayout>
   );

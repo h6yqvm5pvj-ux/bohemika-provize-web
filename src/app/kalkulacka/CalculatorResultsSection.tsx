@@ -613,6 +613,7 @@ export function CalculatorResultsSection({
                 {(product === "domex" ||
                   product === "cpphafan" ||
                   product === "koopmajetekobcan" ||
+                  product === "koopfit" ||
                   product === "maxdomov") &&
                 paymentBasedTotalsMemo ? (
                   <div className="w-full space-y-2 border-t border-slate-200 pt-4">

@@ -7,6 +7,75 @@ import {
   type MaxCizinKomplexVariant,
 } from "../../types/domain";
 
+export type ContractCommissionPayoutStatus =
+  | "paid"
+  | "difference"
+  | "storno";
+
+export type ContractCommissionPayout = {
+  key?: string | null;
+  code?: string | null;
+  title?: string | null;
+  amount?: number | null;
+  expectedAmount?: number | null;
+  difference?: number | null;
+  status?: ContractCommissionPayoutStatus | string | null;
+  statementId?: string | null;
+  statementNumber?: string | null;
+  statementPeriod?: string | null;
+  statementDate?: string | null;
+  payoutMonthKey?: string | null;
+  writtenAtMs?: number | null;
+  writtenBy?: string | null;
+};
+
+export type ContractAutoPremiumStatementHistoryEntry = {
+  key?: string | null;
+  statementId?: string | null;
+  statementNumber?: string | null;
+  statementPeriod?: string | null;
+  statementDate?: string | null;
+  payoutMonthKey?: string | null;
+  anniversaryNumber?: number | null;
+  anniversaryDate?: string | null;
+  previousPremium?: number | null;
+  newPremium?: number | null;
+  difference?: number | null;
+  productCode?: string | null;
+  commissionCode?: string | null;
+  rowId?: string | null;
+  validFrom?: string | null;
+  source?: "own" | "manager" | string | null;
+  writtenAtMs?: number | null;
+  writtenBy?: string | null;
+};
+
+export type ContractAutoPremiumStatementRow = {
+  rowId: string;
+  contractNumber: string;
+  client: string | null;
+  productCode: string;
+  productKey: Product | null;
+  commissionCode: string;
+  basePremium: number;
+  commission: number | null;
+  signedAt: string | null;
+  validFrom: string | null;
+  source: "own" | "manager";
+};
+
+export type ContractCommissionStatementSummary = {
+  id: string;
+  fileName: string;
+  statementNumber: string | null;
+  statementDate: string | null;
+  period: string | null;
+  periodStartMs: number | null;
+  periodEndMs: number | null;
+  payoutMonthKey: string | null;
+  autoPremiumRows: ContractAutoPremiumStatementRow[];
+};
+
 export type FirestoreTimestamp = {
   seconds: number;
   nanoseconds: number;
@@ -70,6 +139,10 @@ export type ContractDoc = {
   comfortTargetAmount?: number | null;
   total?: number;
   items?: CommissionResultItemDTO[];
+  commissionPayouts?: ContractCommissionPayout[] | null;
+  premiumStatementHistory?: ContractAutoPremiumStatementHistoryEntry[] | null;
+  premiumUpdatedFromStatementAtMs?: number | null;
+  premiumUpdatedFromStatementId?: string | null;
 
   commissionMode?: CommissionMode | null;
 
@@ -79,6 +152,7 @@ export type ContractDoc = {
   clientPhone?: string | null;
   clientAddress?: string | null;
   contractNumber?: string | null;
+  maxxContractDetailUrl?: string | null;
   cppExtranetEntityTypeId?: string | number | null;
   cppExtranetEntityId?: string | number | null;
   tipContractTipsterEmail?: string | null;

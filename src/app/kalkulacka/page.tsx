@@ -109,6 +109,11 @@ import { CalculatorDurationAndFrequencySection } from "./CalculatorDurationAndFr
 import { CalculatorAmountAndActionsSection } from "./CalculatorAmountAndActionsSection";
 import { CalculatorContractDetailsSection } from "./CalculatorContractDetailsSection";
 import { CalculatorPositionModeSection } from "./CalculatorPositionModeSection";
+import {
+  CalculatorAutoPdfDetailSummary,
+  type AutoPdfDetailSummaryItem,
+  type AutoPdfDetailSummarySection,
+} from "./CalculatorAutoPdfDetailSummary";
 import { CalculatorResultsSection } from "./CalculatorResultsSection";
 import { ContractSaveSuccessOverlay } from "./ContractSaveSuccessOverlay";
 import {
@@ -764,12 +769,15 @@ export default function CalculatorPage() {
   const [autoCarAssistancePlan, setAutoCarAssistancePlan] = useState<string>("");
   const [autoCarAddonEso, setAutoCarAddonEso] = useState(false);
   const [autoCarAddonGlass, setAutoCarAddonGlass] = useState(false);
+  const [autoCarAddonGlassLimit, setAutoCarAddonGlassLimit] = useState<number | null>(null);
   const [autoCarAddonAnimalCollision, setAutoCarAddonAnimalCollision] = useState(false);
   const [autoCarAddonAnimalDamage, setAutoCarAddonAnimalDamage] = useState(false);
   const [autoCarAddonVandalism, setAutoCarAddonVandalism] = useState(false);
   const [autoCarAddonTheft, setAutoCarAddonTheft] = useState(false);
   const [autoCarAddonNatural, setAutoCarAddonNatural] = useState(false);
   const [autoCarAddonGap, setAutoCarAddonGap] = useState(false);
+  const [autoCarAddonSmartGap, setAutoCarAddonSmartGap] = useState(false);
+  const [autoCarAddonServisPro, setAutoCarAddonServisPro] = useState(false);
   const [autoCarAddonFireExplosion, setAutoCarAddonFireExplosion] = useState(false);
   const [autoCarAddonLegalAdvice, setAutoCarAddonLegalAdvice] = useState(false);
   const [autoCarAddonReplacementCar, setAutoCarAddonReplacementCar] = useState(false);
@@ -957,6 +965,7 @@ export default function CalculatorPage() {
     if (
       (product !== "domex" &&
         product !== "koopmajetekobcan" &&
+        product !== "koopfit" &&
         product !== "maxdomov") ||
       items.length === 0
     ) {
@@ -1129,6 +1138,7 @@ export default function CalculatorPage() {
       case "domex":
       case "cpphafan":
       case "koopmajetekobcan":
+      case "koopfit":
         return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}).`;
       case "pillowmajetek":
         return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.10.2023.`;
@@ -1895,12 +1905,15 @@ export default function CalculatorPage() {
       setAutoCarAssistancePlan("");
       setAutoCarAddonEso(false);
       setAutoCarAddonGlass(false);
+      setAutoCarAddonGlassLimit(null);
       setAutoCarAddonAnimalCollision(false);
       setAutoCarAddonAnimalDamage(false);
       setAutoCarAddonVandalism(false);
       setAutoCarAddonTheft(false);
       setAutoCarAddonNatural(false);
       setAutoCarAddonGap(false);
+      setAutoCarAddonSmartGap(false);
+      setAutoCarAddonServisPro(false);
       setAutoCarAddonFireExplosion(false);
       setAutoCarAddonLegalAdvice(false);
       setAutoCarAddonReplacementCar(false);
@@ -2454,12 +2467,15 @@ export default function CalculatorPage() {
       setAutoCarAssistancePlan("");
       setAutoCarAddonEso(false);
       setAutoCarAddonGlass(false);
+      setAutoCarAddonGlassLimit(null);
       setAutoCarAddonAnimalCollision(false);
       setAutoCarAddonAnimalDamage(false);
       setAutoCarAddonVandalism(false);
       setAutoCarAddonTheft(false);
       setAutoCarAddonNatural(false);
       setAutoCarAddonGap(false);
+      setAutoCarAddonSmartGap(false);
+      setAutoCarAddonServisPro(false);
       setAutoCarAddonFireExplosion(false);
       setAutoCarAddonLegalAdvice(false);
       setAutoCarAddonReplacementCar(false);
@@ -2738,6 +2754,11 @@ export default function CalculatorPage() {
             : null;
         setAutoCarLiabilityLimit(liabilityLimit);
         if (liabilityLimit != null) applied += 1;
+        if (importProduct === "cppAuto" && liabilityLimit === 200_000_000) {
+          setAutoCarAddonSmartGap(true);
+          setAutoCarAddonServisPro(true);
+          applied += 2;
+        }
       }
       if ("carHullSumInsured" in parsed) {
         const hullSumInsured =
@@ -2819,6 +2840,18 @@ export default function CalculatorPage() {
         setAutoCarAddonGlass(addon);
         if (addon) applied += 1;
       }
+      if ("carAddonGlassLimit" in parsed) {
+        const limit =
+          typeof parsed.carAddonGlassLimit === "number" &&
+          Number.isFinite(parsed.carAddonGlassLimit)
+            ? Math.round(parsed.carAddonGlassLimit)
+            : null;
+        setAutoCarAddonGlassLimit(limit);
+        if (limit != null) {
+          setAutoCarAddonGlass(true);
+          applied += 1;
+        }
+      }
       if ("carAddonAnimalCollision" in parsed) {
         const addon = parsed.carAddonAnimalCollision === true;
         setAutoCarAddonAnimalCollision(addon);
@@ -2847,6 +2880,16 @@ export default function CalculatorPage() {
       if ("carAddonGap" in parsed) {
         const addon = parsed.carAddonGap === true;
         setAutoCarAddonGap(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonSmartGap" in parsed) {
+        const addon = parsed.carAddonSmartGap === true;
+        setAutoCarAddonSmartGap(addon);
+        if (addon) applied += 1;
+      }
+      if ("carAddonServisPro" in parsed) {
+        const addon = parsed.carAddonServisPro === true;
+        setAutoCarAddonServisPro(addon);
         if (addon) applied += 1;
       }
       if ("carAddonFireExplosion" in parsed) {
@@ -3029,7 +3072,8 @@ export default function CalculatorPage() {
     if (
       product === "domex" ||
       product === "cpphafan" ||
-      product === "koopmajetekobcan"
+      product === "koopmajetekobcan" ||
+      product === "koopfit"
     ) {
       const dto =
         product === "domex"
@@ -4003,6 +4047,17 @@ export default function CalculatorPage() {
               product === "pillowAuto"
                 ? autoCarAddonGlass
                 : null,
+            carAddonGlassLimit:
+              product === "cppAuto" ||
+              product === "slaviaauto" ||
+              product === "kooperativaAuto" ||
+              product === "allianzAuto" ||
+              product === "csobAuto" ||
+              product === "pillowAuto"
+                ? autoCarAddonGlass
+                  ? autoCarAddonGlassLimit
+                  : null
+                : null,
             carAddonAnimalCollision:
               product === "slaviaauto" ? autoCarAddonAnimalCollision : null,
             carAddonAnimalDamage:
@@ -4021,6 +4076,8 @@ export default function CalculatorPage() {
                 ? autoCarAddonNatural
                 : null,
             carAddonGap: product === "allianzAuto" ? autoCarAddonGap : null,
+            carAddonSmartGap: product === "cppAuto" ? autoCarAddonSmartGap : null,
+            carAddonServisPro: product === "cppAuto" ? autoCarAddonServisPro : null,
             carAddonFireExplosion:
               product === "allianzAuto" ? autoCarAddonFireExplosion : null,
             carAddonLegalAdvice:
@@ -4376,6 +4433,93 @@ export default function CalculatorPage() {
     : null;
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
   const currentProductInstitutionId = productInstitutionIdFromCatalog(product);
+  const autoPdfDetailItems: AutoPdfDetailSummaryItem[] = (() => {
+    if (!isAutoProduct(product)) return [];
+
+    const items: AutoPdfDetailSummaryItem[] = [];
+    const addText = (section: AutoPdfDetailSummarySection, label: string, value: string) => {
+      const normalized = value.trim();
+      if (normalized) items.push({ section, label, value: normalized });
+    };
+    const addMoney = (
+      section: AutoPdfDetailSummarySection,
+      label: string,
+      value: number | null
+    ) => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        items.push({ section, label, value: formatMoney(value) });
+      }
+    };
+    const addBoolean = (
+      section: AutoPdfDetailSummarySection,
+      label: string,
+      value: boolean
+    ) => {
+      if (value) items.push({ section, label, value: "Ano" });
+    };
+    const addGlass = () => {
+      if (!autoCarAddonGlass) return;
+      const glassLimit =
+        typeof autoCarAddonGlassLimit === "number" && Number.isFinite(autoCarAddonGlassLimit)
+          ? formatMoney(autoCarAddonGlassLimit)
+          : null;
+      items.push({
+        section: "addons",
+        label: "Skla",
+        value: "Ano",
+        ...(glassLimit ? { sideLabel: "Limit", sideValue: glassLimit } : {}),
+      });
+    };
+
+    addText("vehicle", "Značka/model", autoCarMake);
+    addText("vehicle", "RZ", autoCarPlate);
+    addText("vehicle", "VIN", autoCarVin);
+    if (product === "slaviaauto") addText("vehicle", "TP", autoCarTp);
+    addText("vehicle", "ORV", autoCarOrv);
+    if (product === "allianzAuto" || product === "pillowAuto") {
+      addText("vehicle", "Roční nájezd", autoCarAnnualMileage);
+    }
+    if (product === "allianzAuto") addText("vehicle", "Rozsah Allianz", autoCarAllianzScope);
+    addMoney("liability", "Limit odpovědnosti", autoCarLiabilityLimit);
+    const hullSumInsuredText = autoCarHullSumInsuredText.trim();
+    if (product === "pillowAuto" && hullSumInsuredText) {
+      addText("hull", "Havarijní pojistná částka", hullSumInsuredText);
+    } else {
+      addMoney("hull", "Havarijní pojistná částka", autoCarHullSumInsured);
+    }
+    const hullDeductibleText = autoCarHullDeductibleText.trim();
+    if (hullDeductibleText) {
+      addText("hull", "Spoluúčast havárie", hullDeductibleText);
+    } else {
+      addMoney("hull", "Spoluúčast havárie", autoCarHullDeductible);
+    }
+    addBoolean("hull", "Havárie", autoCarHullRiskAccident);
+    addBoolean("hull", "Odcizení", autoCarHullRiskTheft);
+    addBoolean("hull", "Živel", autoCarHullRiskNatural);
+    addBoolean("hull", "Vandalismus", autoCarHullRiskVandalism);
+    addBoolean("hull", "Střet se zvířetem", autoCarHullRiskAnimalCollision);
+    addText("addons", "Asistence", autoCarAssistancePlan);
+    addBoolean("addons", "ESO", autoCarAddonEso);
+    addGlass();
+    addBoolean("addons", "Střet se zvířetem", autoCarAddonAnimalCollision);
+    addBoolean("addons", "Poškození zvířetem", autoCarAddonAnimalDamage);
+    addBoolean("addons", "Vandalismus", autoCarAddonVandalism);
+    addBoolean("addons", "Odcizení", autoCarAddonTheft);
+    addBoolean("addons", "Živel", autoCarAddonNatural);
+    addBoolean("addons", "GAP", autoCarAddonGap);
+    addBoolean("addons", "SmartGAP", autoCarAddonSmartGap);
+    addBoolean("addons", "ServisPRO", autoCarAddonServisPro);
+    addBoolean("addons", "Požár/výbuch", autoCarAddonFireExplosion);
+    addBoolean("addons", "Právní poradenství", autoCarAddonLegalAdvice);
+    addBoolean("addons", "Náhradní vozidlo", autoCarAddonReplacementCar);
+    addBoolean("addons", "Zavazadla", autoCarAddonLuggage);
+    addBoolean("addons", "Přepravované věci", autoCarAddonTransportedGoods);
+    addBoolean("addons", "Výtluk", autoCarAddonPothole);
+    addBoolean("addons", "Nezaviněná nehoda", autoCarAddonNonFaultAccident);
+    addBoolean("addons", "Ztráta/odcizení klíčů", autoCarAddonKeyLossTheft);
+
+    return items;
+  })();
   const durationHelp = durationTooltip(product, isNeonHistoricalBySignedDate);
   const canChooseMode =
     isLifeProduct &&
@@ -4450,7 +4594,8 @@ export default function CalculatorPage() {
         return calculatePillowInjury(val, pos, usedMode);
       case "domex":
       case "cpphafan":
-      case "koopmajetekobcan": {
+      case "koopmajetekobcan":
+      case "koopfit": {
         const dto =
           product === "domex"
             ? calculateDomex(val, freq, pos)
@@ -4702,8 +4847,8 @@ export default function CalculatorPage() {
           </div>
         )}
 
-        <div className="grid gap-6 items-start lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-5 w-full lg:max-w-3xl">
+        <div className="grid gap-5 items-start lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-3.5 w-full lg:max-w-3xl">
             {/* Produkt + PDF import */}
             <CalculatorProductAndPdfSection
               canImportFromPdf={canImportFromPdf && isAddContractMode}
@@ -4730,7 +4875,7 @@ export default function CalculatorPage() {
               onDrop={handlePdfDrop}
             />
 
-            <section className="rounded-[1.35rem] border border-slate-300 bg-white/95 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.06)] space-y-4">
+            <section className="rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] space-y-3">
               {/* Doba trvání + platba */}
               <CalculatorDurationAndFrequencySection
                 embedded
@@ -4854,6 +4999,8 @@ export default function CalculatorPage() {
               onPositionChange={canChoosePositionManually ? setPosition : () => {}}
               onModeChange={setMode}
             />
+
+            <CalculatorAutoPdfDetailSummary items={autoPdfDetailItems} />
           </div>
 
           <CalculatorResultsSection

@@ -45,7 +45,10 @@ import {
   NeonDetailPanel,
 } from "./ContractDetailPanels";
 import { Spinner, Skeleton, Toasts } from "./ContractDetailUi";
-import { type ContractDoc } from "./contractDetailTypes";
+import {
+  type ContractCommissionStatementSummary,
+  type ContractDoc,
+} from "./contractDetailTypes";
 import {
   computeTotalWithMultipliers,
   formatDate,
@@ -94,6 +97,8 @@ import {
   ContractCommissionSection,
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
+import { ContractCommissionHistory } from "./ContractCommissionHistory";
+import { ContractAutoPremiumHistory } from "./ContractAutoPremiumHistory";
 import { fetchAuthedBlob } from "@/app/lib/authenticatedApi";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
@@ -115,6 +120,7 @@ import { parseSlaviaAutoPdf } from "@/app/lib/parseSlaviaAutoPdf";
 
 const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
+const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = false;
 
 const normalizeCppExtranetParam = (
   value: string | number | null | undefined
@@ -134,6 +140,21 @@ const buildCppExtranetDetailUrl = (contract: ContractDoc | null): string | null 
     p_EntityID: entityId,
   });
   return `${CPP_EXTRANET_REDIRECT_URL}?${params.toString()}`;
+};
+
+const normalizeMaxxContractDetailUrl = (
+  value: string | null | undefined
+): string | null => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || normalized.toLowerCase().startsWith("javascript:")) return null;
+
+  try {
+    const url = new URL(normalized);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 };
 
 type ContractPdfPreviewPage = {
@@ -551,6 +572,11 @@ export default function ContractDetailPage() {
   const [contractTimeline, setContractTimeline] = useState<ContractDoc[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [commissionStatements, setCommissionStatements] = useState<
+    ContractCommissionStatementSummary[]
+  >([]);
+  const [commissionStatementsLoading, setCommissionStatementsLoading] = useState(false);
+  const [commissionStatementsError, setCommissionStatementsError] = useState<string | null>(null);
 
   const [overrideItems, setOverrideItems] = useState<
     CommissionResultItemDTO[] | null
@@ -817,6 +843,74 @@ export default function ContractDetailPage() {
     };
   }, [entryId, ownerEmail, requestContractsApi, user]);
 
+  useEffect(() => {
+    const shouldLoadStatements =
+      Boolean(user) &&
+      Boolean(contract?.contractNumber) &&
+      isAutoProduct(contract?.productKey ?? null);
+
+    if (!shouldLoadStatements || !user) {
+      setCommissionStatements([]);
+      setCommissionStatementsLoading(false);
+      setCommissionStatementsError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadStatements = async () => {
+      setCommissionStatementsLoading(true);
+      setCommissionStatementsError(null);
+
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch("/api/commission-statements?limit=240", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | {
+              ok?: boolean;
+              items?: ContractCommissionStatementSummary[];
+              error?: string;
+            }
+          | null;
+
+        if (!response.ok || payload?.ok !== true || !Array.isArray(payload.items)) {
+          throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
+        }
+
+        if (!cancelled) {
+          setCommissionStatements(payload.items);
+        }
+      } catch (statementError) {
+        if (cancelled) return;
+        console.warn(
+          "Detail smlouvy: provizní výpisy pro historii pojistného se nepodařilo načíst.",
+          statementError
+        );
+        setCommissionStatements([]);
+        setCommissionStatementsError(
+          statementError instanceof Error
+            ? statementError.message
+            : "Provizní výpisy se nepodařilo načíst."
+        );
+      } finally {
+        if (!cancelled) {
+          setCommissionStatementsLoading(false);
+        }
+      }
+    };
+
+    void loadStatements();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contract?.contractNumber, contract?.productKey, user]);
+
   const isEndorsement = contract?.entryType === "endorsement";
   const lifecycleInput = {
     status: contract?.status,
@@ -1074,6 +1168,7 @@ export default function ContractDetailPage() {
       : prod && KOOPERATIVA_PAYMENT_CHECK_PRODUCTS.has(prod)
       ? KOOPERATIVA_PAYMENT_CHECK_URL
       : null;
+  const maxxContractDetailUrl = normalizeMaxxContractDetailUrl(contract?.maxxContractDetailUrl);
   const cppExtranetDetailUrl = buildCppExtranetDetailUrl(contract);
   const contractPdfAttachment = contract?.contractPdfAttachment ?? null;
   const hasContractPdfAttachment = Boolean(
@@ -1171,6 +1266,7 @@ export default function ContractDetailPage() {
     prod === "domex" ||
     prod === "cpphafan" ||
     prod === "koopmajetekobcan" ||
+    prod === "koopfit" ||
     prod === "maxdomov";
   const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
   const adjustLegacyPerPaymentTotal = useCallback(
@@ -3723,7 +3819,7 @@ export default function ContractDetailPage() {
 
   // vyfiltrované položky bez řádku "Celkem" a bez ročních součtů u produktů placených dle platby
   const filterPaymentBasedItems = (arr: CommissionResultItemDTO[]) => {
-    if (prod === "domex" || prod === "cpphafan" || prod === "koopmajetekobcan") {
+    if (prod === "domex" || prod === "cpphafan" || prod === "koopmajetekobcan" || prod === "koopfit") {
       return arr.filter((it) =>
         (it.title ?? "").toLowerCase().includes("(z platby)")
       );
@@ -4280,7 +4376,7 @@ export default function ContractDetailPage() {
                   </Link>
                 )}
 
-                {hasAnyContractPdfAttachment && (
+                {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
                   <div className="relative">
                     <button
                       type="button"
@@ -4332,6 +4428,18 @@ export default function ContractDetailPage() {
                   </div>
                 )}
 
+                {maxxContractDetailUrl && (
+                  <a
+                    href={maxxContractDetailUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                  >
+                    <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>Otevřít smlouvu v MAXX</span>
+                  </a>
+                )}
+
                 {cppExtranetDetailUrl && (
                   <a
                     href={cppExtranetDetailUrl}
@@ -4340,7 +4448,7 @@ export default function ContractDetailPage() {
                     className={`${headerActionButtonClass} inline-flex items-center gap-2`}
                   >
                     <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
-                    <span>Otevřít ČPP extranet</span>
+                    <span>Otevřít extranet</span>
                   </a>
                 )}
 
@@ -4970,24 +5078,43 @@ export default function ContractDetailPage() {
             )}
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)] lg:items-start">
-              <ContractCommissionSection
-                product={prod}
-                isOwnContract={isOwnContract}
-                isPaymentBasedProduct={isPaymentBasedProduct}
-                showAnyMeziprovision={showAnyMeziprovision}
-                meziprovisionCards={meziprovisionCards}
-                expandedMeziprovisionKeys={expandedMeziprovisionKeys}
-                onToggleMeziprovisionCard={toggleMeziprovisionCard}
-                adviserItems={adviserItems}
-                adviserBreakdownPosition={adviserBreakdownPosition}
-                adviserBreakdownMode={adviserBreakdownMode}
-                paymentBasedAdviserTotals={paymentBasedAdviserTotals}
-                adviserTotalDisplay={adviserTotalDisplay}
-                contractAuthorName={contractAuthorName}
-                showAdvisorDetails={showAdvisorDetails}
-                onToggleAdvisorDetails={() => setShowAdvisorDetails((v) => !v)}
-                onOpenNeonImmediateBreakdown={handleOpenNeonImmediateBreakdown}
-              />
+              <div className="space-y-5">
+                <ContractCommissionSection
+                  product={prod}
+                  isOwnContract={isOwnContract}
+                  isPaymentBasedProduct={isPaymentBasedProduct}
+                  showAnyMeziprovision={showAnyMeziprovision}
+                  meziprovisionCards={meziprovisionCards}
+                  expandedMeziprovisionKeys={expandedMeziprovisionKeys}
+                  onToggleMeziprovisionCard={toggleMeziprovisionCard}
+                  adviserItems={adviserItems}
+                  commissionPayouts={contract?.commissionPayouts ?? []}
+                  contractDurationYears={contract?.durationYears ?? null}
+                  adviserBreakdownPosition={adviserBreakdownPosition}
+                  adviserBreakdownMode={adviserBreakdownMode}
+                  paymentBasedAdviserTotals={paymentBasedAdviserTotals}
+                  adviserTotalDisplay={adviserTotalDisplay}
+                  contractAuthorName={contractAuthorName}
+                  showAdvisorDetails={showAdvisorDetails}
+                  onToggleAdvisorDetails={() => setShowAdvisorDetails((v) => !v)}
+                  onOpenNeonImmediateBreakdown={handleOpenNeonImmediateBreakdown}
+                />
+
+                <ContractCommissionHistory
+                  payouts={contract?.commissionPayouts ?? []}
+                />
+
+                <ContractAutoPremiumHistory
+                  product={prod}
+                  contractNumber={contract?.contractNumber ?? null}
+                  policyStartDate={contract?.policyStartDate ?? null}
+                  systemAnnualPremium={premium}
+                  statements={commissionStatements}
+                  storedHistory={contract?.premiumStatementHistory ?? []}
+                  loading={commissionStatementsLoading}
+                  error={commissionStatementsError}
+                />
+              </div>
 
                 {/* POZNÁMKA */}
                 <section className={`${noteCardClass} space-y-4 lg:h-fit lg:mt-10 lg:w-full lg:max-w-[500px] lg:justify-self-end`}>

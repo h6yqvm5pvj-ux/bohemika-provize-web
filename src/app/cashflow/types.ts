@@ -69,13 +69,20 @@ export type CashflowItem = {
   contractNumber?: string | null;
   clientName?: string | null;
   inputAmount?: number | null;
+  policyStartDate?: Date | null;
   contractStatus?: "active" | "storno" | "dozita" | string | null;
   ownerEmail: string | null;
   entryId: string | null;
   isManagerOverride?: boolean;
+  commissionCode?: string | null;
+  commissionCodeAliases?: string[];
+  commissionLabel?: string | null;
   isTipPayout?: boolean;
   tipSourceAdviserEmail?: string | null;
   tipSourceAdviserName?: string | null;
+  payoutStatus?: "predicted" | "paid" | "shifted";
+  originalDate?: Date | null;
+  missedStatementPeriods?: string[];
 };
 
 export type MonthGroup = {
@@ -84,7 +91,35 @@ export type MonthGroup = {
   monthIndex: number;
   label: string;
   total: number;
+  predictedTotal: number;
+  totalSource: "predicted" | "paid";
+  statementPayoutTotal: number | null;
   items: CashflowItem[];
+};
+
+export type CashflowCommissionStatementSummary = {
+  id: string;
+  fileName: string;
+  statementNumber: string | null;
+  statementDate: string | null;
+  period: string | null;
+  advisorNumber: string | null;
+  periodStartMs: number | null;
+  periodEndMs: number | null;
+  statementDateMs: number | null;
+  payoutMonthKey: string | null;
+  paidContractNumbers: string[];
+  paidCommissionKeys: string[];
+  commissionTotal: number;
+  payoutTotal: number | null;
+  otherPaymentsTotal: number;
+  managerCommissionTotal: number;
+  createdAtMs: number | null;
+  updatedAtMs: number | null;
+};
+
+export type CashflowCommissionStatementDetail = CashflowCommissionStatementSummary & {
+  html: string;
 };
 
 export type YearGroup = {

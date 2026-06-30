@@ -26,6 +26,7 @@ export type CppAutoPdfResult = {
   carAssistancePlan?: string | null;
   carAddonEso?: boolean | null;
   carAddonGlass?: boolean | null;
+  carAddonGlassLimit?: number | null;
 };
 
 type PositionedTextItem = {
@@ -574,7 +575,19 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   }
 
   result.carAddonEso = /pojisteni\s+eso/i.test(ascii);
-  result.carAddonGlass = /pojisteni\s+skel\s+vozidla/i.test(ascii);
+
+  const glassSectionStarts = findLabelIndexes(asciiLines, /pojisteni\s+skel\s+vozidla/i);
+  result.carAddonGlass =
+    glassSectionStarts.length > 0 || /pojisteni\s+skel\s+vozidla/i.test(ascii);
+  for (const sectionStart of glassSectionStarts) {
+    const glassLimit = parseAmount(
+      readSectionValue(lines, asciiLines, sectionStart, /^limit\s+plneni\b/i, 6, 40)
+    );
+    if (glassLimit != null && glassLimit > 0) {
+      result.carAddonGlassLimit = glassLimit;
+      break;
+    }
+  }
 
   const hullSectionStarts = findLabelIndexes(asciiLines, /^havarijni\s+pojisteni\b/i);
   for (const sectionStart of hullSectionStarts) {

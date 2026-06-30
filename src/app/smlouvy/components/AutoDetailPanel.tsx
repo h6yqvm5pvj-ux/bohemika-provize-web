@@ -202,6 +202,85 @@ const ToggleRow = ({
   </button>
 );
 
+const AddonToggleWithLimitRow = ({
+  label,
+  checked,
+  disabled,
+  editMode,
+  limitField,
+  limitAmount,
+  limitValue,
+  onToggle,
+  onLimitChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  editMode: boolean;
+  limitField: AutoAddonLimitField;
+  limitAmount: number | null;
+  limitValue: string;
+  onToggle: (val: boolean) => void;
+  onLimitChange: (key: AutoAddonLimitField, value: string) => void;
+}) => {
+  const selectedClass = checked
+    ? "border-slate-900 bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.18)]"
+    : "border-slate-300 bg-white text-slate-900";
+  const disabledClass = disabled ? "opacity-60 cursor-not-allowed" : "";
+
+  return (
+    <div
+      className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition ${selectedClass} ${disabledClass}`}
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onToggle(!checked)}
+        className="min-w-0 flex-1 text-left font-medium"
+      >
+        {label}
+      </button>
+      {checked && editMode && (
+        <div className="relative w-32 shrink-0">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={limitValue}
+            onChange={(e) => onLimitChange(limitField, e.target.value)}
+            className="w-full rounded-lg border border-white/40 bg-white px-2 py-1 pr-8 text-right text-xs font-semibold text-slate-900 outline-none focus:border-white focus:ring-2 focus:ring-white/40"
+            placeholder="20 000"
+          />
+          <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs font-semibold text-slate-500">
+            Kč
+          </span>
+        </div>
+      )}
+      {checked && !editMode && limitAmount != null && (
+        <div className="shrink-0 text-right">
+          <div className="text-[10px] font-bold uppercase leading-tight text-white/65">
+            Limit
+          </div>
+          <div className="mt-0.5 whitespace-nowrap text-sm font-bold leading-tight text-white">
+            {formatMoney(limitAmount)}
+          </div>
+        </div>
+      )}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onToggle(!checked)}
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
+          checked
+            ? "border-slate-900 bg-white text-slate-900"
+            : "border-slate-300 bg-slate-100 text-slate-500"
+        }`}
+      >
+        {checked ? "✓" : ""}
+      </button>
+    </div>
+  );
+};
+
 const SectionTitle = ({
   icon: Icon,
   label,
@@ -229,6 +308,11 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
   const vehicleDataHref = resolvedVin
     ? `/pomucky/proklepka-vozidla?vin=${encodeURIComponent(resolvedVin)}`
     : "/pomucky/proklepka-vozidla";
+  const hasTextValue = (value: string | undefined | null) => {
+    const normalized = value?.trim();
+    return Boolean(normalized && normalized !== "—" && normalized !== "-");
+  };
+  const hasTpValue = hasTextValue(contract?.carTp) || hasTextValue(fields.carTp);
 
   const hasHullData =
     contract?.carHullSumInsured != null ||
@@ -346,22 +430,24 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
               )}
             </span>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">TP</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <input
-                  type="text"
-                  value={fields.carTp}
-                  onChange={(e) => onChange("carTp", e.target.value)}
-                  className="w-36 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                  placeholder="Číslo TP"
-                />
-              ) : (
-                contract?.carTp || fields.carTp || "—"
-              )}
-            </span>
-          </div>
+          {(editMode || hasTpValue) && (
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">TP</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={fields.carTp}
+                    onChange={(e) => onChange("carTp", e.target.value)}
+                    className="w-36 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                    placeholder="Číslo TP"
+                  />
+                ) : (
+                  contract?.carTp || fields.carTp
+                )}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">ORV</span>
             <span className="font-semibold text-right">
@@ -658,6 +744,24 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
               const showLimitValue = Boolean(
                 limitConfig && !editMode && limitConfig.amount != null
               );
+              const showInlineLimit = item.key === "carAddonGlass" && limitConfig;
+
+              if (showInlineLimit) {
+                return (
+                  <AddonToggleWithLimitRow
+                    key={item.key}
+                    label={item.label}
+                    checked={item.checked}
+                    disabled={!editMode}
+                    editMode={editMode}
+                    limitField={limitConfig.field}
+                    limitAmount={limitConfig.amount}
+                    limitValue={fields[limitConfig.field]}
+                    onToggle={(val) => onChange(item.key as keyof AutoFields, val)}
+                    onLimitChange={(key, value) => onChange(key, value)}
+                  />
+                );
+              }
 
               return (
                 <div key={item.key} className="space-y-2">

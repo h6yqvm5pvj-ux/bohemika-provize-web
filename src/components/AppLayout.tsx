@@ -53,7 +53,7 @@ const APP_LAYOUT_COPY: Record<
     nav: {
       home: "Domů",
       intranet: "Intranet",
-      calc: "Kalkulačka",
+      calc: "Přidat smlouvu",
       clients: "Klienti",
       contracts: "Smlouvy",
       cashflow: "Provizní kalendář",

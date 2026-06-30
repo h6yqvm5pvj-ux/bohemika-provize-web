@@ -2,6 +2,14 @@ import type { PaymentFrequency } from "../types/domain";
 import { toDate } from "./helpers";
 import type { CashflowItem, EntryDoc } from "./types";
 
+type ImmediateCashflowPart = {
+  title: string;
+  amount: number;
+  commissionCode: string;
+  commissionCodeAliases: string[];
+  commissionLabel: string;
+};
+
 export function estimatePayoutDate(
   policyStart: Date,
   agreementDate?: Date | null,
@@ -21,6 +29,40 @@ export function estimatePayoutDate(
   }
 
   return new Date(year, month + 1, payoutDay);
+}
+
+function isSameCalendarMonth(left: Date, right: Date): boolean {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth()
+  );
+}
+
+function estimateAutoFirstPayoutDate(
+  policyStart: Date,
+  agreementDate?: Date | null,
+  payoutDay = 25
+): Date {
+  if (agreementDate && isSameCalendarMonth(policyStart, agreementDate)) {
+    return new Date(policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
+  }
+
+  return estimatePayoutDate(policyStart, agreementDate, 25, payoutDay);
+}
+
+const AUTO_CASHFLOW_PRODUCTS = new Set<EntryDoc["productKey"]>([
+  "allianzAuto",
+  "cppAuto",
+  "csobAuto",
+  "kooperativaAuto",
+  "pillowAuto",
+  "slaviaauto",
+  "uniqaAuto",
+  "uniqaflotila",
+]);
+
+function isAutoCashflowProduct(product: EntryDoc["productKey"]): boolean {
+  return AUTO_CASHFLOW_PRODUCTS.has(product);
 }
 
 export function monthsBetweenPayments(freq?: PaymentFrequency | null): number {
@@ -71,6 +113,85 @@ function earlierDate(a: Date, b: Date): Date {
   return a.getTime() <= b.getTime() ? a : b;
 }
 
+function isSplitImmediateProduct(product: EntryDoc["productKey"]): boolean {
+  return product === "neon" || product === "flexi";
+}
+
+const normalizeCommissionCode = (code: string | null | undefined): string =>
+  String(code ?? "").trim().toUpperCase().replace(/\s+/g, "");
+
+const commissionCodeAliasesForCashflow = (code: string): string[] => {
+  if (code === "B36_HALF" || code === "B3601_HALF") return ["B36_HALF", "B3601_HALF"];
+  if (code === "B36" || code === "B3601") return ["B36", "B3601"];
+  if (code === "B48" || code === "B4801") return ["B48", "B4801"];
+  return [code];
+};
+
+const commissionMetadataFromCode = (
+  code: string | null | undefined,
+  label: string
+):
+  | Pick<CashflowItem, "commissionCode" | "commissionCodeAliases" | "commissionLabel">
+  | Record<string, never> => {
+  const normalizedCode = normalizeCommissionCode(code);
+  if (!normalizedCode || normalizedCode === "TOTAL") return {};
+  return {
+    commissionCode: normalizedCode,
+    commissionCodeAliases: commissionCodeAliasesForCashflow(normalizedCode),
+    commissionLabel: label,
+  };
+};
+
+function splitImmediatePartFromTitle(
+  title: string,
+  amount: number,
+  product: EntryDoc["productKey"],
+  code?: string | null
+): ImmediateCashflowPart | null {
+  if (!isSplitImmediateProduct(product)) return null;
+  if (!Number.isFinite(amount) || amount === 0) return null;
+  const normalizedCode = normalizeCommissionCode(code);
+
+  if (normalizedCode === "A101" || title.includes("provize a101")) {
+    return {
+      title,
+      amount,
+      commissionCode: "A101",
+      commissionCodeAliases: ["A101", "A102"],
+      commissionLabel: "Provize A101",
+    };
+  }
+
+  if (normalizedCode === "B0301" || title.includes("provize b0301")) {
+    return {
+      title,
+      amount,
+      commissionCode: "B0301",
+      commissionCodeAliases: ["B0301"],
+      commissionLabel: "Provize B0301",
+    };
+  }
+
+  if (
+    normalizedCode === "B3601_HALF" ||
+    normalizedCode === "B36_HALF" ||
+    title.includes("50% z b3601") ||
+    title.includes("50% z b36")
+  ) {
+    const label = product === "flexi" ? "Provize 50% z B36" : "Provize 50% z B3601";
+    const halfCode = product === "flexi" ? "B36_HALF" : "B3601_HALF";
+    return {
+      title,
+      amount,
+      commissionCode: halfCode,
+      commissionCodeAliases: ["B36_HALF", "B3601_HALF"],
+      commissionLabel: label,
+    };
+  }
+
+  return null;
+}
+
 export function generateCashflow(
   entries: EntryDoc[],
   horizonYears = 10
@@ -116,6 +237,7 @@ export function generateCashflow(
     const items = (entry.items ?? []).map((it) => ({
       title: (it.title ?? "").toLowerCase(),
       amount: it.amount ?? 0,
+      code: it.code ?? null,
     }));
 
     const immediateItems = items.filter(
@@ -133,6 +255,9 @@ export function generateCashflow(
             amount: immediateItems.reduce((sum, item) => sum + item.amount, 0),
           }
         : null;
+    const splitImmediateParts = items
+      .map((item) => splitImmediatePartFromTitle(item.title, item.amount, product, item.code))
+      .filter((item): item is ImmediateCashflowPart => Boolean(item));
     const po3 = items.find((item) => item.title.includes("po 3 letech"));
     const po4 = items.find((item) => item.title.includes("po 4 letech"));
     const nasl25 = items.find((item) =>
@@ -162,14 +287,17 @@ export function generateCashflow(
       amount: number,
       date: Date,
       note?: string,
-      horizonLimit: Date = entryHorizonEnd
+      horizonLimit: Date = entryHorizonEnd,
+      metadata: Partial<
+        Pick<CashflowItem, "commissionCode" | "commissionCodeAliases" | "commissionLabel">
+      > = {}
     ) => {
       if (!Number.isFinite(amount) || amount === 0) return;
       if (date > horizonLimit) return;
       if (stornoCutoffDate && isFromStornoMonth(date, stornoCutoffDate)) return;
 
       out.push({
-        id: `${entry.id}-${date.getTime()}-${note ?? ""}-${globalItemSequence++}`,
+        id: `${entry.id}-${date.getTime()}-${metadata.commissionCode ?? ""}-${note ?? ""}-${globalItemSequence++}`,
         date,
         amount,
         productKey: product ?? "unknown",
@@ -186,11 +314,35 @@ export function generateCashflow(
         contractNumber: entry.contractNumber ?? null,
         clientName: entry.clientName ?? null,
         inputAmount: Number.isFinite(Number(entry.inputAmount)) ? Number(entry.inputAmount) : null,
+        policyStartDate: start,
         contractStatus: status,
         ownerEmail: normalizedOwnerEmail,
         entryId: baseEntryId ?? null,
         isManagerOverride: entry.source === "manager",
+        ...metadata,
       });
+    };
+
+    const pushImmediateCashflowItems = (
+      horizonLimit: Date = entryHorizonEnd
+    ) => {
+      const payoutDate = estimatePayoutDate(start, agreement);
+      if (splitImmediateParts.length > 0) {
+        for (const part of splitImmediateParts) {
+          pushItem(part.amount, payoutDate, part.commissionLabel, horizonLimit, {
+            commissionCode: part.commissionCode,
+            commissionCodeAliases: part.commissionCodeAliases,
+            commissionLabel: part.commissionLabel,
+          });
+        }
+        return;
+      }
+
+      if (immediate) {
+        pushItem(immediate.amount, payoutDate, undefined, horizonLimit, {
+          commissionLabel: "Okamžitá provize",
+        });
+      }
     };
 
     const annPlusYears = (years: number) =>
@@ -205,14 +357,25 @@ export function generateCashflow(
     switch (product) {
       case "neon":
       {
-        if (immediate) {
+        pushImmediateCashflowItems();
+        if (po3) {
           pushItem(
-            immediate.amount,
-            estimatePayoutDate(start, agreement)
+            po3.amount,
+            annPlusYears(3),
+            "Provize po 3 letech",
+            entryHorizonEnd,
+            commissionMetadataFromCode(po3.code, "Provize po 3 letech")
           );
         }
-        if (po3) pushItem(po3.amount, annPlusYears(3));
-        if (po4) pushItem(po4.amount, annPlusYears(4));
+        if (po4) {
+          pushItem(
+            po4.amount,
+            annPlusYears(4),
+            "Provize po 4 letech",
+            entryHorizonEnd,
+            commissionMetadataFromCode(po4.code, "Provize po 4 letech")
+          );
+        }
 
         const maxYears = Math.max(1, entry.durationYears ?? 10);
         if (nasl25) {
@@ -262,16 +425,25 @@ export function generateCashflow(
           maxYears != null ? annPlusYears(maxYears) : entryHorizonEnd;
         const flexiHorizonEnd = earlierDate(flexiContractEnd, entryHorizonEnd);
 
-        if (immediate) {
+        pushImmediateCashflowItems(flexiHorizonEnd);
+        if (po3) {
           pushItem(
-            immediate.amount,
-            estimatePayoutDate(start, agreement),
-            undefined,
-            flexiHorizonEnd
+            po3.amount,
+            annPlusYears(3),
+            "Provize po 3 letech",
+            flexiHorizonEnd,
+            commissionMetadataFromCode(po3.code, "Provize po 3 letech")
           );
         }
-        if (po3) pushItem(po3.amount, annPlusYears(3), undefined, flexiHorizonEnd);
-        if (po4) pushItem(po4.amount, annPlusYears(4), undefined, flexiHorizonEnd);
+        if (po4) {
+          pushItem(
+            po4.amount,
+            annPlusYears(4),
+            "Provize po 4 letech",
+            flexiHorizonEnd,
+            commissionMetadataFromCode(po4.code, "Provize po 4 letech")
+          );
+        }
 
         if (naslOd6) {
           let year = 6;
@@ -288,6 +460,7 @@ export function generateCashflow(
       case "domex":
       case "cpphafan":
       case "koopmajetekobcan":
+      case "koopfit":
       case "cppPPRbez": {
         const immediateDomex =
           items.find((item) =>
@@ -320,6 +493,8 @@ export function generateCashflow(
                   ? "HAFAN"
                   : product === "koopmajetekobcan"
                   ? "Kooperativa majetek/odpovědnost"
+                  : product === "koopfit"
+                  ? "Kooperativa Sportovní výbava FIT"
                   : "ČPP PPR"
               }, ${
                 stepMonths === 1 ? "měsíčně" : `každých ${stepMonths} měsíců`
@@ -406,7 +581,9 @@ export function generateCashflow(
       case "uniqaflotila": {
         if (!immediate) break;
 
-        const first = estimatePayoutDate(start, agreement);
+        const first = isAutoCashflowProduct(product)
+          ? estimateAutoFirstPayoutDate(start, agreement)
+          : estimatePayoutDate(start, agreement);
         if (first <= entryHorizonEnd) {
           pushItem(
             immediate.amount,
@@ -453,7 +630,9 @@ export function generateCashflow(
 
         const amount = immediate.amount;
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
-        let payout = estimatePayoutDate(start, agreement);
+        let payout = isAutoCashflowProduct(product)
+          ? estimateAutoFirstPayoutDate(start, agreement)
+          : estimatePayoutDate(start, agreement);
 
         while (payout <= entryHorizonEnd) {
           pushItem(amount, payout);
