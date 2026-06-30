@@ -61,6 +61,7 @@ export type MaxCizinKomplexVariant = "exclusiveStandard" | "premium";
 export interface CommissionResultItemDTO {
   title: string;
   amount: number;
+  code?: string | null;
   note?: string;
 }
 

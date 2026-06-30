@@ -1,5 +1,12 @@
 import React from "react";
 
+const splitTitleWords = (text: string): string[] =>
+  text
+    .normalize("NFC")
+    .trim()
+    .split(/\s+/u)
+    .filter(Boolean);
+
 export default function SplitTitle({
   text,
   wrap = true,
@@ -9,21 +16,36 @@ export default function SplitTitle({
   wrap?: boolean;
   className?: string;
 }) {
-  const letters = text.split("");
+  const words = splitTitleWords(text);
+  let letterIndex = 0;
 
   return (
     <div
       className={`relative inline-flex ${
         wrap ? "flex-wrap" : "flex-nowrap whitespace-nowrap"
-      } text-5xl sm:text-6xl font-extrabold tracking-tight text-slate-900 ${className}`}
+      } gap-x-[0.22em] gap-y-[0.08em] text-5xl sm:text-6xl font-extrabold tracking-tight text-slate-900 ${className}`}
     >
-      {letters.map((ch, idx) => (
+      <span className="sr-only">{text}</span>
+      {words.map((word, wordIndex) => (
         <span
-          key={idx}
-          className="inline-block animate-split-fade text-current"
-          style={{ animationDelay: `${idx * 45}ms` }}
+          key={`${word}-${wordIndex}`}
+          aria-hidden="true"
+          className="inline-flex flex-nowrap whitespace-nowrap"
         >
-          {ch === " " ? "\u00A0" : ch}
+          {Array.from(word).map((ch) => {
+            const delay = letterIndex * 45;
+            letterIndex += 1;
+
+            return (
+              <span
+                key={`${wordIndex}-${letterIndex}`}
+                className="inline-block animate-split-fade text-current"
+                style={{ animationDelay: `${delay}ms` }}
+              >
+                {ch}
+              </span>
+            );
+          })}
         </span>
       ))}
       <style jsx>{`
@@ -45,7 +67,7 @@ export default function SplitTitle({
           }
         }
         .animate-split-fade {
-          animation: split-fade 0.7s ease forwards;
+          animation: split-fade 0.7s ease both;
         }
       `}</style>
     </div>

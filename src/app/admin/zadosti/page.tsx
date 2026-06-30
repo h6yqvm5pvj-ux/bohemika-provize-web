@@ -688,6 +688,13 @@ type AdminUsersRow = {
   lastSignInAt: string | null;
   profileExists: boolean;
   privateProfileExists: boolean;
+  mfa: {
+    enabled: boolean;
+    factorCount: number;
+    hasTotp: boolean;
+    hasPhone: boolean;
+    factors: AdminSecurityFactorRow[];
+  };
   onlineCard: {
     enabled: boolean;
     slug: string | null;
@@ -703,6 +710,23 @@ type AdminUsersResponse = {
     disabled?: number;
     missingProfile?: number;
   };
+};
+
+type AdminUserSecurityAction =
+  | "sendPasswordReset"
+  | "resetMfa"
+  | "verifyEmail"
+  | "revokeSessions";
+
+type AdminUserSecurityActionResponse = {
+  ok?: boolean;
+  action?: AdminUserSecurityAction;
+  targetEmail?: string;
+  message?: string;
+  beforeFactorCount?: number;
+  afterFactorCount?: number;
+  refreshTokensRevoked?: boolean;
+  emailVerified?: boolean;
 };
 
 type AdminUsersDeleteTarget = {
@@ -807,6 +831,36 @@ const generateTemporaryPassword = (): string => {
   );
 };
 
+const adminUserSecurityActionKey = (
+  email: string,
+  action: AdminUserSecurityAction
+): string => `${normalizeEmail(email)}:${action}`;
+
+const getAdminUserSecurityActionLabel = (action: AdminUserSecurityAction): string => {
+  if (action === "sendPasswordReset") return "Reset hesla";
+  if (action === "resetMfa") return "Reset 2FA";
+  if (action === "verifyEmail") return "Ověřit e-mail";
+  return "Odhlásit relace";
+};
+
+const getAdminUserSecurityActionSuccess = (
+  action: AdminUserSecurityAction,
+  email: string,
+  payload: AdminUserSecurityActionResponse
+): string => {
+  if (action === "sendPasswordReset") {
+    return `E-mail pro obnovení hesla byl odeslán na ${email}.`;
+  }
+  if (action === "resetMfa") {
+    const removed = Number(payload.beforeFactorCount ?? 0);
+    return `2FA pro ${email} bylo resetováno (${removed} odstraněných faktorů).`;
+  }
+  if (action === "verifyEmail") {
+    return `E-mail ${email} je označený jako ověřený.`;
+  }
+  return `Aktivní relace uživatele ${email} byly zneplatněny.`;
+};
+
 export default function AdminRequestsPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -887,6 +941,9 @@ export default function AdminRequestsPage() {
     useState<AdminUsersAccountTypeDraft>("");
   const [adminUsersEditSpecialist, setAdminUsersEditSpecialist] = useState(false);
   const [adminUsersSavingEmail, setAdminUsersSavingEmail] = useState<string | null>(null);
+  const [adminUserSecurityBusyKey, setAdminUserSecurityBusyKey] = useState<string | null>(null);
+  const [adminUserSecurityConfirmKey, setAdminUserSecurityConfirmKey] =
+    useState<string | null>(null);
   const [adminUsersDeleteTarget, setAdminUsersDeleteTarget] =
     useState<AdminUsersDeleteTarget | null>(null);
   const [adminUsersDeleteConfirmed, setAdminUsersDeleteConfirmed] = useState(false);
@@ -2075,6 +2132,7 @@ export default function AdminRequestsPage() {
         : ""
     );
     setAdminUsersEditSpecialist(row.specialist === true);
+    setAdminUserSecurityConfirmKey(null);
     setAdminUsersStatus(null);
     setAdminUsersError(null);
   }, []);
@@ -2087,6 +2145,7 @@ export default function AdminRequestsPage() {
     setAdminUsersEditPhoneNumber("");
     setAdminUsersEditAccountType("");
     setAdminUsersEditSpecialist(false);
+    setAdminUserSecurityConfirmKey(null);
   }, []);
 
   const handleSaveAdminUser = useCallback(
@@ -2144,6 +2203,67 @@ export default function AdminRequestsPage() {
       adminUsersEditSpecialist,
       isAllowedAdmin,
       loadAdminUsersRows,
+    ]
+  );
+
+  const handleAdminUserSecurityAction = useCallback(
+    async (row: AdminUsersRow, action: AdminUserSecurityAction) => {
+      const user = auth.currentUser;
+      if (!user || !isAllowedAdmin) return;
+
+      const actionKey = adminUserSecurityActionKey(row.email, action);
+      const needsConfirmation = action === "resetMfa" || action === "revokeSessions";
+      if (needsConfirmation && adminUserSecurityConfirmKey !== actionKey) {
+        setAdminUserSecurityConfirmKey(actionKey);
+        setAdminUsersStatus({
+          type: "info",
+          message: `Potvrď akci „${getAdminUserSecurityActionLabel(action)}“ druhým kliknutím.`,
+        });
+        setAdminUsersError(null);
+        return;
+      }
+
+      setAdminUserSecurityBusyKey(actionKey);
+      setAdminUsersStatus(null);
+      setAdminUsersError(null);
+      try {
+        const payload = await fetchAuthedJsonOrThrow<AdminUserSecurityActionResponse>(
+          user,
+          "/api/admin/users/security",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              targetEmail: row.email,
+              action,
+            }),
+          }
+        );
+        setAdminUsersStatus({
+          type: "success",
+          message: getAdminUserSecurityActionSuccess(action, row.email, payload),
+        });
+        setAdminUserSecurityConfirmKey(null);
+        await loadAdminUsersRows();
+        if (securityRows.length > 0 || activeAdminSection === "security") {
+          await loadSecurityRows();
+        }
+      } catch (error) {
+        setAdminUsersError(
+          error instanceof Error
+            ? error.message
+            : "Bezpečnostní akci se nepodařilo provést."
+        );
+      } finally {
+        setAdminUserSecurityBusyKey(null);
+      }
+    },
+    [
+      activeAdminSection,
+      adminUserSecurityConfirmKey,
+      isAllowedAdmin,
+      loadAdminUsersRows,
+      loadSecurityRows,
+      securityRows.length,
     ]
   );
 
@@ -2253,6 +2373,20 @@ export default function AdminRequestsPage() {
       : selectedAdminUserOnlineCardSlug
         ? "border-amber-200 bg-amber-50 text-amber-700"
         : "border-slate-200 bg-slate-50 text-slate-600";
+  const selectedAdminUserMfaFactors = selectedAdminUser?.mfa?.factors ?? [];
+  const selectedAdminUserMfaEnabled = selectedAdminUser?.mfa?.enabled === true;
+  const selectedAdminUserResetPasswordKey = selectedAdminUser
+    ? adminUserSecurityActionKey(selectedAdminUser.email, "sendPasswordReset")
+    : "";
+  const selectedAdminUserResetMfaKey = selectedAdminUser
+    ? adminUserSecurityActionKey(selectedAdminUser.email, "resetMfa")
+    : "";
+  const selectedAdminUserVerifyEmailKey = selectedAdminUser
+    ? adminUserSecurityActionKey(selectedAdminUser.email, "verifyEmail")
+    : "";
+  const selectedAdminUserRevokeSessionsKey = selectedAdminUser
+    ? adminUserSecurityActionKey(selectedAdminUser.email, "revokeSessions")
+    : "";
 
   useEffect(() => {
     if (!selectedAdminUserOnlineCardUrl) {
@@ -2560,6 +2694,131 @@ export default function AdminRequestsPage() {
                       {selectedAdminUser.emailVerified ? "E-mail ověřen" : "E-mail neověřen"}
                     </span>
                   </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        2FA
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                          selectedAdminUserMfaEnabled
+                            ? "border-violet-300/35 bg-violet-400/14 text-violet-100"
+                            : "border-rose-300/45 bg-rose-400/14 text-rose-100"
+                        }`}
+                      >
+                        {selectedAdminUserMfaEnabled ? (
+                          <ShieldCheck size={11} strokeWidth={2.3} aria-hidden="true" />
+                        ) : (
+                          <ShieldAlert size={11} strokeWidth={2.3} aria-hidden="true" />
+                        )}
+                        {selectedAdminUserMfaEnabled ? "Aktivní" : "Nenastavená"}
+                      </span>
+                    </div>
+                    {selectedAdminUserMfaFactors.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {selectedAdminUserMfaFactors.map((factor) => (
+                          <span
+                            key={factor.uid}
+                            className="inline-flex items-center gap-1 rounded-full border border-white/12 bg-white/[0.07] px-2 py-0.5 text-[11px] font-semibold text-slate-100"
+                            title={
+                              factor.enrollmentTime
+                                ? `Zapsáno: ${formatAuthDateTime(factor.enrollmentTime)}`
+                                : undefined
+                            }
+                          >
+                            {getMfaFactorLabel(factor)}
+                            {factor.displayName ? ` · ${factor.displayName}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                        Uživatel si při dalším vstupu do aplikace nastaví nové 2FA.
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-3">
+                    <span className="block font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      Bezpečnostní akce
+                    </span>
+                    <div className="mt-3 grid gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleAdminUserSecurityAction(
+                            selectedAdminUser,
+                            "sendPasswordReset"
+                          )
+                        }
+                        disabled={Boolean(adminUserSecurityBusyKey)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-white/14 bg-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {adminUserSecurityBusyKey === selectedAdminUserResetPasswordKey ? (
+                          <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                        ) : (
+                          <KeyRound size={13} strokeWidth={2.2} aria-hidden="true" />
+                        )}
+                        Poslat reset hesla
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleAdminUserSecurityAction(selectedAdminUser, "resetMfa")
+                        }
+                        disabled={Boolean(adminUserSecurityBusyKey)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-amber-300/28 bg-amber-300/12 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-300/18 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {adminUserSecurityBusyKey === selectedAdminUserResetMfaKey ? (
+                          <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                        ) : (
+                          <ShieldAlert size={13} strokeWidth={2.2} aria-hidden="true" />
+                        )}
+                        {adminUserSecurityConfirmKey === selectedAdminUserResetMfaKey
+                          ? "Potvrdit reset 2FA"
+                          : "Resetovat 2FA"}
+                      </button>
+                      {!selectedAdminUser.emailVerified ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleAdminUserSecurityAction(
+                              selectedAdminUser,
+                              "verifyEmail"
+                            )
+                          }
+                          disabled={Boolean(adminUserSecurityBusyKey)}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-sky-300/28 bg-sky-300/12 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-300/18 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {adminUserSecurityBusyKey === selectedAdminUserVerifyEmailKey ? (
+                            <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                          ) : (
+                            <Mail size={13} strokeWidth={2.2} aria-hidden="true" />
+                          )}
+                          Označit e-mail jako ověřený
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleAdminUserSecurityAction(
+                            selectedAdminUser,
+                            "revokeSessions"
+                          )
+                        }
+                        disabled={Boolean(adminUserSecurityBusyKey)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-300/30 bg-rose-400/12 px-3 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {adminUserSecurityBusyKey === selectedAdminUserRevokeSessionsKey ? (
+                          <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+                        ) : (
+                          <RefreshCcw size={13} strokeWidth={2.2} aria-hidden="true" />
+                        )}
+                        {adminUserSecurityConfirmKey === selectedAdminUserRevokeSessionsKey
+                          ? "Potvrdit odhlášení"
+                          : "Odhlásit relace"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </aside>
 
@@ -2597,6 +2856,25 @@ export default function AdminRequestsPage() {
                     </button>
                   </div>
                 </div>
+
+                {adminUsersStatus ? (
+                  <div
+                    className={`mt-4 rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                      adminUsersStatus.type === "success"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : adminUsersStatus.type === "info"
+                          ? "border-sky-200 bg-sky-50 text-sky-700"
+                          : "border-rose-200 bg-rose-50 text-rose-700"
+                    }`}
+                  >
+                    {adminUsersStatus.message}
+                  </div>
+                ) : null}
+                {adminUsersError ? (
+                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                    {adminUsersError}
+                  </div>
+                ) : null}
 
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   <label className="space-y-1.5">

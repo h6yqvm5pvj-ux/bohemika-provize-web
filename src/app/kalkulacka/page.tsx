@@ -165,6 +165,8 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["neon", "domex", "cppAuto"]);
+const CLIENT_SUGGESTIONS_PAGE_LIMIT = 50;
+const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
 
 type CalculatorViewMode = "addContract" | "commissionOnly";
 type ParsedContractPdf = Record<string, any>;
@@ -319,6 +321,9 @@ type ContractsApiResponse = {
   ok?: boolean;
   error?: string;
   contracts?: { clientName?: string | null }[];
+  hasMore?: boolean;
+  nextCursor?: number | null;
+  nextCursorToken?: string | null;
 };
 
 type ContractsFindApiResponse = {
@@ -1241,10 +1246,10 @@ export default function CalculatorPage() {
     }
   };
   const filteredClientSuggestions = useMemo(() => {
-    const q = clientName.trim().toLowerCase();
+    const q = normalizeClientNameForSystemMatch(clientName);
     if (!q) return [];
     return clientSuggestions
-      .filter((n) => n.toLowerCase().includes(q))
+      .filter((name) => normalizeClientNameForSystemMatch(name).includes(q))
       .slice(0, 6);
   }, [clientName, clientSuggestions]);
 
@@ -1256,45 +1261,77 @@ export default function CalculatorPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchClientNames = async () => {
       if (!user?.email) {
-        setClientSuggestions([]);
+        if (!cancelled) setClientSuggestions([]);
         return;
       }
 
       try {
         let bearerToken = await user.getIdToken();
-        const requestWithToken = async (token: string) =>
-          fetch("/api/contracts/list?scope=my&limit=200", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            cache: "no-store",
+        const namesByKey = new Map<string, string>();
+        let cursor: string | null = null;
+
+        for (let page = 0; page < CLIENT_SUGGESTIONS_MAX_PAGES; page += 1) {
+          const params = new URLSearchParams({
+            scope: "my",
+            limit: String(CLIENT_SUGGESTIONS_PAGE_LIMIT),
+            shape: "clientNames",
           });
+          if (cursor) params.set("cursor", cursor);
 
-        let res = await requestWithToken(bearerToken);
-        if (res.status === 401) {
-          bearerToken = await user.getIdToken(true);
-          res = await requestWithToken(bearerToken);
+          const requestWithToken = async (token: string) =>
+            fetch(`/api/contracts/list?${params.toString()}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              cache: "no-store",
+            });
+
+          let res = await requestWithToken(bearerToken);
+          if (res.status === 401) {
+            bearerToken = await user.getIdToken(true);
+            res = await requestWithToken(bearerToken);
+          }
+
+          const payload = (await res.json()) as ContractsApiResponse;
+          if (!res.ok || payload?.ok === false) {
+            throw new Error(payload?.error || "Nepodařilo se načíst smlouvy.");
+          }
+
+          (payload.contracts ?? [])
+            .map((d) => d.clientName)
+            .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+            .forEach((name) => {
+              const trimmed = name.trim();
+              const key = normalizeClientNameForSystemMatch(trimmed);
+              if (key && !namesByKey.has(key)) {
+                namesByKey.set(key, trimmed);
+              }
+            });
+
+          const nextCursor = payload.nextCursorToken ?? null;
+          if (!payload.hasMore || !nextCursor || nextCursor === cursor) {
+            break;
+          }
+          cursor = nextCursor;
         }
 
-        const payload = (await res.json()) as ContractsApiResponse;
-        if (!res.ok || payload?.ok === false) {
-          throw new Error(payload?.error || "Nepodařilo se načíst smlouvy.");
+        if (!cancelled) {
+          setClientSuggestions(Array.from(namesByKey.values()));
         }
-
-        const names = (payload.contracts ?? [])
-          .map((d) => d.clientName as string | undefined)
-          .filter((n) => typeof n === "string" && n.trim().length > 0)
-          .map((n) => n!.trim());
-        const unique = Array.from(new Set(names));
-        setClientSuggestions(unique);
       } catch (err) {
         console.error("Failed to load client name suggestions", err);
       }
     };
 
-    fetchClientNames();
+    void fetchClientNames();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   useEffect(() => {

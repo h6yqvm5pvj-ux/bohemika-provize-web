@@ -202,11 +202,19 @@ const neonImmediateItems = (
   mode: CommissionMode
 ): CommissionResultItemDTO[] => {
   const breakdown = buildNeonImmediateBreakdown(amount, position, mode);
-  if (!breakdown) return [{ title: "💸 Okamžitá provize", amount }];
+  if (!breakdown) return [{ title: "💸 Okamžitá provize", amount, code: "A101" }];
 
   return breakdown.parts.map((part) => ({
     title: `💸 ${part.label}`,
     amount: part.amount,
+    code:
+      part.label === "Provize A101"
+        ? "A101"
+        : part.label === "Provize B0301"
+          ? "B0301"
+          : part.label.includes("B3601")
+            ? "B3601_HALF"
+            : null,
     ...(part.label === "Provize B0301"
       ? {
           note: "Pro okamžité vyplacení podmíněno zpracováním karty klienta dle podmínek!",
@@ -701,11 +709,11 @@ export function calculateNeon(
 
   const items: CommissionResultItemDTO[] = [
     ...neonImmediateItems(okamzita, position, mode),
-    { title: "📅 Provize po 3 letech", amount: po3 },
-    { title: "📅 Provize po 4 letech", amount: po4 },
-    { title: "🔁 Následná provize (2.–5. rok)", amount: nasl25 },
-    { title: "🔁 Pečovatelská provize (5.–10. rok)", amount: nasl510 },
-    { title: "💰 Celkem", amount: total },
+    { title: "📅 Provize po 3 letech", amount: po3, code: "B3601" },
+    { title: "📅 Provize po 4 letech", amount: po4, code: "B4801" },
+    { title: "🔁 Následná provize (2.–5. rok)", amount: nasl25, code: "B101-B104" },
+    { title: "🔁 Pečovatelská provize (5.–10. rok)", amount: nasl510, code: "B201-B206" },
+    { title: "💰 Celkem", amount: total, code: "TOTAL" },
   ];
 
   return { items, total };

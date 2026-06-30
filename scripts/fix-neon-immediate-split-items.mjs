@@ -161,6 +161,32 @@ const isSplitImmediateTitle = (title) => {
   );
 };
 
+const codeForSplitImmediateTitle = (title) => {
+  const normalized = normalizeTitle(title);
+  if (normalized === "provize a101") return "A101";
+  if (normalized === "provize b0301") return "B0301";
+  if (normalized === "provize 50% z b3601") return "B3601_HALF";
+  if (normalized.includes("provize po 3 letech")) return "B3601";
+  if (normalized.includes("provize po 4 letech")) return "B4801";
+  if (normalized.includes("nasledna provize") && normalized.includes("2") && normalized.includes("5")) {
+    return "B101-B104";
+  }
+  if (normalized.includes("pecovatelska provize")) return "B201-B206";
+  if (normalized.includes("celkem")) return "TOTAL";
+  return null;
+};
+
+const ensureSplitImmediateCodes = (items) => {
+  let changed = false;
+  const nextItems = items.map((item) => {
+    const code = codeForSplitImmediateTitle(item?.title);
+    if (!code || item?.code === code) return item;
+    changed = true;
+    return { ...item, code };
+  });
+  return { changed, items: nextItems };
+};
+
 function toDate(value) {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -225,14 +251,21 @@ function loadCredentials() {
 function splitImmediateAmount(amount, position, mode) {
   const includeB3601 = mode === "accelerated";
   const definitions = [
-    { title: "💸 Provize A101", coefficient: A101[position] },
+    { title: "💸 Provize A101", coefficient: A101[position], code: "A101" },
     {
       title: "💸 Provize B0301",
       coefficient: B0301[position],
+      code: "B0301",
       note: NOTE,
     },
     ...(includeB3601
-      ? [{ title: "💸 Provize 50% z B3601", coefficient: B3601_HALF[position] }]
+      ? [
+          {
+            title: "💸 Provize 50% z B3601",
+            coefficient: B3601_HALF[position],
+            code: "B3601_HALF",
+          },
+        ]
       : []),
   ].filter((part) => Number.isFinite(part.coefficient) && part.coefficient > 0);
 
@@ -242,6 +275,7 @@ function splitImmediateAmount(amount, position, mode) {
   const totalCents = toCents(amount);
   const partCents = definitions.map((part) => ({
     title: part.title,
+    code: part.code,
     note: part.note,
     cents: Math.max(0, toCents((amount * part.coefficient) / coefficientTotal)),
   }));
@@ -264,6 +298,7 @@ function splitImmediateAmount(amount, position, mode) {
   return partCents.map((part) => ({
     title: part.title,
     amount: roundToCents(fromCents(part.cents)),
+    code: part.code,
     ...(part.note ? { note: part.note } : {}),
   }));
 }
@@ -305,7 +340,10 @@ function splitItems(items, { entry, position, mode, signedIso, tipRatio = 1 }) {
   }
 
   if (items.some((item) => isSplitImmediateTitle(item?.title))) {
-    return { changed: false, items, reason: "already-split" };
+    const codeResult = ensureSplitImmediateCodes(items);
+    return codeResult.changed
+      ? { changed: true, items: codeResult.items, reason: "code-backfill" }
+      : { changed: false, items, reason: "already-split" };
   }
 
   const idx = items.findIndex((item) => isLegacyImmediateTitle(item?.title));
@@ -340,7 +378,11 @@ function splitItems(items, { entry, position, mode, signedIso, tipRatio = 1 }) {
 
   return {
     changed: true,
-    items: [...items.slice(0, idx), ...split, ...items.slice(idx + 1)],
+    items: ensureSplitImmediateCodes([
+      ...items.slice(0, idx),
+      ...split,
+      ...items.slice(idx + 1),
+    ]).items,
     reason: "split",
     mode: modeResolution.mode,
     modeSource: modeResolution.source,

@@ -42,6 +42,7 @@ import type {
   AuthContextOptions,
   ContractDetailResponse,
   ContractDoc,
+  ContractLifePremiumChange,
   ContractListFilters,
   ContractListProductCategory,
   ContractListResponseShape,
@@ -344,6 +345,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "clientPhone",
   "clientAddress",
   "contractNumber",
+  "maxxContractDetailUrl",
   "cppExtranetEntityTypeId",
   "cppExtranetEntityId",
   "contractSignedDate",
@@ -414,6 +416,7 @@ const UPDATE_FIELDS_OPTIONAL_TEXT_FIELDS = new Set<string>([
   "clientEmail",
   "clientPhone",
   "clientAddress",
+  "maxxContractDetailUrl",
   "carMake",
   "carPlate",
   "carVin",
@@ -943,6 +946,19 @@ const toContractListResponseItem = ({
   adviserName?: string | null;
 }): ContractResponseItem => {
   const normalizedAdviserName = normalizeOptionalDisplayName(adviserName) ?? null;
+  if (shape === "clientNames") {
+    const normalizedOwner = normalizeEmail(ownerEmail);
+    return {
+      id: docId,
+      adviserEmail: normalizedOwner,
+      adviserName: normalizedAdviserName,
+      userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      contractSignedDate: toMillis(data.contractSignedDate),
+      createdAt: toMillis(data.createdAt),
+    };
+  }
+
   if (shape === "home") {
     const normalizedOwner = normalizeEmail(ownerEmail);
     return {
@@ -950,6 +966,7 @@ const toContractListResponseItem = ({
       adviserEmail: normalizedOwner,
       adviserName: normalizedAdviserName,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
       contractSignedDate: toMillis(data.contractSignedDate),
       createdAt: toMillis(data.createdAt),
       productKey: data.productKey,
@@ -972,6 +989,142 @@ const normalizeRootEntryId = (entry: ContractDoc): string => {
     (entry.entryType === "endorsement" ? entry.parentContractEntryId : entry.id) ??
     entry.id;
   return typeof raw === "string" ? raw.trim() : "";
+};
+
+const roundPremiumAmount = (value: number): number =>
+  Number.isFinite(value) ? Math.round(value * 100) / 100 : 0;
+
+const positivePremiumAmount = (value: unknown): number | null => {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) return null;
+  return roundPremiumAmount(numberValue);
+};
+
+const lifePremiumAmountForEntry = (entry: ContractDoc): number | null => {
+  const raw =
+    entry.entryType === "endorsement"
+      ? entry.newInputAmount ?? entry.effectiveInputAmount ?? entry.inputAmount
+      : entry.inputAmount;
+  return positivePremiumAmount(raw);
+};
+
+const previousLifePremiumAmountForEntry = (entry: ContractDoc): number | null => {
+  const explicitPrevious = positivePremiumAmount(entry.previousInputAmount);
+  if (explicitPrevious != null) return explicitPrevious;
+
+  const current = lifePremiumAmountForEntry(entry);
+  const explicitDelta = Number(entry.premiumDelta);
+  if (current != null && Number.isFinite(explicitDelta)) {
+    const previous = current - explicitDelta;
+    if (previous > 0) return roundPremiumAmount(previous);
+  }
+
+  return null;
+};
+
+const lifePremiumDeltaForEntry = (entry: ContractDoc): number | null => {
+  const explicitDelta = Number(entry.premiumDelta);
+  if (Number.isFinite(explicitDelta)) return roundPremiumAmount(explicitDelta);
+
+  const current = lifePremiumAmountForEntry(entry);
+  const previous = previousLifePremiumAmountForEntry(entry);
+  if (current == null || previous == null) return null;
+  return roundPremiumAmount(current - previous);
+};
+
+const buildLifePremiumChanges = (
+  timeline: ContractResponseItem[]
+): ContractLifePremiumChange[] =>
+  timeline
+    .map((entry, index): ContractLifePremiumChange | null => {
+      const premiumAmount = lifePremiumAmountForEntry(entry);
+      if (premiumAmount == null) return null;
+
+      const previousPremium = previousLifePremiumAmountForEntry(entry);
+      const premiumDelta = lifePremiumDeltaForEntry(entry);
+      return {
+        id: entry.id,
+        entryType: entry.entryType ?? null,
+        step: index + 1,
+        premiumAmount,
+        annualPremium: roundPremiumAmount(premiumAmount * 12),
+        previousPremium,
+        previousAnnualPremium:
+          previousPremium == null ? null : roundPremiumAmount(previousPremium * 12),
+        premiumDelta,
+        annualPremiumDelta:
+          premiumDelta == null ? null : roundPremiumAmount(premiumDelta * 12),
+        policyStartDate: toMillis(entry.policyStartDate),
+        contractSignedDate: toMillis(entry.contractSignedDate),
+        createdAt: toMillis(entry.createdAt),
+      };
+    })
+    .filter(
+      (change): change is ContractLifePremiumChange => change != null
+    );
+
+const loadLifePremiumChangesForFindMatch = async ({
+  ownerEmail,
+  contract,
+  adviserName,
+}: {
+  ownerEmail: string;
+  contract: ContractResponseItem;
+  adviserName?: string | null;
+}): Promise<ContractLifePremiumChange[]> => {
+  const productKey = contract.productKey as Product | undefined;
+  const contractNumber = (contract.contractNumber ?? "").trim();
+  if (!adminDb || !productKey || !LIFE_TIMELINE_PRODUCTS.has(productKey) || !contractNumber) {
+    return [];
+  }
+
+  try {
+    const timelineSnap = await adminDb
+      .collection("users")
+      .doc(ownerEmail)
+      .collection("entries")
+      .where("contractNumber", "==", contractNumber)
+      .get();
+
+    const timelineEntries = timelineSnap.docs.map((snap) =>
+      toContractResponseItem(snap.id, ownerEmail, snap.data() as ContractDoc, adviserName)
+    );
+    const sameProductEntries = timelineEntries.filter(
+      (entry) => entry.productKey === productKey
+    );
+    const targetRootId = normalizeRootEntryId(contract);
+    const hasExplicitChainIds =
+      Boolean((contract.rootContractEntryId ?? "").trim()) ||
+      sameProductEntries.some((entry) =>
+        Boolean((entry.rootContractEntryId ?? "").trim())
+      );
+    let scopedTimeline = sameProductEntries;
+    if (hasExplicitChainIds && targetRootId) {
+      scopedTimeline = sameProductEntries.filter(
+        (entry) => normalizeRootEntryId(entry) === targetRootId
+      );
+    }
+
+    if (!scopedTimeline.some((entry) => entry.id === contract.id)) {
+      scopedTimeline.push(contract);
+    }
+    if (scopedTimeline.length === 0) {
+      scopedTimeline = [contract];
+    }
+
+    scopedTimeline.sort((a, b) => {
+      const byDate =
+        (timelineSortDate(a)?.getTime() ?? 0) -
+        (timelineSortDate(b)?.getTime() ?? 0);
+      if (byDate !== 0) return byDate;
+      return a.id.localeCompare(b.id, "cs");
+    });
+
+    return buildLifePremiumChanges(scopedTimeline);
+  } catch (err) {
+    console.warn("GET /api/contracts/find: načtení historie životní základny selhalo:", err);
+    return [];
+  }
 };
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -2607,10 +2760,23 @@ const normalizeTitleKey = (title: string): string => {
   return normalized;
 };
 
+const normalizeCommissionCodeKey = (code: unknown): string => {
+  if (typeof code !== "string") return "";
+  return code.trim().toUpperCase().replace(/\s+/g, "");
+};
+
+const commissionItemDiffKey = (item: CommissionResultItemDTO): string => {
+  const code = normalizeCommissionCodeKey(item.code);
+  return code ? `code:${code}` : normalizeTitleKey(item.title ?? "");
+};
+
 const stripTotalRows = (
   items: CommissionResultItemDTO[] = []
 ): CommissionResultItemDTO[] =>
-  items.filter((item) => !normalizeTitleKey(item.title ?? "").includes("celkem"));
+  items.filter((item) => {
+    const code = normalizeCommissionCodeKey(item.code);
+    return code !== "TOTAL" && !normalizeTitleKey(item.title ?? "").includes("celkem");
+  });
 
 const roundToCents = (value: number): number =>
   Number.isFinite(value) ? Math.round(value * 100) / 100 : 0;
@@ -3258,7 +3424,12 @@ const computeItemsForProductPositionAndMode = ({
     case "cppPPRs":
       return calculateCppPPRs(safeAmount, usedFrequency, position);
     case "allianzAuto":
-      return calculateAllianzAuto(safeAmount, usedFrequency, position);
+      return calculateAllianzAuto(
+        safeAmount,
+        usedFrequency,
+        position,
+        contractSignedDateIso
+      );
     case "csobAuto":
       return calculateCsobAuto(safeAmount, usedFrequency, position);
     case "uniqaAuto":
@@ -3377,19 +3548,24 @@ const computeManagerOverridesForChain = ({
     const managerItems = stripTotalRows(managerResult.items);
     const baselineItems = stripTotalRows(baselineResult.items);
 
-    const managerMap = new Map<string, { title: string; amount: number }>();
+    const managerMap = new Map<
+      string,
+      { title: string; amount: number; code?: string | null; note?: string | null }
+    >();
     managerItems.forEach((item) => {
-      const key = normalizeTitleKey(item.title ?? "");
+      const key = commissionItemDiffKey(item);
       const prev = managerMap.get(key);
       managerMap.set(key, {
         title: item.title ?? prev?.title ?? key,
         amount: (prev?.amount ?? 0) + (item.amount ?? 0),
+        code: item.code ?? prev?.code ?? null,
+        note: item.note ?? prev?.note ?? null,
       });
     });
 
     const diffItems: CommissionResultItemDTO[] = [];
     baselineItems.forEach((item) => {
-      const key = normalizeTitleKey(item.title ?? "");
+      const key = commissionItemDiffKey(item);
       const managerValue = managerMap.get(key);
       const managerAmount = managerValue?.amount ?? 0;
       const baselineAmount = item.amount ?? 0;
@@ -3398,6 +3574,10 @@ const computeManagerOverridesForChain = ({
         diffItems.push({
           title: managerValue?.title ?? item.title,
           amount: remaining,
+          code: managerValue?.code ?? item.code ?? null,
+          ...(managerValue?.note || item.note
+            ? { note: managerValue?.note ?? item.note }
+            : {}),
         });
       }
       managerMap.delete(key);
@@ -3405,7 +3585,12 @@ const computeManagerOverridesForChain = ({
 
     managerMap.forEach((value) => {
       if (value.amount > 0) {
-        diffItems.push({ title: value.title, amount: value.amount });
+        diffItems.push({
+          title: value.title,
+          amount: value.amount,
+          code: value.code ?? null,
+          ...(value.note ? { note: value.note } : {}),
+        });
       }
     });
 
@@ -3665,7 +3850,8 @@ const normalizePatchUpdates = (
     }
 
     if (UPDATE_FIELDS_OPTIONAL_TEXT_FIELDS.has(field)) {
-      const maxLen = field === "note" ? 2_000 : 200;
+      const maxLen =
+        field === "note" ? 2_000 : field === "maxxContractDetailUrl" ? 1_000 : 200;
       const parsed = parseOptionalTrimmedText(rawValue, field, maxLen);
       if (!parsed.ok) return parsed;
       normalized[field] = parsed.value;
@@ -5266,8 +5452,9 @@ export async function handleContractsGet(
 
   const scopeParam = search.get("scope") === "team" ? "team" : "my";
   const includeTeam = search.get("includeTeam") === "1" || search.get("includeTeam") === "true";
+  const shapeParam = search.get("shape");
   const responseShape: ContractListResponseShape =
-    search.get("shape") === "home" ? "home" : "full";
+    shapeParam === "clientNames" ? "clientNames" : shapeParam === "home" ? "home" : "full";
   const ownerNamesByEmail = new Map(
     users.map((item) => [item.email, normalizeOptionalDisplayName(item.name) ?? null] as const)
   );
@@ -5466,6 +5653,16 @@ export async function handleContractsFind(req: NextRequest) {
       seenKeys.add(itemKey);
       const item = toContractResponseItem(snap.id, ownerFromPath, contract);
       item.adviserName = await resolveOwnerName(ownerFromPath);
+      if (
+        item.productKey &&
+        LIFE_TIMELINE_PRODUCTS.has(item.productKey as Product)
+      ) {
+        item.lifePremiumChanges = await loadLifePremiumChangesForFindMatch({
+          ownerEmail: ownerFromPath,
+          contract: item,
+          adviserName: item.adviserName ?? null,
+        });
+      }
       contracts.push(item);
     } catch (entryErr) {
       console.warn("GET /api/contracts/find: načtení entry selhalo:", ref.path, entryErr);

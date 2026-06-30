@@ -15,6 +15,7 @@ export type CppAutoPdfResult = {
   carVin?: string | null;
   carOrv?: string | null;
   carLiabilityLimit?: number | null;
+  carHullSumInsured?: number | null;
   carHullDeductible?: number | null;
   carHullDeductibleText?: string | null;
   carHullRiskAccident?: boolean | null;
@@ -533,6 +534,18 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   const liability = normalizeLiabilityLimit(liabilityRaw);
   if (liability != null) {
     result.carLiabilityLimit = liability;
+  }
+
+  const hullSumInsured = parseAmount(
+    readNearestValueByLabel(
+      lines,
+      asciiLines,
+      /pojistna\s+castka\s+vozidla\s+ve\s+vysi/i,
+      4
+    )
+  );
+  if (hullSumInsured != null && hullSumInsured > 0) {
+    result.carHullSumInsured = hullSumInsured;
   }
 
   const assistanceLabelIndexes = findLabelIndexes(asciiLines, /pojisteni\s+asistence/i);

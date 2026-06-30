@@ -459,8 +459,21 @@ function normalizeTitleKey(title: string): string {
   return t;
 }
 
+function normalizeCommissionCodeKey(code: unknown): string {
+  if (typeof code !== "string") return "";
+  return code.trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function commissionItemDiffKey(item: CommissionResultItemDTO): string {
+  const code = normalizeCommissionCodeKey(item.code);
+  return code ? `code:${code}` : normalizeTitleKey(item.title ?? "");
+}
+
 function stripTotalRows(items: CommissionResultItemDTO[] = []): CommissionResultItemDTO[] {
-  return items.filter((it) => !normalizeTitleKey(it.title ?? "").includes("celkem"));
+  return items.filter((it) => {
+    const code = normalizeCommissionCodeKey(it.code);
+    return code !== "TOTAL" && !normalizeTitleKey(it.title ?? "").includes("celkem");
+  });
 }
 
 function normalizeAmount(value: unknown): number {
@@ -472,6 +485,12 @@ function normalizeResultItems(items: CommissionResultItemDTO[]): CommissionResul
   return items.map((item) => ({
     title: String(item.title ?? "").trim(),
     amount: normalizeAmount(item.amount ?? 0),
+    ...(normalizeCommissionCodeKey(item.code)
+      ? { code: normalizeCommissionCodeKey(item.code) }
+      : {}),
+    ...(typeof item.note === "string" && item.note.trim()
+      ? { note: item.note.trim() }
+      : {}),
   }));
 }
 
@@ -513,6 +532,7 @@ function computeItemsForEntry(
     amountOverride == null
       ? toNonNegativeNumber(entryCalculationAmount(entry))
       : toNonNegativeNumber(amountOverride);
+  const contractSignedDateIso = toIsoDay(entry.contractSignedDate);
 
   switch (product) {
     case "neon": {
@@ -566,7 +586,7 @@ function computeItemsForEntry(
     case "cppsimplex":
       return calculateCppSimplex(val, freq, pos);
     case "allianzAuto":
-      return calculateAllianzAuto(val, freq, pos);
+      return calculateAllianzAuto(val, freq, pos, contractSignedDateIso);
     case "csobAuto":
       return calculateCsobAuto(val, freq, pos);
     case "uniqaAuto":
@@ -628,6 +648,8 @@ function normalizeManagerOverrides(raw: unknown): ManagerOverrideSnapshot[] {
         return {
           title: String(it.title ?? "").trim(),
           amount: normalizeAmount(it.amount ?? 0),
+          code: normalizeCommissionCodeKey(it.code) || null,
+          note: typeof it.note === "string" ? it.note.trim() : undefined,
         };
       });
     const cleaned = normalizeResultItems(stripTotalRows(items));
@@ -753,33 +775,48 @@ function computeManagerOverridesForEntry(
     const mgrItems = stripTotalRows(mgrRes.items);
     const baselineItems = stripTotalRows(baselineRes.items);
 
-    const mgrMap = new Map<string, { title: string; amount: number }>();
+    const mgrMap = new Map<
+      string,
+      { title: string; amount: number; code?: string | null; note?: string | null }
+    >();
     mgrItems.forEach((it) => {
-      const key = normalizeTitleKey(it.title ?? "");
+      const key = commissionItemDiffKey(it);
       const prev = mgrMap.get(key);
       mgrMap.set(key, {
         title: it.title ?? prev?.title ?? key,
         amount: normalizeAmount((prev?.amount ?? 0) + (it.amount ?? 0)),
+        code: it.code ?? prev?.code ?? null,
+        note: it.note ?? prev?.note ?? null,
       });
     });
 
     const diffItems: CommissionResultItemDTO[] = [];
 
     baselineItems.forEach((it) => {
-      const key = normalizeTitleKey(it.title ?? "");
+      const key = commissionItemDiffKey(it);
       const mgrVal = mgrMap.get(key);
       const mgrAmt = mgrVal?.amount ?? 0;
       const subAmt = it.amount ?? 0;
       const rem = normalizeAmount(mgrAmt - subAmt);
       if (rem > 0) {
-        diffItems.push({ title: mgrVal?.title ?? it.title, amount: rem });
+        diffItems.push({
+          title: mgrVal?.title ?? it.title,
+          amount: rem,
+          code: mgrVal?.code ?? it.code ?? null,
+          ...(mgrVal?.note || it.note ? { note: mgrVal?.note ?? it.note } : {}),
+        });
       }
       mgrMap.delete(key);
     });
 
     mgrMap.forEach((val) => {
       if (val.amount > 0) {
-        diffItems.push({ title: val.title, amount: normalizeAmount(val.amount) });
+        diffItems.push({
+          title: val.title,
+          amount: normalizeAmount(val.amount),
+          code: val.code ?? null,
+          ...(val.note ? { note: val.note } : {}),
+        });
       }
     });
 

@@ -188,11 +188,19 @@ const flexiImmediateItems = (
   mode: CommissionMode
 ): CommissionResultItemDTO[] => {
   const breakdown = buildFlexiImmediateBreakdown(amount, position, mode);
-  if (!breakdown) return [{ title: "💸 Okamžitá provize", amount }];
+  if (!breakdown) return [{ title: "💸 Okamžitá provize", amount, code: "A101" }];
 
   return breakdown.parts.map((part) => ({
     title: `💸 ${part.label}`,
     amount: part.amount,
+    code:
+      part.label === "Provize A101"
+        ? "A101"
+        : part.label === "Provize B0301"
+          ? "B0301"
+          : part.label.includes("B36")
+            ? "B36_HALF"
+            : null,
     ...(part.label === "Provize B0301"
       ? { note: FLEXI_B0301_IMMEDIATE_NOTE }
       : {}),
@@ -472,10 +480,15 @@ export function calculateFlexi(
 
   const items: CommissionResultItemDTO[] = [
     ...flexiImmediateItems(okamzita, position, mode),
-    { title: "📅 Provize po 3 letech", amount: po3 },
-    { title: "📅 Provize po 4 letech", amount: po4 },
-    { title: "🔁 Následná provize (od 6. roku)", amount: n6, note: `ročně × ${tailYears}` },
-    { title: "💰 Celkem", amount: total },
+    { title: "📅 Provize po 3 letech", amount: po3, code: "B36" },
+    { title: "📅 Provize po 4 letech", amount: po4, code: "B48" },
+    {
+      title: "🔁 Následná provize (od 6. roku)",
+      amount: n6,
+      code: "B201-B206",
+      note: `ročně × ${tailYears}`,
+    },
+    { title: "💰 Celkem", amount: total, code: "TOTAL" },
   ];
 
   return { items, total };

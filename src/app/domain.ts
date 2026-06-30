@@ -66,6 +66,7 @@ export type Position =
 export interface CommissionResultItemDTO {
   title: string;
   amount: number;
+  code?: string | null;
   note?: string | null;
 }
 

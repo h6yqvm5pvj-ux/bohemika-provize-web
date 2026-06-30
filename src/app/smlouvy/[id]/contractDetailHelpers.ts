@@ -490,7 +490,7 @@ export async function calculateResultForPosition(
       const { calculateAllianzAuto } = await import(
         "../../lib/productFormulas/allianzAuto"
       );
-      return calculateAllianzAuto(amount, freq, position);
+      return calculateAllianzAuto(amount, freq, position, contractSignedDateIso);
     }
     case "allianzmujdomov": {
       const { calculateAllianzMujDomov } = await import(

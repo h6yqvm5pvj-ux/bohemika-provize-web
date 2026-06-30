@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type { UserRecord } from "firebase-admin/auth";
+import type { MultiFactorInfo, UserRecord } from "firebase-admin/auth";
 import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
@@ -53,6 +53,19 @@ type AdminUsersRow = {
   lastSignInAt: string | null;
   profileExists: boolean;
   privateProfileExists: boolean;
+  mfa: {
+    enabled: boolean;
+    factorCount: number;
+    hasTotp: boolean;
+    hasPhone: boolean;
+    factors: Array<{
+      uid: string;
+      factorId: string;
+      displayName: string | null;
+      enrollmentTime: string | null;
+      phoneNumber: string | null;
+    }>;
+  };
   onlineCard: {
     enabled: boolean;
     slug: string | null;
@@ -135,6 +148,17 @@ function summarizeOnlineCard(value: unknown): AdminUsersRow["onlineCard"] {
   };
 }
 
+function serializeFactor(factor: MultiFactorInfo): AdminUsersRow["mfa"]["factors"][number] {
+  const maybePhone = factor as MultiFactorInfo & { phoneNumber?: string };
+  return {
+    uid: factor.uid,
+    factorId: factor.factorId,
+    displayName: factor.displayName ?? null,
+    enrollmentTime: factor.enrollmentTime ?? null,
+    phoneNumber: typeof maybePhone.phoneNumber === "string" ? maybePhone.phoneNumber : null,
+  };
+}
+
 async function listAllAuthUsers(): Promise<UserRecord[]> {
   if (!adminAuth) return [];
 
@@ -212,6 +236,7 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
     normalizeText(mergedData.accountType) ||
     normalizeText(mergedData.userRole) ||
     null;
+  const factors = (authUser.multiFactor?.enrolledFactors ?? []).map(serializeFactor);
 
   return {
     uid: authUser.uid,
@@ -234,6 +259,13 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
     lastSignInAt: authUser.metadata.lastSignInTime || null,
     profileExists: Boolean(summary?.publicDocId),
     privateProfileExists: Boolean(summary?.privateDocId || Object.keys(privateData).length > 0),
+    mfa: {
+      enabled: factors.length > 0,
+      factorCount: factors.length,
+      hasTotp: factors.some((factor) => factor.factorId === "totp"),
+      hasPhone: factors.some((factor) => factor.factorId === "phone"),
+      factors,
+    },
     onlineCard: summarizeOnlineCard(publicData.onlineCard),
   };
 }

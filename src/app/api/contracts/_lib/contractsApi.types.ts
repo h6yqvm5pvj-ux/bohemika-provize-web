@@ -41,7 +41,13 @@ export type ContractDoc = {
   managerPositionSnapshot?: Position | null;
   managerModeSnapshot?: string | null;
   managerChain?: { email?: string | null; position?: Position | null; commissionMode?: string | null }[];
-  managerOverrides?: { email?: string | null; position?: Position | null; commissionMode?: string | null; items?: any[]; total?: number | null }[];
+  managerOverrides?: {
+    email?: string | null;
+    position?: Position | null;
+    commissionMode?: string | null;
+    items?: CommissionResultItemDTO[] | null;
+    total?: number | null;
+  }[];
   entryType?: "contract" | "endorsement" | string | null;
   rootContractEntryId?: string | null;
   parentContractEntryId?: string | null;
@@ -50,6 +56,14 @@ export type ContractDoc = {
   productKey?: Product;
   position?: Position | null;
   inputAmount?: number;
+  calculationInputAmount?: number | null;
+  effectiveInputAmount?: number | null;
+  previousInputAmount?: number | null;
+  newInputAmount?: number | null;
+  premiumDelta?: number | null;
+  premiumIncreaseAmount?: number | null;
+  premiumDecreaseAmount?: number | null;
+  changeType?: "increase" | "decrease" | "same" | string | null;
   comfortPayment?: number | null;
   frequencyRaw?: PaymentFrequency | null;
   durationMonths?: number | null;
@@ -64,6 +78,7 @@ export type ContractDoc = {
   clientAddress?: string | null;
   contractNumber?: string | null;
   duplicateLookupKey?: string | null;
+  maxxContractDetailUrl?: string | null;
   cppExtranetEntityTypeId?: string | number | null;
   cppExtranetEntityId?: string | number | null;
   tipContractTipsterEmail?: string | null;
@@ -169,6 +184,21 @@ export type ContractDoc = {
   policyEndDate?: FirestoreTimestamp | Date | string | number | null;
 };
 
+export type ContractLifePremiumChange = {
+  id: string;
+  entryType: "contract" | "endorsement" | string | null;
+  step: number;
+  premiumAmount: number;
+  annualPremium: number;
+  previousPremium: number | null;
+  previousAnnualPremium: number | null;
+  premiumDelta: number | null;
+  annualPremiumDelta: number | null;
+  policyStartDate: number | string | null;
+  contractSignedDate: number | string | null;
+  createdAt: number | string | null;
+};
+
 export type TipPayoutDoc = {
   sourceKey: string;
   sourceOwnerEmail: string;
@@ -199,6 +229,7 @@ export type ContractResponseItem = ContractDoc & {
   id: string;
   adviserEmail: string | null;
   adviserName?: string | null;
+  lifePremiumChanges?: ContractLifePremiumChange[] | null;
 };
 
 export type ContractOwnerMeta = {
@@ -259,7 +290,7 @@ export type ContractsPrecheckResponse = {
 export type ErrorResponse = { ok: false; error: string };
 
 export type ContractListFilterMode = "latest" | "anniversary";
-export type ContractListResponseShape = "full" | "home";
+export type ContractListResponseShape = "full" | "home" | "clientNames";
 export type ContractListProductCategory =
   | "life"
   | "auto"
