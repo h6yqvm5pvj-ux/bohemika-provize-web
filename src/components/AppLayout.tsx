@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { auth } from "../app/firebase-auth";
 import {
@@ -29,7 +30,6 @@ import {
   resolveAdminRoleFromClaims,
   type AdminRole,
 } from "@/lib/adminAccess";
-import { AccountSetupWizard } from "@/components/account-setup/AccountSetupWizard";
 import { useAccountSetupFlow } from "@/components/account-setup/useAccountSetupFlow";
 import { AppNavigation, type ActivePage } from "@/components/navigation/AppNavigation";
 import { useUserProfileAccess } from "@/components/profile/useUserProfileAccess";
@@ -70,6 +70,14 @@ const APP_LAYOUT_COPY: Record<
 };
 
 const AUTH_READY_TIMEOUT_MS = 12_000;
+
+const AccountSetupWizard = dynamic(
+  () =>
+    import("@/components/account-setup/AccountSetupWizard").then(
+      (mod) => mod.AccountSetupWizard
+    ),
+  { ssr: false }
+);
 
 const formatIsoDayCz = (value: string | null): string => {
   if (!value) return "—";

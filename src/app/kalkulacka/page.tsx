@@ -45,23 +45,8 @@ import {
   calculateComfortCC,
   getCoefficientSummary,
   isNeonHistoricalPeriod,
+  isAllianzAutoHistoricalPeriod,
 } from "../lib/productFormulas";
-import { parseCppAutoPdf } from "../lib/parseCppAutoPdf";
-import { parseSlaviaAutoPdf } from "../lib/parseSlaviaAutoPdf";
-import { parseNeonPdf } from "../lib/parseNeonPdf";
-import { parseFlexiPdf } from "../lib/parseFlexiPdf";
-import { parseDomexPdf } from "../lib/parseDomexPdf";
-import { parseCppHafanPdf } from "../lib/parseCppHafanPdf";
-import { parseComfortPdf } from "../lib/parseComfortPdf";
-import { parseMaxCizinKomplexPdf } from "../lib/parseMaxCizinKomplexPdf";
-import { parseMaxdomovPdf } from "../lib/parseMaxdomovPdf";
-import { parseKooperativaAutoPdf } from "../lib/parseKooperativaAutoPdf";
-import { parseAllianzAutoPdf } from "../lib/parseAllianzAutoPdf";
-import { parsePillowAutoPdf } from "../lib/parsePillowAutoPdf";
-import { parseCsobAutoPdf } from "../lib/parseCsobAutoPdf";
-import { parseCppCestovkoPdf } from "../lib/parseCppCestovkoPdf";
-import { parseCppSimplexPdf } from "../lib/parseCppSimplexPdf";
-import { detectProductFromPdf } from "../lib/detectProductFromPdf";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
@@ -182,6 +167,89 @@ const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["neon", "domex", "cppAuto"]);
 
 type CalculatorViewMode = "addContract" | "commissionOnly";
+type ParsedContractPdf = Record<string, any>;
+
+async function detectProductFromPdfLazy(file: File) {
+  const { detectProductFromPdf } = await import("../lib/detectProductFromPdf");
+  return detectProductFromPdf(file);
+}
+
+async function parseMaxCizinKomplexPdfLazy(file: File): Promise<ParsedContractPdf> {
+  const { parseMaxCizinKomplexPdf } = await import(
+    "../lib/parseMaxCizinKomplexPdf"
+  );
+  return parseMaxCizinKomplexPdf(file);
+}
+
+async function parseContractPdfByProduct(
+  product: Product,
+  file: File
+): Promise<ParsedContractPdf | null> {
+  switch (product) {
+    case "cppAuto": {
+      const { parseCppAutoPdf } = await import("../lib/parseCppAutoPdf");
+      return parseCppAutoPdf(file);
+    }
+    case "slaviaauto": {
+      const { parseSlaviaAutoPdf } = await import("../lib/parseSlaviaAutoPdf");
+      return parseSlaviaAutoPdf(file);
+    }
+    case "allianzAuto": {
+      const { parseAllianzAutoPdf } = await import("../lib/parseAllianzAutoPdf");
+      return parseAllianzAutoPdf(file);
+    }
+    case "csobAuto": {
+      const { parseCsobAutoPdf } = await import("../lib/parseCsobAutoPdf");
+      return parseCsobAutoPdf(file);
+    }
+    case "pillowAuto": {
+      const { parsePillowAutoPdf } = await import("../lib/parsePillowAutoPdf");
+      return parsePillowAutoPdf(file);
+    }
+    case "kooperativaAuto": {
+      const { parseKooperativaAutoPdf } = await import(
+        "../lib/parseKooperativaAutoPdf"
+      );
+      return parseKooperativaAutoPdf(file);
+    }
+    case "neon": {
+      const { parseNeonPdf } = await import("../lib/parseNeonPdf");
+      return parseNeonPdf(file);
+    }
+    case "flexi": {
+      const { parseFlexiPdf } = await import("../lib/parseFlexiPdf");
+      return parseFlexiPdf(file);
+    }
+    case "domex": {
+      const { parseDomexPdf } = await import("../lib/parseDomexPdf");
+      return parseDomexPdf(file);
+    }
+    case "cpphafan": {
+      const { parseCppHafanPdf } = await import("../lib/parseCppHafanPdf");
+      return parseCppHafanPdf(file);
+    }
+    case "maxdomov": {
+      const { parseMaxdomovPdf } = await import("../lib/parseMaxdomovPdf");
+      return parseMaxdomovPdf(file);
+    }
+    case "maxcizinkomplex":
+      return parseMaxCizinKomplexPdfLazy(file);
+    case "comfortcc": {
+      const { parseComfortPdf } = await import("../lib/parseComfortPdf");
+      return parseComfortPdf(file);
+    }
+    case "cppcestovko": {
+      const { parseCppCestovkoPdf } = await import("../lib/parseCppCestovkoPdf");
+      return parseCppCestovkoPdf(file);
+    }
+    case "cppsimplex": {
+      const { parseCppSimplexPdf } = await import("../lib/parseCppSimplexPdf");
+      return parseCppSimplexPdf(file);
+    }
+    default:
+      return null;
+  }
+}
 
 function supportsOriginalContractReplacement(product: Product): boolean {
   return ORIGINAL_REPLACEMENT_PRODUCTS.has(product);
@@ -968,12 +1036,36 @@ export default function CalculatorPage() {
       product === "neon" && isNeonHistoricalPeriod(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
+  const isAllianzAutoHistoricalBySignedDate = useMemo(
+    () =>
+      product === "allianzAuto" &&
+      isAllianzAutoHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
   const neonCoefficientDateForView = useMemo(() => {
     if (neonCoefficientView === "historical") return "2024-06-30";
     return "2024-07-01";
   }, [neonCoefficientView]);
+  const allianzAutoCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2026-03-31";
+    return "2026-04-01";
+  }, [neonCoefficientView]);
+  const coefficientDateForView = useMemo(() => {
+    if (product === "neon") return neonCoefficientDateForView;
+    if (product === "allianzAuto") return allianzAutoCoefficientDateForView;
+    return contractSignedDateForNeon;
+  }, [
+    product,
+    neonCoefficientDateForView,
+    allianzAutoCoefficientDateForView,
+    contractSignedDateForNeon,
+  ]);
   const isNeonHistoricalInCoefModal = useMemo(
     () => product === "neon" && neonCoefficientView === "historical",
+    [product, neonCoefficientView]
+  );
+  const isAllianzAutoHistoricalInCoefModal = useMemo(
+    () => product === "allianzAuto" && neonCoefficientView === "historical",
     [product, neonCoefficientView]
   );
   const immediatePayoutInfo = useMemo(() => {
@@ -1004,15 +1096,14 @@ export default function CalculatorPage() {
         position ?? null,
         mode ?? null,
         maxCizinKomplexVariant,
-        product === "neon" ? neonCoefficientDateForView : contractSignedDateForNeon
+        coefficientDateForView
       ),
     [
       product,
       position,
       mode,
       maxCizinKomplexVariant,
-      contractSignedDateForNeon,
-      neonCoefficientDateForView,
+      coefficientDateForView,
     ]
   );
   const coefExplanation = useMemo(() => {
@@ -1068,7 +1159,8 @@ export default function CalculatorPage() {
     if (!product) return null;
     return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
   }, [product]);
-  const showAutoTermsPreview = Boolean(autoTermsPreviewUrl);
+  const showAutoTermsPreview =
+    Boolean(autoTermsPreviewUrl) && !isAllianzAutoHistoricalInCoefModal;
   const neonPeriod = neonCoefficientView === "historical" ? "2019" : "2024";
   const neonPreviewRole: "poradce" | "manazer" = (
     timelineMatchedPosition?.position ?? position
@@ -2258,10 +2350,7 @@ export default function CalculatorPage() {
   };
 
   const looksLikeMaxCizinKomplexPdf = (
-    parsed:
-      | Awaited<ReturnType<typeof parseMaxCizinKomplexPdf>>
-      | null
-      | undefined
+    parsed: ParsedContractPdf | null | undefined
   ): boolean => {
     if (!parsed) return false;
     return Boolean(
@@ -2290,7 +2379,7 @@ export default function CalculatorPage() {
     setPdfMatchedClientName(false);
     let importProduct: Product = product;
     try {
-      const detected = await detectProductFromPdf(file);
+      const detected = await detectProductFromPdfLazy(file);
       if (detected && detected.product !== product) {
         importProduct = detected.product;
         setProduct(detected.product);
@@ -2369,67 +2458,14 @@ export default function CalculatorPage() {
         return;
       }
 
-      let parsed:
-        | Awaited<ReturnType<typeof parseCppAutoPdf>>
-        | Awaited<ReturnType<typeof parseSlaviaAutoPdf>>
-        | Awaited<ReturnType<typeof parseNeonPdf>>
-        | Awaited<ReturnType<typeof parseFlexiPdf>>
-        | Awaited<ReturnType<typeof parseDomexPdf>>
-        | Awaited<ReturnType<typeof parseCppHafanPdf>>
-        | Awaited<ReturnType<typeof parseMaxdomovPdf>>
-        | Awaited<ReturnType<typeof parseMaxCizinKomplexPdf>>
-        | Awaited<ReturnType<typeof parseComfortPdf>>
-        | Awaited<ReturnType<typeof parseKooperativaAutoPdf>>
-        | Awaited<ReturnType<typeof parseAllianzAutoPdf>>
-        | Awaited<ReturnType<typeof parsePillowAutoPdf>>
-        | Awaited<ReturnType<typeof parseCsobAutoPdf>>
-        | Awaited<ReturnType<typeof parseCppCestovkoPdf>>
-        | Awaited<ReturnType<typeof parseCppSimplexPdf>>
-        | null = null;
-
-      if (importProduct === "cppAuto") {
-        parsed = await parseCppAutoPdf(file);
-      } else if (importProduct === "slaviaauto") {
-        parsed = await parseSlaviaAutoPdf(file);
-      } else if (importProduct === "allianzAuto") {
-        parsed = await parseAllianzAutoPdf(file);
-      } else if (importProduct === "csobAuto") {
-        parsed = await parseCsobAutoPdf(file);
-      } else if (importProduct === "pillowAuto") {
-        parsed = await parsePillowAutoPdf(file);
-      } else if (importProduct === "kooperativaAuto") {
-        parsed = await parseKooperativaAutoPdf(file);
-      } else if (importProduct === "neon") {
-        parsed = await parseNeonPdf(file);
-      } else if (importProduct === "flexi") {
-        parsed = await parseFlexiPdf(file);
-      } else if (importProduct === "domex") {
-        parsed = await parseDomexPdf(file);
-      } else if (importProduct === "cpphafan") {
-        parsed = await parseCppHafanPdf(file);
-      } else if (importProduct === "maxdomov") {
-        parsed = await parseMaxdomovPdf(file);
-      } else if (importProduct === "maxcizinkomplex") {
-        parsed = await parseMaxCizinKomplexPdf(file);
-      } else if (importProduct === "comfortcc") {
-        parsed = await parseComfortPdf(file);
-      } else if (importProduct === "cppcestovko") {
-        parsed = await parseCppCestovkoPdf(file);
-      } else if (importProduct === "cppsimplex") {
-        parsed = await parseCppSimplexPdf(file);
-      } else {
+      const parsed = await parseContractPdfByProduct(importProduct, file);
+      if (!parsed) {
         setImportedContractPdfFile(file);
         setPdfImportStatus(manualPdfImportMessage(importProduct));
         setPdfImportError(null);
         return;
       }
 
-      if (!parsed) {
-        setImportedContractPdfFile(file);
-        setPdfImportStatus(failedPdfImportMessage(importProduct));
-        setPdfImportError(null);
-        return;
-      }
       let applied = 0;
 
       if (parsed.contractNumber) {
@@ -2819,7 +2855,7 @@ export default function CalculatorPage() {
 
       if (applied === 0 && importProduct !== "maxcizinkomplex") {
         try {
-          const maxCizinParsed = await parseMaxCizinKomplexPdf(file);
+          const maxCizinParsed = await parseMaxCizinKomplexPdfLazy(file);
           if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
             showMaxCizinKomplexHint();
             return;
@@ -2842,7 +2878,7 @@ export default function CalculatorPage() {
       console.error("PDF import selhal", err);
       if (importProduct !== "maxcizinkomplex") {
         try {
-          const maxCizinParsed = await parseMaxCizinKomplexPdf(file);
+          const maxCizinParsed = await parseMaxCizinKomplexPdfLazy(file);
           if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
             showMaxCizinKomplexHint();
             return;
@@ -3047,7 +3083,12 @@ export default function CalculatorPage() {
     }
 
     if (product === "allianzAuto") {
-      const dto = calculateAllianzAuto(val, frequency, positionForCalc);
+      const dto = calculateAllianzAuto(
+        val,
+        frequency,
+        positionForCalc,
+        contractSignedDateForNeon
+      );
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -4151,9 +4192,22 @@ export default function CalculatorPage() {
   }, [saveSuccessFlash]);
 
   useEffect(() => {
-    if (!showCoefModal || product !== "neon") return;
-    setNeonCoefficientView(isNeonHistoricalBySignedDate ? "historical" : "current");
-  }, [showCoefModal, product, isNeonHistoricalBySignedDate]);
+    if (!showCoefModal) return;
+    if (product === "neon") {
+      setNeonCoefficientView(isNeonHistoricalBySignedDate ? "historical" : "current");
+      return;
+    }
+    if (product === "allianzAuto") {
+      setNeonCoefficientView(
+        isAllianzAutoHistoricalBySignedDate ? "historical" : "current"
+      );
+    }
+  }, [
+    showCoefModal,
+    product,
+    isNeonHistoricalBySignedDate,
+    isAllianzAutoHistoricalBySignedDate,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -4399,7 +4453,7 @@ export default function CalculatorPage() {
       case "cppPPRs":
         return calculateCppPPRs(val, freq, pos);
       case "allianzAuto":
-        return calculateAllianzAuto(val, freq, pos);
+        return calculateAllianzAuto(val, freq, pos, contractSignedDateForNeon);
       case "csobAuto":
         return calculateCsobAuto(val, freq, pos);
       case "uniqaAuto":
@@ -4846,10 +4900,11 @@ export default function CalculatorPage() {
         mode={mode}
         coefficientView={neonCoefficientView}
         isNeonHistorical={isNeonHistoricalInCoefModal}
+        isAllianzAutoHistorical={isAllianzAutoHistoricalInCoefModal}
         coefExplanation={coefExplanation}
         immediatePayoutInfo={immediatePayoutInfo}
         coefList={coefList}
-        showAutoTermsValidityNote={isAutoProduct(product)}
+        showAutoTermsValidityNote={isAutoProduct(product) && product !== "allianzAuto"}
         showAutoTermsPreview={showAutoTermsPreview}
         autoTermsPreviewUrl={autoTermsPreviewUrl}
         showNeonTermsPreview={showNeonTermsPreview}

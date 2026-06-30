@@ -34,7 +34,6 @@ import {
   type TotpSecret,
   updatePassword,
 } from "firebase/auth";
-import QRCode from "qrcode";
 
 import { auth } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
@@ -954,11 +953,14 @@ export default function SettingsPage() {
       "Bohemka.App"
     );
 
-    void QRCode.toDataURL(qrUri, {
-      width: 220,
-      margin: 1,
-      errorCorrectionLevel: "M",
-    })
+    void import("qrcode")
+      .then((qrCodeModule) =>
+        qrCodeModule.default.toDataURL(qrUri, {
+          width: 220,
+          margin: 1,
+          errorCorrectionLevel: "M",
+        })
+      )
       .then((dataUrl) => {
         if (isCancelled) return;
         setMfaQrCodeDataUrl(dataUrl);
@@ -2818,15 +2820,18 @@ export default function SettingsPage() {
     setOnlineCardQrError(null);
     setOnlineCardQrDataUrl("");
 
-    void QRCode.toDataURL(onlineCardPublicUrl, {
-      width: 900,
-      margin: 2,
-      errorCorrectionLevel: "M",
-      color: {
-        dark: "#0f172a",
-        light: "#ffffff",
-      },
-    })
+    void import("qrcode")
+      .then((qrCodeModule) =>
+        qrCodeModule.default.toDataURL(onlineCardPublicUrl, {
+          width: 900,
+          margin: 2,
+          errorCorrectionLevel: "M",
+          color: {
+            dark: "#0f172a",
+            light: "#ffffff",
+          },
+        })
+      )
       .then((dataUrl) => {
         setOnlineCardQrDataUrl(dataUrl);
       })

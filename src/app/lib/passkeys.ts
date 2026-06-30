@@ -1,10 +1,6 @@
-import {
-  browserSupportsWebAuthn,
-  platformAuthenticatorIsAvailable,
-  startAuthentication,
-  startRegistration,
-  type PublicKeyCredentialCreationOptionsJSON,
-  type PublicKeyCredentialRequestOptionsJSON,
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
 import type { User as FirebaseUser } from "firebase/auth";
 import { signInWithCustomToken } from "firebase/auth";
@@ -54,6 +50,19 @@ type CredentialsListResponse = {
   credentials: PasskeyCredentialSummary[];
 };
 
+let passkeyBrowserRuntimePromise:
+  | Promise<typeof import("@simplewebauthn/browser")>
+  | null = null;
+
+function loadPasskeyBrowserRuntime(): Promise<
+  typeof import("@simplewebauthn/browser")
+> {
+  if (!passkeyBrowserRuntimePromise) {
+    passkeyBrowserRuntimePromise = import("@simplewebauthn/browser");
+  }
+  return passkeyBrowserRuntimePromise;
+}
+
 async function parseJsonSafe(response: Response): Promise<ApiErrorResponse | null> {
   try {
     return (await response.json()) as ApiErrorResponse;
@@ -86,13 +95,17 @@ export async function getPasskeyAvailability(): Promise<{
   supported: boolean;
   platformAvailable: boolean;
 }> {
-  if (!browserSupportsWebAuthn()) {
+  if (typeof window === "undefined" || typeof window.PublicKeyCredential !== "function") {
     return { supported: false, platformAvailable: false };
   }
 
-  const platformAvailable = await platformAuthenticatorIsAvailable().catch(
-    () => false
-  );
+  const platformAvailable =
+    typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable ===
+    "function"
+      ? await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(
+          () => false
+        )
+      : false;
   return { supported: true, platformAvailable };
 }
 
@@ -127,6 +140,7 @@ export async function createPasskeyForUser(
       { method: "POST", body: JSON.stringify({}) }
     );
 
+  const { startRegistration } = await loadPasskeyBrowserRuntime();
   const attestation = await startRegistration({
     optionsJSON: optionsPayload.options,
   });
@@ -150,6 +164,7 @@ export async function signInWithPasskey(): Promise<void> {
     { method: "POST", body: JSON.stringify({}) }
   );
 
+  const { startAuthentication } = await loadPasskeyBrowserRuntime();
   const assertion = await startAuthentication({
     optionsJSON: optionsPayload.options,
   });

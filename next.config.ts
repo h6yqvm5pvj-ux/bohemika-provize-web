@@ -38,6 +38,9 @@ const staticImageCacheHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  images: {
+    minimumCacheTTL: 60 * 60 * 24 * 7,
+  },
   outputFileTracingIncludes: {
     "/api/documents/file": ["./private/dokumenty/**/*"],
     "/api/documents/neon": ["./private/dokumenty/**/*"],
@@ -54,6 +57,14 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/demos/:path*",
+        headers: staticImageCacheHeaders,
+      },
+      {
+        source: "/fonts/:path*",
+        headers: staticImageCacheHeaders,
+      },
+      {
+        source: "/pwa/:path*",
         headers: staticImageCacheHeaders,
       },
       {

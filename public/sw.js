@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = "bohemika-pwa-v1";
+const CACHE_NAME = "bohemika-pwa-v2";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_URLS = [
@@ -14,8 +14,12 @@ const PRECACHE_URLS = [
 const SAME_ORIGIN_CACHE_ALLOWLIST = [
   /^\/$/,
   /^\/(admin\/zadosti|login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow|intranet|posta|tipy|vizitka|jakubrauscher)(\/.*)?$/,
+  /^\/_next\/image.*/,
   /^\/_next\/static\/.*/,
+  /^\/demos\/.*/,
+  /^\/fonts\/.*/,
   /^\/icons\/.*/,
+  /^\/provize\/.*/,
   /^\/pwa\/.*/,
   /^\/favicon\.ico$/,
 ];
@@ -171,6 +175,10 @@ function isSameOriginCacheCandidate(url, request) {
   return SAME_ORIGIN_CACHE_ALLOWLIST.some((pattern) => pattern.test(url.pathname));
 }
 
+function shouldCacheResponse(response) {
+  return response && response.status === 200 && (response.type === "basic" || response.type === "default");
+}
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -204,8 +212,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned)).catch(() => undefined);
+          if (shouldCacheResponse(response)) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned)).catch(() => undefined);
+          }
           return response;
         })
         .catch(async () => {
@@ -230,11 +240,13 @@ self.addEventListener("fetch", (event) => {
       if (cached) return cached;
       return fetch(request)
         .then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned)).catch(() => undefined);
+          if (shouldCacheResponse(response)) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned)).catch(() => undefined);
+          }
           return response;
         })
-        .catch(() => cached);
+        .catch(() => cached || Response.error());
     })
   );
 });

@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Globe2, Mail, SlidersHorizontal } from "lucide-react";
 
@@ -25,18 +26,13 @@ import {
 } from "@/lib/appLanguage";
 
 import { AppLayout } from "@/components/AppLayout";
-import { AutoAnniversaryModal } from "@/components/AutoAnniversaryModal";
 import { calculateNetCashflow, calculateStornoFund } from "./cashflow/helpers";
 import { useCashflowData } from "./cashflow/useCashflowData";
 import { ExpectedPayoutSection } from "./home/components/ExpectedPayoutSection";
-import { GoldWidget } from "./home/components/GoldWidget";
 import { MonthlyGoalSection } from "./home/components/MonthlyGoalSection";
-import { ProductionChartSection } from "./home/components/ProductionChartSection";
 import { ProductionSummarySection } from "./home/components/ProductionSummarySection";
 import { TeamLeaderboardSection } from "./home/components/TeamLeaderboardSection";
-import { TipsterHomeView } from "./home/components/TipsterHomeView";
 import { invalidateHomeCache, useHomeData } from "./home/useHomeData";
-import { InstitutionPortalLinksModal } from "./pomucky/InstitutionPortalLinksModal";
 import { type PaymentFrequency, type Product } from "./types/domain";
 import {
   entrySignedDate,
@@ -56,6 +52,39 @@ import {
   type QuickAction,
   type TeamLeaderboardEntry,
 } from "./home/types";
+
+const AutoAnniversaryModal = dynamic(
+  () =>
+    import("@/components/AutoAnniversaryModal").then(
+      (mod) => mod.AutoAnniversaryModal
+    ),
+  { ssr: false }
+);
+const GoldWidget = dynamic(
+  () => import("./home/components/GoldWidget").then((mod) => mod.GoldWidget),
+  { ssr: false }
+);
+const ProductionChartSection = dynamic(
+  () =>
+    import("./home/components/ProductionChartSection").then(
+      (mod) => mod.ProductionChartSection
+    ),
+  { ssr: false }
+);
+const TipsterHomeView = dynamic(
+  () =>
+    import("./home/components/TipsterHomeView").then(
+      (mod) => mod.TipsterHomeView
+    ),
+  { ssr: false }
+);
+const InstitutionPortalLinksModal = dynamic(
+  () =>
+    import("./pomucky/InstitutionPortalLinksModal").then(
+      (mod) => mod.InstitutionPortalLinksModal
+    ),
+  { ssr: false }
+);
 
 function SplitTextHeading({ text }: { text: string }) {
   const words = text.split(" ").filter(Boolean);

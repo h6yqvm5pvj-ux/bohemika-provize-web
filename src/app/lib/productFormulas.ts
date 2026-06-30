@@ -86,6 +86,7 @@ import {
 import {
   calculateAllianzAuto,
   allianzAutoCoefficient,
+  isAllianzAutoHistoricalPeriod,
 } from "./productFormulas/allianzAuto";
 import {
   calculateAllianzMujDomov,
@@ -154,6 +155,7 @@ export {
   calculateCppPPRbez,
   calculateCppPPRs,
   calculateAllianzAuto,
+  isAllianzAutoHistoricalPeriod,
   calculateAllianzMujDomov,
   calculateCsobAuto,
   calculateUniqaAuto,
@@ -357,8 +359,17 @@ export function getCoefficientSummary(
       ];
     case "cppPPRs":
       return [{ label: "Koeficient (z platby)", value: cppPPRsCoefficient(position) }];
-    case "allianzAuto":
-      return [{ label: "Koeficient (z platby)", value: allianzAutoCoefficient(position) }];
+    case "allianzAuto": {
+      const isHistorical = isAllianzAutoHistoricalPeriod(contractSignedDateIso);
+      return [
+        {
+          label: isHistorical
+            ? "Historický koeficient (01.08.2019-31.03.2026)"
+            : "Koeficient (z platby)",
+          value: allianzAutoCoefficient(position, contractSignedDateIso),
+        },
+      ];
+    }
     case "allianzmujdomov": {
       const validFrom = new Date(
         `${ALLIANZ_MUJ_DOMOV_COEFFICIENT_VALID_FROM}T00:00:00`

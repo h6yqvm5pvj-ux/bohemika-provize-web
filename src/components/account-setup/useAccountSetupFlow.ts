@@ -11,7 +11,6 @@ import {
   type TotpSecret,
   type User as FirebaseUser,
 } from "firebase/auth";
-import QRCode from "qrcode";
 
 import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
@@ -362,11 +361,14 @@ export function useAccountSetupFlow({
     setMfaQrLoading(true);
     setMfaQrError(null);
 
-    void QRCode.toDataURL(qrUri, {
-      width: 220,
-      margin: 1,
-      errorCorrectionLevel: "M",
-    })
+    void import("qrcode")
+      .then((qrCodeModule) =>
+        qrCodeModule.default.toDataURL(qrUri, {
+          width: 220,
+          margin: 1,
+          errorCorrectionLevel: "M",
+        })
+      )
       .then((dataUrl) => {
         if (!cancelled) {
           setMfaQrDataUrl(dataUrl);

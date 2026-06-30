@@ -22,6 +22,7 @@ type CalculatorCoefficientModalProps = {
   mode: CommissionMode;
   coefficientView: NeonCoefficientView;
   isNeonHistorical: boolean;
+  isAllianzAutoHistorical: boolean;
   coefExplanation: string;
   immediatePayoutInfo: string | null;
   coefList: CoefficientSummaryItem[];
@@ -52,6 +53,7 @@ export function CalculatorCoefficientModal({
   mode,
   coefficientView,
   isNeonHistorical,
+  isAllianzAutoHistorical,
   coefExplanation,
   immediatePayoutInfo,
   coefList,
@@ -69,6 +71,26 @@ export function CalculatorCoefficientModal({
   onNeonDocumentAction,
 }: CalculatorCoefficientModalProps) {
   if (!isOpen) return null;
+
+  const hasCoefficientViewToggle = product === "neon" || product === "allianzAuto";
+  const productPeriodText =
+    product === "neon"
+      ? isNeonHistorical
+        ? "Historické koeficienty – platnost 01.10.2019 až 30.06.2024"
+        : "Aktuální koeficienty – platnost od 01.07.2024"
+      : product === "allianzAuto"
+      ? isAllianzAutoHistorical
+        ? "Historické koeficienty – platnost 01.08.2019 až 31.03.2026"
+        : "Aktuální koeficienty – platnost od 01.04.2026"
+      : null;
+  const productModeText =
+    product === "neon" && isNeonHistorical
+      ? "historické podmínky (bez režimu)"
+      : product === "allianzAuto"
+      ? isAllianzAutoHistorical
+        ? "historické podmínky"
+        : "aktuální podmínky"
+      : `režim ${mode}`;
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto px-4 py-6">
@@ -98,16 +120,11 @@ export function CalculatorCoefficientModal({
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <p className="text-sm text-slate-600">
-              {productLabel} · pozice {positionLabel}{" "}
-              {product === "neon" && isNeonHistorical
-                ? "· historické podmínky (bez režimu)"
-                : `· režim ${mode}`}
+              {productLabel} · pozice {positionLabel} · {productModeText}
             </p>
-            {product === "neon" && (
+            {productPeriodText && (
               <p className="text-xs font-semibold text-rose-700">
-                {isNeonHistorical
-                  ? "Historické koeficienty – platnost 01.10.2019 až 30.06.2024"
-                  : "Aktuální koeficienty – platnost od 01.07.2024"}
+                {productPeriodText}
               </p>
             )}
             {showAutoTermsValidityNote && (
@@ -117,7 +134,7 @@ export function CalculatorCoefficientModal({
             )}
           </div>
 
-          {product === "neon" && (
+          {hasCoefficientViewToggle && (
             <div className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-slate-50 p-1">
               <button
                 type="button"
@@ -197,8 +214,8 @@ export function CalculatorCoefficientModal({
                     key={`${c.label}-${idx}`}
                     className="flex w-full max-w-[500px] items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                   >
-                    <span className="text-slate-600">{c.label}</span>
-                    <span className="font-semibold">
+                    <span className="min-w-0 pr-3 text-slate-600">{c.label}</span>
+                    <span className="shrink-0 font-semibold">
                       {formatCoefficientNumber(c.value)}
                     </span>
                   </div>
