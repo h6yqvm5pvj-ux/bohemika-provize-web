@@ -314,21 +314,34 @@ const NEON_PDF_DETAIL_FIELD_MAP = [
   ["invalidityB3", "invalidityB3"],
   ["invalidityPension", "invalidityPension"],
   ["criticalType", "criticalIllnessType"],
+  ["criticalVariant", "criticalIllnessVariant"],
   ["criticalAmount", "criticalIllnessAmount"],
   ["childSurgeryAmount", "childSurgeryAmount"],
   ["vaccinationCompAmount", "vaccinationCompAmount"],
   ["diabetesAmount", "diabetesAmount"],
   ["deathAccidentAmount", "deathAccidentAmount"],
   ["injuryPermanentAmount", "injuryPermanentAmount"],
+  ["injuryPermanentFulfillmentFrom", "injuryPermanentFulfillmentFrom"],
+  ["injuryPermanentProgression", "injuryPermanentProgression"],
+  ["injuryPermanent2Amount", "injuryPermanent2Amount"],
+  ["injuryPermanent2FulfillmentFrom", "injuryPermanent2FulfillmentFrom"],
+  ["injuryPermanent2Progression", "injuryPermanent2Progression"],
   ["hospitalizationAmount", "hospitalizationAmount"],
   ["hospitalizationIllnessAmount", "hospitalizationIllnessAmount"],
   ["hospitalizationInjuryAmount", "hospitalizationInjuryAmount"],
+  ["accidentDailyBenefitStart", "accidentDailyBenefitStart"],
+  ["accidentDailyBenefitBackpay", "accidentDailyBenefitBackpay"],
   ["accidentDailyBenefit", "accidentDailyBenefit"],
   ["workIncapacityStart", "workIncapacityStart"],
   ["workIncapacityBackpay", "workIncapacityBackpay"],
   ["workIncapacityAmount", "workIncapacityAmount"],
   ["workIncapacityInjury", "workIncapacityInjury"],
   ["workIncapacityIllness", "workIncapacityIllness"],
+  ["workIncapacity2Start", "workIncapacity2Start"],
+  ["workIncapacity2Backpay", "workIncapacity2Backpay"],
+  ["workIncapacity2Amount", "workIncapacity2Amount"],
+  ["workIncapacity2Injury", "workIncapacity2Injury"],
+  ["workIncapacity2Illness", "workIncapacity2Illness"],
   ["careDependencyAmount", "careDependencyAmount"],
   ["specialAidAmount", "specialAidAmount"],
   ["caregivingAmount", "caregivingAmount"],
@@ -372,11 +385,13 @@ const NUMBER_NEON_DETAIL_FIELDS = new Set<NeonDetailField>([
   "diabetesAmount",
   "deathAccidentAmount",
   "injuryPermanentAmount",
+  "injuryPermanent2Amount",
   "hospitalizationAmount",
   "hospitalizationIllnessAmount",
   "hospitalizationInjuryAmount",
   "accidentDailyBenefit",
   "workIncapacityAmount",
+  "workIncapacity2Amount",
   "careDependencyAmount",
   "specialAidAmount",
   "caregivingAmount",
@@ -391,6 +406,8 @@ const BOOLEAN_NEON_DETAIL_FIELDS = new Set<NeonDetailField>([
   "invalidityPension",
   "workIncapacityInjury",
   "workIncapacityIllness",
+  "workIncapacity2Injury",
+  "workIncapacity2Illness",
   "cppHelp",
   "travelInsurance",
 ]);
@@ -1611,12 +1628,24 @@ export default function ContractDetailPage() {
   const [editNeonInvalidityB3, setEditNeonInvalidityB3] = useState("");
   const [editNeonInvalidityPension, setEditNeonInvalidityPension] = useState(false);
   const [editNeonCriticalType, setEditNeonCriticalType] = useState("");
+  const [editNeonCriticalVariant, setEditNeonCriticalVariant] = useState("");
   const [editNeonCriticalAmount, setEditNeonCriticalAmount] = useState("");
   const [editNeonChildSurgeryAmount, setEditNeonChildSurgeryAmount] = useState("");
   const [editNeonVaccinationCompAmount, setEditNeonVaccinationCompAmount] = useState("");
   const [editNeonDiabetesAmount, setEditNeonDiabetesAmount] = useState("");
   const [editNeonDeathAccidentAmount, setEditNeonDeathAccidentAmount] = useState("");
   const [editNeonInjuryPermanentAmount, setEditNeonInjuryPermanentAmount] = useState("");
+  const [editNeonInjuryPermanentFulfillmentFrom, setEditNeonInjuryPermanentFulfillmentFrom] =
+    useState("");
+  const [editNeonInjuryPermanentProgression, setEditNeonInjuryPermanentProgression] =
+    useState("");
+  const [editNeonInjuryPermanent2Amount, setEditNeonInjuryPermanent2Amount] = useState("");
+  const [
+    editNeonInjuryPermanent2FulfillmentFrom,
+    setEditNeonInjuryPermanent2FulfillmentFrom,
+  ] = useState("");
+  const [editNeonInjuryPermanent2Progression, setEditNeonInjuryPermanent2Progression] =
+    useState("");
   const [editNeonHospitalizationAmount, setEditNeonHospitalizationAmount] = useState("");
   const [editNeonHospitalizationIllnessAmount, setEditNeonHospitalizationIllnessAmount] = useState("");
   const [editNeonHospitalizationInjuryAmount, setEditNeonHospitalizationInjuryAmount] = useState("");
@@ -1625,6 +1654,13 @@ export default function ContractDetailPage() {
   const [editNeonWorkIncapacityAmount, setEditNeonWorkIncapacityAmount] = useState("");
   const [editNeonWorkIncapacityInjury, setEditNeonWorkIncapacityInjury] = useState(false);
   const [editNeonWorkIncapacityIllness, setEditNeonWorkIncapacityIllness] = useState(false);
+  const [editNeonWorkIncapacity2Start, setEditNeonWorkIncapacity2Start] = useState("");
+  const [editNeonWorkIncapacity2Backpay, setEditNeonWorkIncapacity2Backpay] = useState("");
+  const [editNeonWorkIncapacity2Amount, setEditNeonWorkIncapacity2Amount] = useState("");
+  const [editNeonWorkIncapacity2Injury, setEditNeonWorkIncapacity2Injury] =
+    useState(false);
+  const [editNeonWorkIncapacity2Illness, setEditNeonWorkIncapacity2Illness] =
+    useState(false);
   const [editNeonCareDependencyAmount, setEditNeonCareDependencyAmount] = useState("");
   const [editNeonSpecialAidAmount, setEditNeonSpecialAidAmount] = useState("");
   const [editNeonCaregivingAmount, setEditNeonCaregivingAmount] = useState("");
@@ -1633,6 +1669,10 @@ export default function ContractDetailPage() {
   const [editNeonLiabilityCitizenLimit, setEditNeonLiabilityCitizenLimit] = useState("");
   const [editNeonLiabilityEmployeeLimit, setEditNeonLiabilityEmployeeLimit] = useState("");
   const [editNeonTravelInsurance, setEditNeonTravelInsurance] = useState(false);
+  const [editNeonAccidentDailyBenefitStart, setEditNeonAccidentDailyBenefitStart] =
+    useState("");
+  const [editNeonAccidentDailyBenefitBackpay, setEditNeonAccidentDailyBenefitBackpay] =
+    useState("");
   const [editNeonAccidentDailyBenefit, setEditNeonAccidentDailyBenefit] = useState("");
   const [editFlexiDeathAmount, setEditFlexiDeathAmount] = useState("");
   const [editFlexiDeathTypedType, setEditFlexiDeathTypedType] = useState("");
@@ -1763,6 +1803,7 @@ export default function ContractDetailPage() {
     invalidityB3: editNeonInvalidityB3,
     invalidityPension: editNeonInvalidityPension,
     criticalType: editNeonCriticalType,
+    criticalVariant: editNeonCriticalVariant,
     criticalAmount: editNeonCriticalAmount,
     childSurgeryAmount: editNeonChildSurgeryAmount,
     vaccinationCompAmount: editNeonVaccinationCompAmount,
@@ -1770,6 +1811,11 @@ export default function ContractDetailPage() {
     diabetesAmount: editNeonDiabetesAmount,
     deathAccidentAmount: editNeonDeathAccidentAmount,
     injuryPermanentAmount: editNeonInjuryPermanentAmount,
+    injuryPermanentFulfillmentFrom: editNeonInjuryPermanentFulfillmentFrom,
+    injuryPermanentProgression: editNeonInjuryPermanentProgression,
+    injuryPermanent2Amount: editNeonInjuryPermanent2Amount,
+    injuryPermanent2FulfillmentFrom: editNeonInjuryPermanent2FulfillmentFrom,
+    injuryPermanent2Progression: editNeonInjuryPermanent2Progression,
     hospitalizationAmount: editNeonHospitalizationAmount,
     hospitalizationIllnessAmount: editNeonHospitalizationIllnessAmount,
     hospitalizationInjuryAmount: editNeonHospitalizationInjuryAmount,
@@ -1778,6 +1824,13 @@ export default function ContractDetailPage() {
     workIncapacityAmount: editNeonWorkIncapacityAmount,
     workIncapacityInjury: editNeonWorkIncapacityInjury,
     workIncapacityIllness: editNeonWorkIncapacityIllness,
+    workIncapacity2Start: editNeonWorkIncapacity2Start,
+    workIncapacity2Backpay: editNeonWorkIncapacity2Backpay,
+    workIncapacity2Amount: editNeonWorkIncapacity2Amount,
+    workIncapacity2Injury: editNeonWorkIncapacity2Injury,
+    workIncapacity2Illness: editNeonWorkIncapacity2Illness,
+    accidentDailyBenefitStart: editNeonAccidentDailyBenefitStart,
+    accidentDailyBenefitBackpay: editNeonAccidentDailyBenefitBackpay,
     careDependencyAmount: editNeonCareDependencyAmount,
     specialAidAmount: editNeonSpecialAidAmount,
     caregivingAmount: editNeonCaregivingAmount,
@@ -2057,6 +2110,9 @@ export default function ContractDetailPage() {
         case "criticalType":
           setEditNeonCriticalType(String(value));
           break;
+        case "criticalVariant":
+          setEditNeonCriticalVariant(String(value));
+          break;
         case "criticalAmount":
           setEditNeonCriticalAmount(String(value));
           break;
@@ -2074,6 +2130,21 @@ export default function ContractDetailPage() {
           break;
         case "injuryPermanentAmount":
           setEditNeonInjuryPermanentAmount(String(value));
+          break;
+        case "injuryPermanentFulfillmentFrom":
+          setEditNeonInjuryPermanentFulfillmentFrom(String(value));
+          break;
+        case "injuryPermanentProgression":
+          setEditNeonInjuryPermanentProgression(String(value));
+          break;
+        case "injuryPermanent2Amount":
+          setEditNeonInjuryPermanent2Amount(String(value));
+          break;
+        case "injuryPermanent2FulfillmentFrom":
+          setEditNeonInjuryPermanent2FulfillmentFrom(String(value));
+          break;
+        case "injuryPermanent2Progression":
+          setEditNeonInjuryPermanent2Progression(String(value));
           break;
         case "hospitalizationAmount":
           setEditNeonHospitalizationAmount(String(value));
@@ -2099,6 +2170,21 @@ export default function ContractDetailPage() {
         case "workIncapacityIllness":
           setEditNeonWorkIncapacityIllness(Boolean(value));
           break;
+        case "workIncapacity2Start":
+          setEditNeonWorkIncapacity2Start(String(value));
+          break;
+        case "workIncapacity2Backpay":
+          setEditNeonWorkIncapacity2Backpay(String(value));
+          break;
+        case "workIncapacity2Amount":
+          setEditNeonWorkIncapacity2Amount(String(value));
+          break;
+        case "workIncapacity2Injury":
+          setEditNeonWorkIncapacity2Injury(Boolean(value));
+          break;
+        case "workIncapacity2Illness":
+          setEditNeonWorkIncapacity2Illness(Boolean(value));
+          break;
         case "careDependencyAmount":
           setEditNeonCareDependencyAmount(String(value));
           break;
@@ -2122,6 +2208,12 @@ export default function ContractDetailPage() {
           break;
         case "travelInsurance":
           setEditNeonTravelInsurance(Boolean(value));
+          break;
+        case "accidentDailyBenefitStart":
+          setEditNeonAccidentDailyBenefitStart(String(value));
+          break;
+        case "accidentDailyBenefitBackpay":
+          setEditNeonAccidentDailyBenefitBackpay(String(value));
           break;
         case "accidentDailyBenefit":
           setEditNeonAccidentDailyBenefit(String(value));
@@ -2500,6 +2592,7 @@ export default function ContractDetailPage() {
     );
     setEditNeonInvalidityPension(!!contract.neonDetail?.invalidityPension);
     setEditNeonCriticalType(contract.neonDetail?.criticalIllnessType ?? "");
+    setEditNeonCriticalVariant(contract.neonDetail?.criticalIllnessVariant ?? "");
     setEditNeonCriticalAmount(
       contract.neonDetail?.criticalIllnessAmount != null &&
       Number.isFinite(contract.neonDetail.criticalIllnessAmount)
@@ -2535,6 +2628,24 @@ export default function ContractDetailPage() {
         ? String(contract.neonDetail.injuryPermanentAmount)
         : ""
     );
+    setEditNeonInjuryPermanentFulfillmentFrom(
+      contract.neonDetail?.injuryPermanentFulfillmentFrom ?? ""
+    );
+    setEditNeonInjuryPermanentProgression(
+      contract.neonDetail?.injuryPermanentProgression ?? ""
+    );
+    setEditNeonInjuryPermanent2Amount(
+      contract.neonDetail?.injuryPermanent2Amount != null &&
+      Number.isFinite(contract.neonDetail.injuryPermanent2Amount)
+        ? String(contract.neonDetail.injuryPermanent2Amount)
+        : ""
+    );
+    setEditNeonInjuryPermanent2FulfillmentFrom(
+      contract.neonDetail?.injuryPermanent2FulfillmentFrom ?? ""
+    );
+    setEditNeonInjuryPermanent2Progression(
+      contract.neonDetail?.injuryPermanent2Progression ?? ""
+    );
     setEditNeonHospitalizationAmount(
       contract.neonDetail?.hospitalizationAmount != null &&
       Number.isFinite(contract.neonDetail.hospitalizationAmount)
@@ -2563,6 +2674,16 @@ export default function ContractDetailPage() {
     );
     setEditNeonWorkIncapacityInjury(contract.neonDetail?.workIncapacityInjury ?? false);
     setEditNeonWorkIncapacityIllness(contract.neonDetail?.workIncapacityIllness ?? false);
+    setEditNeonWorkIncapacity2Start(contract.neonDetail?.workIncapacity2Start ?? "");
+    setEditNeonWorkIncapacity2Backpay(contract.neonDetail?.workIncapacity2Backpay ?? "");
+    setEditNeonWorkIncapacity2Amount(
+      contract.neonDetail?.workIncapacity2Amount != null &&
+      Number.isFinite(contract.neonDetail.workIncapacity2Amount)
+        ? String(contract.neonDetail.workIncapacity2Amount)
+        : ""
+    );
+    setEditNeonWorkIncapacity2Injury(contract.neonDetail?.workIncapacity2Injury ?? false);
+    setEditNeonWorkIncapacity2Illness(contract.neonDetail?.workIncapacity2Illness ?? false);
     setEditNeonCareDependencyAmount(
       contract.neonDetail?.careDependencyAmount != null &&
       Number.isFinite(contract.neonDetail.careDependencyAmount)
@@ -2601,6 +2722,12 @@ export default function ContractDetailPage() {
         : ""
     );
     setEditNeonTravelInsurance(!!contract.neonDetail?.travelInsurance);
+    setEditNeonAccidentDailyBenefitStart(
+      contract.neonDetail?.accidentDailyBenefitStart ?? ""
+    );
+    setEditNeonAccidentDailyBenefitBackpay(
+      contract.neonDetail?.accidentDailyBenefitBackpay ?? ""
+    );
     setEditNeonAccidentDailyBenefit(
       contract.neonDetail?.accidentDailyBenefit != null &&
       Number.isFinite(contract.neonDetail.accidentDailyBenefit)
@@ -3230,13 +3357,26 @@ export default function ContractDetailPage() {
                 invalidityB3: toNumberOrNull(editNeonInvalidityB3),
                 invalidityPension: !!editNeonInvalidityPension,
                 criticalIllnessType: editNeonCriticalType.trim() || null,
+                criticalIllnessVariant: editNeonCriticalVariant.trim() || null,
                 criticalIllnessAmount: toNumberOrNull(editNeonCriticalAmount),
                 childSurgeryAmount: toNumberOrNull(editNeonChildSurgeryAmount),
                 vaccinationCompAmount: toNumberOrNull(editNeonVaccinationCompAmount),
+                accidentDailyBenefitStart: editNeonAccidentDailyBenefitStart.trim() || null,
+                accidentDailyBenefitBackpay:
+                  editNeonAccidentDailyBenefitBackpay.trim() || null,
                 accidentDailyBenefit: toNumberOrNull(editNeonAccidentDailyBenefit),
                 diabetesAmount: toNumberOrNull(editNeonDiabetesAmount),
                 deathAccidentAmount: toNumberOrNull(editNeonDeathAccidentAmount),
                 injuryPermanentAmount: toNumberOrNull(editNeonInjuryPermanentAmount),
+                injuryPermanentFulfillmentFrom:
+                  editNeonInjuryPermanentFulfillmentFrom.trim() || null,
+                injuryPermanentProgression:
+                  editNeonInjuryPermanentProgression.trim() || null,
+                injuryPermanent2Amount: toNumberOrNull(editNeonInjuryPermanent2Amount),
+                injuryPermanent2FulfillmentFrom:
+                  editNeonInjuryPermanent2FulfillmentFrom.trim() || null,
+                injuryPermanent2Progression:
+                  editNeonInjuryPermanent2Progression.trim() || null,
                 hospitalizationAmount: toNumberOrNull(editNeonHospitalizationAmount),
                 hospitalizationIllnessAmount: toNumberOrNull(editNeonHospitalizationIllnessAmount),
                 hospitalizationInjuryAmount: toNumberOrNull(editNeonHospitalizationInjuryAmount),
@@ -3245,6 +3385,11 @@ export default function ContractDetailPage() {
                 workIncapacityAmount: toNumberOrNull(editNeonWorkIncapacityAmount),
                 workIncapacityInjury: editNeonWorkIncapacityInjury,
                 workIncapacityIllness: editNeonWorkIncapacityIllness,
+                workIncapacity2Start: editNeonWorkIncapacity2Start.trim() || null,
+                workIncapacity2Backpay: editNeonWorkIncapacity2Backpay.trim() || null,
+                workIncapacity2Amount: toNumberOrNull(editNeonWorkIncapacity2Amount),
+                workIncapacity2Injury: editNeonWorkIncapacity2Injury,
+                workIncapacity2Illness: editNeonWorkIncapacity2Illness,
                 careDependencyAmount: toNumberOrNull(editNeonCareDependencyAmount),
                 specialAidAmount: toNumberOrNull(editNeonSpecialAidAmount),
                 caregivingAmount: toNumberOrNull(editNeonCaregivingAmount),

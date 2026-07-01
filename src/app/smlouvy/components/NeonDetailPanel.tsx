@@ -45,21 +45,34 @@ export type NeonFields = {
   invalidityB3: string;
   invalidityPension: boolean;
   criticalType: string;
+  criticalVariant: string;
   criticalAmount: string;
   childSurgeryAmount: string;
   vaccinationCompAmount: string;
   diabetesAmount: string;
   deathAccidentAmount: string;
   injuryPermanentAmount: string;
+  injuryPermanentFulfillmentFrom: string;
+  injuryPermanentProgression: string;
+  injuryPermanent2Amount: string;
+  injuryPermanent2FulfillmentFrom: string;
+  injuryPermanent2Progression: string;
   hospitalizationAmount: string;
   hospitalizationIllnessAmount: string;
   hospitalizationInjuryAmount: string;
+  accidentDailyBenefitStart: string;
+  accidentDailyBenefitBackpay: string;
   accidentDailyBenefit: string;
   workIncapacityStart: string;
   workIncapacityBackpay: string;
   workIncapacityAmount: string;
   workIncapacityInjury: boolean;
   workIncapacityIllness: boolean;
+  workIncapacity2Start: string;
+  workIncapacity2Backpay: string;
+  workIncapacity2Amount: string;
+  workIncapacity2Injury: boolean;
+  workIncapacity2Illness: boolean;
   careDependencyAmount: string;
   specialAidAmount: string;
   caregivingAmount: string;
@@ -89,21 +102,34 @@ export type NeonDetail = {
   invalidityB3?: number | null;
   invalidityPension?: boolean | null;
   criticalIllnessType?: string | null;
+  criticalIllnessVariant?: string | null;
   criticalIllnessAmount?: number | null;
   childSurgeryAmount?: number | null;
   vaccinationCompAmount?: number | null;
   diabetesAmount?: number | null;
   deathAccidentAmount?: number | null;
   injuryPermanentAmount?: number | null;
+  injuryPermanentFulfillmentFrom?: string | null;
+  injuryPermanentProgression?: string | null;
+  injuryPermanent2Amount?: number | null;
+  injuryPermanent2FulfillmentFrom?: string | null;
+  injuryPermanent2Progression?: string | null;
   hospitalizationAmount?: number | null;
   hospitalizationIllnessAmount?: number | null;
   hospitalizationInjuryAmount?: number | null;
+  accidentDailyBenefitStart?: string | null;
+  accidentDailyBenefitBackpay?: string | null;
   accidentDailyBenefit?: number | null;
   workIncapacityStart?: string | null;
   workIncapacityBackpay?: string | null;
   workIncapacityAmount?: number | null;
   workIncapacityInjury?: boolean | null;
   workIncapacityIllness?: boolean | null;
+  workIncapacity2Start?: string | null;
+  workIncapacity2Backpay?: string | null;
+  workIncapacity2Amount?: number | null;
+  workIncapacity2Injury?: boolean | null;
+  workIncapacity2Illness?: boolean | null;
   careDependencyAmount?: number | null;
   specialAidAmount?: number | null;
   caregivingAmount?: number | null;
@@ -145,6 +171,63 @@ const sumTypeLabel = (val?: string | null) => {
     konstantni: "Konstantní",
     klesajici: "Klesající",
     klesajici_urok: "Klesající dle úroku",
+  };
+  if (!val) return "—";
+  return map[val] ?? val;
+};
+
+const criticalVariantLabel = (val?: string | null) => {
+  const map: Record<string, string> = {
+    zakladni: "Základní",
+    rozsirena_in_situ: "Rozšířená včetně formy in situ",
+    maxi_in_situ: "Maxi včetně formy in situ",
+  };
+  if (!val) return "—";
+  return map[val] ?? val;
+};
+
+const criticalVariantOptions = [
+  { value: "zakladni", label: "Základní" },
+  { value: "rozsirena_in_situ", label: "Rozšířená včetně formy in situ" },
+  { value: "maxi_in_situ", label: "Maxi včetně formy in situ" },
+];
+
+const accidentDailyStartLabel = (val?: string | null) => {
+  if (!val) return "—";
+  return `${val}. dne`;
+};
+
+const accidentDailyBackpayLabel = (val?: string | null) => {
+  const map: Record<string, string> = {
+    zpetne: "Zpětně od 1. dne",
+    zpetne_progrese: "Zpětně s progresí",
+  };
+  if (!val) return "—";
+  return map[val] ?? val;
+};
+
+const accidentDailyStartOptions = [
+  { value: "1", label: "1. dne" },
+  { value: "22", label: "22. dne" },
+];
+
+const accidentDailyBackpayOptions = [
+  { value: "zpetne", label: "Zpětně od 1. dne" },
+  { value: "zpetne_progrese", label: "Zpětně s progresí" },
+];
+
+const injuryPermanentFulfillmentLabel = (val?: string | null) => {
+  if (!val) return "—";
+  if (val === "0.001") return "0,001 %";
+  if (val === "10") return "10 %";
+  return val;
+};
+
+const injuryPermanentProgressionLabel = (val?: string | null) => {
+  const map: Record<string, string> = {
+    bez_progrese: "Bez progrese",
+    progrese_5x: "5x progrese",
+    progrese_10x: "10x progrese",
   };
   if (!val) return "—";
   return map[val] ?? val;
@@ -207,6 +290,17 @@ const sumTypeOptions = [
   { value: "konstantni", label: "Konstantní" },
   { value: "klesajici", label: "Klesající" },
   { value: "klesajici_urok", label: "Klesající dle úroku" },
+];
+
+const injuryPermanentFulfillmentOptions = [
+  { value: "0.001", label: "0,001 %" },
+  { value: "10", label: "10 %" },
+];
+
+const injuryPermanentProgressionOptions = [
+  { value: "bez_progrese", label: "Bez progrese" },
+  { value: "progrese_5x", label: "5x progrese" },
+  { value: "progrese_10x", label: "10x progrese" },
 ];
 
 const renderAmountRow = ({
@@ -325,21 +419,43 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
         applied += applyField("invalidityB3", risks.invalidityB3);
         applied += applyField("invalidityPension", risks.invalidityPension);
         applied += applyField("criticalType", risks.criticalType);
+        applied += applyField("criticalVariant", risks.criticalVariant);
         applied += applyField("criticalAmount", risks.criticalAmount);
         applied += applyField("childSurgeryAmount", risks.childSurgeryAmount);
         applied += applyField("vaccinationCompAmount", risks.vaccinationCompAmount);
         applied += applyField("diabetesAmount", risks.diabetesAmount);
         applied += applyField("deathAccidentAmount", risks.deathAccidentAmount);
         applied += applyField("injuryPermanentAmount", risks.injuryPermanentAmount);
+        applied += applyField(
+          "injuryPermanentFulfillmentFrom",
+          risks.injuryPermanentFulfillmentFrom
+        );
+        applied += applyField("injuryPermanentProgression", risks.injuryPermanentProgression);
+        applied += applyField("injuryPermanent2Amount", risks.injuryPermanent2Amount);
+        applied += applyField(
+          "injuryPermanent2FulfillmentFrom",
+          risks.injuryPermanent2FulfillmentFrom
+        );
+        applied += applyField("injuryPermanent2Progression", risks.injuryPermanent2Progression);
         applied += applyField("hospitalizationAmount", risks.hospitalizationAmount);
         applied += applyField("hospitalizationIllnessAmount", risks.hospitalizationIllnessAmount);
         applied += applyField("hospitalizationInjuryAmount", risks.hospitalizationInjuryAmount);
+        applied += applyField("accidentDailyBenefitStart", risks.accidentDailyBenefitStart);
+        applied += applyField(
+          "accidentDailyBenefitBackpay",
+          risks.accidentDailyBenefitBackpay
+        );
         applied += applyField("accidentDailyBenefit", risks.accidentDailyBenefit);
         applied += applyField("workIncapacityStart", risks.workIncapacityStart);
         applied += applyField("workIncapacityBackpay", risks.workIncapacityBackpay);
         applied += applyField("workIncapacityAmount", risks.workIncapacityAmount);
         applied += applyField("workIncapacityInjury", risks.workIncapacityInjury);
         applied += applyField("workIncapacityIllness", risks.workIncapacityIllness);
+        applied += applyField("workIncapacity2Start", risks.workIncapacity2Start);
+        applied += applyField("workIncapacity2Backpay", risks.workIncapacity2Backpay);
+        applied += applyField("workIncapacity2Amount", risks.workIncapacity2Amount);
+        applied += applyField("workIncapacity2Injury", risks.workIncapacity2Injury);
+        applied += applyField("workIncapacity2Illness", risks.workIncapacity2Illness);
         applied += applyField("careDependencyAmount", risks.careDependencyAmount);
         applied += applyField("specialAidAmount", risks.specialAidAmount);
         applied += applyField("caregivingAmount", risks.caregivingAmount);
@@ -398,20 +514,47 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
   const showInvalidityB2 = editMode || contract?.invalidityB2 != null || fields.invalidityB2.trim() !== "";
   const showInvalidityB3 = editMode || contract?.invalidityB3 != null || fields.invalidityB3.trim() !== "";
   const hasCritical =
-    editMode || contract?.criticalIllnessAmount != null || fields.criticalAmount.trim() !== "";
+    editMode ||
+    contract?.criticalIllnessAmount != null ||
+    !!contract?.criticalIllnessType ||
+    !!contract?.criticalIllnessVariant ||
+    fields.criticalType.trim() !== "" ||
+    fields.criticalVariant.trim() !== "" ||
+    fields.criticalAmount.trim() !== "";
   const hasChildSurgery =
     editMode || contract?.childSurgeryAmount != null || fields.childSurgeryAmount.trim() !== "";
   const hasVaccination =
     editMode || contract?.vaccinationCompAmount != null || fields.vaccinationCompAmount.trim() !== "";
   const hasDiabetes = editMode || contract?.diabetesAmount != null || fields.diabetesAmount.trim() !== "";
   const hasDeathAccident = editMode || contract?.deathAccidentAmount != null || fields.deathAccidentAmount.trim() !== "";
-  const hasInjuryPermanent = editMode || contract?.injuryPermanentAmount != null || fields.injuryPermanentAmount.trim() !== "";
+  const hasInjuryPermanent =
+    editMode ||
+    contract?.injuryPermanentAmount != null ||
+    !!contract?.injuryPermanentFulfillmentFrom ||
+    !!contract?.injuryPermanentProgression ||
+    fields.injuryPermanentAmount.trim() !== "" ||
+    fields.injuryPermanentFulfillmentFrom.trim() !== "" ||
+    fields.injuryPermanentProgression.trim() !== "";
+  const hasInjuryPermanent2 =
+    editMode ||
+    contract?.injuryPermanent2Amount != null ||
+    !!contract?.injuryPermanent2FulfillmentFrom ||
+    !!contract?.injuryPermanent2Progression ||
+    fields.injuryPermanent2Amount.trim() !== "" ||
+    fields.injuryPermanent2FulfillmentFrom.trim() !== "" ||
+    fields.injuryPermanent2Progression.trim() !== "";
   const hasHospitalizationIllness =
     editMode || contract?.hospitalizationIllnessAmount != null || fields.hospitalizationIllnessAmount.trim() !== "";
   const hasHospitalizationInjury =
     editMode || contract?.hospitalizationInjuryAmount != null || fields.hospitalizationInjuryAmount.trim() !== "";
   const hasAccidentDaily =
-    editMode || contract?.accidentDailyBenefit != null || fields.accidentDailyBenefit.trim() !== "";
+    editMode ||
+    contract?.accidentDailyBenefit != null ||
+    !!contract?.accidentDailyBenefitStart ||
+    !!contract?.accidentDailyBenefitBackpay ||
+    fields.accidentDailyBenefit.trim() !== "" ||
+    fields.accidentDailyBenefitStart.trim() !== "" ||
+    fields.accidentDailyBenefitBackpay.trim() !== "";
   const hasWorkIncapacity =
     editMode ||
     contract?.workIncapacityAmount != null ||
@@ -422,6 +565,16 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
     contract?.workIncapacityIllness ||
     fields.workIncapacityInjury ||
     fields.workIncapacityIllness;
+  const hasWorkIncapacity2 =
+    editMode ||
+    contract?.workIncapacity2Amount != null ||
+    fields.workIncapacity2Amount.trim() !== "" ||
+    (contract?.workIncapacity2Start ?? fields.workIncapacity2Start)?.trim?.() ||
+    (contract?.workIncapacity2Backpay ?? fields.workIncapacity2Backpay)?.trim?.() ||
+    contract?.workIncapacity2Injury ||
+    contract?.workIncapacity2Illness ||
+    fields.workIncapacity2Injury ||
+    fields.workIncapacity2Illness;
   const hasCareDependency =
     editMode || contract?.careDependencyAmount != null || fields.careDependencyAmount.trim() !== "";
   const hasSpecialAid =
@@ -667,6 +820,27 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       {(editMode || hasCritical) && (
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
           <SectionTitle icon={Stethoscope} label="Závažná onemocnění a poranění" />
+          <div className="flex flex-col gap-1">
+            <span className="text-slate-600">Varianta</span>
+            {editMode ? (
+              <select
+                value={fields.criticalVariant}
+                onChange={(e) => onChange("criticalVariant", e.target.value)}
+                className={selectClass}
+              >
+                <option value="">Vyber variantu</option>
+                {criticalVariantOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm font-semibold">
+                {criticalVariantLabel(contract?.criticalIllnessVariant ?? fields.criticalVariant)}
+              </span>
+            )}
+          </div>
           {renderAmountRow({
             label: "Krytí",
             typeValue: fields.criticalType,
@@ -798,6 +972,114 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
               )}
             </span>
           </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-600">Plnění od</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <select
+                  value={fields.injuryPermanentFulfillmentFrom}
+                  onChange={(e) => onChange("injuryPermanentFulfillmentFrom", e.target.value)}
+                  className={`${selectClass} w-36`}
+                >
+                  <option value="">Vyber</option>
+                  {injuryPermanentFulfillmentOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                injuryPermanentFulfillmentLabel(contract?.injuryPermanentFulfillmentFrom)
+              )}
+            </span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-600">Progrese</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <select
+                  value={fields.injuryPermanentProgression}
+                  onChange={(e) => onChange("injuryPermanentProgression", e.target.value)}
+                  className={`${selectClass} w-40`}
+                >
+                  <option value="">Vyber</option>
+                  {injuryPermanentProgressionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                injuryPermanentProgressionLabel(contract?.injuryPermanentProgression)
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {(editMode || hasInjuryPermanent2) && (
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <SectionTitle icon={Bandage} label="Trvalé následky úrazu (2)" />
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-600">Pojistná částka</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <input
+                  type="number"
+                  value={fields.injuryPermanent2Amount}
+                  onChange={(e) => onChange("injuryPermanent2Amount", e.target.value)}
+                  className={`${inputClass} w-32`}
+                  placeholder="částka"
+                />
+              ) : contract?.injuryPermanent2Amount != null ? (
+                formatMoney(contract.injuryPermanent2Amount)
+              ) : (
+                "—"
+              )}
+            </span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-600">Plnění od</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <select
+                  value={fields.injuryPermanent2FulfillmentFrom}
+                  onChange={(e) => onChange("injuryPermanent2FulfillmentFrom", e.target.value)}
+                  className={`${selectClass} w-36`}
+                >
+                  <option value="">Vyber</option>
+                  {injuryPermanentFulfillmentOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                injuryPermanentFulfillmentLabel(contract?.injuryPermanent2FulfillmentFrom)
+              )}
+            </span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-600">Progrese</span>
+            <span className="font-semibold text-right">
+              {editMode ? (
+                <select
+                  value={fields.injuryPermanent2Progression}
+                  onChange={(e) => onChange("injuryPermanent2Progression", e.target.value)}
+                  className={`${selectClass} w-40`}
+                >
+                  <option value="">Vyber</option>
+                  {injuryPermanentProgressionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                injuryPermanentProgressionLabel(contract?.injuryPermanent2Progression)
+              )}
+            </span>
+          </div>
         </div>
       )}
 
@@ -852,15 +1134,62 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       {(editMode || hasAccidentDaily) && (
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
           <SectionTitle icon={CalendarCheck2} label="Denní odškodné úrazem" />
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Denní částka</span>
-            <span className="font-semibold text-right">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-slate-600">Plnění od</span>
+              {editMode ? (
+                <select
+                  value={fields.accidentDailyBenefitStart}
+                  onChange={(e) => onChange("accidentDailyBenefitStart", e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">Vyber den</option>
+                  {accidentDailyStartOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-sm font-semibold">
+                  {accidentDailyStartLabel(
+                    contract?.accidentDailyBenefitStart ?? fields.accidentDailyBenefitStart
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-slate-600">Zpětně</span>
+              {editMode ? (
+                <select
+                  value={fields.accidentDailyBenefitBackpay}
+                  onChange={(e) => onChange("accidentDailyBenefitBackpay", e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">Vyber</option>
+                  {accidentDailyBackpayOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-sm font-semibold">
+                  {accidentDailyBackpayLabel(
+                    contract?.accidentDailyBenefitBackpay ??
+                      fields.accidentDailyBenefitBackpay
+                  )}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-slate-600">Denní částka</span>
               {editMode ? (
                 <input
                   type="number"
                   value={fields.accidentDailyBenefit}
                   onChange={(e) => onChange("accidentDailyBenefit", e.target.value)}
-                  className={`${inputClass} w-32`}
+                  className={inputClass}
                   placeholder="částka"
                 />
               ) : contract?.accidentDailyBenefit != null ? (
@@ -868,7 +1197,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
               ) : (
                 "—"
               )}
-            </span>
+            </div>
           </div>
         </div>
       )}
@@ -941,6 +1270,83 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
                   />
                 ) : contract?.workIncapacityAmount != null ? (
                   formatMoney(contract.workIncapacityAmount)
+                ) : (
+                  "—"
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(editMode || hasWorkIncapacity2) && (
+        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+          <SectionTitle icon={BriefcaseMedical} label="Pracovní neschopnost (2)" />
+          <div className="space-y-2 text-sm text-slate-900">
+            <div className="flex flex-wrap gap-2">
+              <ToggleRow
+                label="Nemoc"
+                checked={fields.workIncapacity2Illness}
+                onChange={(val) => onChange("workIncapacity2Illness", val)}
+                disabled={!editMode}
+              />
+              <ToggleRow
+                label="Úraz"
+                checked={fields.workIncapacity2Injury}
+                onChange={(val) => onChange("workIncapacity2Injury", val)}
+                disabled={!editMode}
+              />
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Plnění od</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <select
+                    value={fields.workIncapacity2Start}
+                    onChange={(e) => onChange("workIncapacity2Start", e.target.value)}
+                    className={`${selectClass} w-32`}
+                  >
+                    <option value="">Vyber den</option>
+                    <option value="15">15. dne</option>
+                    <option value="29">29. dne</option>
+                    <option value="60">60. dne</option>
+                  </select>
+                ) : (
+                  fields.workIncapacity2Start || contract?.workIncapacity2Start || "—"
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Zpětné plnění</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <select
+                    value={fields.workIncapacity2Backpay}
+                    onChange={(e) => onChange("workIncapacity2Backpay", e.target.value)}
+                    className={`${selectClass} w-32`}
+                  >
+                    <option value="">Vyber</option>
+                    <option value="zpetne">Zpětně</option>
+                    <option value="nezpetne">Nezpětně</option>
+                  </select>
+                ) : (
+                  fields.workIncapacity2Backpay || contract?.workIncapacity2Backpay || "—"
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Denní částka</span>
+              <span className="font-semibold text-right">
+                {editMode ? (
+                  <input
+                    type="number"
+                    value={fields.workIncapacity2Amount}
+                    onChange={(e) => onChange("workIncapacity2Amount", e.target.value)}
+                    className={`${inputClass} w-32`}
+                    placeholder="částka"
+                  />
+                ) : contract?.workIncapacity2Amount != null ? (
+                  formatMoney(contract.workIncapacity2Amount)
                 ) : (
                   "—"
                 )}

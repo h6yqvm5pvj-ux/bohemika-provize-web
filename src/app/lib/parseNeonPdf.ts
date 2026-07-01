@@ -20,21 +20,34 @@ export type NeonRiskFields = Partial<{
   invalidityB3: string;
   invalidityPension: boolean;
   criticalType: string;
+  criticalVariant: string;
   criticalAmount: string;
   childSurgeryAmount: string;
   vaccinationCompAmount: string;
   diabetesAmount: string;
   deathAccidentAmount: string;
   injuryPermanentAmount: string;
+  injuryPermanentFulfillmentFrom: string;
+  injuryPermanentProgression: string;
+  injuryPermanent2Amount: string;
+  injuryPermanent2FulfillmentFrom: string;
+  injuryPermanent2Progression: string;
   hospitalizationAmount: string;
   hospitalizationIllnessAmount: string;
   hospitalizationInjuryAmount: string;
+  accidentDailyBenefitStart: string;
+  accidentDailyBenefitBackpay: string;
   accidentDailyBenefit: string;
   workIncapacityStart: string;
   workIncapacityBackpay: string;
   workIncapacityAmount: string;
-   workIncapacityInjury: boolean;
-   workIncapacityIllness: boolean;
+  workIncapacityInjury: boolean;
+  workIncapacityIllness: boolean;
+  workIncapacity2Start: string;
+  workIncapacity2Backpay: string;
+  workIncapacity2Amount: string;
+  workIncapacity2Injury: boolean;
+  workIncapacity2Illness: boolean;
   careDependencyAmount: string;
   specialAidAmount: string;
   caregivingAmount: string;
@@ -178,15 +191,30 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   const riskFields: NeonRiskFields = {};
   const risks: { title: string; variant?: string | null; amount?: number | null }[] = [];
 
+  const parseStandaloneAmountLine = (text: string): number | null => {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!/^\d[\d\s.,]*$/.test(normalized)) return null;
+    const value = parseAmount(normalized);
+    // V tabulkách NEON bývá před částkou ještě pojistná doba (např. 14)
+    // a za částkou měsíční pojistné (např. 142). Samostatnou částku bereme
+    // až od 500 Kč, aby se tyto sloupce nepletly s pojistnou částkou.
+    if (value == null || value < 500) return null;
+    return value;
+  };
+
   const findAmountAfter = (labelRegex: RegExp, maxLookahead = 6): number | null => {
-    const idx = asciiLines.findIndex((l) => labelRegex.test(l));
-    if (idx !== -1) {
+    for (let idx = 0; idx < asciiLines.length; idx += 1) {
+      if (!labelRegex.test(asciiLines[idx])) continue;
+
       for (let i = idx + 1; i <= Math.min(asciiLines.length - 1, idx + maxLookahead); i++) {
         const m = asciiLines[i].match(/([\d\s]+)(k[cč])/);
         if (m?.[1]) {
           const val = parseAmount(m[1]);
           if (val != null) return val;
         }
+
+        const standalone = parseStandaloneAmountLine(asciiLines[i]);
+        if (standalone != null) return standalone;
       }
     }
 
@@ -198,6 +226,313 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
     }
 
     return null;
+  };
+
+  const findInjuryPermanentEntries = (): Array<{
+    amount: number | null;
+    fulfillmentFrom: string | null;
+    progression: string | null;
+  }> => {
+    const entries: Array<{
+      amount: number | null;
+      fulfillmentFrom: string | null;
+      progression: string | null;
+    }> = [];
+    const seen = new Set<string>();
+
+    const blockStart = asciiLines.findIndex((line) => /urazove pripojisteni/.test(line));
+    const scanStart = blockStart >= 0 ? blockStart : 0;
+    const blockEnd =
+      blockStart >= 0
+        ? asciiLines.findIndex(
+            (line, index) =>
+              index > blockStart &&
+              /pripojisteni pro pripad pracovni neschopnosti|pripojisteni pro pripad hospitalizace|pojisteni pro pripad hospitalizace|pripojisteni pro pripad zavaznych|pojisteni pro pripad zavaznych/.test(
+                line
+              )
+          )
+        : -1;
+    const scanEnd = blockEnd > scanStart ? blockEnd : asciiLines.length;
+
+    for (let idx = scanStart; idx < scanEnd; idx += 1) {
+      if (!/trvale nasledky urazu/.test(asciiLines[idx])) continue;
+
+      let amount: number | null = null;
+      let fulfillmentFrom: string | null = null;
+      let progression: string | null = null;
+      const currencyHits: number[] = [];
+      const standaloneHits: number[] = [];
+
+      for (let i = idx + 1; i <= Math.min(scanEnd - 1, idx + 10); i += 1) {
+        const line = asciiLines[i].replace(/\s+/g, " ").trim();
+        if (!progression) {
+          if (/bez progrese/.test(line)) progression = "bez_progrese";
+          else if (/petinasobna progrese|5\s*x\s*progrese|5x\s*progrese/.test(line)) {
+            progression = "progrese_5x";
+          } else if (/desetinasobna progrese|10\s*x\s*progrese|10x\s*progrese|top progrese/.test(line)) {
+            progression = "progrese_10x";
+          }
+        }
+
+        if (!fulfillmentFrom) {
+          if (/od\s+0[,.]0*01\s*%/.test(line)) fulfillmentFrom = "0.001";
+          else if (/od\s+10\s*%/.test(line)) fulfillmentFrom = "10";
+        }
+
+        const currencyMatch = line.match(/([\d\s]+)(k[cč])/);
+        const currencyValue = parseAmount(currencyMatch?.[1]);
+        if (currencyValue != null) currencyHits.push(currencyValue);
+
+        const standalone = parseStandaloneAmountLine(line);
+        if (standalone != null) standaloneHits.push(standalone);
+      }
+
+      if (currencyHits.length >= 2) amount = currencyHits[0];
+      else if (currencyHits.length === 1 && currencyHits[0] >= 500) amount = currencyHits[0];
+      else if (standaloneHits.length > 0) amount = standaloneHits[0];
+
+      if (amount == null && !fulfillmentFrom && !progression) continue;
+
+      const dedupeKey = `${amount ?? ""}|${fulfillmentFrom ?? ""}|${progression ?? ""}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      entries.push({ amount, fulfillmentFrom, progression });
+    }
+
+    return entries;
+  };
+
+  const parseStandaloneBenefitAmount = (text: string): number | null => {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    if (!/^\d[\d\s.,]*$/.test(normalized)) return null;
+    const value = parseAmount(normalized);
+    if (value == null || value < 50) return null;
+    return value;
+  };
+
+  const parseDailyBenefitFromLine = (line: string): number | null => {
+    if (isDateLike(line)) return null;
+
+    const currencyValues = Array.from(line.matchAll(/([\d\s]+)k[cč]/g))
+      .map((match) => parseAmount(match[1]))
+      .filter((value): value is number => value != null && value >= 50);
+    if (currencyValues.length > 0) return currencyValues[0];
+
+    const numberMatches = line.match(/\b\d{1,6}(?:[.,]\d+)?\b/g) ?? [];
+    if (numberMatches.length > 1) {
+      const numbers = numberMatches
+        .map((match) => parseAmount(match))
+        .filter((value): value is number => value != null && value >= 50);
+      return numbers.find((value) => value >= 100) ?? numbers[0] ?? null;
+    }
+
+    return parseStandaloneBenefitAmount(line);
+  };
+
+  const findHospitalizationEntries = (): Array<{
+    illness: boolean;
+    injury: boolean;
+    amount: number | null;
+  }> => {
+    const isHospitalLine = (line: string) => /denni odskodne za pobyt v nemocnici/.test(line);
+    const blockStartRegex = /^(ostatni pripojisteni|dalsi pripojisteni)$/;
+    const blockEndRegex =
+      /^(slevy z celkove|slevy z|placeni pojistneho|bankovni spojeni|prehled vyvoje|dalsi smluvni ujednani|prohlaseni pojistnika|pripojisteni pro pripad|pojisteni pro pripad)/;
+
+    const collectFromBlock = (
+      startIndex: number,
+      endIndex: number
+    ): Array<{ illness: boolean; injury: boolean; amount: number | null }> => {
+      const entries: Array<{ illness: boolean; injury: boolean; amount: number | null }> = [];
+
+      for (let idx = startIndex; idx < endIndex; idx += 1) {
+        if (!isHospitalLine(asciiLines[idx])) continue;
+
+        let entryEnd = Math.min(endIndex, idx + 12);
+        for (let nextIdx = idx + 1; nextIdx < entryEnd; nextIdx += 1) {
+          if (isHospitalLine(asciiLines[nextIdx])) {
+            entryEnd = nextIdx;
+            break;
+          }
+        }
+
+        const window = asciiLines.slice(idx, entryEnd);
+        const text = window.join(" ").replace(/\s+/g, " ").trim();
+        const illness = /nemoc/.test(text);
+        const injury = /uraz/.test(text);
+        let amount: number | null = null;
+
+        for (const line of window.slice(1)) {
+          const value = parseDailyBenefitFromLine(line);
+          if (value != null) {
+            amount = value;
+            break;
+          }
+        }
+
+        if (amount == null && !illness && !injury) continue;
+        entries.push({ illness, injury, amount });
+      }
+
+      return entries;
+    };
+
+    const blockStarts = asciiLines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => blockStartRegex.test(line));
+
+    for (const { index: blockStart } of blockStarts) {
+      const blockEnd = asciiLines.findIndex(
+        (line, index) => index > blockStart && blockEndRegex.test(line)
+      );
+      const entries = collectFromBlock(
+        blockStart,
+        blockEnd > blockStart ? blockEnd : Math.min(asciiLines.length, blockStart + 80)
+      );
+      if (entries.some((entry) => entry.amount != null)) {
+        return entries;
+      }
+    }
+
+    return [];
+  };
+
+  const findCriticalIllnessVariant = (): string | null => {
+    for (let idx = 0; idx < asciiLines.length; idx += 1) {
+      if (!/zavazna onemocneni/.test(asciiLines[idx])) continue;
+
+      const text = asciiLines
+        .slice(idx, Math.min(asciiLines.length, idx + 10))
+        .join(" ")
+        .replace(/\s+/g, " ");
+
+      if (/maxi/.test(text) && /in situ/.test(text)) return "maxi_in_situ";
+      if (/rozsiren/.test(text) && /in situ/.test(text)) return "rozsirena_in_situ";
+      if (/zakladn/.test(text)) return "zakladni";
+    }
+
+    return null;
+  };
+
+  const findAccidentDailyBenefitEntry = (): {
+    start: string | null;
+    backpay: string | null;
+    amount: number | null;
+  } | null => {
+    const isAccidentDailyLine = (line: string) =>
+      /denni odskodne za dobu leceni urazu/.test(line);
+
+    for (let idx = 0; idx < asciiLines.length; idx += 1) {
+      if (!isAccidentDailyLine(asciiLines[idx])) continue;
+
+      const window = asciiLines.slice(idx, Math.min(asciiLines.length, idx + 10));
+      const text = window.join(" ").replace(/\s+/g, " ").trim();
+      const startMatch = text.match(/plneni\s+od\s*(\d{1,3})\.\s*dne/);
+      const rawStart = startMatch?.[1] ?? null;
+      const start = rawStart === "1" || rawStart === "22" ? rawStart : null;
+      const backpay = /zpetne\s+s\s+progres/.test(text)
+        ? "zpetne_progrese"
+        : /zpetne\s+od\s+1\.\s*dne|zpetne/.test(text)
+          ? "zpetne"
+          : null;
+      let amount: number | null = null;
+
+      for (const line of window.slice(1)) {
+        const value = parseDailyBenefitFromLine(line);
+        if (value != null) {
+          amount = value;
+          break;
+        }
+      }
+
+      if (start || backpay || amount != null) {
+        return { start, backpay, amount };
+      }
+    }
+
+    return null;
+  };
+
+  const findWorkIncapacityEntries = (): Array<{
+    illness: boolean;
+    injury: boolean;
+    start: string | null;
+    backpay: string | null;
+    amount: number | null;
+  }> => {
+    const parsedEntries: Array<{
+      illness: boolean;
+      injury: boolean;
+      start: string | null;
+      backpay: string | null;
+      amount: number | null;
+    }> = [];
+    const isWorkLine = (line: string) => /denni odskodne za pracovni neschopnost/.test(line);
+    const blockStart = asciiLines.findIndex((line) =>
+      /pripojisteni pro pripad pracovni neschopnosti/.test(line)
+    );
+    const scanStart = blockStart >= 0 ? blockStart : 0;
+    const blockEnd =
+      blockStart >= 0
+        ? asciiLines.findIndex(
+            (line, index) =>
+              index > blockStart &&
+              /ostatni pripojisteni|dalsi pripojisteni|pripojisteni pro pripad hospitalizace|pojisteni pro pripad hospitalizace|zprosteni od placeni/.test(
+                line
+              )
+          )
+        : -1;
+    const scanEnd = blockEnd > scanStart ? blockEnd : asciiLines.length;
+
+    for (let idx = scanStart; idx < scanEnd; idx += 1) {
+      if (!isWorkLine(asciiLines[idx])) continue;
+
+      let entryEnd = Math.min(scanEnd, idx + 10);
+      for (let nextIdx = idx + 1; nextIdx < entryEnd; nextIdx += 1) {
+        if (isWorkLine(asciiLines[nextIdx])) {
+          entryEnd = nextIdx;
+          break;
+        }
+      }
+
+      const window = asciiLines.slice(idx, entryEnd);
+      const text = window.join(" ").replace(/\s+/g, " ").trim();
+      const illness = /nemoc/.test(text);
+      const injury = /uraz/.test(text);
+      const start = text.match(/(?:plneni\s+od|od)\s*(\d{1,3})\.\s*dne/)?.[1] ?? null;
+      const backpay = /nezpetne/.test(text) ? "nezpetne" : /zpetne/.test(text) ? "zpetne" : null;
+      let amount: number | null = null;
+
+      for (const line of window.slice(1)) {
+        const value = parseDailyBenefitFromLine(line);
+        if (value != null) {
+          amount = value;
+          break;
+        }
+      }
+
+      if (amount == null && !start && !backpay && !illness && !injury) continue;
+
+      parsedEntries.push({ illness, injury, start, backpay, amount });
+    }
+
+    const groupedEntries: typeof parsedEntries = [];
+    for (const entry of parsedEntries) {
+      const existing = groupedEntries.find(
+        (item) =>
+          item.start === entry.start &&
+          item.backpay === entry.backpay &&
+          item.amount === entry.amount
+      );
+      if (existing) {
+        existing.illness = existing.illness || entry.illness;
+        existing.injury = existing.injury || entry.injury;
+      } else {
+        groupedEntries.push({ ...entry });
+      }
+    }
+
+    return groupedEntries.slice(0, 2);
   };
 
   const addRiskRow = (title: string | null | undefined, variant?: string | null, amount?: number | null) => {
@@ -359,51 +694,14 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
       }
     }
 
-    // Trvalé následky úrazu – nastav pojistnou částku z tabulky
-    if (norm.includes("trvale nasledky urazu") && r.amount != null) {
+    // Trvalé následky úrazu – základní fallback, podrobné nastavení řeší scanner níže.
+    if (norm.includes("trvale nasledky urazu") && r.amount != null && !riskFields.injuryPermanentAmount) {
       riskFields.injuryPermanentAmount = String(r.amount);
     }
 
     // Denní odškodné za dobu léčení úrazu – denní částka
     if (norm.includes("denni odskodne za dobu leceni urazu") && r.amount != null) {
       riskFields.accidentDailyBenefit = String(r.amount);
-    }
-
-    // Pracovní neschopnost – nemoc / úraz
-    if (norm.includes("denni odskodne za pracovni neschopnost")) {
-      const variantText = normalize(`${r.title} ${r.variant ?? ""}`);
-      if (norm.includes("nemoc")) {
-        riskFields.workIncapacityIllness = true;
-      }
-      if (norm.includes("uraz")) {
-        riskFields.workIncapacityInjury = true;
-      }
-      if (r.amount != null) {
-        riskFields.workIncapacityAmount = String(r.amount);
-      } else {
-        // fallback: PN tabulka často uvádí čísla bez "Kč" (např. 32 | 600 | 637)
-        const nums = (r.variant ?? "")
-          .split(/\s+/)
-          .map((p) => parseAmount(p))
-          .filter((n): n is number => n != null);
-        if (nums.length === 0) {
-          const nearbyNums = (asciiLines.slice(i, Math.min(i + 5, asciiLines.length)).join(" ").match(/\d{2,6}/g) ?? [])
-            .map((n) => parseAmount(n))
-            .filter((n): n is number => n != null);
-          const nonDuration = nearbyNums.filter((n) => n >= 100); // preskoč 32 apod.
-          const candidate = nonDuration.length > 0 ? nonDuration[0] : nearbyNums[0];
-          if (candidate != null) riskFields.workIncapacityAmount = String(candidate);
-        }
-      }
-      const startMatch = variantText.match(/plneni od\s*(\d{1,3})/);
-      if (startMatch?.[1]) {
-        riskFields.workIncapacityStart = startMatch[1];
-      }
-      if (/zpetne/.test(variantText)) {
-        riskFields.workIncapacityBackpay = "zpetne";
-      } else if (/nezpetne/.test(variantText)) {
-        riskFields.workIncapacityBackpay = "nezpetne";
-      }
     }
 
     // Základní pojištění pro případ smrti s konstantní PČ
@@ -551,6 +849,10 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   }
 
   // Závažná onemocnění
+  const criticalVariant = findCriticalIllnessVariant();
+  if (criticalVariant) {
+    riskFields.criticalVariant = criticalVariant;
+  }
   const criticalConst = findAmountAfter(/zavazna onemocneni.*konstantni/i);
   const criticalLinear = findAmountAfter(/zavazna onemocneni.*linear/i);
   const criticalInterest = findAmountAfter(/zavazna onemocneni.*dle uroku/i);
@@ -576,111 +878,91 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   const deathAcc = findAmountAfter(/smrt urazem/i);
   if (deathAcc != null) riskFields.deathAccidentAmount = String(deathAcc);
 
-  const injuryPermanent = findAmountAfter(/trvale nasledky urazu/i);
-  if (injuryPermanent != null) riskFields.injuryPermanentAmount = String(injuryPermanent);
-
-  const accidentDaily = findAmountAfter(/denni odskodne za dobu leceni urazu/i);
-  if (accidentDaily != null) riskFields.accidentDailyBenefit = String(accidentDaily);
-
-  // Hospitalizace – nemoc / úraz zvlášť
-  const hospitalLines = asciiLines.filter((l) => /denni odskodne za pobyt v nemocnici/.test(l));
-  for (const line of hospitalLines) {
-    const val = parseAmount(line.match(/([\d\s]+)k[cč]/)?.[1]);
-    const isIllness = /nemoc/.test(line);
-    const isInjury = /uraz/.test(line);
-    if (isIllness && val != null) riskFields.hospitalizationIllnessAmount = String(val);
-    if (isInjury && val != null) riskFields.hospitalizationInjuryAmount = String(val);
-    if (!isIllness && !isInjury && val != null) {
-      if (!riskFields.hospitalizationIllnessAmount) riskFields.hospitalizationIllnessAmount = String(val);
-      else if (!riskFields.hospitalizationInjuryAmount) riskFields.hospitalizationInjuryAmount = String(val);
+  const injuryPermanentEntries = findInjuryPermanentEntries();
+  if (injuryPermanentEntries.length > 0) {
+    const [firstEntry, secondEntry] = injuryPermanentEntries;
+    if (firstEntry?.amount != null) riskFields.injuryPermanentAmount = String(firstEntry.amount);
+    if (firstEntry?.fulfillmentFrom) {
+      riskFields.injuryPermanentFulfillmentFrom = firstEntry.fulfillmentFrom;
     }
-  }
-  if (!hospitalLines.length) {
-    delete (riskFields as any).hospitalizationAmount;
+    if (firstEntry?.progression) riskFields.injuryPermanentProgression = firstEntry.progression;
+    if (secondEntry?.amount != null) riskFields.injuryPermanent2Amount = String(secondEntry.amount);
+    if (secondEntry?.fulfillmentFrom) {
+      riskFields.injuryPermanent2FulfillmentFrom = secondEntry.fulfillmentFrom;
+    }
+    if (secondEntry?.progression) riskFields.injuryPermanent2Progression = secondEntry.progression;
+  } else {
+    const injuryPermanent = findAmountAfter(/trvale nasledky urazu/i);
+    if (injuryPermanent != null) riskFields.injuryPermanentAmount = String(injuryPermanent);
   }
 
-  // Pracovní neschopnost
-  const workIncapacity = findAmountAfter(/denni odskodne za pracovni neschopnost(?!.*uraz)/i);
-  if (workIncapacity != null) {
-    riskFields.workIncapacityAmount = String(workIncapacity);
-    const startMatch = asciiLines.find((l) => /plneni od/.test(l) && /dne/.test(l));
-    const day = startMatch?.match(/(\d+)\./)?.[1];
-    if (day) riskFields.workIncapacityStart = day;
-    if (asciiLines.some((l) => /zpetne/.test(l))) riskFields.workIncapacityBackpay = "zpetne";
-    if (asciiLines.some((l) => /nezpetne/.test(l))) riskFields.workIncapacityBackpay = "nezpetne";
-  }
-  if (asciiLines.some((l) => /denni odskodne za pracovni neschopnost.*nemoc/i.test(l))) {
-    riskFields.workIncapacityIllness = true;
-  }
-  if (asciiLines.some((l) => /denni odskodne za pracovni neschopnost.*uraz/i.test(l))) {
-    riskFields.workIncapacityInjury = true;
-  }
-  // zkus vytáhnout start/backpay přímo z řádků PN
-  const pnLineIdx = asciiLines.findIndex((l) => /denni odskodne za pracovni neschopnost/.test(l));
-  if (pnLineIdx !== -1) {
-    const look = asciiLines.slice(pnLineIdx, pnLineIdx + 4).join(" ");
-    const m = look.match(/plneni od\s*(\d{1,3})/);
-    if (m?.[1]) riskFields.workIncapacityStart = riskFields.workIncapacityStart ?? m[1];
-    if (/zpetne/.test(look)) riskFields.workIncapacityBackpay = riskFields.workIncapacityBackpay ?? "zpetne";
-    if (/nezpetne/.test(look)) riskFields.workIncapacityBackpay = riskFields.workIncapacityBackpay ?? "nezpetne";
-    const amt = look.match(/([\d\s]+)k[cč]/);
-    const amtVal = amt?.[1] ? parseAmount(amt[1]) : null;
-    if (amtVal != null && !riskFields.workIncapacityAmount) {
-      riskFields.workIncapacityAmount = String(amtVal);
+  const accidentDailyEntry = findAccidentDailyBenefitEntry();
+  if (accidentDailyEntry) {
+    if (accidentDailyEntry.start) {
+      riskFields.accidentDailyBenefitStart = accidentDailyEntry.start;
     }
-  }
-  if (!riskFields.workIncapacityStart) {
-    const pnVariant = asciiLines.find((l) => /plneni od\s*\d{1,3}\.\s*dne/.test(l));
-    const m = pnVariant?.match(/plneni od\s*(\d{1,3})/);
-    if (m?.[1]) riskFields.workIncapacityStart = m[1];
-    if (pnVariant?.includes("zpetne")) riskFields.workIncapacityBackpay = "zpetne";
-    if (pnVariant?.includes("nezpetne")) riskFields.workIncapacityBackpay = "nezpetne";
-  }
-  if (!riskFields.workIncapacityAmount) {
-    const pnAmtLine = asciiLines.find((l) => /denni odskodne za pracovni neschopnost/.test(l));
-    const nums = pnAmtLine?.match(/\d{2,6}/g)?.map((n) => parseAmount(n) || null).filter((n): n is number => n != null);
-    if (nums && nums.length > 0) {
-      const nonDuration = nums.filter((n) => n >= 100);
-      const candidate = nonDuration.length > 0 ? nonDuration[0] : nums[0];
-      if (candidate != null) riskFields.workIncapacityAmount = String(candidate);
+    if (accidentDailyEntry.backpay) {
+      riskFields.accidentDailyBenefitBackpay = accidentDailyEntry.backpay;
     }
-  }
-  if (!riskFields.workIncapacityAmount) {
-    const illnessMatch = asciiText.match(/denni odskodne za pracovni neschopnost\s+nemoc[iy]?.{0,80}?(\d{1,3}).{0,30}?(\d{3,6})/i);
-    const injuryMatch = asciiText.match(/denni odskodne za pracovni neschopnost\s+uraz.{0,80}?(\d{1,3}).{0,30}?(\d{3,6})/i);
-    const pick = (m: RegExpMatchArray | null) => {
-      if (!m) return null;
-      const num1 = parseAmount(m[1]);
-      const num2 = parseAmount(m[2]);
-      const cand = num2 && num2 >= 100 ? num2 : num1;
-      return cand ?? null;
-    };
-    const val = pick(illnessMatch) ?? pick(injuryMatch);
-    if (val != null) riskFields.workIncapacityAmount = String(val);
+    if (accidentDailyEntry.amount != null) {
+      riskFields.accidentDailyBenefit = String(accidentDailyEntry.amount);
+    }
+  } else {
+    const accidentDaily = findAmountAfter(/denni odskodne za dobu leceni urazu/i);
+    if (accidentDaily != null) riskFields.accidentDailyBenefit = String(accidentDaily);
   }
 
-  // Explicitní dohledání částky PN z okolních řádků (číslo ve sloupci Pojistná částka)
-  if (!riskFields.workIncapacityAmount) {
-    for (let idx = 0; idx < asciiLines.length; idx++) {
-      if (!/denni odskodne za pracovni neschopnost/.test(asciiLines[idx])) continue;
-      const window = asciiLines.slice(idx, Math.min(idx + 6, asciiLines.length));
-      const nums: number[] = [];
-      for (const w of window) {
-        if (isCurrency(w)) {
-          const m = w.match(/([\d\s]+)k[cč]/);
-          const v = parseAmount(m?.[1]);
-          if (v != null) nums.push(v);
-        } else if (isPureNumber(w)) {
-          const v = parseAmount(w);
-          if (v != null) nums.push(v);
-        }
+  // Hospitalizace – ber jen sjednané položky z tabulek, ne obecné podmínky v PDF.
+  const hospitalizationEntries = findHospitalizationEntries();
+  if (hospitalizationEntries.length > 0) {
+    delete riskFields.hospitalizationAmount;
+    delete riskFields.hospitalizationIllnessAmount;
+    delete riskFields.hospitalizationInjuryAmount;
+
+    for (const entry of hospitalizationEntries) {
+      if (entry.amount == null) continue;
+      if (entry.illness) {
+        riskFields.hospitalizationIllnessAmount = String(entry.amount);
+      } else if (entry.injury) {
+        riskFields.hospitalizationInjuryAmount = String(entry.amount);
+      } else if (!riskFields.hospitalizationAmount) {
+        riskFields.hospitalizationAmount = String(entry.amount);
       }
-      const nonDuration = nums.filter((n) => n >= 100);
-      const candidate = nonDuration[0] ?? nums[0];
-      if (candidate != null) {
-        riskFields.workIncapacityAmount = String(candidate);
-        break;
-      }
+    }
+  } else {
+    delete riskFields.hospitalizationAmount;
+    delete riskFields.hospitalizationIllnessAmount;
+    delete riskFields.hospitalizationInjuryAmount;
+  }
+
+  // Pracovní neschopnost – může být sjednaná zvlášť pro nemoc a úraz.
+  const workIncapacityEntries = findWorkIncapacityEntries();
+  if (workIncapacityEntries.length > 0) {
+    delete riskFields.workIncapacityStart;
+    delete riskFields.workIncapacityBackpay;
+    delete riskFields.workIncapacityAmount;
+    delete riskFields.workIncapacityIllness;
+    delete riskFields.workIncapacityInjury;
+    delete riskFields.workIncapacity2Start;
+    delete riskFields.workIncapacity2Backpay;
+    delete riskFields.workIncapacity2Amount;
+    delete riskFields.workIncapacity2Illness;
+    delete riskFields.workIncapacity2Injury;
+
+    const [firstEntry, secondEntry] = workIncapacityEntries;
+    if (firstEntry) {
+      if (firstEntry.start) riskFields.workIncapacityStart = firstEntry.start;
+      if (firstEntry.backpay) riskFields.workIncapacityBackpay = firstEntry.backpay;
+      if (firstEntry.amount != null) riskFields.workIncapacityAmount = String(firstEntry.amount);
+      if (firstEntry.illness) riskFields.workIncapacityIllness = true;
+      if (firstEntry.injury) riskFields.workIncapacityInjury = true;
+    }
+    if (secondEntry) {
+      if (secondEntry.start) riskFields.workIncapacity2Start = secondEntry.start;
+      if (secondEntry.backpay) riskFields.workIncapacity2Backpay = secondEntry.backpay;
+      if (secondEntry.amount != null) riskFields.workIncapacity2Amount = String(secondEntry.amount);
+      if (secondEntry.illness) riskFields.workIncapacity2Illness = true;
+      if (secondEntry.injury) riskFields.workIncapacity2Injury = true;
     }
   }
 

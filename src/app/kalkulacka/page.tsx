@@ -57,6 +57,7 @@ import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
+import { autoAssistancePlanLabel } from "@/app/lib/autoAssistanceLabels";
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney, positionLabel, toDate } from "@/app/lib/formatters";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
@@ -111,9 +112,39 @@ import { CalculatorContractDetailsSection } from "./CalculatorContractDetailsSec
 import { CalculatorPositionModeSection } from "./CalculatorPositionModeSection";
 import {
   CalculatorAutoPdfDetailSummary,
+  type AutoPdfHullSumPrompt,
   type AutoPdfDetailSummaryItem,
   type AutoPdfDetailSummarySection,
 } from "./CalculatorAutoPdfDetailSummary";
+import {
+  CalculatorAutoPdfDetailEditor,
+  type AutoPdfDetailEditorFields,
+  type AutoPdfEditorBooleanField,
+  type AutoPdfEditorTextField,
+} from "./CalculatorAutoPdfDetailEditor";
+import {
+  CalculatorDomexPdfDetailSummary,
+  type DomexPdfDetailSummaryItem,
+  type DomexPdfDetailSummarySection,
+} from "./CalculatorDomexPdfDetailSummary";
+import {
+  CalculatorDomexPdfDetailEditor,
+  type DomexPdfDetailEditorFields,
+  type DomexPdfEditorBooleanField,
+  type DomexPdfEditorTextField,
+} from "./CalculatorDomexPdfDetailEditor";
+import {
+  CalculatorNeonPdfDetailSummary,
+  type NeonPdfDetailSummaryItem,
+  type NeonPdfDetailSummarySection,
+} from "./CalculatorNeonPdfDetailSummary";
+import {
+  CalculatorNeonPdfDetailEditor,
+  createEmptyNeonPdfDetailFields,
+  type NeonPdfDetailEditorFields,
+  type NeonPdfEditorBooleanField,
+  type NeonPdfEditorTextField,
+} from "./CalculatorNeonPdfDetailEditor";
 import { CalculatorResultsSection } from "./CalculatorResultsSection";
 import { ContractSaveSuccessOverlay } from "./ContractSaveSuccessOverlay";
 import {
@@ -170,6 +201,7 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["neon", "domex", "cppAuto"]);
+const AUTO_HULL_USUAL_PRICE_TEXT = "Obvyklá cena vozidla";
 const CLIENT_SUGGESTIONS_PAGE_LIMIT = 50;
 const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
 
@@ -759,6 +791,7 @@ export default function CalculatorPage() {
   const [autoCarLiabilityLimit, setAutoCarLiabilityLimit] = useState<number | null>(null);
   const [autoCarHullSumInsured, setAutoCarHullSumInsured] = useState<number | null>(null);
   const [autoCarHullSumInsuredText, setAutoCarHullSumInsuredText] = useState<string>("");
+  const [autoCarHullSumInsuredDraft, setAutoCarHullSumInsuredDraft] = useState<string>("");
   const [autoCarHullDeductible, setAutoCarHullDeductible] = useState<number | null>(null);
   const [autoCarHullDeductibleText, setAutoCarHullDeductibleText] = useState<string>("");
   const [autoCarHullRiskAccident, setAutoCarHullRiskAccident] = useState(false);
@@ -768,14 +801,26 @@ export default function CalculatorPage() {
   const [autoCarHullRiskAnimalCollision, setAutoCarHullRiskAnimalCollision] = useState(false);
   const [autoCarAssistancePlan, setAutoCarAssistancePlan] = useState<string>("");
   const [autoCarAddonEso, setAutoCarAddonEso] = useState(false);
+  const [autoCarAddonNaturalRisks, setAutoCarAddonNaturalRisks] = useState(false);
+  const [autoCarAddonKlika, setAutoCarAddonKlika] = useState(false);
   const [autoCarAddonGlass, setAutoCarAddonGlass] = useState(false);
   const [autoCarAddonGlassLimit, setAutoCarAddonGlassLimit] = useState<number | null>(null);
   const [autoCarAddonAnimalCollision, setAutoCarAddonAnimalCollision] = useState(false);
+  const [autoCarAddonAnimalCollisionLimit, setAutoCarAddonAnimalCollisionLimit] =
+    useState<number | null>(null);
   const [autoCarAddonAnimalDamage, setAutoCarAddonAnimalDamage] = useState(false);
+  const [autoCarAddonAnimalDamageLimit, setAutoCarAddonAnimalDamageLimit] =
+    useState<number | null>(null);
   const [autoCarAddonVandalism, setAutoCarAddonVandalism] = useState(false);
   const [autoCarAddonTheft, setAutoCarAddonTheft] = useState(false);
+  const [autoCarAddonTheftLimit, setAutoCarAddonTheftLimit] = useState<number | null>(null);
   const [autoCarAddonNatural, setAutoCarAddonNatural] = useState(false);
+  const [autoCarAddonNaturalLimit, setAutoCarAddonNaturalLimit] = useState<number | null>(null);
+  const [autoCarAddonOwnDamage, setAutoCarAddonOwnDamage] = useState(false);
+  const [autoCarAddonOwnDamageLimit, setAutoCarAddonOwnDamageLimit] =
+    useState<number | null>(null);
   const [autoCarAddonGap, setAutoCarAddonGap] = useState(false);
+  const [autoCarAddonGapLimit, setAutoCarAddonGapLimit] = useState<number | null>(null);
   const [autoCarAddonSmartGap, setAutoCarAddonSmartGap] = useState(false);
   const [autoCarAddonServisPro, setAutoCarAddonServisPro] = useState(false);
   const [autoCarAddonFireExplosion, setAutoCarAddonFireExplosion] = useState(false);
@@ -785,6 +830,7 @@ export default function CalculatorPage() {
   const [autoCarAddonTransportedGoods, setAutoCarAddonTransportedGoods] = useState(false);
   const [autoCarAddonPothole, setAutoCarAddonPothole] = useState(false);
   const [autoCarAddonNonFaultAccident, setAutoCarAddonNonFaultAccident] = useState(false);
+  const [autoCarAddonPassengerInjury, setAutoCarAddonPassengerInjury] = useState(false);
   const [autoCarAddonKeyLossTheft, setAutoCarAddonKeyLossTheft] = useState(false);
   const [domexAddress, setDomexAddress] = useState<string>("");
   const [domexPropertyType, setDomexPropertyType] = useState<string>("");
@@ -803,6 +849,9 @@ export default function CalculatorPage() {
   const [domexLiabilityTenant, setDomexLiabilityTenant] = useState(false);
   const [domexLiabilityLandlord, setDomexLiabilityLandlord] = useState(false);
   const [domexAssistancePlus, setDomexAssistancePlus] = useState(false);
+  const [domexNote, setDomexNote] = useState("");
+  const [neonPdfDetailFields, setNeonPdfDetailFields] =
+    useState<NeonPdfDetailEditorFields>(() => createEmptyNeonPdfDetailFields());
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
   const [refreshOriginalContractNumber, setRefreshOriginalContractNumber] = useState("");
   const [refreshOriginalLookup, setRefreshOriginalLookup] = useState<RefreshOriginalLookupState>({
@@ -1880,11 +1929,7 @@ export default function CalculatorPage() {
   }, [tipContractModalOpen, tipContractDraftEmail, user]);
 
   useEffect(() => {
-    if (
-      product !== "cppAuto" &&
-      product !== "slaviaauto" &&
-      product !== "kooperativaAuto"
-    ) {
+    if (!isAutoProduct(product)) {
       setAutoCarMake("");
       setAutoCarPlate("");
       setAutoCarVin("");
@@ -1895,6 +1940,7 @@ export default function CalculatorPage() {
       setAutoCarLiabilityLimit(null);
       setAutoCarHullSumInsured(null);
       setAutoCarHullSumInsuredText("");
+      setAutoCarHullSumInsuredDraft("");
       setAutoCarHullDeductible(null);
       setAutoCarHullDeductibleText("");
       setAutoCarHullRiskAccident(false);
@@ -1904,14 +1950,23 @@ export default function CalculatorPage() {
       setAutoCarHullRiskAnimalCollision(false);
       setAutoCarAssistancePlan("");
       setAutoCarAddonEso(false);
+      setAutoCarAddonNaturalRisks(false);
+      setAutoCarAddonKlika(false);
       setAutoCarAddonGlass(false);
       setAutoCarAddonGlassLimit(null);
       setAutoCarAddonAnimalCollision(false);
+      setAutoCarAddonAnimalCollisionLimit(null);
       setAutoCarAddonAnimalDamage(false);
+      setAutoCarAddonAnimalDamageLimit(null);
       setAutoCarAddonVandalism(false);
       setAutoCarAddonTheft(false);
+      setAutoCarAddonTheftLimit(null);
       setAutoCarAddonNatural(false);
+      setAutoCarAddonNaturalLimit(null);
+      setAutoCarAddonOwnDamage(false);
+      setAutoCarAddonOwnDamageLimit(null);
       setAutoCarAddonGap(false);
+      setAutoCarAddonGapLimit(null);
       setAutoCarAddonSmartGap(false);
       setAutoCarAddonServisPro(false);
       setAutoCarAddonFireExplosion(false);
@@ -1921,6 +1976,7 @@ export default function CalculatorPage() {
       setAutoCarAddonTransportedGoods(false);
       setAutoCarAddonPothole(false);
       setAutoCarAddonNonFaultAccident(false);
+      setAutoCarAddonPassengerInjury(false);
       setAutoCarAddonKeyLossTheft(false);
     }
   }, [product]);
@@ -1943,6 +1999,13 @@ export default function CalculatorPage() {
       setDomexLiabilityTenant(false);
       setDomexLiabilityLandlord(false);
       setDomexAssistancePlus(false);
+      setDomexNote("");
+    }
+  }, [product]);
+
+  useEffect(() => {
+    if (product !== "neon") {
+      setNeonPdfDetailFields(createEmptyNeonPdfDetailFields());
     }
   }, [product]);
 
@@ -2457,6 +2520,7 @@ export default function CalculatorPage() {
       setAutoCarLiabilityLimit(null);
       setAutoCarHullSumInsured(null);
       setAutoCarHullSumInsuredText("");
+      setAutoCarHullSumInsuredDraft("");
       setAutoCarHullDeductible(null);
       setAutoCarHullDeductibleText("");
       setAutoCarHullRiskAccident(false);
@@ -2466,14 +2530,23 @@ export default function CalculatorPage() {
       setAutoCarHullRiskAnimalCollision(false);
       setAutoCarAssistancePlan("");
       setAutoCarAddonEso(false);
+      setAutoCarAddonNaturalRisks(false);
+      setAutoCarAddonKlika(false);
       setAutoCarAddonGlass(false);
       setAutoCarAddonGlassLimit(null);
       setAutoCarAddonAnimalCollision(false);
+      setAutoCarAddonAnimalCollisionLimit(null);
       setAutoCarAddonAnimalDamage(false);
+      setAutoCarAddonAnimalDamageLimit(null);
       setAutoCarAddonVandalism(false);
       setAutoCarAddonTheft(false);
+      setAutoCarAddonTheftLimit(null);
       setAutoCarAddonNatural(false);
+      setAutoCarAddonNaturalLimit(null);
+      setAutoCarAddonOwnDamage(false);
+      setAutoCarAddonOwnDamageLimit(null);
       setAutoCarAddonGap(false);
+      setAutoCarAddonGapLimit(null);
       setAutoCarAddonSmartGap(false);
       setAutoCarAddonServisPro(false);
       setAutoCarAddonFireExplosion(false);
@@ -2483,6 +2556,7 @@ export default function CalculatorPage() {
       setAutoCarAddonTransportedGoods(false);
       setAutoCarAddonPothole(false);
       setAutoCarAddonNonFaultAccident(false);
+      setAutoCarAddonPassengerInjury(false);
       setAutoCarAddonKeyLossTheft(false);
     }
     if (importProduct === "domex" || importProduct === "maxdomov") {
@@ -2502,6 +2576,10 @@ export default function CalculatorPage() {
       setDomexLiabilityTenant(false);
       setDomexLiabilityLandlord(false);
       setDomexAssistancePlus(false);
+      setDomexNote("");
+    }
+    if (importProduct === "neon") {
+      setNeonPdfDetailFields(createEmptyNeonPdfDetailFields());
     }
     try {
       if (!hasAutomatedPdfImport(importProduct)) {
@@ -2687,6 +2765,86 @@ export default function CalculatorPage() {
         setDomexAssistancePlus(hasAssistance);
         if (hasAssistance) applied += 1;
       }
+      if (importProduct === "neon" && parsed.riskFields && typeof parsed.riskFields === "object") {
+        const riskFields = parsed.riskFields as Record<string, unknown>;
+        const nextNeonFields = createEmptyNeonPdfDetailFields();
+        let riskApplied = 0;
+        const applyText = (field: NeonPdfEditorTextField, value: unknown) => {
+          if (value == null) return;
+          const normalized = typeof value === "string" ? value.trim() : String(value).trim();
+          if (!normalized) return;
+          nextNeonFields[field] = normalized;
+          riskApplied += 1;
+        };
+        const applyBoolean = (field: NeonPdfEditorBooleanField, value: unknown) => {
+          nextNeonFields[field] = value === true;
+          if (value === true) riskApplied += 1;
+        };
+
+        applyText("version", riskFields.version ?? "neon_life");
+        applyText("deathType", riskFields.deathType);
+        applyText("deathAmount", riskFields.deathAmount);
+        applyText("death2Type", riskFields.death2Type);
+        applyText("death2Amount", riskFields.death2Amount);
+        applyText("deathTerminalAmount", riskFields.deathTerminalAmount);
+        applyBoolean("waiverInvalidity", riskFields.waiverInvalidity);
+        applyBoolean("waiverUnemployment", riskFields.waiverUnemployment);
+        applyText("invalidityAType", riskFields.invalidityAType);
+        applyText("invalidityA1", riskFields.invalidityA1);
+        applyText("invalidityA2", riskFields.invalidityA2);
+        applyText("invalidityA3", riskFields.invalidityA3);
+        applyText("invalidityBType", riskFields.invalidityBType);
+        applyText("invalidityB1", riskFields.invalidityB1);
+        applyText("invalidityB2", riskFields.invalidityB2);
+        applyText("invalidityB3", riskFields.invalidityB3);
+        applyBoolean("invalidityPension", riskFields.invalidityPension);
+        applyText("criticalType", riskFields.criticalType);
+        applyText("criticalVariant", riskFields.criticalVariant);
+        applyText("criticalAmount", riskFields.criticalAmount);
+        applyText("childSurgeryAmount", riskFields.childSurgeryAmount);
+        applyText("vaccinationCompAmount", riskFields.vaccinationCompAmount);
+        applyText("diabetesAmount", riskFields.diabetesAmount);
+        applyText("deathAccidentAmount", riskFields.deathAccidentAmount);
+        applyText("injuryPermanentAmount", riskFields.injuryPermanentAmount);
+        applyText(
+          "injuryPermanentFulfillmentFrom",
+          riskFields.injuryPermanentFulfillmentFrom
+        );
+        applyText("injuryPermanentProgression", riskFields.injuryPermanentProgression);
+        applyText("injuryPermanent2Amount", riskFields.injuryPermanent2Amount);
+        applyText(
+          "injuryPermanent2FulfillmentFrom",
+          riskFields.injuryPermanent2FulfillmentFrom
+        );
+        applyText("injuryPermanent2Progression", riskFields.injuryPermanent2Progression);
+        applyText("hospitalizationAmount", riskFields.hospitalizationAmount);
+        applyText("hospitalizationIllnessAmount", riskFields.hospitalizationIllnessAmount);
+        applyText("hospitalizationInjuryAmount", riskFields.hospitalizationInjuryAmount);
+        applyText("accidentDailyBenefitStart", riskFields.accidentDailyBenefitStart);
+        applyText("accidentDailyBenefitBackpay", riskFields.accidentDailyBenefitBackpay);
+        applyText("accidentDailyBenefit", riskFields.accidentDailyBenefit);
+        applyText("workIncapacityStart", riskFields.workIncapacityStart);
+        applyText("workIncapacityBackpay", riskFields.workIncapacityBackpay);
+        applyText("workIncapacityAmount", riskFields.workIncapacityAmount);
+        applyBoolean("workIncapacityInjury", riskFields.workIncapacityInjury);
+        applyBoolean("workIncapacityIllness", riskFields.workIncapacityIllness);
+        applyText("workIncapacity2Start", riskFields.workIncapacity2Start);
+        applyText("workIncapacity2Backpay", riskFields.workIncapacity2Backpay);
+        applyText("workIncapacity2Amount", riskFields.workIncapacity2Amount);
+        applyBoolean("workIncapacity2Injury", riskFields.workIncapacity2Injury);
+        applyBoolean("workIncapacity2Illness", riskFields.workIncapacity2Illness);
+        applyText("careDependencyAmount", riskFields.careDependencyAmount);
+        applyText("specialAidAmount", riskFields.specialAidAmount);
+        applyText("caregivingAmount", riskFields.caregivingAmount);
+        applyText("reproductionCostAmount", riskFields.reproductionCostAmount);
+        applyBoolean("cppHelp", riskFields.cppHelp);
+        applyText("liabilityCitizenLimit", riskFields.liabilityCitizenLimit);
+        applyText("liabilityEmployeeLimit", riskFields.liabilityEmployeeLimit);
+        applyBoolean("travelInsurance", riskFields.travelInsurance);
+
+        setNeonPdfDetailFields(nextNeonFields);
+        applied += riskApplied;
+      }
       if ("durationYears" in parsed && typeof parsed.durationYears === "number") {
         const [min, max] = durationRange(importProduct);
         const yrs = Math.min(max, Math.max(min, parsed.durationYears));
@@ -2767,6 +2925,7 @@ export default function CalculatorPage() {
             ? Math.round(parsed.carHullSumInsured)
             : null;
         setAutoCarHullSumInsured(hullSumInsured);
+        setAutoCarHullSumInsuredDraft("");
         if (hullSumInsured != null) applied += 1;
       }
       if ("carHullSumInsuredText" in parsed) {
@@ -2775,6 +2934,7 @@ export default function CalculatorPage() {
             ? parsed.carHullSumInsuredText.trim()
             : "";
         setAutoCarHullSumInsuredText(hullSumInsuredText);
+        setAutoCarHullSumInsuredDraft("");
         if (hullSumInsuredText) {
           setAutoCarHullSumInsured(null);
           applied += 1;
@@ -3684,6 +3844,9 @@ export default function CalculatorPage() {
     ) {
       missing.push("dobu trvání v měsících");
     }
+    if (autoHullSumNeedsInput) {
+      missing.push("havarijní pojistnou částku");
+    }
     const trimmedContractNumber = contractNumber.trim();
     const trimmedClientName = clientName.trim();
     const signedDateIsoDay = contractSignedDate.trim();
@@ -3705,8 +3868,95 @@ export default function CalculatorPage() {
       setMissingFields(missing);
       return;
     }
+    if (autoHullSumInsuredDraftValue != null) {
+      commitAutoHullSumDraft();
+    }
     if (!validateContractDatesBeforeSave()) return;
     if (!validateTimelineBeforeSave()) return;
+
+    const neonNumberOrNull = (valueText: string) => {
+      const trimmed = valueText.trim();
+      if (!trimmed) return null;
+      const value = parseNumber(trimmed);
+      return value > 0 ? Math.round(value) : null;
+    };
+    const neonDetailForSave =
+      product === "neon"
+        ? {
+            version: neonPdfDetailFields.version.trim() || null,
+            deathType: neonPdfDetailFields.deathType.trim() || null,
+            deathAmount: neonNumberOrNull(neonPdfDetailFields.deathAmount),
+            death2Type: neonPdfDetailFields.death2Type.trim() || null,
+            death2Amount: neonNumberOrNull(neonPdfDetailFields.death2Amount),
+            deathTerminalAmount: neonNumberOrNull(neonPdfDetailFields.deathTerminalAmount),
+            waiverInvalidity: neonPdfDetailFields.waiverInvalidity,
+            waiverUnemployment: neonPdfDetailFields.waiverUnemployment,
+            invalidityAType: neonPdfDetailFields.invalidityAType.trim() || null,
+            invalidityA1: neonNumberOrNull(neonPdfDetailFields.invalidityA1),
+            invalidityA2: neonNumberOrNull(neonPdfDetailFields.invalidityA2),
+            invalidityA3: neonNumberOrNull(neonPdfDetailFields.invalidityA3),
+            invalidityBType: neonPdfDetailFields.invalidityBType.trim() || null,
+            invalidityB1: neonNumberOrNull(neonPdfDetailFields.invalidityB1),
+            invalidityB2: neonNumberOrNull(neonPdfDetailFields.invalidityB2),
+            invalidityB3: neonNumberOrNull(neonPdfDetailFields.invalidityB3),
+            invalidityPension: neonPdfDetailFields.invalidityPension,
+            criticalIllnessType: neonPdfDetailFields.criticalType.trim() || null,
+            criticalIllnessVariant: neonPdfDetailFields.criticalVariant.trim() || null,
+            criticalIllnessAmount: neonNumberOrNull(neonPdfDetailFields.criticalAmount),
+            childSurgeryAmount: neonNumberOrNull(neonPdfDetailFields.childSurgeryAmount),
+            vaccinationCompAmount: neonNumberOrNull(neonPdfDetailFields.vaccinationCompAmount),
+            accidentDailyBenefit: neonNumberOrNull(neonPdfDetailFields.accidentDailyBenefit),
+            diabetesAmount: neonNumberOrNull(neonPdfDetailFields.diabetesAmount),
+            deathAccidentAmount: neonNumberOrNull(neonPdfDetailFields.deathAccidentAmount),
+            injuryPermanentAmount: neonNumberOrNull(neonPdfDetailFields.injuryPermanentAmount),
+            injuryPermanentFulfillmentFrom:
+              neonPdfDetailFields.injuryPermanentFulfillmentFrom.trim() || null,
+            injuryPermanentProgression:
+              neonPdfDetailFields.injuryPermanentProgression.trim() || null,
+            injuryPermanent2Amount: neonNumberOrNull(
+              neonPdfDetailFields.injuryPermanent2Amount
+            ),
+            injuryPermanent2FulfillmentFrom:
+              neonPdfDetailFields.injuryPermanent2FulfillmentFrom.trim() || null,
+            injuryPermanent2Progression:
+              neonPdfDetailFields.injuryPermanent2Progression.trim() || null,
+            hospitalizationAmount: neonNumberOrNull(neonPdfDetailFields.hospitalizationAmount),
+            hospitalizationIllnessAmount: neonNumberOrNull(
+              neonPdfDetailFields.hospitalizationIllnessAmount
+            ),
+            hospitalizationInjuryAmount: neonNumberOrNull(
+              neonPdfDetailFields.hospitalizationInjuryAmount
+            ),
+            accidentDailyBenefitStart:
+              neonPdfDetailFields.accidentDailyBenefitStart.trim() || null,
+            accidentDailyBenefitBackpay:
+              neonPdfDetailFields.accidentDailyBenefitBackpay.trim() || null,
+            workIncapacityStart: neonPdfDetailFields.workIncapacityStart.trim() || null,
+            workIncapacityBackpay: neonPdfDetailFields.workIncapacityBackpay.trim() || null,
+            workIncapacityAmount: neonNumberOrNull(neonPdfDetailFields.workIncapacityAmount),
+            workIncapacityInjury: neonPdfDetailFields.workIncapacityInjury,
+            workIncapacityIllness: neonPdfDetailFields.workIncapacityIllness,
+            workIncapacity2Start: neonPdfDetailFields.workIncapacity2Start.trim() || null,
+            workIncapacity2Backpay:
+              neonPdfDetailFields.workIncapacity2Backpay.trim() || null,
+            workIncapacity2Amount: neonNumberOrNull(neonPdfDetailFields.workIncapacity2Amount),
+            workIncapacity2Injury: neonPdfDetailFields.workIncapacity2Injury,
+            workIncapacity2Illness: neonPdfDetailFields.workIncapacity2Illness,
+            careDependencyAmount: neonNumberOrNull(neonPdfDetailFields.careDependencyAmount),
+            specialAidAmount: neonNumberOrNull(neonPdfDetailFields.specialAidAmount),
+            caregivingAmount: neonNumberOrNull(neonPdfDetailFields.caregivingAmount),
+            reproductionCostAmount: neonNumberOrNull(
+              neonPdfDetailFields.reproductionCostAmount
+            ),
+            cppHelp: neonPdfDetailFields.cppHelp,
+            liabilityCitizenLimit: neonNumberOrNull(neonPdfDetailFields.liabilityCitizenLimit),
+            liabilityEmployeeLimit: neonNumberOrNull(
+              neonPdfDetailFields.liabilityEmployeeLimit
+            ),
+            travelInsurance: neonPdfDetailFields.travelInsurance,
+            neonPdfRisks: null,
+          }
+        : null;
 
     // kontrola duplicitního čísla smlouvy
     if (!skipDuplicateCheck) {
@@ -3972,12 +4222,16 @@ export default function CalculatorPage() {
                 : null,
             carHullSumInsured:
               product === "kooperativaAuto" ||
+              product === "cppAuto" ||
+              product === "allianzAuto" ||
               product === "pillowAuto" ||
               product === "csobAuto"
-                ? autoCarHullSumInsured
+                ? autoHullSumInsuredForSave
                 : null,
             carHullSumInsuredText:
-              product === "pillowAuto" ? autoCarHullSumInsuredText.trim() || null : null,
+              product === "allianzAuto" || product === "pillowAuto"
+                ? autoCarHullSumInsuredText.trim() || null
+                : null,
             carHullDeductible:
               product === "kooperativaAuto" ||
               product === "cppAuto" ||
@@ -4037,65 +4291,76 @@ export default function CalculatorPage() {
               product === "pillowAuto"
                 ? autoCarAssistancePlan.trim() || null
                 : null,
-            carAddonEso: product === "cppAuto" ? autoCarAddonEso : null,
-            carAddonGlass:
-              product === "cppAuto" ||
-              product === "slaviaauto" ||
-              product === "kooperativaAuto" ||
-              product === "allianzAuto" ||
-              product === "csobAuto" ||
-              product === "pillowAuto"
-                ? autoCarAddonGlass
-                : null,
-            carAddonGlassLimit:
-              product === "cppAuto" ||
-              product === "slaviaauto" ||
-              product === "kooperativaAuto" ||
-              product === "allianzAuto" ||
-              product === "csobAuto" ||
-              product === "pillowAuto"
-                ? autoCarAddonGlass
-                  ? autoCarAddonGlassLimit
-                  : null
-                : null,
-            carAddonAnimalCollision:
-              product === "slaviaauto" ? autoCarAddonAnimalCollision : null,
-            carAddonAnimalDamage:
-              product === "slaviaauto" ||
-              product === "kooperativaAuto" ||
-              product === "allianzAuto"
-                ? autoCarAddonAnimalDamage
-                : null,
-            carAddonVandalism:
-              product === "slaviaauto" || product === "allianzAuto"
-                ? autoCarAddonVandalism
-                : null,
-            carAddonTheft: product === "allianzAuto" ? autoCarAddonTheft : null,
-            carAddonNatural:
-              product === "kooperativaAuto" || product === "allianzAuto"
-                ? autoCarAddonNatural
-                : null,
-            carAddonGap: product === "allianzAuto" ? autoCarAddonGap : null,
-            carAddonSmartGap: product === "cppAuto" ? autoCarAddonSmartGap : null,
-            carAddonServisPro: product === "cppAuto" ? autoCarAddonServisPro : null,
-            carAddonFireExplosion:
-              product === "allianzAuto" ? autoCarAddonFireExplosion : null,
-            carAddonLegalAdvice:
-              product === "allianzAuto" ? autoCarAddonLegalAdvice : null,
-            carAddonReplacementCar:
-              product === "kooperativaAuto" ? autoCarAddonReplacementCar : null,
-            carAddonLuggage:
-              product === "kooperativaAuto" ? autoCarAddonLuggage : null,
-            carAddonTransportedGoods:
-              product === "kooperativaAuto" ? autoCarAddonTransportedGoods : null,
-            carAddonPothole:
-              product === "kooperativaAuto" ? autoCarAddonPothole : null,
-            carAddonNonFaultAccident:
-              product === "kooperativaAuto" || product === "pillowAuto"
-                ? autoCarAddonNonFaultAccident
-                : null,
-            carAddonKeyLossTheft:
-              product === "slaviaauto" ? autoCarAddonKeyLossTheft : null,
+            carAddonEso: isAutoProduct(product) ? autoCarAddonEso : null,
+            carAddonNaturalRisks: isAutoProduct(product) ? autoCarAddonNaturalRisks : null,
+            carAddonKlika: isAutoProduct(product) ? autoCarAddonKlika : null,
+            carAddonGlass: isAutoProduct(product) ? autoCarAddonGlass : null,
+            carAddonGlassLimit: isAutoProduct(product)
+              ? autoCarAddonGlass
+                ? autoCarAddonGlassLimit
+                : null
+              : null,
+            carAddonAnimalCollision: isAutoProduct(product)
+              ? autoCarAddonAnimalCollision
+              : null,
+            carAddonAnimalCollisionLimit: isAutoProduct(product)
+              ? autoCarAddonAnimalCollision
+                ? autoCarAddonAnimalCollisionLimit
+                : null
+              : null,
+            carAddonAnimalDamage: isAutoProduct(product) ? autoCarAddonAnimalDamage : null,
+            carAddonAnimalDamageLimit: isAutoProduct(product)
+              ? autoCarAddonAnimalDamage
+                ? autoCarAddonAnimalDamageLimit
+                : null
+              : null,
+            carAddonVandalism: isAutoProduct(product) ? autoCarAddonVandalism : null,
+            carAddonTheft: isAutoProduct(product) ? autoCarAddonTheft : null,
+            carAddonTheftLimit: isAutoProduct(product)
+              ? autoCarAddonTheft
+                ? autoCarAddonTheftLimit
+                : null
+              : null,
+            carAddonNatural: isAutoProduct(product) ? autoCarAddonNatural : null,
+            carAddonNaturalLimit: isAutoProduct(product)
+              ? autoCarAddonNatural
+                ? autoCarAddonNaturalLimit
+                : null
+              : null,
+            carAddonOwnDamage: isAutoProduct(product) ? autoCarAddonOwnDamage : null,
+            carAddonOwnDamageLimit: isAutoProduct(product)
+              ? autoCarAddonOwnDamage
+                ? autoCarAddonOwnDamageLimit
+                : null
+              : null,
+            carAddonGap: isAutoProduct(product) ? autoCarAddonGap : null,
+            carAddonGapLimit: isAutoProduct(product)
+              ? autoCarAddonGap
+                ? autoCarAddonGapLimit
+                : null
+              : null,
+            carAddonSmartGap: isAutoProduct(product) ? autoCarAddonSmartGap : null,
+            carAddonServisPro: isAutoProduct(product) ? autoCarAddonServisPro : null,
+            carAddonFireExplosion: isAutoProduct(product)
+              ? autoCarAddonFireExplosion
+              : null,
+            carAddonLegalAdvice: isAutoProduct(product) ? autoCarAddonLegalAdvice : null,
+            carAddonReplacementCar: isAutoProduct(product)
+              ? autoCarAddonReplacementCar
+              : null,
+            carAddonLuggage: isAutoProduct(product) ? autoCarAddonLuggage : null,
+            carAddonTransportedGoods: isAutoProduct(product)
+              ? autoCarAddonTransportedGoods
+              : null,
+            carAddonPothole: isAutoProduct(product) ? autoCarAddonPothole : null,
+            carAddonNonFaultAccident: isAutoProduct(product)
+              ? autoCarAddonNonFaultAccident
+              : null,
+            carAddonPassengerInjury: isAutoProduct(product)
+              ? autoCarAddonPassengerInjury
+              : null,
+            carAddonKeyLossTheft: isAutoProduct(product) ? autoCarAddonKeyLossTheft : null,
+            neonDetail: neonDetailForSave,
             domexDetail:
               product === "domex"
                 ? {
@@ -4115,7 +4380,7 @@ export default function CalculatorPage() {
                     liabilityTenant: domexLiabilityTenant ? true : null,
                     liabilityLandlord: domexLiabilityLandlord ? true : null,
                     assistancePlus: domexAssistancePlus ? true : null,
-                    note: null,
+                    note: domexNote.trim() || null,
                   }
                 : null,
             maxdomovDetail:
@@ -4137,7 +4402,7 @@ export default function CalculatorPage() {
                     liabilityTenant: domexLiabilityTenant ? true : null,
                     liabilityLandlord: domexLiabilityLandlord ? true : null,
                     assistancePlus: domexAssistancePlus ? true : null,
-                    note: null,
+                    note: domexNote.trim() || null,
                   }
                 : null,
             isRefresh: shouldReplaceOriginalContract,
@@ -4433,6 +4698,439 @@ export default function CalculatorPage() {
     : null;
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
   const currentProductInstitutionId = productInstitutionIdFromCatalog(product);
+  const autoHullSumInsuredText = autoCarHullSumInsuredText.trim();
+  const autoHullSumInsuredDraftText = autoCarHullSumInsuredDraft.trim();
+  const autoHullSumInsuredDraftAmount = parseNumber(autoHullSumInsuredDraftText);
+  const autoHullSumInsuredDraftValue =
+    autoHullSumInsuredDraftAmount > 0 ? Math.round(autoHullSumInsuredDraftAmount) : null;
+  const autoHullSumInsuredForSave =
+    autoHullSumInsuredDraftValue != null
+      ? autoHullSumInsuredDraftValue
+      : autoCarHullSumInsured;
+  const autoHullHasInsurance =
+    isAutoProduct(product) &&
+    (autoCarHullSumInsured != null ||
+      autoHullSumInsuredDraftText !== "" ||
+      autoHullSumInsuredText !== "" ||
+      autoCarHullDeductible != null ||
+      autoCarHullDeductibleText.trim() !== "" ||
+      autoCarHullRiskAccident ||
+      autoCarHullRiskTheft ||
+      autoCarHullRiskNatural ||
+      autoCarHullRiskVandalism ||
+      autoCarHullRiskAnimalCollision);
+  const autoHullSumStoredResolved =
+    autoCarHullSumInsured != null || autoHullSumInsuredText !== "";
+  const autoHullSumResolved =
+    autoHullSumStoredResolved || autoHullSumInsuredDraftValue != null;
+  const autoHullSumNeedsInput = autoHullHasInsurance && !autoHullSumResolved;
+  const autoHullCanUseUsualPrice = product === "allianzAuto" || product === "pillowAuto";
+  const autoHullUsualPriceSelected =
+    autoHullSumInsuredText.toLowerCase() === AUTO_HULL_USUAL_PRICE_TEXT.toLowerCase();
+  const handleAutoHullSumAmountChange = (value: string) => {
+    setAutoCarHullSumInsuredDraft(value);
+    setAutoCarHullSumInsuredText("");
+    if (parseNumber(value) > 0) {
+      setMissingFields((prev) =>
+        prev.filter((key) => key !== "havarijní pojistnou částku")
+      );
+    }
+  };
+  const commitAutoHullSumDraft = () => {
+    if (autoHullSumInsuredDraftValue == null) return;
+    setAutoCarHullSumInsured(autoHullSumInsuredDraftValue);
+    setAutoCarHullSumInsuredText("");
+    setAutoCarHullSumInsuredDraft("");
+    setMissingFields((prev) =>
+      prev.filter((key) => key !== "havarijní pojistnou částku")
+    );
+  };
+  const handleAutoHullUsualPriceChange = (checked: boolean) => {
+    if (checked) {
+      setAutoCarHullSumInsured(null);
+      setAutoCarHullSumInsuredText(AUTO_HULL_USUAL_PRICE_TEXT);
+      setAutoCarHullSumInsuredDraft("");
+      setMissingFields((prev) =>
+        prev.filter((key) => key !== "havarijní pojistnou částku")
+      );
+      return;
+    }
+    setAutoCarHullSumInsuredText("");
+    setAutoCarHullSumInsuredDraft("");
+  };
+  const autoHullSumPromptVisible =
+    autoHullHasInsurance &&
+    !autoHullUsualPriceSelected &&
+    (!autoHullSumStoredResolved || autoHullSumInsuredDraftText !== "");
+  const autoHullSumPrompt: AutoPdfHullSumPrompt | null = autoHullSumPromptVisible
+    ? {
+        amountText: autoCarHullSumInsuredDraft,
+        canUseUsualPrice: autoHullCanUseUsualPrice,
+        usualPriceSelected: autoHullUsualPriceSelected,
+        onAmountTextChange: handleAutoHullSumAmountChange,
+        onAmountTextBlur: commitAutoHullSumDraft,
+        onUsualPriceChange: handleAutoHullUsualPriceChange,
+      }
+    : null;
+  const parsePositiveRounded = (value: string) => {
+    const parsed = parseNumber(value);
+    return parsed > 0 ? Math.round(parsed) : null;
+  };
+  const clearAutoHullSumMissingField = () => {
+    setMissingFields((prev) =>
+      prev.filter((key) => key !== "havarijní pojistnou částku")
+    );
+  };
+  const setAutoNumberField = (
+    value: string,
+    setter: (nextValue: number | null) => void
+  ) => {
+    setter(parsePositiveRounded(value));
+  };
+  const autoPdfEditorVisibleAddons: AutoPdfEditorBooleanField[] = isAutoProduct(product)
+    ? [
+        "carAddonEso",
+        "carAddonNaturalRisks",
+        "carAddonKlika",
+        "carAddonGlass",
+        "carAddonAnimalCollision",
+        "carAddonAnimalDamage",
+        "carAddonVandalism",
+        "carAddonTheft",
+        "carAddonNatural",
+        "carAddonOwnDamage",
+        "carAddonPothole",
+        "carAddonNonFaultAccident",
+        "carAddonGap",
+        "carAddonSmartGap",
+        "carAddonServisPro",
+        "carAddonReplacementCar",
+        "carAddonLuggage",
+        "carAddonTransportedGoods",
+        "carAddonFireExplosion",
+        "carAddonLegalAdvice",
+        "carAddonPassengerInjury",
+        "carAddonKeyLossTheft",
+      ]
+    : [];
+  const autoPdfEditorFields: AutoPdfDetailEditorFields | null = isAutoProduct(product)
+    ? {
+        carMake: autoCarMake,
+        carPlate: autoCarPlate,
+        carVin: autoCarVin,
+        carTp: autoCarTp,
+        carOrv: autoCarOrv,
+        carAnnualMileage: autoCarAnnualMileage,
+        carAllianzScope: autoCarAllianzScope,
+        carLiabilityLimit:
+          autoCarLiabilityLimit != null && Number.isFinite(autoCarLiabilityLimit)
+            ? String(autoCarLiabilityLimit)
+            : "",
+        carHullSumInsured:
+          autoCarHullSumInsuredDraft ||
+          autoHullSumInsuredText ||
+          (autoCarHullSumInsured != null && Number.isFinite(autoCarHullSumInsured)
+            ? String(autoCarHullSumInsured)
+            : ""),
+        carHullDeductible:
+          autoCarHullDeductibleText.trim() ||
+          (autoCarHullDeductible != null && Number.isFinite(autoCarHullDeductible)
+            ? String(autoCarHullDeductible)
+            : ""),
+        carAssistancePlan: autoCarAssistancePlan,
+        carAddonGlassLimit:
+          autoCarAddonGlassLimit != null && Number.isFinite(autoCarAddonGlassLimit)
+            ? String(autoCarAddonGlassLimit)
+            : "",
+        carAddonAnimalCollisionLimit:
+          autoCarAddonAnimalCollisionLimit != null &&
+          Number.isFinite(autoCarAddonAnimalCollisionLimit)
+            ? String(autoCarAddonAnimalCollisionLimit)
+            : "",
+        carAddonAnimalDamageLimit:
+          autoCarAddonAnimalDamageLimit != null &&
+          Number.isFinite(autoCarAddonAnimalDamageLimit)
+            ? String(autoCarAddonAnimalDamageLimit)
+            : "",
+        carAddonTheftLimit:
+          autoCarAddonTheftLimit != null && Number.isFinite(autoCarAddonTheftLimit)
+            ? String(autoCarAddonTheftLimit)
+            : "",
+        carAddonNaturalLimit:
+          autoCarAddonNaturalLimit != null && Number.isFinite(autoCarAddonNaturalLimit)
+            ? String(autoCarAddonNaturalLimit)
+            : "",
+        carAddonOwnDamageLimit:
+          autoCarAddonOwnDamageLimit != null && Number.isFinite(autoCarAddonOwnDamageLimit)
+            ? String(autoCarAddonOwnDamageLimit)
+            : "",
+        carAddonGapLimit:
+          autoCarAddonGapLimit != null && Number.isFinite(autoCarAddonGapLimit)
+            ? String(autoCarAddonGapLimit)
+            : "",
+        carHullRiskAccident: autoCarHullRiskAccident,
+        carHullRiskTheft: autoCarHullRiskTheft,
+        carHullRiskNatural: autoCarHullRiskNatural,
+        carHullRiskVandalism: autoCarHullRiskVandalism,
+        carHullRiskAnimalCollision: autoCarHullRiskAnimalCollision,
+        carAddonEso: autoCarAddonEso,
+        carAddonNaturalRisks: autoCarAddonNaturalRisks,
+        carAddonKlika: autoCarAddonKlika,
+        carAddonGlass: autoCarAddonGlass,
+        carAddonAnimalCollision: autoCarAddonAnimalCollision,
+        carAddonAnimalDamage: autoCarAddonAnimalDamage,
+        carAddonVandalism: autoCarAddonVandalism,
+        carAddonTheft: autoCarAddonTheft,
+        carAddonNatural: autoCarAddonNatural,
+        carAddonOwnDamage: autoCarAddonOwnDamage,
+        carAddonGap: autoCarAddonGap,
+        carAddonSmartGap: autoCarAddonSmartGap,
+        carAddonServisPro: autoCarAddonServisPro,
+        carAddonFireExplosion: autoCarAddonFireExplosion,
+        carAddonLegalAdvice: autoCarAddonLegalAdvice,
+        carAddonReplacementCar: autoCarAddonReplacementCar,
+        carAddonLuggage: autoCarAddonLuggage,
+        carAddonTransportedGoods: autoCarAddonTransportedGoods,
+        carAddonPothole: autoCarAddonPothole,
+        carAddonNonFaultAccident: autoCarAddonNonFaultAccident,
+        carAddonPassengerInjury: autoCarAddonPassengerInjury,
+        carAddonKeyLossTheft: autoCarAddonKeyLossTheft,
+        showTp: product === "slaviaauto",
+        showAnnualMileage: product === "allianzAuto" || product === "pillowAuto",
+        showAllianzScope: product === "allianzAuto",
+        showHull:
+          product === "kooperativaAuto" ||
+          product === "cppAuto" ||
+          product === "allianzAuto" ||
+          product === "pillowAuto" ||
+          product === "csobAuto",
+        showHullRisks:
+          product === "kooperativaAuto" ||
+          product === "cppAuto" ||
+          product === "allianzAuto" ||
+          product === "pillowAuto",
+        showAssistance:
+          product === "kooperativaAuto" ||
+          product === "cppAuto" ||
+          product === "allianzAuto" ||
+          product === "csobAuto" ||
+          product === "pillowAuto",
+        canUseHullUsualPrice: autoHullCanUseUsualPrice,
+        hullUsualPriceSelected: autoHullUsualPriceSelected,
+        visibleAddons: autoPdfEditorVisibleAddons,
+      }
+    : null;
+  const handleAutoPdfEditorTextChange = (
+    field: AutoPdfEditorTextField,
+    value: string
+  ) => {
+    switch (field) {
+      case "carMake":
+        setAutoCarMake(value);
+        return;
+      case "carPlate":
+        setAutoCarPlate(value);
+        return;
+      case "carVin":
+        setAutoCarVin(value);
+        return;
+      case "carTp":
+        setAutoCarTp(value);
+        return;
+      case "carOrv":
+        setAutoCarOrv(value);
+        return;
+      case "carAnnualMileage":
+        setAutoCarAnnualMileage(value);
+        return;
+      case "carAllianzScope":
+        setAutoCarAllianzScope(value);
+        return;
+      case "carLiabilityLimit": {
+        const limit = parsePositiveRounded(value);
+        setAutoCarLiabilityLimit(limit);
+        if (product === "cppAuto" && limit === 200_000_000) {
+          setAutoCarAddonSmartGap(true);
+          setAutoCarAddonServisPro(true);
+        }
+        return;
+      }
+      case "carHullSumInsured": {
+        const trimmed = value.trim();
+        setAutoCarHullSumInsuredDraft("");
+        if (!trimmed) {
+          setAutoCarHullSumInsured(null);
+          setAutoCarHullSumInsuredText("");
+          return;
+        }
+        if (
+          autoHullCanUseUsualPrice &&
+          trimmed.toLowerCase() === AUTO_HULL_USUAL_PRICE_TEXT.toLowerCase()
+        ) {
+          setAutoCarHullSumInsured(null);
+          setAutoCarHullSumInsuredText(AUTO_HULL_USUAL_PRICE_TEXT);
+          clearAutoHullSumMissingField();
+          return;
+        }
+        const amount = parsePositiveRounded(trimmed);
+        if (amount != null) {
+          setAutoCarHullSumInsured(amount);
+          setAutoCarHullSumInsuredText("");
+          clearAutoHullSumMissingField();
+          return;
+        }
+        setAutoCarHullSumInsured(null);
+        setAutoCarHullSumInsuredText(autoHullCanUseUsualPrice ? trimmed : "");
+        return;
+      }
+      case "carHullDeductible": {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          setAutoCarHullDeductible(null);
+          setAutoCarHullDeductibleText("");
+          return;
+        }
+        const isNumericOnly = /^[\d\s.,]+(?:kč|czk)?$/i.test(trimmed);
+        const amount = parsePositiveRounded(trimmed);
+        if (amount != null && isNumericOnly) {
+          setAutoCarHullDeductible(amount);
+          setAutoCarHullDeductibleText("");
+          return;
+        }
+        setAutoCarHullDeductible(null);
+        setAutoCarHullDeductibleText(trimmed);
+        return;
+      }
+      case "carAssistancePlan":
+        setAutoCarAssistancePlan(value);
+        return;
+      case "carAddonGlassLimit":
+        setAutoNumberField(value, setAutoCarAddonGlassLimit);
+        return;
+      case "carAddonAnimalCollisionLimit":
+        setAutoNumberField(value, setAutoCarAddonAnimalCollisionLimit);
+        return;
+      case "carAddonAnimalDamageLimit":
+        setAutoNumberField(value, setAutoCarAddonAnimalDamageLimit);
+        return;
+      case "carAddonTheftLimit":
+        setAutoNumberField(value, setAutoCarAddonTheftLimit);
+        return;
+      case "carAddonNaturalLimit":
+        setAutoNumberField(value, setAutoCarAddonNaturalLimit);
+        return;
+      case "carAddonOwnDamageLimit":
+        setAutoNumberField(value, setAutoCarAddonOwnDamageLimit);
+        return;
+      case "carAddonGapLimit":
+        setAutoNumberField(value, setAutoCarAddonGapLimit);
+        return;
+    }
+  };
+  const handleAutoPdfEditorBooleanChange = (
+    field: AutoPdfEditorBooleanField,
+    value: boolean
+  ) => {
+    switch (field) {
+      case "carHullRiskAccident":
+        setAutoCarHullRiskAccident(value);
+        return;
+      case "carHullRiskTheft":
+        setAutoCarHullRiskTheft(value);
+        return;
+      case "carHullRiskNatural":
+        setAutoCarHullRiskNatural(value);
+        return;
+      case "carHullRiskVandalism":
+        setAutoCarHullRiskVandalism(value);
+        return;
+      case "carHullRiskAnimalCollision":
+        setAutoCarHullRiskAnimalCollision(value);
+        return;
+      case "carAddonEso":
+        setAutoCarAddonEso(value);
+        return;
+      case "carAddonNaturalRisks":
+        setAutoCarAddonNaturalRisks(value);
+        return;
+      case "carAddonKlika":
+        setAutoCarAddonKlika(value);
+        return;
+      case "carAddonGlass":
+        setAutoCarAddonGlass(value);
+        if (!value) setAutoCarAddonGlassLimit(null);
+        return;
+      case "carAddonAnimalCollision":
+        setAutoCarAddonAnimalCollision(value);
+        if (!value) setAutoCarAddonAnimalCollisionLimit(null);
+        return;
+      case "carAddonAnimalDamage":
+        setAutoCarAddonAnimalDamage(value);
+        if (!value) setAutoCarAddonAnimalDamageLimit(null);
+        return;
+      case "carAddonVandalism":
+        setAutoCarAddonVandalism(value);
+        return;
+      case "carAddonTheft":
+        setAutoCarAddonTheft(value);
+        if (!value) setAutoCarAddonTheftLimit(null);
+        return;
+      case "carAddonNatural":
+        setAutoCarAddonNatural(value);
+        if (!value) setAutoCarAddonNaturalLimit(null);
+        return;
+      case "carAddonOwnDamage":
+        setAutoCarAddonOwnDamage(value);
+        if (!value) setAutoCarAddonOwnDamageLimit(null);
+        return;
+      case "carAddonGap":
+        setAutoCarAddonGap(value);
+        if (!value) setAutoCarAddonGapLimit(null);
+        return;
+      case "carAddonSmartGap":
+        setAutoCarAddonSmartGap(value);
+        return;
+      case "carAddonServisPro":
+        setAutoCarAddonServisPro(value);
+        return;
+      case "carAddonFireExplosion":
+        setAutoCarAddonFireExplosion(value);
+        return;
+      case "carAddonLegalAdvice":
+        setAutoCarAddonLegalAdvice(value);
+        return;
+      case "carAddonReplacementCar":
+        setAutoCarAddonReplacementCar(value);
+        return;
+      case "carAddonLuggage":
+        setAutoCarAddonLuggage(value);
+        return;
+      case "carAddonTransportedGoods":
+        setAutoCarAddonTransportedGoods(value);
+        return;
+      case "carAddonPothole":
+        setAutoCarAddonPothole(value);
+        return;
+      case "carAddonNonFaultAccident":
+        setAutoCarAddonNonFaultAccident(value);
+        return;
+      case "carAddonPassengerInjury":
+        setAutoCarAddonPassengerInjury(value);
+        return;
+      case "carAddonKeyLossTheft":
+        setAutoCarAddonKeyLossTheft(value);
+        return;
+    }
+  };
+  const autoPdfDetailEditor =
+    autoPdfEditorFields != null ? (
+      <CalculatorAutoPdfDetailEditor
+        fields={autoPdfEditorFields}
+        onTextChange={handleAutoPdfEditorTextChange}
+        onBooleanChange={handleAutoPdfEditorBooleanChange}
+        onHullUsualPriceChange={handleAutoHullUsualPriceChange}
+      />
+    ) : null;
   const autoPdfDetailItems: AutoPdfDetailSummaryItem[] = (() => {
     if (!isAutoProduct(product)) return [];
 
@@ -4457,17 +5155,19 @@ export default function CalculatorPage() {
     ) => {
       if (value) items.push({ section, label, value: "Ano" });
     };
-    const addGlass = () => {
-      if (!autoCarAddonGlass) return;
-      const glassLimit =
-        typeof autoCarAddonGlassLimit === "number" && Number.isFinite(autoCarAddonGlassLimit)
-          ? formatMoney(autoCarAddonGlassLimit)
-          : null;
+    const addAddon = (
+      label: string,
+      value: boolean,
+      limit: number | null = null
+    ) => {
+      if (!value) return;
+      const limitText =
+        typeof limit === "number" && Number.isFinite(limit) ? formatMoney(limit) : null;
       items.push({
         section: "addons",
-        label: "Skla",
+        label,
         value: "Ano",
-        ...(glassLimit ? { sideLabel: "Limit", sideValue: glassLimit } : {}),
+        ...(limitText ? { sideLabel: "Limit", sideValue: limitText } : {}),
       });
     };
 
@@ -4481,9 +5181,8 @@ export default function CalculatorPage() {
     }
     if (product === "allianzAuto") addText("vehicle", "Rozsah Allianz", autoCarAllianzScope);
     addMoney("liability", "Limit odpovědnosti", autoCarLiabilityLimit);
-    const hullSumInsuredText = autoCarHullSumInsuredText.trim();
-    if (product === "pillowAuto" && hullSumInsuredText) {
-      addText("hull", "Havarijní pojistná částka", hullSumInsuredText);
+    if (autoHullSumInsuredText) {
+      addText("hull", "Havarijní pojistná částka", autoHullSumInsuredText);
     } else {
       addMoney("hull", "Havarijní pojistná částka", autoCarHullSumInsured);
     }
@@ -4498,25 +5197,500 @@ export default function CalculatorPage() {
     addBoolean("hull", "Živel", autoCarHullRiskNatural);
     addBoolean("hull", "Vandalismus", autoCarHullRiskVandalism);
     addBoolean("hull", "Střet se zvířetem", autoCarHullRiskAnimalCollision);
-    addText("addons", "Asistence", autoCarAssistancePlan);
-    addBoolean("addons", "ESO", autoCarAddonEso);
-    addGlass();
-    addBoolean("addons", "Střet se zvířetem", autoCarAddonAnimalCollision);
-    addBoolean("addons", "Poškození zvířetem", autoCarAddonAnimalDamage);
-    addBoolean("addons", "Vandalismus", autoCarAddonVandalism);
-    addBoolean("addons", "Odcizení", autoCarAddonTheft);
-    addBoolean("addons", "Živel", autoCarAddonNatural);
-    addBoolean("addons", "GAP", autoCarAddonGap);
-    addBoolean("addons", "SmartGAP", autoCarAddonSmartGap);
-    addBoolean("addons", "ServisPRO", autoCarAddonServisPro);
-    addBoolean("addons", "Požár/výbuch", autoCarAddonFireExplosion);
-    addBoolean("addons", "Právní poradenství", autoCarAddonLegalAdvice);
-    addBoolean("addons", "Náhradní vozidlo", autoCarAddonReplacementCar);
-    addBoolean("addons", "Zavazadla", autoCarAddonLuggage);
-    addBoolean("addons", "Přepravované věci", autoCarAddonTransportedGoods);
-    addBoolean("addons", "Výtluk", autoCarAddonPothole);
-    addBoolean("addons", "Nezaviněná nehoda", autoCarAddonNonFaultAccident);
-    addBoolean("addons", "Ztráta/odcizení klíčů", autoCarAddonKeyLossTheft);
+    if (autoCarAssistancePlan.trim()) {
+      addText("assistance", "Asistence", autoAssistancePlanLabel(autoCarAssistancePlan));
+    }
+    addAddon("ESO", autoCarAddonEso);
+    addAddon("Pojištění přírodních rizik", autoCarAddonNaturalRisks);
+    addAddon("Pojištění KLIKA", autoCarAddonKlika);
+    addAddon("Skla", autoCarAddonGlass, autoCarAddonGlassLimit);
+    addAddon(
+      "Střet se zvěří",
+      autoCarAddonAnimalCollision,
+      autoCarAddonAnimalCollisionLimit
+    );
+    addAddon(
+      "Poškození zvěří",
+      autoCarAddonAnimalDamage,
+      autoCarAddonAnimalDamageLimit
+    );
+    addAddon("Vandalismus", autoCarAddonVandalism);
+    addAddon("Odcizení", autoCarAddonTheft, autoCarAddonTheftLimit);
+    addAddon("Živel", autoCarAddonNatural, autoCarAddonNaturalLimit);
+    addAddon(
+      "Poškození vlastního vozidla",
+      autoCarAddonOwnDamage,
+      autoCarAddonOwnDamageLimit
+    );
+    addAddon("Výmol", autoCarAddonPothole);
+    addAddon("Pojištění nezaviněné nehody", autoCarAddonNonFaultAccident);
+    addAddon("GAP", autoCarAddonGap, autoCarAddonGapLimit);
+    addAddon("SmartGAP", autoCarAddonSmartGap);
+    addAddon("Servis PRO", autoCarAddonServisPro);
+    addAddon("Náhradní vozidlo", autoCarAddonReplacementCar);
+    addAddon("Zavazadla, nosiče a boxy", autoCarAddonLuggage);
+    addAddon("Dopravované věci", autoCarAddonTransportedGoods);
+    addAddon("Požár/výbuch", autoCarAddonFireExplosion);
+    addAddon("Právní poradenství", autoCarAddonLegalAdvice);
+    addAddon("Úraz všech osob", autoCarAddonPassengerInjury);
+    addAddon("Ztráta/odcizení klíčů", autoCarAddonKeyLossTheft);
+
+    return items;
+  })();
+  const domexPdfNumberText = (value: number | null) =>
+    value != null && Number.isFinite(value) ? String(value) : "";
+  const domexPropertyTypeLabel = (value: string) => {
+    const key = value.trim().toLowerCase();
+    const labels: Record<string, string> = {
+      byt: "Byt",
+      dum: "Dům",
+      chata: "Chata",
+      rekreace: "Rekreační objekt",
+      ostatni: "Ostatní",
+    };
+    return key ? labels[key] ?? value.trim() : "";
+  };
+  const domexHouseholdTypeLabel = (value: string) => {
+    const key = value.trim().toLowerCase();
+    if (key === "trvale") return "Trvale obydlená";
+    if (key === "rekreacni") return "Rekreační";
+    return value.trim();
+  };
+  const domexCoverageLabel = (value: string) => value.trim().toUpperCase();
+  const isDomexPdfDetailProduct = product === "domex" || product === "maxdomov";
+  const domexPdfEditorFields: DomexPdfDetailEditorFields | null = isDomexPdfDetailProduct
+    ? {
+        address: domexAddress,
+        propertyType: domexPropertyType,
+        propertyCoverage: domexPropertyCoverage,
+        sumInsured: domexPdfNumberText(domexPropertySumInsured),
+        deductible: domexPdfNumberText(domexPropertyDeductible),
+        outbuildingSumInsured: domexPdfNumberText(domexOutbuildingSumInsured),
+        householdType: domexHouseholdType,
+        householdCoverage: domexHouseholdCoverage,
+        householdSumInsured: domexPdfNumberText(domexHouseholdSumInsured),
+        householdDeductible: domexPdfNumberText(domexHouseholdDeductible),
+        liabilitySumInsured: domexPdfNumberText(domexLiabilitySumInsured),
+        liabilityDeductible: domexPdfNumberText(domexLiabilityDeductible),
+        note: domexNote,
+        liabilityMobile: domexLiabilityMobile,
+        liabilityTenant: domexLiabilityTenant,
+        liabilityLandlord: domexLiabilityLandlord,
+        assistancePlus: domexAssistancePlus,
+      }
+    : null;
+  const setDomexNumberField = (
+    value: string,
+    setter: (nextValue: number | null) => void
+  ) => {
+    setter(parsePositiveRounded(value));
+  };
+  const handleDomexPdfEditorTextChange = (
+    field: DomexPdfEditorTextField,
+    value: string
+  ) => {
+    switch (field) {
+      case "address":
+        setDomexAddress(value);
+        return;
+      case "propertyType":
+        setDomexPropertyType(value);
+        return;
+      case "propertyCoverage":
+        setDomexPropertyCoverage(value);
+        return;
+      case "sumInsured":
+        setDomexNumberField(value, setDomexPropertySumInsured);
+        return;
+      case "deductible":
+        setDomexNumberField(value, setDomexPropertyDeductible);
+        return;
+      case "outbuildingSumInsured":
+        setDomexNumberField(value, setDomexOutbuildingSumInsured);
+        return;
+      case "householdType":
+        setDomexHouseholdType(value);
+        return;
+      case "householdCoverage":
+        setDomexHouseholdCoverage(value);
+        return;
+      case "householdSumInsured":
+        setDomexNumberField(value, setDomexHouseholdSumInsured);
+        return;
+      case "householdDeductible":
+        setDomexNumberField(value, setDomexHouseholdDeductible);
+        return;
+      case "liabilitySumInsured":
+        setDomexNumberField(value, setDomexLiabilitySumInsured);
+        return;
+      case "liabilityDeductible":
+        setDomexNumberField(value, setDomexLiabilityDeductible);
+        return;
+      case "note":
+        setDomexNote(value);
+        return;
+    }
+  };
+  const handleDomexPdfEditorBooleanChange = (
+    field: DomexPdfEditorBooleanField,
+    value: boolean
+  ) => {
+    switch (field) {
+      case "liabilityMobile":
+        setDomexLiabilityMobile(value);
+        return;
+      case "liabilityTenant":
+        setDomexLiabilityTenant(value);
+        return;
+      case "liabilityLandlord":
+        setDomexLiabilityLandlord(value);
+        return;
+      case "assistancePlus":
+        setDomexAssistancePlus(value);
+        return;
+    }
+  };
+  const domexPdfDetailEditor =
+    domexPdfEditorFields != null ? (
+      <CalculatorDomexPdfDetailEditor
+        fields={domexPdfEditorFields}
+        onTextChange={handleDomexPdfEditorTextChange}
+        onBooleanChange={handleDomexPdfEditorBooleanChange}
+      />
+    ) : null;
+  const domexPdfDetailItems: DomexPdfDetailSummaryItem[] = (() => {
+    if (!isDomexPdfDetailProduct) return [];
+
+    const items: DomexPdfDetailSummaryItem[] = [];
+    const addText = (
+      section: DomexPdfDetailSummarySection,
+      label: string,
+      value: string
+    ) => {
+      const normalized = value.trim();
+      if (normalized) items.push({ section, label, value: normalized });
+    };
+    const addMoney = (
+      section: DomexPdfDetailSummarySection,
+      label: string,
+      value: number | null
+    ) => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        items.push({ section, label, value: formatMoney(value) });
+      }
+    };
+    const addBoolean = (
+      section: DomexPdfDetailSummarySection,
+      label: string,
+      value: boolean
+    ) => {
+      if (value) items.push({ section, label, value: "Ano" });
+    };
+
+    addText("property", "Adresa", domexAddress);
+    addText("property", "Typ nemovitosti", domexPropertyTypeLabel(domexPropertyType));
+    addText("property", "Rozsah", domexCoverageLabel(domexPropertyCoverage));
+    addMoney("property", "Pojistná částka", domexPropertySumInsured);
+    addMoney("property", "Spoluúčast", domexPropertyDeductible);
+    addMoney("outbuilding", "Pojistná částka", domexOutbuildingSumInsured);
+    addText("household", "Typ", domexHouseholdTypeLabel(domexHouseholdType));
+    addText("household", "Rozsah", domexCoverageLabel(domexHouseholdCoverage));
+    addMoney("household", "Pojistná částka", domexHouseholdSumInsured);
+    addMoney("household", "Spoluúčast", domexHouseholdDeductible);
+    addMoney("liability", "Pojistná částka", domexLiabilitySumInsured);
+    addMoney("liability", "Spoluúčast", domexLiabilityDeductible);
+    addBoolean("liability", "Náhrada újmy mobilní elektronice", domexLiabilityMobile);
+    addBoolean("liability", "Odpovědnost nájemce na věci nemovité", domexLiabilityTenant);
+    addBoolean("liability", "Odpovědnost pronajímatele", domexLiabilityLandlord);
+    addBoolean("assistance", "Asistence PLUS", domexAssistancePlus);
+    addText("note", "Poznámka", domexNote);
+
+    return items;
+  })();
+  const neonVersionLabel = (value: string) => {
+    const key = value.trim();
+    const labels: Record<string, string> = {
+      neon_life: "NEON Life",
+      neon_risk: "NEON Risk",
+      neon_life_kids: "NEON Life Dětské",
+      neon_risk_kids: "NEON Risk Dětské",
+    };
+    return key ? labels[key] ?? key : "";
+  };
+  const neonSumTypeLabel = (value?: string) => {
+    const key = value?.trim() ?? "";
+    const labels: Record<string, string> = {
+      konstantni: "Konstantní",
+      klesajici: "Klesající",
+      klesajici_urok: "Klesající dle úroku",
+    };
+    return key ? labels[key] ?? key : "";
+  };
+  const neonCriticalVariantLabel = (value?: string) => {
+    const key = value?.trim() ?? "";
+    const labels: Record<string, string> = {
+      zakladni: "Základní",
+      rozsirena_in_situ: "Rozšířená včetně formy in situ",
+      maxi_in_situ: "Maxi včetně formy in situ",
+    };
+    return key ? labels[key] ?? key : "";
+  };
+  const neonWorkIncapacityStartLabel = (value?: string) => {
+    const key = value?.trim() ?? "";
+    return key ? `${key}. dne` : "";
+  };
+  const neonWorkIncapacityBackpayLabel = (value?: string) => {
+    const key = value?.trim() ?? "";
+    if (key === "zpetne") return "Zpětně";
+    if (key === "nezpetne") return "Nezpětně";
+    return key;
+  };
+  const neonAccidentDailyStartLabel = (value?: string) => {
+    const key = value?.trim() ?? "";
+    return key ? `${key}. dne` : "";
+  };
+  const neonAccidentDailyBackpayLabel = (value?: string) => {
+    const key = value?.trim() ?? "";
+    if (key === "zpetne") return "Zpětně od 1. dne";
+    if (key === "zpetne_progrese") return "Zpětně s progresí";
+    return key;
+  };
+  const neonInjuryPermanentFulfillmentLabel = (value?: string) => {
+    const key = value?.trim() ?? "";
+    if (key === "0.001") return "0,001 %";
+    if (key === "10") return "10 %";
+    return key;
+  };
+  const neonInjuryPermanentProgressionLabel = (value?: string) => {
+    const key = value?.trim() ?? "";
+    const labels: Record<string, string> = {
+      bez_progrese: "Bez progrese",
+      progrese_5x: "5x progrese",
+      progrese_10x: "10x progrese",
+    };
+    return key ? labels[key] ?? key : "";
+  };
+  const neonAmountText = (value?: string) => {
+    const trimmed = value?.trim() ?? "";
+    if (!trimmed) return "";
+    const amount = parseNumber(trimmed);
+    return amount > 0 ? formatMoney(Math.round(amount)) : trimmed;
+  };
+  const handleNeonPdfEditorTextChange = (
+    field: NeonPdfEditorTextField,
+    value: string
+  ) => {
+    setNeonPdfDetailFields((prev) => ({ ...prev, [field]: value }));
+  };
+  const handleNeonPdfEditorBooleanChange = (
+    field: NeonPdfEditorBooleanField,
+    value: boolean
+  ) => {
+    setNeonPdfDetailFields((prev) => ({ ...prev, [field]: value }));
+  };
+  const neonPdfDetailEditor =
+    product === "neon" ? (
+      <CalculatorNeonPdfDetailEditor
+        fields={neonPdfDetailFields}
+        onTextChange={handleNeonPdfEditorTextChange}
+        onBooleanChange={handleNeonPdfEditorBooleanChange}
+      />
+    ) : null;
+  const neonPdfDetailItems: NeonPdfDetailSummaryItem[] = (() => {
+    if (product !== "neon") return [];
+
+    const fields = neonPdfDetailFields;
+    const items: NeonPdfDetailSummaryItem[] = [];
+    const addText = (
+      section: NeonPdfDetailSummarySection,
+      label: string,
+      value: string
+    ) => {
+      const normalized = value.trim();
+      if (normalized) items.push({ section, label, value: normalized });
+    };
+    const addAmount = (
+      section: NeonPdfDetailSummarySection,
+      label: string,
+      value: string,
+      typeValue = ""
+    ) => {
+      const amount = neonAmountText(value);
+      const type = neonSumTypeLabel(typeValue);
+      if (!amount && !type) return;
+      items.push({
+        section,
+        label,
+        value: amount || type,
+        ...(amount && type ? { sideLabel: "Typ", sideValue: type } : {}),
+      });
+    };
+    const addBoolean = (
+      section: NeonPdfDetailSummarySection,
+      label: string,
+      value: boolean
+    ) => {
+      if (value) items.push({ section, label, value: "Ano" });
+    };
+    const compactDetails = (...values: Array<string | null | undefined | false>) =>
+      values.filter((value): value is string => typeof value === "string" && value.trim() !== "")
+        .join(" · ");
+
+    addText("version", "Verze", neonVersionLabel(fields.version));
+    addAmount("death", "Smrt", fields.deathAmount, fields.deathType);
+    addAmount("death", "Smrt (2)", fields.death2Amount, fields.death2Type);
+    addAmount("death", "Smrt nebo terminální stádium", fields.deathTerminalAmount);
+    addBoolean("waiver", "Invalidita", fields.waiverInvalidity);
+    addBoolean("waiver", "Ztráta zaměstnání", fields.waiverUnemployment);
+    addAmount("invalidity", "Invalidita 1. stupeň", fields.invalidityA1, fields.invalidityAType);
+    addAmount("invalidity", "Invalidita 2. stupeň", fields.invalidityA2, fields.invalidityAType);
+    addAmount("invalidity", "Invalidita 3. stupeň", fields.invalidityA3, fields.invalidityAType);
+    addAmount(
+      "invalidity",
+      "Invalidita 1. stupeň (2)",
+      fields.invalidityB1,
+      fields.invalidityBType
+    );
+    addAmount(
+      "invalidity",
+      "Invalidita 2. stupeň (2)",
+      fields.invalidityB2,
+      fields.invalidityBType
+    );
+    addAmount(
+      "invalidity",
+      "Invalidita 3. stupeň (2)",
+      fields.invalidityB3,
+      fields.invalidityBType
+    );
+    addBoolean("invalidity", "Invalidita s výplatou důchodu", fields.invalidityPension);
+    const criticalAmount = neonAmountText(fields.criticalAmount);
+    const criticalType = neonSumTypeLabel(fields.criticalType);
+    const criticalVariant = neonCriticalVariantLabel(fields.criticalVariant);
+    const criticalDetails = compactDetails(
+      criticalVariant,
+      criticalType ? `Typ ${criticalType}` : ""
+    );
+    if (criticalAmount || criticalDetails) {
+      items.push({
+        section: "critical",
+        label: "Závažná onemocnění a poranění",
+        value: criticalAmount || criticalDetails,
+        ...(criticalAmount && criticalDetails
+          ? { sideLabel: "Nastavení", sideValue: criticalDetails }
+          : {}),
+      });
+    }
+    addAmount("critical", "Operace dítěte s vrozenou vadou", fields.childSurgeryAmount);
+    addAmount("critical", "Závažné následky očkování", fields.vaccinationCompAmount);
+    addAmount("critical", "Cukrovka a její komplikace", fields.diabetesAmount);
+    addAmount("accident", "Smrt úrazem", fields.deathAccidentAmount);
+    const addInjuryPermanent = (
+      label: string,
+      amountValue: string,
+      fulfillmentValue: string,
+      progressionValue: string
+    ) => {
+      const injuryPermanentAmount = neonAmountText(amountValue);
+      const injuryPermanentFulfillment =
+        neonInjuryPermanentFulfillmentLabel(fulfillmentValue);
+      const injuryPermanentProgression =
+        neonInjuryPermanentProgressionLabel(progressionValue);
+      const injuryPermanentDetails = compactDetails(
+        injuryPermanentFulfillment ? `od ${injuryPermanentFulfillment}` : "",
+        injuryPermanentProgression
+      );
+      if (injuryPermanentAmount || injuryPermanentDetails) {
+        items.push({
+          section: "accident",
+          label,
+          value: injuryPermanentAmount || injuryPermanentDetails,
+          ...(injuryPermanentAmount && injuryPermanentDetails
+            ? { sideLabel: "Nastavení", sideValue: injuryPermanentDetails }
+            : {}),
+        });
+      }
+    };
+    addInjuryPermanent(
+      "Trvalé následky úrazu",
+      fields.injuryPermanentAmount,
+      fields.injuryPermanentFulfillmentFrom,
+      fields.injuryPermanentProgression
+    );
+    addInjuryPermanent(
+      "Trvalé následky úrazu (2)",
+      fields.injuryPermanent2Amount,
+      fields.injuryPermanent2FulfillmentFrom,
+      fields.injuryPermanent2Progression
+    );
+    const accidentDailyAmount = neonAmountText(fields.accidentDailyBenefit);
+    const accidentDailyDetails = compactDetails(
+      neonAccidentDailyStartLabel(fields.accidentDailyBenefitStart),
+      neonAccidentDailyBackpayLabel(fields.accidentDailyBenefitBackpay)
+    );
+    if (accidentDailyAmount || accidentDailyDetails) {
+      items.push({
+        section: "accident",
+        label: "Denní odškodné úrazem",
+        value: accidentDailyAmount || accidentDailyDetails,
+        ...(accidentDailyAmount && accidentDailyDetails
+          ? { sideLabel: "Nastavení", sideValue: accidentDailyDetails }
+          : {}),
+      });
+    }
+    addAmount("hospitalization", "Hospitalizace", fields.hospitalizationAmount);
+    addAmount("hospitalization", "Hospitalizace nemoc", fields.hospitalizationIllnessAmount);
+    addAmount("hospitalization", "Hospitalizace úraz", fields.hospitalizationInjuryAmount);
+    const addWorkIncapacity = (
+      label: string,
+      startValue: string,
+      backpayValue: string,
+      amountValue: string,
+      illness: boolean,
+      injury: boolean
+    ) => {
+      const workAmount = neonAmountText(amountValue);
+      const workDetails = compactDetails(
+        neonWorkIncapacityStartLabel(startValue),
+        neonWorkIncapacityBackpayLabel(backpayValue)
+      );
+      if (workAmount || workDetails) {
+        items.push({
+          section: "work",
+          label,
+          value: workAmount || workDetails,
+          ...(workAmount && workDetails
+            ? { sideLabel: "Nastavení", sideValue: workDetails }
+            : {}),
+        });
+      }
+      addBoolean("work", `${label} nemoc`, illness);
+      addBoolean("work", `${label} úraz`, injury);
+    };
+    addWorkIncapacity(
+      "Pracovní neschopnost",
+      fields.workIncapacityStart,
+      fields.workIncapacityBackpay,
+      fields.workIncapacityAmount,
+      fields.workIncapacityIllness,
+      fields.workIncapacityInjury
+    );
+    addWorkIncapacity(
+      "Pracovní neschopnost (2)",
+      fields.workIncapacity2Start,
+      fields.workIncapacity2Backpay,
+      fields.workIncapacity2Amount,
+      fields.workIncapacity2Illness,
+      fields.workIncapacity2Injury
+    );
+    addAmount("other", "Závislost na péči", fields.careDependencyAmount);
+    addAmount("other", "Příspěvek na zvláštní pomůcku", fields.specialAidAmount);
+    addAmount("other", "Celodenní ošetřování", fields.caregivingAmount);
+    addAmount("other", "Náklady asistované reprodukce", fields.reproductionCostAmount);
+    addAmount("other", "Odpovědnost občana", fields.liabilityCitizenLimit);
+    addAmount("other", "Odpovědnost zaměstnance", fields.liabilityEmployeeLimit);
+    addBoolean("other", "ČPP Pomoc", fields.cppHelp);
+    addBoolean("other", "Cestovní pojištění", fields.travelInsurance);
 
     return items;
   })();
@@ -5000,7 +6174,21 @@ export default function CalculatorPage() {
               onModeChange={setMode}
             />
 
-            <CalculatorAutoPdfDetailSummary items={autoPdfDetailItems} />
+            <CalculatorAutoPdfDetailSummary
+              items={autoPdfDetailItems}
+              hullSumPrompt={autoHullSumPrompt}
+              editor={autoPdfDetailEditor}
+            />
+
+            <CalculatorDomexPdfDetailSummary
+              items={domexPdfDetailItems}
+              editor={domexPdfDetailEditor}
+            />
+
+            <CalculatorNeonPdfDetailSummary
+              items={neonPdfDetailItems}
+              editor={neonPdfDetailEditor}
+            />
           </div>
 
           <CalculatorResultsSection
@@ -5062,6 +6250,7 @@ export default function CalculatorPage() {
               !saving &&
               items.length > 0 &&
               parseNumber(amountText) > 0 &&
+              !autoHullSumNeedsInput &&
               (isSavingForSubordinate || positionTimeline.length > 0)
             }
             lastSavedContractHref={lastSavedContractHref}

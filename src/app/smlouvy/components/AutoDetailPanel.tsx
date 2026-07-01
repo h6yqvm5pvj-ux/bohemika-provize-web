@@ -10,6 +10,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { Product } from "@/app/types/domain";
+import { autoAssistancePlanLabel } from "@/app/lib/autoAssistanceLabels";
 import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 
 export type AutoFields = {
@@ -123,32 +124,6 @@ const formatLimitLabel = (val: string): string => {
   if (!Number.isFinite(num)) return "—";
   const mil = num / 1_000_000;
   return `${mil}/${mil} mil. Kč`;
-};
-
-const assistanceLabel = (val?: string | null): string => {
-  const map: Record<string, string> = {
-    zakladni: "Základní",
-    standard: "Standard",
-    nadstandard: "Nadstandard",
-    "bez limitu": "Bez limitu",
-    bez_limitu: "Bez limitu",
-    plus: "PLUS",
-    plus_dvojnasob: "PLUS Dvojnásob",
-    "plus dvojnasob": "PLUS Dvojnásob",
-    cr_bez_limitu: "CAR PLUS v ČR bez limitu",
-    "v čr bez limitu": "CAR PLUS v ČR bez limitu",
-    "v cr bez limitu": "CAR PLUS v ČR bez limitu",
-    evropa_cr_bez_limitu: "CAR PREMIUM ČR a EVROPA bez limitu",
-    "evropa a čr bez limitu": "CAR PREMIUM ČR a EVROPA bez limitu",
-    "evropa a cr bez limitu": "CAR PREMIUM ČR a EVROPA bez limitu",
-    odtah_50_km_pri_nehode: "Odtah 50 km při nehodě",
-    odtah_50_km: "Odtah 50 km",
-    odtah_v_cr_neomezene: "Odtah v ČR neomezeně",
-    odtah_i_ze_zahranici: "Odtah i ze zahraničí",
-  };
-  if (!val) return "—";
-  const key = val.trim().toLowerCase();
-  return map[key] ?? val;
 };
 
 type Props = {
@@ -588,7 +563,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                   <option value="Odtah i ze zahraničí">Odtah i ze zahraničí</option>
                 </select>
               ) : (
-                assistanceLabel(contract?.carAssistancePlan ?? fields.carAssistancePlan)
+                autoAssistancePlanLabel(contract?.carAssistancePlan ?? fields.carAssistancePlan)
               )}
             </span>
           </div>
