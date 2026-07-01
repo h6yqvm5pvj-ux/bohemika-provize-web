@@ -201,6 +201,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonNonFaultAccident",
   "carAddonPassengerInjury",
   "carAddonKeyLossTheft",
+  "neonDetail",
   "domexDetail",
   "maxdomovDetail",
   "isRefresh",
@@ -1401,6 +1402,7 @@ type NormalizedCreateEntryPayload = {
   carAddonNonFaultAccident: boolean | null;
   carAddonPassengerInjury: boolean | null;
   carAddonKeyLossTheft: boolean | null;
+  neonDetail: Record<string, unknown> | null;
   domexDetail: Record<string, unknown> | null;
   maxdomovDetail: Record<string, unknown> | null;
   paid: boolean;
@@ -1756,6 +1758,12 @@ const normalizeCreateEntryPayload = ({
     "carAddonKeyLossTheft"
   );
   if (!carAddonKeyLossTheftParsed.ok) return carAddonKeyLossTheftParsed;
+  const neonDetailParsed = sanitizeDetailObject(
+    raw.neonDetail,
+    "neonDetail",
+    NEON_DETAIL_ALLOWED_KEYS
+  );
+  if (!neonDetailParsed.ok) return neonDetailParsed;
   const domexDetailParsed = sanitizeDetailObject(
     raw.domexDetail,
     "domexDetail",
@@ -2053,6 +2061,7 @@ const normalizeCreateEntryPayload = ({
       carAddonNonFaultAccident: carAddonNonFaultAccidentParsed.value,
       carAddonPassengerInjury: carAddonPassengerInjuryParsed.value,
       carAddonKeyLossTheft: carAddonKeyLossTheftParsed.value,
+      neonDetail: productParsed.value === "neon" ? neonDetailParsed.value : null,
       domexDetail: productParsed.value === "domex" ? domexDetailParsed.value : null,
       maxdomovDetail:
         productParsed.value === "maxdomov" ? maxdomovDetailParsed.value : null,
