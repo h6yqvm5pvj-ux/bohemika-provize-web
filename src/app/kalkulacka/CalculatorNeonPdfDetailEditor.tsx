@@ -563,13 +563,7 @@ export function CalculatorNeonPdfDetailEditor({
       </EditSection>
 
       <EditSection title="Hospitalizace" icon={BedDouble}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <TextInput
-            label="Hospitalizace"
-            value={fields.hospitalizationAmount}
-            placeholder="Denní částka"
-            onChange={(value) => onTextChange("hospitalizationAmount", value)}
-          />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <TextInput
             label="Hospitalizace nemoc"
             value={fields.hospitalizationIllnessAmount}

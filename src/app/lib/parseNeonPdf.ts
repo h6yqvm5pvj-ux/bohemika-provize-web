@@ -186,6 +186,9 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   // Zachováme řádky, jen odstaníme diakritiku pro hledání.
   const asciiLines = lines.map((l) => stripDiacritics(l).toLowerCase().trim());
   const asciiText = stripDiacritics(fullText).toLowerCase();
+  const detectedVersion = /\b(?:rizikove\s+pojisteni\s+)?neon\s+risk\b/.test(asciiText)
+    ? "neon_risk"
+    : null;
 
   const result: NeonPdfResult = {};
   const riskFields: NeonRiskFields = {};
@@ -223,6 +226,55 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
     if (m2?.[1]) {
       const val = parseAmount(m2[1]);
       if (val != null) return val;
+    }
+
+    return null;
+  };
+
+  const findLiabilityLimitAfter = (labelRegex: RegExp): number | null => {
+    const parseAmountsFromLine = (line: string) =>
+      Array.from(line.matchAll(/([\d\s]+)\s*k[cč]/g))
+        .map((match) => parseAmount(match[1]))
+        .filter((value): value is number => value != null && value >= 100_000);
+
+    const blockEndRegex =
+      /^(slevy z celkove|placeni pojistneho|bankovni spojeni|pojistne plneni|pripojisteni pro pripad|pojisteni pro pripad|ostatni pripojisteni)$/;
+    const nextLiabilityRegex = /^pripojisteni odpovednosti /;
+
+    for (let idx = 0; idx < asciiLines.length; idx += 1) {
+      const titleWindow = asciiLines
+        .slice(idx, Math.min(asciiLines.length, idx + 3))
+        .join(" ")
+        .replace(/\s+/g, " ");
+      if (!labelRegex.test(titleWindow)) continue;
+
+      let end = Math.min(asciiLines.length, idx + 14);
+      for (let nextIdx = idx + 1; nextIdx < end; nextIdx += 1) {
+        const nextLine = asciiLines[nextIdx] ?? "";
+        if (blockEndRegex.test(nextLine) || nextLiabilityRegex.test(nextLine)) {
+          end = nextIdx;
+          break;
+        }
+      }
+
+      const window = asciiLines.slice(idx, end);
+      for (let lineIdx = 0; lineIdx < window.length; lineIdx += 1) {
+        if (!/limit\s+plneni/.test(window[lineIdx])) continue;
+
+        const sameLineAmount = parseAmountsFromLine(window[lineIdx])[0];
+        if (sameLineAmount != null) return sameLineAmount;
+
+        for (let offset = 1; offset <= 3; offset += 1) {
+          const nextLineAmount = parseAmountsFromLine(window[lineIdx + offset] ?? "")[0];
+          if (nextLineAmount != null) return nextLineAmount;
+        }
+      }
+
+      for (const line of window) {
+        if (isDateLike(line)) continue;
+        const fallbackAmount = parseAmountsFromLine(line)[0];
+        if (fallbackAmount != null) return fallbackAmount;
+      }
     }
 
     return null;
@@ -310,6 +362,41 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
     return value;
   };
 
+  const parseBenefitAmountFromTableWindow = (window: string[]): number | null => {
+    const currencyValues: number[] = [];
+    const standaloneValues: number[] = [];
+
+    for (const line of window.slice(1)) {
+      if (isDateLike(line)) continue;
+
+      const currencyMatches = Array.from(line.matchAll(/([\d\s]+)k[cč]/g));
+      if (currencyMatches.length > 0) {
+        currencyMatches.forEach((match) => {
+          const value = parseAmount(match[1]);
+          if (value != null && value >= 50) currencyValues.push(value);
+        });
+        continue;
+      }
+
+      const normalized = line.replace(/\s+/g, " ").trim();
+      if (!/^\d[\d\s.,]*$/.test(normalized)) continue;
+      const value = parseAmount(normalized);
+      if (value != null && value > 0) standaloneValues.push(value);
+    }
+
+    // V modelaci bývá částka i pojistné s "Kč": první měnová hodnota je pojistná částka.
+    if (currencyValues.length > 0) return currencyValues[0];
+
+    // V návrhu smlouvy jsou sloupce bez "Kč": doba / pojistná částka / měsíční pojistné.
+    if (standaloneValues.length >= 3) return standaloneValues[1];
+    if (standaloneValues.length === 2) {
+      return standaloneValues[0] <= 99 && standaloneValues[1] >= 100
+        ? standaloneValues[1]
+        : standaloneValues[0];
+    }
+    return standaloneValues[0] != null && standaloneValues[0] >= 50 ? standaloneValues[0] : null;
+  };
+
   const parseDailyBenefitFromLine = (line: string): number | null => {
     if (isDateLike(line)) return null;
 
@@ -360,13 +447,15 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
         const text = window.join(" ").replace(/\s+/g, " ").trim();
         const illness = /nemoc/.test(text);
         const injury = /uraz/.test(text);
-        let amount: number | null = null;
+        let amount: number | null = parseBenefitAmountFromTableWindow(window);
 
-        for (const line of window.slice(1)) {
-          const value = parseDailyBenefitFromLine(line);
-          if (value != null) {
-            amount = value;
-            break;
+        if (amount == null) {
+          for (const line of window.slice(1)) {
+            const value = parseDailyBenefitFromLine(line);
+            if (value != null) {
+              amount = value;
+              break;
+            }
           }
         }
 
@@ -435,13 +524,15 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
         : /zpetne\s+od\s+1\.\s*dne|zpetne/.test(text)
           ? "zpetne"
           : null;
-      let amount: number | null = null;
+      let amount: number | null = parseBenefitAmountFromTableWindow(window);
 
-      for (const line of window.slice(1)) {
-        const value = parseDailyBenefitFromLine(line);
-        if (value != null) {
-          amount = value;
-          break;
+      if (amount == null) {
+        for (const line of window.slice(1)) {
+          const value = parseDailyBenefitFromLine(line);
+          if (value != null) {
+            amount = value;
+            break;
+          }
         }
       }
 
@@ -501,13 +592,15 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
       const injury = /uraz/.test(text);
       const start = text.match(/(?:plneni\s+od|od)\s*(\d{1,3})\.\s*dne/)?.[1] ?? null;
       const backpay = /nezpetne/.test(text) ? "nezpetne" : /zpetne/.test(text) ? "zpetne" : null;
-      let amount: number | null = null;
+      let amount: number | null = parseBenefitAmountFromTableWindow(window);
 
-      for (const line of window.slice(1)) {
-        const value = parseDailyBenefitFromLine(line);
-        if (value != null) {
-          amount = value;
-          break;
+      if (amount == null) {
+        for (const line of window.slice(1)) {
+          const value = parseDailyBenefitFromLine(line);
+          if (value != null) {
+            amount = value;
+            break;
+          }
         }
       }
 
@@ -1003,13 +1096,20 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   }
 
   // Odpovědnost
-  const liabilityCitizen = findAmountAfter(/odpovednost obcana/i);
+  const liabilityCitizen =
+    findLiabilityLimitAfter(/pripojisteni\s+odpovednosti\s+obcana|odpovednosti\s+obcana\s+v\s+beznem/i) ??
+    findAmountAfter(/odpovednost[i]?\s+obcana/i);
   if (liabilityCitizen != null) riskFields.liabilityCitizenLimit = String(liabilityCitizen);
-  const liabilityEmployee = findAmountAfter(/odpovednost zamestnance/i);
+  const liabilityEmployee =
+    findLiabilityLimitAfter(/pripojisteni\s+odpovednosti\s+zamestnance|odpovednosti\s+zamestnance\s+pri\s+vykonu/i) ??
+    findAmountAfter(/odpovednost[i]?\s+zamestnance/i);
   if (liabilityEmployee != null) riskFields.liabilityEmployeeLimit = String(liabilityEmployee);
 
+  if (detectedVersion) {
+    riskFields.version = detectedVersion;
+  }
   if (Object.keys(riskFields).length > 0) {
-    riskFields.version = "neon_life";
+    riskFields.version = riskFields.version || "neon_life";
     result.riskFields = riskFields;
   }
 

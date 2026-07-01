@@ -2817,7 +2817,6 @@ export default function CalculatorPage() {
           riskFields.injuryPermanent2FulfillmentFrom
         );
         applyText("injuryPermanent2Progression", riskFields.injuryPermanent2Progression);
-        applyText("hospitalizationAmount", riskFields.hospitalizationAmount);
         applyText("hospitalizationIllnessAmount", riskFields.hospitalizationIllnessAmount);
         applyText("hospitalizationInjuryAmount", riskFields.hospitalizationInjuryAmount);
         applyText("accidentDailyBenefitStart", riskFields.accidentDailyBenefitStart);
@@ -3920,7 +3919,7 @@ export default function CalculatorPage() {
               neonPdfDetailFields.injuryPermanent2FulfillmentFrom.trim() || null,
             injuryPermanent2Progression:
               neonPdfDetailFields.injuryPermanent2Progression.trim() || null,
-            hospitalizationAmount: neonNumberOrNull(neonPdfDetailFields.hospitalizationAmount),
+            hospitalizationAmount: null,
             hospitalizationIllnessAmount: neonNumberOrNull(
               neonPdfDetailFields.hospitalizationIllnessAmount
             ),
@@ -5638,7 +5637,6 @@ export default function CalculatorPage() {
           : {}),
       });
     }
-    addAmount("hospitalization", "Hospitalizace", fields.hospitalizationAmount);
     addAmount("hospitalization", "Hospitalizace nemoc", fields.hospitalizationIllnessAmount);
     addAmount("hospitalization", "Hospitalizace úraz", fields.hospitalizationInjuryAmount);
     const addWorkIncapacity = (
