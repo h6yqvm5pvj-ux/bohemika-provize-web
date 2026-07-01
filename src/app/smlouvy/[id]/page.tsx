@@ -120,7 +120,7 @@ import { parseSlaviaAutoPdf } from "@/app/lib/parseSlaviaAutoPdf";
 
 const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
-const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = false;
+const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = true;
 
 const normalizeCppExtranetParam = (
   value: string | number | null | undefined
