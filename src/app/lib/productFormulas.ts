@@ -65,6 +65,7 @@ import {
 import {
   calculateCppAuto,
   cppAutoCoefficient,
+  isCppAutoHistoricalPeriod,
 } from "./productFormulas/cppAuto";
 import {
   calculateSlaviaAuto,
@@ -97,6 +98,7 @@ import {
 import {
   calculateCsobAuto,
   csobAutoCoefficient,
+  isCsobAutoHistoricalPeriod,
 } from "./productFormulas/csobAuto";
 import {
   calculateUniqaAuto,
@@ -152,6 +154,7 @@ export {
   calculateKoopMajetekObcan,
   calculateMaxdomov,
   calculateCppAuto,
+  isCppAutoHistoricalPeriod,
   calculateSlaviaAuto,
   calculateCppSimplex,
   calculateCppPPRbez,
@@ -160,6 +163,7 @@ export {
   isAllianzAutoHistoricalPeriod,
   calculateAllianzMujDomov,
   calculateCsobAuto,
+  isCsobAutoHistoricalPeriod,
   calculateUniqaAuto,
   isUniqaAutoHistoricalPeriod,
   calculatePillowAuto,
@@ -348,8 +352,17 @@ export function getCoefficientSummary(
     }
     case "cppsimplex":
       return [{ label: "Koeficient (z platby)", value: cppSimplexCoefficient(position) }];
-    case "cppAuto":
-      return [{ label: "Koeficient (z platby)", value: cppAutoCoefficient(position) }];
+    case "cppAuto": {
+      const isHistorical = isCppAutoHistoricalPeriod(contractSignedDateIso);
+      return [
+        {
+          label: isHistorical
+            ? "Historický koeficient (01.08.2020-31.03.2026)"
+            : "Koeficient (z platby)",
+          value: cppAutoCoefficient(position, contractSignedDateIso),
+        },
+      ];
+    }
     case "slaviaauto":
       return [{ label: "Koeficient (z platby)", value: slaviaAutoCoefficient(position) }];
     case "cppPPRbez":
@@ -391,8 +404,17 @@ export function getCoefficientSummary(
         },
       ];
     }
-    case "csobAuto":
-      return [{ label: "Koeficient (z platby)", value: csobAutoCoefficient(position) }];
+    case "csobAuto": {
+      const isHistorical = isCsobAutoHistoricalPeriod(contractSignedDateIso);
+      return [
+        {
+          label: isHistorical
+            ? "Historický koeficient (01.05.2024-31.03.2026)"
+            : "Koeficient (z platby)",
+          value: csobAutoCoefficient(position, contractSignedDateIso),
+        },
+      ];
+    }
     case "uniqaAuto": {
       const isHistorical = isUniqaAutoHistoricalPeriod(contractSignedDateIso);
       return [

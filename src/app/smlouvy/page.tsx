@@ -9,6 +9,8 @@ import {
   AlertCircle,
   ArrowDownUp,
   CalendarDays,
+  LayoutGrid,
+  List,
   Search,
   SlidersHorizontal,
   UserRound,
@@ -117,6 +119,7 @@ type DisplayedContract = ContractDoc & {
 };
 
 type FilterMode = "latest" | "anniversary";
+type ContractListViewMode = "cards" | "compact";
 type ProductCategory =
   | "life"
   | "auto"
@@ -254,6 +257,88 @@ function endorsementDeltaAmount(c: ContractDoc): number | null {
     return next - prev;
   }
   return null;
+}
+
+function contractStatusBadgeMeta({
+  isStorno,
+  isDozita,
+  paid,
+}: {
+  isStorno: boolean;
+  isDozita: boolean;
+  paid?: boolean | null;
+}) {
+  if (isStorno) {
+    return {
+      label: "Storno",
+      cardWrapper:
+        "border-amber-200/75 bg-amber-300/24 text-amber-50 shadow-[0_10px_24px_rgba(217,119,6,0.28)] ring-1 ring-amber-100/20",
+      cardIconWrap:
+        "border-amber-500/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(217,119,6,0.34)]",
+      compactClass: "border-amber-200 bg-amber-50 text-amber-800",
+      compactDotClass: "bg-amber-500",
+      icon: (
+        <CalendarDays
+          size={12}
+          strokeWidth={2.2}
+          className="shrink-0"
+          aria-hidden="true"
+        />
+      ),
+    };
+  }
+
+  if (isDozita) {
+    return {
+      label: "Dožitá",
+      cardWrapper:
+        "border-sky-200/75 bg-sky-300/24 text-sky-50 shadow-[0_10px_24px_rgba(14,116,144,0.28)] ring-1 ring-sky-100/20",
+      cardIconWrap:
+        "border-sky-500/80 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(3,105,161,0.34)]",
+      compactClass: "border-sky-200 bg-sky-50 text-sky-800",
+      compactDotClass: "bg-sky-500",
+      icon: (
+        <CalendarDays
+          size={12}
+          strokeWidth={2.2}
+          className="shrink-0"
+          aria-hidden="true"
+        />
+      ),
+    };
+  }
+
+  if (paid) {
+    return {
+      label: "Zaplaceno",
+      cardWrapper:
+        "border-emerald-200/75 bg-emerald-300/24 text-emerald-50 shadow-[0_10px_24px_rgba(5,150,105,0.28)] ring-1 ring-emerald-100/20",
+      cardIconWrap:
+        "border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(5,150,105,0.34)]",
+      compactClass: "border-emerald-200 bg-emerald-50 text-emerald-800",
+      compactDotClass: "bg-emerald-500",
+      icon: (
+        <span className="text-[13px] font-black leading-none" aria-hidden="true">
+          ✓
+        </span>
+      ),
+    };
+  }
+
+  return {
+    label: "Nezaplaceno",
+    cardWrapper:
+      "border-rose-200/75 bg-rose-300/24 text-rose-50 shadow-[0_10px_24px_rgba(225,29,72,0.28)] ring-1 ring-rose-100/20",
+    cardIconWrap:
+      "border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(225,29,72,0.34)]",
+    compactClass: "border-rose-200 bg-rose-50 text-rose-700",
+    compactDotClass: "bg-rose-500",
+    icon: (
+      <span className="text-[13px] font-black leading-none" aria-hidden="true">
+        !
+      </span>
+    ),
+  };
 }
 
 function institutionLabelForProduct(product?: Product | null): string | null {
@@ -510,14 +595,17 @@ type ContractsListFilters = {
 const CONTRACTS_CACHE_KEY = "contracts_cache_v3";
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 const CONTRACTS_VIEW_STATE_KEY = "contracts_view_state_v1";
+const CONTRACTS_LIST_VIEW_MODE_KEY = "contracts_list_view_mode_v1";
 const CONTRACTS_SILENT_REFRESH_COOLDOWN_MS = 60_000;
 const CONTRACT_LIST_WINDOWING_THRESHOLD = 90;
-const CONTRACT_LIST_ESTIMATED_ROW_HEIGHT = 340;
+const CONTRACT_LIST_ESTIMATED_CARD_ROW_HEIGHT = 340;
+const CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT = 92;
 const CONTRACT_LIST_OVERSCAN_ROWS = 3;
 
 type ContractsViewState = {
   userEmail: string;
   showTeam: boolean;
+  listViewMode: ContractListViewMode;
   filterMode: FilterMode;
   searchText: string;
   showUnpaidOnly: boolean;
@@ -595,6 +683,7 @@ function readContractsViewState(userEmail: string | null | undefined): Contracts
     return {
       userEmail: normalized,
       showTeam: Boolean(parsed.showTeam),
+      listViewMode: parsed.listViewMode === "compact" ? "compact" : "cards",
       filterMode: parsed.filterMode === "anniversary" ? "anniversary" : "latest",
       searchText: typeof parsed.searchText === "string" ? parsed.searchText : "",
       showUnpaidOnly: Boolean(parsed.showUnpaidOnly),
@@ -624,6 +713,34 @@ function readContractsViewState(userEmail: string | null | undefined): Contracts
     };
   } catch {
     return null;
+  }
+}
+
+function readContractListViewMode(
+  userEmail: string | null | undefined
+): ContractListViewMode | null {
+  if (typeof window === "undefined") return null;
+  const normalized = normalizeEmail(userEmail);
+  if (!normalized) return null;
+  try {
+    const raw = localStorage.getItem(`${CONTRACTS_LIST_VIEW_MODE_KEY}:${normalized}`);
+    return raw === "compact" || raw === "cards" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeContractListViewMode(
+  userEmail: string | null | undefined,
+  mode: ContractListViewMode
+) {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeEmail(userEmail);
+  if (!normalized) return;
+  try {
+    localStorage.setItem(`${CONTRACTS_LIST_VIEW_MODE_KEY}:${normalized}`, mode);
+  } catch {
+    // best-effort preference
   }
 }
 
@@ -678,6 +795,8 @@ function ContractsPageContent() {
   const [teamCursorDate, setTeamCursorDate] = useState<string | null>(null);
 
   const [showTeam, setShowTeam] = useState(false);
+  const [listViewMode, setListViewMode] = useState<ContractListViewMode>("cards");
+  const [listViewModeReadyForEmail, setListViewModeReadyForEmail] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
@@ -1460,6 +1579,10 @@ function ContractsPageContent() {
   ]);
 
   const effectiveFilteredContracts = filteredContracts;
+  const contractListEstimatedRowHeight =
+    listViewMode === "compact"
+      ? CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT
+      : CONTRACT_LIST_ESTIMATED_CARD_ROW_HEIGHT;
 
   const virtualizedContracts = useMemo(() => {
     const total = effectiveFilteredContracts.length;
@@ -1480,23 +1603,23 @@ function ContractsPageContent() {
     const relativeTop = contractsWindowMetrics.scrollY - contractsWindowMetrics.listTop;
     const startRow = Math.max(
       0,
-      Math.floor(relativeTop / CONTRACT_LIST_ESTIMATED_ROW_HEIGHT) -
+      Math.floor(relativeTop / contractListEstimatedRowHeight) -
         CONTRACT_LIST_OVERSCAN_ROWS
     );
     const endRow = Math.min(
       rows - 1,
       Math.ceil(
         (relativeTop + contractsWindowMetrics.viewportHeight) /
-          CONTRACT_LIST_ESTIMATED_ROW_HEIGHT
+          contractListEstimatedRowHeight
       ) + CONTRACT_LIST_OVERSCAN_ROWS
     );
 
     const startIndex = startRow * contractsColumns;
     const endExclusive = Math.min(total, (endRow + 1) * contractsColumns);
-    const topPadding = startRow * CONTRACT_LIST_ESTIMATED_ROW_HEIGHT;
+    const topPadding = startRow * contractListEstimatedRowHeight;
     const bottomPadding = Math.max(
       0,
-      (rows - endRow - 1) * CONTRACT_LIST_ESTIMATED_ROW_HEIGHT
+      (rows - endRow - 1) * contractListEstimatedRowHeight
     );
 
     return {
@@ -1505,12 +1628,18 @@ function ContractsPageContent() {
       bottomPadding,
       items: effectiveFilteredContracts.slice(startIndex, endExclusive),
     };
-  }, [effectiveFilteredContracts, contractsWindowMetrics, contractsColumns]);
+  }, [
+    effectiveFilteredContracts,
+    contractsWindowMetrics,
+    contractsColumns,
+    contractListEstimatedRowHeight,
+  ]);
 
   const listTransitionSignature = useMemo(
     () =>
       JSON.stringify({
         view: showTeam && canShowTeamToggle ? "team" : "mine",
+        listViewMode,
         mode: filterMode,
         unpaidOnly: showUnpaidOnly,
         categories: Array.from(selectedCategories).sort(),
@@ -1520,6 +1649,7 @@ function ContractsPageContent() {
     [
       showTeam,
       canShowTeamToggle,
+      listViewMode,
       filterMode,
       showUnpaidOnly,
       selectedCategories,
@@ -1550,14 +1680,14 @@ function ContractsPageContent() {
     if (typeof window === "undefined") return;
     const media = window.matchMedia("(min-width: 768px)");
     const syncColumns = () => {
-      setContractsColumns(media.matches ? 2 : 1);
+      setContractsColumns(listViewMode === "compact" ? 1 : media.matches ? 2 : 1);
     };
     syncColumns();
     media.addEventListener("change", syncColumns);
     return () => {
       media.removeEventListener("change", syncColumns);
     };
-  }, []);
+  }, [listViewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1593,7 +1723,7 @@ function ContractsPageContent() {
       window.removeEventListener("scroll", onWindowChange);
       window.removeEventListener("resize", onWindowChange);
     };
-  }, [effectiveFilteredContracts.length, showTeam, filterMode]);
+  }, [effectiveFilteredContracts.length, showTeam, filterMode, listViewMode]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore) return;
@@ -1724,6 +1854,7 @@ function ContractsPageContent() {
     if (!normalizedUserEmail) return;
     writeContractsViewState(normalizedUserEmail, {
       showTeam,
+      listViewMode,
       filterMode,
       searchText,
       showUnpaidOnly,
@@ -1735,6 +1866,7 @@ function ContractsPageContent() {
   }, [
     normalizedUserEmail,
     showTeam,
+    listViewMode,
     filterMode,
     searchText,
     showUnpaidOnly,
@@ -1744,12 +1876,30 @@ function ContractsPageContent() {
   ]);
 
   useEffect(() => {
+    if (!normalizedUserEmail) {
+      setListViewModeReadyForEmail(null);
+      return;
+    }
+    setListViewModeReadyForEmail(null);
+    const savedMode = readContractListViewMode(normalizedUserEmail);
+    setListViewMode(savedMode ?? "cards");
+    setListViewModeReadyForEmail(normalizedUserEmail);
+  }, [normalizedUserEmail]);
+
+  useEffect(() => {
+    if (!normalizedUserEmail) return;
+    if (listViewModeReadyForEmail !== normalizedUserEmail) return;
+    writeContractListViewMode(normalizedUserEmail, listViewMode);
+  }, [normalizedUserEmail, listViewMode, listViewModeReadyForEmail]);
+
+  useEffect(() => {
     if (!shouldRestoreView) return;
     if (!normalizedUserEmail) return;
     const saved = readContractsViewState(normalizedUserEmail);
     if (!saved) return;
 
     setShowTeam(saved.showTeam);
+    setListViewMode(saved.listViewMode);
     setFilterMode(saved.filterMode);
     setSearchText(saved.searchText);
     setShowUnpaidOnly(saved.showUnpaidOnly);
@@ -1801,6 +1951,10 @@ function ContractsPageContent() {
 
   const hasTeamContracts =
     teamContracts.length > 0 && canShowTeamToggle;
+  const advancedFilterCount =
+    selectedCategoryList.length +
+    selectedInstitutionList.length +
+    (showTeam && canShowTeamToggle ? selectedSubordinateList.length : 0);
 
   const toggleSelect = (key: string) => {
     setSelectedKeys((prev) => {
@@ -1940,127 +2094,147 @@ function ContractsPageContent() {
       <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
         {/* SEARCH BAR + FILTER + BULK ACTIONS */}
-        <div className="sticky top-16 z-40 space-y-3 rounded-[28px] border border-slate-200/80 bg-white/88 p-3 shadow-[0_16px_38px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/78 lg:top-2">
-          <div className="grid gap-3 xl:grid-cols-[420px_minmax(0,1fr)_auto] xl:items-start">
-            <div className="space-y-2">
-              <div className="ui-card ui-card-quiet flex w-full items-center gap-2 rounded-2xl bg-white px-4 py-2.5">
-                <span className="text-sm">🔍</span>
+        <div className="sticky top-16 z-40 space-y-2 rounded-[24px] border border-slate-200/85 bg-white/95 p-2.5 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/88 lg:top-2">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+            <div className="min-w-0 flex-1 xl:max-w-[380px]">
+              <div className="flex h-11 w-full items-center gap-2 rounded-[18px] border border-slate-200 bg-slate-50/85 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900/8">
+                <Search size={17} strokeWidth={2.2} className="shrink-0 text-slate-400" aria-hidden="true" />
                 <input
                   type="text"
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   placeholder="Hledat klienta nebo číslo smlouvy"
-                  className="w-full border-none bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
+                  className="min-w-0 flex-1 border-none bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
                 />
               </div>
+            </div>
 
-              {searchProgressVisible && hasImmediateSearchQuery && (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:justify-center">
+              {canShowTeamToggle && (
                 <div
-                  className="w-full overflow-hidden rounded-2xl border border-emerald-100/80 bg-white/85 px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.round(searchProgress)}
-                  aria-label="Prohledávání smluv"
+                  className="inline-flex min-h-10 items-center gap-1 rounded-[18px] border border-slate-200 bg-slate-100/75 p-1"
+                  aria-label="Rozsah smluv"
                 >
-                  <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-600">
-                    <span className="truncate">Prohledávám databázi smluv</span>
-                    <span className="tabular-nums text-emerald-700">
-                      {Math.round(searchProgress)} %
-                    </span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,#10b981_0%,#22c55e_52%,#86efac_100%)] shadow-[0_0_18px_rgba(16,185,129,0.42)] transition-[width] duration-150 ease-out"
-                      style={{ width: `${searchProgress}%` }}
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowTeam(false)}
+                    className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                      !showTeam
+                        ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
+                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                    }`}
+                  >
+                    <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                    <span>Moje</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowTeam(true)}
+                    className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                      showTeam
+                        ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
+                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                    }`}
+                  >
+                    <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                    <span>Tým</span>
+                  </button>
                 </div>
               )}
-            </div>
 
-          <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-1.5 shadow-inner">
-            {canShowTeamToggle && (
-              <div className="ui-chip-group text-xs">
+              <div
+                className="inline-flex min-h-10 items-center gap-1 rounded-[18px] border border-slate-200 bg-slate-100/75 p-1"
+                aria-label="Řazení smluv"
+              >
                 <button
                   type="button"
-                  onClick={() => setShowTeam(false)}
-                  className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                    !showTeam
-                      ? "border-transparent bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
-                      : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  onClick={() =>
+                    startFilterTransition(() => setFilterMode("latest"))
+                  }
+                  className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                    filterMode === "latest"
+                      ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
+                      : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
                   }`}
                 >
-                  <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  <span>Moje smlouvy</span>
+                  <ArrowDownUp size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                  <span>Nejnovější</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowTeam(true)}
-                  className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                    showTeam
-                      ? "border-transparent bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
-                      : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  onClick={() =>
+                    startFilterTransition(() => setFilterMode("anniversary"))
+                  }
+                  className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                    filterMode === "anniversary"
+                      ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
+                      : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
                   }`}
                 >
-                  <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  <span>Týmové smlouvy</span>
+                  <CalendarDays size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                  <span>Výročí</span>
                 </button>
               </div>
-            )}
 
-            <div className="ui-chip-group text-xs">
               <button
                 type="button"
-                onClick={() =>
-                  startFilterTransition(() => setFilterMode("latest"))
-                }
-                className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                  filterMode === "latest"
-                    ? "border-transparent bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
-                    : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                onClick={() => setShowUnpaidOnly((prev) => !prev)}
+                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[18px] border px-3 text-xs font-bold transition ${
+                  showUnpaidOnly
+                    ? "border-rose-600 bg-rose-600 text-white shadow-[0_8px_18px_rgba(225,29,72,0.18)]"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
                 }`}
               >
-                <ArrowDownUp size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Nejnovější</span>
+                <AlertCircle size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Nezaplacené</span>
               </button>
-              <button
-                type="button"
-                onClick={() =>
-                  startFilterTransition(() => setFilterMode("anniversary"))
-                }
-                className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                  filterMode === "anniversary"
-                    ? "border-transparent bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
-                    : "border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
+
+              <div
+                className="inline-flex min-h-10 items-center gap-1 rounded-[18px] border border-slate-200 bg-slate-100/75 p-1"
+                aria-label="Zobrazení seznamu smluv"
               >
-                <CalendarDays size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Blížící se výročí</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setListViewMode("cards")}
+                  aria-pressed={listViewMode === "cards"}
+                  className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                    listViewMode === "cards"
+                      ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
+                      : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                  }`}
+                >
+                  <LayoutGrid size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                  <span>Karty</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setListViewMode("compact")}
+                  aria-pressed={listViewMode === "compact"}
+                  className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                    listViewMode === "compact"
+                      ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
+                      : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                  }`}
+                >
+                  <List size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                  <span>Kompakt</span>
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowUnpaidOnly((prev) => !prev)}
-              className={`ui-focus inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                showUnpaidOnly
-                  ? "border-rose-600 bg-rose-600 text-white"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              <AlertCircle size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-              <span>Jen nezaplacené</span>
-            </button>
-          </div>
 
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-emerald-100/70 bg-emerald-50/70 p-1.5 shadow-[0_10px_24px_rgba(5,150,105,0.08)] xl:justify-end">
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5 xl:justify-end">
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(true)}
-                className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] px-3 py-1.5 text-xs font-semibold !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)] transition hover:brightness-95"
+                className="ui-focus inline-flex h-10 items-center gap-1.5 rounded-[18px] border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
               >
                 <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                 <span>Filtr</span>
+                {advancedFilterCount > 0 ? (
+                  <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-slate-950 px-1.5 text-[10px] font-black leading-5 text-white">
+                    {advancedFilterCount}
+                  </span>
+                ) : null}
               </button>
               <button
                 type="button"
@@ -2071,16 +2245,40 @@ function ContractsPageContent() {
                     setSelectMode(true);
                   }
                 }}
-                className={`ui-focus rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                className={`ui-focus inline-flex h-10 items-center rounded-[18px] border px-3 text-xs font-bold transition ${
                   selectMode
-                    ? "border-rose-600 bg-rose-100 text-rose-700"
-                    : "border-emerald-700 bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)] hover:brightness-95"
+                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                    : "border-emerald-700 bg-emerald-600 !text-white shadow-[0_10px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-700"
                 }`}
               >
                 {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
               </button>
             </div>
           </div>
+
+          {searchProgressVisible && hasImmediateSearchQuery && (
+            <div
+              className="overflow-hidden rounded-[16px] border border-emerald-100 bg-emerald-50/75 px-3 py-2"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(searchProgress)}
+              aria-label="Prohledávání smluv"
+            >
+              <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-600">
+                <span className="truncate">Prohledávám databázi smluv</span>
+                <span className="tabular-nums text-emerald-700">
+                  {Math.round(searchProgress)} %
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-[width] duration-150 ease-out"
+                  style={{ width: `${searchProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {selectMode && (
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/85 pt-2">
@@ -2219,15 +2417,28 @@ function ContractsPageContent() {
                   {bulkError}
                 </div>
               )}
+              {listViewMode === "compact" && (
+                <div className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.04)] lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(130px,0.75fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_auto] lg:items-center lg:gap-3">
+                  <span>Smlouva</span>
+                  <span>Datum</span>
+                  <span>Pojistné</span>
+                  <span>Stav</span>
+                  <span className="text-right">Akce</span>
+                </div>
+              )}
               <div
                 ref={contractsListRef}
-                className="grid grid-cols-1 gap-3 md:grid-cols-2"
+                className={
+                  listViewMode === "compact"
+                    ? "grid grid-cols-1 gap-2"
+                    : "grid grid-cols-1 gap-3 md:grid-cols-2"
+                }
               >
               {virtualizedContracts.enabled &&
                 virtualizedContracts.topPadding > 0 && (
                   <div
                     aria-hidden="true"
-                    className="md:col-span-2"
+                    className={listViewMode === "compact" ? "" : "md:col-span-2"}
                     style={{ height: virtualizedContracts.topPadding }}
                   />
                 )}
@@ -2273,12 +2484,153 @@ function ContractsPageContent() {
                 const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
                 const isStorno = lifecycleStatus === "storno";
                 const isDozita = lifecycleStatus === "dozita";
-                const groupedEntryCount = Number((c as ContractDoc).groupedEntryCount ?? 1);
+                const groupedEntryCount = Number(
+                  (c as ContractDoc).groupedEntryCount ?? 1
+                );
                 const groupedEndorsementCount = Number(
                   (c as ContractDoc).groupedEndorsementCount ?? 0
                 );
-                const institutionLabel = institutionLabelForProduct(c.productKey as Product | undefined);
-                const displayProductName = productCardLabel(c.productKey as Product | undefined);
+                const institutionLabel = institutionLabelForProduct(
+                  c.productKey as Product | undefined
+                );
+                const displayProductName = productCardLabel(
+                  c.productKey as Product | undefined
+                );
+                const statusBadge = contractStatusBadgeMeta({
+                  isStorno,
+                  isDozita,
+                  paid: c.paid,
+                });
+                const compactRowToneClass = isStorno
+                  ? "border-amber-200/80 bg-amber-50/70"
+                  : isDozita
+                    ? "border-sky-200/80 bg-sky-50/70"
+                    : c.paid
+                      ? "border-slate-200 bg-white"
+                      : "border-rose-200/85 bg-rose-50/60";
+
+                  const CompactContent = (
+                    <article
+                      className={`relative isolate overflow-hidden rounded-2xl border px-3 py-3 text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.09)] ${
+                        compactRowToneClass
+                      } ${isSelected ? "ring-2 ring-slate-900/20" : ""}`}
+                      style={{
+                        contentVisibility: "auto",
+                        containIntrinsicSize: "92px",
+                      }}
+                    >
+                      <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(130px,0.75fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_auto] lg:items-center">
+                        <div className="flex min-w-0 items-start gap-3">
+                          {selectMode ? (
+                            <span
+                              className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-black ${
+                                isSelected
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : "border-slate-300 bg-white text-slate-400"
+                              }`}
+                              aria-hidden="true"
+                            >
+                              ✓
+                            </span>
+                          ) : null}
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {institutionLabel ? (
+                                <span className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-700">
+                                  {institutionLabel}
+                                </span>
+                              ) : null}
+                              <span className="min-w-0 text-base font-bold leading-tight text-slate-950">
+                                {displayProductName}
+                              </span>
+                              {isEndorsement ? (
+                                <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                                  Dodatek
+                                </span>
+                              ) : null}
+                              {isRefreshContract ? (
+                                <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+                                  Refresh
+                                </span>
+                              ) : null}
+                              {groupedEndorsementCount > 0 ? (
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                  {groupedEndorsementCount}× změna
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+                              <span className="font-semibold text-slate-800">
+                                {c.clientName || "Klient neuveden"}
+                              </span>
+                              <span>č. {c.contractNumber ?? "—"}</span>
+                              {adviserName ? <span>{adviserName}</span> : null}
+                              {anniversaryInfo.soon ? (
+                                <span className="font-semibold text-rose-700">
+                                  {anniversaryInfo.daysLeft != null
+                                    ? `${
+                                        anniversaryInfo.anniversaryNumber
+                                          ? `${anniversaryInfo.anniversaryNumber}. výročí`
+                                          : "Výročí"
+                                      } za ${formatDaysLeft(anniversaryInfo.daysLeft)}`
+                                    : "Blížící se výročí"}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 lg:hidden">
+                            Datum
+                          </div>
+                          <div className="text-sm font-semibold text-slate-800">{signedStr}</div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 lg:hidden">
+                            Pojistné
+                          </div>
+                          <div className="whitespace-nowrap text-base font-black text-slate-950">
+                            {formatMoney(premiumDisplay.amount)}
+                          </div>
+                          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                            {premiumDisplay.cadenceLabel ?? "Částka"}
+                          </div>
+                          {isEndorsement && premiumDelta != null ? (
+                            <div
+                              className={`text-[11px] font-semibold ${
+                                premiumDelta >= 0 ? "text-emerald-700" : "text-rose-700"
+                              }`}
+                            >
+                              {premiumDelta >= 0 ? "+" : "−"}
+                              {formatMoney(Math.abs(premiumDelta))}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${statusBadge.compactClass}`}
+                          >
+                            <span
+                              className={`h-2 w-2 rounded-full ${statusBadge.compactDotClass}`}
+                              aria-hidden="true"
+                            />
+                            {statusBadge.label}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-start lg:justify-end">
+                          {!selectMode ? (
+                            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition group-hover:border-slate-400 group-hover:text-slate-950">
+                              Detail ↗
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </article>
+                  );
 
                   const CardContent = (
                     <article
@@ -2458,103 +2810,32 @@ function ContractsPageContent() {
                             </div>
                           )}
                         </div>
-                        {(() => {
-                          const statusBadge = isStorno
-                            ? {
-                                label: "Storno",
-                                wrapper:
-                                  "border-amber-200/75 bg-amber-300/24 text-amber-50 shadow-[0_10px_24px_rgba(217,119,6,0.28)] ring-1 ring-amber-100/20",
-                                style: undefined,
-                                iconWrap:
-                                  "border-amber-500/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(217,119,6,0.34)]",
-                                icon: (
-                                  <CalendarDays
-                                    size={12}
-                                    strokeWidth={2.2}
-                                    className="shrink-0"
-                                    aria-hidden="true"
-                                  />
-                                ),
-                              }
-                            : isDozita
-                              ? {
-                                  label: "Dožitá",
-                                  wrapper:
-                                    "border-sky-200/75 bg-sky-300/24 text-sky-50 shadow-[0_10px_24px_rgba(14,116,144,0.28)] ring-1 ring-sky-100/20",
-                                  style: undefined,
-                                  iconWrap:
-                                    "border-sky-500/80 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(3,105,161,0.34)]",
-                                icon: (
-                                  <CalendarDays
-                                    size={12}
-                                    strokeWidth={2.2}
-                                    className="shrink-0"
-                                    aria-hidden="true"
-                                  />
-                                ),
-                              }
-                            : c.paid
-                              ? {
-                                  label: "Zaplaceno",
-                                  wrapper:
-                                    "border-emerald-200/75 bg-emerald-300/24 text-emerald-50 shadow-[0_10px_24px_rgba(5,150,105,0.28)] ring-1 ring-emerald-100/20",
-                                  style: undefined,
-                                  iconWrap:
-                                    "border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(5,150,105,0.34)]",
-                                  icon: (
-                                    <span
-                                      className="text-[13px] font-black leading-none"
-                                      aria-hidden="true"
-                                    >
-                                      ✓
-                                    </span>
-                                  ),
-                                }
-                              : {
-                                  label: "Nezaplaceno",
-                                  wrapper:
-                                    "border-rose-200/75 bg-rose-300/24 text-rose-50 shadow-[0_10px_24px_rgba(225,29,72,0.28)] ring-1 ring-rose-100/20",
-                                  style: undefined,
-                                  iconWrap:
-                                    "border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(225,29,72,0.34)]",
-                                  icon: (
-                                    <span
-                                      className="text-[13px] font-black leading-none"
-                                      aria-hidden="true"
-                                    >
-                                      !
-                                    </span>
-                                  ),
-                                };
-
-                          return (
+                          <span
+                            className={`inline-flex items-center gap-2 rounded-full border px-1.5 py-1 pr-2.5 text-[12px] font-semibold leading-none tracking-[0.01em] ${statusBadge.cardWrapper}`}
+                          >
                             <span
-                              className={`inline-flex items-center gap-2 rounded-full border px-1.5 py-1 pr-2.5 text-[12px] font-semibold leading-none tracking-[0.01em] ${statusBadge.wrapper}`}
-                              style={statusBadge.style}
+                              className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ring-1 ring-[#fbf7ff]/45 ${statusBadge.cardIconWrap}`}
                             >
-                              <span
-                                className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ring-1 ring-[#fbf7ff]/45 ${statusBadge.iconWrap}`}
-                              >
-                                {statusBadge.icon}
-                              </span>
-                              <span className="pr-1">{statusBadge.label}</span>
+                              {statusBadge.icon}
                             </span>
-                          );
-                        })()}
+                            <span className="pr-1">{statusBadge.label}</span>
+                          </span>
                       </div>
                     </div>
                   </div>
                 </article>
               );
 
+              const renderedContract = listViewMode === "compact" ? CompactContent : CardContent;
+
               return selectMode ? (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => toggleSelect(selectionKey)}
-                  className="block group h-full text-left"
+                  className="block group h-full w-full text-left"
                 >
-                  {CardContent}
+                  {renderedContract}
                 </button>
               ) : (
                 <Link
@@ -2563,7 +2844,7 @@ function ContractsPageContent() {
                   onClick={persistContractsViewState}
                   className="block group h-full"
                 >
-                  {CardContent}
+                  {renderedContract}
                 </Link>
               );
               })}
@@ -2571,7 +2852,7 @@ function ContractsPageContent() {
                 virtualizedContracts.bottomPadding > 0 && (
                   <div
                     aria-hidden="true"
-                    className="md:col-span-2"
+                    className={listViewMode === "compact" ? "" : "md:col-span-2"}
                     style={{ height: virtualizedContracts.bottomPadding }}
                   />
                 )}

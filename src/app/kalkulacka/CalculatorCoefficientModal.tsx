@@ -22,7 +22,9 @@ type CalculatorCoefficientModalProps = {
   mode: CommissionMode;
   coefficientView: NeonCoefficientView;
   isNeonHistorical: boolean;
+  isCppAutoHistorical: boolean;
   isAllianzAutoHistorical: boolean;
+  isCsobAutoHistorical: boolean;
   isUniqaAutoHistorical: boolean;
   isPillowAutoHistorical: boolean;
   coefExplanation: string;
@@ -55,7 +57,9 @@ export function CalculatorCoefficientModal({
   mode,
   coefficientView,
   isNeonHistorical,
+  isCppAutoHistorical,
   isAllianzAutoHistorical,
+  isCsobAutoHistorical,
   isUniqaAutoHistorical,
   isPillowAutoHistorical,
   coefExplanation,
@@ -78,7 +82,9 @@ export function CalculatorCoefficientModal({
 
   const hasCoefficientViewToggle =
     product === "neon" ||
+    product === "cppAuto" ||
     product === "allianzAuto" ||
+    product === "csobAuto" ||
     product === "uniqaAuto" ||
     product === "pillowAuto";
   const productPeriodText =
@@ -86,9 +92,17 @@ export function CalculatorCoefficientModal({
       ? isNeonHistorical
         ? "Historické koeficienty – platnost 01.10.2019 až 30.06.2024"
         : "Aktuální koeficienty – platnost od 01.07.2024"
+      : product === "cppAuto"
+      ? isCppAutoHistorical
+        ? "Historické koeficienty – platnost 01.08.2020 až 31.03.2026"
+        : "Aktuální koeficienty – platnost od 01.04.2026"
       : product === "allianzAuto"
       ? isAllianzAutoHistorical
         ? "Historické koeficienty – platnost 01.08.2019 až 31.03.2026"
+        : "Aktuální koeficienty – platnost od 01.04.2026"
+      : product === "csobAuto"
+      ? isCsobAutoHistorical
+        ? "Historické koeficienty – platnost 01.05.2024 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
       : product === "uniqaAuto"
       ? isUniqaAutoHistorical
@@ -102,8 +116,16 @@ export function CalculatorCoefficientModal({
   const productModeText =
     product === "neon" && isNeonHistorical
       ? "historické podmínky (bez režimu)"
-      : product === "allianzAuto" || product === "uniqaAuto" || product === "pillowAuto"
-      ? isAllianzAutoHistorical || isUniqaAutoHistorical || isPillowAutoHistorical
+      : product === "cppAuto" ||
+        product === "allianzAuto" ||
+        product === "csobAuto" ||
+        product === "uniqaAuto" ||
+        product === "pillowAuto"
+      ? isCppAutoHistorical ||
+        isAllianzAutoHistorical ||
+        isCsobAutoHistorical ||
+        isUniqaAutoHistorical ||
+        isPillowAutoHistorical
         ? "historické podmínky"
         : "aktuální podmínky"
       : `režim ${mode}`;

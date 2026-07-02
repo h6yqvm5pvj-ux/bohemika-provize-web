@@ -476,7 +476,7 @@ export async function calculateResultForPosition(
     }
     case "cppAuto": {
       const { calculateCppAuto } = await import("../../lib/productFormulas/cppAuto");
-      return calculateCppAuto(amount, freq, position);
+      return calculateCppAuto(amount, freq, position, contractSignedDateIso);
     }
     case "slaviaauto": {
       const { calculateSlaviaAuto } = await import(
@@ -502,7 +502,7 @@ export async function calculateResultForPosition(
     }
     case "csobAuto": {
       const { calculateCsobAuto } = await import("../../lib/productFormulas/csobAuto");
-      return calculateCsobAuto(amount, freq, position);
+      return calculateCsobAuto(amount, freq, position, contractSignedDateIso);
     }
     case "uniqaAuto": {
       const { calculateUniqaAuto } = await import(

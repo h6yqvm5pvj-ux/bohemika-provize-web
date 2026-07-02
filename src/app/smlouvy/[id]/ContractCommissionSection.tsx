@@ -115,10 +115,16 @@ const normalizePayoutCode = (value: string | null | undefined): string =>
 const validPayoutAmount = (value: number | null | undefined): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 
+const isAnnualSummaryCommissionTitle = (title: string): boolean => {
+  const normalized = cleanResultTitle(title).toLowerCase();
+  return normalized === "celkem za rok" || normalized.includes("provize za rok");
+};
+
 const payoutCodesForCommissionTitle = (title: string): string[] => {
   const cleanTitle = cleanResultTitle(title);
   const normalized = cleanResultTitle(title).toLowerCase();
 
+  if (isAnnualSummaryCommissionTitle(title)) return [];
   if (normalized === "provize a101") return ["A101"];
   if (normalized === "provize b0301") return ["B0301"];
   if (normalized === "provize 50% z b3601") return ["B3601"];
@@ -128,7 +134,6 @@ const payoutCodesForCommissionTitle = (title: string): string[] => {
   if (normalized.startsWith("okamžitá provize") || normalized.startsWith("získatelská provize")) {
     return ["A101", "A102", cleanTitle];
   }
-  if (normalized.startsWith("provize za rok")) return ["B101", "B102", "BC101", "BC102", cleanTitle];
   if (normalized.startsWith("následná provize") && normalized.includes("z platby")) {
     return [cleanTitle];
   }

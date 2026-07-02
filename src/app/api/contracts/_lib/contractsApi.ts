@@ -3435,7 +3435,12 @@ const computeItemsForProductPositionAndMode = ({
     case "cppsimplex":
       return calculateCppSimplex(safeAmount, usedFrequency, position);
     case "cppAuto":
-      return calculateCppAuto(safeAmount, usedFrequency, position);
+      return calculateCppAuto(
+        safeAmount,
+        usedFrequency,
+        position,
+        contractSignedDateIso
+      );
     case "slaviaauto":
       return calculateSlaviaAuto(safeAmount, usedFrequency, position);
     case "cppPPRbez": {
@@ -3456,7 +3461,12 @@ const computeItemsForProductPositionAndMode = ({
         contractSignedDateIso
       );
     case "csobAuto":
-      return calculateCsobAuto(safeAmount, usedFrequency, position);
+      return calculateCsobAuto(
+        safeAmount,
+        usedFrequency,
+        position,
+        contractSignedDateIso
+      );
     case "uniqaAuto":
       return calculateUniqaAuto(
         safeAmount,

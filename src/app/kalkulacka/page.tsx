@@ -45,7 +45,9 @@ import {
   calculateComfortCC,
   getCoefficientSummary,
   isNeonHistoricalPeriod,
+  isCppAutoHistoricalPeriod,
   isAllianzAutoHistoricalPeriod,
+  isCsobAutoHistoricalPeriod,
   isUniqaAutoHistoricalPeriod,
   isPillowAutoHistoricalPeriod,
 } from "../lib/productFormulas";
@@ -197,6 +199,10 @@ const PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/pillowhistoricke.jpg";
 const UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/uniqahistoricke.jpg";
+const CSOB_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
+  "/provize/csobhistoricke.jpg";
+const CPP_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
+  "/provize/cpphistorickeauto.jpg";
 const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   id: MaxCizinKomplexVariant;
   label: string;
@@ -1105,10 +1111,22 @@ export default function CalculatorPage() {
       product === "neon" && isNeonHistoricalPeriod(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
+  const isCppAutoHistoricalBySignedDate = useMemo(
+    () =>
+      product === "cppAuto" &&
+      isCppAutoHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
   const isAllianzAutoHistoricalBySignedDate = useMemo(
     () =>
       product === "allianzAuto" &&
       isAllianzAutoHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
+  const isCsobAutoHistoricalBySignedDate = useMemo(
+    () =>
+      product === "csobAuto" &&
+      isCsobAutoHistoricalPeriod(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
   const isUniqaAutoHistoricalBySignedDate = useMemo(
@@ -1127,7 +1145,15 @@ export default function CalculatorPage() {
     if (neonCoefficientView === "historical") return "2024-06-30";
     return "2024-07-01";
   }, [neonCoefficientView]);
+  const cppAutoCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2026-03-31";
+    return "2026-04-01";
+  }, [neonCoefficientView]);
   const allianzAutoCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2026-03-31";
+    return "2026-04-01";
+  }, [neonCoefficientView]);
+  const csobAutoCoefficientDateForView = useMemo(() => {
     if (neonCoefficientView === "historical") return "2026-03-31";
     return "2026-04-01";
   }, [neonCoefficientView]);
@@ -1141,14 +1167,18 @@ export default function CalculatorPage() {
   }, [neonCoefficientView]);
   const coefficientDateForView = useMemo(() => {
     if (product === "neon") return neonCoefficientDateForView;
+    if (product === "cppAuto") return cppAutoCoefficientDateForView;
     if (product === "allianzAuto") return allianzAutoCoefficientDateForView;
+    if (product === "csobAuto") return csobAutoCoefficientDateForView;
     if (product === "uniqaAuto") return uniqaAutoCoefficientDateForView;
     if (product === "pillowAuto") return pillowAutoCoefficientDateForView;
     return contractSignedDateForNeon;
   }, [
     product,
     neonCoefficientDateForView,
+    cppAutoCoefficientDateForView,
     allianzAutoCoefficientDateForView,
+    csobAutoCoefficientDateForView,
     uniqaAutoCoefficientDateForView,
     pillowAutoCoefficientDateForView,
     contractSignedDateForNeon,
@@ -1157,8 +1187,16 @@ export default function CalculatorPage() {
     () => product === "neon" && neonCoefficientView === "historical",
     [product, neonCoefficientView]
   );
+  const isCppAutoHistoricalInCoefModal = useMemo(
+    () => product === "cppAuto" && neonCoefficientView === "historical",
+    [product, neonCoefficientView]
+  );
   const isAllianzAutoHistoricalInCoefModal = useMemo(
     () => product === "allianzAuto" && neonCoefficientView === "historical",
+    [product, neonCoefficientView]
+  );
+  const isCsobAutoHistoricalInCoefModal = useMemo(
+    () => product === "csobAuto" && neonCoefficientView === "historical",
     [product, neonCoefficientView]
   );
   const isUniqaAutoHistoricalInCoefModal = useMemo(
@@ -1259,6 +1297,12 @@ export default function CalculatorPage() {
   }, [product, frequency, maxCizinKomplexVariant]);
   const autoTermsPreviewUrl = useMemo(() => {
     if (!product) return null;
+    if (product === "cppAuto" && isCppAutoHistoricalInCoefModal) {
+      return CPP_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
+    }
+    if (product === "csobAuto" && isCsobAutoHistoricalInCoefModal) {
+      return CSOB_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
+    }
     if (product === "uniqaAuto" && isUniqaAutoHistoricalInCoefModal) {
       return UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
     }
@@ -1266,7 +1310,13 @@ export default function CalculatorPage() {
       return PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
     }
     return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
-  }, [product, isUniqaAutoHistoricalInCoefModal, isPillowAutoHistoricalInCoefModal]);
+  }, [
+    product,
+    isCppAutoHistoricalInCoefModal,
+    isCsobAutoHistoricalInCoefModal,
+    isUniqaAutoHistoricalInCoefModal,
+    isPillowAutoHistoricalInCoefModal,
+  ]);
   const showAutoTermsPreview =
     Boolean(autoTermsPreviewUrl) &&
     !isAllianzAutoHistoricalInCoefModal;
@@ -3324,7 +3374,12 @@ export default function CalculatorPage() {
     }
 
     if (product === "cppAuto") {
-      const dto = calculateCppAuto(val, frequency, positionForCalc);
+      const dto = calculateCppAuto(
+        val,
+        frequency,
+        positionForCalc,
+        contractSignedDateForNeon
+      );
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -3381,7 +3436,12 @@ export default function CalculatorPage() {
     }
 
     if (product === "csobAuto") {
-      const dto = calculateCsobAuto(val, frequency, positionForCalc);
+      const dto = calculateCsobAuto(
+        val,
+        frequency,
+        positionForCalc,
+        contractSignedDateForNeon
+      );
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -4616,9 +4676,21 @@ export default function CalculatorPage() {
       setNeonCoefficientView(isNeonHistoricalBySignedDate ? "historical" : "current");
       return;
     }
+    if (product === "cppAuto") {
+      setNeonCoefficientView(
+        isCppAutoHistoricalBySignedDate ? "historical" : "current"
+      );
+      return;
+    }
     if (product === "allianzAuto") {
       setNeonCoefficientView(
         isAllianzAutoHistoricalBySignedDate ? "historical" : "current"
+      );
+      return;
+    }
+    if (product === "csobAuto") {
+      setNeonCoefficientView(
+        isCsobAutoHistoricalBySignedDate ? "historical" : "current"
       );
       return;
     }
@@ -4637,7 +4709,9 @@ export default function CalculatorPage() {
     showCoefModal,
     product,
     isNeonHistoricalBySignedDate,
+    isCppAutoHistoricalBySignedDate,
     isAllianzAutoHistoricalBySignedDate,
+    isCsobAutoHistoricalBySignedDate,
     isUniqaAutoHistoricalBySignedDate,
     isPillowAutoHistoricalBySignedDate,
   ]);
@@ -5868,7 +5942,7 @@ export default function CalculatorPage() {
       case "allianzmujdomov":
         return calculateAllianzMujDomov(val, freq, pos);
       case "cppAuto":
-        return calculateCppAuto(val, freq, pos);
+        return calculateCppAuto(val, freq, pos, contractSignedDateForNeon);
       case "slaviaauto":
         return calculateSlaviaAuto(val, freq, pos);
       case "cppPPRbez": {
@@ -5884,7 +5958,7 @@ export default function CalculatorPage() {
       case "allianzAuto":
         return calculateAllianzAuto(val, freq, pos, contractSignedDateForNeon);
       case "csobAuto":
-        return calculateCsobAuto(val, freq, pos);
+        return calculateCsobAuto(val, freq, pos, contractSignedDateForNeon);
       case "uniqaAuto":
         return calculateUniqaAuto(val, freq, pos, contractSignedDateForNeon);
       case "uniqaflotila":
@@ -6347,7 +6421,9 @@ export default function CalculatorPage() {
         mode={mode}
         coefficientView={neonCoefficientView}
         isNeonHistorical={isNeonHistoricalInCoefModal}
+        isCppAutoHistorical={isCppAutoHistoricalInCoefModal}
         isAllianzAutoHistorical={isAllianzAutoHistoricalInCoefModal}
+        isCsobAutoHistorical={isCsobAutoHistoricalInCoefModal}
         isUniqaAutoHistorical={isUniqaAutoHistoricalInCoefModal}
         isPillowAutoHistorical={isPillowAutoHistoricalInCoefModal}
         coefExplanation={coefExplanation}
@@ -6355,7 +6431,10 @@ export default function CalculatorPage() {
         coefList={coefList}
         showAutoTermsValidityNote={
           isAutoProduct(product) &&
+          product !== "cppAuto" &&
           product !== "allianzAuto" &&
+          product !== "csobAuto" &&
+          product !== "uniqaAuto" &&
           product !== "pillowAuto"
         }
         showAutoTermsPreview={showAutoTermsPreview}

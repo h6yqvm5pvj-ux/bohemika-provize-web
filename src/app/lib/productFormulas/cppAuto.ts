@@ -4,11 +4,29 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { periodsPerYear } from "./shared";
+import { normalizeIsoDay, periodsPerYear } from "./shared";
 
 // ---------- ČPP Auto ----------
 
-export function cppAutoCoefficient(position: Position): number {
+export const CPP_AUTO_HISTORICAL_VALID_FROM = "2020-08-01";
+export const CPP_AUTO_CURRENT_VALID_FROM = "2026-04-01";
+
+export function isCppAutoHistoricalPeriod(
+  contractSignedDateIso: string | null | undefined
+): boolean {
+  const signedDateIso = normalizeIsoDay(contractSignedDateIso);
+  if (!signedDateIso) return false;
+  return (
+    signedDateIso >= CPP_AUTO_HISTORICAL_VALID_FROM &&
+    signedDateIso < CPP_AUTO_CURRENT_VALID_FROM
+  );
+}
+
+export function cppAutoCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  void contractSignedDateIso;
   switch (position) {
     // Poradci 1–10
     case "poradce1":
@@ -50,9 +68,10 @@ export function cppAutoCoefficient(position: Position): number {
 export function calculateCppAuto(
   amount: number,
   frequency: PaymentFrequency,
-  position: Position
+  position: Position,
+  contractSignedDateIso?: string | null
 ): CommissionResultDTO {
-  const coef = cppAutoCoefficient(position);
+  const coef = cppAutoCoefficient(position, contractSignedDateIso);
   const perPayment = amount * coef;
   const annualTotal = perPayment * periodsPerYear(frequency);
 
@@ -62,5 +81,4 @@ export function calculateCppAuto(
   ];
   return { items, total: annualTotal };
 }
-
 

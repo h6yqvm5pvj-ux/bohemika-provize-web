@@ -570,7 +570,7 @@ function computeItemsForEntry(
       return { items: filtered, total: totals.immediate + totals.subsequent };
     }
     case "cppAuto":
-      return calculateCppAuto(val, freq, pos);
+      return calculateCppAuto(val, freq, pos, contractSignedDateIso);
     case "slaviaauto":
       return calculateSlaviaAuto(val, freq, pos);
     case "cppPPRbez": {
@@ -588,7 +588,7 @@ function computeItemsForEntry(
     case "allianzAuto":
       return calculateAllianzAuto(val, freq, pos, contractSignedDateIso);
     case "csobAuto":
-      return calculateCsobAuto(val, freq, pos);
+      return calculateCsobAuto(val, freq, pos, contractSignedDateIso);
     case "uniqaAuto":
       return calculateUniqaAuto(val, freq, pos, contractSignedDateIso);
     case "uniqaflotila":
