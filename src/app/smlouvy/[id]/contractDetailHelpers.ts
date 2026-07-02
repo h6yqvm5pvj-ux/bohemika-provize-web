@@ -504,7 +504,12 @@ export async function calculateResultForPosition(
       const { calculateCsobAuto } = await import("../../lib/productFormulas/csobAuto");
       return calculateCsobAuto(amount, freq, position);
     }
-    case "uniqaAuto":
+    case "uniqaAuto": {
+      const { calculateUniqaAuto } = await import(
+        "../../lib/productFormulas/uniqaAuto"
+      );
+      return calculateUniqaAuto(amount, freq, position, contractSignedDateIso);
+    }
     case "uniqaflotila": {
       const { calculateUniqaAuto } = await import(
         "../../lib/productFormulas/uniqaAuto"
@@ -515,7 +520,7 @@ export async function calculateResultForPosition(
       const { calculatePillowAuto } = await import(
         "../../lib/productFormulas/pillowAuto"
       );
-      return calculatePillowAuto(amount, freq, position);
+      return calculatePillowAuto(amount, freq, position, contractSignedDateIso);
     }
     case "kooperativaAuto": {
       const { calculateKooperativaAuto } = await import(

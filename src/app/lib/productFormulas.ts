@@ -101,10 +101,12 @@ import {
 import {
   calculateUniqaAuto,
   uniqaAutoCoefficient,
+  isUniqaAutoHistoricalPeriod,
 } from "./productFormulas/uniqaAuto";
 import {
   calculatePillowAuto,
   pillowAutoCoefficient,
+  isPillowAutoHistoricalPeriod,
 } from "./productFormulas/pillowAuto";
 import {
   calculateKooperativaAuto,
@@ -159,7 +161,9 @@ export {
   calculateAllianzMujDomov,
   calculateCsobAuto,
   calculateUniqaAuto,
+  isUniqaAutoHistoricalPeriod,
   calculatePillowAuto,
+  isPillowAutoHistoricalPeriod,
   calculateKooperativaAuto,
   calculateZamex,
   calculateCppCestovko,
@@ -389,11 +393,30 @@ export function getCoefficientSummary(
     }
     case "csobAuto":
       return [{ label: "Koeficient (z platby)", value: csobAutoCoefficient(position) }];
-    case "uniqaAuto":
+    case "uniqaAuto": {
+      const isHistorical = isUniqaAutoHistoricalPeriod(contractSignedDateIso);
+      return [
+        {
+          label: isHistorical
+            ? "Historický koeficient (01.05.2024-31.03.2026)"
+            : "Koeficient (z platby)",
+          value: uniqaAutoCoefficient(position, contractSignedDateIso),
+        },
+      ];
+    }
     case "uniqaflotila":
       return [{ label: "Koeficient (z platby)", value: uniqaAutoCoefficient(position) }];
-    case "pillowAuto":
-      return [{ label: "Koeficient (z platby)", value: pillowAutoCoefficient(position) }];
+    case "pillowAuto": {
+      const isHistorical = isPillowAutoHistoricalPeriod(contractSignedDateIso);
+      return [
+        {
+          label: isHistorical
+            ? "Historický koeficient (01.10.2023-31.03.2026)"
+            : "Koeficient (z platby)",
+          value: pillowAutoCoefficient(position, contractSignedDateIso),
+        },
+      ];
+    }
     case "kooperativaAuto":
       return [
         {

@@ -590,10 +590,11 @@ function computeItemsForEntry(
     case "csobAuto":
       return calculateCsobAuto(val, freq, pos);
     case "uniqaAuto":
+      return calculateUniqaAuto(val, freq, pos, contractSignedDateIso);
     case "uniqaflotila":
       return calculateUniqaAuto(val, freq, pos);
     case "pillowAuto":
-      return calculatePillowAuto(val, freq, pos);
+      return calculatePillowAuto(val, freq, pos, contractSignedDateIso);
     case "kooperativaAuto":
       return calculateKooperativaAuto(val, freq, pos);
     case "zamex":

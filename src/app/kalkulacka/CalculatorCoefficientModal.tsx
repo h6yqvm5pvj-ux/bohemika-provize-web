@@ -23,6 +23,8 @@ type CalculatorCoefficientModalProps = {
   coefficientView: NeonCoefficientView;
   isNeonHistorical: boolean;
   isAllianzAutoHistorical: boolean;
+  isUniqaAutoHistorical: boolean;
+  isPillowAutoHistorical: boolean;
   coefExplanation: string;
   immediatePayoutInfo: string | null;
   coefList: CoefficientSummaryItem[];
@@ -54,6 +56,8 @@ export function CalculatorCoefficientModal({
   coefficientView,
   isNeonHistorical,
   isAllianzAutoHistorical,
+  isUniqaAutoHistorical,
+  isPillowAutoHistorical,
   coefExplanation,
   immediatePayoutInfo,
   coefList,
@@ -72,7 +76,11 @@ export function CalculatorCoefficientModal({
 }: CalculatorCoefficientModalProps) {
   if (!isOpen) return null;
 
-  const hasCoefficientViewToggle = product === "neon" || product === "allianzAuto";
+  const hasCoefficientViewToggle =
+    product === "neon" ||
+    product === "allianzAuto" ||
+    product === "uniqaAuto" ||
+    product === "pillowAuto";
   const productPeriodText =
     product === "neon"
       ? isNeonHistorical
@@ -82,12 +90,20 @@ export function CalculatorCoefficientModal({
       ? isAllianzAutoHistorical
         ? "Historické koeficienty – platnost 01.08.2019 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
+      : product === "uniqaAuto"
+      ? isUniqaAutoHistorical
+        ? "Historické koeficienty – platnost 01.05.2024 až 31.03.2026"
+        : "Aktuální koeficienty – platnost od 01.04.2026"
+      : product === "pillowAuto"
+      ? isPillowAutoHistorical
+        ? "Historické koeficienty – platnost 01.10.2023 až 31.03.2026"
+        : "Aktuální koeficienty – platnost od 01.04.2026"
       : null;
   const productModeText =
     product === "neon" && isNeonHistorical
       ? "historické podmínky (bez režimu)"
-      : product === "allianzAuto"
-      ? isAllianzAutoHistorical
+      : product === "allianzAuto" || product === "uniqaAuto" || product === "pillowAuto"
+      ? isAllianzAutoHistorical || isUniqaAutoHistorical || isPillowAutoHistorical
         ? "historické podmínky"
         : "aktuální podmínky"
       : `režim ${mode}`;

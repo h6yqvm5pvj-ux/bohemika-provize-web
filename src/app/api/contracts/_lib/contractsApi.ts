@@ -3458,10 +3458,21 @@ const computeItemsForProductPositionAndMode = ({
     case "csobAuto":
       return calculateCsobAuto(safeAmount, usedFrequency, position);
     case "uniqaAuto":
+      return calculateUniqaAuto(
+        safeAmount,
+        usedFrequency,
+        position,
+        contractSignedDateIso
+      );
     case "uniqaflotila":
       return calculateUniqaAuto(safeAmount, usedFrequency, position);
     case "pillowAuto":
-      return calculatePillowAuto(safeAmount, usedFrequency, position);
+      return calculatePillowAuto(
+        safeAmount,
+        usedFrequency,
+        position,
+        contractSignedDateIso
+      );
     case "kooperativaAuto":
       return calculateKooperativaAuto(safeAmount, usedFrequency, position);
     case "zamex":

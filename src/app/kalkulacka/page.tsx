@@ -46,6 +46,8 @@ import {
   getCoefficientSummary,
   isNeonHistoricalPeriod,
   isAllianzAutoHistoricalPeriod,
+  isUniqaAutoHistoricalPeriod,
+  isPillowAutoHistoricalPeriod,
 } from "../lib/productFormulas";
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
@@ -191,6 +193,10 @@ const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   pillowAuto: "/provize/pillowauto.jpg",
   kooperativaAuto: "/provize/koopauto.jpg",
 };
+const PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
+  "/provize/pillowhistoricke.jpg";
+const UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
+  "/provize/uniqahistoricke.jpg";
 const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   id: MaxCizinKomplexVariant;
   label: string;
@@ -1105,6 +1111,18 @@ export default function CalculatorPage() {
       isAllianzAutoHistoricalPeriod(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
+  const isUniqaAutoHistoricalBySignedDate = useMemo(
+    () =>
+      product === "uniqaAuto" &&
+      isUniqaAutoHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
+  const isPillowAutoHistoricalBySignedDate = useMemo(
+    () =>
+      product === "pillowAuto" &&
+      isPillowAutoHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
   const neonCoefficientDateForView = useMemo(() => {
     if (neonCoefficientView === "historical") return "2024-06-30";
     return "2024-07-01";
@@ -1113,14 +1131,26 @@ export default function CalculatorPage() {
     if (neonCoefficientView === "historical") return "2026-03-31";
     return "2026-04-01";
   }, [neonCoefficientView]);
+  const uniqaAutoCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2026-03-31";
+    return "2026-04-01";
+  }, [neonCoefficientView]);
+  const pillowAutoCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2026-03-31";
+    return "2026-04-01";
+  }, [neonCoefficientView]);
   const coefficientDateForView = useMemo(() => {
     if (product === "neon") return neonCoefficientDateForView;
     if (product === "allianzAuto") return allianzAutoCoefficientDateForView;
+    if (product === "uniqaAuto") return uniqaAutoCoefficientDateForView;
+    if (product === "pillowAuto") return pillowAutoCoefficientDateForView;
     return contractSignedDateForNeon;
   }, [
     product,
     neonCoefficientDateForView,
     allianzAutoCoefficientDateForView,
+    uniqaAutoCoefficientDateForView,
+    pillowAutoCoefficientDateForView,
     contractSignedDateForNeon,
   ]);
   const isNeonHistoricalInCoefModal = useMemo(
@@ -1129,6 +1159,14 @@ export default function CalculatorPage() {
   );
   const isAllianzAutoHistoricalInCoefModal = useMemo(
     () => product === "allianzAuto" && neonCoefficientView === "historical",
+    [product, neonCoefficientView]
+  );
+  const isUniqaAutoHistoricalInCoefModal = useMemo(
+    () => product === "uniqaAuto" && neonCoefficientView === "historical",
+    [product, neonCoefficientView]
+  );
+  const isPillowAutoHistoricalInCoefModal = useMemo(
+    () => product === "pillowAuto" && neonCoefficientView === "historical",
     [product, neonCoefficientView]
   );
   const immediatePayoutInfo = useMemo(() => {
@@ -1221,10 +1259,17 @@ export default function CalculatorPage() {
   }, [product, frequency, maxCizinKomplexVariant]);
   const autoTermsPreviewUrl = useMemo(() => {
     if (!product) return null;
+    if (product === "uniqaAuto" && isUniqaAutoHistoricalInCoefModal) {
+      return UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
+    }
+    if (product === "pillowAuto" && isPillowAutoHistoricalInCoefModal) {
+      return PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
+    }
     return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
-  }, [product]);
+  }, [product, isUniqaAutoHistoricalInCoefModal, isPillowAutoHistoricalInCoefModal]);
   const showAutoTermsPreview =
-    Boolean(autoTermsPreviewUrl) && !isAllianzAutoHistoricalInCoefModal;
+    Boolean(autoTermsPreviewUrl) &&
+    !isAllianzAutoHistoricalInCoefModal;
   const neonPeriod = neonCoefficientView === "historical" ? "2019" : "2024";
   const neonPreviewRole: "poradce" | "manazer" = (
     timelineMatchedPosition?.position ?? position
@@ -3344,7 +3389,12 @@ export default function CalculatorPage() {
     }
 
     if (product === "uniqaAuto" || product === "uniqaflotila") {
-      const dto = calculateUniqaAuto(val, frequency, positionForCalc);
+      const dto = calculateUniqaAuto(
+        val,
+        frequency,
+        positionForCalc,
+        product === "uniqaAuto" ? contractSignedDateForNeon : null
+      );
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -3352,7 +3402,12 @@ export default function CalculatorPage() {
     }
 
     if (product === "pillowAuto") {
-      const dto = calculatePillowAuto(val, frequency, positionForCalc);
+      const dto = calculatePillowAuto(
+        val,
+        frequency,
+        positionForCalc,
+        contractSignedDateForNeon
+      );
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -3782,6 +3837,7 @@ export default function CalculatorPage() {
       if (typeof window !== "undefined") {
         try {
           sessionStorage.removeItem("contracts_cache_v2");
+          sessionStorage.removeItem("contracts_cache_v3");
           localStorage.setItem("contracts_last_updated", String(Date.now()));
           window.dispatchEvent(new Event("contracts:updated"));
         } catch {
@@ -3957,6 +4013,12 @@ export default function CalculatorPage() {
           }
         : null;
 
+    setSaving(true);
+    setSaveMessage("Kontroluji duplicity…");
+    setValidationError(null);
+    setMissingFields([]);
+    setLastSavedContractRef(null);
+
     // kontrola duplicitního čísla smlouvy
     if (!skipDuplicateCheck) {
       try {
@@ -4008,16 +4070,17 @@ export default function CalculatorPage() {
                 } =>
                   Boolean(entry)
               );
-            if (entries.length === 0) return;
-            setDuplicateModal({
-              mode: "overwrite",
-              description: `Smlouva s číslem ${trimmedContractNumber} už existuje (${entries.length}×).`,
-              contractNumber: trimmedContractNumber,
-              count: entries.length,
-              entries,
-            });
-            setSaving(false);
-            return;
+            if (entries.length > 0) {
+              setDuplicateModal({
+                mode: "overwrite",
+                description: `Smlouva s číslem ${trimmedContractNumber} už existuje (${entries.length}×).`,
+                contractNumber: trimmedContractNumber,
+                count: entries.length,
+                entries,
+              });
+              setSaving(false);
+              return;
+            }
           }
         }
 
@@ -4065,19 +4128,20 @@ export default function CalculatorPage() {
                 } =>
                   Boolean(entry)
               );
-            if (entries.length === 0) return;
-            const displayDate = formatIsoDay(signedDateIsoDay);
-            setDuplicateModal({
-              mode: "saveAnyway",
-              description: `Pro klienta ${trimmedClientName} už existuje produkt ${productLabel(
-                product
-              )} se stejným datem sjednání ${displayDate} (${similarEntries.length}×).`,
-              contractNumber: trimmedContractNumber || null,
-              count: entries.length,
-              entries,
-            });
-            setSaving(false);
-            return;
+            if (entries.length > 0) {
+              const displayDate = formatIsoDay(signedDateIsoDay);
+              setDuplicateModal({
+                mode: "saveAnyway",
+                description: `Pro klienta ${trimmedClientName} už existuje produkt ${productLabel(
+                  product
+                )} se stejným datem sjednání ${displayDate} (${similarEntries.length}×).`,
+                contractNumber: trimmedContractNumber || null,
+                count: entries.length,
+                entries,
+              });
+              setSaving(false);
+              return;
+            }
           }
         }
       } catch (dupErr) {
@@ -4085,11 +4149,7 @@ export default function CalculatorPage() {
       }
     }
 
-    setSaving(true);
-    setSaveMessage(null);
-    setValidationError(null);
-    setMissingFields([]);
-    setLastSavedContractRef(null);
+    setSaveMessage("Ukládám smlouvu…");
 
     try {
       if (!isSavingForSubordinate) {
@@ -4472,6 +4532,7 @@ export default function CalculatorPage() {
       if (typeof window !== "undefined") {
         try {
           sessionStorage.removeItem("contracts_cache_v2");
+          sessionStorage.removeItem("contracts_cache_v3");
           localStorage.setItem("contracts_last_updated", String(Date.now()));
           window.dispatchEvent(new Event("contracts:updated"));
         } catch {
@@ -4559,12 +4620,26 @@ export default function CalculatorPage() {
       setNeonCoefficientView(
         isAllianzAutoHistoricalBySignedDate ? "historical" : "current"
       );
+      return;
+    }
+    if (product === "uniqaAuto") {
+      setNeonCoefficientView(
+        isUniqaAutoHistoricalBySignedDate ? "historical" : "current"
+      );
+      return;
+    }
+    if (product === "pillowAuto") {
+      setNeonCoefficientView(
+        isPillowAutoHistoricalBySignedDate ? "historical" : "current"
+      );
     }
   }, [
     showCoefModal,
     product,
     isNeonHistoricalBySignedDate,
     isAllianzAutoHistoricalBySignedDate,
+    isUniqaAutoHistoricalBySignedDate,
+    isPillowAutoHistoricalBySignedDate,
   ]);
 
   useEffect(() => {
@@ -5811,10 +5886,11 @@ export default function CalculatorPage() {
       case "csobAuto":
         return calculateCsobAuto(val, freq, pos);
       case "uniqaAuto":
+        return calculateUniqaAuto(val, freq, pos, contractSignedDateForNeon);
       case "uniqaflotila":
         return calculateUniqaAuto(val, freq, pos);
       case "pillowAuto":
-        return calculatePillowAuto(val, freq, pos);
+        return calculatePillowAuto(val, freq, pos, contractSignedDateForNeon);
       case "kooperativaAuto":
         return calculateKooperativaAuto(val, freq, pos);
       case "zamex":
@@ -6272,10 +6348,16 @@ export default function CalculatorPage() {
         coefficientView={neonCoefficientView}
         isNeonHistorical={isNeonHistoricalInCoefModal}
         isAllianzAutoHistorical={isAllianzAutoHistoricalInCoefModal}
+        isUniqaAutoHistorical={isUniqaAutoHistoricalInCoefModal}
+        isPillowAutoHistorical={isPillowAutoHistoricalInCoefModal}
         coefExplanation={coefExplanation}
         immediatePayoutInfo={immediatePayoutInfo}
         coefList={coefList}
-        showAutoTermsValidityNote={isAutoProduct(product) && product !== "allianzAuto"}
+        showAutoTermsValidityNote={
+          isAutoProduct(product) &&
+          product !== "allianzAuto" &&
+          product !== "pillowAuto"
+        }
         showAutoTermsPreview={showAutoTermsPreview}
         autoTermsPreviewUrl={autoTermsPreviewUrl}
         showNeonTermsPreview={showNeonTermsPreview}
