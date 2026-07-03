@@ -1156,7 +1156,11 @@ const resolveRefreshOriginalPremiumInfo = async ({
 }: {
   ownerEmail: string;
   contract: ContractResponseItem;
-}): Promise<{ premiumAmount: number; stornoStartDateIso: string | null } | null> => {
+}): Promise<{
+  premiumAmount: number;
+  stornoBasePremiumAmount: number;
+  stornoStartDateIso: string | null;
+} | null> => {
   const changes = await loadLifePremiumChangesForFindMatch({
     ownerEmail,
     contract,
@@ -1169,6 +1173,16 @@ const resolveRefreshOriginalPremiumInfo = async ({
     positivePremiumAmount(latestPremiumChange?.premiumAmount) ??
     lifePremiumAmountForEntry(contract);
   if (premiumAmount == null) return null;
+  const storedRefreshBaseMonthly = positivePremiumAmount(
+    contract.refreshCommissionBase?.calculationMonthlyPremium
+  );
+  const storedRefreshBaseAnnual = positivePremiumAmount(
+    contract.refreshCommissionBase?.calculationAnnualPremium
+  );
+  const stornoBasePremiumAmount =
+    storedRefreshBaseMonthly ??
+    (storedRefreshBaseAnnual != null ? storedRefreshBaseAnnual / 12 : null) ??
+    premiumAmount;
 
   const firstChangeWithDate = changes.find(
     (change) =>
@@ -1183,6 +1197,7 @@ const resolveRefreshOriginalPremiumInfo = async ({
 
   return {
     premiumAmount,
+    stornoBasePremiumAmount,
     stornoStartDateIso,
   };
 };
@@ -1378,6 +1393,8 @@ type RefreshCommissionBasePayload = {
   originalAnnualPremium: number;
   premiumIncreaseMonthly: number;
   premiumIncreaseAnnual: number;
+  stornoBaseMonthlyPremium: number;
+  stornoBaseAnnualPremium: number;
   stornedOriginalMonthlyPremium: number;
   stornedOriginalAnnualPremium: number;
   calculationMonthlyPremium: number;
@@ -6233,6 +6250,7 @@ export async function handleContractsCreate(req: NextRequest) {
                 normalizedEntry.payload.effectiveInputAmount ||
                 normalizedEntry.payload.inputAmount,
               originalMonthlyPremium: originalPremiumInfo.premiumAmount,
+              stornoBaseMonthlyPremium: originalPremiumInfo.stornoBasePremiumAmount,
               originalStornoStartDateIso: originalPremiumInfo.stornoStartDateIso,
               refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
             })
@@ -6265,6 +6283,8 @@ export async function handleContractsCreate(req: NextRequest) {
           originalAnnualPremium: refreshBase.originalMonthlyPremium * 12,
           premiumIncreaseMonthly: refreshBase.premiumIncreaseMonthly,
           premiumIncreaseAnnual: refreshBase.premiumIncreaseAnnual,
+          stornoBaseMonthlyPremium: refreshBase.stornoBaseMonthlyPremium,
+          stornoBaseAnnualPremium: refreshBase.stornoBaseAnnualPremium,
           stornedOriginalMonthlyPremium: refreshBase.stornedOriginalMonthlyPremium,
           stornedOriginalAnnualPremium: refreshBase.stornedOriginalAnnualPremium,
           calculationMonthlyPremium: refreshBase.calculationMonthlyPremium,

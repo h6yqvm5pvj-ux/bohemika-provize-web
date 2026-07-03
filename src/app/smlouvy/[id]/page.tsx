@@ -1043,6 +1043,18 @@ export default function ContractDetailPage() {
         ? refreshCalculationMonthlyPremium * 12
         : Number.NaN)
   );
+  const refreshOriginalAnnualPremium = Number(
+    refreshCommissionBase?.originalAnnualPremium ?? Number.NaN
+  );
+  const refreshStornoBaseAnnualPremium = Number(
+    refreshCommissionBase?.stornoBaseAnnualPremium ??
+      refreshCommissionBase?.originalAnnualPremium ??
+      Number.NaN
+  );
+  const hasDifferentRefreshStornoBase =
+    Number.isFinite(refreshOriginalAnnualPremium) &&
+    Number.isFinite(refreshStornoBaseAnnualPremium) &&
+    Math.abs(refreshOriginalAnnualPremium - refreshStornoBaseAnnualPremium) >= 0.01;
   const hasRefreshCommissionBase =
     isRefreshContract &&
     Number.isFinite(refreshCalculationAnnualPremium) &&
@@ -5012,13 +5024,24 @@ export default function ContractDetailPage() {
                                     Původní základna:{" "}
                                     <span className="font-semibold text-slate-900">
                                       {formatMoney(
-                                        Number(refreshCommissionBase.originalAnnualPremium)
+                                        refreshOriginalAnnualPremium
                                       )}{" "}
                                       ročně
                                     </span>
                                   </div>
+                                  {hasDifferentRefreshStornoBase && (
+                                    <div>
+                                      Storno základna:{" "}
+                                      <span className="font-semibold text-slate-900">
+                                        {formatMoney(
+                                          refreshStornoBaseAnnualPremium
+                                        )}{" "}
+                                        ročně
+                                      </span>
+                                    </div>
+                                  )}
                                   <div>
-                                    Stornovaná část původní:{" "}
+                                    Stornovaná část základny:{" "}
                                     <span className="font-semibold text-slate-900">
                                       {formatMoney(
                                         Number(

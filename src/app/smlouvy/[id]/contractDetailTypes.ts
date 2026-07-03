@@ -116,6 +116,8 @@ export type ContractDoc = {
     originalAnnualPremium?: number | null;
     premiumIncreaseMonthly?: number | null;
     premiumIncreaseAnnual?: number | null;
+    stornoBaseMonthlyPremium?: number | null;
+    stornoBaseAnnualPremium?: number | null;
     stornedOriginalMonthlyPremium?: number | null;
     stornedOriginalAnnualPremium?: number | null;
     calculationMonthlyPremium?: number | null;

@@ -396,6 +396,10 @@ type ContractsFindApiResponse = {
     effectiveInputAmount?: number | null;
     newInputAmount?: number | null;
     inputAmount?: number | null;
+    refreshCommissionBase?: {
+      calculationMonthlyPremium?: number | null;
+      calculationAnnualPremium?: number | null;
+    } | null;
     policyStartDate?: unknown;
     contractSignedDate?: unknown;
     createdAt?: unknown;
@@ -431,6 +435,12 @@ function resolveRefreshOriginalContractInfo(
     finitePositiveNumber(contract.effectiveInputAmount) ??
     finitePositiveNumber(contract.inputAmount);
   if (premiumAmount == null) return null;
+  const stornoBasePremiumAmount =
+    finitePositiveNumber(contract.refreshCommissionBase?.calculationMonthlyPremium) ??
+    (finitePositiveNumber(contract.refreshCommissionBase?.calculationAnnualPremium) != null
+      ? finitePositiveNumber(contract.refreshCommissionBase?.calculationAnnualPremium)! / 12
+      : null) ??
+    premiumAmount;
 
   const firstChangeWithDate = changes.find(
     (change) =>
@@ -445,6 +455,7 @@ function resolveRefreshOriginalContractInfo(
 
   return {
     premiumAmount,
+    stornoBasePremiumAmount,
     stornoStartDateIso,
   };
 }
@@ -504,6 +515,7 @@ type ContractNumberLiveCheckState =
 
 type RefreshOriginalContractInfo = {
   premiumAmount: number;
+  stornoBasePremiumAmount: number;
   stornoStartDateIso: string | null;
 };
 
@@ -1122,6 +1134,7 @@ export default function CalculatorPage() {
     return calculateNeonRefreshCommissionBase({
       newMonthlyPremium: parseNumber(amountText),
       originalMonthlyPremium: original.premiumAmount,
+      stornoBaseMonthlyPremium: original.stornoBasePremiumAmount,
       originalStornoStartDateIso: original.stornoStartDateIso,
       refreshPolicyStartDateIso: policyStartDate.trim(),
     });
@@ -1146,14 +1159,23 @@ export default function CalculatorPage() {
     if (!neonRefreshCommissionBase) return null;
 
     const originalAnnual = neonRefreshCommissionBase.originalMonthlyPremium * 12;
+    const stornoBaseAnnual =
+      neonRefreshCommissionBase.stornoBaseMonthlyPremium * 12;
     const newAnnual = neonRefreshCommissionBase.newMonthlyPremium * 12;
+    const usesDifferentStornoBase =
+      Math.abs(stornoBaseAnnual - originalAnnual) >= 0.01;
+    const stornoPartLabel = usesDifferentStornoBase
+      ? ` + stornovaná část předchozí provizní základny ${formatMoney(
+          stornoBaseAnnual
+        )} = ${formatMoney(neonRefreshCommissionBase.stornedOriginalAnnualPremium)}`
+      : ` + stornovaná část ${formatMoney(
+          neonRefreshCommissionBase.stornedOriginalAnnualPremium
+        )}`;
     return `Refresh základna pro provizi: ${formatMoney(
       neonRefreshCommissionBase.calculationAnnualPremium
-    )} ročně (${neonRefreshCommissionBase.remainingMonths}/60 původní storno lhůty). Výpočet: nové ${formatMoney(
-      newAnnual
-    )} - původní ${formatMoney(originalAnnual)} + stornovaná část ${formatMoney(
-      neonRefreshCommissionBase.stornedOriginalAnnualPremium
-    )}.`;
+    )} ročně (${neonRefreshCommissionBase.remainingMonths}/60 původní storno lhůty). Výpočet: navýšení ${formatMoney(
+      neonRefreshCommissionBase.premiumIncreaseAnnual
+    )} (${formatMoney(newAnnual)} - ${formatMoney(originalAnnual)})${stornoPartLabel}.`;
   }, [
     product,
     refreshOriginalOpen,
@@ -3724,6 +3746,136 @@ export default function CalculatorPage() {
     setDurationHelpOpen(false);
   }, [product]);
 
+  const resetContractFormAfterSave = () => {
+    setAmountText("");
+    setFrequency(allowedFrequencies(product)[0]);
+    setDurationYears(product === "neon" ? null : durationFallback(product));
+    setDurationMonths(
+      shouldShowDurationMonths(product) ? durationMonthsFallback(product) : null
+    );
+    setMaxCizinKomplexVariant("exclusiveStandard");
+
+    setClientName("");
+    setClientSuggestionsOpen(false);
+    setContractSignedDate("");
+    setPolicyStartDate("");
+    setPolicyEndDate("");
+    setContractNumber("");
+    setContractNumberLiveCheck({ status: "idle" });
+
+    setComfortGradual(false);
+    setComfortPaymentText("");
+    setComfortTargetAmountText("");
+
+    setAutoCarMake("");
+    setAutoCarPlate("");
+    setAutoCarVin("");
+    setAutoCarTp("");
+    setAutoCarOrv("");
+    setAutoCarAnnualMileage("");
+    setAutoCarAllianzScope("");
+    setAutoCarLiabilityLimit(null);
+    setAutoCarHullSumInsured(null);
+    setAutoCarHullSumInsuredText("");
+    setAutoCarHullSumInsuredDraft("");
+    setAutoCarHullDeductible(null);
+    setAutoCarHullDeductibleText("");
+    setAutoCarHullRiskAccident(false);
+    setAutoCarHullRiskTheft(false);
+    setAutoCarHullRiskNatural(false);
+    setAutoCarHullRiskVandalism(false);
+    setAutoCarHullRiskAnimalCollision(false);
+    setAutoCarAssistancePlan("");
+    setAutoCarAddonEso(false);
+    setAutoCarAddonNaturalRisks(false);
+    setAutoCarAddonKlika(false);
+    setAutoCarAddonGlass(false);
+    setAutoCarAddonGlassLimit(null);
+    setAutoCarAddonAnimalCollision(false);
+    setAutoCarAddonAnimalCollisionLimit(null);
+    setAutoCarAddonAnimalDamage(false);
+    setAutoCarAddonAnimalDamageLimit(null);
+    setAutoCarAddonVandalism(false);
+    setAutoCarAddonTheft(false);
+    setAutoCarAddonTheftLimit(null);
+    setAutoCarAddonNatural(false);
+    setAutoCarAddonNaturalLimit(null);
+    setAutoCarAddonOwnDamage(false);
+    setAutoCarAddonOwnDamageLimit(null);
+    setAutoCarAddonGap(false);
+    setAutoCarAddonGapLimit(null);
+    setAutoCarAddonSmartGap(false);
+    setAutoCarAddonServisPro(false);
+    setAutoCarAddonFireExplosion(false);
+    setAutoCarAddonLegalAdvice(false);
+    setAutoCarAddonReplacementCar(false);
+    setAutoCarAddonLuggage(false);
+    setAutoCarAddonTransportedGoods(false);
+    setAutoCarAddonPothole(false);
+    setAutoCarAddonNonFaultAccident(false);
+    setAutoCarAddonPassengerInjury(false);
+    setAutoCarAddonKeyLossTheft(false);
+
+    setDomexAddress("");
+    setDomexPropertyType("");
+    setDomexPropertyCoverage("");
+    setDomexPropertySumInsured(null);
+    setDomexPropertyDeductible(null);
+    setDomexHouseholdType("");
+    setDomexHouseholdCoverage("");
+    setDomexHouseholdSumInsured(null);
+    setDomexHouseholdDeductible(null);
+    setDomexOutbuildingSumInsured(null);
+    setDomexLiabilitySumInsured(null);
+    setDomexLiabilityDeductible(null);
+    setDomexLiabilityMobile(false);
+    setDomexLiabilityTenant(false);
+    setDomexLiabilityLandlord(false);
+    setDomexAssistancePlus(false);
+    setDomexNote("");
+
+    setNeonPdfDetailFields(createEmptyNeonPdfDetailFields());
+    setRefreshOriginalOpen(false);
+    setRefreshOriginalContractNumber("");
+    setRefreshOriginalLookup({
+      status: "idle",
+      progress: 0,
+      adviserName: null,
+      original: null,
+    });
+
+    setPdfClientNameLoaded(false);
+    setPdfMatchedClientName(false);
+    setPdfImportStatus(null);
+    setPdfImportError(null);
+    setImportedContractPdfFile(null);
+    resetPdfDropState();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setTipContractConfig(null);
+    setTipContractModalOpen(false);
+    setTipContractDraftEmail("");
+    setTipContractDraftPercent(50);
+    setTipContractLookupState({ status: "idle" });
+    setTipContractSelectedUser(null);
+    setTipContractUserSuggestions([]);
+    setTipContractSelectedTip(null);
+    setTipContractTips([]);
+    setTipContractTipsModalOpen(false);
+    setTipContractTipsError(null);
+    setTipContractTipsFilter("all");
+
+    setItems([]);
+    setTotal(0);
+    setUnsupported(false);
+    setValidationError(null);
+    setMissingFields([]);
+    setDuplicateModal(null);
+    setEndorsementDraft(null);
+  };
+
   useEffect(() => {
     if (!endorsementDraft) return;
     if (!isLifeProduct || endorsementDraft.productKey !== product) {
@@ -4784,14 +4936,7 @@ export default function CalculatorPage() {
         clientName: clientName.trim() || null,
       });
       setContractSaveCelebrationKey((prev) => prev + 1);
-      setRefreshOriginalOpen(false);
-      setRefreshOriginalContractNumber("");
-      setRefreshOriginalLookup({
-        status: "idle",
-        progress: 0,
-        adviserName: null,
-        original: null,
-      });
+      resetContractFormAfterSave();
     } catch (error) {
       const errorMessage =
         error instanceof Error && error.message.trim().length > 0

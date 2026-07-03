@@ -85,6 +85,8 @@ export type NeonRefreshCommissionBase = {
   remainingRatio: number;
   premiumIncreaseMonthly: number;
   premiumIncreaseAnnual: number;
+  stornoBaseMonthlyPremium: number;
+  stornoBaseAnnualPremium: number;
   stornedOriginalMonthlyPremium: number;
   stornedOriginalAnnualPremium: number;
 };
@@ -92,24 +94,32 @@ export type NeonRefreshCommissionBase = {
 export function calculateNeonRefreshCommissionBase({
   newMonthlyPremium,
   originalMonthlyPremium,
+  stornoBaseMonthlyPremium,
   originalStornoStartDateIso,
   refreshPolicyStartDateIso,
   stornoMonths = NEON_REFRESH_STORNO_MONTHS,
 }: {
   newMonthlyPremium: number | null | undefined;
   originalMonthlyPremium: number | null | undefined;
+  stornoBaseMonthlyPremium?: number | null | undefined;
   originalStornoStartDateIso: string | null | undefined;
   refreshPolicyStartDateIso: string | null | undefined;
   stornoMonths?: number;
 }): NeonRefreshCommissionBase | null {
   const safeNew = Number(newMonthlyPremium);
   const safeOriginal = Number(originalMonthlyPremium);
+  const safeStornoBase =
+    stornoBaseMonthlyPremium == null
+      ? safeOriginal
+      : Number(stornoBaseMonthlyPremium);
   const safeStornoMonths = Math.max(1, Math.floor(Number(stornoMonths)));
   if (
     !Number.isFinite(safeNew) ||
     safeNew <= 0 ||
     !Number.isFinite(safeOriginal) ||
     safeOriginal <= 0 ||
+    !Number.isFinite(safeStornoBase) ||
+    safeStornoBase <= 0 ||
     !Number.isFinite(safeStornoMonths)
   ) {
     return null;
@@ -126,7 +136,7 @@ export function calculateNeonRefreshCommissionBase({
   const earnedRatio = elapsedMonths / safeStornoMonths;
   const remainingRatio = remainingMonths / safeStornoMonths;
   const premiumIncreaseMonthly = safeNew - safeOriginal;
-  const stornedOriginalMonthlyPremium = safeOriginal * remainingRatio;
+  const stornedOriginalMonthlyPremium = safeStornoBase * remainingRatio;
   const calculationMonthlyPremium = Math.max(
     0,
     premiumIncreaseMonthly + stornedOriginalMonthlyPremium
@@ -143,6 +153,8 @@ export function calculateNeonRefreshCommissionBase({
     remainingRatio,
     premiumIncreaseMonthly: roundToCents(premiumIncreaseMonthly),
     premiumIncreaseAnnual: roundToCents(premiumIncreaseMonthly * 12),
+    stornoBaseMonthlyPremium: roundToCents(safeStornoBase),
+    stornoBaseAnnualPremium: roundToCents(safeStornoBase * 12),
     stornedOriginalMonthlyPremium: roundToCents(stornedOriginalMonthlyPremium),
     stornedOriginalAnnualPremium: roundToCents(stornedOriginalMonthlyPremium * 12),
   };
@@ -795,7 +807,10 @@ export function calculateNeon(
   mode: CommissionMode = "accelerated",
   contractSignedDateIso?: string | null
 ): CommissionResultDTO {
-  const k = neonCoefficients(position, mode, contractSignedDateIso);
+  const effectiveMode = isNeonHistoricalPeriod(contractSignedDateIso)
+    ? "standard"
+    : mode;
+  const k = neonCoefficients(position, effectiveMode, contractSignedDateIso);
   const y = normalizeNeonDurationYears(years, contractSignedDateIso);
   const annual = monthly * 12;
 
@@ -808,7 +823,7 @@ export function calculateNeon(
   const total = okamzita + po3 + po4 + nasl25 * 4 + nasl510 * 6;
 
   const items: CommissionResultItemDTO[] = [
-    ...neonImmediateItems(okamzita, position, mode),
+    ...neonImmediateItems(okamzita, position, effectiveMode),
     { title: "📅 Provize po 3 letech", amount: po3, code: "B3601" },
     { title: "📅 Provize po 4 letech", amount: po4, code: "B4801" },
     { title: "🔁 Následná provize (2.–5. rok)", amount: nasl25, code: "B101-B104" },
