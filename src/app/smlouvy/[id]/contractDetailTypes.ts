@@ -99,6 +99,28 @@ export type ContractDoc = {
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
+  refreshCommissionBase?: {
+    productKey?: Product | null;
+    method?: "cpp_neon_5y_storno" | string | null;
+    originalContractNumber?: string | null;
+    originalStornoStartDateIso?: string | null;
+    refreshPolicyStartDateIso?: string | null;
+    stornoMonths?: number | null;
+    elapsedMonths?: number | null;
+    remainingMonths?: number | null;
+    earnedRatio?: number | null;
+    remainingRatio?: number | null;
+    newMonthlyPremium?: number | null;
+    newAnnualPremium?: number | null;
+    originalMonthlyPremium?: number | null;
+    originalAnnualPremium?: number | null;
+    premiumIncreaseMonthly?: number | null;
+    premiumIncreaseAnnual?: number | null;
+    stornedOriginalMonthlyPremium?: number | null;
+    stornedOriginalAnnualPremium?: number | null;
+    calculationMonthlyPremium?: number | null;
+    calculationAnnualPremium?: number | null;
+  } | null;
   refreshReplacedByEntryId?: string | null;
   refreshReplacedByOwnerEmail?: string | null;
   refreshReplacedBySignedDate?: FirestoreTimestamp | Date | string | number | null;

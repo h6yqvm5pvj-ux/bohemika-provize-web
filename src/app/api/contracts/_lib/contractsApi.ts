@@ -84,7 +84,11 @@ import {
   calculateKoopCestovko,
   calculateComfortCC,
 } from "@/app/lib/productFormulas";
-import { normalizeNeonDurationYears } from "@/app/lib/productFormulas/neon";
+import {
+  calculateNeonRefreshCommissionBase,
+  NEON_REFRESH_STORNO_MONTHS,
+  normalizeNeonDurationYears,
+} from "@/app/lib/productFormulas/neon";
 import { calculateMaxCizinKomplex } from "@/app/lib/productFormulas/maxcizinkomplex";
 import { calculateCppHafan } from "@/app/lib/productFormulas/cpphafan";
 import { calculateAllianzMujDomov } from "@/app/lib/productFormulas/allianzMujDomov";
@@ -824,6 +828,9 @@ const parseContractListFilters = (
     unpaidOnly:
       search.get("unpaidOnly") === "1" ||
       search.get("unpaidOnly") === "true",
+    refreshOnly:
+      search.get("refreshOnly") === "1" ||
+      search.get("refreshOnly") === "true",
     categories: parseCsvSet(
       search.get("categories"),
       CONTRACT_LIST_PRODUCT_CATEGORY_SET
@@ -840,6 +847,7 @@ const hasContractListClientFilters = (filters: ContractListFilters): boolean =>
   normalizeSearchValue(filters.query).length > 0 ||
   filters.mode === "anniversary" ||
   filters.unpaidOnly ||
+  filters.refreshOnly ||
   filters.categories.size > 0 ||
   filters.institutions.size > 0;
 
@@ -1142,6 +1150,43 @@ const loadLifePremiumChangesForFindMatch = async ({
   }
 };
 
+const resolveRefreshOriginalPremiumInfo = async ({
+  ownerEmail,
+  contract,
+}: {
+  ownerEmail: string;
+  contract: ContractResponseItem;
+}): Promise<{ premiumAmount: number; stornoStartDateIso: string | null } | null> => {
+  const changes = await loadLifePremiumChangesForFindMatch({
+    ownerEmail,
+    contract,
+    adviserName: contract.adviserName ?? null,
+  });
+  const latestPremiumChange = [...changes]
+    .reverse()
+    .find((change) => positivePremiumAmount(change.premiumAmount) != null);
+  const premiumAmount =
+    positivePremiumAmount(latestPremiumChange?.premiumAmount) ??
+    lifePremiumAmountForEntry(contract);
+  if (premiumAmount == null) return null;
+
+  const firstChangeWithDate = changes.find(
+    (change) =>
+      Boolean(isoDayFromUnknown(change.contractSignedDate)) ||
+      Boolean(isoDayFromUnknown(change.policyStartDate))
+  );
+  const stornoStartDateIso =
+    isoDayFromUnknown(firstChangeWithDate?.contractSignedDate) ??
+    isoDayFromUnknown(contract.contractSignedDate) ??
+    isoDayFromUnknown(firstChangeWithDate?.policyStartDate) ??
+    isoDayFromUnknown(contract.policyStartDate);
+
+  return {
+    premiumAmount,
+    stornoStartDateIso,
+  };
+};
+
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const hasOwn = (obj: Record<string, unknown>, key: string): boolean =>
@@ -1316,6 +1361,29 @@ const parseOptionalDateField = (
   return parseRequiredDateField(value, field);
 };
 
+type RefreshCommissionBasePayload = {
+  productKey: Product;
+  method: "cpp_neon_5y_storno";
+  originalContractNumber: string | null;
+  originalStornoStartDateIso: string | null;
+  refreshPolicyStartDateIso: string | null;
+  stornoMonths: number;
+  elapsedMonths: number;
+  remainingMonths: number;
+  earnedRatio: number;
+  remainingRatio: number;
+  newMonthlyPremium: number;
+  newAnnualPremium: number;
+  originalMonthlyPremium: number;
+  originalAnnualPremium: number;
+  premiumIncreaseMonthly: number;
+  premiumIncreaseAnnual: number;
+  stornedOriginalMonthlyPremium: number;
+  stornedOriginalAnnualPremium: number;
+  calculationMonthlyPremium: number;
+  calculationAnnualPremium: number;
+};
+
 type NormalizedCreateEntryPayload = {
   productKey: Product;
   entryType: "contract" | "endorsement";
@@ -1415,6 +1483,7 @@ type NormalizedCreateEntryPayload = {
   createdAt: Date;
   isRefresh: boolean | null;
   refreshOriginalContractNumber: string | null;
+  refreshCommissionBase: RefreshCommissionBasePayload | null;
   rootContractEntryId: string | null;
   parentContractEntryId: string | null;
   parentContractEntryPath: string | null;
@@ -2075,14 +2144,14 @@ const normalizeCreateEntryPayload = ({
       createdAt: new Date(),
       isRefresh: isRefreshParsed.value,
       refreshOriginalContractNumber,
+      refreshCommissionBase: null,
       rootContractEntryId:
         entryTypeParsed.value === "endorsement" ? rootEntryIdParsed.value : null,
       parentContractEntryId:
         entryTypeParsed.value === "endorsement" ? parentEntryIdParsed.value : null,
       parentContractEntryPath:
         entryTypeParsed.value === "endorsement" ? parentPathParsed.value : null,
-      calculationInputAmount:
-        entryTypeParsed.value === "endorsement" ? calcInputParsed.value : null,
+      calculationInputAmount: calcInputParsed.value,
       previousInputAmount:
         entryTypeParsed.value === "endorsement" ? previousInputParsed.value : null,
       newInputAmount: entryTypeParsed.value === "endorsement" ? newInputParsed.value : null,
@@ -4692,6 +4761,14 @@ function contractMatchesListSearch(contract: ContractDoc, query: string): boolea
   );
 }
 
+function contractMatchesRefreshFilter(contract: ContractDoc): boolean {
+  if (contract.isRefresh === true) return true;
+  if (typeof contract.refreshOriginalContractNumber === "string") {
+    if (contract.refreshOriginalContractNumber.trim().length > 0) return true;
+  }
+  return Boolean(contract.refreshCommissionBase);
+}
+
 function contractMatchesListFilters(
   contract: ContractDoc,
   filters: ContractListFilters
@@ -4703,6 +4780,10 @@ function contractMatchesListFilters(
   }
 
   if (!contractMatchesListSearch(contract, filters.query)) return false;
+
+  if (filters.refreshOnly && !contractMatchesRefreshFilter(contract)) {
+    return false;
+  }
 
   if (
     !productMatchesListCategory(product, filters.categories) ||
@@ -6040,12 +6121,164 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
 
+    if (idempotentEntryRef) {
+      const existingIdempotentSnap = await idempotentEntryRef.get();
+      if (existingIdempotentSnap.exists) {
+        return withRateLimit(NextResponse.json({
+          ok: true,
+          entryId: existingIdempotentSnap.id,
+          idempotentReplay: true,
+        }));
+      }
+    }
+
+    let refreshOriginalLink: ExistingContractByNumber | null = null;
+    let refreshOriginalForSync: { ownerEmail: string; entryId: string } | null = null;
+    let refreshCommissionBase: RefreshCommissionBasePayload | null = null;
+    let commissionInputAmount =
+      normalizedEntry.payload.entryType === "endorsement"
+        ? normalizedEntry.payload.calculationInputAmount ?? normalizedEntry.payload.inputAmount
+        : normalizedEntry.payload.inputAmount;
+
+    if (
+      normalizedEntry.payload.entryType === "contract" &&
+      normalizedEntry.payload.isRefresh === true
+    ) {
+      const originalContractNumber =
+        normalizedEntry.payload.refreshOriginalContractNumber ?? "";
+      refreshOriginalLink = await findExistingContractByNumber(originalContractNumber);
+      const ownerEntryPrefix = `users/${targetOwnerEmail}/entries/`;
+      if (!refreshOriginalLink || !refreshOriginalLink.entryPath.startsWith(ownerEntryPrefix)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Původní smlouva pro Refresh/Náhradu nebyla nalezena u vlastníka nové smlouvy.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const refreshOriginalEntryId =
+        refreshOriginalLink.entryId ??
+        refreshOriginalLink.entryPath.split("/").pop()?.trim() ??
+        "";
+      if (!refreshOriginalEntryId) {
+        return NextResponse.json(
+          { ok: false, error: "Původní smlouva pro Refresh/Náhradu nemá platné entryId." },
+          { status: 400 }
+        );
+      }
+      refreshOriginalForSync = {
+        ownerEmail: targetOwnerEmail,
+        entryId: refreshOriginalEntryId,
+      };
+
+      const refreshOriginalSnap = await db.doc(refreshOriginalLink.entryPath).get();
+      if (!refreshOriginalSnap.exists) {
+        return NextResponse.json(
+          { ok: false, error: "Původní smlouva pro Refresh/Náhradu už nebyla nalezena." },
+          { status: 400 }
+        );
+      }
+
+      const originalData = (refreshOriginalSnap.data() ?? {}) as ContractDoc;
+      if (normalizeContractEntryType(originalData.entryType ?? "contract") !== "contract") {
+        return NextResponse.json(
+          { ok: false, error: "Původní záznam pro Refresh/Náhradu není smlouva." },
+          { status: 400 }
+        );
+      }
+      if (originalData.productKey !== normalizedEntry.payload.productKey) {
+        return NextResponse.json(
+          { ok: false, error: "Původní smlouva pro Refresh/Náhradu musí mít stejný produkt jako nová smlouva." },
+          { status: 400 }
+        );
+      }
+      if (
+        normalizeContractNumber(originalData.contractNumber) !==
+        normalizeContractNumber(originalContractNumber)
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Původní smlouva pro Refresh/Náhradu neodpovídá zadanému číslu." },
+          { status: 400 }
+        );
+      }
+
+      const existingReplacementEntryId =
+        typeof originalData.refreshReplacedByEntryId === "string"
+          ? originalData.refreshReplacedByEntryId.trim()
+          : "";
+      if (
+        existingReplacementEntryId &&
+        existingReplacementEntryId !== (idempotentEntryRef?.id ?? "")
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Původní smlouva už má navazující Refresh/Náhradu." },
+          { status: 409 }
+        );
+      }
+      if (normalizedEntry.payload.productKey === "neon") {
+        const originalItem = toContractResponseItem(
+          refreshOriginalSnap.id,
+          targetOwnerEmail,
+          originalData
+        );
+        const originalPremiumInfo = await resolveRefreshOriginalPremiumInfo({
+          ownerEmail: targetOwnerEmail,
+          contract: originalItem,
+        });
+        const refreshBase = originalPremiumInfo
+          ? calculateNeonRefreshCommissionBase({
+              newMonthlyPremium:
+                normalizedEntry.payload.effectiveInputAmount ||
+                normalizedEntry.payload.inputAmount,
+              originalMonthlyPremium: originalPremiumInfo.premiumAmount,
+              originalStornoStartDateIso: originalPremiumInfo.stornoStartDateIso,
+              refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
+            })
+          : null;
+        if (!refreshBase) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                "Nepodařilo se spočítat Refresh základnu pro ČPP ŽP NEON. Zkontroluj pojistné a datum původní smlouvy.",
+            },
+            { status: 400 }
+          );
+        }
+        commissionInputAmount = refreshBase.calculationMonthlyPremium;
+        refreshCommissionBase = {
+          productKey: "neon",
+          method: "cpp_neon_5y_storno",
+          originalContractNumber: originalContractNumber || null,
+          originalStornoStartDateIso: originalPremiumInfo?.stornoStartDateIso ?? null,
+          refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
+          stornoMonths: NEON_REFRESH_STORNO_MONTHS,
+          elapsedMonths: refreshBase.elapsedMonths,
+          remainingMonths: refreshBase.remainingMonths,
+          earnedRatio: refreshBase.earnedRatio,
+          remainingRatio: refreshBase.remainingRatio,
+          newMonthlyPremium: refreshBase.newMonthlyPremium,
+          newAnnualPremium: refreshBase.newMonthlyPremium * 12,
+          originalMonthlyPremium: refreshBase.originalMonthlyPremium,
+          originalAnnualPremium: refreshBase.originalMonthlyPremium * 12,
+          premiumIncreaseMonthly: refreshBase.premiumIncreaseMonthly,
+          premiumIncreaseAnnual: refreshBase.premiumIncreaseAnnual,
+          stornedOriginalMonthlyPremium: refreshBase.stornedOriginalMonthlyPremium,
+          stornedOriginalAnnualPremium: refreshBase.stornedOriginalAnnualPremium,
+          calculationMonthlyPremium: refreshBase.calculationMonthlyPremium,
+          calculationAnnualPremium: refreshBase.calculationAnnualPremium,
+        };
+      }
+    }
+
     const trustedResult = computeItemsForProductPositionAndMode({
       productKey: normalizedEntry.payload.productKey,
       position: trustedPosition,
       commissionMode: trustedMode,
       contractSignedDateIso: signedDateIso,
-      inputAmount: normalizedEntry.payload.inputAmount,
+      inputAmount: commissionInputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
       durationYears: normalizedEntry.payload.durationYears,
       durationMonths: normalizedEntry.payload.durationMonths,
@@ -6113,7 +6346,7 @@ export async function handleContractsCreate(req: NextRequest) {
       adviserMode: trustedMode,
       productKey: normalizedEntry.payload.productKey,
       contractSignedDateIso: signedDateIso,
-      inputAmount: normalizedEntry.payload.inputAmount,
+      inputAmount: commissionInputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
       durationYears: normalizedEntry.payload.durationYears,
       durationMonths: normalizedEntry.payload.durationMonths,
@@ -6133,6 +6366,8 @@ export async function handleContractsCreate(req: NextRequest) {
 
     const trustedPayload: NormalizedCreateEntryPayload = {
       ...normalizedEntry.payload,
+      calculationInputAmount: commissionInputAmount,
+      refreshCommissionBase,
       position: trustedPosition,
       commissionMode: trustedMode,
       items: trustedItems,
@@ -6169,17 +6404,6 @@ export async function handleContractsCreate(req: NextRequest) {
           })
         : [];
 
-    if (idempotentEntryRef) {
-      const existingIdempotentSnap = await idempotentEntryRef.get();
-      if (existingIdempotentSnap.exists) {
-        return withRateLimit(NextResponse.json({
-          ok: true,
-          entryId: existingIdempotentSnap.id,
-          idempotentReplay: true,
-        }));
-      }
-    }
-
     if (trustedPayload.entryType === "contract") {
       const existingContract = await findExistingContractByNumber(
         trustedPayload.contractNumber
@@ -6194,38 +6418,6 @@ export async function handleContractsCreate(req: NextRequest) {
           { status: 409 }
         );
       }
-    }
-
-    let refreshOriginalLink: ExistingContractByNumber | null = null;
-    let refreshOriginalForSync: { ownerEmail: string; entryId: string } | null = null;
-    if (trustedPayload.entryType === "contract" && trustedPayload.isRefresh === true) {
-      const originalContractNumber = trustedPayload.refreshOriginalContractNumber ?? "";
-      refreshOriginalLink = await findExistingContractByNumber(originalContractNumber);
-      const ownerEntryPrefix = `users/${targetOwnerEmail}/entries/`;
-      if (!refreshOriginalLink || !refreshOriginalLink.entryPath.startsWith(ownerEntryPrefix)) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Původní smlouva pro Refresh/Náhradu nebyla nalezena u vlastníka nové smlouvy.",
-          },
-          { status: 400 }
-        );
-      }
-
-      const refreshOriginalEntryId =
-        refreshOriginalLink.entryId ??
-        refreshOriginalLink.entryPath.split("/").pop()?.trim() ??
-        "";
-      if (!refreshOriginalEntryId) {
-        return NextResponse.json(
-          { ok: false, error: "Původní smlouva pro Refresh/Náhradu nemá platné entryId." },
-          { status: 400 }
-        );
-      }
-      refreshOriginalForSync = {
-        ownerEmail: targetOwnerEmail,
-        entryId: refreshOriginalEntryId,
-      };
     }
 
     try {
@@ -6335,16 +6527,6 @@ export async function handleContractsCreate(req: NextRequest) {
               linkedErr.statusCode = 409;
               throw linkedErr;
             }
-            if (
-              contractLifecycleStatus(originalData) === "storno" &&
-              existingReplacementEntryId !== createdRef.id
-            ) {
-              const stornoErr = new Error(
-                "Původní smlouva pro Refresh/Náhradu už je stornovaná."
-              ) as Error & { statusCode?: number };
-              stornoErr.statusCode = 409;
-              throw stornoErr;
-            }
           }
 
           if (claimSnap.exists) {
@@ -6371,11 +6553,18 @@ export async function handleContractsCreate(req: NextRequest) {
           }
 
           if (refreshOriginalRef && refreshOriginalSnap?.exists) {
+            const refreshOriginalData = (refreshOriginalSnap.data() ?? {}) as ContractDoc;
+            const originalAlreadyStorno =
+              contractLifecycleStatus(refreshOriginalData) === "storno";
             tx.set(
               refreshOriginalRef,
               {
-                status: "storno",
-                stornoDate: trustedPayload.policyStartDate,
+                ...(originalAlreadyStorno
+                  ? {}
+                  : {
+                      status: "storno",
+                      stornoDate: trustedPayload.policyStartDate,
+                    }),
                 refreshReplacedByEntryId: createdRef.id,
                 refreshReplacedByOwnerEmail: targetOwnerEmail,
                 refreshReplacedBySignedDate: trustedPayload.contractSignedDate,

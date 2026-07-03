@@ -28,6 +28,7 @@ type CalculatorAmountAndActionsSectionProps = {
   refreshOriginalLookupStatus: RefreshOriginalLookupStatus;
   refreshOriginalLookupProgress: number;
   refreshOriginalLookupAdviserName: string | null;
+  refreshOriginalInfoText?: string | null;
   onComfortGradualChange: (value: boolean) => void;
   onAmountTextChange: (value: string) => void;
   onComfortPaymentTextChange: (value: string) => void;
@@ -60,6 +61,7 @@ export function CalculatorAmountAndActionsSection({
   refreshOriginalLookupStatus,
   refreshOriginalLookupProgress,
   refreshOriginalLookupAdviserName,
+  refreshOriginalInfoText,
   onComfortGradualChange,
   onAmountTextChange,
   onComfortPaymentTextChange,
@@ -265,6 +267,11 @@ export function CalculatorAmountAndActionsSection({
                 {refreshOriginalLookupStatus === "found" && (
                   <p className="text-[11px] font-semibold text-emerald-700">
                     Smlouva nalezena. Sjednatel: {refreshOriginalLookupAdviserName || "jméno není vyplněné"}.
+                  </p>
+                )}
+                {refreshOriginalInfoText && (
+                  <p className="text-[11px] font-semibold text-sky-800">
+                    {refreshOriginalInfoText}
                   </p>
                 )}
                 {refreshOriginalLookupStatus === "wrongProduct" && (

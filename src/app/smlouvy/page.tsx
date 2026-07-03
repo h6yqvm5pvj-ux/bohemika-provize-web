@@ -11,6 +11,7 @@ import {
   CalendarDays,
   LayoutGrid,
   List,
+  RefreshCw,
   Search,
   SlidersHorizontal,
   UserRound,
@@ -67,6 +68,7 @@ type ContractDoc = {
   stornoDate?: FirestoreTimestamp | Date | string | null;
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
+  refreshCommissionBase?: unknown;
   entryType?: "contract" | "endorsement" | string | null;
   rootContractEntryId?: string | null;
   groupedEntryCount?: number;
@@ -113,6 +115,7 @@ type DisplayedContract = ContractDoc & {
   adviserEmail?: string | null;
   groupedEntryCount?: number;
   groupedEndorsementCount?: number;
+  groupedHasRefresh?: boolean;
   searchClientTokens?: string[];
   searchContractTokens?: string[];
   searchContractCompactTokens?: string[];
@@ -459,6 +462,19 @@ function isContractDozita(
   return contractLifecycleStatus(contract) === "dozita";
 }
 
+function isRefreshContract(contract: ContractDoc | null | undefined): boolean {
+  if (!contract) return false;
+  if (contract.isRefresh === true) return true;
+  if ((contract as DisplayedContract).groupedHasRefresh === true) return true;
+  if (
+    typeof contract.refreshOriginalContractNumber === "string" &&
+    contract.refreshOriginalContractNumber.trim().length > 0
+  ) {
+    return true;
+  }
+  return Boolean(contract.refreshCommissionBase);
+}
+
 function formatDaysLeft(days: number): string {
   if (days === 1) return "1 den";
   if (days >= 2 && days <= 4) return `${days} dny`;
@@ -587,6 +603,7 @@ type ContractsListFilters = {
   query: string;
   filterMode: FilterMode;
   showUnpaidOnly: boolean;
+  showRefreshOnly: boolean;
   selectedCategories: ProductCategory[];
   selectedInstitutions: Institution[];
   selectedSubordinates: string[];
@@ -609,6 +626,7 @@ type ContractsViewState = {
   filterMode: FilterMode;
   searchText: string;
   showUnpaidOnly: boolean;
+  showRefreshOnly: boolean;
   selectedCategories: ProductCategory[];
   selectedInstitutions: Institution[];
   selectedSubordinates: string[];
@@ -687,6 +705,7 @@ function readContractsViewState(userEmail: string | null | undefined): Contracts
       filterMode: parsed.filterMode === "anniversary" ? "anniversary" : "latest",
       searchText: typeof parsed.searchText === "string" ? parsed.searchText : "",
       showUnpaidOnly: Boolean(parsed.showUnpaidOnly),
+      showRefreshOnly: Boolean(parsed.showRefreshOnly),
       selectedCategories: Array.isArray(parsed.selectedCategories)
         ? parsed.selectedCategories.filter((v): v is ProductCategory =>
             CATEGORY_DEFS.some((d) => d.id === v)
@@ -800,6 +819,7 @@ function ContractsPageContent() {
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
+  const [showRefreshOnly, setShowRefreshOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -851,6 +871,7 @@ function ContractsPageContent() {
     hasSearchQuery ||
     anniversaryModeActive ||
     showUnpaidOnly ||
+    showRefreshOnly ||
     selectedCategoryList.length > 0 ||
     selectedInstitutionList.length > 0 ||
     (showTeam && canShowTeamToggle && selectedSubordinateList.length > 0);
@@ -859,6 +880,7 @@ function ContractsPageContent() {
       query: deferredSearchText.trim(),
       filterMode: anniversaryModeActive ? "anniversary" : "latest",
       showUnpaidOnly,
+      showRefreshOnly,
       selectedCategories: selectedCategoryList,
       selectedInstitutions: selectedInstitutionList,
       selectedSubordinates: selectedSubordinateList,
@@ -867,6 +889,7 @@ function ContractsPageContent() {
       deferredSearchText,
       anniversaryModeActive,
       showUnpaidOnly,
+      showRefreshOnly,
       selectedCategoryList,
       selectedInstitutionList,
       selectedSubordinateList,
@@ -909,6 +932,9 @@ function ContractsPageContent() {
         }
         if (filters.showUnpaidOnly) {
           params.set("unpaidOnly", "1");
+        }
+        if (filters.showRefreshOnly) {
+          params.set("refreshOnly", "1");
         }
         if (filters.selectedCategories.length > 0) {
           params.set("categories", filters.selectedCategories.join(","));
@@ -1390,6 +1416,7 @@ function ContractsPageContent() {
         latestCreatedMs: number;
         entryCount: number;
         endorsementCount: number;
+        hasRefresh: boolean;
         searchClientTokens: Set<string>;
         searchContractTokens: Set<string>;
         searchContractCompactTokens: Set<string>;
@@ -1410,6 +1437,7 @@ function ContractsPageContent() {
         getContractDate(contract)?.getTime() ?? 0;
       const createdMs = toDate((contract as any).createdAt)?.getTime() ?? 0;
       const isEndorsement = contract.entryType === "endorsement";
+      const hasRefresh = isRefreshContract(contract);
       const normalizedClient = normalizeSearchValue(contract.clientName);
       const normalizedContract = normalizeSearchValue(contract.contractNumber);
       const compactContract = normalizeContractNumberForSearch(contract.contractNumber);
@@ -1422,6 +1450,7 @@ function ContractsPageContent() {
           latestCreatedMs: createdMs,
           entryCount: 1,
           endorsementCount: isEndorsement ? 1 : 0,
+          hasRefresh,
           searchClientTokens: new Set(
             normalizedClient.length > 0 ? [normalizedClient] : []
           ),
@@ -1437,6 +1466,7 @@ function ContractsPageContent() {
 
       existing.entryCount += 1;
       if (isEndorsement) existing.endorsementCount += 1;
+      if (hasRefresh) existing.hasRefresh = true;
       if (normalizedClient.length > 0) {
         existing.searchClientTokens.add(normalizedClient);
       }
@@ -1466,6 +1496,7 @@ function ContractsPageContent() {
         ...group.latest,
         groupedEntryCount: group.entryCount,
         groupedEndorsementCount: group.endorsementCount,
+        groupedHasRefresh: group.hasRefresh,
         searchClientTokens: Array.from(group.searchClientTokens),
         searchContractTokens: Array.from(group.searchContractTokens),
         searchContractCompactTokens: Array.from(group.searchContractCompactTokens),
@@ -1525,6 +1556,10 @@ function ContractsPageContent() {
       );
     }
 
+    if (showRefreshOnly) {
+      base = base.filter((c) => isRefreshContract(c));
+    }
+
     if (anniversaryOnly) {
       const enriched = base
         .map((c) => {
@@ -1573,6 +1608,7 @@ function ContractsPageContent() {
     selectedSubordinates,
     deferredSearchText,
     showUnpaidOnly,
+    showRefreshOnly,
     filterMode,
     selectedCategories,
     selectedInstitutions,
@@ -1642,6 +1678,7 @@ function ContractsPageContent() {
         listViewMode,
         mode: filterMode,
         unpaidOnly: showUnpaidOnly,
+        refreshOnly: showRefreshOnly,
         categories: Array.from(selectedCategories).sort(),
         institutions: Array.from(selectedInstitutions).sort(),
         subordinates: Array.from(selectedSubordinates).sort(),
@@ -1652,6 +1689,7 @@ function ContractsPageContent() {
       listViewMode,
       filterMode,
       showUnpaidOnly,
+      showRefreshOnly,
       selectedCategories,
       selectedInstitutions,
       selectedSubordinates,
@@ -1858,6 +1896,7 @@ function ContractsPageContent() {
       filterMode,
       searchText,
       showUnpaidOnly,
+      showRefreshOnly,
       selectedCategories: Array.from(selectedCategories),
       selectedInstitutions: Array.from(selectedInstitutions),
       selectedSubordinates: Array.from(selectedSubordinates),
@@ -1870,6 +1909,7 @@ function ContractsPageContent() {
     filterMode,
     searchText,
     showUnpaidOnly,
+    showRefreshOnly,
     selectedCategories,
     selectedInstitutions,
     selectedSubordinates,
@@ -1903,6 +1943,7 @@ function ContractsPageContent() {
     setFilterMode(saved.filterMode);
     setSearchText(saved.searchText);
     setShowUnpaidOnly(saved.showUnpaidOnly);
+    setShowRefreshOnly(saved.showRefreshOnly);
     setSelectedCategories(new Set(saved.selectedCategories));
     setSelectedInstitutions(new Set(saved.selectedInstitutions));
     setSelectedSubordinates(new Set(saved.selectedSubordinates));
@@ -1940,6 +1981,7 @@ function ContractsPageContent() {
     searchText,
     showTeam,
     showUnpaidOnly,
+    showRefreshOnly,
     selectedCategoryList,
     selectedInstitutionList,
     selectedSubordinateList,
@@ -2189,6 +2231,19 @@ function ContractsPageContent() {
                 <span>Nezaplacené</span>
               </button>
 
+              <button
+                type="button"
+                onClick={() => setShowRefreshOnly((prev) => !prev)}
+                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[18px] border px-3 text-xs font-bold transition ${
+                  showRefreshOnly
+                    ? "border-sky-700 bg-sky-600 text-white shadow-[0_8px_18px_rgba(2,132,199,0.2)]"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
+                }`}
+              >
+                <RefreshCw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span>Refresh</span>
+              </button>
+
               <div
                 className="inline-flex min-h-10 items-center gap-1 rounded-[18px] border border-slate-200 bg-slate-100/75 p-1"
                 aria-label="Zobrazení seznamu smluv"
@@ -2369,6 +2424,13 @@ function ContractsPageContent() {
                   <p className="font-medium">Žádné nezaplacené smlouvy</p>
                   <p className="text-xs text-slate-500">
                     V aktuálním výběru nejsou žádné smlouvy se stavem nezaplaceno.
+                  </p>
+                </>
+              ) : showRefreshOnly ? (
+                <>
+                  <p className="font-medium">Žádné Refresh smlouvy</p>
+                  <p className="text-xs text-slate-500">
+                    V aktuálním výběru nejsou žádné smlouvy označené jako Refresh.
                   </p>
                 </>
               ) : searchText.trim() !== "" ? (
@@ -3124,6 +3186,7 @@ function ContractsPageContent() {
                 type="button"
                 onClick={() => {
                   setShowUnpaidOnly(false);
+                  setShowRefreshOnly(false);
                   setSelectedCategories(new Set());
                   setSelectedInstitutions(new Set());
                   setSelectedSubordinates(new Set());

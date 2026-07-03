@@ -51,9 +51,8 @@ export function CalculatorProductAndPdfSection({
   const isCppGhost = productInstitutionId === "cpp";
 
   return (
-    <section className="relative overflow-hidden rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#94a3b8_58%,#e2e8f0_100%)]" aria-hidden="true" />
-      <div className="relative space-y-2.5">
+    <section>
+      <div className="space-y-2.5">
         <div className="space-y-1.5">
           <label className="block text-sm font-semibold text-slate-900">
             <span className="inline-flex items-center gap-2">

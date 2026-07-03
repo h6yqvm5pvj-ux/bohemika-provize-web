@@ -380,7 +380,7 @@ export async function calculateResultForPosition(
   const product = c.productKey;
   if (!product) return null;
 
-  const amount = c.inputAmount ?? 0;
+  const amount = c.calculationInputAmount ?? c.inputAmount ?? 0;
   const freq = (c.frequencyRaw ?? "annual") as PaymentFrequency;
   const comfortPayment = c.comfortPayment ?? 0;
   const comfortTargetAmount = c.comfortTargetAmount ?? 0;

@@ -52,6 +52,10 @@ import {
   isPillowAutoHistoricalPeriod,
 } from "../lib/productFormulas";
 import {
+  calculateNeonRefreshCommissionBase,
+  type NeonRefreshCommissionBase,
+} from "../lib/productFormulas/neon";
+import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
   productInstitutionId as productInstitutionIdFromCatalog,
@@ -104,6 +108,7 @@ import {
   toNonNegativeNumber,
   compareSourceEntriesByRecency,
   resolveEffectivePremium,
+  isoDayFromUnknown,
   normalizeClientNameForSystemMatch,
 } from "./calculatorHelpers";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
@@ -380,6 +385,7 @@ type ContractsFindApiResponse = {
   error?: string;
   contracts?: Array<{
     id?: string;
+    entryType?: string | null;
     contractNumber?: string | null;
     clientName?: string | null;
     adviserEmail?: string | null;
@@ -393,8 +399,55 @@ type ContractsFindApiResponse = {
     policyStartDate?: unknown;
     contractSignedDate?: unknown;
     createdAt?: unknown;
+    lifePremiumChanges?: Array<{
+      premiumAmount?: number | null;
+      policyStartDate?: unknown;
+      contractSignedDate?: unknown;
+      createdAt?: unknown;
+    }> | null;
   }>;
 };
+
+type ContractsFindItem = NonNullable<ContractsFindApiResponse["contracts"]>[number];
+
+function finitePositiveNumber(value: unknown): number | null {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return num;
+}
+
+function resolveRefreshOriginalContractInfo(
+  contract: ContractsFindItem
+): RefreshOriginalContractInfo | null {
+  const changes = Array.isArray(contract.lifePremiumChanges)
+    ? contract.lifePremiumChanges
+    : [];
+  const latestPremiumChange = [...changes]
+    .reverse()
+    .find((change) => finitePositiveNumber(change?.premiumAmount) != null);
+  const premiumAmount =
+    finitePositiveNumber(latestPremiumChange?.premiumAmount) ??
+    finitePositiveNumber(contract.newInputAmount) ??
+    finitePositiveNumber(contract.effectiveInputAmount) ??
+    finitePositiveNumber(contract.inputAmount);
+  if (premiumAmount == null) return null;
+
+  const firstChangeWithDate = changes.find(
+    (change) =>
+      Boolean(isoDayFromUnknown(change?.contractSignedDate)) ||
+      Boolean(isoDayFromUnknown(change?.policyStartDate))
+  );
+  const stornoStartDateIso =
+    isoDayFromUnknown(firstChangeWithDate?.contractSignedDate) ??
+    isoDayFromUnknown(contract.contractSignedDate) ??
+    isoDayFromUnknown(firstChangeWithDate?.policyStartDate) ??
+    isoDayFromUnknown(contract.policyStartDate);
+
+  return {
+    premiumAmount,
+    stornoStartDateIso,
+  };
+}
 
 type ContractsPrecheckApiResponse = {
   ok?: boolean;
@@ -449,13 +502,25 @@ type ContractNumberLiveCheckState =
   | { status: "duplicate"; count: number }
   | { status: "error" };
 
-type RefreshOriginalLookupState =
-  | { status: "idle"; progress: number; adviserName: null }
-  | { status: "checking"; progress: number; adviserName: null }
-  | { status: "found"; progress: number; adviserName: string | null }
-  | { status: "notFound"; progress: number; adviserName: null }
-  | { status: "wrongProduct"; progress: number; adviserName: string | null }
-  | { status: "error"; progress: number; adviserName: null };
+type RefreshOriginalContractInfo = {
+  premiumAmount: number;
+  stornoStartDateIso: string | null;
+};
+
+type RefreshOriginalLookupStatus =
+  | "idle"
+  | "checking"
+  | "found"
+  | "notFound"
+  | "wrongProduct"
+  | "error";
+
+type RefreshOriginalLookupState = {
+  status: RefreshOriginalLookupStatus;
+  progress: number;
+  adviserName: string | null;
+  original: RefreshOriginalContractInfo | null;
+};
 
 type ManagerSnapshotApiChainEntry = {
   email?: string | null;
@@ -870,6 +935,7 @@ export default function CalculatorPage() {
     status: "idle",
     progress: 0,
     adviserName: null,
+    original: null,
   });
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1048,6 +1114,53 @@ export default function CalculatorPage() {
     () => computeImmediateCommissionFirstYearTotal(items),
     [items]
   );
+  const neonRefreshCommissionBase = useMemo<NeonRefreshCommissionBase | null>(() => {
+    if (product !== "neon" || !refreshOriginalOpen) return null;
+    const original = refreshOriginalLookup.original;
+    if (!original) return null;
+
+    return calculateNeonRefreshCommissionBase({
+      newMonthlyPremium: parseNumber(amountText),
+      originalMonthlyPremium: original.premiumAmount,
+      originalStornoStartDateIso: original.stornoStartDateIso,
+      refreshPolicyStartDateIso: policyStartDate.trim(),
+    });
+  }, [
+    product,
+    refreshOriginalOpen,
+    refreshOriginalLookup.original,
+    amountText,
+    policyStartDate,
+  ]);
+  const neonRefreshInfoText = useMemo(() => {
+    if (product !== "neon" || !refreshOriginalOpen) return null;
+    if (refreshOriginalLookup.status === "checking") {
+      return "Po dohledání původní smlouvy přepočítám Refresh základnu pro provizi.";
+    }
+    if (refreshOriginalLookup.status === "found" && !refreshOriginalLookup.original) {
+      return "Původní smlouva je nalezená, ale chybí u ní pojistné nebo datum pro výpočet Refresh základny.";
+    }
+    if (refreshOriginalLookup.original && !neonRefreshCommissionBase) {
+      return "Pro výpočet Refresh základny doplň nové pojistné a datum počátku nové smlouvy.";
+    }
+    if (!neonRefreshCommissionBase) return null;
+
+    const originalAnnual = neonRefreshCommissionBase.originalMonthlyPremium * 12;
+    const newAnnual = neonRefreshCommissionBase.newMonthlyPremium * 12;
+    return `Refresh základna pro provizi: ${formatMoney(
+      neonRefreshCommissionBase.calculationAnnualPremium
+    )} ročně (${neonRefreshCommissionBase.remainingMonths}/60 původní storno lhůty). Výpočet: nové ${formatMoney(
+      newAnnual
+    )} - původní ${formatMoney(originalAnnual)} + stornovaná část ${formatMoney(
+      neonRefreshCommissionBase.stornedOriginalAnnualPremium
+    )}.`;
+  }, [
+    product,
+    refreshOriginalOpen,
+    refreshOriginalLookup.status,
+    refreshOriginalLookup.original,
+    neonRefreshCommissionBase,
+  ]);
   const tipContractTipsterAmountFirstYear = useMemo(() => {
     if (!tipContractConfig) return 0;
     return roundToCents(
@@ -2162,7 +2275,12 @@ export default function CalculatorPage() {
       trimmedOriginalNumber.length < 3 ||
       !targetOwnerEmail
     ) {
-      setRefreshOriginalLookup({ status: "idle", progress: 0, adviserName: null });
+      setRefreshOriginalLookup({
+        status: "idle",
+        progress: 0,
+        adviserName: null,
+        original: null,
+      });
       return;
     }
 
@@ -2170,7 +2288,12 @@ export default function CalculatorPage() {
     let progressInterval: number | null = null;
 
     const timer = window.setTimeout(async () => {
-      setRefreshOriginalLookup({ status: "checking", progress: 0, adviserName: null });
+      setRefreshOriginalLookup({
+        status: "checking",
+        progress: 0,
+        adviserName: null,
+        original: null,
+      });
       progressInterval = window.setInterval(() => {
         setRefreshOriginalLookup((prev) => {
           if (prev.status !== "checking") return prev;
@@ -2191,7 +2314,12 @@ export default function CalculatorPage() {
         if (cancelled) return;
 
         if (payload.ok === false) {
-          setRefreshOriginalLookup({ status: "error", progress: 100, adviserName: null });
+          setRefreshOriginalLookup({
+            status: "error",
+            progress: 100,
+            adviserName: null,
+            original: null,
+          });
           return;
         }
 
@@ -2204,7 +2332,12 @@ export default function CalculatorPage() {
         );
 
         if (matchingContracts.length === 0) {
-          setRefreshOriginalLookup({ status: "notFound", progress: 100, adviserName: null });
+          setRefreshOriginalLookup({
+            status: "notFound",
+            progress: 100,
+            adviserName: null,
+            original: null,
+          });
           return;
         }
 
@@ -2216,15 +2349,30 @@ export default function CalculatorPage() {
             : null;
 
         if (productMatch.productKey !== product) {
-          setRefreshOriginalLookup({ status: "wrongProduct", progress: 100, adviserName });
+          setRefreshOriginalLookup({
+            status: "wrongProduct",
+            progress: 100,
+            adviserName,
+            original: null,
+          });
           return;
         }
 
-        setRefreshOriginalLookup({ status: "found", progress: 100, adviserName });
+        setRefreshOriginalLookup({
+          status: "found",
+          progress: 100,
+          adviserName,
+          original: resolveRefreshOriginalContractInfo(productMatch),
+        });
       } catch (err) {
         console.warn("Ověření původní refresh smlouvy selhalo", err);
         if (!cancelled) {
-          setRefreshOriginalLookup({ status: "error", progress: 100, adviserName: null });
+          setRefreshOriginalLookup({
+            status: "error",
+            progress: 100,
+            adviserName: null,
+            original: null,
+          });
         }
       } finally {
         if (progressInterval != null) {
@@ -3276,8 +3424,10 @@ export default function CalculatorPage() {
     }
 
     if (product === "neon") {
+      const neonCalculationAmount =
+        neonRefreshCommissionBase?.calculationMonthlyPremium ?? val;
       const dto = calculateNeon(
-        val,
+        neonCalculationAmount,
         positionForCalc,
         durationYears,
         mode,
@@ -3546,6 +3696,7 @@ export default function CalculatorPage() {
     frequency,
     durationYears,
     amountText,
+    neonRefreshCommissionBase,
     contractSignedDateForNeon,
     comfortGradual,
     comfortPaymentText,
@@ -3557,7 +3708,12 @@ export default function CalculatorPage() {
     if (!supportsOriginalContractReplacement(product)) {
       setRefreshOriginalOpen(false);
       setRefreshOriginalContractNumber("");
-      setRefreshOriginalLookup({ status: "idle", progress: 0, adviserName: null });
+      setRefreshOriginalLookup({
+        status: "idle",
+        progress: 0,
+        adviserName: null,
+        original: null,
+      });
     }
     if (product !== "cppcestovko") {
       setPolicyEndDate("");
@@ -3986,6 +4142,18 @@ export default function CalculatorPage() {
     if (autoHullSumInsuredDraftValue != null) {
       commitAutoHullSumDraft();
     }
+    if (
+      shouldReplaceOriginalContract &&
+      product === "neon" &&
+      refreshOriginalLookup.status === "found" &&
+      !neonRefreshCommissionBase
+    ) {
+      const msg =
+        "Původní NEON smlouva je nalezená, ale nejde z ní spočítat Refresh základna. Zkontroluj původní pojistné, datum původního sjednání a datum počátku nové smlouvy.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return;
+    }
     if (!validateContractDatesBeforeSave()) return;
     if (!validateTimelineBeforeSave()) return;
 
@@ -4251,6 +4419,11 @@ export default function CalculatorPage() {
         }
       }
 
+      const calculationInputAmount =
+        shouldReplaceOriginalContract && product === "neon"
+          ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? value
+          : value;
+
       const { response, data } = await requestContractsMutationWithAuth({
         user,
         path: "/api/contracts",
@@ -4261,6 +4434,7 @@ export default function CalculatorPage() {
             productKey: product,
             entryType: "contract" as ContractEntryType,
             inputAmount: product === "comfortcc" ? value : value,
+            calculationInputAmount,
             effectiveInputAmount: value,
             comfortPayment:
               product === "comfortcc" && comfortPayment > 0 ? comfortPayment : null,
@@ -4539,6 +4713,7 @@ export default function CalculatorPage() {
           policyStartDate: policyStartDate.trim(),
           policyEndDate: policyEndDate.trim() || null,
           inputAmount: value,
+          calculationInputAmount,
           frequencyRaw: frequency,
           isRefresh: shouldReplaceOriginalContract,
           refreshOriginalContractNumber: shouldReplaceOriginalContract
@@ -4611,7 +4786,12 @@ export default function CalculatorPage() {
       setContractSaveCelebrationKey((prev) => prev + 1);
       setRefreshOriginalOpen(false);
       setRefreshOriginalContractNumber("");
-      setRefreshOriginalLookup({ status: "idle", progress: 0, adviserName: null });
+      setRefreshOriginalLookup({
+        status: "idle",
+        progress: 0,
+        adviserName: null,
+        original: null,
+      });
     } catch (error) {
       const errorMessage =
         error instanceof Error && error.message.trim().length > 0
@@ -5844,7 +6024,6 @@ export default function CalculatorPage() {
   const durationHelp = durationTooltip(product, isNeonHistoricalBySignedDate);
   const canChooseMode =
     isLifeProduct &&
-    userCommissionMode === "accelerated" &&
     !(product === "neon" && isNeonHistoricalBySignedDate);
   const positionLockedToTimeline = !canChoosePositionManually;
   const allowedPositionOptions = canChoosePositionManually
@@ -5852,31 +6031,6 @@ export default function CalculatorPage() {
     : timelineMatchedPosition
       ? [timelineMatchedPosition.position]
       : [position];
-  const showPositionTimelineHint = !isSavingForSubordinate;
-  const positionTimelineHintWarning =
-    !isSavingForSubordinate &&
-    isAddContractMode &&
-    (positionTimeline.length === 0 ||
-      (!isCommissionOnlyMode &&
-        contractSignedDate.trim().length > 0 &&
-        !timelineMatchedPosition));
-  const positionTimelineHintText = showPositionTimelineHint
-    ? isCommissionOnlyMode
-      ? "V režimu kalkulačky provizí si můžeš pozici zvolit ručně."
-      : positionTimeline.length === 0
-      ? "Nejdřív nastav timeline kariéry v Nastavení. Bez ní nepůjde smlouvu uložit."
-      : !contractSignedDate.trim()
-        ? "Doplň datum sjednání. Pozice se načte automaticky z timeline."
-        : timelineMatchedPosition
-          ? `Pozice byla načtena z timeline: ${positionLabel(
-              timelineMatchedPosition.position
-            )} (${formatIsoDay(timelineMatchedPosition.validFrom)} - ${
-              timelineMatchedPosition.validTo
-                ? formatIsoDay(timelineMatchedPosition.validTo)
-                : "otevřeno"
-            }).`
-          : "Pro zadané datum sjednání nemáš v timeline nastavenou pozici."
-    : null;
 
   const computeItemsForPositionAndMode = (
     pos: Position | null,
@@ -5892,8 +6046,12 @@ export default function CalculatorPage() {
 
     switch (product) {
       case "neon": {
+        const neonVal =
+          amountOverride == null
+            ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? val
+            : val;
         return calculateNeon(
-          val,
+          neonVal,
           pos,
           years,
           usedMode,
@@ -6244,6 +6402,7 @@ export default function CalculatorPage() {
                 refreshOriginalLookupStatus={refreshOriginalLookup.status}
                 refreshOriginalLookupProgress={refreshOriginalLookup.progress}
                 refreshOriginalLookupAdviserName={refreshOriginalLookup.adviserName}
+                refreshOriginalInfoText={neonRefreshInfoText}
                 onComfortGradualChange={setComfortGradual}
                 onAmountTextChange={setAmountText}
                 onComfortPaymentTextChange={setComfortPaymentText}
@@ -6306,15 +6465,6 @@ export default function CalculatorPage() {
               position={position}
               allowedPositions={allowedPositionOptions}
               positionDisabled={positionLockedToTimeline}
-              positionDisabledHint={
-                positionLockedToTimeline
-                  ? isCommissionOnlyMode
-                    ? "Pozice se řídí pouze timeline kariéry."
-                    : "Pozice se řídí pouze timeline kariéry podle data sjednání."
-                  : null
-              }
-              timelineHintText={positionTimelineHintText}
-              timelineHintWarning={positionTimelineHintWarning}
               canChooseMode={canChooseMode}
               mode={mode}
               isNeonHistoricalBySignedDate={isNeonHistoricalBySignedDate}

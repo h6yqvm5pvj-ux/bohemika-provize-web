@@ -35,6 +35,7 @@ export const NEON_HISTORICAL_VALID_FROM = "2019-10-01";
 export const NEON_CURRENT_VALID_FROM = "2024-07-01";
 export const NEON_HISTORICAL_MAX_YEARS = 20;
 export const NEON_CURRENT_MAX_YEARS = 15;
+export const NEON_REFRESH_STORNO_MONTHS = 60;
 
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -46,6 +47,105 @@ function normalizeIsoDay(value: string | null | undefined): string | null {
   if (Number.isNaN(date.getTime())) return null;
   if (date.toISOString().slice(0, 10) !== normalized) return null;
   return normalized;
+}
+
+function parseIsoDayUtc(value: string | null | undefined): Date | null {
+  const normalized = normalizeIsoDay(value);
+  if (!normalized) return null;
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function completedCalendarMonthsBetween(
+  fromIso: string | null | undefined,
+  toIso: string | null | undefined
+): number | null {
+  const from = parseIsoDayUtc(fromIso);
+  const to = parseIsoDayUtc(toIso);
+  if (!from || !to) return null;
+  if (to.getTime() <= from.getTime()) return 0;
+
+  let months =
+    (to.getUTCFullYear() - from.getUTCFullYear()) * 12 +
+    (to.getUTCMonth() - from.getUTCMonth());
+  if (to.getUTCDate() < from.getUTCDate()) {
+    months -= 1;
+  }
+  return Math.max(0, months);
+}
+
+export type NeonRefreshCommissionBase = {
+  newMonthlyPremium: number;
+  originalMonthlyPremium: number;
+  calculationMonthlyPremium: number;
+  calculationAnnualPremium: number;
+  elapsedMonths: number;
+  remainingMonths: number;
+  earnedRatio: number;
+  remainingRatio: number;
+  premiumIncreaseMonthly: number;
+  premiumIncreaseAnnual: number;
+  stornedOriginalMonthlyPremium: number;
+  stornedOriginalAnnualPremium: number;
+};
+
+export function calculateNeonRefreshCommissionBase({
+  newMonthlyPremium,
+  originalMonthlyPremium,
+  originalStornoStartDateIso,
+  refreshPolicyStartDateIso,
+  stornoMonths = NEON_REFRESH_STORNO_MONTHS,
+}: {
+  newMonthlyPremium: number | null | undefined;
+  originalMonthlyPremium: number | null | undefined;
+  originalStornoStartDateIso: string | null | undefined;
+  refreshPolicyStartDateIso: string | null | undefined;
+  stornoMonths?: number;
+}): NeonRefreshCommissionBase | null {
+  const safeNew = Number(newMonthlyPremium);
+  const safeOriginal = Number(originalMonthlyPremium);
+  const safeStornoMonths = Math.max(1, Math.floor(Number(stornoMonths)));
+  if (
+    !Number.isFinite(safeNew) ||
+    safeNew <= 0 ||
+    !Number.isFinite(safeOriginal) ||
+    safeOriginal <= 0 ||
+    !Number.isFinite(safeStornoMonths)
+  ) {
+    return null;
+  }
+
+  const elapsed = completedCalendarMonthsBetween(
+    originalStornoStartDateIso,
+    refreshPolicyStartDateIso
+  );
+  if (elapsed == null) return null;
+
+  const elapsedMonths = Math.min(safeStornoMonths, Math.max(0, elapsed));
+  const remainingMonths = Math.max(0, safeStornoMonths - elapsedMonths);
+  const earnedRatio = elapsedMonths / safeStornoMonths;
+  const remainingRatio = remainingMonths / safeStornoMonths;
+  const premiumIncreaseMonthly = safeNew - safeOriginal;
+  const stornedOriginalMonthlyPremium = safeOriginal * remainingRatio;
+  const calculationMonthlyPremium = Math.max(
+    0,
+    premiumIncreaseMonthly + stornedOriginalMonthlyPremium
+  );
+
+  return {
+    newMonthlyPremium: roundToCents(safeNew),
+    originalMonthlyPremium: roundToCents(safeOriginal),
+    calculationMonthlyPremium: roundToCents(calculationMonthlyPremium),
+    calculationAnnualPremium: roundToCents(calculationMonthlyPremium * 12),
+    elapsedMonths,
+    remainingMonths,
+    earnedRatio,
+    remainingRatio,
+    premiumIncreaseMonthly: roundToCents(premiumIncreaseMonthly),
+    premiumIncreaseAnnual: roundToCents(premiumIncreaseMonthly * 12),
+    stornedOriginalMonthlyPremium: roundToCents(stornedOriginalMonthlyPremium),
+    stornedOriginalAnnualPremium: roundToCents(stornedOriginalMonthlyPremium * 12),
+  };
 }
 
 export const NEON_IMMEDIATE_A101_COEFFICIENTS: Record<Position, number> = {

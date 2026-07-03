@@ -1314,6 +1314,27 @@ export default function SettingsPage() {
     ]);
   };
 
+  const prependPositionTimelineRow = () => {
+    setPositionTimelineSaved(false);
+    setTimelineSaveFlashVisible(false);
+    setPositionTimelineError(null);
+    setPositionTimelineDraft((prev) => {
+      const firstRow = [...prev]
+        .filter((row) => row.validFrom.trim())
+        .sort((a, b) => a.validFrom.localeCompare(b.validFrom))[0];
+
+      return [
+        {
+          id: createTimelineRowId(),
+          position: firstRow?.position ?? position,
+          validFrom: "",
+          validTo: firstRow?.validFrom ?? "",
+        },
+        ...prev,
+      ];
+    });
+  };
+
   const unlockPositionTimeline = () => {
     setPositionTimelineLocked(false);
     setPositionTimelineSaved(false);
@@ -3420,6 +3441,7 @@ export default function SettingsPage() {
                   onHelpOpen={() => setShowCareerTimelineHelp(true)}
                   onHelpClose={() => setShowCareerTimelineHelp(false)}
                   onAddRow={addPositionTimelineRow}
+                  onPrependRow={prependPositionTimelineRow}
                   onUnlock={unlockPositionTimeline}
                   onUpdateRow={updatePositionTimelineRow}
                   onRemoveRow={removePositionTimelineRow}

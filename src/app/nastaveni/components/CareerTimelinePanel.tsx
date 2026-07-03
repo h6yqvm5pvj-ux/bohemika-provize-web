@@ -23,6 +23,7 @@ type CareerTimelinePanelProps = {
   onHelpOpen: () => void;
   onHelpClose: () => void;
   onAddRow: () => void;
+  onPrependRow: () => void;
   onUnlock: () => void;
   onUpdateRow: (rowId: string, patch: Partial<CareerTimelineRow>) => void;
   onRemoveRow: (rowId: string) => void;
@@ -55,6 +56,7 @@ export function CareerTimelinePanel({
   onHelpOpen,
   onHelpClose,
   onAddRow,
+  onPrependRow,
   onUnlock,
   onUpdateRow,
   onRemoveRow,
@@ -94,13 +96,24 @@ export function CareerTimelinePanel({
               Změna
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={onAddRow}
-              className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
-            >
-              Přidat pozici
-            </button>
+            <>
+              {rows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onPrependRow}
+                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  Přidat před první
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onAddRow}
+                className="rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+              >
+                Přidat pozici
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -174,7 +187,7 @@ export function CareerTimelinePanel({
                   rowRangeError || rowOpenEndedNotLast ? "border-rose-300" : "border-slate-300"
                 }`}
               >
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_150px_auto]">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_230px_auto]">
                   <select
                     value={row.position}
                     onChange={(event) =>
@@ -201,16 +214,32 @@ export function CareerTimelinePanel({
                     }`}
                     title="Platí od"
                   />
-                  <input
-                    type="date"
-                    value={row.validTo}
-                    onChange={(event) => onUpdateRow(row.id, { validTo: event.target.value })}
-                    disabled={locked}
-                    className={`${fieldClass} ${
-                      locked ? "cursor-not-allowed bg-slate-100 text-slate-500" : ""
-                    }`}
-                    title="Platí do"
-                  />
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] md:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto]">
+                    <input
+                      type="date"
+                      value={row.validTo}
+                      onChange={(event) => onUpdateRow(row.id, { validTo: event.target.value })}
+                      disabled={locked}
+                      className={`${fieldClass} ${
+                        locked ? "cursor-not-allowed bg-slate-100 text-slate-500" : ""
+                      }`}
+                      title="Platí do"
+                    />
+                    {isLastDraftRow && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateRow(row.id, { validTo: "" })}
+                        disabled={locked}
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] transition disabled:cursor-not-allowed ${
+                          row.validTo.trim()
+                            ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:bg-slate-100 disabled:text-slate-400"
+                            : "border-emerald-600 bg-emerald-600 text-white shadow-[0_8px_18px_rgba(5,150,105,0.18)] disabled:opacity-80"
+                        }`}
+                      >
+                        Do současnosti
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => onRemoveRow(row.id)}
@@ -229,25 +258,6 @@ export function CareerTimelinePanel({
                   <p className="mt-2 text-xs font-medium text-rose-700">
                     Současnost (prázdné DO) může být jen u posledního řádku.
                   </p>
-                )}
-                {isLastDraftRow && (!row.validTo.trim() || !locked) && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {row.validTo.trim() ? (
-                      locked ? null : (
-                        <button
-                          type="button"
-                          onClick={() => onUpdateRow(row.id, { validTo: "" })}
-                          className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200"
-                        >
-                          Nastavit DO: současnost
-                        </button>
-                      )
-                    ) : (
-                      <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                        Poslední pozice běží do současnosti
-                      </span>
-                    )}
-                  </div>
                 )}
               </div>
             );

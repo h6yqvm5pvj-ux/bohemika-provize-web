@@ -1031,6 +1031,22 @@ export default function ContractDetailPage() {
           0
       )
     : Number(contract?.inputAmount ?? 0);
+  const refreshCommissionBase = contract?.refreshCommissionBase ?? null;
+  const refreshCalculationMonthlyPremium = Number(
+    refreshCommissionBase?.calculationMonthlyPremium ??
+      contract?.calculationInputAmount ??
+      Number.NaN
+  );
+  const refreshCalculationAnnualPremium = Number(
+    refreshCommissionBase?.calculationAnnualPremium ??
+      (Number.isFinite(refreshCalculationMonthlyPremium)
+        ? refreshCalculationMonthlyPremium * 12
+        : Number.NaN)
+  );
+  const hasRefreshCommissionBase =
+    isRefreshContract &&
+    Number.isFinite(refreshCalculationAnnualPremium) &&
+    refreshCalculationAnnualPremium > 0;
   const endorsementDelta = (() => {
     if (!isEndorsement) return null;
     const explicit = Number(contract?.premiumDelta ?? Number.NaN);
@@ -4956,7 +4972,8 @@ export default function ContractDetailPage() {
                         </div>
                       )}
                       {isRefreshContract && (
-                        <div className="flex justify-between gap-2">
+                        <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3">
+                          <div className="flex justify-between gap-2">
                           <dt className={keyValueLabelClass}>Refresh</dt>
                           <dd className={`${keyValueValueClass} max-w-[70%] text-right text-sm leading-snug`}>
                             <span className="block">Tato smlouva je označena jako Refresh.</span>
@@ -4966,6 +4983,64 @@ export default function ContractDetailPage() {
                               </span>
                             )}
                           </dd>
+                          </div>
+                          {hasRefreshCommissionBase && (
+                            <div className="mt-3 rounded-xl border border-sky-200 bg-white/80 px-3 py-2 text-sm text-slate-700">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-semibold text-sky-950">
+                                  Základna pro provizi
+                                </span>
+                                <span className="font-mono font-bold text-slate-950">
+                                  {formatMoney(refreshCalculationAnnualPremium)} ročně
+                                </span>
+                              </div>
+                              <div className="mt-1 text-right text-xs text-slate-500">
+                                měsíčně {formatMoney(refreshCalculationMonthlyPremium)}
+                              </div>
+                              {refreshCommissionBase && (
+                                <div className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                                  <div>
+                                    Nové pojistné:{" "}
+                                    <span className="font-semibold text-slate-900">
+                                      {formatMoney(
+                                        Number(refreshCommissionBase.newAnnualPremium)
+                                      )}{" "}
+                                      ročně
+                                    </span>
+                                  </div>
+                                  <div>
+                                    Původní základna:{" "}
+                                    <span className="font-semibold text-slate-900">
+                                      {formatMoney(
+                                        Number(refreshCommissionBase.originalAnnualPremium)
+                                      )}{" "}
+                                      ročně
+                                    </span>
+                                  </div>
+                                  <div>
+                                    Stornovaná část původní:{" "}
+                                    <span className="font-semibold text-slate-900">
+                                      {formatMoney(
+                                        Number(
+                                          refreshCommissionBase.stornedOriginalAnnualPremium
+                                        )
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    Odžito:{" "}
+                                    <span className="font-semibold text-slate-900">
+                                      {Number(refreshCommissionBase.elapsedMonths)}/
+                                      {Number(refreshCommissionBase.stornoMonths) || 60} měsíců
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              <p className="mt-2 text-xs leading-snug text-sky-900">
+                                Tahle základna se ukládá ke smlouvě a používá se pro kontrolu provizního výpisu.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
                       {(contract?.refreshReplacedBySignedDate || hasRefreshReplacement) && (

@@ -1,5 +1,7 @@
 "use client";
 
+import { Snail, Zap } from "lucide-react";
+
 import { type CommissionMode, type Position, type Product } from "../types/domain";
 import { positionLabel } from "@/app/lib/formatters";
 
@@ -9,9 +11,6 @@ type CalculatorPositionModeSectionProps = {
   position: Position;
   allowedPositions: Position[];
   positionDisabled?: boolean;
-  positionDisabledHint?: string | null;
-  timelineHintText: string | null;
-  timelineHintWarning: boolean;
   canChooseMode: boolean;
   mode: CommissionMode;
   isNeonHistoricalBySignedDate: boolean;
@@ -25,9 +24,6 @@ export function CalculatorPositionModeSection({
   position,
   allowedPositions,
   positionDisabled = false,
-  positionDisabledHint = null,
-  timelineHintText,
-  timelineHintWarning,
   canChooseMode,
   mode,
   isNeonHistoricalBySignedDate,
@@ -37,57 +33,97 @@ export function CalculatorPositionModeSection({
   if (!isVisible) return null;
 
   return (
-    <section className="rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+    <section className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <div className="space-y-1">
-        <label className="block text-sm font-semibold text-slate-800">Sjednána jako (pozice)</label>
-        <select
-          className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
-            positionDisabled ? "cursor-not-allowed bg-slate-100 text-slate-500" : ""
-          }`}
-          value={position}
-          onChange={(event) => onPositionChange(event.target.value as Position)}
-          disabled={positionDisabled}
-        >
-          {allowedPositions.map((item) => (
-            <option key={item} value={item}>
-              {positionLabel(item)}
-            </option>
-          ))}
-        </select>
-        {positionDisabledHint && <p className="text-[11px] text-slate-500">{positionDisabledHint}</p>}
-        {timelineHintText && (
-          <p className={`text-[11px] ${timelineHintWarning ? "text-amber-700" : "text-slate-500"}`}>
-            {timelineHintText}
-          </p>
-        )}
-      </div>
-
-      {canChooseMode && (
-        <div className="space-y-1">
-          <label className="block text-sm font-semibold text-slate-800">Režim provize</label>
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Pozice
+          </label>
           <select
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
-            value={mode}
-            onChange={(event) => onModeChange(event.target.value as CommissionMode)}
+            className={`h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+              positionDisabled ? "cursor-not-allowed bg-slate-50 text-slate-600" : ""
+            }`}
+            value={position}
+            onChange={(event) => onPositionChange(event.target.value as Position)}
+            disabled={positionDisabled}
           >
-            <option value="accelerated">Zrychlený</option>
-            <option value="standard">Běžný</option>
+            {allowedPositions.map((item) => (
+              <option key={item} value={item}>
+                {positionLabel(item)}
+              </option>
+            ))}
           </select>
-          <p className="text-[11px] text-slate-400">
-            Předvyplněno tvým režimem, ale můžeš přepnout pro tuto konkrétní smlouvu.
-          </p>
         </div>
-      )}
 
-      {product === "neon" && isNeonHistoricalBySignedDate && (
-        <div className="space-y-1">
-          <label className="block text-sm font-semibold text-slate-800">Režim provize</label>
-          <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
-            U NEON smluv sjednaných od 01.10.2019 do 30.06.2024 se režim zrychlený/běžný nepoužívá.
-          </p>
-        </div>
-      )}
+        {canChooseMode && (
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Režim provize
+            </label>
+            <div
+              className="grid h-10 grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-0.5 shadow-sm"
+              role="radiogroup"
+              aria-label="Režim provize"
+            >
+              {([
+                {
+                  value: "standard",
+                  label: "Běžná",
+                  icon: Snail,
+                  iconClass: "text-slate-500",
+                },
+                {
+                  value: "accelerated",
+                  label: "Zrychlená",
+                  icon: Zap,
+                  iconClass: "text-amber-500",
+                },
+              ] satisfies {
+                value: CommissionMode;
+                label: string;
+                icon: typeof Snail;
+                iconClass: string;
+              }[]).map((option) => {
+                const active = mode === option.value;
+                const Icon = option.icon;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => onModeChange(option.value)}
+                    className={`inline-flex h-9 items-center justify-center gap-2 rounded-[0.65rem] border px-3 text-sm font-semibold transition ${
+                      active
+                        ? "border-slate-900 bg-white text-slate-950 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
+                        : "border-transparent text-slate-600 hover:bg-white/70 hover:text-slate-900"
+                    }`}
+                    role="radio"
+                    aria-checked={active}
+                  >
+                    <Icon
+                      size={16}
+                      strokeWidth={2.25}
+                      className={active ? option.iconClass : "text-slate-400"}
+                      aria-hidden="true"
+                    />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {product === "neon" && isNeonHistoricalBySignedDate && (
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Režim provize
+            </label>
+            <div className="flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-500">
+              Historický NEON bez režimu
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
