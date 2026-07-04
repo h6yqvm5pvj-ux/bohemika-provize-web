@@ -6,10 +6,7 @@ import {
 } from "../../types/domain";
 import { normalizeIsoDay, periodsPerYear } from "./shared";
 import { cppAutoCoefficient } from "./cppAuto";
-import {
-  historicalAutoCoefficient,
-  historicalAutoSubsequentCoefficient,
-} from "./historicalAutoCoefficient";
+import { historicalAutoCoefficient } from "./historicalAutoCoefficient";
 
 // ---------- Pillow Auto ----------
 
@@ -41,9 +38,9 @@ export function pillowAutoSubsequentCoefficient(
   position: Position,
   contractSignedDateIso?: string | null
 ): number {
-  return isPillowAutoHistoricalPeriod(contractSignedDateIso)
-    ? historicalAutoSubsequentCoefficient(position)
-    : pillowAutoCoefficient(position, contractSignedDateIso);
+  // Pillow historical terms use one combined table for acquisition and
+  // subsequent commission, so both coefficients are identical.
+  return pillowAutoCoefficient(position, contractSignedDateIso);
 }
 
 export function calculatePillowAuto(
