@@ -1,6 +1,7 @@
 import {
   type Position,
   type CommissionMode,
+  type NeonCoefficientSet,
   type CommissionResultDTO,
   type CommissionResultItemDTO,
 } from "../../types/domain";
@@ -56,6 +57,20 @@ function parseIsoDayUtc(value: string | null | undefined): Date | null {
   const date = new Date(`${normalized}T00:00:00.000Z`);
   return Number.isNaN(date.getTime()) ? null : date;
 }
+
+const normalizeNeonCoefficientSet = (
+  value: NeonCoefficientSet | null | undefined
+): NeonCoefficientSet | null =>
+  value === "historical" || value === "current" ? value : null;
+
+const usesHistoricalNeonCoefficientSet = (
+  contractSignedDateIso: string | null | undefined,
+  coefficientSetOverride?: NeonCoefficientSet | null
+): boolean => {
+  const override = normalizeNeonCoefficientSet(coefficientSetOverride);
+  if (override) return override === "historical";
+  return isNeonHistoricalPeriod(contractSignedDateIso);
+};
 
 function completedCalendarMonthsBetween(
   fromIso: string | null | undefined,
@@ -288,10 +303,14 @@ export type NeonImmediateCoefficientParts = {
 export const neonImmediateCoefficientParts = (
   position: Position | null | undefined,
   mode: CommissionMode | null | undefined,
-  contractSignedDateIso?: string | null
+  contractSignedDateIso?: string | null,
+  coefficientSetOverride?: NeonCoefficientSet | null
 ): NeonImmediateCoefficientParts | null => {
   if (!position) return null;
-  const historical = isNeonHistoricalPeriod(contractSignedDateIso);
+  const historical = usesHistoricalNeonCoefficientSet(
+    contractSignedDateIso,
+    coefficientSetOverride
+  );
   const a101Coefficient = historical
     ? NEON_HISTORICAL_IMMEDIATE_A101_COEFFICIENTS[position]
     : NEON_IMMEDIATE_A101_COEFFICIENTS[position];
@@ -324,12 +343,14 @@ export const buildNeonImmediateBreakdown = (
   amount: number,
   position: Position | null | undefined,
   mode: CommissionMode | null | undefined,
-  contractSignedDateIso?: string | null
+  contractSignedDateIso?: string | null,
+  coefficientSetOverride?: NeonCoefficientSet | null
 ): NeonImmediateBreakdown | null => {
   const coefficients = neonImmediateCoefficientParts(
     position,
     mode,
-    contractSignedDateIso
+    contractSignedDateIso,
+    coefficientSetOverride
   );
   if (!coefficients || !position) return null;
   const {
@@ -399,13 +420,15 @@ const neonImmediateItems = (
   amount: number,
   position: Position,
   mode: CommissionMode,
-  contractSignedDateIso?: string | null
+  contractSignedDateIso?: string | null,
+  coefficientSetOverride?: NeonCoefficientSet | null
 ): CommissionResultItemDTO[] => {
   const breakdown = buildNeonImmediateBreakdown(
     amount,
     position,
     mode,
-    contractSignedDateIso
+    contractSignedDateIso,
+    coefficientSetOverride
   );
   if (!breakdown) return [{ title: "💸 Okamžitá provize", amount, code: "A101" }];
 
@@ -440,18 +463,20 @@ export function isNeonHistoricalPeriod(
 }
 
 export function neonMaxDurationYears(
-  contractSignedDateIso: string | null | undefined
+  contractSignedDateIso: string | null | undefined,
+  coefficientSetOverride?: NeonCoefficientSet | null
 ): number {
-  return isNeonHistoricalPeriod(contractSignedDateIso)
+  return usesHistoricalNeonCoefficientSet(contractSignedDateIso, coefficientSetOverride)
     ? NEON_HISTORICAL_MAX_YEARS
     : NEON_CURRENT_MAX_YEARS;
 }
 
 export function normalizeNeonDurationYears(
   years: number | null | undefined,
-  contractSignedDateIso: string | null | undefined
+  contractSignedDateIso: string | null | undefined,
+  coefficientSetOverride?: NeonCoefficientSet | null
 ): number {
-  const maxYears = neonMaxDurationYears(contractSignedDateIso);
+  const maxYears = neonMaxDurationYears(contractSignedDateIso, coefficientSetOverride);
   const raw =
     typeof years === "number" && Number.isFinite(years) ? years : maxYears;
   const wholeYears = Math.floor(raw);
@@ -461,9 +486,10 @@ export function normalizeNeonDurationYears(
 export function neonCoefficients(
   position: Position,
   mode: CommissionMode,
-  contractSignedDateIso?: string | null
+  contractSignedDateIso?: string | null,
+  coefficientSetOverride?: NeonCoefficientSet | null
 ): NeonK {
-  if (isNeonHistoricalPeriod(contractSignedDateIso)) {
+  if (usesHistoricalNeonCoefficientSet(contractSignedDateIso, coefficientSetOverride)) {
     switch (position) {
       // Poradci 1–10
       case "poradce1":
@@ -898,13 +924,26 @@ export function calculateNeon(
   position: Position,
   years: number | null | undefined = null,
   mode: CommissionMode = "accelerated",
-  contractSignedDateIso?: string | null
+  contractSignedDateIso?: string | null,
+  coefficientSetOverride?: NeonCoefficientSet | null
 ): CommissionResultDTO {
-  const effectiveMode = isNeonHistoricalPeriod(contractSignedDateIso)
+  const effectiveMode = usesHistoricalNeonCoefficientSet(
+    contractSignedDateIso,
+    coefficientSetOverride
+  )
     ? "standard"
     : mode;
-  const k = neonCoefficients(position, effectiveMode, contractSignedDateIso);
-  const y = normalizeNeonDurationYears(years, contractSignedDateIso);
+  const k = neonCoefficients(
+    position,
+    effectiveMode,
+    contractSignedDateIso,
+    coefficientSetOverride
+  );
+  const y = normalizeNeonDurationYears(
+    years,
+    contractSignedDateIso,
+    coefficientSetOverride
+  );
   const annual = monthly * 12;
 
   const okamzita = annual * y * k.okamzita;
@@ -916,7 +955,13 @@ export function calculateNeon(
   const total = okamzita + po3 + po4 + nasl25 * 4 + nasl510 * 6;
 
   const items: CommissionResultItemDTO[] = [
-    ...neonImmediateItems(okamzita, position, effectiveMode, contractSignedDateIso),
+    ...neonImmediateItems(
+      okamzita,
+      position,
+      effectiveMode,
+      contractSignedDateIso,
+      coefficientSetOverride
+    ),
     { title: "📅 Provize po 3 letech", amount: po3, code: "B3601" },
     { title: "📅 Provize po 4 letech", amount: po4, code: "B4801" },
     { title: "🔁 Následná provize (2.–5. rok)", amount: nasl25, code: "B101-B104" },

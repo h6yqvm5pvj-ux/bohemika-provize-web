@@ -12,7 +12,9 @@ import {
   toDate as toDateValue,
 } from "@/app/lib/formatters";
 import {
+  isAnnualAutoPayoutProduct as isAnnualAutoPayoutProductFromCatalog,
   isAutoProduct as isAutoProductFromCatalog,
+  isFrequencyAutoPayoutProduct as isFrequencyAutoPayoutProductFromCatalog,
   productIcon as productIconFromCatalog,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
@@ -149,6 +151,14 @@ export function productLabel(p?: Product): string {
 
 export function isAutoProduct(p?: Product | null): boolean {
   return isAutoProductFromCatalog(p);
+}
+
+export function isAnnualAutoPayoutProduct(p?: Product | null): boolean {
+  return isAnnualAutoPayoutProductFromCatalog(p);
+}
+
+export function isFrequencyAutoPayoutProduct(p?: Product | null): boolean {
+  return isFrequencyAutoPayoutProductFromCatalog(p);
 }
 
 export function productIcon(p?: Product): string {
@@ -295,7 +305,7 @@ export function itemMultiplier(title: string | undefined | null): number {
 export function computeTotalWithMultipliers(
   items: CommissionResultItemDTO[] | null | undefined
 ): number {
-  const cleaned = stripTotalRows(items);
+  const cleaned = stripTotalRows(items).filter((item) => !item.excludeFromTotal);
   const hasYearly = cleaned.some((it) =>
     normalizeTitleForCompare(it.title).includes("provize za rok")
   );
@@ -313,8 +323,8 @@ export function computeTotalWithMultipliers(
 
 function aggregateByNormalizedTitle(
   items: CommissionResultItemDTO[]
-): Map<string, { title: string; amount: number }> {
-  const map = new Map<string, { title: string; amount: number }>();
+): Map<string, { title: string; amount: number; excludeFromTotal?: boolean }> {
+  const map = new Map<string, { title: string; amount: number; excludeFromTotal?: boolean }>();
 
   items.forEach((it) => {
     const key = normalizeTitleForCompare(it.title);
@@ -322,6 +332,7 @@ function aggregateByNormalizedTitle(
     map.set(key, {
       title: it.title ?? prev?.title ?? key,
       amount: (prev?.amount ?? 0) + (it.amount ?? 0),
+      excludeFromTotal: Boolean(prev?.excludeFromTotal || it.excludeFromTotal),
     });
   });
 
@@ -346,25 +357,34 @@ export function diffItemsByTitle(
     const diff = (up?.amount ?? 0) - low.amount;
     if (diff > 0) {
       const titleVal = up?.title ?? low.title;
-      diffs.push({ title: titleVal, amount: diff });
-      runningTotal += diff * itemMultiplier(titleVal);
+      const excludeFromTotal = Boolean(up?.excludeFromTotal || low.excludeFromTotal);
+      diffs.push({ title: titleVal, amount: diff, ...(excludeFromTotal ? { excludeFromTotal } : {}) });
+      if (!excludeFromTotal) {
+        runningTotal += diff * itemMultiplier(titleVal);
+      }
     }
     upperMap.delete(key);
   });
 
   upperMap.forEach((val) => {
     if (val.amount > 0) {
-      diffs.push({ title: val.title, amount: val.amount });
-      runningTotal += val.amount * itemMultiplier(val.title);
+      diffs.push({
+        title: val.title,
+        amount: val.amount,
+        ...(val.excludeFromTotal ? { excludeFromTotal: true } : {}),
+      });
+      if (!val.excludeFromTotal) {
+        runningTotal += val.amount * itemMultiplier(val.title);
+      }
     }
   });
 
   const hasYearly = diffs.some((it) =>
-    normalizeTitleForCompare(it.title).includes("provize za rok")
+    !it.excludeFromTotal && normalizeTitleForCompare(it.title).includes("provize za rok")
   );
   const total = hasYearly
     ? diffs
-        .filter((it) => normalizeTitleForCompare(it.title).includes("provize za rok"))
+        .filter((it) => !it.excludeFromTotal && normalizeTitleForCompare(it.title).includes("provize za rok"))
         .reduce((sum, it) => sum + (it.amount ?? 0) * itemMultiplier(it.title), 0)
     : runningTotal;
 

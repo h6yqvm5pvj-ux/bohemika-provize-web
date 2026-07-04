@@ -55,6 +55,7 @@ import {
   formatMoney,
   frequencyText,
   isAutoProduct,
+  isFrequencyAutoPayoutProduct,
   isEmailInChain,
   isManagerPosition,
   nameFromEmail,
@@ -1307,12 +1308,19 @@ export default function ContractDetailPage() {
     paymentVerificationUrl === CPP_PAYMENT_CHECK_URL;
   const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
   const showTimelineSection = isLifeInsuranceContract && hasTimelineChange;
+  const isAutoCommissionProduct = isAutoProduct(prod ?? null);
+  const isFrequencyAutoCommissionProduct = isFrequencyAutoPayoutProduct(prod ?? null);
   const isPaymentBasedProduct =
     prod === "domex" ||
     prod === "cpphafan" ||
     prod === "koopmajetekobcan" ||
     prod === "koopfit" ||
-    prod === "maxdomov";
+    prod === "maxdomov" ||
+    isFrequencyAutoCommissionProduct;
+  const hideSeparatedPeriodTotals = Boolean(
+    (isAutoCommissionProduct && (freq === "annual" || !isFrequencyAutoCommissionProduct)) ||
+      (prod === "domex" && freq === "annual")
+  );
   const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
   const adjustLegacyPerPaymentTotal = useCallback(
     (items: CommissionResultItemDTO[], total: number): number => {
@@ -4006,6 +4014,12 @@ export default function ContractDetailPage() {
   };
 
   const filterAnnualYearlyDupes = (arr: CommissionResultItemDTO[]) => {
+    if (isAutoCommissionProduct) {
+      return arr.filter((it) => {
+        const title = normalizeTitleForCompare(it.title);
+        return !title.includes("provize za rok") && !title.includes("celkem za rok");
+      });
+    }
     if (prod !== "cppPPRs" || freq !== "annual") return arr;
     return arr.filter(
       (it) =>
@@ -4309,6 +4323,9 @@ export default function ContractDetailPage() {
   const adviserBreakdownPosition =
     ((contract?.position as Position | null | undefined) ?? ownerPosition ?? null);
   const adviserBreakdownMode = toCommissionMode(contract?.commissionMode);
+  const contractSignedDateIsoForBreakdown = toDateInputValue(
+    contract?.contractSignedDate ?? contract?.createdAt
+  );
 
   const handleOpenNeonImmediateBreakdown = useCallback(
     (
@@ -4319,7 +4336,8 @@ export default function ContractDetailPage() {
       const breakdown = buildNeonImmediateBreakdown(
         item.amount ?? 0,
         position,
-        commissionMode
+        commissionMode,
+        contractSignedDateIsoForBreakdown
       );
       if (!breakdown) {
         pushToast("Rozpad okamžité provize pro tuto pozici zatím není dostupný.", "error");
@@ -4327,7 +4345,7 @@ export default function ContractDetailPage() {
       }
       setNeonImmediateBreakdown(breakdown);
     },
-    [pushToast]
+    [contractSignedDateIsoForBreakdown, pushToast]
   );
 
   const renderProductPanelContent = () => (
@@ -5326,6 +5344,7 @@ export default function ContractDetailPage() {
                   product={prod}
                   isOwnContract={isOwnContract}
                   isPaymentBasedProduct={isPaymentBasedProduct}
+                  hideAnnualAutoTotals={hideSeparatedPeriodTotals}
                   showAnyMeziprovision={showAnyMeziprovision}
                   meziprovisionCards={meziprovisionCards}
                   expandedMeziprovisionKeys={expandedMeziprovisionKeys}

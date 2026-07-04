@@ -65,6 +65,7 @@ import {
   cppAutoCoefficient,
   isCppAutoHistoricalPeriod,
 } from "./productFormulas/cppAuto";
+import { autoSubsequentCoefficientForProduct } from "./productFormulas/autoCommission";
 import {
   calculateSlaviaAuto,
   slaviaAutoCoefficient,
@@ -366,6 +367,17 @@ export function getCoefficientSummary(
             : "Koeficient (z platby)",
           value: cppAutoCoefficient(position, contractSignedDateIso),
         },
+        {
+          label: isHistorical
+            ? "Historická následná provize"
+            : "Následná provize",
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? cppAutoCoefficient(position, contractSignedDateIso),
+        },
       ];
     }
     case "slaviaauto":
@@ -391,6 +403,17 @@ export function getCoefficientSummary(
             ? "Historický koeficient (01.08.2019-31.03.2026)"
             : "Koeficient (z platby)",
           value: allianzAutoCoefficient(position, contractSignedDateIso),
+        },
+        {
+          label: isHistorical
+            ? "Historická následná provize"
+            : "Následná provize",
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? allianzAutoCoefficient(position, contractSignedDateIso),
         },
       ];
     }
@@ -418,6 +441,17 @@ export function getCoefficientSummary(
             : "Koeficient (z platby)",
           value: csobAutoCoefficient(position, contractSignedDateIso),
         },
+        {
+          label: isHistorical
+            ? "Historická následná provize"
+            : "Následná provize",
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? csobAutoCoefficient(position, contractSignedDateIso),
+        },
       ];
     }
     case "uniqaAuto": {
@@ -441,6 +475,17 @@ export function getCoefficientSummary(
             : "Koeficient (z platby)",
           value: uniqaAutoCoefficient(position, contractSignedDateIso),
         },
+        {
+          label: isHistorical
+            ? "Historická následná provize"
+            : "Následná provize",
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? uniqaAutoCoefficient(position, contractSignedDateIso),
+        },
       ];
     }
     case "uniqaflotila":
@@ -453,6 +498,17 @@ export function getCoefficientSummary(
             ? "Historický koeficient (01.10.2023-31.03.2026)"
             : "Koeficient (z platby)",
           value: pillowAutoCoefficient(position, contractSignedDateIso),
+        },
+        {
+          label: isHistorical
+            ? "Historická následná provize"
+            : "Následná provize",
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? pillowAutoCoefficient(position, contractSignedDateIso),
         },
       ];
     }

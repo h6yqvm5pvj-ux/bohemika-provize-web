@@ -57,6 +57,13 @@ export type PaymentFrequency =
 
 export type CommissionMode = "accelerated" | "standard";
 
+export type CommissionCoefficientSet = "earlyHistorical" | "historical" | "current";
+
+export type NeonCoefficientSet = Extract<
+  CommissionCoefficientSet,
+  "historical" | "current"
+>;
+
 export type MaxCizinKomplexVariant = "exclusiveStandard" | "premium";
 
 export interface CommissionResultItemDTO {
@@ -64,6 +71,7 @@ export interface CommissionResultItemDTO {
   amount: number;
   code?: string | null;
   note?: string;
+  excludeFromTotal?: boolean;
 }
 
 export interface CommissionResultDTO {

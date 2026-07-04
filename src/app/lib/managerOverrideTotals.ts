@@ -5,6 +5,7 @@ import {
 } from "@/app/types/domain";
 
 const LEGACY_FREQUENCY_OVERRIDE_PRODUCTS = new Set<Product>([
+  "domex",
   "cppAuto",
   "csobAuto",
   "uniqaAuto",
@@ -45,6 +46,7 @@ const sumByTitle = (
 ): number =>
   roundToCents(
     items.reduce((sum, item) => {
+      if (item.excludeFromTotal) return sum;
       const title = normalizeTitle(item.title);
       if (!predicate(title)) return sum;
       return sum + (item.amount ?? 0);
@@ -88,4 +90,3 @@ export const computeLegacyFrequencyOverrideTotal = ({
 export const expectedLegacyAnnualItemTitle = (
   productKey: Product | null | undefined
 ): string => (productKey === "kooperativaAuto" ? "Celkem za rok" : "📅 Provize za rok");
-

@@ -32,6 +32,7 @@ type ContractCommissionSectionProps = {
   product: Product | undefined;
   isOwnContract: boolean;
   isPaymentBasedProduct: boolean;
+  hideAnnualAutoTotals: boolean;
   showAnyMeziprovision: boolean;
   meziprovisionCards: MeziprovisionCard[];
   expandedMeziprovisionKeys: string[];
@@ -72,6 +73,21 @@ const monoChipDarkClass =
   "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white";
 const collapsibleButtonClass =
   "flex h-12 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-4 text-base font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
+const COMMISSION_PAYOUT_AMOUNT_TOLERANCE = 10;
+const AUTO_COMMISSION_PRODUCTS = new Set<Product>([
+  "cppAuto",
+  "slaviaauto",
+  "allianzAuto",
+  "csobAuto",
+  "uniqaAuto",
+  "uniqaflotila",
+  "pillowAuto",
+  "kooperativaAuto",
+]);
+
+const isAutoCommissionProduct = (product: Product | undefined): boolean =>
+  Boolean(product && AUTO_COMMISSION_PRODUCTS.has(product));
+
 const isLegacyImmediateTotalTitle = (title: string): boolean =>
   cleanResultTitle(title).toLowerCase().includes("okamžitá provize");
 
@@ -120,7 +136,10 @@ const isAnnualSummaryCommissionTitle = (title: string): boolean => {
   return normalized === "celkem za rok" || normalized.includes("provize za rok");
 };
 
-const payoutCodesForCommissionTitle = (title: string): string[] => {
+const payoutCodesForCommissionTitle = (
+  title: string,
+  product: Product | undefined
+): string[] => {
   const cleanTitle = cleanResultTitle(title);
   const normalized = cleanResultTitle(title).toLowerCase();
 
@@ -134,10 +153,28 @@ const payoutCodesForCommissionTitle = (title: string): string[] => {
   if (normalized.startsWith("okamžitá provize") || normalized.startsWith("získatelská provize")) {
     return ["A101", "A102", cleanTitle];
   }
+  if (isAutoCommissionProduct(product) && normalized.startsWith("následná provize")) {
+    return ["B101", "BC1", "BC101", cleanTitle];
+  }
   if (normalized.startsWith("následná provize") && normalized.includes("z platby")) {
     return [cleanTitle];
   }
   return [];
+};
+
+const payoutCodesForCommissionItem = (
+  item: CommissionResultItemDTO,
+  product: Product | undefined
+): string[] => {
+  const explicitCode = normalizePayoutCode(item.code);
+  return Array.from(
+    new Set(
+      [
+        explicitCode && explicitCode !== "TOTAL" ? explicitCode : null,
+        ...payoutCodesForCommissionTitle(item.title, product),
+      ].filter((code): code is string => Boolean(code))
+    )
+  );
 };
 
 const installmentCountFromNote = (note: string | null | undefined): number | null => {
@@ -276,7 +313,7 @@ const payoutStatusForCodes = (
   );
   const hasStorno = records.some((record) => record.status === "storno");
 
-  if (paidAmount >= Math.max(0, expectedAmount - 1)) {
+  if (paidAmount >= Math.max(0, expectedAmount - COMMISSION_PAYOUT_AMOUNT_TOLERANCE)) {
     return { status: "paid", paidAmount, records };
   }
   if (paidAmount > 0) return { status: "partial", paidAmount, records };
@@ -337,6 +374,7 @@ export function ContractCommissionSection({
   product,
   isOwnContract,
   isPaymentBasedProduct,
+  hideAnnualAutoTotals,
   showAnyMeziprovision,
   meziprovisionCards,
   expandedMeziprovisionKeys,
@@ -411,7 +449,7 @@ export function ContractCommissionSection({
         <div className="mt-2 space-y-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
           {commissionItems.map((part) => {
             const partNote = displayNoteForCommissionItem(part);
-            const codes = payoutCodesForCommissionTitle(part.title);
+            const codes = payoutCodesForCommissionItem(part, product);
             const payoutState = payoutStatusForCodes(
               normalizedCommissionPayouts,
               codes,
@@ -459,7 +497,7 @@ export function ContractCommissionSection({
       ? `${commissionRowClass} w-full text-left transition hover:border-slate-400 hover:bg-slate-100`
       : commissionRowClass;
     const itemNote = displayNoteForCommissionItem(item);
-    const payoutCodes = payoutCodesForCommissionTitle(item.title);
+    const payoutCodes = payoutCodesForCommissionItem(item, product);
     const payoutState = payoutStatusForCodes(
       normalizedCommissionPayouts,
       payoutCodes,
@@ -682,34 +720,36 @@ export function ContractCommissionSection({
                         )}
                       </div>
 
-                      <div className={commissionTotalHighlightClass}>
-                        <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
-                        <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
-                        <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
-                        {isPaymentBasedProduct && card.totals ? (
-                          <div className="relative z-10 w-full space-y-2.5">
-                            <div className={commissionTotalLineDarkClass}>
-                              <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
+                      {!hideAnnualAutoTotals && (
+                        <div className={commissionTotalHighlightClass}>
+                          <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+                          <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+                          <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
+                          {isPaymentBasedProduct && card.totals ? (
+                            <div className="relative z-10 w-full space-y-2.5">
+                              <div className={commissionTotalLineDarkClass}>
+                                <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
+                                <span className={commissionTotalValueDarkClass}>
+                                  {formatMoney(card.totals.immediate)}
+                                </span>
+                              </div>
+                              <div className={commissionTotalLineDarkClass}>
+                                <span className={commissionTotalLabelDarkClass}>Celkem ročně následně</span>
+                                <span className={commissionTotalValueDarkClass}>
+                                  {formatMoney(card.totals.subsequent)}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
+                              <span className={commissionTotalLabelDarkClass}>Celkem meziprovize</span>
                               <span className={commissionTotalValueDarkClass}>
-                                {formatMoney(card.totals.immediate)}
+                                {formatMoney(card.totalDisplay)}
                               </span>
                             </div>
-                            <div className={commissionTotalLineDarkClass}>
-                              <span className={commissionTotalLabelDarkClass}>Celkem ročně následně</span>
-                              <span className={commissionTotalValueDarkClass}>
-                                {formatMoney(card.totals.subsequent)}
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
-                            <span className={commissionTotalLabelDarkClass}>Celkem meziprovize</span>
-                            <span className={commissionTotalValueDarkClass}>
-                              {formatMoney(card.totalDisplay)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -735,34 +775,36 @@ export function ContractCommissionSection({
               )}
             </div>
 
-            <div className={commissionTotalHighlightClass}>
-              <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
-              <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
-              <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
-              {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                <div className="relative z-10 w-full space-y-2.5">
-                  <div className={commissionTotalLineDarkClass}>
-                    <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
+            {!hideAnnualAutoTotals && (
+              <div className={commissionTotalHighlightClass}>
+                <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+                <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
+                {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
+                  <div className="relative z-10 w-full space-y-2.5">
+                    <div className={commissionTotalLineDarkClass}>
+                      <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
+                      <span className={commissionTotalValueDarkClass}>
+                        {formatMoney(paymentBasedAdviserTotals.immediate)}
+                      </span>
+                    </div>
+                    <div className={commissionTotalLineDarkClass}>
+                      <span className={commissionTotalLabelDarkClass}>Celkem ročně následně</span>
+                      <span className={commissionTotalValueDarkClass}>
+                        {formatMoney(paymentBasedAdviserTotals.subsequent)}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
+                    <span className={commissionTotalLabelDarkClass}>Celkem</span>
                     <span className={commissionTotalValueDarkClass}>
-                      {formatMoney(paymentBasedAdviserTotals.immediate)}
+                      {formatMoney(adviserTotalDisplay)}
                     </span>
                   </div>
-                  <div className={commissionTotalLineDarkClass}>
-                    <span className={commissionTotalLabelDarkClass}>Celkem ročně následně</span>
-                    <span className={commissionTotalValueDarkClass}>
-                      {formatMoney(paymentBasedAdviserTotals.subsequent)}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
-                  <span className={commissionTotalLabelDarkClass}>Celkem</span>
-                  <span className={commissionTotalValueDarkClass}>
-                    {formatMoney(adviserTotalDisplay)}
-                  </span>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </section>
       ) : (
@@ -796,34 +838,36 @@ export function ContractCommissionSection({
                 )}
               </div>
 
-              <div className={commissionTotalHighlightClass}>
-                <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
-                <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
-                <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
-                {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                  <div className="relative z-10 w-full space-y-2.5">
-                    <div className={commissionTotalLineDarkClass}>
-                      <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
+              {!hideAnnualAutoTotals && (
+                <div className={commissionTotalHighlightClass}>
+                  <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
+                  <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
+                  {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
+                    <div className="relative z-10 w-full space-y-2.5">
+                      <div className={commissionTotalLineDarkClass}>
+                        <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
+                        <span className={commissionTotalValueDarkClass}>
+                          {formatMoney(paymentBasedAdviserTotals.immediate)}
+                        </span>
+                      </div>
+                      <div className={commissionTotalLineDarkClass}>
+                        <span className={commissionTotalLabelDarkClass}>Celkem ročně následně</span>
+                        <span className={commissionTotalValueDarkClass}>
+                          {formatMoney(paymentBasedAdviserTotals.subsequent)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
+                      <span className={commissionTotalLabelDarkClass}>Celkem</span>
                       <span className={commissionTotalValueDarkClass}>
-                        {formatMoney(paymentBasedAdviserTotals.immediate)}
+                        {formatMoney(adviserTotalDisplay)}
                       </span>
                     </div>
-                    <div className={commissionTotalLineDarkClass}>
-                      <span className={commissionTotalLabelDarkClass}>Celkem ročně následně</span>
-                      <span className={commissionTotalValueDarkClass}>
-                        {formatMoney(paymentBasedAdviserTotals.subsequent)}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
-                    <span className={commissionTotalLabelDarkClass}>Celkem</span>
-                    <span className={commissionTotalValueDarkClass}>
-                      {formatMoney(adviserTotalDisplay)}
-                    </span>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </section>

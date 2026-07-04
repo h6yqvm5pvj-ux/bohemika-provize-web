@@ -84,6 +84,7 @@ import {
   formatIsoDay,
   productInstitutionLogo,
   isAutoProduct,
+  isFrequencyAutoPayoutProduct,
   shouldShowDuration,
   shouldShowDurationMonths,
   durationRange,
@@ -1108,7 +1109,8 @@ export default function CalculatorPage() {
       (product !== "domex" &&
         product !== "koopmajetekobcan" &&
         product !== "koopfit" &&
-        product !== "maxdomov") ||
+        product !== "maxdomov" &&
+        !isFrequencyAutoPayoutProduct(product)) ||
       items.length === 0
     ) {
       return null;
@@ -3542,7 +3544,11 @@ export default function CalculatorPage() {
       );
       const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
       setItems(filtered);
-      setTotal(totals.immediate + totals.subsequent);
+      setTotal(
+        product === "domex"
+          ? totals.immediate
+          : totals.immediate + totals.subsequent
+      );
       setUnsupported(false);
       return;
     }
@@ -4499,6 +4505,7 @@ export default function CalculatorPage() {
             productKey: product,
             clientName: trimmedClientName,
             signedDate: signedDateIsoDay,
+            contractNumber: trimmedContractNumber,
           });
           const precheckPayload = await fetchAuthedJsonOrThrow<ContractsPrecheckApiResponse>(
             user,
@@ -4544,7 +4551,7 @@ export default function CalculatorPage() {
                 mode: "saveAnyway",
                 description: `Pro klienta ${trimmedClientName} už existuje produkt ${productLabel(
                   product
-                )} se stejným datem sjednání ${displayDate} (${similarEntries.length}×).`,
+                )} se stejným datem sjednání ${displayDate} a číslem smlouvy ${trimmedContractNumber} (${similarEntries.length}×).`,
                 contractNumber: trimmedContractNumber || null,
                 count: entries.length,
                 entries,
@@ -6265,7 +6272,13 @@ export default function CalculatorPage() {
           (i.title ?? "").toLowerCase().includes("(z platby)")
         );
         const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-        return { items: filtered, total: totals.immediate + totals.subsequent };
+        return {
+          items: filtered,
+          total:
+            product === "domex"
+              ? totals.immediate
+              : totals.immediate + totals.subsequent,
+        };
       }
       case "pillowmajetek":
         return calculatePillowMajetek(val, freq, pos);
@@ -6716,7 +6729,11 @@ export default function CalculatorPage() {
             product={product}
             position={position}
             mode={mode}
-            hideAnnualAutoTotals={isAutoProduct(product) && frequency === "annual"}
+            hideAnnualAutoTotals={
+              (isAutoProduct(product) &&
+                (frequency === "annual" || !isFrequencyAutoPayoutProduct(product))) ||
+              (product === "domex" && frequency === "annual")
+            }
             paymentBasedTotalsMemo={paymentBasedTotalsMemo}
             tipContractImmediateGrossFirstYear={tipContractImmediateGrossFirstYear}
             tipContractTipsterAmountFirstYear={tipContractTipsterAmountFirstYear}

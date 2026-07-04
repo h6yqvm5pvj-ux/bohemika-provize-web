@@ -12,6 +12,7 @@ import {
   type Product,
 } from "../types/domain";
 import { formatMoney } from "@/app/lib/formatters";
+import { isAutoProduct } from "@/app/lib/productCatalog";
 import { cleanResultTitle, resultIconForTitle } from "./calculatorHelpers";
 import {
   buildNeonImmediateBreakdown,
@@ -381,7 +382,14 @@ export function CalculatorResultsSection({
 
           const displayItems = items.filter((item) => {
             const title = cleanResultTitle(item.title).toLowerCase();
-            return !(title === "celkem" || title.startsWith("celková provize"));
+            if (title === "celkem" || title.startsWith("celková provize")) return false;
+            if (
+              isAutoProduct(product) &&
+              (title.includes("provize za rok") || title.includes("celkem za rok"))
+            ) {
+              return false;
+            }
+            return true;
           });
           const splitImmediateItems =
             isSplitImmediateProduct(product)
@@ -615,12 +623,7 @@ export function CalculatorResultsSection({
 
               {!hideAnnualAutoTotals && (
                 <div className="flex items-center justify-between pt-3">
-                  {(product === "domex" ||
-                    product === "cpphafan" ||
-                    product === "koopmajetekobcan" ||
-                    product === "koopfit" ||
-                    product === "maxdomov") &&
-                  paymentBasedTotalsMemo ? (
+                  {paymentBasedTotalsMemo ? (
                     <div className="w-full space-y-2 border-t border-slate-200 pt-4">
                       <div className="flex items-center justify-between gap-3">
                         <span className="font-semibold text-slate-700">

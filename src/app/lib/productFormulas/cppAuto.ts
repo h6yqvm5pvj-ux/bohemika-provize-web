@@ -5,6 +5,10 @@ import {
   type PaymentFrequency,
 } from "../../types/domain";
 import { normalizeIsoDay, periodsPerYear } from "./shared";
+import {
+  historicalAutoCoefficient,
+  historicalAutoSubsequentCoefficient,
+} from "./historicalAutoCoefficient";
 
 // ---------- ČPP Auto ----------
 
@@ -26,7 +30,9 @@ export function cppAutoCoefficient(
   position: Position,
   contractSignedDateIso?: string | null
 ): number {
-  void contractSignedDateIso;
+  if (isCppAutoHistoricalPeriod(contractSignedDateIso)) {
+    return historicalAutoCoefficient(position);
+  }
   switch (position) {
     // Poradci 1–10
     case "poradce1":
@@ -65,6 +71,15 @@ export function cppAutoCoefficient(
   }
 }
 
+export function cppAutoSubsequentCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  return isCppAutoHistoricalPeriod(contractSignedDateIso)
+    ? historicalAutoSubsequentCoefficient(position)
+    : cppAutoCoefficient(position, contractSignedDateIso);
+}
+
 export function calculateCppAuto(
   amount: number,
   frequency: PaymentFrequency,
@@ -72,13 +87,20 @@ export function calculateCppAuto(
   contractSignedDateIso?: string | null
 ): CommissionResultDTO {
   const coef = cppAutoCoefficient(position, contractSignedDateIso);
+  const subsequentCoef = cppAutoSubsequentCoefficient(position, contractSignedDateIso);
   const perPayment = amount * coef;
+  const subsequent = amount * subsequentCoef;
   const annualTotal = perPayment * periodsPerYear(frequency);
 
   const items: CommissionResultItemDTO[] = [
-    { title: "🚗 Okamžitá provize", amount: perPayment },
+    { title: "🚗 Okamžitá provize", amount: perPayment, code: "A101" },
+    {
+      title: "🔁 Následná provize",
+      amount: subsequent,
+      code: "B101",
+      excludeFromTotal: true,
+    },
     { title: "📅 Provize za rok", amount: annualTotal },
   ];
   return { items, total: annualTotal };
 }
-

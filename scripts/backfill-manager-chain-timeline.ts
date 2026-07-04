@@ -559,7 +559,13 @@ function computeItemsForEntry(
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
       const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-      return { items: filtered, total: totals.immediate + totals.subsequent };
+      return {
+        items: filtered,
+        total:
+          product === "domex"
+            ? totals.immediate
+            : totals.immediate + totals.subsequent,
+      };
     }
     case "maxdomov": {
       const dto = calculateMaxdomov(val, freq, pos);

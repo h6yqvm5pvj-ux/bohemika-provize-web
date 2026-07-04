@@ -6,6 +6,7 @@ import {
 } from "../../types/domain";
 import { normalizeIsoDay, pct, periodsPerYear } from "./shared";
 import { cppAutoCoefficient } from "./cppAuto";
+import { historicalAutoSubsequentCoefficient } from "./historicalAutoCoefficient";
 
 // ---------- UNIQA Auto ----------
 
@@ -183,6 +184,9 @@ export function uniqaAutoSubsequentCoefficient(
   if (isUniqaAutoEarlyHistoricalPeriod(contractSignedDateIso)) {
     return uniqaAutoEarlySubsequentCoefficient(position);
   }
+  if (isUniqaAutoLaterHistoricalPeriod(contractSignedDateIso)) {
+    return historicalAutoSubsequentCoefficient(position);
+  }
   return uniqaAutoImmediateCoefficient(position, contractSignedDateIso);
 }
 
@@ -200,26 +204,38 @@ export function calculateUniqaAuto(
   contractSignedDateIso?: string | null
 ): CommissionResultDTO {
   if (isUniqaAutoEarlyHistoricalPeriod(contractSignedDateIso)) {
-    const annualPremium = amount * periodsPerYear(frequency);
-    const immediate =
-      annualPremium * uniqaAutoImmediateCoefficient(position, contractSignedDateIso);
-    const subsequent =
-      annualPremium * uniqaAutoSubsequentCoefficient(position, contractSignedDateIso);
+    const immediate = amount * uniqaAutoImmediateCoefficient(position, contractSignedDateIso);
+    const subsequent = amount * uniqaAutoSubsequentCoefficient(position, contractSignedDateIso);
+    const annualTotal = immediate * periodsPerYear(frequency);
 
     const items: CommissionResultItemDTO[] = [
-      { title: "🚙 Okamžitá provize", amount: immediate },
-      { title: "🔁 Následná provize", amount: subsequent },
+      { title: "🚙 Okamžitá provize", amount: immediate, code: "A101" },
+      {
+        title: "🔁 Následná provize",
+        amount: subsequent,
+        code: "B101",
+        excludeFromTotal: true,
+      },
+      { title: "📅 Provize za rok", amount: annualTotal },
     ];
 
-    return { items, total: immediate + subsequent };
+    return { items, total: annualTotal };
   }
 
   const coef = uniqaAutoImmediateCoefficient(position, contractSignedDateIso);
+  const subsequentCoef = uniqaAutoSubsequentCoefficient(position, contractSignedDateIso);
   const perPayment = amount * coef;
+  const subsequent = amount * subsequentCoef;
   const annualTotal = perPayment * periodsPerYear(frequency);
 
   const items: CommissionResultItemDTO[] = [
-    { title: "🚙 Okamžitá provize", amount: perPayment },
+    { title: "🚙 Okamžitá provize", amount: perPayment, code: "A101" },
+    {
+      title: "🔁 Následná provize",
+      amount: subsequent,
+      code: "B101",
+      excludeFromTotal: true,
+    },
     { title: "📅 Provize za rok", amount: annualTotal },
   ];
   return { items, total: annualTotal };

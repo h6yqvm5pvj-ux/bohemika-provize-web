@@ -115,7 +115,11 @@ export function calculateDomex(
 
   const items: CommissionResultItemDTO[] = [
     { title: "💸 Okamžitá provize (z platby)", amount: okamzitaPlatba },
-    { title: "🔁 Následná provize (z platby)", amount: naslednaPlatba },
+    {
+      title: "🔁 Následná provize (z platby)",
+      amount: naslednaPlatba,
+      excludeFromTotal: true,
+    },
     {
       title: "📅 Okamžitá provize za rok",
       amount: okamzitaRok,
@@ -125,11 +129,11 @@ export function calculateDomex(
       title: "📅 Následná provize za rok",
       amount: naslednaRok,
       note: `×${multiplier} plateb/rok`,
+      excludeFromTotal: true,
     },
   ];
 
-  const total = okamzitaRok + naslednaRok;
+  const total = okamzitaRok;
   return { items, total };
 }
-
 

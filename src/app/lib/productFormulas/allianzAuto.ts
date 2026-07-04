@@ -6,7 +6,10 @@ import {
 } from "../../types/domain";
 import { normalizeIsoDay, periodsPerYear } from "./shared";
 import { cppAutoCoefficient } from "./cppAuto";
-import { historicalAutoCoefficient } from "./historicalAutoCoefficient";
+import {
+  historicalAutoCoefficient,
+  historicalAutoSubsequentCoefficient,
+} from "./historicalAutoCoefficient";
 
 // ---------- Allianz Auto ----------
 
@@ -34,18 +37,35 @@ export function allianzAutoCoefficient(
   return cppAutoCoefficient(position);
 }
 
+export function allianzAutoSubsequentCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  return isAllianzAutoHistoricalPeriod(contractSignedDateIso)
+    ? historicalAutoSubsequentCoefficient(position)
+    : allianzAutoCoefficient(position, contractSignedDateIso);
+}
+
 export function calculateAllianzAuto(
   amount: number,
   frequency: PaymentFrequency,
   position: Position,
   contractSignedDateIso?: string | null
 ): CommissionResultDTO {
-  const annual = amount * periodsPerYear(frequency);
+  const annualPremium = amount * periodsPerYear(frequency);
   const coef = allianzAutoCoefficient(position, contractSignedDateIso);
-  const immediate = annual * coef;
+  const subsequentCoef = allianzAutoSubsequentCoefficient(position, contractSignedDateIso);
+  const immediate = annualPremium * coef;
+  const subsequent = annualPremium * subsequentCoef;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "📅 Okamžitá provize", amount: immediate },
+    { title: "📅 Okamžitá provize", amount: immediate, code: "A101" },
+    {
+      title: "🔁 Následná provize",
+      amount: subsequent,
+      code: "B101",
+      excludeFromTotal: true,
+    },
   ];
   return { items, total: immediate };
 }

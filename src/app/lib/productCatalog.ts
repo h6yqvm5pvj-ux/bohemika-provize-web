@@ -371,6 +371,14 @@ export function isAutoProduct(product?: Product | null): boolean {
   return productCategory(product) === "auto";
 }
 
+export function isAnnualAutoPayoutProduct(product?: Product | null): boolean {
+  return product === "allianzAuto" || product === "pillowAuto";
+}
+
+export function isFrequencyAutoPayoutProduct(product?: Product | null): boolean {
+  return isAutoProduct(product) && !isAnnualAutoPayoutProduct(product);
+}
+
 export function isPropertyProduct(product?: Product | null): boolean {
   return productCategory(product) === "property";
 }

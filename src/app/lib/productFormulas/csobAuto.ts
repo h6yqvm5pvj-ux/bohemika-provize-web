@@ -6,6 +6,7 @@ import {
 } from "../../types/domain";
 import { normalizeIsoDay, pct, periodsPerYear } from "./shared";
 import { cppAutoCoefficient } from "./cppAuto";
+import { uniqaAutoEarlySubsequentCoefficient } from "./uniqaAuto";
 
 // ---------- ČSOB Auto ----------
 
@@ -72,6 +73,15 @@ export function csobAutoCoefficient(
   return cppAutoCoefficient(position);
 }
 
+export function csobAutoSubsequentCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  return isCsobAutoHistoricalPeriod(contractSignedDateIso)
+    ? uniqaAutoEarlySubsequentCoefficient(position)
+    : csobAutoCoefficient(position, contractSignedDateIso);
+}
+
 export function calculateCsobAuto(
   amount: number,
   frequency: PaymentFrequency,
@@ -79,13 +89,20 @@ export function calculateCsobAuto(
   contractSignedDateIso?: string | null
 ): CommissionResultDTO {
   const coef = csobAutoCoefficient(position, contractSignedDateIso);
+  const subsequentCoef = csobAutoSubsequentCoefficient(position, contractSignedDateIso);
   const perPayment = amount * coef;
+  const subsequent = amount * subsequentCoef;
   const annualTotal = perPayment * periodsPerYear(frequency);
 
   const items: CommissionResultItemDTO[] = [
-    { title: "🚙 Okamžitá provize", amount: perPayment },
+    { title: "🚙 Okamžitá provize", amount: perPayment, code: "A101" },
+    {
+      title: "🔁 Následná provize",
+      amount: subsequent,
+      code: "B101",
+      excludeFromTotal: true,
+    },
     { title: "📅 Provize za rok", amount: annualTotal },
   ];
   return { items, total: annualTotal };
 }
-

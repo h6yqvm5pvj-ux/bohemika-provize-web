@@ -7,7 +7,9 @@ import {
 } from "../types/domain";
 import { toDate } from "@/app/lib/formatters";
 import {
+  isAnnualAutoPayoutProduct as isAnnualAutoPayoutProductFromCatalog,
   isAutoProduct as isAutoProductFromCatalog,
+  isFrequencyAutoPayoutProduct as isFrequencyAutoPayoutProductFromCatalog,
   productInstitutionId as productInstitutionIdFromCatalog,
   productInstitutionLabel as productInstitutionLabelFromCatalog,
   productInstitutionLogo as productInstitutionLogoFromCatalog,
@@ -329,6 +331,14 @@ export function productLogoScaleClass(product: Product): string {
 
 export function isAutoProduct(product: Product | null): product is Product {
   return Boolean(product) && isAutoProductFromCatalog(product);
+}
+
+export function isAnnualAutoPayoutProduct(product: Product | null): product is Product {
+  return Boolean(product) && isAnnualAutoPayoutProductFromCatalog(product);
+}
+
+export function isFrequencyAutoPayoutProduct(product: Product | null): product is Product {
+  return Boolean(product) && isFrequencyAutoPayoutProductFromCatalog(product);
 }
 
 export function shouldShowDuration(product: Product): boolean {

@@ -12,8 +12,10 @@ import {
 } from "@/lib/server/apiEntryGuard";
 import {
   type CommissionMode,
+  type CommissionCoefficientSet,
   type CommissionResultItemDTO,
   type MaxCizinKomplexVariant,
+  type NeonCoefficientSet,
   type PaymentFrequency,
   type Position,
   type Product,
@@ -84,6 +86,10 @@ import {
   calculateKoopCestovko,
   calculateComfortCC,
 } from "@/app/lib/productFormulas";
+import {
+  normalizeCommissionCoefficientSet,
+  signedDateForCoefficientSetOverride,
+} from "@/app/lib/productFormulas/coefficientSets";
 import {
   calculateNeonRefreshCommissionBase,
   isNeonHistoricalPeriod,
@@ -3446,6 +3452,8 @@ const computeItemsForProductPositionAndMode = ({
   position,
   commissionMode,
   contractSignedDateIso,
+  commissionCoefficientSetOverride,
+  neonCoefficientSetOverride,
   inputAmount,
   frequencyRaw,
   durationYears,
@@ -3459,6 +3467,8 @@ const computeItemsForProductPositionAndMode = ({
   position: Position;
   commissionMode: CommissionMode;
   contractSignedDateIso: string | null;
+  commissionCoefficientSetOverride?: CommissionCoefficientSet | null;
+  neonCoefficientSetOverride?: NeonCoefficientSet | null;
   inputAmount: number;
   frequencyRaw: PaymentFrequency;
   durationYears: number | null;
@@ -3473,16 +3483,35 @@ const computeItemsForProductPositionAndMode = ({
   const usedFrequency = allowedFrequencies.includes(frequencyRaw)
     ? frequencyRaw
     : allowedFrequencies[0];
+  const normalizedCoefficientSetOverride =
+    normalizeCommissionCoefficientSet(commissionCoefficientSetOverride);
+  const normalizedNeonCoefficientSetOverride =
+    neonCoefficientSetOverride === "historical" || neonCoefficientSetOverride === "current"
+      ? neonCoefficientSetOverride
+      : normalizedCoefficientSetOverride === "historical" ||
+          normalizedCoefficientSetOverride === "current"
+        ? normalizedCoefficientSetOverride
+        : null;
+  const coefficientSignedDateIso = signedDateForCoefficientSetOverride({
+    product: productKey,
+    contractSignedDateIso,
+    coefficientSetOverride: normalizedCoefficientSetOverride,
+  });
 
   switch (productKey) {
     case "neon": {
-      const years = normalizeNeonDurationYears(durationYears, contractSignedDateIso);
+      const years = normalizeNeonDurationYears(
+        durationYears,
+        contractSignedDateIso,
+        normalizedNeonCoefficientSetOverride
+      );
       return calculateNeon(
         safeAmount,
         position,
         years,
         commissionMode,
-        contractSignedDateIso
+        contractSignedDateIso,
+        normalizedNeonCoefficientSetOverride
       );
     }
     case "flexi": {
@@ -3518,7 +3547,13 @@ const computeItemsForProductPositionAndMode = ({
         (item.title ?? "").toLowerCase().includes("(z platby)")
       );
       const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
-      return { items: filtered, total: totals.immediate + totals.subsequent };
+      return {
+        items: filtered,
+        total:
+          productKey === "domex"
+            ? totals.immediate
+            : totals.immediate + totals.subsequent,
+      };
     }
     case "pillowmajetek":
       return calculatePillowMajetek(safeAmount, usedFrequency, position);
@@ -3539,7 +3574,7 @@ const computeItemsForProductPositionAndMode = ({
         safeAmount,
         usedFrequency,
         position,
-        contractSignedDateIso
+        coefficientSignedDateIso
       );
     case "slaviaauto":
       return calculateSlaviaAuto(safeAmount, usedFrequency, position);
@@ -3558,21 +3593,21 @@ const computeItemsForProductPositionAndMode = ({
         safeAmount,
         usedFrequency,
         position,
-        contractSignedDateIso
+        coefficientSignedDateIso
       );
     case "csobAuto":
       return calculateCsobAuto(
         safeAmount,
         usedFrequency,
         position,
-        contractSignedDateIso
+        coefficientSignedDateIso
       );
     case "uniqaAuto":
       return calculateUniqaAuto(
         safeAmount,
         usedFrequency,
         position,
-        contractSignedDateIso
+        coefficientSignedDateIso
       );
     case "uniqaflotila":
       return calculateUniqaAuto(safeAmount, usedFrequency, position);
@@ -3581,7 +3616,7 @@ const computeItemsForProductPositionAndMode = ({
         safeAmount,
         usedFrequency,
         position,
-        contractSignedDateIso
+        coefficientSignedDateIso
       );
     case "kooperativaAuto":
       return calculateKooperativaAuto(safeAmount, usedFrequency, position);
@@ -3618,9 +3653,21 @@ const computeItemsForProductPositionAndMode = ({
 const effectiveCommissionModeForStoredProduct = (
   productKey: Product,
   mode: CommissionMode,
-  contractSignedDateIso: string | null
+  contractSignedDateIso: string | null,
+  commissionCoefficientSetOverride?: CommissionCoefficientSet | null,
+  neonCoefficientSetOverride?: NeonCoefficientSet | null
 ): CommissionMode => {
-  if (productKey === "neon" && isNeonHistoricalPeriod(contractSignedDateIso)) {
+  const normalizedCoefficientSetOverride =
+    normalizeCommissionCoefficientSet(commissionCoefficientSetOverride);
+  const effectiveNeonCoefficientSetOverride =
+    neonCoefficientSetOverride === "historical" || neonCoefficientSetOverride === "current"
+      ? neonCoefficientSetOverride
+      : normalizedCoefficientSetOverride;
+  if (
+    productKey === "neon" &&
+    effectiveNeonCoefficientSetOverride !== "current" &&
+    isNeonHistoricalPeriod(contractSignedDateIso)
+  ) {
     return "standard";
   }
 
@@ -3633,6 +3680,8 @@ const computeManagerOverridesForChain = ({
   adviserMode,
   productKey,
   contractSignedDateIso,
+  commissionCoefficientSetOverride,
+  neonCoefficientSetOverride,
   inputAmount,
   frequencyRaw,
   durationYears,
@@ -3647,6 +3696,8 @@ const computeManagerOverridesForChain = ({
   adviserMode: CommissionMode;
   productKey: Product;
   contractSignedDateIso: string | null;
+  commissionCoefficientSetOverride?: CommissionCoefficientSet | null;
+  neonCoefficientSetOverride?: NeonCoefficientSet | null;
   inputAmount: number;
   frequencyRaw: PaymentFrequency;
   durationYears: number | null;
@@ -3668,7 +3719,9 @@ const computeManagerOverridesForChain = ({
         manager.commissionMode,
         adviserMode
       ),
-      contractSignedDateIso
+      contractSignedDateIso,
+      commissionCoefficientSetOverride,
+      neonCoefficientSetOverride
     );
 
     const managerResult = computeItemsForProductPositionAndMode({
@@ -3676,6 +3729,8 @@ const computeManagerOverridesForChain = ({
       position: manager.position,
       commissionMode: managerMode,
       contractSignedDateIso,
+      commissionCoefficientSetOverride,
+      neonCoefficientSetOverride,
       inputAmount,
       frequencyRaw,
       durationYears,
@@ -3691,6 +3746,8 @@ const computeManagerOverridesForChain = ({
           position: childPositionForBaseline,
           commissionMode: managerMode,
           contractSignedDateIso,
+          commissionCoefficientSetOverride,
+          neonCoefficientSetOverride,
           inputAmount,
           frequencyRaw,
           durationYears,
@@ -3712,7 +3769,13 @@ const computeManagerOverridesForChain = ({
 
     const managerMap = new Map<
       string,
-      { title: string; amount: number; code?: string | null; note?: string | null }
+      {
+        title: string;
+        amount: number;
+        code?: string | null;
+        note?: string | null;
+        excludeFromTotal?: boolean;
+      }
     >();
     managerItems.forEach((item) => {
       const key = commissionItemDiffKey(item);
@@ -3722,6 +3785,7 @@ const computeManagerOverridesForChain = ({
         amount: (prev?.amount ?? 0) + (item.amount ?? 0),
         code: item.code ?? prev?.code ?? null,
         note: item.note ?? prev?.note ?? null,
+        excludeFromTotal: Boolean(prev?.excludeFromTotal || item.excludeFromTotal),
       });
     });
 
@@ -3737,6 +3801,9 @@ const computeManagerOverridesForChain = ({
           title: managerValue?.title ?? item.title,
           amount: remaining,
           code: managerValue?.code ?? item.code ?? null,
+          ...(managerValue?.excludeFromTotal || item.excludeFromTotal
+            ? { excludeFromTotal: true }
+            : {}),
           ...(managerValue?.note || item.note
             ? { note: managerValue?.note ?? item.note }
             : {}),
@@ -3751,6 +3818,7 @@ const computeManagerOverridesForChain = ({
           title: value.title,
           amount: value.amount,
           code: value.code ?? null,
+          ...(value.excludeFromTotal ? { excludeFromTotal: true } : {}),
           ...(value.note ? { note: value.note } : {}),
         });
       }
@@ -5880,6 +5948,7 @@ export async function handleContractsPrecheck(req: NextRequest) {
   const productRaw = (search.get("productKey") ?? "").trim();
   const signedDateRaw = (search.get("signedDate") ?? "").trim();
   const clientNameRaw = (search.get("clientName") ?? "").trim();
+  const contractNumberRaw = (search.get("contractNumber") ?? "").trim();
 
   const productKey = productRaw ? (productRaw as Product) : null;
   if (productKey && !SUPPORTED_PRODUCTS.has(productKey)) {
@@ -5902,8 +5971,9 @@ export async function handleContractsPrecheck(req: NextRequest) {
 
   const signedDate = signedDateRaw || null;
   const normalizedClient = normalizeClientNameForDuplicate(clientNameRaw);
+  const normalizedContractNumber = normalizeContractNumber(contractNumberRaw);
 
-  if (!productKey || !signedDate || !normalizedClient) {
+  if (!productKey || !signedDate || !normalizedClient || !normalizedContractNumber) {
     const emptyResponse: ContractsPrecheckResponse = {
       ok: true,
       productKey,
@@ -5946,6 +6016,7 @@ export async function handleContractsPrecheck(req: NextRequest) {
   keyedSnap.docs.forEach((docSnap) => {
     const data = (docSnap.data() ?? {}) as ContractDoc;
     if (normalizeContractEntryType(data.entryType) !== "contract") return;
+    if (normalizeContractNumber(data.contractNumber ?? null) !== normalizedContractNumber) return;
     similarContracts.push({
       id: docSnap.id,
       contractNumber:
@@ -5978,6 +6049,7 @@ export async function handleContractsPrecheck(req: NextRequest) {
       if (normalizeContractEntryType(data.entryType) !== "contract") return;
       if (normalizeClientNameForDuplicate(data.clientName) !== normalizedClient) return;
       if (isoDayFromUnknown(data.contractSignedDate) !== signedDate) return;
+      if (normalizeContractNumber(data.contractNumber ?? null) !== normalizedContractNumber) return;
 
       similarContracts.push({
         id: docSnap.id,
@@ -6143,7 +6215,8 @@ export async function handleContractsCreate(req: NextRequest) {
     const effectiveTrustedMode = effectiveCommissionModeForStoredProduct(
       normalizedEntry.payload.productKey,
       trustedMode,
-      signedDateIso
+      signedDateIso,
+      null
     );
     const trustedManagerEmail = normalizeEmail(trustedProfile.managerEmail) || null;
     let trustedManagerChain = await buildTrustedManagerChainForSignedDate({
@@ -6333,6 +6406,8 @@ export async function handleContractsCreate(req: NextRequest) {
       position: trustedPosition,
       commissionMode: effectiveTrustedMode,
       contractSignedDateIso: signedDateIso,
+      commissionCoefficientSetOverride: null,
+      neonCoefficientSetOverride: null,
       inputAmount: commissionInputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
       durationYears: normalizedEntry.payload.durationYears,
@@ -6401,6 +6476,8 @@ export async function handleContractsCreate(req: NextRequest) {
       adviserMode: effectiveTrustedMode,
       productKey: normalizedEntry.payload.productKey,
       contractSignedDateIso: signedDateIso,
+      commissionCoefficientSetOverride: null,
+      neonCoefficientSetOverride: null,
       inputAmount: commissionInputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
       durationYears: normalizedEntry.payload.durationYears,

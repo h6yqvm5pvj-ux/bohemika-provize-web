@@ -23,10 +23,15 @@ export function calculateSlaviaAuto(
   const annualTotal = perPayment * periodsPerYear(frequency);
 
   const items: CommissionResultItemDTO[] = [
-    { title: "🚗 Okamžitá provize", amount: perPayment },
+    { title: "🚗 Okamžitá provize", amount: perPayment, code: "A101" },
+    {
+      title: "🔁 Následná provize",
+      amount: perPayment,
+      code: "B101",
+      excludeFromTotal: true,
+    },
     { title: "📅 Provize za rok", amount: annualTotal },
   ];
   return { items, total: annualTotal };
 }
-
 

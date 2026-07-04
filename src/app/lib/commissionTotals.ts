@@ -23,7 +23,7 @@ function itemMultiplier(title: string | undefined | null): number {
 export function totalWithMultipliers(
   items: CommissionResultItemDTO[] | null | undefined
 ): number {
-  const cleaned = (items ?? []).filter((it) => !isTotalRow(it.title));
+  const cleaned = (items ?? []).filter((it) => !it.excludeFromTotal && !isTotalRow(it.title));
 
   const hasYearly = cleaned.some((it) =>
     normalizeTitle(it.title).includes("provize za rok")

@@ -1,7 +1,9 @@
 import type {
   CommissionMode,
+  CommissionCoefficientSet,
   CommissionResultItemDTO,
   MaxCizinKomplexVariant,
+  NeonCoefficientSet,
   PaymentFrequency,
   Position,
   Product,
@@ -78,7 +80,22 @@ export type ContractDoc = {
   parentContractEntryPath?: string | null;
 
   productKey?: Product;
+  commissionCoefficientSetOverride?: CommissionCoefficientSet | string | null;
+  commissionCoefficientSetOverrideSource?: string | null;
+  commissionCoefficientSetOverrideStatementId?: string | null;
+  commissionCoefficientSetOverrideStatementNumber?: string | null;
+  commissionCoefficientSetOverrideStatementPeriod?: string | null;
+  commissionCoefficientSetOverrideAppliedAtMs?: number | null;
+  commissionCoefficientSetOverrideAppliedBy?: string | null;
+  neonCoefficientSetOverride?: NeonCoefficientSet | string | null;
+  neonCoefficientSetOverrideSource?: string | null;
+  neonCoefficientSetOverrideStatementId?: string | null;
+  neonCoefficientSetOverrideStatementNumber?: string | null;
+  neonCoefficientSetOverrideStatementPeriod?: string | null;
+  neonCoefficientSetOverrideAppliedAtMs?: number | null;
+  neonCoefficientSetOverrideAppliedBy?: string | null;
   position?: Position | null;
+  commissionMode?: CommissionMode | string | null;
   inputAmount?: number;
   calculationInputAmount?: number | null;
   effectiveInputAmount?: number | null;
@@ -92,9 +109,14 @@ export type ContractDoc = {
   premiumUpdatedFromStatementId?: string | null;
   comfortPayment?: number | null;
   frequencyRaw?: PaymentFrequency | null;
+  durationYears?: number | null;
   durationMonths?: number | null;
   maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
   items?: CommissionResultItemDTO[];
+  result?: {
+    items?: CommissionResultItemDTO[] | null;
+    total?: number | null;
+  } | null;
   total?: number;
   commissionPayouts?: {
     key?: string | null;
