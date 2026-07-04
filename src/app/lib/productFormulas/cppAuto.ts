@@ -5,10 +5,6 @@ import {
   type PaymentFrequency,
 } from "../../types/domain";
 import { normalizeIsoDay, periodsPerYear } from "./shared";
-import {
-  historicalAutoCoefficient,
-  historicalAutoSubsequentCoefficient,
-} from "./historicalAutoCoefficient";
 
 // ---------- ČPP Auto ----------
 
@@ -30,9 +26,9 @@ export function cppAutoCoefficient(
   position: Position,
   contractSignedDateIso?: string | null
 ): number {
-  if (isCppAutoHistoricalPeriod(contractSignedDateIso)) {
-    return historicalAutoCoefficient(position);
-  }
+  void contractSignedDateIso;
+  // ČPP Auto has historical terms before 01.04.2026, but the coefficient table
+  // is identical to the current table. Keep the date period for UI labels only.
   switch (position) {
     // Poradci 1–10
     case "poradce1":
@@ -75,9 +71,7 @@ export function cppAutoSubsequentCoefficient(
   position: Position,
   contractSignedDateIso?: string | null
 ): number {
-  return isCppAutoHistoricalPeriod(contractSignedDateIso)
-    ? historicalAutoSubsequentCoefficient(position)
-    : cppAutoCoefficient(position, contractSignedDateIso);
+  return cppAutoCoefficient(position, contractSignedDateIso);
 }
 
 export function calculateCppAuto(
