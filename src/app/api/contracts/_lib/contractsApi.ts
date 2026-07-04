@@ -86,6 +86,7 @@ import {
 } from "@/app/lib/productFormulas";
 import {
   calculateNeonRefreshCommissionBase,
+  isNeonHistoricalPeriod,
   NEON_REFRESH_STORNO_MONTHS,
   normalizeNeonDurationYears,
 } from "@/app/lib/productFormulas/neon";
@@ -620,9 +621,11 @@ const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
 export const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 const ENABLE_CONTRACT_CREATE_PUSH = true;
+const NEW_CONTRACT_PUSH_RECENT_SIGNED_DAYS = 45;
 const NEW_CONTRACT_PUSH_MAX_RECIPIENTS = 40;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER = 30;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
 
 let cachedUserTree: { value: UserTreeResult; expiresAtMs: number } | null = null;
@@ -2553,6 +2556,17 @@ const isNewContractPushEnabled = (profile: Record<string, unknown>): boolean => 
   return isTypeEnabled && isPushChannelEnabled;
 };
 
+const isRecentEnoughForNewContractPush = (
+  contractSignedDate: Date,
+  nowMs = Date.now()
+): boolean => {
+  const signedMs = contractSignedDate.getTime();
+  if (!Number.isFinite(signedMs)) return false;
+
+  const ageMs = nowMs - signedMs;
+  return ageMs <= NEW_CONTRACT_PUSH_RECENT_SIGNED_DAYS * DAY_MS;
+};
+
 const normalizeOriginUrl = (value: string | null | undefined): string | null => {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
@@ -3601,6 +3615,18 @@ const computeItemsForProductPositionAndMode = ({
   }
 };
 
+const effectiveCommissionModeForStoredProduct = (
+  productKey: Product,
+  mode: CommissionMode,
+  contractSignedDateIso: string | null
+): CommissionMode => {
+  if (productKey === "neon" && isNeonHistoricalPeriod(contractSignedDateIso)) {
+    return "standard";
+  }
+
+  return mode;
+};
+
 const computeManagerOverridesForChain = ({
   managerChain,
   adviserPosition,
@@ -3635,10 +3661,14 @@ const computeManagerOverridesForChain = ({
 
   managerChain.forEach((manager) => {
     if (!manager.position) return;
-    const managerMode = resolveManagerCommissionModeForProduct(
+    const managerMode = effectiveCommissionModeForStoredProduct(
       productKey,
-      manager.commissionMode,
-      adviserMode
+      resolveManagerCommissionModeForProduct(
+        productKey,
+        manager.commissionMode,
+        adviserMode
+      ),
+      contractSignedDateIso
     );
 
     const managerResult = computeItemsForProductPositionAndMode({
@@ -6110,6 +6140,11 @@ export async function handleContractsCreate(req: NextRequest) {
     }
 
     const trustedMode = trustedProfile.commissionMode ?? "standard";
+    const effectiveTrustedMode = effectiveCommissionModeForStoredProduct(
+      normalizedEntry.payload.productKey,
+      trustedMode,
+      signedDateIso
+    );
     const trustedManagerEmail = normalizeEmail(trustedProfile.managerEmail) || null;
     let trustedManagerChain = await buildTrustedManagerChainForSignedDate({
       directManagerEmail: trustedManagerEmail,
@@ -6296,7 +6331,7 @@ export async function handleContractsCreate(req: NextRequest) {
     const trustedResult = computeItemsForProductPositionAndMode({
       productKey: normalizedEntry.payload.productKey,
       position: trustedPosition,
-      commissionMode: trustedMode,
+      commissionMode: effectiveTrustedMode,
       contractSignedDateIso: signedDateIso,
       inputAmount: commissionInputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
@@ -6363,7 +6398,7 @@ export async function handleContractsCreate(req: NextRequest) {
     const trustedManagerOverrides = computeManagerOverridesForChain({
       managerChain: trustedManagerChain,
       adviserPosition: trustedPosition,
-      adviserMode: trustedMode,
+      adviserMode: effectiveTrustedMode,
       productKey: normalizedEntry.payload.productKey,
       contractSignedDateIso: signedDateIso,
       inputAmount: commissionInputAmount,
@@ -6389,7 +6424,7 @@ export async function handleContractsCreate(req: NextRequest) {
       calculationInputAmount: commissionInputAmount,
       refreshCommissionBase,
       position: trustedPosition,
-      commissionMode: trustedMode,
+      commissionMode: effectiveTrustedMode,
       items: trustedItems,
       total: trustedTotal,
       result: {
@@ -6415,7 +6450,9 @@ export async function handleContractsCreate(req: NextRequest) {
     };
 
     const newContractPushRecipients =
-      ENABLE_CONTRACT_CREATE_PUSH && trustedPayload.entryType === "contract"
+      ENABLE_CONTRACT_CREATE_PUSH &&
+      trustedPayload.entryType === "contract" &&
+      isRecentEnoughForNewContractPush(trustedPayload.contractSignedDate)
         ? collectManagerNotificationEmailsForNewContract({
             ownerEmail: targetOwnerEmail,
             managerEmailSnapshot: trustedManagerEmail,

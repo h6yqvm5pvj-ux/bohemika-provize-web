@@ -40,6 +40,7 @@ type CalculatorResultsSectionProps = {
   product: Product;
   position: Position;
   mode: CommissionMode;
+  hideAnnualAutoTotals: boolean;
   paymentBasedTotalsMemo: { immediate: number; subsequent: number } | null;
   tipContractImmediateGrossFirstYear: number;
   tipContractTipsterAmountFirstYear: number;
@@ -187,6 +188,7 @@ export function CalculatorResultsSection({
   product,
   position,
   mode,
+  hideAnnualAutoTotals,
   paymentBasedTotalsMemo,
   tipContractImmediateGrossFirstYear,
   tipContractTipsterAmountFirstYear,
@@ -364,13 +366,15 @@ export function CalculatorResultsSection({
                   </span>
                 </div>
 
-                <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-4">
-                  <span className="font-semibold text-slate-700">Celkem</span>
-                  <AnimatedMoneyValue
-                    value={tipsterImmediateCommission}
-                    className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
-                  />
-                </div>
+                {!hideAnnualAutoTotals && (
+                  <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-4">
+                    <span className="font-semibold text-slate-700">Celkem</span>
+                    <AnimatedMoneyValue
+                      value={tipsterImmediateCommission}
+                      className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
+                    />
+                  </div>
+                )}
               </div>
             );
           }
@@ -609,45 +613,47 @@ export function CalculatorResultsSection({
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-3">
-                {(product === "domex" ||
-                  product === "cpphafan" ||
-                  product === "koopmajetekobcan" ||
-                  product === "koopfit" ||
-                  product === "maxdomov") &&
-                paymentBasedTotalsMemo ? (
-                  <div className="w-full space-y-2 border-t border-slate-200 pt-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-slate-700">
-                        Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
-                      </span>
-                      <AnimatedMoneyValue
-                        value={tipContractConfig ? tipContractImmediateNetFirstYear : paymentBasedTotalsMemo.immediate}
-                        className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
-                      />
+              {!hideAnnualAutoTotals && (
+                <div className="flex items-center justify-between pt-3">
+                  {(product === "domex" ||
+                    product === "cpphafan" ||
+                    product === "koopmajetekobcan" ||
+                    product === "koopfit" ||
+                    product === "maxdomov") &&
+                  paymentBasedTotalsMemo ? (
+                    <div className="w-full space-y-2 border-t border-slate-200 pt-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-slate-700">
+                          Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
+                        </span>
+                        <AnimatedMoneyValue
+                          value={tipContractConfig ? tipContractImmediateNetFirstYear : paymentBasedTotalsMemo.immediate}
+                          className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-slate-700">Celkem ročně následně</span>
+                        <AnimatedMoneyValue
+                          value={paymentBasedTotalsMemo.subsequent}
+                          className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-slate-700">Celkem ročně následně</span>
-                      <AnimatedMoneyValue
-                        value={paymentBasedTotalsMemo.subsequent}
-                        className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
-                      />
+                  ) : (
+                    <div className="w-full border-t border-slate-200 pt-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-slate-700">
+                          Celkem{tipContractConfig ? " po TIPU" : ""}
+                        </span>
+                        <AnimatedMoneyValue
+                          value={tipContractConfig ? tipContractTotalNet : total}
+                          className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
+                        />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="w-full border-t border-slate-200 pt-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-slate-700">
-                        Celkem{tipContractConfig ? " po TIPU" : ""}
-                      </span>
-                      <AnimatedMoneyValue
-                        value={tipContractConfig ? tipContractTotalNet : total}
-                        className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })()}

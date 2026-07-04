@@ -74,6 +74,46 @@ const B0301 = {
   manazer10: 0.987,
 };
 
+const HISTORICAL_A101 = {
+  poradce1: 0.891,
+  poradce2: 1.025,
+  poradce3: 1.115,
+  poradce4: 1.604,
+  poradce5: 1.782,
+  poradce6: 1.916,
+  poradce7: 2.006,
+  poradce8: 2.139,
+  poradce9: 2.229,
+  poradce10: 2.318,
+  manazer4: 1.782,
+  manazer5: 1.992,
+  manazer6: 2.199,
+  manazer7: 2.408,
+  manazer8: 2.615,
+  manazer9: 2.823,
+  manazer10: 3.032,
+};
+
+const HISTORICAL_B0301 = {
+  poradce1: 0.33,
+  poradce2: 0.363,
+  poradce3: 0.396,
+  poradce4: 0.462,
+  poradce5: 0.479,
+  poradce6: 0.494,
+  poradce7: 0.51,
+  poradce8: 0.527,
+  poradce9: 0.542,
+  poradce10: 0.558,
+  manazer4: 0.47,
+  manazer5: 0.512,
+  manazer6: 0.555,
+  manazer7: 0.599,
+  manazer8: 0.641,
+  manazer9: 0.683,
+  manazer10: 0.726,
+};
+
 const B3601_HALF = {
   poradce1: 0.4445,
   poradce2: 0.489,
@@ -248,13 +288,16 @@ function loadCredentials() {
   return null;
 }
 
-function splitImmediateAmount(amount, position, mode) {
-  const includeB3601 = mode === "accelerated";
+function splitImmediateAmount(amount, position, mode, signedIso) {
+  const historical = isHistoricalPeriod(signedIso);
+  const a101Coefficient = historical ? HISTORICAL_A101[position] : A101[position];
+  const b0301Coefficient = historical ? HISTORICAL_B0301[position] : B0301[position];
+  const includeB3601 = !historical && mode === "accelerated";
   const definitions = [
-    { title: "💸 Provize A101", coefficient: A101[position], code: "A101" },
+    { title: "💸 Provize A101", coefficient: a101Coefficient, code: "A101" },
     {
       title: "💸 Provize B0301",
-      coefficient: B0301[position],
+      coefficient: b0301Coefficient,
       code: "B0301",
       note: NOTE,
     },
@@ -310,6 +353,10 @@ function inferModeFromAmount({
   signedIso,
   tipRatio = 1,
 }) {
+  if (isHistoricalPeriod(signedIso)) {
+    return { mode: "standard", source: "historical" };
+  }
+
   const explicit = normalizeMode(entry?.commissionMode);
   if (explicit) return { mode: explicit, source: "stored" };
 
@@ -352,17 +399,14 @@ function splitItems(items, { entry, position, mode, signedIso, tipRatio = 1 }) {
   const usedPosition = normalizePosition(position);
   if (!usedPosition) return { changed: false, items, reason: "missing-position" };
 
-  if (isHistoricalPeriod(signedIso)) {
-    return { changed: false, items, reason: "historical-period" };
-  }
-
   const immediateAmount = toNumber(items[idx]?.amount);
   if (!Number.isFinite(immediateAmount) || immediateAmount <= 0) {
     return { changed: false, items, reason: "invalid-immediate-amount" };
   }
 
-  const modeResolution =
-    normalizeMode(mode) != null
+  const modeResolution = isHistoricalPeriod(signedIso)
+    ? { mode: "standard", source: "historical" }
+    : normalizeMode(mode) != null
       ? { mode: normalizeMode(mode), source: "stored" }
       : inferModeFromAmount({
           entry,
@@ -373,7 +417,12 @@ function splitItems(items, { entry, position, mode, signedIso, tipRatio = 1 }) {
         });
   if (!modeResolution.mode) return { changed: false, items, reason: "missing-mode" };
 
-  const split = splitImmediateAmount(immediateAmount, usedPosition, modeResolution.mode);
+  const split = splitImmediateAmount(
+    immediateAmount,
+    usedPosition,
+    modeResolution.mode,
+    signedIso
+  );
   if (!split) return { changed: false, items, reason: "split-failed" };
 
   return {
@@ -384,6 +433,7 @@ function splitItems(items, { entry, position, mode, signedIso, tipRatio = 1 }) {
       ...items.slice(idx + 1),
     ]).items,
     reason: "split",
+    period: isHistoricalPeriod(signedIso) ? "historical" : "current",
     mode: modeResolution.mode,
     modeSource: modeResolution.source,
   };
@@ -407,6 +457,7 @@ function buildPatchForEntry(data) {
     managerOverridesChanged: 0,
     skippedReason: null,
     inferredModes: 0,
+    historicalChanged: false,
   };
 
   const itemsResult = splitItems(data.items, {
@@ -419,6 +470,7 @@ function buildPatchForEntry(data) {
   if (itemsResult.changed) {
     patch.items = itemsResult.items;
     stats.itemChanged = true;
+    if (itemsResult.period === "historical") stats.historicalChanged = true;
     if (itemsResult.modeSource === "inferred") stats.inferredModes += 1;
   } else {
     stats.skippedReason = itemsResult.reason;
@@ -438,6 +490,7 @@ function buildPatchForEntry(data) {
         items: resultItemsResult.items,
       };
       stats.resultChanged = true;
+      if (resultItemsResult.period === "historical") stats.historicalChanged = true;
       if (resultItemsResult.modeSource === "inferred") stats.inferredModes += 1;
     }
   }
@@ -460,6 +513,7 @@ function buildPatchForEntry(data) {
       if (!overrideResult.changed) return override;
       changed = true;
       stats.managerOverridesChanged += 1;
+      if (overrideResult.period === "historical") stats.historicalChanged = true;
       if (overrideResult.modeSource === "inferred") stats.inferredModes += 1;
       return {
         ...override,
@@ -515,6 +569,7 @@ async function main() {
   let changedItems = 0;
   let changedResults = 0;
   let changedOverrides = 0;
+  let changedHistorical = 0;
   let skippedHistorical = 0;
   let skippedAlreadySplit = 0;
   let skippedNoLegacyImmediate = 0;
@@ -543,6 +598,7 @@ async function main() {
     if (stats.itemChanged) changedItems += 1;
     if (stats.resultChanged) changedResults += 1;
     changedOverrides += stats.managerOverridesChanged;
+    if (stats.historicalChanged) changedHistorical += 1;
     updates.push({
       ref: docSnap.ref,
       patch,
@@ -552,6 +608,7 @@ async function main() {
           ? data.contractNumber.trim()
           : "-",
       signedIso: signedIso ?? "-",
+      period: isHistoricalPeriod(signedIso) ? "historical" : "current",
       clientName:
         typeof data.clientName === "string" && data.clientName.trim()
           ? data.clientName.trim()
@@ -567,6 +624,7 @@ async function main() {
   console.log(`Changed root items: ${changedItems}`);
   console.log(`Changed result.items: ${changedResults}`);
   console.log(`Changed manager override item sets: ${changedOverrides}`);
+  console.log(`Changed historical contracts: ${changedHistorical}`);
   console.log(`Mode inferred count: ${inferredModes}`);
   console.log(`Skipped historical contracts: ${skippedHistorical}`);
   console.log(`Skipped already split: ${skippedAlreadySplit}`);
@@ -577,7 +635,7 @@ async function main() {
     console.log("\nSample updates:");
     updates.slice(0, 15).forEach((row) => {
       console.log(
-        `- ${row.path} | contract=${row.contractNumber} | signed=${row.signedIso} | client=${row.clientName}`
+        `- ${row.path} | contract=${row.contractNumber} | signed=${row.signedIso} | period=${row.period} | client=${row.clientName}`
       );
     });
   }

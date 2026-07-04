@@ -48,6 +48,7 @@ import {
   isCppAutoHistoricalPeriod,
   isAllianzAutoHistoricalPeriod,
   isCsobAutoHistoricalPeriod,
+  isUniqaAutoEarlyHistoricalPeriod,
   isUniqaAutoHistoricalPeriod,
   isPillowAutoHistoricalPeriod,
 } from "../lib/productFormulas";
@@ -204,6 +205,8 @@ const PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/pillowhistoricke.jpg";
 const UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/uniqahistoricke.jpg";
+const UNIQA_AUTO_EARLY_HISTORICAL_TERMS_PREVIEW_URL =
+  "/provize/BHMK-UNIQA-AUTO-230101-01_page-0001.jpg";
 const CSOB_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/csobhistoricke.jpg";
 const CPP_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
@@ -1270,6 +1273,12 @@ export default function CalculatorPage() {
       isUniqaAutoHistoricalPeriod(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
+  const isUniqaAutoEarlyHistoricalBySignedDate = useMemo(
+    () =>
+      product === "uniqaAuto" &&
+      isUniqaAutoEarlyHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
   const isPillowAutoHistoricalBySignedDate = useMemo(
     () =>
       product === "pillowAuto" &&
@@ -1293,6 +1302,7 @@ export default function CalculatorPage() {
     return "2026-04-01";
   }, [neonCoefficientView]);
   const uniqaAutoCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "olderHistorical") return "2023-02-01";
     if (neonCoefficientView === "historical") return "2026-03-31";
     return "2026-04-01";
   }, [neonCoefficientView]);
@@ -1335,7 +1345,14 @@ export default function CalculatorPage() {
     [product, neonCoefficientView]
   );
   const isUniqaAutoHistoricalInCoefModal = useMemo(
-    () => product === "uniqaAuto" && neonCoefficientView === "historical",
+    () =>
+      product === "uniqaAuto" &&
+      (neonCoefficientView === "historical" ||
+        neonCoefficientView === "olderHistorical"),
+    [product, neonCoefficientView]
+  );
+  const isUniqaAutoEarlyHistoricalInCoefModal = useMemo(
+    () => product === "uniqaAuto" && neonCoefficientView === "olderHistorical",
     [product, neonCoefficientView]
   );
   const isPillowAutoHistoricalInCoefModal = useMemo(
@@ -1406,12 +1423,16 @@ export default function CalculatorPage() {
         return `Výpočet: platba (${payLabel}) × koeficient (získatelská i následná). Roční částka = × počet plateb (${payPerYear}).`;
       case "allianzmujdomov":
         return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.06.2020.`;
+      case "uniqaAuto":
+        if (isUniqaAutoEarlyHistoricalInCoefModal) {
+          return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×). V 1. roce se použije získatelský koeficient, od 1. výročí následný koeficient.`;
+        }
+        return `Výpočet: platba (${payLabel}) × koeficient; roční částka = × počet plateb (${payPerYear}).`;
       case "cppAuto":
       case "slaviaauto":
       case "cppsimplex":
       case "allianzAuto":
       case "csobAuto":
-      case "uniqaAuto":
       case "uniqaflotila":
       case "pillowAuto":
       case "kooperativaAuto":
@@ -1429,7 +1450,12 @@ export default function CalculatorPage() {
       default:
         return "";
     }
-  }, [product, frequency, maxCizinKomplexVariant]);
+  }, [
+    product,
+    frequency,
+    maxCizinKomplexVariant,
+    isUniqaAutoEarlyHistoricalInCoefModal,
+  ]);
   const autoTermsPreviewUrl = useMemo(() => {
     if (!product) return null;
     if (product === "cppAuto" && isCppAutoHistoricalInCoefModal) {
@@ -1437,6 +1463,9 @@ export default function CalculatorPage() {
     }
     if (product === "csobAuto" && isCsobAutoHistoricalInCoefModal) {
       return CSOB_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
+    }
+    if (product === "uniqaAuto" && isUniqaAutoEarlyHistoricalInCoefModal) {
+      return UNIQA_AUTO_EARLY_HISTORICAL_TERMS_PREVIEW_URL;
     }
     if (product === "uniqaAuto" && isUniqaAutoHistoricalInCoefModal) {
       return UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
@@ -1450,6 +1479,7 @@ export default function CalculatorPage() {
     isCppAutoHistoricalInCoefModal,
     isCsobAutoHistoricalInCoefModal,
     isUniqaAutoHistoricalInCoefModal,
+    isUniqaAutoEarlyHistoricalInCoefModal,
     isPillowAutoHistoricalInCoefModal,
   ]);
   const showAutoTermsPreview =
@@ -5021,7 +5051,11 @@ export default function CalculatorPage() {
     }
     if (product === "uniqaAuto") {
       setNeonCoefficientView(
-        isUniqaAutoHistoricalBySignedDate ? "historical" : "current"
+        isUniqaAutoEarlyHistoricalBySignedDate
+          ? "olderHistorical"
+          : isUniqaAutoHistoricalBySignedDate
+          ? "historical"
+          : "current"
       );
       return;
     }
@@ -5037,6 +5071,7 @@ export default function CalculatorPage() {
     isCppAutoHistoricalBySignedDate,
     isAllianzAutoHistoricalBySignedDate,
     isCsobAutoHistoricalBySignedDate,
+    isUniqaAutoEarlyHistoricalBySignedDate,
     isUniqaAutoHistoricalBySignedDate,
     isPillowAutoHistoricalBySignedDate,
   ]);
@@ -6681,6 +6716,7 @@ export default function CalculatorPage() {
             product={product}
             position={position}
             mode={mode}
+            hideAnnualAutoTotals={isAutoProduct(product) && frequency === "annual"}
             paymentBasedTotalsMemo={paymentBasedTotalsMemo}
             tipContractImmediateGrossFirstYear={tipContractImmediateGrossFirstYear}
             tipContractTipsterAmountFirstYear={tipContractTipsterAmountFirstYear}
@@ -6720,6 +6756,7 @@ export default function CalculatorPage() {
         isAllianzAutoHistorical={isAllianzAutoHistoricalInCoefModal}
         isCsobAutoHistorical={isCsobAutoHistoricalInCoefModal}
         isUniqaAutoHistorical={isUniqaAutoHistoricalInCoefModal}
+        isUniqaAutoEarlyHistorical={isUniqaAutoEarlyHistoricalInCoefModal}
         isPillowAutoHistorical={isPillowAutoHistoricalInCoefModal}
         coefExplanation={coefExplanation}
         immediatePayoutInfo={immediatePayoutInfo}

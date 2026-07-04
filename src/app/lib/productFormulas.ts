@@ -8,12 +8,10 @@ import {
 import {
   calculateNeon,
   neonCoefficients,
+  neonImmediateCoefficientParts,
   isNeonHistoricalPeriod,
   neonMaxDurationYears,
   normalizeNeonDurationYears,
-  NEON_IMMEDIATE_A101_COEFFICIENTS,
-  NEON_IMMEDIATE_B0301_COEFFICIENTS,
-  NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS,
 } from "./productFormulas/neon";
 import {
   calculateFlexi,
@@ -103,6 +101,9 @@ import {
 import {
   calculateUniqaAuto,
   uniqaAutoCoefficient,
+  uniqaAutoImmediateCoefficient,
+  uniqaAutoSubsequentCoefficient,
+  isUniqaAutoEarlyHistoricalPeriod,
   isUniqaAutoHistoricalPeriod,
 } from "./productFormulas/uniqaAuto";
 import {
@@ -165,6 +166,7 @@ export {
   calculateCsobAuto,
   isCsobAutoHistoricalPeriod,
   calculateUniqaAuto,
+  isUniqaAutoEarlyHistoricalPeriod,
   isUniqaAutoHistoricalPeriod,
   calculatePillowAuto,
   isPillowAutoHistoricalPeriod,
@@ -223,18 +225,21 @@ export function getCoefficientSummary(
   switch (product) {
     case "neon": {
       const k = neonCoefficients(position, m, contractSignedDateIso);
-      const immediateItems = [
-        { label: "Provize A101", value: NEON_IMMEDIATE_A101_COEFFICIENTS[position] / 100 },
-        { label: "Provize B0301", value: NEON_IMMEDIATE_B0301_COEFFICIENTS[position] / 100 },
-        ...(m === "accelerated"
-          ? [
-              {
-                label: "Provize 50% z B3601",
-                value: NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position] / 100,
-              },
-            ]
-          : []),
-      ];
+      const immediate = neonImmediateCoefficientParts(position, m, contractSignedDateIso);
+      const immediateItems = immediate
+        ? [
+            { label: "Provize A101", value: immediate.a101Coefficient / 100 },
+            { label: "Provize B0301", value: immediate.b0301Coefficient / 100 },
+            ...(immediate.includeB3601
+              ? [
+                  {
+                    label: "Provize 50% z B3601",
+                    value: immediate.b3601HalfCoefficient / 100,
+                  },
+                ]
+              : []),
+          ]
+        : [{ label: "Okamžitá provize", value: k.okamzita }];
       return [
         ...immediateItems,
         { label: "Provize po 3 letech", value: k.po3 },
@@ -416,6 +421,18 @@ export function getCoefficientSummary(
       ];
     }
     case "uniqaAuto": {
+      if (isUniqaAutoEarlyHistoricalPeriod(contractSignedDateIso)) {
+        return [
+          {
+            label: "Získatelská provize v 1. roce (01.02.2023-30.04.2024)",
+            value: uniqaAutoImmediateCoefficient(position, contractSignedDateIso),
+          },
+          {
+            label: "Následná provize od 1. výročí (01.02.2023-30.04.2024)",
+            value: uniqaAutoSubsequentCoefficient(position, contractSignedDateIso),
+          },
+        ];
+      }
       const isHistorical = isUniqaAutoHistoricalPeriod(contractSignedDateIso);
       return [
         {

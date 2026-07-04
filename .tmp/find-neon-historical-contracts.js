@@ -68,7 +68,58 @@ function inHistoricalWindow(isoDay) {
   return isoDay >= HISTORICAL_FROM && isoDay < HISTORICAL_TO_EXCLUSIVE;
 }
 
+function modeLabel(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : 'null';
+}
+
+function standardizeModeEntries(value) {
+  if (!Array.isArray(value)) return { changed: false, value };
+
+  let changed = false;
+  const next = value.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+    if (entry.commissionMode === 'standard') return entry;
+    changed = true;
+    return { ...entry, commissionMode: 'standard' };
+  });
+
+  return { changed, value: next };
+}
+
+function standardPatchForHistoricalNeon(data) {
+  const patch = {};
+  const changedFields = [];
+
+  if (data.commissionMode !== 'standard') {
+    patch.commissionMode = 'standard';
+    changedFields.push(`commissionMode:${modeLabel(data.commissionMode)}->standard`);
+  }
+
+  const managerChain = standardizeModeEntries(data.managerChain);
+  if (managerChain.changed) {
+    patch.managerChain = managerChain.value;
+    changedFields.push('managerChain.commissionMode->standard');
+  }
+
+  const managerOverrides = standardizeModeEntries(data.managerOverrides);
+  if (managerOverrides.changed) {
+    patch.managerOverrides = managerOverrides.value;
+    changedFields.push('managerOverrides.commissionMode->standard');
+  }
+
+  const hasManager =
+    (typeof data.managerEmailSnapshot === 'string' && data.managerEmailSnapshot.trim()) ||
+    (Array.isArray(data.managerChain) && data.managerChain.length > 0);
+  if (hasManager && data.managerModeSnapshot !== 'standard') {
+    patch.managerModeSnapshot = 'standard';
+    changedFields.push(`managerModeSnapshot:${modeLabel(data.managerModeSnapshot)}->standard`);
+  }
+
+  return { patch, changedFields };
+}
+
 async function main() {
+  const apply = process.argv.includes('--apply');
   const creds = loadCredentials();
   if (!creds) {
     throw new Error('Missing FIREBASE_ADMIN_* credentials.');
@@ -97,6 +148,7 @@ async function main() {
 
   const seenPaths = new Set();
   const rows = [];
+  const plannedChanges = [];
   let neonContractsTotal = 0;
   let neonContractsMissingSignedDate = 0;
 
@@ -122,6 +174,20 @@ async function main() {
         }
         if (!inHistoricalWindow(signedIso)) continue;
 
+        const standardPatch = standardPatchForHistoricalNeon(d);
+        if (standardPatch.changedFields.length > 0) {
+          plannedChanges.push({
+            ref: entrySnap.ref,
+            path,
+            contractNumber: String(d.contractNumber ?? '').trim() || '—',
+            clientName: String(d.clientName ?? '').trim() || '—',
+            signedIso,
+            ownerEmail: email,
+            patch: standardPatch.patch,
+            changedFields: standardPatch.changedFields,
+          });
+        }
+
         rows.push({
           ownerEmail: email,
           ownerDocId,
@@ -143,10 +209,18 @@ async function main() {
     return a.ownerEmail.localeCompare(b.ownerEmail, 'cs');
   });
 
+  plannedChanges.sort((a, b) => {
+    if (a.signedIso !== b.signedIso) return a.signedIso.localeCompare(b.signedIso);
+    if (a.contractNumber !== b.contractNumber) return a.contractNumber.localeCompare(b.contractNumber, 'cs');
+    return a.ownerEmail.localeCompare(b.ownerEmail, 'cs');
+  });
+
   console.log(`NEON_CONTRACTS_TOTAL=${neonContractsTotal}`);
   console.log(`NEON_MISSING_SIGNED_DATE=${neonContractsMissingSignedDate}`);
   console.log(`HISTORICAL_WINDOW=${HISTORICAL_FROM}..${new Date(new Date(HISTORICAL_TO_EXCLUSIVE).getTime()-86400000).toISOString().slice(0,10)}`);
   console.log(`HISTORICAL_NEON_COUNT=${rows.length}`);
+  console.log(`HISTORICAL_STANDARD_FIX_COUNT=${plannedChanges.length}`);
+  console.log(`APPLY=${apply ? 'true' : 'false'}`);
 
   const modeCounts = rows.reduce((acc, row) => {
     const key = row.mode || 'null';
@@ -168,6 +242,30 @@ async function main() {
       detailPath,
     ].join(' | '));
   }
+
+  console.log('--- PLANNED_STANDARD_FIXES ---');
+  for (const row of plannedChanges) {
+    console.log([
+      row.signedIso,
+      row.contractNumber,
+      row.clientName,
+      row.ownerEmail,
+      row.changedFields.join(', '),
+      row.path,
+    ].join(' | '));
+  }
+
+  if (!apply) {
+    console.log('dry_run=true');
+    return;
+  }
+
+  for (const row of plannedChanges) {
+    await row.ref.update(row.patch);
+  }
+
+  console.log(`applied=true`);
+  console.log(`applied_count=${plannedChanges.length}`);
 }
 
 main().catch((err) => {

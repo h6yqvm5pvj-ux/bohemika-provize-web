@@ -10,9 +10,15 @@ type DetectionRule = {
   product: Product;
   page?: number;
   allOf?: string[];
-  mustContain?: { page: number | "last" | "any"; text: string }[];
+  mustContain?: DetectionRequirement[];
   confidence: PdfProductDetection["confidence"];
   reason: string;
+};
+
+type DetectionRequirement = {
+  page: number | "last" | "any";
+  text: string;
+  wholeWord?: boolean;
 };
 
 const stripDiacritics = (text: string) =>
@@ -23,6 +29,8 @@ const normalizeText = (text: string) =>
 
 const normalizeLooseText = (text: string) =>
   normalizeText(text).replace(/[^A-Z0-9]+/g, "");
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const DETECTION_RULES: DetectionRule[] = [
   {
@@ -180,6 +188,24 @@ const DETECTION_RULES: DetectionRule[] = [
   },
   {
     product: "allianzAuto",
+    mustContain: [
+      { page: "any", text: normalizeText("ALLIANZ") },
+      { page: "any", text: normalizeText("MOJEAUTO") },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „ALLIANZ“ a „MOJEAUTO“.",
+  },
+  {
+    product: "allianzAuto",
+    mustContain: [
+      { page: "any", text: normalizeText("ALLIANZ") },
+      { page: "any", text: normalizeText("AUTO"), wholeWord: true },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „ALLIANZ“ a samostatné slovo „AUTO“.",
+  },
+  {
+    product: "allianzAuto",
     page: 2,
     allOf: [normalizeText("Allianz pojišťovna, a.s."), normalizeText("MojeAuto")],
     confidence: "high",
@@ -272,8 +298,14 @@ export async function detectProductFromPdf(file: File): Promise<PdfProductDetect
   const pageTextByNumber = new Map<number, { strict: string; loose: string }>();
   const pageContainsText = (
     pageText: { strict: string; loose: string },
-    text: string
+    text: string,
+    wholeWord = false
   ) => {
+    if (wholeWord) {
+      return new RegExp(`(^|[^A-Z0-9])${escapeRegExp(text)}([^A-Z0-9]|$)`).test(
+        pageText.strict
+      );
+    }
     if (pageText.strict.includes(text)) return true;
     return pageText.loose.includes(normalizeLooseText(text));
   };
@@ -292,7 +324,7 @@ export async function detectProductFromPdf(file: File): Promise<PdfProductDetect
   };
 
   for (const rule of DETECTION_RULES) {
-    const requirements =
+    const requirements: DetectionRequirement[] =
       rule.mustContain ??
       (typeof rule.page === "number" && rule.allOf
         ? rule.allOf.map((text) => ({ page: rule.page as number, text }))
@@ -305,7 +337,13 @@ export async function detectProductFromPdf(file: File): Promise<PdfProductDetect
         let foundOnSomePage = false;
         for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
           const normalizedPageText = await ensurePageText(pageNumber);
-          if (pageContainsText(normalizedPageText, requirement.text)) {
+          if (
+            pageContainsText(
+              normalizedPageText,
+              requirement.text,
+              requirement.wholeWord
+            )
+          ) {
             foundOnSomePage = true;
             break;
           }
@@ -324,7 +362,13 @@ export async function detectProductFromPdf(file: File): Promise<PdfProductDetect
       }
 
       const normalizedPageText = await ensurePageText(requiredPage);
-      if (!pageContainsText(normalizedPageText, requirement.text)) {
+      if (
+        !pageContainsText(
+          normalizedPageText,
+          requirement.text,
+          requirement.wholeWord
+        )
+      ) {
         matched = false;
         break;
       }

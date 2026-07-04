@@ -22,6 +22,7 @@ type NeonImmediateBreakdownPart = {
 
 export type NeonImmediateBreakdown = {
   position: Position;
+  isHistorical: boolean;
   totalCoefficient: number;
   a101Coefficient: number;
   b0301Coefficient: number;
@@ -220,6 +221,46 @@ export const NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS: Record<Position, number> = 
   manazer10: 1.2445,
 };
 
+export const NEON_HISTORICAL_IMMEDIATE_A101_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 0.891,
+  poradce2: 1.025,
+  poradce3: 1.115,
+  poradce4: 1.604,
+  poradce5: 1.782,
+  poradce6: 1.916,
+  poradce7: 2.006,
+  poradce8: 2.139,
+  poradce9: 2.229,
+  poradce10: 2.318,
+  manazer4: 1.782,
+  manazer5: 1.992,
+  manazer6: 2.199,
+  manazer7: 2.408,
+  manazer8: 2.615,
+  manazer9: 2.823,
+  manazer10: 3.032,
+};
+
+export const NEON_HISTORICAL_IMMEDIATE_B0301_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 0.33,
+  poradce2: 0.363,
+  poradce3: 0.396,
+  poradce4: 0.462,
+  poradce5: 0.479,
+  poradce6: 0.494,
+  poradce7: 0.51,
+  poradce8: 0.527,
+  poradce9: 0.542,
+  poradce10: 0.558,
+  manazer4: 0.47,
+  manazer5: 0.512,
+  manazer6: 0.555,
+  manazer7: 0.599,
+  manazer8: 0.641,
+  manazer9: 0.683,
+  manazer10: 0.726,
+};
+
 const roundToCents = (value: number): number => Math.round(value * 100) / 100;
 const toCents = (value: number): number => Math.round(value * 100);
 const fromCents = (value: number): number => value / 100;
@@ -235,25 +276,70 @@ export const hasNeonImmediateCoefficient = (
   Number.isFinite(NEON_IMMEDIATE_B0301_COEFFICIENTS[position]) &&
   Number.isFinite(NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]);
 
-export const buildNeonImmediateBreakdown = (
-  amount: number,
-  position: Position | null | undefined,
-  mode: CommissionMode | null | undefined
-): NeonImmediateBreakdown | null => {
-  if (!hasNeonImmediateCoefficient(position)) return null;
+export type NeonImmediateCoefficientParts = {
+  isHistorical: boolean;
+  includeB3601: boolean;
+  totalCoefficient: number;
+  a101Coefficient: number;
+  b0301Coefficient: number;
+  b3601HalfCoefficient: number;
+};
 
-  const includeB3601 = isAcceleratedMode(mode);
-  const a101Coefficient = NEON_IMMEDIATE_A101_COEFFICIENTS[position];
-  const b0301Coefficient = NEON_IMMEDIATE_B0301_COEFFICIENTS[position];
+export const neonImmediateCoefficientParts = (
+  position: Position | null | undefined,
+  mode: CommissionMode | null | undefined,
+  contractSignedDateIso?: string | null
+): NeonImmediateCoefficientParts | null => {
+  if (!position) return null;
+  const historical = isNeonHistoricalPeriod(contractSignedDateIso);
+  const a101Coefficient = historical
+    ? NEON_HISTORICAL_IMMEDIATE_A101_COEFFICIENTS[position]
+    : NEON_IMMEDIATE_A101_COEFFICIENTS[position];
+  const b0301Coefficient = historical
+    ? NEON_HISTORICAL_IMMEDIATE_B0301_COEFFICIENTS[position]
+    : NEON_IMMEDIATE_B0301_COEFFICIENTS[position];
+  const includeB3601 = !historical && isAcceleratedMode(mode);
   const b3601HalfCoefficient = includeB3601
     ? NEON_IMMEDIATE_B3601_HALF_COEFFICIENTS[position]
     : 0;
   const totalCoefficient =
     a101Coefficient + b0301Coefficient + b3601HalfCoefficient;
+
   if (!Number.isFinite(totalCoefficient) || totalCoefficient <= 0) return null;
   if (!Number.isFinite(a101Coefficient) || a101Coefficient < 0) return null;
   if (!Number.isFinite(b0301Coefficient) || b0301Coefficient < 0) return null;
   if (!Number.isFinite(b3601HalfCoefficient) || b3601HalfCoefficient < 0) return null;
+
+  return {
+    isHistorical: historical,
+    includeB3601,
+    totalCoefficient,
+    a101Coefficient,
+    b0301Coefficient,
+    b3601HalfCoefficient,
+  };
+};
+
+export const buildNeonImmediateBreakdown = (
+  amount: number,
+  position: Position | null | undefined,
+  mode: CommissionMode | null | undefined,
+  contractSignedDateIso?: string | null
+): NeonImmediateBreakdown | null => {
+  const coefficients = neonImmediateCoefficientParts(
+    position,
+    mode,
+    contractSignedDateIso
+  );
+  if (!coefficients || !position) return null;
+  const {
+    isHistorical,
+    includeB3601,
+    totalCoefficient,
+    a101Coefficient,
+    b0301Coefficient,
+    b3601HalfCoefficient,
+  } = coefficients;
 
   const total = Number(amount);
   if (!Number.isFinite(total) || total <= 0) return null;
@@ -295,6 +381,7 @@ export const buildNeonImmediateBreakdown = (
 
   return {
     position,
+    isHistorical,
     totalCoefficient,
     a101Coefficient: Math.max(0, a101Coefficient),
     b0301Coefficient,
@@ -311,9 +398,15 @@ export const buildNeonImmediateBreakdown = (
 const neonImmediateItems = (
   amount: number,
   position: Position,
-  mode: CommissionMode
+  mode: CommissionMode,
+  contractSignedDateIso?: string | null
 ): CommissionResultItemDTO[] => {
-  const breakdown = buildNeonImmediateBreakdown(amount, position, mode);
+  const breakdown = buildNeonImmediateBreakdown(
+    amount,
+    position,
+    mode,
+    contractSignedDateIso
+  );
   if (!breakdown) return [{ title: "💸 Okamžitá provize", amount, code: "A101" }];
 
   return breakdown.parts.map((part) => ({
@@ -823,7 +916,7 @@ export function calculateNeon(
   const total = okamzita + po3 + po4 + nasl25 * 4 + nasl510 * 6;
 
   const items: CommissionResultItemDTO[] = [
-    ...neonImmediateItems(okamzita, position, effectiveMode),
+    ...neonImmediateItems(okamzita, position, effectiveMode, contractSignedDateIso),
     { title: "📅 Provize po 3 letech", amount: po3, code: "B3601" },
     { title: "📅 Provize po 4 letech", amount: po4, code: "B4801" },
     { title: "🔁 Následná provize (2.–5. rok)", amount: nasl25, code: "B101-B104" },

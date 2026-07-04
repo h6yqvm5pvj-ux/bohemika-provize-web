@@ -337,6 +337,10 @@ export const CashflowGenerator = {
         case "uniqaAuto":
         case "uniqaflotila": {
           if (!immediate) break;
+          const anniversaryAmount = naslGeneric?.amount ?? immediate.amount;
+          const anniversaryNote = naslGeneric
+            ? "roční následná provize"
+            : "ročně k výročí";
 
           const firstPayout = estimatePayoutDate(start, agreement);
           if (firstPayout <= horizonEnd) {
@@ -351,7 +355,7 @@ export const CashflowGenerator = {
           while (true) {
             const payout = anniversaryPlusYears(y);
             if (payout > horizonEnd) break;
-            addItem(immediate.amount, payout, "ročně k výročí");
+            addItem(anniversaryAmount, payout, anniversaryNote);
             y += 1;
           }
           break;

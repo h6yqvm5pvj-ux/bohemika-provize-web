@@ -5,7 +5,7 @@ import { Download } from "lucide-react";
 
 import type { CommissionMode, Product } from "../types/domain";
 
-export type NeonCoefficientView = "current" | "historical";
+export type NeonCoefficientView = "current" | "historical" | "olderHistorical";
 
 type CoefficientSummaryItem = {
   label: string;
@@ -26,6 +26,7 @@ type CalculatorCoefficientModalProps = {
   isAllianzAutoHistorical: boolean;
   isCsobAutoHistorical: boolean;
   isUniqaAutoHistorical: boolean;
+  isUniqaAutoEarlyHistorical: boolean;
   isPillowAutoHistorical: boolean;
   coefExplanation: string;
   immediatePayoutInfo: string | null;
@@ -61,6 +62,7 @@ export function CalculatorCoefficientModal({
   isAllianzAutoHistorical,
   isCsobAutoHistorical,
   isUniqaAutoHistorical,
+  isUniqaAutoEarlyHistorical,
   isPillowAutoHistorical,
   coefExplanation,
   immediatePayoutInfo,
@@ -105,7 +107,9 @@ export function CalculatorCoefficientModal({
         ? "Historické koeficienty – platnost 01.05.2024 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
       : product === "uniqaAuto"
-      ? isUniqaAutoHistorical
+      ? isUniqaAutoEarlyHistorical
+        ? "Historické koeficienty – platnost 01.02.2023 až 30.04.2024"
+        : isUniqaAutoHistorical
         ? "Historické koeficienty – platnost 01.05.2024 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
       : product === "pillowAuto"
@@ -194,8 +198,21 @@ export function CalculatorCoefficientModal({
                     : "text-slate-600 hover:bg-white"
                 }`}
               >
-                Historické
+                {product === "uniqaAuto" ? "Hist. 2024" : "Historické"}
               </button>
+              {product === "uniqaAuto" && (
+                <button
+                  type="button"
+                  onClick={() => onCoefficientViewChange("olderHistorical")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                    coefficientView === "olderHistorical"
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-600 hover:bg-white"
+                  }`}
+                >
+                  Hist. 2023
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -580,6 +580,10 @@ export function generateCashflow(
       case "uniqaAuto":
       case "uniqaflotila": {
         if (!immediate) break;
+        const anniversaryAmount = naslGeneric?.amount ?? immediate.amount;
+        const anniversaryNote = naslGeneric
+          ? "roční následná provize"
+          : "ročně k výročí";
 
         const first = isAutoCashflowProduct(product)
           ? estimateAutoFirstPayoutDate(start, agreement)
@@ -596,7 +600,7 @@ export function generateCashflow(
         while (true) {
           const date = annPlusYears(year);
           if (date > entryHorizonEnd) break;
-          pushItem(immediate.amount, date, "ročně k výročí");
+          pushItem(anniversaryAmount, date, anniversaryNote);
           year += 1;
         }
         break;

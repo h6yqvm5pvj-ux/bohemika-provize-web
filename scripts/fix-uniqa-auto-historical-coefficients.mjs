@@ -14,7 +14,7 @@ const { calculateUniqaAuto, isUniqaAutoHistoricalPeriod } = jiti(
 );
 
 const BATCH_LIMIT = 350;
-const HISTORICAL_VALID_FROM = "2024-05-01";
+const HISTORICAL_VALID_FROM = "2023-02-01";
 const CURRENT_VALID_FROM = "2026-04-01";
 const TIP_CONTRACT_PERCENT_MIN = 5;
 const TIP_CONTRACT_PERCENT_MAX = 95;
