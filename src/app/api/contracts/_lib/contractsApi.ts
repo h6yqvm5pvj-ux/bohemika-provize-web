@@ -144,6 +144,7 @@ const TIP_PAYOUT_CUTOFF_DAY = 25;
 const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "productKey",
   "entryType",
+  "commissionMode",
   "inputAmount",
   "effectiveInputAmount",
   "comfortPayment",
@@ -1283,6 +1284,20 @@ const parseOptionalBoolean = (
   return { ok: true, value };
 };
 
+const parseOptionalCommissionMode = (
+  value: unknown,
+  field: string
+): ParseResult<CommissionMode | null> => {
+  if (value == null) return { ok: true, value: null };
+  if (value !== "accelerated" && value !== "standard") {
+    return {
+      ok: false,
+      error: `Pole ${field} má nepodporovanou hodnotu.`,
+    };
+  }
+  return { ok: true, value };
+};
+
 const parseOptionalInteger = (
   value: unknown,
   field: string,
@@ -1414,7 +1429,7 @@ type NormalizedCreateEntryPayload = {
   productKey: Product;
   entryType: "contract" | "endorsement";
   position: Position;
-  commissionMode: CommissionMode;
+  commissionMode: CommissionMode | null;
   inputAmount: number;
   effectiveInputAmount: number;
   comfortPayment: number | null;
@@ -1549,6 +1564,8 @@ const normalizeCreateEntryPayload = ({
   if (!entryTypeParsed.ok) return entryTypeParsed;
   const productParsed = parseProductKey(raw.productKey);
   if (!productParsed.ok) return productParsed;
+  const commissionModeParsed = parseOptionalCommissionMode(raw.commissionMode, "commissionMode");
+  if (!commissionModeParsed.ok) return commissionModeParsed;
   const freqParsed = parseFrequencyField(raw.frequencyRaw);
   if (!freqParsed.ok) return freqParsed;
 
@@ -2049,7 +2066,7 @@ const normalizeCreateEntryPayload = ({
       productKey: productParsed.value,
       entryType: entryTypeParsed.value,
       position: "poradce1",
-      commissionMode: "standard",
+      commissionMode: commissionModeParsed.value,
       inputAmount: inputAmountParsed.value ?? 0,
       effectiveInputAmount: effectiveInputAmountParsed.value ?? inputAmountParsed.value ?? 0,
       comfortPayment: comfortPaymentParsed.value,
@@ -3672,6 +3689,22 @@ const effectiveCommissionModeForStoredProduct = (
   }
 
   return mode;
+};
+
+const trustedCreateCommissionMode = ({
+  productKey,
+  profileMode,
+  requestedMode,
+}: {
+  productKey: Product;
+  profileMode: CommissionMode;
+  requestedMode: CommissionMode | null;
+}): CommissionMode => {
+  if (CATALOG_LIFE_PRODUCTS.includes(productKey) && requestedMode) {
+    return requestedMode;
+  }
+
+  return profileMode;
 };
 
 const computeManagerOverridesForChain = ({
@@ -6211,7 +6244,12 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
 
-    const trustedMode = trustedProfile.commissionMode ?? "standard";
+    const profileTrustedMode = trustedProfile.commissionMode ?? "standard";
+    const trustedMode = trustedCreateCommissionMode({
+      productKey: normalizedEntry.payload.productKey,
+      profileMode: profileTrustedMode,
+      requestedMode: normalizedEntry.payload.commissionMode,
+    });
     const effectiveTrustedMode = effectiveCommissionModeForStoredProduct(
       normalizedEntry.payload.productKey,
       trustedMode,

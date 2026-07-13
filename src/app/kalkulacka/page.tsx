@@ -4622,6 +4622,7 @@ export default function CalculatorPage() {
           entry: {
             productKey: product,
             entryType: "contract" as ContractEntryType,
+            commissionMode: canChooseMode ? mode : null,
             inputAmount: product === "comfortcc" ? value : value,
             calculationInputAmount,
             effectiveInputAmount: value,
@@ -4896,6 +4897,7 @@ export default function CalculatorPage() {
         idempotencyKey: buildContractsCreateIdempotencyKey({
           entryType: "contract",
           productKey: product,
+          commissionMode: canChooseMode ? mode : null,
           contractNumber: trimmedContractNumber || null,
           clientName: clientName.trim() || null,
           contractSignedDate: contractSignedDate.trim(),
