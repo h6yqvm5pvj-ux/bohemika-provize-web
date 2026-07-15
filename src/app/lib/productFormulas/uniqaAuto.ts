@@ -6,7 +6,6 @@ import {
 } from "../../types/domain";
 import { normalizeIsoDay, pct, periodsPerYear } from "./shared";
 import { cppAutoCoefficient } from "./cppAuto";
-import { historicalAutoSubsequentCoefficient } from "./historicalAutoCoefficient";
 
 // ---------- UNIQA Auto ----------
 
@@ -185,7 +184,7 @@ export function uniqaAutoSubsequentCoefficient(
     return uniqaAutoEarlySubsequentCoefficient(position);
   }
   if (isUniqaAutoLaterHistoricalPeriod(contractSignedDateIso)) {
-    return historicalAutoSubsequentCoefficient(position);
+    return uniqaAutoLaterHistoricalCoefficient(position);
   }
   return uniqaAutoImmediateCoefficient(position, contractSignedDateIso);
 }
