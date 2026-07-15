@@ -28,6 +28,7 @@ type CalculatorCoefficientModalProps = {
   isUniqaAutoHistorical: boolean;
   isUniqaAutoEarlyHistorical: boolean;
   isPillowAutoHistorical: boolean;
+  isKooperativaAutoHistorical: boolean;
   coefExplanation: string;
   immediatePayoutInfo: string | null;
   coefList: CoefficientSummaryItem[];
@@ -64,6 +65,7 @@ export function CalculatorCoefficientModal({
   isUniqaAutoHistorical,
   isUniqaAutoEarlyHistorical,
   isPillowAutoHistorical,
+  isKooperativaAutoHistorical,
   coefExplanation,
   immediatePayoutInfo,
   coefList,
@@ -88,7 +90,8 @@ export function CalculatorCoefficientModal({
     product === "allianzAuto" ||
     product === "csobAuto" ||
     product === "uniqaAuto" ||
-    product === "pillowAuto";
+    product === "pillowAuto" ||
+    product === "kooperativaAuto";
   const productPeriodText =
     product === "neon"
       ? isNeonHistorical
@@ -116,6 +119,10 @@ export function CalculatorCoefficientModal({
       ? isPillowAutoHistorical
         ? "Historické koeficienty – platnost 01.10.2023 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
+      : product === "kooperativaAuto"
+      ? isKooperativaAutoHistorical
+        ? "Historické koeficienty – platnost 01.07.2021 až 31.03.2026"
+        : "Aktuální koeficienty – platnost od 01.04.2026"
       : null;
   const productModeText =
     product === "neon" && isNeonHistorical
@@ -124,12 +131,14 @@ export function CalculatorCoefficientModal({
         product === "allianzAuto" ||
         product === "csobAuto" ||
         product === "uniqaAuto" ||
-        product === "pillowAuto"
+        product === "pillowAuto" ||
+        product === "kooperativaAuto"
       ? isCppAutoHistorical ||
         isAllianzAutoHistorical ||
         isCsobAutoHistorical ||
         isUniqaAutoHistorical ||
-        isPillowAutoHistorical
+        isPillowAutoHistorical ||
+        isKooperativaAutoHistorical
         ? "historické podmínky"
         : "aktuální podmínky"
       : `režim ${mode}`;

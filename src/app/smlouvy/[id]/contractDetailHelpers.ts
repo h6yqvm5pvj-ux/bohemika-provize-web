@@ -546,7 +546,7 @@ export async function calculateResultForPosition(
       const { calculateKooperativaAuto } = await import(
         "../../lib/productFormulas/kooperativaAuto"
       );
-      return calculateKooperativaAuto(amount, freq, position);
+      return calculateKooperativaAuto(amount, freq, position, contractSignedDateIso);
     }
     case "zamex": {
       const { calculateZamex } = await import("../../lib/productFormulas/zamex");

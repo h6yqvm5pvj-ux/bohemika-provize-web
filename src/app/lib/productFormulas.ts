@@ -115,6 +115,7 @@ import {
 import {
   calculateKooperativaAuto,
   kooperativaAutoCoefficient,
+  isKooperativaAutoHistoricalPeriod,
 } from "./productFormulas/kooperativaAuto";
 import {
   calculateZamex,
@@ -172,6 +173,7 @@ export {
   calculatePillowAuto,
   isPillowAutoHistoricalPeriod,
   calculateKooperativaAuto,
+  isKooperativaAutoHistoricalPeriod,
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
@@ -515,8 +517,17 @@ export function getCoefficientSummary(
     case "kooperativaAuto":
       return [
         {
-          label: "Koeficient (z platby)",
-          value: kooperativaAutoCoefficient(position),
+          label: "Získatelská provize - koeficient",
+          value: kooperativaAutoCoefficient(position, contractSignedDateIso),
+        },
+        {
+          label: "Následná provize - koeficient",
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? kooperativaAutoCoefficient(position, contractSignedDateIso),
         },
       ];
     case "zamex":

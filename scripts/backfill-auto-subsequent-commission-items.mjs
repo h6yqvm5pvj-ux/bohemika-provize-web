@@ -333,7 +333,7 @@ const calculateAutoResult = ({
     case "pillowAuto":
       return calculatePillowAuto(amount, frequency, position, effectiveSignedIso);
     case "kooperativaAuto":
-      return calculateKooperativaAuto(amount, frequency, position);
+      return calculateKooperativaAuto(amount, frequency, position, effectiveSignedIso);
     default:
       return null;
   }

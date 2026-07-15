@@ -3636,7 +3636,12 @@ const computeItemsForProductPositionAndMode = ({
         coefficientSignedDateIso
       );
     case "kooperativaAuto":
-      return calculateKooperativaAuto(safeAmount, usedFrequency, position);
+      return calculateKooperativaAuto(
+        safeAmount,
+        usedFrequency,
+        position,
+        coefficientSignedDateIso
+      );
     case "zamex":
       return calculateZamex(safeAmount, usedFrequency, position);
     case "cppcestovko":

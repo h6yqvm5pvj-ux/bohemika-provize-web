@@ -18,6 +18,11 @@ import {
   isCsobAutoHistoricalPeriod,
 } from "./csobAuto";
 import {
+  KOOPERATIVA_AUTO_CURRENT_VALID_FROM,
+  KOOPERATIVA_AUTO_HISTORICAL_VALID_FROM,
+  isKooperativaAutoHistoricalPeriod,
+} from "./kooperativaAuto";
+import {
   NEON_CURRENT_VALID_FROM,
   NEON_HISTORICAL_VALID_FROM,
   isNeonHistoricalPeriod,
@@ -57,6 +62,7 @@ export function candidateCoefficientSetsForProduct(
     case "allianzAuto":
     case "csobAuto":
     case "pillowAuto":
+    case "kooperativaAuto":
       return ["historical", "current"];
     default:
       return [];
@@ -83,6 +89,10 @@ export function defaultCoefficientSetForProduct(
       return isUniqaAutoHistoricalPeriod(contractSignedDateIso) ? "historical" : "current";
     case "pillowAuto":
       return isPillowAutoHistoricalPeriod(contractSignedDateIso) ? "historical" : "current";
+    case "kooperativaAuto":
+      return isKooperativaAutoHistoricalPeriod(contractSignedDateIso)
+        ? "historical"
+        : "current";
     default:
       return null;
   }
@@ -119,6 +129,12 @@ export function coefficientSetSignedDateForProduct(
     case "pillowAuto":
       if (coefficientSet === "historical") return PILLOW_AUTO_HISTORICAL_VALID_FROM;
       if (coefficientSet === "current") return PILLOW_AUTO_CURRENT_VALID_FROM;
+      return null;
+    case "kooperativaAuto":
+      if (coefficientSet === "historical") {
+        return KOOPERATIVA_AUTO_HISTORICAL_VALID_FROM;
+      }
+      if (coefficientSet === "current") return KOOPERATIVA_AUTO_CURRENT_VALID_FROM;
       return null;
     default:
       return null;

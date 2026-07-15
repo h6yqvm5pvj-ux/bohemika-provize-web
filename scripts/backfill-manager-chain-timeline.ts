@@ -602,7 +602,7 @@ function computeItemsForEntry(
     case "pillowAuto":
       return calculatePillowAuto(val, freq, pos, contractSignedDateIso);
     case "kooperativaAuto":
-      return calculateKooperativaAuto(val, freq, pos);
+      return calculateKooperativaAuto(val, freq, pos, contractSignedDateIso);
     case "zamex":
       return calculateZamex(val, freq, pos);
     case "cppcestovko":

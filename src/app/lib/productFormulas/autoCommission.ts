@@ -8,7 +8,7 @@ import {
 import {
   csobAutoSubsequentCoefficient,
 } from "./csobAuto";
-import { kooperativaAutoCoefficient } from "./kooperativaAuto";
+import { kooperativaAutoSubsequentCoefficient } from "./kooperativaAuto";
 import {
   pillowAutoSubsequentCoefficient,
 } from "./pillowAuto";
@@ -49,7 +49,7 @@ export function autoSubsequentCoefficientForProduct(
     case "slaviaauto":
       return slaviaAutoCoefficient(position);
     case "kooperativaAuto":
-      return kooperativaAutoCoefficient(position);
+      return kooperativaAutoSubsequentCoefficient(position, contractSignedDateIso);
     default:
       return null;
   }
