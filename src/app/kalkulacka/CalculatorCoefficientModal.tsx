@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 import { Download } from "lucide-react";
 
 import type { CommissionMode, Product } from "../types/domain";
@@ -13,6 +14,42 @@ type CoefficientSummaryItem = {
 };
 
 type NeonDocumentAction = "download" | "open";
+
+type PdfViewportLike = {
+  width: number;
+  height: number;
+};
+
+type PdfRenderTaskLike = {
+  promise: Promise<void>;
+};
+
+type PdfPageLike = {
+  getViewport: (params: { scale: number }) => PdfViewportLike;
+  render: (params: {
+    canvas: HTMLCanvasElement;
+    canvasContext: CanvasRenderingContext2D;
+    viewport: PdfViewportLike;
+    transform?: [number, number, number, number, number, number];
+  }) => PdfRenderTaskLike;
+};
+
+type PdfDocumentLike = {
+  numPages: number;
+  getPage: (pageNumber: number) => Promise<PdfPageLike>;
+  destroy: () => Promise<void>;
+};
+
+type PdfLoadingTaskLike = {
+  promise: Promise<unknown>;
+  destroy: () => void;
+};
+
+type PdfPreviewPage = {
+  pageNumber: number;
+  width: number;
+  height: number;
+};
 
 type CalculatorCoefficientModalProps = {
   isOpen: boolean;
@@ -50,6 +87,163 @@ const formatCoefficientNumber = (value: number | null | undefined): string => {
   if (value == null || Number.isNaN(value)) return "—";
   return value.toLocaleString("cs-CZ", { maximumFractionDigits: 6 });
 };
+
+function PdfTermsPreview({ url, title }: { url: string; title: string }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pages, setPages] = useState<PdfPreviewPage[]>([]);
+  const pdfDocumentRef = useRef<PdfDocumentLike | null>(null);
+  const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadingTask: PdfLoadingTaskLike | null = null;
+
+    setLoading(true);
+    setError(null);
+    setPages([]);
+    canvasRefs.current = [];
+
+    if (pdfDocumentRef.current) {
+      void pdfDocumentRef.current.destroy();
+      pdfDocumentRef.current = null;
+    }
+
+    const loadPdf = async () => {
+      try {
+        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        if (pdfjsLib.GlobalWorkerOptions) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+        }
+
+        loadingTask = pdfjsLib.getDocument({
+          url,
+          isEvalSupported: false,
+        }) as PdfLoadingTaskLike;
+        const pdf = (await loadingTask.promise) as PdfDocumentLike;
+
+        if (cancelled) {
+          void pdf.destroy();
+          return;
+        }
+
+        pdfDocumentRef.current = pdf;
+        const nextPages: PdfPreviewPage[] = [];
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          const page = await pdf.getPage(pageNumber);
+          const viewport = page.getViewport({ scale: 1 });
+          nextPages.push({
+            pageNumber,
+            width: viewport.width,
+            height: viewport.height,
+          });
+        }
+
+        if (!cancelled) {
+          setPages(nextPages);
+          setLoading(false);
+        }
+      } catch (loadError) {
+        if (cancelled) return;
+        setLoading(false);
+        setError(
+          loadError instanceof Error && loadError.message.trim()
+            ? loadError.message.trim()
+            : "PDF náhled se nepodařilo načíst."
+        );
+      }
+    };
+
+    void loadPdf();
+
+    return () => {
+      cancelled = true;
+      loadingTask?.destroy();
+      if (pdfDocumentRef.current) {
+        void pdfDocumentRef.current.destroy();
+        pdfDocumentRef.current = null;
+      }
+    };
+  }, [url]);
+
+  useEffect(() => {
+    if (pages.length === 0) return;
+
+    let cancelled = false;
+
+    const renderPages = async () => {
+      const pdf = pdfDocumentRef.current;
+      if (!pdf) return;
+
+      for (let index = 0; index < pages.length; index += 1) {
+        if (cancelled) return;
+        const pageInfo = pages[index];
+        const canvas = canvasRefs.current[index];
+        const context = canvas?.getContext("2d", { alpha: false });
+        if (!canvas || !context) continue;
+
+        const page = await pdf.getPage(pageInfo.pageNumber);
+        const viewport = page.getViewport({ scale: 1.65 });
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+
+        await page.render({
+          canvas,
+          canvasContext: context,
+          viewport,
+          transform:
+            outputScale === 1
+              ? undefined
+              : [outputScale, 0, 0, outputScale, 0, 0],
+        }).promise;
+      }
+    };
+
+    void renderPages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pages]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[440px] items-center justify-center rounded-md bg-white px-4 text-sm text-slate-600">
+        Načítám PDF náhled...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[440px] items-center justify-center rounded-md bg-white px-4 text-center text-sm font-semibold text-rose-700">
+        {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+      {pages.map((page, index) => (
+        <div
+          key={page.pageNumber}
+          className="relative mx-auto w-full overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm"
+          style={{ aspectRatio: `${page.width} / ${page.height}` }}
+        >
+          <canvas
+            ref={(node) => {
+              canvasRefs.current[index] = node;
+            }}
+            className="absolute inset-0 h-full w-full"
+            aria-label={`${title} - strana ${page.pageNumber}`}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function CalculatorCoefficientModal({
   isOpen,
@@ -311,10 +505,9 @@ export function CalculatorCoefficientModal({
                 </div>
                 <div className="h-[62vh] min-h-[460px] overflow-auto rounded-lg border border-slate-300 bg-slate-100 p-2">
                   {autoTermsPreviewIsPdf ? (
-                    <iframe
+                    <PdfTermsPreview
+                      url={autoTermsPreviewUrl}
                       title={`Provizní podmínky ${productLabel || "Auto"}`}
-                      src={`${autoTermsPreviewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                      className="h-full min-h-[440px] w-full rounded-md bg-white"
                     />
                   ) : (
                     <Image
