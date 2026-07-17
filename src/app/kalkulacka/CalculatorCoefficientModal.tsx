@@ -142,6 +142,9 @@ export function CalculatorCoefficientModal({
         ? "historické podmínky"
         : "aktuální podmínky"
       : `režim ${mode}`;
+  const autoTermsPreviewIsPdf = /\.pdf(?:[?#]|$)/i.test(
+    autoTermsPreviewUrl ?? ""
+  );
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto px-4 py-6">
@@ -307,15 +310,23 @@ export function CalculatorCoefficientModal({
                   </a>
                 </div>
                 <div className="h-[62vh] min-h-[460px] overflow-auto rounded-lg border border-slate-300 bg-slate-100 p-2">
-                  <Image
-                    src={autoTermsPreviewUrl}
-                    alt={`Provizní podmínky ${productLabel || "Auto"}`}
-                    width={1600}
-                    height={2400}
-                    className="mx-auto h-auto w-full rounded-md"
-                    sizes="(max-width: 1024px) 100vw, 1200px"
-                    priority
-                  />
+                  {autoTermsPreviewIsPdf ? (
+                    <iframe
+                      title={`Provizní podmínky ${productLabel || "Auto"}`}
+                      src={`${autoTermsPreviewUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                      className="h-full min-h-[440px] w-full rounded-md bg-white"
+                    />
+                  ) : (
+                    <Image
+                      src={autoTermsPreviewUrl}
+                      alt={`Provizní podmínky ${productLabel || "Auto"}`}
+                      width={1600}
+                      height={2400}
+                      className="mx-auto h-auto w-full rounded-md"
+                      sizes="(max-width: 1024px) 100vw, 1200px"
+                      priority
+                    />
+                  )}
                 </div>
               </div>
             )}

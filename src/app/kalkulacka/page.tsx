@@ -203,6 +203,7 @@ const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   uniqaflotila: "/provize/uniqaflotila.jpg",
   pillowAuto: "/provize/pillowauto.jpg",
   kooperativaAuto: "/provize/koopauto.jpg",
+  koopodzam: "/provize/koopodzam.pdf",
 };
 const PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/pillowhistoricke.jpg";
