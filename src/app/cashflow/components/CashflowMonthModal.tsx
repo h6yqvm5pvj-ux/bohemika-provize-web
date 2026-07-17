@@ -81,6 +81,7 @@ const COMMISSION_BY_PAYMENT_FREQUENCY_PRODUCTS = new Set<Product>([
   "cpphafan",
   "koopmajetekobcan",
   "koopfit",
+  "koopodzam",
   "maxdomov",
   "zamex",
   "cppsimplex",

@@ -113,6 +113,7 @@ import { parseCsobAutoPdf } from "@/app/lib/parseCsobAutoPdf";
 import { parseDomexPdf } from "@/app/lib/parseDomexPdf";
 import { parseFlexiPdf } from "@/app/lib/parseFlexiPdf";
 import { parseKooperativaAutoPdf } from "@/app/lib/parseKooperativaAutoPdf";
+import { parseKoopOdzamPdf } from "@/app/lib/parseKoopOdzamPdf";
 import { parseMaxCizinKomplexPdf } from "@/app/lib/parseMaxCizinKomplexPdf";
 import { parseMaxdomovPdf } from "@/app/lib/parseMaxdomovPdf";
 import { parseNeonPdf } from "@/app/lib/parseNeonPdf";
@@ -193,6 +194,7 @@ const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
   flexi: parseFlexiPdf,
   domex: parseDomexPdf,
   cpphafan: parseCppHafanPdf,
+  koopodzam: parseKoopOdzamPdf,
   maxdomov: parseMaxdomovPdf,
   maxcizinkomplex: parseMaxCizinKomplexPdf,
   comfortcc: parseComfortPdf,
@@ -1315,6 +1317,7 @@ export default function ContractDetailPage() {
     prod === "cpphafan" ||
     prod === "koopmajetekobcan" ||
     prod === "koopfit" ||
+    prod === "koopodzam" ||
     prod === "maxdomov" ||
     isFrequencyAutoCommissionProduct;
   const hideSeparatedPeriodTotals = Boolean(
@@ -4000,7 +4003,13 @@ export default function ContractDetailPage() {
 
   // vyfiltrované položky bez řádku "Celkem" a bez ročních součtů u produktů placených dle platby
   const filterPaymentBasedItems = (arr: CommissionResultItemDTO[]) => {
-    if (prod === "domex" || prod === "cpphafan" || prod === "koopmajetekobcan" || prod === "koopfit") {
+    if (
+      prod === "domex" ||
+      prod === "cpphafan" ||
+      prod === "koopmajetekobcan" ||
+      prod === "koopfit" ||
+      prod === "koopodzam"
+    ) {
       return arr.filter((it) =>
         (it.title ?? "").toLowerCase().includes("(z platby)")
       );

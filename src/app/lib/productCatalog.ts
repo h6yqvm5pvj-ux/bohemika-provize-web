@@ -72,6 +72,7 @@ export const PRODUCT_ORDER: Product[] = [
   "pillowmajetek",
   "koopmajetekobcan",
   "koopfit",
+  "koopodzam",
   "maxdomov",
   "allianzmujdomov",
   "cppsimplex",
@@ -154,6 +155,13 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     icon: "/icons/icon_domex.png",
     institutionId: "kooperativa",
     category: "property",
+  },
+  koopodzam: {
+    label: "Kooperativa Pojištění odpovědnosti zaměstnance",
+    icon: "/icons/icon_domex.png",
+    institutionId: "kooperativa",
+    category: "property",
+    extraGroups: ["liability"],
   },
   maxdomov: {
     label: "Maxima MAXDOMOV",

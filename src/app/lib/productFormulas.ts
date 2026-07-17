@@ -56,6 +56,11 @@ import {
   koopMajetekObcanSubsequentCoefficient,
 } from "./productFormulas/koopmajetekobcan";
 import {
+  calculateKoopOdzam,
+  koopOdzamImmediateCoefficient,
+  koopOdzamSubsequentCoefficient,
+} from "./productFormulas/koopodzam";
+import {
   calculateMaxdomov,
   maxdomovImmediateCoefficient,
   maxdomovSubsequentCoefficient,
@@ -155,6 +160,7 @@ export {
   calculateCppHafan,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
+  calculateKoopOdzam,
   calculateMaxdomov,
   calculateCppAuto,
   isCppAutoHistoricalPeriod,
@@ -195,6 +201,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "pillowmajetek",
   "koopmajetekobcan",
   "koopfit",
+  "koopodzam",
   "maxdomov",
   "cppsimplex",
   "cppAuto",
@@ -349,6 +356,18 @@ export function getCoefficientSummary(
         {
           label: "Následná provize (z platby)",
           value: koopMajetekObcanSubsequentCoefficient(position),
+        },
+      ];
+    }
+    case "koopodzam": {
+      return [
+        {
+          label: "Okamžitá provize (z platby)",
+          value: koopOdzamImmediateCoefficient(position),
+        },
+        {
+          label: "Následná provize (z platby)",
+          value: koopOdzamSubsequentCoefficient(position),
         },
       ];
     }

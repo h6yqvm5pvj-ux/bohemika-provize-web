@@ -300,6 +300,7 @@ const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
     product: "koopmajetekobcan",
   },
   KOO_OD_ZAM: {
+    product: "koopodzam",
     label: "Kooperativa odpovědnost zaměstnance",
     category: "property",
   },

@@ -62,6 +62,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "koopfit":
       import("../../lib/productFormulas/koopmajetekobcan");
       break;
+    case "koopodzam":
+      import("../../lib/productFormulas/koopodzam");
+      break;
     case "cppPPRbez":
       import("../../lib/productFormulas/cppPPRbez");
       break;
@@ -475,6 +478,12 @@ export async function calculateResultForPosition(
         "../../lib/productFormulas/koopmajetekobcan"
       );
       return calculateKoopMajetekObcan(amount, freq, position);
+    }
+    case "koopodzam": {
+      const { calculateKoopOdzam } = await import(
+        "../../lib/productFormulas/koopodzam"
+      );
+      return calculateKoopOdzam(amount, freq, position);
     }
     case "cppPPRbez": {
       const { calculateCppPPRbez } = await import(

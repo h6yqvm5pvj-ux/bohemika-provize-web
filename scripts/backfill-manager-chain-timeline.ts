@@ -23,6 +23,7 @@ import {
   calculateDomex,
   calculateFlexi,
   calculateKoopMajetekObcan,
+  calculateKoopOdzam,
   calculateKooperativaAuto,
   calculateMaxEfekt,
   calculateMaxdomov,
@@ -65,6 +66,7 @@ const PRODUCT_SET = new Set<Product>([
   "zamex",
   "domex",
   "koopmajetekobcan",
+  "koopodzam",
   "maxdomov",
   "cppsimplex",
   "cppAuto",
@@ -422,6 +424,7 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "domex":
       return ["quarterly", "semiannual", "annual"];
     case "koopmajetekobcan":
+    case "koopodzam":
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "pillowAuto":
     case "maxdomov":
@@ -550,10 +553,13 @@ function computeItemsForEntry(
     case "pillowInjury":
       return calculatePillowInjury(val, pos, usedMode);
     case "domex":
-    case "koopmajetekobcan": {
+    case "koopmajetekobcan":
+    case "koopodzam": {
       const dto =
         product === "domex"
           ? calculateDomex(val, freq, pos)
+          : product === "koopodzam"
+          ? calculateKoopOdzam(val, freq, pos)
           : calculateKoopMajetekObcan(val, freq, pos);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")

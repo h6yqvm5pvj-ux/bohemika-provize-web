@@ -69,6 +69,7 @@ import {
   calculateDomex,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
+  calculateKoopOdzam,
   calculateMaxdomov,
   calculateCppAuto,
   calculateSlaviaAuto,
@@ -242,6 +243,7 @@ const SUPPORTED_PRODUCTS = new Set<Product>([
   "pillowmajetek",
   "koopmajetekobcan",
   "koopfit",
+  "koopodzam",
   "maxdomov",
   "cppsimplex",
   "cppAuto",
@@ -2845,6 +2847,7 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
     case "pillowmajetek":
     case "koopmajetekobcan":
     case "koopfit":
+    case "koopodzam":
     case "pillowAuto":
     case "maxdomov":
     case "allianzmujdomov":
@@ -3553,12 +3556,15 @@ const computeItemsForProductPositionAndMode = ({
     case "domex":
     case "cpphafan":
     case "koopmajetekobcan":
-    case "koopfit": {
+    case "koopfit":
+    case "koopodzam": {
       const dto =
         productKey === "domex"
           ? calculateDomex(safeAmount, usedFrequency, position)
           : productKey === "cpphafan"
           ? calculateCppHafan(safeAmount, usedFrequency, position)
+          : productKey === "koopodzam"
+          ? calculateKoopOdzam(safeAmount, usedFrequency, position)
           : calculateKoopMajetekObcan(safeAmount, usedFrequency, position);
       const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
         (item.title ?? "").toLowerCase().includes("(z platby)")

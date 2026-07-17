@@ -430,6 +430,7 @@ export function allowedFrequencies(product: Product): PaymentFrequency[] {
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "koopmajetekobcan":
     case "koopfit":
+    case "koopodzam":
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "pillowAuto":
     case "maxdomov":

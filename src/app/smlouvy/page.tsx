@@ -188,6 +188,7 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   pillowmajetek: "Majetek",
   koopmajetekobcan: "Majetek a odpovědnost občanů",
   koopfit: "Sportovní výbava FIT",
+  koopodzam: "Odpovědnost zaměstnance",
   maxdomov: "MAXDOMOV",
   allianzmujdomov: "MůjDomov",
   cppsimplex: "Simplex",

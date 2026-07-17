@@ -87,6 +87,21 @@ const DETECTION_RULES: DetectionRule[] = [
       "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“ a „HAFAN“.",
   },
   {
+    product: "koopodzam",
+    mustContain: [
+      { page: "any", text: normalizeText("Kooperativa pojišťovna") },
+      {
+        page: "any",
+        text: normalizeText(
+          "pojištění odpovědnosti za škodu způsobenou zaměstnavateli"
+        ),
+      },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Kooperativa pojišťovna“ a „pojištění odpovědnosti za škodu způsobenou zaměstnavateli“.",
+  },
+  {
     product: "koopfit",
     mustContain: [
       { page: "any", text: normalizeText("Kooperativa pojišťovna") },

@@ -26,6 +26,7 @@ import {
   calculateCppHafan,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
+  calculateKoopOdzam,
   calculateMaxdomov,
   calculateCppAuto,
   calculateSlaviaAuto,
@@ -290,6 +291,10 @@ async function parseContractPdfByProduct(
     case "cpphafan": {
       const { parseCppHafanPdf } = await import("../lib/parseCppHafanPdf");
       return parseCppHafanPdf(file);
+    }
+    case "koopodzam": {
+      const { parseKoopOdzamPdf } = await import("../lib/parseKoopOdzamPdf");
+      return parseKoopOdzamPdf(file);
     }
     case "maxdomov": {
       const { parseMaxdomovPdf } = await import("../lib/parseMaxdomovPdf");
@@ -785,6 +790,7 @@ const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
   "flexi",
   "domex",
   "cpphafan",
+  "koopodzam",
   "maxdomov",
   "maxcizinkomplex",
   "comfortcc",
@@ -1112,6 +1118,7 @@ export default function CalculatorPage() {
       (product !== "domex" &&
         product !== "koopmajetekobcan" &&
         product !== "koopfit" &&
+        product !== "koopodzam" &&
         product !== "maxdomov" &&
         !isFrequencyAutoPayoutProduct(product)) ||
       items.length === 0
@@ -1437,6 +1444,7 @@ export default function CalculatorPage() {
       case "cpphafan":
       case "koopmajetekobcan":
       case "koopfit":
+      case "koopodzam":
         return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}).`;
       case "pillowmajetek":
         return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.10.2023.`;
@@ -3557,13 +3565,16 @@ export default function CalculatorPage() {
       product === "domex" ||
       product === "cpphafan" ||
       product === "koopmajetekobcan" ||
-      product === "koopfit"
+      product === "koopfit" ||
+      product === "koopodzam"
     ) {
       const dto =
         product === "domex"
           ? calculateDomex(val, frequency, positionForCalc)
           : product === "cpphafan"
           ? calculateCppHafan(val, frequency, positionForCalc)
+          : product === "koopodzam"
+          ? calculateKoopOdzam(val, frequency, positionForCalc)
           : calculateKoopMajetekObcan(val, frequency, positionForCalc);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
@@ -6301,12 +6312,15 @@ export default function CalculatorPage() {
       case "domex":
       case "cpphafan":
       case "koopmajetekobcan":
-      case "koopfit": {
+      case "koopfit":
+      case "koopodzam": {
         const dto =
           product === "domex"
             ? calculateDomex(val, freq, pos)
             : product === "cpphafan"
             ? calculateCppHafan(val, freq, pos)
+            : product === "koopodzam"
+            ? calculateKoopOdzam(val, freq, pos)
             : calculateKoopMajetekObcan(val, freq, pos);
         const filtered = dto.items.filter((i) =>
           (i.title ?? "").toLowerCase().includes("(z platby)")

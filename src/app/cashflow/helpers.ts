@@ -37,6 +37,7 @@ export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
     "pillowmajetek",
     "koopmajetekobcan",
     "koopfit",
+    "koopodzam",
     "maxdomov",
     "allianzmujdomov",
   ],

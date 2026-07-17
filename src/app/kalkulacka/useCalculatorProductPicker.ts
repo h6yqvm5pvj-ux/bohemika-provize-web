@@ -36,6 +36,7 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
       "pillowmajetek",
       "koopmajetekobcan",
       "koopfit",
+      "koopodzam",
       "maxdomov",
       "allianzmujdomov",
     ],

@@ -461,6 +461,7 @@ export function generateCashflow(
       case "cpphafan":
       case "koopmajetekobcan":
       case "koopfit":
+      case "koopodzam":
       case "cppPPRbez": {
         const immediateDomex =
           items.find((item) =>
@@ -495,6 +496,8 @@ export function generateCashflow(
                   ? "Kooperativa majetek/odpovědnost"
                   : product === "koopfit"
                   ? "Kooperativa Sportovní výbava FIT"
+                  : product === "koopodzam"
+                  ? "Kooperativa odpovědnost zaměstnance"
                   : "ČPP PPR"
               }, ${
                 stepMonths === 1 ? "měsíčně" : `každých ${stepMonths} měsíců`
