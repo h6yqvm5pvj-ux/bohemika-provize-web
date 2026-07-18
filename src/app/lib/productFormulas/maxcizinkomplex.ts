@@ -77,6 +77,7 @@ export function calculateMaxCizinKomplex(
     {
       title: "💸 Okamžitá provize",
       amount: provize,
+      code: "A101",
       note: `Varianta ${maxCizinKomplexVariantLabel(variant)}`,
     },
   ];

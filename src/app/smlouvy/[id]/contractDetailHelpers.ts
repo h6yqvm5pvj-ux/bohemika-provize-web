@@ -65,6 +65,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "koopodzam":
       import("../../lib/productFormulas/koopodzam");
       break;
+    case "kooppmop":
+      import("../../lib/productFormulas/kooppmop");
+      break;
     case "cppPPRbez":
       import("../../lib/productFormulas/cppPPRbez");
       break;
@@ -442,7 +445,13 @@ export async function calculateResultForPosition(
       const { calculateMaxEfekt } = await import(
         "../../lib/productFormulas/maximaMaxEfekt"
       );
-      return calculateMaxEfekt(amount, years, position, usedMode);
+      return calculateMaxEfekt(
+        amount,
+        years,
+        position,
+        usedMode,
+        contractSignedDateIso
+      );
     }
     case "maxcizinkomplex": {
       const { calculateMaxCizinKomplex } = await import(
@@ -458,7 +467,7 @@ export async function calculateResultForPosition(
     }
     case "domex": {
       const { calculateDomex } = await import("../../lib/productFormulas/domex");
-      return calculateDomex(amount, freq, position);
+      return calculateDomex(amount, freq, position, contractSignedDateIso);
     }
     case "cpphafan": {
       const { calculateCppHafan } = await import(
@@ -484,6 +493,12 @@ export async function calculateResultForPosition(
         "../../lib/productFormulas/koopodzam"
       );
       return calculateKoopOdzam(amount, freq, position);
+    }
+    case "kooppmop": {
+      const { calculateKoopPmop } = await import(
+        "../../lib/productFormulas/kooppmop"
+      );
+      return calculateKoopPmop(amount, freq, position);
     }
     case "cppPPRbez": {
       const { calculateCppPPRbez } = await import(
@@ -540,10 +555,10 @@ export async function calculateResultForPosition(
       return calculateUniqaAuto(amount, freq, position, contractSignedDateIso);
     }
     case "uniqaflotila": {
-      const { calculateUniqaAuto } = await import(
+      const { calculateUniqaFlotila } = await import(
         "../../lib/productFormulas/uniqaAuto"
       );
-      return calculateUniqaAuto(amount, freq, position);
+      return calculateUniqaFlotila(amount, freq, position, contractSignedDateIso);
     }
     case "pillowAuto": {
       const { calculatePillowAuto } = await import(

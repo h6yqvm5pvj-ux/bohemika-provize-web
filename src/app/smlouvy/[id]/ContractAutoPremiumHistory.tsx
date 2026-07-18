@@ -1,9 +1,11 @@
 import { CalendarDays, Car, Minus, TrendingDown, TrendingUp } from "lucide-react";
 
-import { type Product } from "../../types/domain";
+import { type PaymentFrequency, type Product } from "../../types/domain";
 import {
   formatMoney,
+  isAnnualAutoPayoutProduct,
   isAutoProduct,
+  paymentsPerYear,
   productLabel,
   toDate,
 } from "./contractDetailHelpers";
@@ -19,6 +21,8 @@ type ContractAutoPremiumHistoryProps = {
   contractNumber?: string | null;
   policyStartDate?: ContractDoc["policyStartDate"];
   systemAnnualPremium: number;
+  paymentFrequency?: PaymentFrequency | null;
+  contractPaymentFrequency?: PaymentFrequency | null;
   statements: ContractCommissionStatementSummary[];
   storedHistory?: ContractAutoPremiumStatementHistoryEntry[] | null;
   loading?: boolean;
@@ -30,10 +34,11 @@ type AnniversaryHit = {
   date: Date;
 };
 
-type PremiumChangeStatus = "increased" | "decreased" | "same" | "detected";
+type PremiumChangeStatus = "initial" | "increased" | "decreased" | "same" | "detected";
 
 type PremiumHistoryRow = {
   key: string;
+  premiumKind: ContractAutoPremiumStatementHistoryEntry["premiumKind"];
   anniversaryNumber: number;
   anniversaryDate: Date;
   policyStartDate: Date;
@@ -43,8 +48,13 @@ type PremiumHistoryRow = {
   statementNumber: string | null;
   productCode: string;
   productKey: Product | null;
+  previousPremium: number | null;
   basePremium: number;
   difference: number | null;
+  previousAnnualPremium: number | null;
+  newAnnualPremium: number | null;
+  differenceAnnual: number | null;
+  basePremiumPeriod: "annual" | "payment" | null;
   status: PremiumChangeStatus;
   commissionCodes: string[];
   source: ContractAutoPremiumStatementRow["source"];
@@ -55,14 +65,45 @@ const ANNUAL_PREMIUM_TOLERANCE = 12;
 const normalizeContractNumber = (value: string | null | undefined): string =>
   String(value ?? "").replace(/\D+/g, "").trim();
 
-const startOfDay = (date: Date): Date =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
 const endOfDay = (date: Date): Date =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 
 const formatDate = (date: Date | null | undefined): string =>
   date ? date.toLocaleDateString("cs-CZ") : "—";
+
+const validNumber = (value: number | null | undefined): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const paymentFrequencyLabel = (frequency: PaymentFrequency | null | undefined): string | null => {
+  switch (frequency) {
+    case "monthly":
+      return "měsíčně";
+    case "quarterly":
+      return "čtvrtletně";
+    case "semiannual":
+      return "pololetně";
+    case "annual":
+      return "ročně";
+    default:
+      return null;
+  }
+};
+
+const premiumAmountLabel = (
+  amount: number,
+  frequency: PaymentFrequency | null | undefined
+): string => {
+  const frequencyLabel = paymentFrequencyLabel(frequency);
+  return frequencyLabel ? `${formatMoney(amount)} ${frequencyLabel}` : formatMoney(amount);
+};
+
+const signedMoneyLabel = (value: number | null | undefined): string =>
+  value == null
+    ? "—"
+    : `${value >= 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
+
+const signedAnnualMoneyLabel = (value: number | null | undefined): string =>
+  value == null ? "—" : `${signedMoneyLabel(value)} ročně`;
 
 const statementPeriodDate = (value: number | null): Date | null => {
   if (value == null) return null;
@@ -108,16 +149,14 @@ const storedHistoryDate = (value: string | null | undefined): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const anniversaryInStatementPeriod = (
+const anniversaryOnOrBeforePeriodEnd = (
   policyStart: Date,
-  periodStart: Date | null,
   periodEnd: Date | null
 ): AnniversaryHit | null => {
-  if (!periodStart || !periodEnd) return null;
-
-  const start = startOfDay(periodStart);
+  if (!periodEnd) return null;
   const end = endOfDay(periodEnd);
   const policyStartYear = policyStart.getFullYear();
+  let latest: AnniversaryHit | null = null;
 
   for (let yearOffset = 1; yearOffset <= 80; yearOffset += 1) {
     const anniversary = new Date(
@@ -126,16 +165,14 @@ const anniversaryInStatementPeriod = (
       policyStart.getDate()
     );
 
-    if (anniversary > end) return null;
-    if (anniversary >= start && anniversary <= end) {
-      return {
-        number: yearOffset,
-        date: anniversary,
-      };
-    }
+    if (anniversary > end) return latest;
+    latest = {
+      number: yearOffset,
+      date: anniversary,
+    };
   }
 
-  return null;
+  return latest;
 };
 
 const premiumStatus = (
@@ -156,8 +193,36 @@ const premiumStatus = (
   };
 };
 
+const statementBasePeriodForAutoProduct = (
+  product: Product | null | undefined
+): "annual" | "payment" | null => {
+  if (!isAutoProduct(product)) return null;
+  return isAnnualAutoPayoutProduct(product) ? "annual" : "payment";
+};
+
+const annualPremiumFromStatementBase = (
+  basePremium: number,
+  product: Product | null | undefined,
+  paymentFrequency: PaymentFrequency | null | undefined
+): { annualPremium: number; basePremiumPeriod: "annual" | "payment" | null } => {
+  const base = Math.round(basePremium * 100) / 100;
+  const basePremiumPeriod = statementBasePeriodForAutoProduct(product);
+  if (basePremiumPeriod === "payment") {
+    return {
+      annualPremium: Math.round(base * paymentsPerYear(paymentFrequency) * 100) / 100,
+      basePremiumPeriod,
+    };
+  }
+  return {
+    annualPremium: base,
+    basePremiumPeriod,
+  };
+};
+
 const statusLabel = (status: PremiumChangeStatus): string => {
   switch (status) {
+    case "initial":
+      return "Základna při sjednání";
     case "increased":
       return "Pojistné zvýšeno";
     case "decreased":
@@ -171,6 +236,8 @@ const statusLabel = (status: PremiumChangeStatus): string => {
 
 const statusClass = (status: PremiumChangeStatus): string => {
   switch (status) {
+    case "initial":
+      return "border-sky-200 bg-sky-50 text-sky-800";
     case "increased":
       return "border-emerald-200 bg-emerald-50 text-emerald-800";
     case "decreased":
@@ -188,19 +255,59 @@ const statusIcon = (status: PremiumChangeStatus) => {
       return TrendingUp;
     case "decreased":
       return TrendingDown;
+    case "initial":
     default:
       return Minus;
   }
 };
 
+const premiumChangeTitle = (
+  row: PremiumHistoryRow,
+  frequency: PaymentFrequency | null | undefined
+): string => {
+  if (row.status === "initial") {
+    return `Sjednání smlouvy: ${premiumAmountLabel(row.basePremium, frequency)}`;
+  }
+  if (row.status === "decreased") {
+    return `Snížení pojistného na ${premiumAmountLabel(row.basePremium, frequency)}`;
+  }
+  if (row.status === "same") {
+    return `Pojistné beze změny: ${premiumAmountLabel(row.basePremium, frequency)}`;
+  }
+  return `Navýšení pojistného na ${premiumAmountLabel(row.basePremium, frequency)}`;
+};
+
+const statementSourceLabel = (row: PremiumHistoryRow): string => {
+  if (row.statementPeriod) {
+    return `Provizní výpis z období ${row.statementPeriod}`;
+  }
+  if (row.statementNumber) {
+    return `Provizní výpis ${row.statementNumber}`;
+  }
+  return row.status === "initial" ? "Sjednání smlouvy" : "Provizní výpis";
+};
+
+const premiumStatusFromDifference = (
+  difference: number | null,
+  tolerance = ANNUAL_PREMIUM_TOLERANCE
+): PremiumChangeStatus => {
+  if (difference == null) return "detected";
+  if (Math.abs(difference) <= tolerance) return "same";
+  return difference > 0 ? "increased" : "decreased";
+};
+
 const buildPremiumHistoryRows = ({
   contractNumber,
   policyStartDate,
+  product,
+  paymentFrequency,
   systemAnnualPremium,
   statements,
 }: {
   contractNumber: string;
   policyStartDate: ContractDoc["policyStartDate"];
+  product: Product | undefined;
+  paymentFrequency: PaymentFrequency | null | undefined;
   systemAnnualPremium: number;
   statements: ContractCommissionStatementSummary[];
 }): PremiumHistoryRow[] => {
@@ -211,7 +318,6 @@ const buildPremiumHistoryRows = ({
   const rows = new Map<string, PremiumHistoryRow>();
 
   for (const statement of statements) {
-    const periodStart = statementPeriodDate(statement.periodStartMs);
     const periodEnd = statementPeriodDate(statement.periodEndMs);
 
     for (const row of statement.autoPremiumRows ?? []) {
@@ -221,16 +327,23 @@ const buildPremiumHistoryRows = ({
       const policyStart = statementPolicyStart ?? systemPolicyStart;
       if (!policyStart) continue;
 
-      const anniversary = anniversaryInStatementPeriod(policyStart, periodStart, periodEnd);
+      const anniversary = anniversaryOnOrBeforePeriodEnd(policyStart, periodEnd);
       if (!anniversary) continue;
 
-      const { status, difference } = premiumStatus(row.basePremium, systemAnnualPremium);
+      const statementProduct = row.productKey ?? product ?? null;
+      const { annualPremium, basePremiumPeriod } = annualPremiumFromStatementBase(
+        row.basePremium,
+        statementProduct,
+        paymentFrequency
+      );
+      const { status, difference } = premiumStatus(annualPremium, systemAnnualPremium);
       const key = [
         statement.id,
         anniversary.number,
         normalizedContractNumber,
         row.productCode,
-        row.basePremium,
+        annualPremium,
+        basePremiumPeriod ?? "unknown",
         policyStart.toISOString().slice(0, 10),
       ].join(":");
       const existing = rows.get(key);
@@ -243,6 +356,7 @@ const buildPremiumHistoryRows = ({
 
       rows.set(key, {
         key,
+        premiumKind: "auto_change",
         anniversaryNumber: anniversary.number,
         anniversaryDate: anniversary.date,
         policyStartDate: policyStart,
@@ -252,8 +366,13 @@ const buildPremiumHistoryRows = ({
         statementNumber: statement.statementNumber,
         productCode: row.productCode,
         productKey: row.productKey,
-        basePremium: row.basePremium,
+        previousPremium: null,
+        basePremium: annualPremium,
         difference,
+        previousAnnualPremium: null,
+        newAnnualPremium: annualPremium,
+        differenceAnnual: difference,
+        basePremiumPeriod,
         status,
         commissionCodes: row.commissionCode ? [row.commissionCode] : [],
         source: row.source,
@@ -273,29 +392,31 @@ const buildStoredPremiumHistoryRows = (
 ): PremiumHistoryRow[] =>
   (history ?? [])
     .map((entry): PremiumHistoryRow | null => {
-      const newPremium =
-        typeof entry.newPremium === "number" && Number.isFinite(entry.newPremium)
-          ? entry.newPremium
-          : null;
+      const premiumKind = entry.premiumKind ?? "auto_change";
+      const annualNewPremium = validNumber(entry.newAnnualPremium);
+      const newPremium = annualNewPremium ?? validNumber(entry.newPremium);
       if (newPremium == null) return null;
+      const basePremiumPeriod =
+        entry.basePremiumPeriod === "payment"
+          ? "payment"
+          : entry.basePremiumPeriod === "annual" || annualNewPremium != null
+            ? "annual"
+            : null;
 
       const anniversaryDate = storedHistoryDate(entry.anniversaryDate);
       const validFromDate = statementRowDate(entry.validFrom);
-      const difference =
-        typeof entry.difference === "number" && Number.isFinite(entry.difference)
-          ? Math.round(entry.difference * 100) / 100
-          : null;
+      const difference = validNumber(entry.difference);
+      const differenceAnnual = validNumber(entry.differenceAnnual);
       const status =
-        difference == null
-          ? "detected"
-          : Math.abs(difference) <= ANNUAL_PREMIUM_TOLERANCE
-            ? "same"
-            : difference > 0
-              ? "increased"
-              : "decreased";
+        premiumKind === "auto_initial"
+          ? "initial"
+          : premiumStatusFromDifference(
+              premiumKind === "life_increase" ? differenceAnnual ?? difference : difference
+            );
 
       return {
         key: entry.key ?? `${entry.statementId ?? "statement"}-${entry.rowId ?? newPremium}`,
+        premiumKind,
         anniversaryNumber:
           typeof entry.anniversaryNumber === "number" && Number.isFinite(entry.anniversaryNumber)
             ? entry.anniversaryNumber
@@ -308,8 +429,13 @@ const buildStoredPremiumHistoryRows = (
         statementNumber: entry.statementNumber ?? null,
         productCode: entry.productCode ?? "AUTO",
         productKey: null,
+        previousPremium: validNumber(entry.previousPremium),
         basePremium: newPremium,
         difference,
+        previousAnnualPremium: validNumber(entry.previousAnnualPremium),
+        newAnnualPremium: validNumber(entry.newAnnualPremium),
+        differenceAnnual,
+        basePremiumPeriod,
         status,
         commissionCodes: entry.commissionCode ? [entry.commissionCode] : [],
         source: entry.source === "manager" ? "manager" : "own",
@@ -318,47 +444,153 @@ const buildStoredPremiumHistoryRows = (
     .filter((row): row is PremiumHistoryRow => Boolean(row))
     .sort((a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime());
 
+const premiumRowsMatchStoredChange = (
+  storedRow: PremiumHistoryRow,
+  detectedRow: PremiumHistoryRow
+): boolean => {
+  if (storedRow.premiumKind !== detectedRow.premiumKind) return false;
+  if (storedRow.anniversaryNumber !== detectedRow.anniversaryNumber) return false;
+  if (storedRow.productCode !== detectedRow.productCode) return false;
+  if (Math.abs(storedRow.basePremium - detectedRow.basePremium) > ANNUAL_PREMIUM_TOLERANCE) {
+    return false;
+  }
+
+  const sameStatementNumber =
+    !storedRow.statementNumber ||
+    !detectedRow.statementNumber ||
+    storedRow.statementNumber === detectedRow.statementNumber;
+  const sameStatementPeriod =
+    !storedRow.statementPeriod ||
+    !detectedRow.statementPeriod ||
+    storedRow.statementPeriod === detectedRow.statementPeriod;
+
+  return sameStatementNumber && sameStatementPeriod;
+};
+
+const shouldSuppressDetectedPremiumRow = (
+  detectedRow: PremiumHistoryRow,
+  storedRows: PremiumHistoryRow[]
+): boolean => {
+  if (detectedRow.premiumKind !== "auto_change") return false;
+  const storedAutoChanges = storedRows.filter((row) => row.premiumKind === "auto_change");
+  if (storedAutoChanges.length === 0) return false;
+
+  if (storedAutoChanges.some((storedRow) => premiumRowsMatchStoredChange(storedRow, detectedRow))) {
+    return true;
+  }
+
+  const latestStoredChangeTime = Math.max(
+    ...storedAutoChanges.map((row) => row.anniversaryDate.getTime())
+  );
+  return detectedRow.anniversaryDate.getTime() < latestStoredChangeTime;
+};
+
+const buildInitialPremiumHistoryRow = ({
+  storedRows,
+  policyStartDate,
+  paymentFrequency,
+}: {
+  storedRows: PremiumHistoryRow[];
+  policyStartDate?: ContractDoc["policyStartDate"];
+  paymentFrequency?: PaymentFrequency | null;
+}): PremiumHistoryRow | null => {
+  const autoRows = storedRows.filter((row) => row.premiumKind !== "life_increase");
+  if (autoRows.length === 0) return null;
+  if (autoRows.some((row) => row.premiumKind === "auto_initial")) return null;
+  const firstRow = [...autoRows].sort(
+    (a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime()
+  )[0];
+  const initialPremium = firstRow.previousPremium ?? firstRow.basePremium;
+  if (!Number.isFinite(initialPremium) || initialPremium <= 0) return null;
+
+  const policyStart = toDate(policyStartDate) ?? firstRow.policyStartDate;
+  const productCode = firstRow.productCode || "AUTO";
+  return {
+    key: `initial:${productCode}:${policyStart.toISOString().slice(0, 10)}:${initialPremium}`,
+    premiumKind: "auto_initial",
+    anniversaryNumber: 0,
+    anniversaryDate: policyStart,
+    policyStartDate: policyStart,
+    policyStartSource: firstRow.policyStartSource,
+    statementPeriod: null,
+    statementDate: null,
+    statementNumber: null,
+    productCode,
+    productKey: firstRow.productKey,
+    previousPremium: null,
+    basePremium: initialPremium,
+    difference: 0,
+    previousAnnualPremium: null,
+    newAnnualPremium: paymentFrequency === "annual" ? initialPremium : null,
+    differenceAnnual: null,
+    basePremiumPeriod: "annual",
+    status: "initial",
+    commissionCodes: [],
+    source: firstRow.source,
+  };
+};
+
 export function ContractAutoPremiumHistory({
   product,
   contractNumber,
   policyStartDate,
   systemAnnualPremium,
+  paymentFrequency = null,
+  contractPaymentFrequency = null,
   statements,
   storedHistory,
   loading = false,
   error = null,
 }: ContractAutoPremiumHistoryProps) {
-  if (!isAutoProduct(product)) return null;
-
+  const showAutoStatementScan = isAutoProduct(product);
   const normalizedContractNumber = normalizeContractNumber(contractNumber);
   const policyStart = toDate(policyStartDate);
-  const detectedRows = normalizedContractNumber
+  const detectedRows = showAutoStatementScan && normalizedContractNumber
     ? buildPremiumHistoryRows({
         contractNumber: normalizedContractNumber,
         policyStartDate,
+        product,
+        paymentFrequency: contractPaymentFrequency ?? paymentFrequency,
         systemAnnualPremium,
         statements,
       })
     : [];
   const storedRows = buildStoredPremiumHistoryRows(storedHistory);
+
+  if (!showAutoStatementScan && storedRows.length === 0) return null;
+
   const rowsByKey = new Map<string, PremiumHistoryRow>();
+  const initialRow = buildInitialPremiumHistoryRow({
+    storedRows,
+    policyStartDate,
+    paymentFrequency,
+  });
+  if (initialRow) rowsByKey.set(initialRow.key, initialRow);
   storedRows.forEach((row) => rowsByKey.set(row.key, row));
   detectedRows.forEach((row) => {
+    if (shouldSuppressDetectedPremiumRow(row, storedRows)) {
+      return;
+    }
     if (!rowsByKey.has(row.key)) rowsByKey.set(row.key, row);
   });
   const rows = [...rowsByKey.values()].sort(
     (a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime()
   );
+  const initialPremiumBase =
+    rows.find((row) => row.status === "initial")?.basePremium ??
+    rows.find((row) => row.previousPremium != null)?.previousPremium ??
+    null;
+  const HeaderIcon = showAutoStatementScan ? Car : TrendingUp;
 
   return (
     <section className="rounded-[24px] border border-slate-300/90 bg-white px-5 py-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <h3 className="flex items-center gap-2 font-mono text-xl font-semibold tracking-tight text-slate-900">
           <span className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white">
-            <Car size={14} strokeWidth={2} aria-hidden="true" />
-            Výročí
+            <HeaderIcon size={14} strokeWidth={2} aria-hidden="true" />
+            {showAutoStatementScan ? "Výročí" : "Pojistné"}
           </span>
-          Změny pojistného z výpisů
+          Změny pojistného
         </h3>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">
           {rows.length} záznamů
@@ -371,7 +603,7 @@ export function ContractAutoPremiumHistory({
             Aktuálně v systému
           </div>
           <div className="mt-1 text-xl font-bold text-slate-950">
-            {formatMoney(systemAnnualPremium)}
+            {premiumAmountLabel(systemAnnualPremium, paymentFrequency)}
           </div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -392,32 +624,64 @@ export function ContractAutoPremiumHistory({
         </div>
       </div>
 
-      {loading ? (
+      {showAutoStatementScan && loading ? (
         <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
           Načítám provizní výpisy pro kontrolu výročí.
         </div>
-      ) : error ? (
+      ) : showAutoStatementScan && error ? (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-900">
           {error}
         </div>
-      ) : !normalizedContractNumber ? (
+      ) : showAutoStatementScan && !normalizedContractNumber ? (
         <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
           Smlouva nemá číslo smlouvy, takže ji nejde spárovat s provizním výpisem.
         </div>
       ) : rows.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
-          Zatím žádný výpis neobsahuje tuto auto smlouvu v období jejího ročního výročí podle sloupce Platnost.
+          Zatím žádný výpis neobsahuje uloženou změnu pojistného.
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          {rows.map((row) => {
+          {rows.map((row, index) => {
             const StatusIcon = statusIcon(row.status);
+            const isLifeIncrease = row.premiumKind === "life_increase";
+            const rowFrequency: PaymentFrequency | null = isLifeIncrease
+              ? "monthly"
+              : row.newAnnualPremium != null ||
+                  row.basePremiumPeriod === "annual" ||
+                  row.basePremiumPeriod === "payment"
+                ? "annual"
+              : paymentFrequency;
+            const isInitial = row.status === "initial";
+            const effectiveLabel = isInitial
+              ? "Počátek"
+              : isLifeIncrease
+                ? "Účinnost"
+                : "Výročí";
+            const previousDisplayedPremium =
+              [...rows]
+                .slice(0, index)
+                .reverse()
+                .find((item) => item.premiumKind === row.premiumKind && item.status !== "same")
+                ?.basePremium ?? null;
+            const previousPremium =
+              previousDisplayedPremium ??
+              row.previousPremium ??
+              null;
+            const changeFromInitial =
+              !isInitial && initialPremiumBase != null
+                ? Math.round((row.basePremium - initialPremiumBase) * 100) / 100
+                : null;
+            const changeFromPrevious =
+              !isInitial && previousPremium != null
+                ? Math.round((row.basePremium - previousPremium) * 100) / 100
+                : null;
             return (
               <article
                 key={row.key}
                 className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
@@ -427,7 +691,11 @@ export function ContractAutoPremiumHistory({
                         {statusLabel(row.status)}
                       </span>
                       <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                        {row.anniversaryNumber}. výročí
+                        {isInitial
+                          ? "Sjednání"
+                          : isLifeIncrease
+                          ? "Změna pojistného"
+                          : `${row.anniversaryNumber}. výročí`}
                       </span>
                       <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
                         {row.productCode}
@@ -435,59 +703,36 @@ export function ContractAutoPremiumHistory({
                     </div>
 
                     <div className="mt-3 text-lg font-bold text-slate-950">
-                      {statusLabel(row.status)} na {formatMoney(row.basePremium)}
+                      {premiumChangeTitle(row, rowFrequency)}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate-600">
                       <span className="inline-flex items-center gap-1.5">
                         <CalendarDays size={14} strokeWidth={2.1} aria-hidden="true" />
-                        Výročí {formatDate(row.anniversaryDate)}
+                        {effectiveLabel} {formatDate(row.anniversaryDate)}
                       </span>
-                      <span>
-                        Období výpisu {row.statementPeriod ?? "—"}
-                      </span>
-                      <span>
-                        Platnost {formatDate(row.policyStartDate)}
-                        {row.policyStartSource === "statement" ? " z výpisu" : " ze systému"}
-                      </span>
-                      {row.statementDate && <span>Vystaveno {row.statementDate}</span>}
+                      <span>Zdroj: {statementSourceLabel(row)}</span>
                     </div>
                   </div>
 
-                  <div className="shrink-0 text-left sm:text-right">
-                    <div
-                      className={`rounded-2xl border px-4 py-3 ${
-                        row.status === "increased"
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                          : row.status === "decreased"
-                          ? "border-amber-200 bg-amber-50 text-amber-900"
-                          : "border-slate-200 bg-white text-slate-900"
-                      }`}
-                    >
-                      <div className="text-xs font-bold uppercase tracking-wide opacity-70">
-                        Rozdíl proti systému
+                  {!isInitial && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Oproti sjednání
+                        </div>
+                        <div className="mt-1 text-lg font-bold text-slate-950">
+                          {signedAnnualMoneyLabel(changeFromInitial)}
+                        </div>
                       </div>
-                      <div className="mt-1 whitespace-nowrap text-xl font-bold">
-                        {row.difference == null
-                          ? "—"
-                          : `${row.difference >= 0 ? "+" : "−"}${formatMoney(Math.abs(row.difference))}`}
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Oproti poslednímu výročí
+                        </div>
+                        <div className="mt-1 text-lg font-bold text-slate-950">
+                          {signedAnnualMoneyLabel(changeFromPrevious)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-                  {row.commissionCodes.length > 0 && (
-                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                      Kód provize {row.commissionCodes.join(", ")}
-                    </span>
-                  )}
-                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                    Zdroj: {row.source === "manager" ? "manažerská část výpisu" : "vlastní část výpisu"}
-                  </span>
-                  {row.productKey && (
-                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                      {productLabel(row.productKey)}
-                    </span>
                   )}
                 </div>
               </article>

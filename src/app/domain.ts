@@ -14,6 +14,7 @@ export type Product =
   | "koopmajetekobcan"
   | "koopfit"
   | "koopodzam"
+  | "kooppmop"
   | "maxdomov"
   | "cppsimplex"
   | "cppAuto"

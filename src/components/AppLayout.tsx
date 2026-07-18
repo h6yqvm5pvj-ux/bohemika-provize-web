@@ -10,8 +10,16 @@ import {
   signOut,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { ArrowLeft, ChevronRight, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ChevronRight, RotateCcw, ShieldCheck, UserRound } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import {
+  ADMIN_IMPERSONATION_EVENT,
+  ADMIN_IMPERSONATION_STORAGE_KEY,
+  clearAdminImpersonationState,
+  installAdminImpersonationFetchPatch,
+  readAdminImpersonationState,
+  type AdminImpersonationState,
+} from "@/app/lib/adminImpersonation";
 import {
   FONT_THEME_EVENT,
   FONT_THEME_LOCAL_STORAGE_KEY,
@@ -27,6 +35,7 @@ import {
 } from "@/lib/appLanguage";
 import {
   adminRoleAtLeast,
+  canCreateUserAccounts,
   resolveAdminRoleFromClaims,
   type AdminRole,
 } from "@/lib/adminAccess";
@@ -86,6 +95,49 @@ const formatIsoDayCz = (value: string | null): string => {
   return date.toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
 };
 
+const PREPARATION_SECTION_OWNER = "jakub.rauscher";
+
+const normalizeUserIdentifier = (value: string | null | undefined) =>
+  (value ?? "").trim().toLowerCase();
+
+const canAccessPreparationSectionsForUser = (userEmail: string | null | undefined) => {
+  const normalized = normalizeUserIdentifier(userEmail);
+  const localPart = normalized.split("@")[0] ?? "";
+  return normalized === PREPARATION_SECTION_OWNER || localPart === PREPARATION_SECTION_OWNER;
+};
+
+function PreparationSectionGate() {
+  return (
+    <div className="flex w-full min-h-[70vh] items-center justify-center px-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="preparation-section-gate-title"
+        className="w-full max-w-md rounded-[24px] border border-slate-200 bg-white p-6 text-center text-slate-950 shadow-[0_24px_60px_rgba(15,23,42,0.16)]"
+      >
+        <span className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
+          <ShieldCheck className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+        </span>
+        <p
+          id="preparation-section-gate-title"
+          className="mt-4 text-lg font-bold tracking-tight"
+        >
+          Sekce je v přípravě
+        </p>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Tato sekce je v přípravě a brzy bude dostupná.
+        </p>
+        <Link
+          href="/"
+          className="mt-6 inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-[0_12px_22px_rgba(15,23,42,0.18)] transition hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300/70 focus-visible:ring-offset-2"
+        >
+          Zpět na úvod
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export function AppLayout({ children, active }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -93,7 +145,10 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const router = useRouter();
   const isTipsRoute = pathname === "/tipy" || pathname.startsWith("/tipy/");
   const isCashflowRoute = pathname === "/cashflow";
-  const isAdminOnlyRoute = pathname === "/provizni-vypisy";
+  const isPreparationSectionRoute =
+    pathname === "/klienti" ||
+    pathname.startsWith("/klienti/") ||
+    pathname === "/provizni-vypisy";
   const isTipsterAllowedRoute = pathname === "/" || isTipsRoute || isCashflowRoute;
   const showToolsBackToIndex = active === "tools" && pathname !== "/pomucky";
   const toolsBackButtonRightAligned = pathname === "/pomucky/invalidita";
@@ -111,7 +166,11 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const [authInitTimedOut, setAuthInitTimedOut] = useState(false);
   const [language, setLanguage] = useState<AppLanguage>(DEFAULT_APP_LANGUAGE);
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
-  const [adminRoleResolved, setAdminRoleResolved] = useState(false);
+  const [canCreateUsers, setCanCreateUsers] = useState(false);
+  const [impersonation, setImpersonation] =
+    useState<AdminImpersonationState | null>(() =>
+      typeof window === "undefined" ? null : readAdminImpersonationState()
+    );
   const applyResolvedLanguage = useCallback((nextLanguage: AppLanguage) => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(APP_LANGUAGE_LOCAL_STORAGE_KEY, nextLanguage);
@@ -154,6 +213,26 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     syncFromProfileData: syncAccountSetupFromProfileData,
   } = accountSetup;
 
+  useLayoutEffect(() => {
+    installAdminImpersonationFetchPatch();
+
+    const onImpersonationChange = () => {
+      setImpersonation(readAdminImpersonationState());
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== ADMIN_IMPERSONATION_STORAGE_KEY) return;
+      onImpersonationChange();
+      void reloadProfile();
+    };
+
+    window.addEventListener(ADMIN_IMPERSONATION_EVENT, onImpersonationChange);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(ADMIN_IMPERSONATION_EVENT, onImpersonationChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [reloadProfile]);
+
   useEffect(() => {
     if (!accountSetupProfileSync) return;
     syncAccountSetupFromProfileData(accountSetupProfileSync.data, {
@@ -191,8 +270,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setAuthInitTimedOut(false);
       setUser(u);
       if (!u) {
+        clearAdminImpersonationState();
         setAdminRole(null);
-        setAdminRoleResolved(false);
+        setCanCreateUsers(false);
       }
       setAuthReady(true);
     });
@@ -207,12 +287,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   useEffect(() => {
     let cancelled = false;
     if (!user) {
-      setAdminRole(null);
-      setAdminRoleResolved(false);
       return;
     }
-
-    setAdminRoleResolved(false);
 
     const loadAdminRole = async () => {
       try {
@@ -224,13 +300,13 @@ export function AppLayout({ children, active }: AppLayoutProps) {
             token.claims as Record<string, unknown>
           )
         );
+        setCanCreateUsers(
+          canCreateUserAccounts(user.email, token.claims as Record<string, unknown>)
+        );
       } catch {
         if (!cancelled) {
           setAdminRole(resolveAdminRoleFromClaims(user.email, null));
-        }
-      } finally {
-        if (!cancelled) {
-          setAdminRoleResolved(true);
+          setCanCreateUsers(canCreateUserAccounts(user.email, null));
         }
       }
     };
@@ -371,6 +447,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
   const handleLogout = async () => {
     try {
+      clearAdminImpersonationState();
       await signOut(auth);
       window.location.href = "/login";
     } catch (e) {
@@ -394,6 +471,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       }
 
       timeoutId = window.setTimeout(() => {
+        clearAdminImpersonationState();
         void signOut(auth)
           .catch((error) => {
             console.error("Automatické odhlášení se nepodařilo dokončit:", error);
@@ -450,9 +528,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     accountSetup.showMfaGraceBanner && !showPaywall;
   const timelineSetupGateActive = accountSetup.timelineSetupGateActive;
   const isAdminRequestsUser = adminRoleAtLeast(adminRole, "admin");
-  const adminOnlyRoutePending = isAdminOnlyRoute && !adminRoleResolved;
-  const adminOnlyRouteDenied =
-    isAdminOnlyRoute && adminRoleResolved && !isAdminRequestsUser;
+  const canAccessAdminArea = isAdminRequestsUser || canCreateUsers;
+  const preparationSectionRouteDenied =
+    isPreparationSectionRoute && !canAccessPreparationSectionsForUser(user?.email);
   const shellFontClass = "font-mono";
   const subscriptionGraceUntilLabel = subscriptionEvaluation?.graceUntil
     ? formatIsoDayCz(subscriptionEvaluation.graceUntil)
@@ -460,11 +538,14 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const subscriptionPaidUntilLabel = subscriptionEvaluation?.paidUntil
     ? formatIsoDayCz(subscriptionEvaluation.paidUntil)
     : "";
+  const impersonationLabel =
+    impersonation?.name?.trim() || impersonation?.email || "";
 
-  useEffect(() => {
-    if (!user || !adminOnlyRouteDenied) return;
-    router.replace("/");
-  }, [adminOnlyRouteDenied, router, user]);
+  const handleStopImpersonation = useCallback(() => {
+    clearAdminImpersonationState();
+    setImpersonation(null);
+    router.replace("/admin/zadosti");
+  }, [router]);
 
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
@@ -560,6 +641,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           hasTeam={hasTeam}
           hasTipsters={hasTipsters}
           isAdminRequestsUser={isAdminRequestsUser}
+          canAccessAdminArea={canAccessAdminArea}
           isTipsterAccount={isTipsterAccount}
           isProfilePending={Boolean(user && loadingProfile)}
           timelineSetupGateActive={timelineSetupGateActive}
@@ -609,6 +691,32 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               </div>
             ) : null}
 
+            {impersonation && isAdminRequestsUser ? (
+              <div className="fixed left-1/2 top-4 z-50 w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-sky-200 bg-white/95 px-4 py-3 text-sm text-slate-900 shadow-[0_16px_34px_rgba(15,23,42,0.2)] backdrop-blur">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-sky-700">
+                      <UserRound className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-semibold">Zobrazuješ jako {impersonationLabel}</div>
+                      <div className="truncate text-xs text-slate-500">
+                        Skutečně přihlášený účet: {user?.email ?? ""}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleStopImpersonation}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-slate-300 bg-slate-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-black"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                    Vrátit se zpět
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <SubscriptionGate
               subscriptionAccessState={subscriptionAccessState}
               showPaywall={showPaywall}
@@ -622,18 +730,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
               }}
               onLogout={handleLogout}
             >
-              {adminOnlyRoutePending ? (
-                <div className="flex w-full min-h-[70vh] items-center justify-center">
-                  <div className="text-sm font-medium text-slate-700">
-                    Ověřuji oprávnění…
-                  </div>
-                </div>
-              ) : adminOnlyRouteDenied ? (
-                <div className="flex w-full min-h-[70vh] items-center justify-center">
-                  <div className="text-sm font-medium text-slate-700">
-                    Přesměrovávám na domovskou stránku…
-                  </div>
-                </div>
+              {preparationSectionRouteDenied ? (
+                <PreparationSectionGate />
               ) : timelineSetupGateActive ? (
                 <div className="flex w-full min-h-[70vh] items-center justify-center">
                   <div className="text-sm font-medium text-slate-700">

@@ -159,6 +159,7 @@ export async function GET(req: NextRequest) {
     namespace: "api:mailbox:attachment:get",
     limit: MAILBOX_ATTACHMENT_RATE_LIMIT,
     windowMs: MAILBOX_ATTACHMENT_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

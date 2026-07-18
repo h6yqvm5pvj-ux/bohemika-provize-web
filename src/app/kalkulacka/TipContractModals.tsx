@@ -34,6 +34,7 @@ type TipContractModalProps = {
   selectedTip: TipContractTipOption | null;
   hasExistingConfig: boolean;
   canShowTipsButton: boolean;
+  isLifeProduct: boolean;
   exampleGrossFirstYearLabel: string;
   exampleAdvisorRemainderLabel: string;
   onClose: () => void;
@@ -56,6 +57,7 @@ export function TipContractModal({
   selectedTip,
   hasExistingConfig,
   canShowTipsButton,
+  isLifeProduct,
   exampleGrossFirstYearLabel,
   exampleAdvisorRemainderLabel,
   onClose,
@@ -68,6 +70,9 @@ export function TipContractModal({
   applyDisabled,
 }: TipContractModalProps) {
   if (!isOpen) return null;
+  const tipBaseLabel = isLifeProduct
+    ? "provize A101"
+    : "okamžité provize v 1. roce";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -76,7 +81,7 @@ export function TipContractModal({
         <div className="space-y-2">
           <h3 className="text-base font-semibold text-slate-900">Smlouva z TIPU</h3>
           <p className="text-sm text-slate-700">
-            Tipař má nárok pouze na % z okamžité provize v 1. roce.
+            Tipař má nárok pouze na % z {tipBaseLabel}.
           </p>
         </div>
 
@@ -199,7 +204,7 @@ export function TipContractModal({
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
           <p>
-            Příklad: pokud je okamžitá provize v 1. roce {exampleGrossFirstYearLabel},
+            Příklad: pokud je {tipBaseLabel} {exampleGrossFirstYearLabel},
             tipař dostane {draftPercent} % a tobě zůstane {exampleAdvisorRemainderLabel}.
           </p>
         </div>

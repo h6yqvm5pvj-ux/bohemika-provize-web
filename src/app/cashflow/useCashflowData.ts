@@ -621,7 +621,7 @@ export function useCashflowData({
       });
     }
 
-    const generatedCashflow = generateCashflow(entriesForCashflow, 10);
+    const generatedCashflow = generateCashflow(entriesForCashflow, 10, email);
     const includeTipPayouts =
       tipsterMode ||
       productFilter === "tip" ||

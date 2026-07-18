@@ -10,6 +10,7 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "../firebase";
+import { readAdminImpersonationState } from "@/app/lib/adminImpersonation";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
   applyStatementMissingPayoutShifts,
@@ -42,6 +43,21 @@ const cashflowFont = Space_Grotesk({
 });
 
 type AccountType = "advisor" | "tipster";
+
+const normalizeEmail = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const resolveEffectiveDataEmail = (
+  user: FirebaseUser | null,
+  profile?: Record<string, unknown> | null
+): string | null => {
+  const profileEmail = normalizeEmail(profile?.email);
+  if (profileEmail) return profileEmail;
+  const impersonatedEmail = readAdminImpersonationState()?.email;
+  if (impersonatedEmail) return impersonatedEmail;
+  const userEmail = normalizeEmail(user?.email);
+  return userEmail || null;
+};
 
 const resolveAccountType = (profile: Record<string, unknown> | null | undefined): AccountType => {
   const raw =
@@ -199,6 +215,7 @@ export default function CashflowPage() {
   const [hasInternalProfile, setHasInternalProfile] = useState<boolean | null>(null);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [accountType, setAccountType] = useState<AccountType>("advisor");
+  const [dataEmail, setDataEmail] = useState<string | null>(null);
   const [showPastYears, setShowPastYears] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<MonthGroup | null>(null);
   const [commissionStatements, setCommissionStatements] = useState<CashflowCommissionStatementSummary[]>([]);
@@ -216,6 +233,7 @@ export default function CashflowPage() {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (!firebaseUser) {
         setUser(null);
+        setDataEmail(null);
         setProfileReady(true);
         setHasInternalProfile(false);
         setProfileLoadError(null);
@@ -226,6 +244,7 @@ export default function CashflowPage() {
       setHasInternalProfile(null);
       setProfileLoadError(null);
       setUser(firebaseUser);
+      setDataEmail(resolveEffectiveDataEmail(firebaseUser));
     });
 
     return () => unsubscribe();
@@ -245,12 +264,14 @@ export default function CashflowPage() {
           const nextHasProfile = payload.hasProfile === true;
           setHasInternalProfile(nextHasProfile);
           setAccountType(nextHasProfile ? resolveAccountType(payload.profile) : "advisor");
+          setDataEmail(resolveEffectiveDataEmail(user, payload.profile ?? null));
         })
         .catch((error) => {
           if (cancelled) return;
           console.warn("Cashflow: profil uživatele se nepodařilo načíst.", error);
           setHasInternalProfile(false);
           setAccountType("advisor");
+          setDataEmail(resolveEffectiveDataEmail(user));
           setProfileLoadError("Nepodařilo se načíst profil uživatele.");
         })
         .finally(() => {
@@ -320,11 +341,11 @@ export default function CashflowPage() {
   const isTipsterMode = accountType === "tipster";
 
   const { loading, cashflowItems, hasTeam } = useCashflowData({
-    userEmail: user?.email,
+    userEmail: dataEmail,
     scopeFilter,
     productFilter,
     tipsterMode: isTipsterMode,
-    enabled: profileReady && Boolean(user?.email) && hasInternalProfile === true,
+    enabled: profileReady && Boolean(dataEmail) && hasInternalProfile === true,
   });
 
   const contractNumberSearchActive = useMemo(

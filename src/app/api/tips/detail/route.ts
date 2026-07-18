@@ -261,6 +261,7 @@ const loadLinkedContractSummary = async ({
     entryId: normalizedEntryId,
     path: `users/${normalizedOwner}/entries/${normalizedEntryId}`,
     number: normalizeText(data.contractNumber),
+    productKey: normalizeText(data.productKey),
     tipsterPercent: parseFiniteNumber(data.tipContractTipsterPercent),
     immediateGrossFirstYear: includeAdvisorFinancials
       ? parseFiniteNumber(data.tipContractImmediateFirstYearGross)
@@ -368,6 +369,7 @@ export async function GET(req: NextRequest) {
     namespace: "api:tips-detail:get",
     limit: TIPS_DETAIL_GET_RATE_LIMIT,
     windowMs: TIPS_DETAIL_GET_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
@@ -497,6 +499,7 @@ export async function DELETE(req: NextRequest) {
     namespace: "api:tips-detail:delete",
     limit: TIPS_DETAIL_DELETE_RATE_LIMIT,
     windowMs: TIPS_DETAIL_DELETE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

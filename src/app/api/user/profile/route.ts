@@ -10,6 +10,7 @@ import {
   getLoginAttemptStatus,
   loginAttemptLockoutMessage,
 } from "@/lib/server/loginAttemptLockout";
+import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import {
@@ -198,12 +199,13 @@ async function getAuthContext(req: NextRequest) {
     return { error: `Invalid or expired token (${code}): ${message}`, status: 401 } as const;
   }
 
-  const email = normalizeEmail(decoded.email);
-  if (!email) {
+  const actorEmail = normalizeEmail(decoded.email);
+  const actorUid = String(decoded.uid ?? "").trim();
+  if (!actorEmail || !actorUid) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
 
-  const loginLockout = await getLoginAttemptStatus(req, email);
+  const loginLockout = await getLoginAttemptStatus(req, actorEmail);
   if (loginLockout.locked) {
     return {
       error: loginAttemptLockoutMessage(loginLockout),
@@ -212,10 +214,33 @@ async function getAuthContext(req: NextRequest) {
     } as const;
   }
 
+  let email = actorEmail;
+  let uid = actorUid;
+  let rawTokenEmail = typeof decoded.email === "string" ? decoded.email.trim() : "";
+  if (req.method === "GET") {
+    const impersonationResult = await resolveServerImpersonation({
+      req,
+      actorEmail,
+      actorUid,
+      decoded: decoded as Record<string, unknown>,
+    });
+    if (!impersonationResult.ok) {
+      return {
+        error: impersonationResult.error,
+        status: impersonationResult.status,
+      } as const;
+    }
+    if (impersonationResult.impersonation) {
+      email = impersonationResult.impersonation.targetEmail;
+      uid = impersonationResult.impersonation.targetUid;
+      rawTokenEmail = impersonationResult.impersonation.targetEmail;
+    }
+  }
+
   return {
     email,
-    uid: String(decoded.uid ?? "").trim(),
-    rawTokenEmail: typeof decoded.email === "string" ? decoded.email.trim() : "",
+    uid,
+    rawTokenEmail,
   } as const;
 }
 

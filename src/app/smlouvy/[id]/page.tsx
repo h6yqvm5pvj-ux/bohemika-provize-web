@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
+  AlertTriangle,
   CalendarDays,
   ChevronDown,
   Eye,
@@ -17,6 +18,7 @@ import {
   StickyNote,
   Tag,
   UserRound,
+  X,
 } from "lucide-react";
 
 import { auth } from "../../firebase";
@@ -24,6 +26,12 @@ import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
+import { isLifeProduct } from "@/app/lib/productCatalog";
+import {
+  isAnnualSeparatedPeriodProduct,
+  isPerPaymentSeparatedPeriodProduct,
+  isSeparatedPeriodCommissionProduct,
+} from "@/app/lib/separatedPeriodCommissions";
 
 import {
   type Product,
@@ -46,7 +54,10 @@ import {
 } from "./ContractDetailPanels";
 import { Spinner, Skeleton, Toasts } from "./ContractDetailUi";
 import {
+  type ContractCommissionPayout,
+  type ContractCommissionStatementDetail,
   type ContractCommissionStatementSummary,
+  type ContractCommissionStornoSummary,
   type ContractDoc,
 } from "./contractDetailTypes";
 import {
@@ -180,6 +191,234 @@ type PropertyDetailField = keyof PropertyDetail;
 type NeonDetail = NonNullable<ContractDoc["neonDetail"]>;
 type NeonDetailField = keyof NeonDetail;
 type ContractUpdateField = keyof ContractDoc;
+
+type CommissionStornoSummaryDisplay = {
+  totalAmount: number;
+  totalAbsAmount: number;
+  count: number;
+  latestStatementLabel: string | null;
+};
+
+const finiteNumberOrNull = (value: unknown): number | null => {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const roundMoneyValue = (value: number): number =>
+  Math.round(value * 100) / 100;
+
+const payoutChronologyMs = (payout: ContractCommissionPayout): number => {
+  const direct = finiteNumberOrNull(payout.statementChronologyMs);
+  if (direct != null) return direct;
+  const statementDate = toDate(payout.statementDate ?? null);
+  if (statementDate) return statementDate.getTime();
+  return finiteNumberOrNull(payout.writtenAtMs) ?? 0;
+};
+
+const statementLabelFromParts = ({
+  statementNumber,
+  statementPeriod,
+  payoutMonthKey,
+  statementDate,
+}: {
+  statementNumber?: string | null;
+  statementPeriod?: string | null;
+  payoutMonthKey?: string | null;
+  statementDate?: string | null;
+}): string | null => {
+  const label = [
+    statementNumber ? `výpis ${statementNumber}` : null,
+    statementPeriod ?? payoutMonthKey ?? statementDate ?? null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return label || null;
+};
+
+const statementDisplayTitle = (statement: ContractCommissionStatementDetail): string => {
+  if (statement.statementNumber) return `Provizní výpis ${statement.statementNumber}`;
+  return statement.fileName || "Provizní výpis";
+};
+
+const buildInteractiveStatementHtml = (html: string): string => {
+  const previewStyle = `<style>
+html {
+  background: #ffffff !important;
+}
+body {
+  width: 715px !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  box-sizing: border-box !important;
+  background: #ffffff !important;
+}
+body > table.vypis_table {
+  margin: 0 auto !important;
+}
+a[href^="javascript:toggleLayer"] {
+  cursor: pointer;
+}
+</style>`;
+  const toggleScript = `<script>
+(function () {
+  window.toggleLayer = function (whichLayer) {
+    var elem = document.getElementById(whichLayer);
+    if (!elem) return false;
+    var currentDisplay = elem.style.display || window.getComputedStyle(elem).display;
+    elem.style.display = currentDisplay === "none" ? "block" : "none";
+    return false;
+  };
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    var link = target && target.closest ? target.closest("a[href^='javascript:toggleLayer']") : null;
+    if (!link) return;
+
+    var href = link.getAttribute("href") || "";
+    var match = href.match(/toggleLayer\\((?:'|")?([^'")]+)(?:'|")?\\)/);
+    if (!match || !match[1]) return;
+
+    event.preventDefault();
+    window.toggleLayer(match[1]);
+  });
+})();
+</script>`;
+  const htmlWithStyle = /<\/head>/i.test(html)
+    ? html.replace(/<\/head>/i, `${previewStyle}</head>`)
+    : `${previewStyle}${html}`;
+
+  if (/<\/body>/i.test(htmlWithStyle)) {
+    return htmlWithStyle.replace(/<\/body>/i, `${toggleScript}</body>`);
+  }
+  return `${htmlWithStyle}${toggleScript}`;
+};
+
+function CommissionStatementPreviewModal({
+  statement,
+  onClose,
+}: {
+  statement: ContractCommissionStatementDetail | null;
+  onClose: () => void;
+}) {
+  if (!statement) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#08030f]/78 px-4 py-6 backdrop-blur-[7px]"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[95vh] w-[min(980px,96vw)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 text-slate-950 shadow-[0_38px_92px_rgba(2,6,23,0.38)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+              <FileText className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+              Provizní výpis
+            </div>
+            <h3 className="mt-2 truncate text-2xl font-bold tracking-tight text-slate-950">
+              {statementDisplayTitle(statement)}
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {statement.period ?? "Období nezjištěno"}
+              {statement.statementDate ? ` · vystaveno ${statement.statementDate}` : ""}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="ui-focus inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900"
+            aria-label="Zavřít náhled provizního výpisu"
+          >
+            <X className="h-5 w-5" strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-100 px-3 py-4 sm:px-5">
+          <iframe
+            title={statementDisplayTitle(statement)}
+            srcDoc={buildInteractiveStatementHtml(statement.html)}
+            sandbox="allow-scripts"
+            referrerPolicy="no-referrer"
+            className="mx-auto block h-[min(76vh,940px)] w-[840px] max-w-full rounded-xl border border-slate-300 bg-white shadow-[0_16px_38px_rgba(15,23,42,0.16)]"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const storedCommissionStornoSummaryForDisplay = (
+  summary: ContractCommissionStornoSummary | null | undefined
+): CommissionStornoSummaryDisplay | null => {
+  const totalAbsAmount = finiteNumberOrNull(summary?.totalAbsAmount);
+  if (totalAbsAmount == null || totalAbsAmount <= 0) return null;
+
+  const storedTotalAmount = finiteNumberOrNull(summary?.totalAmount);
+  const count = Math.max(
+    1,
+    Math.trunc(finiteNumberOrNull(summary?.count) ?? 1)
+  );
+
+  return {
+    totalAmount: storedTotalAmount ?? -totalAbsAmount,
+    totalAbsAmount,
+    count,
+    latestStatementLabel: statementLabelFromParts({
+      statementNumber: summary?.latestStatementNumber,
+      statementPeriod: summary?.latestStatementPeriod,
+      payoutMonthKey: summary?.latestPayoutMonthKey,
+      statementDate: summary?.latestStatementDate,
+    }),
+  };
+};
+
+const commissionStornoSummaryForDisplay = (
+  contract: ContractDoc | null
+): CommissionStornoSummaryDisplay | null => {
+  const stored = storedCommissionStornoSummaryForDisplay(
+    contract?.commissionStornoSummary
+  );
+  if (stored) return stored;
+
+  const stornoPayouts = (contract?.commissionPayouts ?? []).filter((payout) => {
+    const amount = finiteNumberOrNull(payout.amount) ?? 0;
+    return payout.status === "storno" || amount < 0;
+  });
+  if (stornoPayouts.length === 0) return null;
+
+  const totalAbsAmount = roundMoneyValue(
+    stornoPayouts.reduce(
+      (sum, payout) => sum + Math.abs(finiteNumberOrNull(payout.amount) ?? 0),
+      0
+    )
+  );
+  if (totalAbsAmount <= 0) return null;
+
+  const latest = [...stornoPayouts].sort(
+    (a, b) => payoutChronologyMs(a) - payoutChronologyMs(b)
+  )[stornoPayouts.length - 1];
+
+  return {
+    totalAmount: -totalAbsAmount,
+    totalAbsAmount,
+    count: stornoPayouts.length,
+    latestStatementLabel: statementLabelFromParts({
+      statementNumber: latest?.statementNumber,
+      statementPeriod: latest?.statementPeriod,
+      payoutMonthKey: latest?.payoutMonthKey,
+      statementDate: latest?.statementDate,
+    }),
+  };
+};
+
+const stornoPayoutCountLabel = (count: number): string => {
+  if (count === 1) return "1 položka";
+  if (count >= 2 && count <= 4) return `${count} položky`;
+  return `${count} položek`;
+};
 
 const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
   cppAuto: parseCppAutoPdf,
@@ -597,6 +836,10 @@ export default function ContractDetailPage() {
   >([]);
   const [commissionStatementsLoading, setCommissionStatementsLoading] = useState(false);
   const [commissionStatementsError, setCommissionStatementsError] = useState<string | null>(null);
+  const [statementPreview, setStatementPreview] =
+    useState<ContractCommissionStatementDetail | null>(null);
+  const [statementPreviewLoadingId, setStatementPreviewLoadingId] =
+    useState<string | null>(null);
 
   const [overrideItems, setOverrideItems] = useState<
     CommissionResultItemDTO[] | null
@@ -651,7 +894,9 @@ export default function ContractDetailPage() {
   const [canOpenRefreshReplacement, setCanOpenRefreshReplacement] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
   const [unauthorized, setUnauthorized] = useState(false);
+  const [serverCanManageContract, setServerCanManageContract] = useState(false);
   const isNeonImmediateBreakdownOpen = neonImmediateBreakdown != null;
+  const isStatementPreviewOpen = statementPreview != null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -663,6 +908,7 @@ export default function ContractDetailPage() {
         setShowContractPdfOptions(false);
         setSelectedContractPdf(null);
         setNeonImmediateBreakdown(null);
+        setStatementPreview(null);
       }
     };
     if (
@@ -671,7 +917,8 @@ export default function ContractDetailPage() {
       showPaymentVerificationModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
-      isNeonImmediateBreakdownOpen
+      isNeonImmediateBreakdownOpen ||
+      isStatementPreviewOpen
     ) {
       window.addEventListener("keydown", onKey);
     }
@@ -685,6 +932,7 @@ export default function ContractDetailPage() {
     showContractPdfModal,
     showContractPdfOptions,
     isNeonImmediateBreakdownOpen,
+    isStatementPreviewOpen,
   ]);
 
   // auth
@@ -796,6 +1044,7 @@ export default function ContractDetailPage() {
           setError("Smlouva nebyla nalezena.");
           setContract(null);
           setContractTimeline([]);
+          setServerCanManageContract(false);
           setOwnerPosition(null);
           setOwnerManagerEmail(null);
           setOwnerManagerPosition(null);
@@ -805,6 +1054,7 @@ export default function ContractDetailPage() {
         }
 
         setContract(payload.contract);
+        setServerCanManageContract(payload.canManageContract === true);
         setNoteDraft((payload.contract.note as string | undefined) ?? "");
         const timeline =
           Array.isArray(payload.timeline) && payload.timeline.length > 0
@@ -844,6 +1094,7 @@ export default function ContractDetailPage() {
         }
         setContract(null);
         setContractTimeline([]);
+        setServerCanManageContract(false);
         setOwnerPosition(null);
         setOwnerManagerEmail(null);
         setOwnerManagerPosition(null);
@@ -931,6 +1182,51 @@ export default function ContractDetailPage() {
     };
   }, [contract?.contractNumber, contract?.productKey, user]);
 
+  const handleOpenCommissionStatementPreview = useCallback(
+    async (statementId: string) => {
+      const normalizedStatementId = statementId.trim();
+      if (!user || !normalizedStatementId) return;
+
+      setStatementPreviewLoadingId(normalizedStatementId);
+
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch(
+          `/api/commission-statements?id=${encodeURIComponent(normalizedStatementId)}&includeHtml=1`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+          }
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | { ok?: boolean; item?: ContractCommissionStatementDetail; error?: string }
+          | null;
+
+        if (!response.ok || payload?.ok !== true || !payload.item?.html) {
+          throw new Error(payload?.error || "Provizní výpis se nepodařilo otevřít.");
+        }
+
+        setStatementPreview(payload.item);
+      } catch (statementError) {
+        console.warn(
+          "Detail smlouvy: náhled provizního výpisu se nepodařilo otevřít.",
+          statementError
+        );
+        pushToast(
+          statementError instanceof Error
+            ? statementError.message
+            : "Provizní výpis se nepodařilo otevřít.",
+          "error"
+        );
+      } finally {
+        setStatementPreviewLoadingId(null);
+      }
+    },
+    [pushToast, user]
+  );
+
   const isEndorsement = contract?.entryType === "endorsement";
   const lifecycleInput = {
     status: contract?.status,
@@ -1010,6 +1306,15 @@ export default function ContractDetailPage() {
       : "";
   const isRefreshContract =
     contract?.isRefresh === true || refreshOriginalContractNumber.length > 0;
+  const refreshOriginalMissingInSystem =
+    contract?.refreshOriginalMissingInSystem === true;
+  const hasProvisionalRefreshCalculation =
+    contract?.requiresStatementRefresh === true ||
+    contract?.commissionCalculationStatus === "provisional_refresh_missing_original" ||
+    (refreshOriginalMissingInSystem &&
+      contract?.commissionBaseSource !== "commission_statement" &&
+      contract?.commissionCalculationStatus !==
+        "statement_resolved_refresh_missing_original");
   const refreshReplacementEntryId =
     typeof contract?.refreshReplacedByEntryId === "string"
       ? contract.refreshReplacedByEntryId.trim()
@@ -1026,14 +1331,25 @@ export default function ContractDetailPage() {
         `${refreshReplacementOwnerEmail}___${refreshReplacementEntryId}`
       )}${fromListSuffix}`
     : null;
-  const premium = isEndorsement
+  const latestTimelineEntry = useMemo(() => {
+    const sourceEntries =
+      contractTimeline.length > 0 ? contractTimeline : contract ? [contract] : [];
+    if (sourceEntries.length === 0) return null;
+    return sourceEntries[sourceEntries.length - 1] ?? null;
+  }, [contract, contractTimeline]);
+  const premiumEntry = latestTimelineEntry ?? contract;
+  const premiumEntryIsEndorsement = premiumEntry?.entryType === "endorsement";
+  const isShowingLatestTimelinePremium =
+    !isEndorsement &&
+    Boolean(premiumEntry?.id && contract?.id && premiumEntry.id !== contract.id);
+  const premium = premiumEntryIsEndorsement
     ? Number(
-        contract?.newInputAmount ??
-          contract?.effectiveInputAmount ??
-          contract?.inputAmount ??
+        premiumEntry?.newInputAmount ??
+          premiumEntry?.effectiveInputAmount ??
+          premiumEntry?.inputAmount ??
           0
       )
-    : Number(contract?.inputAmount ?? 0);
+    : Number(premiumEntry?.inputAmount ?? 0);
   const refreshCommissionBase = contract?.refreshCommissionBase ?? null;
   const refreshCalculationMonthlyPremium = Number(
     refreshCommissionBase?.calculationMonthlyPremium ??
@@ -1062,6 +1378,10 @@ export default function ContractDetailPage() {
     isRefreshContract &&
     Number.isFinite(refreshCalculationAnnualPremium) &&
     refreshCalculationAnnualPremium > 0;
+  const commissionStornoSummary = useMemo(
+    () => commissionStornoSummaryForDisplay(contract),
+    [contract]
+  );
   const endorsementDelta = (() => {
     if (!isEndorsement) return null;
     const explicit = Number(contract?.premiumDelta ?? Number.NaN);
@@ -1204,8 +1524,17 @@ export default function ContractDetailPage() {
     Number.isFinite(contract.tipContractTipsterAmountFirstYear)
       ? contract.tipContractTipsterAmountFirstYear
       : null;
-  const freq = (contract?.frequencyRaw as PaymentFrequency | null | undefined) ?? null;
+  const freq =
+    (premiumEntry?.frequencyRaw as PaymentFrequency | null | undefined) ??
+    (contract?.frequencyRaw as PaymentFrequency | null | undefined) ??
+    null;
   const prod = contract?.productKey as Product | undefined;
+  const tipContractLifeProduct = isLifeProduct(prod ?? null);
+  const tipContractBaseText = tipContractLifeProduct
+    ? "Tipař má nárok pouze na podíl z provize A101."
+    : "Tipař má nárok pouze na podíl z okamžité provize v 1. roce.";
+  const tipContractGrossLabel = tipContractLifeProduct ? "A101 základ" : "Brutto";
+  const tipContractNetLabel = tipContractLifeProduct ? "Sjednatel z A101" : "Sjednatel";
   const paymentVerificationUrl =
     prod === "allianzAuto" || prod === "allianzmujdomov"
       ? ALLIANZ_PAYMENT_CHECK_URL
@@ -1313,18 +1642,15 @@ export default function ContractDetailPage() {
   const isAutoCommissionProduct = isAutoProduct(prod ?? null);
   const isFrequencyAutoCommissionProduct = isFrequencyAutoPayoutProduct(prod ?? null);
   const isPaymentBasedProduct =
-    prod === "domex" ||
-    prod === "cpphafan" ||
-    prod === "koopmajetekobcan" ||
-    prod === "koopfit" ||
-    prod === "koopodzam" ||
-    prod === "maxdomov" ||
-    isFrequencyAutoCommissionProduct;
+    isSeparatedPeriodCommissionProduct(prod) || isFrequencyAutoCommissionProduct;
   const hideSeparatedPeriodTotals = Boolean(
     (isAutoCommissionProduct && (freq === "annual" || !isFrequencyAutoCommissionProduct)) ||
       (prod === "domex" && freq === "annual")
   );
-  const paymentMultiplier = isPaymentBasedProduct ? paymentsPerYear(freq) : 1;
+  const paymentMultiplier =
+    isPaymentBasedProduct && !isAnnualSeparatedPeriodProduct(prod)
+      ? paymentsPerYear(freq)
+      : 1;
   const adjustLegacyPerPaymentTotal = useCallback(
     (items: CommissionResultItemDTO[], total: number): number => {
       if (!prod) return total;
@@ -1382,7 +1708,9 @@ export default function ContractDetailPage() {
     if (!isManagerPosition(managerPosition)) return false;
     return isManagerOnChain || isManagerOnCurrentChain;
   }, [managerPosition, isManagerOnChain, isManagerOnCurrentChain]);
-  const canViewContract = isOwnContract || isManagerOnChain || isManagerOnCurrentChain;
+  const canManageContract = isOwnContract || serverCanManageContract;
+  const canViewContract =
+    canManageContract || isManagerOnChain || isManagerOnCurrentChain;
 
   useEffect(() => {
     let cancelled = false;
@@ -3055,7 +3383,7 @@ export default function ContractDetailPage() {
       !entryId ||
       !contract ||
       !prod ||
-      !isOwnContract ||
+      !canManageContract ||
       !hasContractPdfAttachment
     ) {
       return;
@@ -3191,7 +3519,7 @@ export default function ContractDetailPage() {
   };
 
   const handleSaveDetails = async () => {
-    if (!isOwnContract || !ownerEmail || !entryId) return;
+    if (!canManageContract || !ownerEmail || !entryId) return;
     setSavingDetails(true);
     setDetailsError(null);
     setDetailsSaved(false);
@@ -3663,7 +3991,7 @@ export default function ContractDetailPage() {
   };
 
   const handleSaveNote = async () => {
-    if (!ownerEmail || !entryId || !isOwnContract) return;
+    if (!ownerEmail || !entryId || !canManageContract) return;
     setSavingNote(true);
     setNoteError(null);
     setNoteSaved(false);
@@ -3693,7 +4021,7 @@ export default function ContractDetailPage() {
   };
 
   const handleTogglePaid = async () => {
-    if (!ownerEmail || !entryId || !isOwnContract) return;
+    if (!ownerEmail || !entryId || !canManageContract) return;
     const nextValue = !(contract?.paid ?? false);
     setUpdatingPaid(true);
     setPaidError(null);
@@ -3732,7 +4060,7 @@ export default function ContractDetailPage() {
   };
 
   const handleSetStorno = async () => {
-    if (!ownerEmail || !entryId || !isOwnContract) return;
+    if (!ownerEmail || !entryId || !canSetStorno) return;
     const parsed = stornoDateInput ? new Date(stornoDateInput) : null;
     if (!parsed || Number.isNaN(parsed.getTime())) {
       setStornoError("Zadej platné datum storna.");
@@ -3795,7 +4123,7 @@ export default function ContractDetailPage() {
   };
 
   const handleClearStorno = async () => {
-    if (!ownerEmail || !entryId || !isOwnContract) return;
+    if (!ownerEmail || !entryId || !canSetStorno) return;
 
     setUpdatingStorno(true);
     setStornoError(null);
@@ -4003,21 +4331,18 @@ export default function ContractDetailPage() {
 
   // vyfiltrované položky bez řádku "Celkem" a bez ročních součtů u produktů placených dle platby
   const filterPaymentBasedItems = (arr: CommissionResultItemDTO[]) => {
-    if (
-      prod === "domex" ||
-      prod === "cpphafan" ||
-      prod === "koopmajetekobcan" ||
-      prod === "koopfit" ||
-      prod === "koopodzam"
-    ) {
-      return arr.filter((it) =>
+    if (isPerPaymentSeparatedPeriodProduct(prod)) {
+      const perPaymentItems = arr.filter((it) =>
         (it.title ?? "").toLowerCase().includes("(z platby)")
       );
-    }
-    if (prod === "maxdomov") {
-      return arr.filter(
-        (it) => !(it.title ?? "").toLowerCase().includes("získatelská")
-      );
+      if (perPaymentItems.length > 0) return perPaymentItems;
+      if (prod === "zamex") {
+        return arr.filter((it) => {
+          const title = normalizeTitleForCompare(it.title);
+          return title.includes("okamžitá provize") || title.includes("následná provize");
+        });
+      }
+      return perPaymentItems;
     }
     return arr;
   };
@@ -4164,7 +4489,10 @@ export default function ContractDetailPage() {
         if (rawItems.length === 0 || adjustedRawTotal <= 0) return null;
 
         const items = filterAnnualYearlyDupes(filterPaymentBasedItems(rawItems));
-        const sum = items.reduce((acc, item) => acc + (item.amount ?? 0), 0);
+        const totalEligibleSum = items.reduce(
+          (acc, item) => acc + (item.excludeFromTotal ? 0 : item.amount ?? 0),
+          0
+        );
         const totals = isPaymentBasedProduct
           ? paymentBasedTotals(items, paymentMultiplier)
           : null;
@@ -4189,7 +4517,9 @@ export default function ContractDetailPage() {
           mode,
           items,
           totals,
-          totalDisplay: isPaymentBasedProduct ? sum * paymentMultiplier : adjustedRawTotal,
+          totalDisplay: isPaymentBasedProduct
+            ? totalEligibleSum * paymentMultiplier
+            : adjustedRawTotal,
           chainIndex: overrideChainIndex,
         };
       })
@@ -4205,12 +4535,19 @@ export default function ContractDetailPage() {
       (showMeziprovision || showChildMeziprovision || otherManagerOverrideCards.length > 0)
   );
 
-  const canDelete = isOwnContract;
+  const canSetStorno = canManageContract || isManagerViewingSubordinate;
+  const canDelete = canManageContract;
 
-  const adviserSum = adviserItems.reduce((sum, it) => sum + (it.amount ?? 0), 0);
-  const managerSum = managerItems.reduce((sum, it) => sum + (it.amount ?? 0), 0);
+  const adviserSum = adviserItems.reduce(
+    (sum, it) => sum + (it.excludeFromTotal ? 0 : it.amount ?? 0),
+    0
+  );
+  const managerSum = managerItems.reduce(
+    (sum, it) => sum + (it.excludeFromTotal ? 0 : it.amount ?? 0),
+    0
+  );
   const childManagerSum = childManagerItems.reduce(
-    (sum, it) => sum + (it.amount ?? 0),
+    (sum, it) => sum + (it.excludeFromTotal ? 0 : it.amount ?? 0),
     0
   );
 
@@ -4240,6 +4577,7 @@ export default function ContractDetailPage() {
       ? [
           {
             key: `self:${normalizedViewerEmail || "manager"}`,
+            email: normalizedViewerEmail || null,
             userName: nameFromEmail(user?.email),
             position: effectiveManagerPosition ?? null,
             mode: overrideMode ?? null,
@@ -4253,6 +4591,7 @@ export default function ContractDetailPage() {
       ? [
           {
             key: `child:${childOverrideEmail || childOverrideName || "manager"}`,
+            email: childOverrideEmail ?? null,
             userName: childOverrideName ?? nameFromEmail(childOverrideEmail),
             position: childOverridePosition ?? null,
             mode: childOverrideMode ?? null,
@@ -4264,6 +4603,7 @@ export default function ContractDetailPage() {
       : []),
     ...otherManagerOverrideCards.map((card) => ({
       key: `other:${card.key}`,
+      email: card.email,
       userName: card.name,
       position: card.position ?? null,
       mode: card.mode ?? null,
@@ -4365,7 +4705,7 @@ export default function ContractDetailPage() {
         </h3>
         <span className="text-base text-slate-600">{productLabel(prod)}</span>
       </div>
-      {isOwnContract && !editMode && hasContractPdfAttachment && (
+      {canManageContract && !editMode && hasContractPdfAttachment && (
         <button
           type="button"
           onClick={handleRefreshDetailsFromPdf}
@@ -4536,7 +4876,7 @@ export default function ContractDetailPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                {isOwnContract && (
+                {canManageContract && (
                   <button
                     type="button"
                     onClick={handleTogglePaid}
@@ -4552,7 +4892,7 @@ export default function ContractDetailPage() {
                   </button>
                 )}
 
-                {isOwnContract && !editMode && (
+                {canManageContract && !editMode && (
                   <button
                     type="button"
                     onClick={() => {
@@ -4676,7 +5016,7 @@ export default function ContractDetailPage() {
                   </button>
                 )}
 
-                {isOwnContract && editMode && (
+                {canManageContract && editMode && (
                   <>
                     <button
                       type="button"
@@ -4869,7 +5209,11 @@ export default function ContractDetailPage() {
                       </div>
                       <div className="flex justify-between gap-2">
                         <dt className={keyValueLabelClass}>
-                          {isEndorsement ? "Nové pojistné" : "Pojistné"}
+                          {isEndorsement
+                            ? "Nové pojistné"
+                            : isShowingLatestTimelinePremium
+                              ? "Aktuální pojistné"
+                              : "Pojistné"}
                         </dt>
                         <dd className={keyValueValueClass}>
                           {formatMoney(premium)}
@@ -4926,6 +5270,30 @@ export default function ContractDetailPage() {
                             : "Aktivní"}
                         </dd>
                       </div>
+                      {commissionStornoSummary && (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <dt className="text-base font-semibold text-rose-900">
+                              Storno provize
+                            </dt>
+                            <dd className="text-right">
+                              <span className="block text-lg font-bold text-rose-800">
+                                {formatMoney(commissionStornoSummary.totalAbsAmount)}
+                              </span>
+                              <span className="block text-xs font-semibold text-rose-700/80">
+                                {stornoPayoutCountLabel(commissionStornoSummary.count)}
+                              </span>
+                            </dd>
+                          </div>
+                          <p className="mt-2 text-xs leading-snug text-rose-900/80">
+                            Staženo podle provizního výpisu
+                            {commissionStornoSummary.latestStatementLabel
+                              ? `, poslední zápis ${commissionStornoSummary.latestStatementLabel}`
+                              : ""}
+                            .
+                          </p>
+                        </div>
+                      )}
                       {hasTipContract && (
                         <div className="rounded-2xl border border-fuchsia-200 bg-[linear-gradient(160deg,#fff7ff_0%,#f6f3ff_100%)] px-3 py-3 shadow-[0_8px_20px_rgba(147,51,234,0.1)]">
                           <div className="flex items-center justify-between gap-3">
@@ -4974,7 +5342,7 @@ export default function ContractDetailPage() {
                               </div>
                             )}
                             <p className="text-xs text-fuchsia-800/90">
-                              Tipař má nárok pouze na podíl z okamžité provize v 1. roce.
+                              {tipContractBaseText}
                             </p>
 
                             {tipContractImmediateGross != null &&
@@ -4983,7 +5351,7 @@ export default function ContractDetailPage() {
                                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                                   <div className="rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-center">
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
-                                      Brutto
+                                      {tipContractGrossLabel}
                                     </p>
                                     <p className="mt-1 text-sm font-semibold text-slate-900">
                                       {formatMoney(tipContractImmediateGross)}
@@ -4999,7 +5367,7 @@ export default function ContractDetailPage() {
                                   </div>
                                   <div className="rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-center">
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
-                                      Sjednatel
+                                      {tipContractNetLabel}
                                     </p>
                                     <p className="mt-1 text-sm font-semibold text-slate-900">
                                       {formatMoney(tipContractImmediateNet)}
@@ -5021,8 +5389,26 @@ export default function ContractDetailPage() {
                                 Původní č. smlouvy: {refreshOriginalContractNumber}
                               </span>
                             )}
+                            {refreshOriginalMissingInSystem && (
+                              <span className="mt-1 block text-xs text-amber-700">
+                                Původní smlouva není v systému.
+                              </span>
+                            )}
                           </dd>
                           </div>
+                          {hasProvisionalRefreshCalculation && (
+                            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-900">
+                              <AlertTriangle
+                                size={15}
+                                strokeWidth={2.2}
+                                className="mt-0.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span>
+                                Provize je zatím orientační. U REFRESH smlouvy bez původní smlouvy v systému se správná základna musí sladit podle provizního výpisu.
+                              </span>
+                            </div>
+                          )}
                           {hasRefreshCommissionBase && (
                             <div className="mt-3 rounded-xl border border-sky-200 bg-white/80 px-3 py-2 text-sm text-slate-700">
                               <div className="flex items-center justify-between gap-3">
@@ -5360,6 +5746,8 @@ export default function ContractDetailPage() {
                   onToggleMeziprovisionCard={toggleMeziprovisionCard}
                   adviserItems={adviserItems}
                   commissionPayouts={contract?.commissionPayouts ?? []}
+                  viewerEmail={normalizedViewerEmail}
+                  contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
                   contractDurationYears={contract?.durationYears ?? null}
                   adviserBreakdownPosition={adviserBreakdownPosition}
                   adviserBreakdownMode={adviserBreakdownMode}
@@ -5373,13 +5761,21 @@ export default function ContractDetailPage() {
 
                 <ContractCommissionHistory
                   payouts={contract?.commissionPayouts ?? []}
+                  viewerEmail={normalizedViewerEmail}
+                  contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
+                  onOpenStatement={handleOpenCommissionStatementPreview}
+                  statementPreviewLoadingId={statementPreviewLoadingId}
                 />
 
                 <ContractAutoPremiumHistory
                   product={prod}
                   contractNumber={contract?.contractNumber ?? null}
                   policyStartDate={contract?.policyStartDate ?? null}
-                  systemAnnualPremium={premium}
+                  systemAnnualPremium={
+                    isAutoCommissionProduct ? premium * paymentsPerYear(freq) : premium
+                  }
+                  paymentFrequency={isAutoCommissionProduct ? "annual" : freq}
+                  contractPaymentFrequency={freq}
                   statements={commissionStatements}
                   storedHistory={contract?.premiumStatementHistory ?? []}
                   loading={commissionStatementsLoading}
@@ -5410,7 +5806,7 @@ export default function ContractDetailPage() {
                     </p>
                   )}
 
-                  {isOwnContract ? (
+                  {canManageContract ? (
                     <div className="space-y-3">
                       <textarea
                         value={noteDraft}
@@ -5446,8 +5842,8 @@ export default function ContractDetailPage() {
                 </section>
             </div>
 
-                {/* SMAZAT SMLOUVU */}
-                {canDelete && (
+                {/* STORNO / SMAZAT SMLOUVU */}
+                {(canSetStorno || canDelete) && (
                   <section className="pt-2">
                     {deleteError && (
                       <p className="mb-2 text-base text-slate-700">
@@ -5460,22 +5856,24 @@ export default function ContractDetailPage() {
                       </p>
                     )}
                     <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setStornoError(null);
-                          setShowDeleteModal(false);
-                          setShowStornoModal(true);
-                        }}
-                        disabled={updatingStorno}
-                        className="inline-flex items-center gap-2 rounded-xl border border-amber-700 bg-amber-600 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white shadow-[0_8px_20px_rgba(180,83,9,0.25)] transition hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {updatingStorno && (
-                          <Spinner className="h-5 w-5 border-amber-200/70 border-t-white" />
-                        )}
-                        <span>{isStornoContract ? "Upravit storno" : "Stornovat smlouvu"}</span>
-                      </button>
-                      {isStornoContract && (
+                      {canSetStorno && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStornoError(null);
+                            setShowDeleteModal(false);
+                            setShowStornoModal(true);
+                          }}
+                          disabled={updatingStorno}
+                          className="inline-flex items-center gap-2 rounded-xl border border-amber-700 bg-amber-600 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white shadow-[0_8px_20px_rgba(180,83,9,0.25)] transition hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {updatingStorno && (
+                            <Spinner className="h-5 w-5 border-amber-200/70 border-t-white" />
+                          )}
+                          <span>{isStornoContract ? "Upravit storno" : "Stornovat smlouvu"}</span>
+                        </button>
+                      )}
+                      {canSetStorno && isStornoContract && (
                         <button
                           type="button"
                           onClick={handleClearStorno}
@@ -5485,22 +5883,29 @@ export default function ContractDetailPage() {
                           Zrušit storno
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeleteError(null);
-                          setShowStornoModal(false);
-                          setShowDeleteModal(true);
-                        }}
-                        disabled={deleting}
-                        className={destructiveButtonClass}
-                      >
-                        {deleting && (
-                          <Spinner className="h-5 w-5 border-slate-400 border-t-slate-900" />
-                        )}
-                        <span>{deleting ? "Mažu…" : "Smazat smlouvu"}</span>
-                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setShowStornoModal(false);
+                            setShowDeleteModal(true);
+                          }}
+                          disabled={deleting}
+                          className={destructiveButtonClass}
+                        >
+                          {deleting && (
+                            <Spinner className="h-5 w-5 border-slate-400 border-t-slate-900" />
+                          )}
+                          <span>{deleting ? "Mažu…" : "Smazat smlouvu"}</span>
+                        </button>
+                      )}
                     </div>
+                    {canSetStorno && (
+                      <p className="mt-2 text-right text-xs font-medium text-slate-500">
+                        Datum storna ověř v MAXXu nebo Extranetu u dané smlouvy.
+                      </p>
+                    )}
                   </section>
                 )}
               </div>
@@ -5531,6 +5936,11 @@ export default function ContractDetailPage() {
           </div>
         </div>
       </div>
+
+      <CommissionStatementPreviewModal
+        statement={statementPreview}
+        onClose={() => setStatementPreview(null)}
+      />
 
       {neonImmediateBreakdown && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -5640,7 +6050,7 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      {canDelete && showStornoModal && (
+      {canSetStorno && showStornoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
           <button
             type="button"
@@ -5664,6 +6074,9 @@ export default function ContractDetailPage() {
                 </h3>
                 <p className="mt-1 text-base text-slate-700">
                   Zadej datum storna a potvrď akci.
+                </p>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  Datum storna si ověř v MAXXu nebo Extranetu u dané smlouvy.
                 </p>
               </div>
               <button

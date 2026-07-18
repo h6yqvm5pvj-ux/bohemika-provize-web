@@ -4,6 +4,7 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
+import { commissionInstallmentCodeRange } from "./shared";
 
 // ---------- Kooperativa majetek + odpovědnost občanů ----------
 
@@ -113,8 +114,17 @@ export function calculateKoopMajetekObcan(
   const subsequentPerYear = subsequentByPayment * multiplier;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize (z platby)", amount: immediateByPayment },
-    { title: "🔁 Následná provize (z platby)", amount: subsequentByPayment },
+    {
+      title: "💸 Okamžitá provize (z platby)",
+      amount: immediateByPayment,
+      code: commissionInstallmentCodeRange("A", frequency),
+    },
+    {
+      title: "🔁 Následná provize (z platby)",
+      amount: subsequentByPayment,
+      code: commissionInstallmentCodeRange("B", frequency),
+      excludeFromTotal: true,
+    },
     {
       title: "📅 Okamžitá provize za rok",
       amount: immediatePerYear,
@@ -124,11 +134,10 @@ export function calculateKoopMajetekObcan(
       title: "📅 Následná provize za rok",
       amount: subsequentPerYear,
       note: `×${multiplier} plateb/rok`,
+      excludeFromTotal: true,
     },
   ];
 
-  const total = immediatePerYear + subsequentPerYear;
+  const total = immediatePerYear;
   return { items, total };
 }
-
-

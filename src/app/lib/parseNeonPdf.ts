@@ -60,6 +60,7 @@ export type NeonRiskFields = Partial<{
 
 export type NeonPdfResult = {
   contractNumber?: string | null;
+  isEndorsement?: boolean | null;
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
   clientName?: string | null;
@@ -131,8 +132,71 @@ const pickContractNumberAfterLabel = (
 };
 
 const pickNeonContractNumberFromBarcode = (fullText: string): string | null => {
-  const barcode = fullText.match(/\*(\d{10})\d{0,12}\*/);
+  const barcode = fullText.match(/\*(\d{10})[A-Z0-9]{0,12}\*/i);
   return barcode?.[1] ?? null;
+};
+
+const pickTopBoxContractNumber = (lines: string[]): string | null => {
+  const firstLines = lines.slice(0, 24);
+  for (const line of firstLines) {
+    const compact = line.replace(/\D+/g, "");
+    if (compact.length >= 8 && compact.length <= 12) {
+      return compact;
+    }
+  }
+  return null;
+};
+
+const pickDateAfterLabel = (
+  lines: string[],
+  asciiLines: string[],
+  label: RegExp,
+  maxLookahead = 6
+): string | null => {
+  for (let idx = 0; idx < asciiLines.length; idx += 1) {
+    const asciiLine = asciiLines[idx] ?? "";
+    if (!label.test(asciiLine)) continue;
+
+    const sameLine = asciiLine.replace(label, " ");
+    const sameLineDate = toDateInput(sameLine);
+    if (sameLineDate) return sameLineDate;
+
+    for (let step = 1; step <= maxLookahead; step += 1) {
+      const candidate = toDateInput(lines[idx + step] ?? "");
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+};
+
+const pickAmountAfterLabel = (
+  lines: string[],
+  asciiLines: string[],
+  label: RegExp,
+  maxLookahead = 6
+): number | null => {
+  const readAmount = (value: string | null | undefined): number | null => {
+    if (!value) return null;
+    const moneyMatch = value.match(/([0-9][0-9\s.,]*)\s*k[cč](?:\s|$)/i);
+    if (moneyMatch?.[1]) return parseAmount(moneyMatch[1]);
+    const standaloneMatch = value.match(/^\s*([0-9][0-9\s]*(?:[,.][0-9]{1,2})?)\s*$/);
+    if (standaloneMatch?.[1]) return parseAmount(standaloneMatch[1]);
+    return null;
+  };
+
+  for (let idx = 0; idx < asciiLines.length; idx += 1) {
+    const asciiLine = asciiLines[idx] ?? "";
+    if (!label.test(asciiLine)) continue;
+
+    const sameLineAmount = readAmount(lines[idx]);
+    if (sameLineAmount != null) return sameLineAmount;
+
+    for (let step = 1; step <= maxLookahead; step += 1) {
+      const candidate = readAmount(lines[idx + step] ?? "");
+      if (candidate != null) return candidate;
+    }
+  }
+  return null;
 };
 
 const pickMostFrequentContractNumber = (
@@ -186,11 +250,18 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   // Zachováme řádky, jen odstaníme diakritiku pro hledání.
   const asciiLines = lines.map((l) => stripDiacritics(l).toLowerCase().trim());
   const asciiText = stripDiacritics(fullText).toLowerCase();
+  const isNeonEndorsement =
+    /zadanka\s+o\s+zmenu/i.test(asciiText) &&
+    /\bneon\b/i.test(asciiText) &&
+    /ceska\s+podnikatelska\s+pojistovna/i.test(asciiText);
   const detectedVersion = /\b(?:rizikove\s+pojisteni\s+)?neon\s+risk\b/.test(asciiText)
     ? "neon_risk"
     : null;
 
   const result: NeonPdfResult = {};
+  if (isNeonEndorsement) {
+    result.isEndorsement = true;
+  }
   const riskFields: NeonRiskFields = {};
   const risks: { title: string; variant?: string | null; amount?: number | null }[] = [];
 
@@ -823,6 +894,7 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
 
   // Číslo nově sjednávané pojistné smlouvy
   const contractCandidate =
+    (isNeonEndorsement ? pickTopBoxContractNumber(lines) : null) ??
     pickContractNumberAfterLabel(lines, asciiLines, /cislo\s+pojistne\s+smlouvy:?/i, 5) ??
     pickNeonContractNumberFromBarcode(fullText) ??
     pickMostFrequentContractNumber(fullText, refreshOriginalContractNumber);
@@ -843,7 +915,15 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   const startMatch =
     fullText.match(/Počátek\s+pojištění\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i)?.[1] ??
     asciiText.match(/pocatek pojisteni\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i)?.[1];
-  const startIso = toDateInput(startMatch);
+  const endorsementStartIso = isNeonEndorsement
+    ? pickDateAfterLabel(
+        lines,
+        asciiLines,
+        /modelovano\s+s\s+ucinnosti\s+zmeny\s+od:?/i,
+        8
+      )
+    : null;
+  const startIso = endorsementStartIso ?? toDateInput(startMatch);
   if (startIso) {
     result.policyStartDate = startIso;
   }
@@ -852,7 +932,10 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   const signedMatch =
     fullText.match(/DATUM\s+UZAVŘENÍ\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i)?.[1] ??
     asciiText.match(/datum uzavreni\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i)?.[1];
-  const signedIso = toDateInput(signedMatch);
+  const endorsementSignedIso = isNeonEndorsement
+    ? pickDateAfterLabel(lines, asciiLines, /datum\s+uzavreni:?/i, 8)
+    : null;
+  const signedIso = endorsementSignedIso ?? toDateInput(signedMatch);
   if (signedIso) {
     result.contractSignedDate = signedIso;
   }
@@ -872,7 +955,10 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   const amountMatch =
     fullText.match(/Měsíční\s+pojistné\s+včetně\s+slev\s+a\s+přirážek\s+celkem\s+v\s+Kč\s*([0-9\s.,]+)/i)?.[1] ??
     asciiText.match(/mesicni pojistne vcetne slev a prirazek celkem v kc\s*([0-9\s.,]+)/i)?.[1];
-  const amount = parseAmount(amountMatch);
+  const endorsementAmount = isNeonEndorsement
+    ? pickAmountAfterLabel(lines, asciiLines, /celkove\s+mesicni\s+pojistne:?/i, 8)
+    : null;
+  const amount = endorsementAmount ?? parseAmount(amountMatch);
   if (amount != null) {
     result.amount = amount;
   }

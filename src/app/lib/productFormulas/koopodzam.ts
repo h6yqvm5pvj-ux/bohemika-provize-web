@@ -4,7 +4,7 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { pct, periodsPerYear } from "./shared";
+import { commissionInstallmentCodeRange, pct, periodsPerYear } from "./shared";
 
 // ---------- Kooperativa Pojištění odpovědnosti zaměstnance ----------
 
@@ -66,8 +66,17 @@ export function calculateKoopOdzam(
   const annualSubsequent = perPaymentSubsequent * paymentsPerYear;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize (z platby)", amount: perPaymentImmediate },
-    { title: "🔁 Následná provize (z platby)", amount: perPaymentSubsequent },
+    {
+      title: "💸 Okamžitá provize (z platby)",
+      amount: perPaymentImmediate,
+      code: commissionInstallmentCodeRange("A", frequency),
+    },
+    {
+      title: "🔁 Následná provize (z platby)",
+      amount: perPaymentSubsequent,
+      code: commissionInstallmentCodeRange("B", frequency),
+      excludeFromTotal: true,
+    },
     {
       title: "📅 Okamžitá provize za rok",
       amount: annualImmediate,
@@ -77,8 +86,9 @@ export function calculateKoopOdzam(
       title: "📅 Následná provize za rok",
       amount: annualSubsequent,
       note: `×${paymentsPerYear} plateb/rok`,
+      excludeFromTotal: true,
     },
   ];
 
-  return { items, total: annualImmediate + annualSubsequent };
+  return { items, total: annualImmediate };
 }

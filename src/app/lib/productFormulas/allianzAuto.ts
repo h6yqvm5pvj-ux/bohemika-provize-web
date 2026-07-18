@@ -6,10 +6,7 @@ import {
 } from "../../types/domain";
 import { normalizeIsoDay, periodsPerYear } from "./shared";
 import { cppAutoCoefficient } from "./cppAuto";
-import {
-  historicalAutoCoefficient,
-  historicalAutoSubsequentCoefficient,
-} from "./historicalAutoCoefficient";
+import { historicalAutoCoefficient } from "./historicalAutoCoefficient";
 
 // ---------- Allianz Auto ----------
 
@@ -41,9 +38,9 @@ export function allianzAutoSubsequentCoefficient(
   position: Position,
   contractSignedDateIso?: string | null
 ): number {
-  return isAllianzAutoHistoricalPeriod(contractSignedDateIso)
-    ? historicalAutoSubsequentCoefficient(position)
-    : allianzAutoCoefficient(position, contractSignedDateIso);
+  // Allianz historical terms list acquisition and subsequent commission as
+  // identical percentages.
+  return allianzAutoCoefficient(position, contractSignedDateIso);
 }
 
 export function calculateAllianzAuto(

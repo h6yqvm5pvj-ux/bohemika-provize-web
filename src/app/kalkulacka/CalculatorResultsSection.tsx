@@ -12,7 +12,7 @@ import {
   type Product,
 } from "../types/domain";
 import { formatMoney } from "@/app/lib/formatters";
-import { isAutoProduct } from "@/app/lib/productCatalog";
+import { isAutoProduct, isLifeProduct } from "@/app/lib/productCatalog";
 import { cleanResultTitle, resultIconForTitle } from "./calculatorHelpers";
 import {
   buildNeonImmediateBreakdown,
@@ -69,7 +69,10 @@ const isLegacyImmediateTotalTitle = (title: string): boolean =>
   cleanResultTitle(title).toLowerCase().includes("okamžitá provize");
 
 const isSplitImmediateProduct = (product: Product): boolean =>
-  product === "neon" || product === "flexi";
+  product === "neon" ||
+  product === "flexi" ||
+  product === "maximaMaxEfekt" ||
+  product === "pillowInjury";
 
 const isSplitImmediateComponentTitle = (title: string): boolean => {
   const normalizedTitle = cleanResultTitle(title).toLowerCase();
@@ -207,6 +210,17 @@ export function CalculatorResultsSection({
 }: CalculatorResultsSectionProps) {
   const [expandedNeonImmediateBreakdown, setExpandedNeonImmediateBreakdown] =
     useState(false);
+  const lifeTipBase = isLifeProduct(product);
+  const totalLabel = "Celkem";
+  const tipContractShareLabel = lifeTipBase
+    ? "provize A101"
+    : "okamžité provize v 1. roce";
+  const tipContractGrossLabel = lifeTipBase
+    ? "A101 základ pro TIP (brutto)"
+    : "Okamžitá v 1. roce (brutto)";
+  const tipContractNetLabel = lifeTipBase
+    ? "A101 základ po TIPU"
+    : "Okamžitá v 1. roce po TIPU";
 
   return (
     <div className="self-start space-y-3 lg:sticky lg:top-6">
@@ -336,7 +350,7 @@ export function CalculatorResultsSection({
 
         {tipContractConfig && !tipsterModeEnabled && (
           <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-            Aktivní Smlouva z TIPU: {tipContractConfig.tipsterPercent} % z okamžité provize v 1. roce pro{" "}
+            Aktivní Smlouva z TIPU: {tipContractConfig.tipsterPercent} % z {tipContractShareLabel} pro{" "}
             {tipContractConfig.tipsterName ?? tipContractConfig.tipsterEmail ?? "neoznačeného tipaře"}.
           </p>
         )}
@@ -360,7 +374,11 @@ export function CalculatorResultsSection({
                     <span className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
                       <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
                     </span>
-                    <span>Okamžitá provize ({tipsterPercent} %)</span>
+                    <span>
+                      {lifeTipBase
+                        ? `TIP provize z A101 (${tipsterPercent} %)`
+                        : `Okamžitá provize (${tipsterPercent} %)`}
+                    </span>
                   </span>
                   <span className="whitespace-nowrap text-lg font-semibold text-slate-950 sm:text-2xl">
                     {formatMoneyResult(tipsterImmediateCommission)}
@@ -369,7 +387,7 @@ export function CalculatorResultsSection({
 
                 {!hideAnnualAutoTotals && (
                   <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-4">
-                    <span className="font-semibold text-slate-700">Celkem</span>
+                    <span className="font-semibold text-slate-700">{totalLabel}</span>
                     <AnimatedMoneyValue
                       value={tipsterImmediateCommission}
                       className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
@@ -603,7 +621,7 @@ export function CalculatorResultsSection({
                     Smlouva z TIPU
                   </p>
                   <div className="flex items-center justify-between text-sm">
-                    <span>Okamžitá v 1. roce (brutto)</span>
+                    <span>{tipContractGrossLabel}</span>
                     <span className="font-semibold text-slate-950">{formatMoneyResult(tipContractImmediateGrossFirstYear)}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
@@ -613,7 +631,7 @@ export function CalculatorResultsSection({
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span>Okamžitá v 1. roce po TIPU</span>
+                    <span>{tipContractNetLabel}</span>
                     <span className="font-bold text-emerald-700">
                       {formatMoneyResult(tipContractImmediateNetFirstYear)}
                     </span>
@@ -635,7 +653,7 @@ export function CalculatorResultsSection({
                         />
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="font-semibold text-slate-700">Celkem ročně následně</span>
+                        <span className="font-semibold text-slate-700">Celkem následně ročně</span>
                         <AnimatedMoneyValue
                           value={paymentBasedTotalsMemo.subsequent}
                           className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
@@ -646,7 +664,7 @@ export function CalculatorResultsSection({
                     <div className="w-full border-t border-slate-200 pt-4">
                       <div className="flex items-center justify-between gap-3">
                         <span className="font-semibold text-slate-700">
-                          Celkem{tipContractConfig ? " po TIPU" : ""}
+                          {totalLabel}{tipContractConfig ? " po TIPU" : ""}
                         </span>
                         <AnimatedMoneyValue
                           value={tipContractConfig ? tipContractTotalNet : total}

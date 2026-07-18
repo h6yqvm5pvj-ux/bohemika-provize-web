@@ -10,15 +10,6 @@ service cloud.firestore {
       return (email is string && email.matches("^[^/]+$")) ? email : null;
     }
 
-    // Admin s custom claimem `admin: true`
-    function isAdmin() {
-      return request.auth != null && request.auth.token.admin == true;
-    }
-
-    function isOwnerAdmin() {
-      return isAdmin() && request.auth.token.adminRole == "owner";
-    }
-
     function normEmail(email) {
       let c = cleanEmail(email);
       return (c is string) ? c.lower() : "";
@@ -26,6 +17,18 @@ service cloud.firestore {
 
     function authEmail() {
       return isSignedIn() ? normEmail(request.auth.token.email) : null;
+    }
+
+    // Admin s custom claimem `admin: true`.
+    // Vojtech ma samostatne opravneni pro zakladani uctu, ne admin pristup.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.admin == true
+        && authEmail() != "vojtech.mahr@bohemika.eu";
+    }
+
+    function isOwnerAdmin() {
+      return isAdmin() && request.auth.token.adminRole == "owner";
     }
 
     function isOwner(email) {

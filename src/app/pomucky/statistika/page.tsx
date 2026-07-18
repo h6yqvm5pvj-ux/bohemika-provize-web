@@ -33,6 +33,7 @@ import {
   calculateFlexi,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
+  calculateKoopPmop,
   calculateKooperativaAuto,
   calculateMaxEfekt,
   calculateMaxdomov,
@@ -217,6 +218,8 @@ function calculateCommission(
       return immediateCommission(calculateKoopMajetekObcan(premium, "annual", pos));
     case "koopodzam":
       return immediateCommission(calculateKoopOdzam(premium, "annual", pos));
+    case "kooppmop":
+      return immediateCommission(calculateKoopPmop(premium, "annual", pos));
     case "maxdomov":
       return immediateCommission(calculateMaxdomov(premium, "annual", pos));
     case "cppAuto":

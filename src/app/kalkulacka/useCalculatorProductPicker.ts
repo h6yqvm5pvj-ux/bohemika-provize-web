@@ -58,7 +58,7 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
   {
     key: "entrepreneurs",
     title: "Podnikatele",
-    products: ["zamex", "cppPPRbez", "cppPPRs", "cppsimplex"],
+    products: ["zamex", "cppPPRbez", "cppPPRs", "cppsimplex", "kooppmop"],
   },
   {
     key: "travel",

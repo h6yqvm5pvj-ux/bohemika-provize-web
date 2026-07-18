@@ -68,6 +68,14 @@ type ContractDoc = {
   stornoDate?: FirestoreTimestamp | Date | string | null;
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
+  refreshOriginalMissingInSystem?: boolean | null;
+  requiresStatementRefresh?: boolean | null;
+  commissionCalculationStatus?: string | null;
+  commissionBaseSource?: string | null;
+  refreshStatementResolvedAtMs?: number | null;
+  refreshStatementResolvedStatementId?: string | null;
+  refreshStatementResolvedStatementNumber?: string | null;
+  refreshStatementResolvedStatementPeriod?: string | null;
   refreshCommissionBase?: unknown;
   entryType?: "contract" | "endorsement" | string | null;
   rootContractEntryId?: string | null;
@@ -116,6 +124,8 @@ type DisplayedContract = ContractDoc & {
   groupedEntryCount?: number;
   groupedEndorsementCount?: number;
   groupedHasRefresh?: boolean;
+  groupedLatestSortMs?: number;
+  groupedLatestCreatedMs?: number;
   searchClientTokens?: string[];
   searchContractTokens?: string[];
   searchContractCompactTokens?: string[];
@@ -189,6 +199,7 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   koopmajetekobcan: "Majetek a odpovědnost občanů",
   koopfit: "Sportovní výbava FIT",
   koopodzam: "Odpovědnost zaměstnance",
+  kooppmop: "Majetek a odpovědnost podnikatelů",
   maxdomov: "MAXDOMOV",
   allianzmujdomov: "MůjDomov",
   cppsimplex: "Simplex",
@@ -227,12 +238,7 @@ function premiumDisplayForContract(c: ContractDoc): {
   cadenceLabel: "MĚSÍČNĚ" | "ROČNĚ" | null;
 } {
   const product = c.productKey;
-  const sourceAmount =
-    c.entryType === "endorsement"
-      ? c.newInputAmount ?? c.effectiveInputAmount ?? c.inputAmount
-      : c.inputAmount;
-  const base = Number(sourceAmount ?? 0);
-  const amount = Number.isFinite(base) ? base : 0;
+  const amount = premiumSourceAmountForContract(c);
 
   if (product && LIFE_PRODUCTS.has(product)) {
     return { amount, cadenceLabel: "MĚSÍČNĚ" };
@@ -246,6 +252,15 @@ function premiumDisplayForContract(c: ContractDoc): {
     amount: amount * paymentsPerYear(c.frequencyRaw),
     cadenceLabel: "ROČNĚ",
   };
+}
+
+function premiumSourceAmountForContract(c: ContractDoc): number {
+  const sourceAmount =
+    c.entryType === "endorsement"
+      ? c.newInputAmount ?? c.effectiveInputAmount ?? c.inputAmount
+      : c.inputAmount;
+  const base = Number(sourceAmount ?? 0);
+  return Number.isFinite(base) ? base : 0;
 }
 
 function endorsementDeltaAmount(c: ContractDoc): number | null {
@@ -1409,12 +1424,24 @@ function ContractsPageContent() {
     const base = (
       showTeam && canShowTeamToggle ? teamContracts : myContracts
     ) as (ContractDoc & { adviserEmail?: string | null })[];
+    const explicitRootEntryKeys = new Set<string>();
+    base.forEach((contract) => {
+      if (contract.entryType !== "endorsement") return;
+      const ownerEmail = contractOwnerEmail(contract);
+      const rootContractEntryId = (contract.rootContractEntryId ?? "").trim();
+      if (ownerEmail && rootContractEntryId) {
+        explicitRootEntryKeys.add(`${ownerEmail}___${rootContractEntryId}`);
+      }
+    });
+
     const grouped = new Map<
       string,
       {
+        display: ContractDoc & { adviserEmail?: string | null };
         latest: ContractDoc & { adviserEmail?: string | null };
         latestSortMs: number;
         latestCreatedMs: number;
+        preferRootDisplay: boolean;
         entryCount: number;
         endorsementCount: number;
         hasRefresh: boolean;
@@ -1428,16 +1455,27 @@ function ContractsPageContent() {
       const ownerEmail = contractOwnerEmail(contract);
       const contractNo = (contract.contractNumber ?? "").trim().toLowerCase();
       const productKey = (contract.productKey ?? "unknown").toString();
+      const isEndorsement = contract.entryType === "endorsement";
       const rootContractEntryId = (contract.rootContractEntryId ?? "").trim();
-      const groupKey = contractNo
-        ? rootContractEntryId
-          ? `${ownerEmail}___root___${rootContractEntryId}`
-          : `${ownerEmail}___${productKey}___${contractNo}`
-        : `${ownerEmail}___entry___${contract.id}`;
+      const explicitRootKey =
+        ownerEmail && rootContractEntryId
+          ? `${ownerEmail}___${rootContractEntryId}`
+          : "";
+      const ownRootKey = ownerEmail ? `${ownerEmail}___${contract.id}` : "";
+      const isExplicitRootContract =
+        !isEndorsement && explicitRootEntryKeys.has(ownRootKey);
+      const groupKey =
+        explicitRootKey || isExplicitRootContract
+          ? `${ownerEmail}___root___${
+              rootContractEntryId || contract.id
+            }`
+          : contractNo
+            ? `${ownerEmail}___${productKey}___${contractNo}`
+            : `${ownerEmail}___entry___${contract.id}`;
+      const preferRootDisplay = Boolean(explicitRootKey || isExplicitRootContract);
       const sortMs =
         getContractDate(contract)?.getTime() ?? 0;
       const createdMs = toDate((contract as any).createdAt)?.getTime() ?? 0;
-      const isEndorsement = contract.entryType === "endorsement";
       const hasRefresh = isRefreshContract(contract);
       const normalizedClient = normalizeSearchValue(contract.clientName);
       const normalizedContract = normalizeSearchValue(contract.contractNumber);
@@ -1446,9 +1484,11 @@ function ContractsPageContent() {
       const existing = grouped.get(groupKey);
       if (!existing) {
         grouped.set(groupKey, {
+          display: contract,
           latest: contract,
           latestSortMs: sortMs,
           latestCreatedMs: createdMs,
+          preferRootDisplay,
           entryCount: 1,
           endorsementCount: isEndorsement ? 1 : 0,
           hasRefresh,
@@ -1477,6 +1517,9 @@ function ContractsPageContent() {
       if (compactContract.length > 0) {
         existing.searchContractCompactTokens.add(compactContract);
       }
+      if (preferRootDisplay) {
+        existing.preferRootDisplay = true;
+      }
 
       const shouldReplaceLatest =
         sortMs > existing.latestSortMs ||
@@ -1490,25 +1533,48 @@ function ContractsPageContent() {
         existing.latestSortMs = sortMs;
         existing.latestCreatedMs = createdMs;
       }
+
+      if (existing.preferRootDisplay) {
+        if (!isEndorsement) {
+          existing.display = contract;
+        }
+      } else if (shouldReplaceLatest) {
+        existing.display = contract;
+      }
     });
 
     return Array.from(grouped.values())
-      .map((group): DisplayedContract => ({
-        ...group.latest,
-        groupedEntryCount: group.entryCount,
-        groupedEndorsementCount: group.endorsementCount,
-        groupedHasRefresh: group.hasRefresh,
-        searchClientTokens: Array.from(group.searchClientTokens),
-        searchContractTokens: Array.from(group.searchContractTokens),
-        searchContractCompactTokens: Array.from(group.searchContractCompactTokens),
-      }))
+      .map((group): DisplayedContract => {
+        const latestPremiumAmount =
+          group.endorsementCount > 0
+            ? premiumSourceAmountForContract(group.latest)
+            : null;
+        return {
+          ...group.display,
+          ...(latestPremiumAmount != null
+            ? {
+                inputAmount: latestPremiumAmount,
+                effectiveInputAmount: latestPremiumAmount,
+                paid: group.latest.paid ?? group.display.paid,
+              }
+            : {}),
+          groupedEntryCount: group.entryCount,
+          groupedEndorsementCount: group.endorsementCount,
+          groupedHasRefresh: group.hasRefresh,
+          groupedLatestSortMs: group.latestSortMs,
+          groupedLatestCreatedMs: group.latestCreatedMs,
+          searchClientTokens: Array.from(group.searchClientTokens),
+          searchContractTokens: Array.from(group.searchContractTokens),
+          searchContractCompactTokens: Array.from(group.searchContractCompactTokens),
+        };
+      })
       .sort((a, b) => {
-        const da = getContractDate(a)?.getTime() ?? 0;
-        const db = getContractDate(b)?.getTime() ?? 0;
+        const da = a.groupedLatestSortMs ?? getContractDate(a)?.getTime() ?? 0;
+        const db = b.groupedLatestSortMs ?? getContractDate(b)?.getTime() ?? 0;
         if (db !== da) return db - da;
 
-        const ca = toDate((a as any).createdAt)?.getTime() ?? 0;
-        const cb = toDate((b as any).createdAt)?.getTime() ?? 0;
+        const ca = a.groupedLatestCreatedMs ?? toDate((a as any).createdAt)?.getTime() ?? 0;
+        const cb = b.groupedLatestCreatedMs ?? toDate((b as any).createdAt)?.getTime() ?? 0;
         if (cb !== ca) return cb - ca;
 
         return String(b.id ?? "").localeCompare(String(a.id ?? ""), "cs");

@@ -64,8 +64,12 @@ type CalculatorCoefficientModalProps = {
   isCsobAutoHistorical: boolean;
   isUniqaAutoHistorical: boolean;
   isUniqaAutoEarlyHistorical: boolean;
+  isUniqaFlotilaHistorical: boolean;
   isPillowAutoHistorical: boolean;
   isKooperativaAutoHistorical: boolean;
+  isDomexHistorical: boolean;
+  isMaxEfekt5: boolean;
+  isMaxEfekt7: boolean;
   coefExplanation: string;
   immediatePayoutInfo: string | null;
   coefList: CoefficientSummaryItem[];
@@ -258,8 +262,12 @@ export function CalculatorCoefficientModal({
   isCsobAutoHistorical,
   isUniqaAutoHistorical,
   isUniqaAutoEarlyHistorical,
+  isUniqaFlotilaHistorical,
   isPillowAutoHistorical,
   isKooperativaAutoHistorical,
+  isDomexHistorical,
+  isMaxEfekt5,
+  isMaxEfekt7,
   coefExplanation,
   immediatePayoutInfo,
   coefList,
@@ -280,10 +288,13 @@ export function CalculatorCoefficientModal({
 
   const hasCoefficientViewToggle =
     product === "neon" ||
+    product === "maximaMaxEfekt" ||
+    product === "domex" ||
     product === "cppAuto" ||
     product === "allianzAuto" ||
     product === "csobAuto" ||
     product === "uniqaAuto" ||
+    product === "uniqaflotila" ||
     product === "pillowAuto" ||
     product === "kooperativaAuto";
   const productPeriodText =
@@ -309,14 +320,50 @@ export function CalculatorCoefficientModal({
         : isUniqaAutoHistorical
         ? "Historické koeficienty – platnost 01.05.2024 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
+      : product === "uniqaflotila"
+      ? isUniqaFlotilaHistorical
+        ? "Historické koeficienty – platnost 01.05.2024 až 31.03.2026"
+        : "Aktuální koeficienty – platnost od 01.04.2026"
       : product === "pillowAuto"
       ? isPillowAutoHistorical
         ? "Historické koeficienty – platnost 01.10.2023 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
+      : product === "pillowInjury"
+      ? "Pillow Úraz / Nemoc – koeficienty platné od 01.10.2023"
+      : product === "pillowmajetek"
+      ? "Pillow Majetek – koeficienty platné od 01.10.2023"
+      : product === "domex"
+      ? isDomexHistorical
+        ? "ČPP DOMEX – historické koeficienty – platnost 01.06.2023 až 31.08.2024"
+        : "ČPP DOMEX – aktuální koeficienty – platnost od 01.09.2024"
+      : product === "cpphafan"
+      ? "ČPP HAFAN – koeficienty platné od 01.01.2017"
+      : product === "kooppmop"
+      ? "Kooperativa PMOP – koeficienty platné od 01.08.2021"
+      : product === "cppcestovko"
+      ? "ČPP Cestovko – koeficienty platné od 01.09.2019"
+      : product === "koopcestovko"
+      ? "Kooperativa Cestovko – koeficienty platné od 01.09.2019"
+      : product === "axacestovko"
+      ? "AXA Cestovko – koeficienty platné od 15.04.2021"
+      : product === "zamex"
+      ? "ČPP ZAMEX – koeficienty platné od 15.04.2023"
+      : product === "cppsimplex"
+      ? "ČPP Simplex – koeficienty platné od 01.09.2021"
+      : product === "cppPPRbez"
+      ? "ČPP PPR bez ÚPIS – koeficienty platné od 01.06.2023"
+      : product === "cppPPRs"
+      ? "ČPP PPR ÚPIS – koeficienty platné od 01.06.2023"
       : product === "kooperativaAuto"
       ? isKooperativaAutoHistorical
         ? "Historické koeficienty – platnost 01.07.2021 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
+      : product === "maxdomov"
+      ? "Aktuální koeficienty – platnost od 01.09.2024"
+      : product === "maximaMaxEfekt" && isMaxEfekt5
+      ? "MAXEFEKT 5 – historické koeficienty – platnost 21.04.2023 až 22.04.2026"
+      : product === "maximaMaxEfekt" && isMaxEfekt7
+      ? "MAXEFEKT 7 – platnost od 23.04.2026"
       : null;
   const productModeText =
     product === "neon" && isNeonHistorical
@@ -325,12 +372,14 @@ export function CalculatorCoefficientModal({
         product === "allianzAuto" ||
         product === "csobAuto" ||
         product === "uniqaAuto" ||
+        product === "uniqaflotila" ||
         product === "pillowAuto" ||
         product === "kooperativaAuto"
       ? isCppAutoHistorical ||
         isAllianzAutoHistorical ||
         isCsobAutoHistorical ||
         isUniqaAutoHistorical ||
+        isUniqaFlotilaHistorical ||
         isPillowAutoHistorical ||
         isKooperativaAutoHistorical
         ? "historické podmínky"
@@ -404,7 +453,9 @@ export function CalculatorCoefficientModal({
                     : "text-slate-600 hover:bg-white"
                 }`}
               >
-                {product === "uniqaAuto" ? "Hist. 2024" : "Historické"}
+                {product === "uniqaAuto" || product === "uniqaflotila"
+                  ? "Hist. 2024"
+                  : "Historické"}
               </button>
               {product === "uniqaAuto" && (
                 <button

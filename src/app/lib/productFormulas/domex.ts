@@ -4,98 +4,109 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
+import { commissionInstallmentCodeRange } from "./shared";
 
 // ---------- DOMEX ----------
 
-export function domexCoefficient(position: Position): number {
-  switch (position) {
-    // Poradci 1–10
-    case "poradce1":
-      return 0.1108;
-    case "poradce2":
-      return 0.1238;
-    case "poradce3":
-      return 0.1344;
-    case "poradce4":
-      return 0.1678;
-    case "poradce5":
-      return 0.1886;
-    case "poradce6":
-      return 0.2016;
-    case "poradce7":
-      return 0.2252;
-    case "poradce8":
-      return 0.2386;
-    case "poradce9":
-      return 0.2488;
-    case "poradce10":
-      return 0.2558;
-    // Manažeři 4–10
-    case "manazer4":
-      return 0.2016;
-    case "manazer5":
-      return 0.2252;
-    case "manazer6":
-      return 0.2471;
-    case "manazer7":
-      return 0.2688;
-    case "manazer8":
-      return 0.2924;
-    case "manazer9":
-      return 0.3123;
-    case "manazer10":
-      return 0.336;
-  }
+export const DOMEX_HISTORICAL_VALID_FROM = "2023-06-01";
+export const DOMEX_CURRENT_VALID_FROM = "2024-09-01";
+export const DOMEX_HISTORICAL_SUBSEQUENT_PAYOUT_YEARS = 4;
+
+const DOMEX_CURRENT_IMMEDIATE_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 0.1108,
+  poradce2: 0.1238,
+  poradce3: 0.1344,
+  poradce4: 0.1678,
+  poradce5: 0.1886,
+  poradce6: 0.2016,
+  poradce7: 0.2252,
+  poradce8: 0.2386,
+  poradce9: 0.2488,
+  poradce10: 0.2558,
+  manazer4: 0.2016,
+  manazer5: 0.2252,
+  manazer6: 0.2471,
+  manazer7: 0.2688,
+  manazer8: 0.2924,
+  manazer9: 0.3123,
+  manazer10: 0.336,
+};
+
+const DOMEX_CURRENT_SUBSEQUENT_COEFFICIENTS: Record<Position, number> = {
+  poradce1: 0.0278,
+  poradce2: 0.0309,
+  poradce3: 0.0336,
+  poradce4: 0.0419,
+  poradce5: 0.0472,
+  poradce6: 0.0504,
+  poradce7: 0.0563,
+  poradce8: 0.0597,
+  poradce9: 0.0622,
+  poradce10: 0.064,
+  manazer4: 0.0504,
+  manazer5: 0.0563,
+  manazer6: 0.0618,
+  manazer7: 0.0672,
+  manazer8: 0.0731,
+  manazer9: 0.0781,
+  manazer10: 0.084,
+};
+
+const DOMEX_HISTORICAL_IMMEDIATE_COEFFICIENTS = DOMEX_CURRENT_IMMEDIATE_COEFFICIENTS;
+const DOMEX_HISTORICAL_SUBSEQUENT_COEFFICIENTS = DOMEX_CURRENT_SUBSEQUENT_COEFFICIENTS;
+
+function normalizeIsoDay(value?: string | null): string | null {
+  if (!value) return null;
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
 }
 
-export function domexSubsequentCoefficient(position: Position): number {
-  switch (position) {
-    // Poradci 1–10
-    case "poradce1":
-      return 0.0278;
-    case "poradce2":
-      return 0.0309;
-    case "poradce3":
-      return 0.0336;
-    case "poradce4":
-      return 0.0419;
-    case "poradce5":
-      return 0.0472;
-    case "poradce6":
-      return 0.0504;
-    case "poradce7":
-      return 0.0563;
-    case "poradce8":
-      return 0.0597;
-    case "poradce9":
-      return 0.0622;
-    case "poradce10":
-      return 0.064;
-    // Manažeři 4–10
-    case "manazer4":
-      return 0.0504;
-    case "manazer5":
-      return 0.0563;
-    case "manazer6":
-      return 0.0618;
-    case "manazer7":
-      return 0.0672;
-    case "manazer8":
-      return 0.0731;
-    case "manazer9":
-      return 0.0781;
-    case "manazer10":
-      return 0.084;
-  }
+export function isDomexHistoricalPeriod(contractSignedDateIso?: string | null): boolean {
+  const isoDay = normalizeIsoDay(contractSignedDateIso);
+  return (
+    isoDay != null &&
+    isoDay >= DOMEX_HISTORICAL_VALID_FROM &&
+    isoDay < DOMEX_CURRENT_VALID_FROM
+  );
+}
+
+export function domexSubsequentPayoutYears(
+  contractSignedDateIso?: string | null
+): number | null {
+  return isDomexHistoricalPeriod(contractSignedDateIso)
+    ? DOMEX_HISTORICAL_SUBSEQUENT_PAYOUT_YEARS
+    : null;
+}
+
+export function domexCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  const coefficients = isDomexHistoricalPeriod(contractSignedDateIso)
+    ? DOMEX_HISTORICAL_IMMEDIATE_COEFFICIENTS
+    : DOMEX_CURRENT_IMMEDIATE_COEFFICIENTS;
+  return coefficients[position];
+}
+
+export function domexSubsequentCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  const coefficients = isDomexHistoricalPeriod(contractSignedDateIso)
+    ? DOMEX_HISTORICAL_SUBSEQUENT_COEFFICIENTS
+    : DOMEX_CURRENT_SUBSEQUENT_COEFFICIENTS;
+  return coefficients[position];
 }
 
 export function calculateDomex(
   amount: number,
   frequency: PaymentFrequency,
-  position: Position
+  position: Position,
+  contractSignedDateIso?: string | null
 ): CommissionResultDTO {
-  const coef = domexCoefficient(position);
-  const coefSub = domexSubsequentCoefficient(position);
+  const coef = domexCoefficient(position, contractSignedDateIso);
+  const coefSub = domexSubsequentCoefficient(position, contractSignedDateIso);
+  const historical = isDomexHistoricalPeriod(contractSignedDateIso);
 
   // ČPP vyplácí provizi dle platby, částka v kalkulačce je částka platby
   const multiplier =
@@ -114,10 +125,16 @@ export function calculateDomex(
   const naslednaRok = naslednaPlatba * multiplier;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize (z platby)", amount: okamzitaPlatba },
+    {
+      title: "💸 Okamžitá provize (z platby)",
+      amount: okamzitaPlatba,
+      code: commissionInstallmentCodeRange("A", frequency),
+    },
     {
       title: "🔁 Následná provize (z platby)",
       amount: naslednaPlatba,
+      code: commissionInstallmentCodeRange("B", frequency),
+      note: historical ? "Vyplácí se maximálně 4 roky." : undefined,
       excludeFromTotal: true,
     },
     {
@@ -128,7 +145,9 @@ export function calculateDomex(
     {
       title: "📅 Následná provize za rok",
       amount: naslednaRok,
-      note: `×${multiplier} plateb/rok`,
+      note: historical
+        ? `×${multiplier} plateb/rok, maximálně 4 roky`
+        : `×${multiplier} plateb/rok`,
       excludeFromTotal: true,
     },
   ];
@@ -136,4 +155,3 @@ export function calculateDomex(
   const total = okamzitaRok;
   return { items, total };
 }
-

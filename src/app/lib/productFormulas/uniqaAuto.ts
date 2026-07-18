@@ -12,6 +12,8 @@ import { cppAutoCoefficient } from "./cppAuto";
 export const UNIQA_AUTO_EARLY_HISTORICAL_VALID_FROM = "2023-02-01";
 export const UNIQA_AUTO_HISTORICAL_VALID_FROM = "2024-05-01";
 export const UNIQA_AUTO_CURRENT_VALID_FROM = "2026-04-01";
+export const UNIQA_FLOTILA_HISTORICAL_VALID_FROM = UNIQA_AUTO_HISTORICAL_VALID_FROM;
+export const UNIQA_FLOTILA_CURRENT_VALID_FROM = UNIQA_AUTO_CURRENT_VALID_FROM;
 
 export function isUniqaAutoEarlyHistoricalPeriod(
   contractSignedDateIso: string | null | undefined
@@ -43,6 +45,17 @@ export function isUniqaAutoHistoricalPeriod(
   return (
     signedDateIso >= UNIQA_AUTO_EARLY_HISTORICAL_VALID_FROM &&
     signedDateIso < UNIQA_AUTO_CURRENT_VALID_FROM
+  );
+}
+
+export function isUniqaFlotilaHistoricalPeriod(
+  contractSignedDateIso: string | null | undefined
+): boolean {
+  const signedDateIso = normalizeIsoDay(contractSignedDateIso);
+  if (!signedDateIso) return false;
+  return (
+    signedDateIso >= UNIQA_FLOTILA_HISTORICAL_VALID_FROM &&
+    signedDateIso < UNIQA_FLOTILA_CURRENT_VALID_FROM
   );
 }
 
@@ -196,6 +209,23 @@ export function uniqaAutoCoefficient(
   return uniqaAutoImmediateCoefficient(position, contractSignedDateIso);
 }
 
+export function uniqaFlotilaCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  if (isUniqaFlotilaHistoricalPeriod(contractSignedDateIso)) {
+    return uniqaAutoLaterHistoricalCoefficient(position);
+  }
+  return cppAutoCoefficient(position);
+}
+
+export function uniqaFlotilaSubsequentCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  return uniqaFlotilaCoefficient(position, contractSignedDateIso);
+}
+
 export function calculateUniqaAuto(
   amount: number,
   frequency: PaymentFrequency,
@@ -223,6 +253,31 @@ export function calculateUniqaAuto(
 
   const coef = uniqaAutoImmediateCoefficient(position, contractSignedDateIso);
   const subsequentCoef = uniqaAutoSubsequentCoefficient(position, contractSignedDateIso);
+  const perPayment = amount * coef;
+  const subsequent = amount * subsequentCoef;
+  const annualTotal = perPayment * periodsPerYear(frequency);
+
+  const items: CommissionResultItemDTO[] = [
+    { title: "🚙 Okamžitá provize", amount: perPayment, code: "A101" },
+    {
+      title: "🔁 Následná provize",
+      amount: subsequent,
+      code: "B101",
+      excludeFromTotal: true,
+    },
+    { title: "📅 Provize za rok", amount: annualTotal },
+  ];
+  return { items, total: annualTotal };
+}
+
+export function calculateUniqaFlotila(
+  amount: number,
+  frequency: PaymentFrequency,
+  position: Position,
+  contractSignedDateIso?: string | null
+): CommissionResultDTO {
+  const coef = uniqaFlotilaCoefficient(position, contractSignedDateIso);
+  const subsequentCoef = uniqaFlotilaSubsequentCoefficient(position, contractSignedDateIso);
   const perPayment = amount * coef;
   const subsequent = amount * subsequentCoef;
   const annualTotal = perPayment * periodsPerYear(frequency);

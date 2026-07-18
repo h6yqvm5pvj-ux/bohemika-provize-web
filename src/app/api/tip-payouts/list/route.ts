@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
+import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import {
   type PaymentFrequency,
@@ -337,14 +338,15 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const email = normalizeEmail(decoded.email);
-    if (!email) {
+    const actorEmail = normalizeEmail(decoded.email);
+    const actorUid = String(decoded.uid ?? "").trim();
+    if (!actorEmail || !actorUid) {
       return NextResponse.json(
         { ok: false, error: "User e-mail missing in token" } satisfies TipPayoutsErrorResponse,
         { status: 401 }
       );
     }
-    const lockout = await getLoginAttemptLockoutError(req, email);
+    const lockout = await getLoginAttemptLockoutError(req, actorEmail);
     if (lockout) {
       const response = NextResponse.json(
         { ok: false, error: lockout.error } satisfies TipPayoutsErrorResponse,
@@ -353,7 +355,30 @@ export async function GET(req: NextRequest) {
       response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
       return response;
     }
-    const setupError = await getAdvisorSetupError({ email, uid: decoded.uid });
+
+    let email = actorEmail;
+    let uid = actorUid;
+    const impersonationResult = await resolveServerImpersonation({
+      req,
+      actorEmail,
+      actorUid,
+      decoded: decoded as Record<string, unknown>,
+    });
+    if (!impersonationResult.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: impersonationResult.error,
+        } satisfies TipPayoutsErrorResponse,
+        { status: impersonationResult.status }
+      );
+    }
+    if (impersonationResult.impersonation) {
+      email = impersonationResult.impersonation.targetEmail;
+      uid = impersonationResult.impersonation.targetUid;
+    }
+
+    const setupError = await getAdvisorSetupError({ email, uid });
     if (setupError) {
       return NextResponse.json(
         {
@@ -365,7 +390,7 @@ export async function GET(req: NextRequest) {
     }
     const userDocId = await resolveUserDocId({
       email,
-      uid: decoded.uid,
+      uid,
     });
     if (!userDocId) {
       return NextResponse.json(
@@ -376,7 +401,7 @@ export async function GET(req: NextRequest) {
 
     const rateLimitResult = await consumeRateLimit({
       namespace: "api:tip-payouts:list",
-      key: email,
+      key: actorEmail,
       limit: TIP_PAYOUTS_RATE_LIMIT,
       windowMs: TIP_PAYOUTS_RATE_LIMIT_WINDOW_MS,
     });

@@ -135,6 +135,7 @@ type UserProfileApiResponse = {
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
 const HOME_CACHE_STORAGE_PREFIX = "home.cache:";
+const HOME_CACHE_VERSION = "v2-team-scope";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 
 export const invalidateHomeCache = (email?: string | null) => {
@@ -695,7 +696,7 @@ export function useHomeData({
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
 
-        const cacheKey = `${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|${loadTeamHistory ? "teamhist" : "noteamhist"}`;
+        const cacheKey = `${HOME_CACHE_VERSION}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|${loadTeamHistory ? "teamhist" : "noteamhist"}`;
         const cached = homeDataCache[cacheKey];
         if (cached?.payload) {
           fallbackPayload = cached.payload;

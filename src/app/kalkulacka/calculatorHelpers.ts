@@ -356,7 +356,7 @@ export function durationRange(product: Product): [number, number] {
     case "flexi":
       return [1, 80];
     case "maximaMaxEfekt":
-      return [1, 20];
+      return [1, 80];
     default:
       return [1, 1];
   }
@@ -369,7 +369,7 @@ export function durationFallback(product: Product): number {
     case "flexi":
       return 30;
     case "maximaMaxEfekt":
-      return 20;
+      return 30;
     default:
       return 1;
   }
@@ -431,6 +431,7 @@ export function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "koopmajetekobcan":
     case "koopfit":
     case "koopodzam":
+    case "kooppmop":
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "pillowAuto":
     case "maxdomov":
@@ -532,7 +533,7 @@ export function durationTooltip(
     return "Uživatel musí zadat celkovou dobu trvání smlouvy v letech (např. do roku 2050). Následná provize od 6. roku se počítá ročně do konce zadané doby.";
   }
   if (product === "maximaMaxEfekt") {
-    return "Uživatel musí zadat celkovou dobu trvání smlouvy, maximálně však 20 let. Pokud je smlouva uzavřena na déle než 20 let, zadej 20.";
+    return "U MAXEFEKT 5/7 zadej celkovou dobu trvání smlouvy. Následná provize od 5. roku se počítá ročně až do konce zadané doby trvání.";
   }
   return null;
 }

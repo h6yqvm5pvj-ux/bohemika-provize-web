@@ -13,7 +13,9 @@ const { calculateCppAuto } = jiti("../src/app/lib/productFormulas/cppAuto.ts");
 const { calculateSlaviaAuto } = jiti("../src/app/lib/productFormulas/slaviaAuto.ts");
 const { calculateAllianzAuto } = jiti("../src/app/lib/productFormulas/allianzAuto.ts");
 const { calculateCsobAuto } = jiti("../src/app/lib/productFormulas/csobAuto.ts");
-const { calculateUniqaAuto } = jiti("../src/app/lib/productFormulas/uniqaAuto.ts");
+const { calculateUniqaAuto, calculateUniqaFlotila } = jiti(
+  "../src/app/lib/productFormulas/uniqaAuto.ts"
+);
 const { calculatePillowAuto } = jiti("../src/app/lib/productFormulas/pillowAuto.ts");
 const { calculateKooperativaAuto } = jiti(
   "../src/app/lib/productFormulas/kooperativaAuto.ts"
@@ -329,7 +331,7 @@ const calculateAutoResult = ({
     case "uniqaAuto":
       return calculateUniqaAuto(amount, frequency, position, effectiveSignedIso);
     case "uniqaflotila":
-      return calculateUniqaAuto(amount, frequency, position, effectiveSignedIso);
+      return calculateUniqaFlotila(amount, frequency, position, effectiveSignedIso);
     case "pillowAuto":
       return calculatePillowAuto(amount, frequency, position, effectiveSignedIso);
     case "kooperativaAuto":
@@ -518,6 +520,13 @@ async function main() {
   const apply = hasArg("--apply");
   const verbose = hasArg("--verbose");
   const targetEmail = normalizeEmail(parseArgValue("--email"));
+  const productsArg = parseArgValue("--products");
+  const targetProducts = new Set(
+    String(productsArg ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
   const contractNumbersArg = parseArgValue("--contracts");
   const targetContracts = new Set(
     String(contractNumbersArg ?? "")
@@ -564,6 +573,7 @@ async function main() {
     const entry = docSnap.data() ?? {};
     if (String(entry.entryType ?? "contract").trim().toLowerCase() !== "contract") continue;
     if (!AUTO_PRODUCTS.has(entry.productKey)) continue;
+    if (targetProducts.size > 0 && !targetProducts.has(entry.productKey)) continue;
     if (targetEmail && normalizeEmail(entry.userEmail) !== targetEmail) continue;
     const contractNumber = normalizeContractNumber(entry.contractNumber);
     if (targetContracts.size > 0 && !targetContracts.has(contractNumber)) continue;

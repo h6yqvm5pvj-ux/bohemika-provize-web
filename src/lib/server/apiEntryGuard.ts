@@ -16,11 +16,19 @@ import {
   getRequestIp,
   type RateLimitResult,
 } from "@/lib/server/rateLimit";
+import {
+  resolveServerImpersonation,
+  type ServerImpersonationContext,
+} from "@/lib/server/impersonation";
 
 export type AuthedRateLimitContext = {
   token: string;
   uid: string;
   email: string;
+  actorUid: string;
+  actorEmail: string;
+  isImpersonating: boolean;
+  impersonation: ServerImpersonationContext | null;
   decoded: Awaited<ReturnType<NonNullable<typeof adminAuth>["verifyIdToken"]>>;
   rateLimit: RateLimitResult;
 };
@@ -61,11 +69,13 @@ export async function requireAuthedRateLimited(
     limit,
     windowMs,
     enforceAdvisorSetup,
+    allowImpersonation,
   }: {
     namespace: string;
     limit: number;
     windowMs: number;
     enforceAdvisorSetup?: boolean;
+    allowImpersonation?: boolean;
   }
 ): Promise<
   | { ok: true; ctx: AuthedRateLimitContext }
@@ -104,8 +114,9 @@ export async function requireAuthedRateLimited(
     };
   }
 
-  const email = normalizeEmail(decoded.email);
-  if (!email) {
+  const actorEmail = normalizeEmail(decoded.email);
+  const actorUid = String(decoded.uid ?? "").trim();
+  if (!actorEmail || !actorUid) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -115,7 +126,7 @@ export async function requireAuthedRateLimited(
     };
   }
 
-  const loginLockout = await getLoginAttemptStatus(req, email);
+  const loginLockout = await getLoginAttemptStatus(req, actorEmail);
   if (loginLockout.locked) {
     return {
       ok: false,
@@ -125,7 +136,7 @@ export async function requireAuthedRateLimited(
 
   const rateLimit = await consumeRateLimit({
     namespace,
-    key: email,
+    key: actorEmail,
     limit,
     windowMs,
   });
@@ -141,6 +152,31 @@ export async function requireAuthedRateLimited(
     };
   }
 
+  let effectiveEmail = actorEmail;
+  let effectiveUid = actorUid;
+  let impersonation: ServerImpersonationContext | null = null;
+  if (allowImpersonation === true) {
+    const impersonationResult = await resolveServerImpersonation({
+      req,
+      actorEmail,
+      actorUid,
+      decoded: decoded as Record<string, unknown>,
+    });
+    if (!impersonationResult.ok) {
+      const response = NextResponse.json(
+        { ok: false, error: impersonationResult.error },
+        { status: impersonationResult.status }
+      );
+      applyRateLimitHeaders(response.headers, rateLimit);
+      return { ok: false, response };
+    }
+    impersonation = impersonationResult.impersonation;
+    if (impersonation) {
+      effectiveEmail = impersonation.targetEmail;
+      effectiveUid = impersonation.targetUid;
+    }
+  }
+
   if (enforceAdvisorSetup !== false) {
     if (!adminDb) {
       return {
@@ -152,8 +188,12 @@ export async function requireAuthedRateLimited(
           ),
           {
             token,
-            uid: decoded.uid,
-            email,
+            uid: effectiveUid,
+            email: effectiveEmail,
+            actorUid,
+            actorEmail,
+            isImpersonating: Boolean(impersonation),
+            impersonation,
             decoded,
             rateLimit,
           }
@@ -162,16 +202,20 @@ export async function requireAuthedRateLimited(
     }
 
     const setupError = await getAdvisorSetupError({
-      email,
-      uid: decoded.uid,
+      email: effectiveEmail,
+      uid: effectiveUid,
     });
     if (setupError) {
       return {
         ok: false,
         response: withRateLimitHeaders(buildAdvisorSetupResponse(setupError), {
           token,
-          uid: decoded.uid,
-          email,
+          uid: effectiveUid,
+          email: effectiveEmail,
+          actorUid,
+          actorEmail,
+          isImpersonating: Boolean(impersonation),
+          impersonation,
           decoded,
           rateLimit,
         }),
@@ -183,8 +227,12 @@ export async function requireAuthedRateLimited(
     ok: true,
     ctx: {
       token,
-      uid: decoded.uid,
-      email,
+      uid: effectiveUid,
+      email: effectiveEmail,
+      actorUid,
+      actorEmail,
+      isImpersonating: Boolean(impersonation),
+      impersonation,
       decoded,
       rateLimit,
     },
@@ -202,16 +250,23 @@ export async function requireAdvisorAuthedRateLimited(
     namespace,
     limit,
     windowMs,
+    allowImpersonation,
   }: {
     namespace: string;
     limit: number;
     windowMs: number;
+    allowImpersonation?: boolean;
   }
 ): Promise<
   | { ok: true; ctx: AdvisorAuthedRateLimitContext }
   | { ok: false; response: NextResponse }
 > {
-  const guard = await requireAuthedRateLimited(req, { namespace, limit, windowMs });
+  const guard = await requireAuthedRateLimited(req, {
+    namespace,
+    limit,
+    windowMs,
+    allowImpersonation,
+  });
   if (!guard.ok) return guard;
 
   if (!adminDb) {

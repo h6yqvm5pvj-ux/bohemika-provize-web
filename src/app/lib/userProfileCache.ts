@@ -1,5 +1,6 @@
 import type { User as FirebaseUser } from "firebase/auth";
 
+import { readAdminImpersonationState } from "@/app/lib/adminImpersonation";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 
 export type UserProfileResponse = {
@@ -23,6 +24,8 @@ const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
 
 const cacheKeyForUser = (user: FirebaseUser): string => {
+  const impersonatedEmail = readAdminImpersonationState()?.email;
+  if (impersonatedEmail) return `impersonated:${impersonatedEmail}`;
   const email = normalizeEmail(user.email);
   if (email) return email;
   return `uid:${user.uid}`;
@@ -33,6 +36,8 @@ export const invalidateUserProfileCache = (email?: string | null) => {
   if (!normalized) return;
   delete profileCache[normalized];
   delete profileInFlight[normalized];
+  delete profileCache[`impersonated:${normalized}`];
+  delete profileInFlight[`impersonated:${normalized}`];
 };
 
 export function peekUserProfileCached(

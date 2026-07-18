@@ -43,6 +43,7 @@ export const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
   "koopmajetekobcan",
   "koopfit",
   "koopodzam",
+  "kooppmop",
   "kooperativaAuto",
   "koopcestovko",
 ]);
@@ -66,6 +67,7 @@ export type ContractDetailApiResponse = ContractsApiResponseBase & {
   position?: Position | null;
   hasTeam?: boolean;
   teamEmails?: string[];
+  canManageContract?: boolean;
   contract?: ContractDoc;
   timeline?: ContractDoc[];
   ownerMeta?: ContractOwnerMetaApi | null;

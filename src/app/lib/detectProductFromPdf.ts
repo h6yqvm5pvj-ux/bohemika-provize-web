@@ -270,6 +270,17 @@ const DETECTION_RULES: DetectionRule[] = [
       "Na 1. stránce jsou texty „ŽIVOTNÍ POJIŠTĚNÍ NEON“ a „Česká podnikatelská pojišťovna“.",
   },
   {
+    product: "neon",
+    mustContain: [
+      { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },
+      { page: "any", text: normalizeText("NEON"), wholeWord: true },
+      { page: "any", text: normalizeText("Žádanka o změnu") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“, „NEON“ a „Žádanka o změnu“.",
+  },
+  {
     product: "pillowAuto",
     mustContain: [
       { page: 1, text: normalizeText("Pojištění vozidla") },

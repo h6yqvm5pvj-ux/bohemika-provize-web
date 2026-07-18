@@ -119,6 +119,7 @@ export async function GET(req: NextRequest) {
     namespace: "api:advisor-tips-by-user:get",
     limit: ADVISOR_TIPS_BY_USER_RATE_LIMIT,
     windowMs: ADVISOR_TIPS_BY_USER_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

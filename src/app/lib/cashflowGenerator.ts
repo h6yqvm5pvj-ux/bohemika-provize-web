@@ -1,5 +1,6 @@
 // src/app/lib/cashflowGenerator.ts
 import { type Product, type PaymentFrequency } from "../types/domain";
+import { domexSubsequentPayoutYears } from "./productFormulas/domex";
 
 /**
  * Minimální verze CommissionEntry pro cashflow.
@@ -53,6 +54,36 @@ function parseCzDate(value: unknown): Date | null {
   const year = Number(m[3]);
   const d = new Date(year, month - 1, day);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function parseDateFromUnknown(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  const parsedCz = parseCzDate(trimmed);
+  if (parsedCz) return parsedCz;
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!isoMatch) return null;
+
+  const parsedIso = new Date(
+    Number(isoMatch[1]),
+    Number(isoMatch[2]) - 1,
+    Number(isoMatch[3])
+  );
+  return Number.isNaN(parsedIso.getTime()) ? null : parsedIso;
+}
+
+function isoDayFromUnknown(value: unknown): string | null {
+  const parsed = parseDateFromUnknown(value);
+  if (!parsed) return null;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -118,21 +149,21 @@ export const CashflowGenerator = {
     };
 
     for (const entry of entries) {
-      const parsedStart = parseCzDate(entry.policyStartDate);
-      const parsedSigned = parseCzDate(entry.contractSignedDate);
+      const parsedStart = parseDateFromUnknown(entry.policyStartDate);
+      const parsedSigned = parseDateFromUnknown(entry.contractSignedDate);
+      const parsedCreated = parseDateFromUnknown(entry.createdAt);
 
       const start =
         parsedStart ??
-        (entry.policyStartDate as Date | null | undefined) ??
         parsedSigned ??
-        (entry.contractSignedDate as Date | null | undefined) ??
+        parsedCreated ??
         new Date();
       const agreement =
         parsedSigned ??
-        (entry.contractSignedDate as Date | null | undefined) ??
         parsedStart ??
-        (entry.policyStartDate as Date | null | undefined) ??
+        parsedCreated ??
         start;
+      const contractSignedDateIso = isoDayFromUnknown(entry.contractSignedDate);
       const product = entry.productKey as Product | string;
 
       // Rozparsuj řádky výsledku
@@ -166,6 +197,9 @@ export const CashflowGenerator = {
       const naslOd6 = items.find((i) =>
         i.titleLower.includes("následná provize (od 6. roku)")
       ); // FLEXI
+      const naslOd5 = items.find((i) =>
+        i.titleLower.includes("následná provize (od 5. roku)")
+      ); // MAXEFEKT
       const naslMaxdomov = items.find((i) =>
         i.titleLower.includes("následná provize (z platby)")
       ); // MAXDOMOV
@@ -208,7 +242,10 @@ export const CashflowGenerator = {
           if (po3) addItem(po3.amount, anniversaryPlusYears(3));
           if (po4) addItem(po4.amount, anniversaryPlusYears(4));
 
-          const maxYears = Math.max(1, entry.durationYears ?? 10);
+          const maxYears = Math.max(
+            1,
+            entry.durationYears ?? (product === "maximaMaxEfekt" ? 30 : 10)
+          );
 
           if (nasl25) {
             // ČPP NEON: položka "2.–5. rok" se v praxi vyplácí už od 1. výročí.
@@ -228,6 +265,13 @@ export const CashflowGenerator = {
                 anniversaryPlusYears(y),
                 "ročně"
               );
+            }
+          }
+          if (product === "maximaMaxEfekt" && naslOd5) {
+            for (let y = 5; y <= maxYears; y++) {
+              const date = anniversaryPlusYears(y);
+              if (date > horizonEnd) break;
+              addItem(naslOd5.amount, date, "ročně");
             }
           }
           break;
@@ -367,10 +411,14 @@ export const CashflowGenerator = {
         case "koopmajetekobcan":
         case "koopfit":
         case "koopodzam":
-        case "cppPPRbez": {
+        case "kooppmop":
+        case "cppPPRbez":
+        case "cppsimplex":
+        case "cppPPRs":
+        case "zamex": {
           const immediateDomex =
             items.find((i) =>
-              i.titleLower.includes("okamžitá provize (z platby)")
+              i.titleLower.includes("okamžitá") && i.titleLower.includes("(z platby)")
             ) ?? immediate;
           const subsequentDomex = items.find((i) =>
             i.titleLower.includes("následná provize (z platby)")
@@ -379,13 +427,23 @@ export const CashflowGenerator = {
           const monthsStep = monthsBetweenPayments(entry.frequencyRaw);
           const firstPayout = estimatePayoutDate(start, agreement);
           const subsequentStart = anniversaryPlusYears(1);
+          const domexHistoricalSubsequentYears =
+            product === "domex" ? domexSubsequentPayoutYears(contractSignedDateIso) : null;
+          const subsequentEnd =
+            domexHistoricalSubsequentYears != null
+              ? anniversaryPlusYears(1 + domexHistoricalSubsequentYears)
+              : null;
 
           let payout = firstPayout;
           while (payout <= horizonEnd) {
+            const isWithinSubsequentWindow =
+              subsequentEnd == null || payout < subsequentEnd;
             const amount =
               payout < subsequentStart
                 ? immediateDomex?.amount
-                : subsequentDomex?.amount ?? immediateDomex?.amount;
+                : isWithinSubsequentWindow
+                ? subsequentDomex?.amount ?? immediateDomex?.amount
+                : undefined;
             if (amount && Number.isFinite(amount) && amount !== 0) {
               addItem(amount, payout);
             }
@@ -394,27 +452,11 @@ export const CashflowGenerator = {
           break;
         }
 
-        // ============= ZAMEX – opakovaně dle frekvence =============
-        case "zamex": {
-          if (!immediate) break;
-          const amount = immediate.amount;
-          const monthsStep = monthsBetweenPayments(entry.frequencyRaw);
-
-          let payout = estimatePayoutDate(start, agreement);
-          while (payout <= horizonEnd) {
-            addItem(amount, payout);
-            payout = addMonths(payout, monthsStep);
-          }
-          break;
-        }
-
         // ============= OSTATNÍ AUTO – podle frekvence (ČPP, ČSOB, Kooperativa) =============
         case "cppAuto":
         case "slaviaauto":
-        case "cppPPRs":
         case "csobAuto":
-        case "kooperativaAuto":
-        case "cppsimplex": {
+        case "kooperativaAuto": {
           if (!immediate) break;
           const amount = immediate.amount;
           const stepMonths = monthsBetweenPayments(entry.frequencyRaw);

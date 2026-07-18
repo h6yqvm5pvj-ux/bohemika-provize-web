@@ -5,7 +5,7 @@ import { type CommissionMode, type Position } from "@/app/types/domain";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import {
   adminAuthErrorResponse,
-  getAdminAuthContext,
+  getAccountCreatorAuthContext,
 } from "@/lib/server/adminAuth";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
@@ -203,8 +203,7 @@ function mapAuthCreateError(error: unknown): { message: string; status: number }
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await getAdminAuthContext(req, {
-    minimumRole: "admin",
+  const ctx = await getAccountCreatorAuthContext(req, {
     actionLabel: "vytváření uživatelů",
   });
   if ("error" in ctx) {

@@ -2,9 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { FieldPath, type QuerySnapshot } from "firebase-admin/firestore";
 
 import { type CommissionMode, type Position } from "@/app/types/domain";
+import { adminRoleAtLeast, resolveAdminRoleFromClaims } from "@/lib/adminAccess";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptStatus, loginAttemptLockoutMessage } from "@/lib/server/loginAttemptLockout";
+import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
@@ -45,7 +47,10 @@ type ApiError = {
 type AuthContext = {
   email: string;
   uid: string;
+  actorEmail: string;
+  actorUid: string;
   isAdmin: boolean;
+  isImpersonating: boolean;
 };
 
 type DailyContractRow = {
@@ -342,8 +347,9 @@ async function getAuthContext(
     };
   }
 
-  const email = normalizeEmail(decoded.email);
-  if (!email) {
+  const actorEmail = normalizeEmail(decoded.email);
+  const actorUid = String(decoded.uid ?? "").trim();
+  if (!actorEmail || !actorUid) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -352,7 +358,7 @@ async function getAuthContext(
       ),
     };
   }
-  const loginLockout = await getLoginAttemptStatus(req, email);
+  const loginLockout = await getLoginAttemptStatus(req, actorEmail);
   if (loginLockout.locked) {
     const response = NextResponse.json(
       { ok: false, error: loginAttemptLockoutMessage(loginLockout) } satisfies ApiError,
@@ -364,7 +370,34 @@ async function getAuthContext(
       response,
     };
   }
-  const setupError = await getAdvisorAccessError({ email, uid: decoded.uid });
+
+  let email = actorEmail;
+  let uid = actorUid;
+  let isImpersonating = false;
+  let effectiveClaims: Record<string, unknown> = decoded as Record<string, unknown>;
+  const impersonationResult = await resolveServerImpersonation({
+    req,
+    actorEmail,
+    actorUid,
+    decoded: decoded as Record<string, unknown>,
+  });
+  if (!impersonationResult.ok) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, error: impersonationResult.error } satisfies ApiError,
+        { status: impersonationResult.status }
+      ),
+    };
+  }
+  if (impersonationResult.impersonation) {
+    email = impersonationResult.impersonation.targetEmail;
+    uid = impersonationResult.impersonation.targetUid;
+    isImpersonating = true;
+    effectiveClaims = {};
+  }
+
+  const setupError = await getAdvisorAccessError({ email, uid });
   if (setupError) {
     return {
       ok: false,
@@ -379,8 +412,14 @@ async function getAuthContext(
     ok: true,
     ctx: {
       email,
-      uid: String(decoded.uid ?? "").trim(),
-      isAdmin: (decoded as Record<string, unknown>).admin === true,
+      uid,
+      actorEmail,
+      actorUid,
+      isAdmin: adminRoleAtLeast(
+        resolveAdminRoleFromClaims(email, effectiveClaims),
+        "admin"
+      ),
+      isImpersonating,
     },
   };
 }
@@ -425,13 +464,21 @@ function ensureOwnerAccess(
   };
 }
 
+function resolveRequestedOwnerEmail(actor: AuthContext, requestedOwner: unknown): string {
+  const ownerEmail = normalizeEmail(requestedOwner);
+  if (actor.isImpersonating && (!ownerEmail || ownerEmail === actor.actorEmail)) {
+    return actor.email;
+  }
+  return ownerEmail || actor.email;
+}
+
 export async function GET(req: NextRequest) {
   const auth = await getAuthContext(req);
   if (!auth.ok) return auth.response;
 
   const rate = await applyRateLimitOrRespond({
     namespace: "api:user-stats:get",
-    key: auth.ctx.email || auth.ctx.uid,
+    key: auth.ctx.actorEmail || auth.ctx.actorUid,
     limit: USER_STATS_GET_RATE_LIMIT,
     windowMs: USER_STATS_GET_WINDOW_MS,
   });
@@ -439,7 +486,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const mode = (searchParams.get("mode") ?? "").trim().toLowerCase();
-  const ownerEmail = normalizeEmail(searchParams.get("owner")) || auth.ctx.email;
+  const ownerEmail = resolveRequestedOwnerEmail(auth.ctx, searchParams.get("owner"));
   const access = ensureOwnerAccess(auth.ctx, ownerEmail);
   if (!access.ok) {
     rate.headers.forEach((value, key) => access.response.headers.set(key, value));
@@ -607,7 +654,7 @@ export async function POST(req: NextRequest) {
 
   const rate = await applyRateLimitOrRespond({
     namespace: "api:user-stats:post",
-    key: auth.ctx.email || auth.ctx.uid,
+    key: auth.ctx.actorEmail || auth.ctx.actorUid,
     limit: USER_STATS_POST_RATE_LIMIT,
     windowMs: USER_STATS_POST_WINDOW_MS,
   });
@@ -633,7 +680,7 @@ export async function POST(req: NextRequest) {
   }
 
   const action = typeof body.action === "string" ? body.action.trim() : "";
-  const ownerEmail = normalizeEmail(body.ownerEmail) || auth.ctx.email;
+  const ownerEmail = resolveRequestedOwnerEmail(auth.ctx, body.ownerEmail);
   const access = ensureOwnerAccess(auth.ctx, ownerEmail);
   if (!access.ok) {
     rate.headers.forEach((value, key) => access.response.headers.set(key, value));

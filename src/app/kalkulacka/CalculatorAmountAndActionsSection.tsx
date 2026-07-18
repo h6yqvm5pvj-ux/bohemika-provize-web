@@ -25,6 +25,7 @@ type CalculatorAmountAndActionsSectionProps = {
   hasTipContractConfig: boolean;
   refreshOriginalOpen: boolean;
   refreshOriginalContractNumber: string;
+  refreshOriginalMissingInSystem: boolean;
   refreshOriginalLookupStatus: RefreshOriginalLookupStatus;
   refreshOriginalLookupProgress: number;
   refreshOriginalLookupAdviserName: string | null;
@@ -34,6 +35,7 @@ type CalculatorAmountAndActionsSectionProps = {
   onComfortPaymentTextChange: (value: string) => void;
   onComfortTargetAmountTextChange: (value: string) => void;
   onRefreshOriginalContractNumberChange: (value: string) => void;
+  onRefreshOriginalMissingInSystemChange: (value: boolean) => void;
   onOpenTipContractModal: () => void;
   onToggleRefreshOriginal: () => void;
   onPrepareEndorsement: () => void;
@@ -58,6 +60,7 @@ export function CalculatorAmountAndActionsSection({
   hasTipContractConfig,
   refreshOriginalOpen,
   refreshOriginalContractNumber,
+  refreshOriginalMissingInSystem,
   refreshOriginalLookupStatus,
   refreshOriginalLookupProgress,
   refreshOriginalLookupAdviserName,
@@ -67,6 +70,7 @@ export function CalculatorAmountAndActionsSection({
   onComfortPaymentTextChange,
   onComfortTargetAmountTextChange,
   onRefreshOriginalContractNumberChange,
+  onRefreshOriginalMissingInSystemChange,
   onOpenTipContractModal,
   onToggleRefreshOriginal,
   onPrepareEndorsement,
@@ -225,26 +229,51 @@ export function CalculatorAmountAndActionsSection({
             </div>
             {canUseOriginalReplacement && refreshOriginalOpen && (
               <div className="mt-3 space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
-                  Číslo původní smlouvy
-                </label>
-                <input
-                  type="text"
-                  inputMode="text"
-                  autoComplete="off"
-                  value={refreshOriginalContractNumber}
-                  onChange={(event) => onRefreshOriginalContractNumberChange(event.target.value)}
-                  placeholder="Např. 1234567890"
-                  className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
-                    missingFields.includes("číslo původní smlouvy")
-                      ? "border-rose-400/70"
-                      : "border-slate-300"
-                  }`}
-                />
-                <p className="text-[11px] text-slate-600">
-                  Při uložení se původní smlouva stornuje ke dni počátku nové smlouvy.
-                </p>
-                {refreshOriginalLookupStatus === "checking" && (
+                {product === "neon" && (
+                  <label className="flex items-start gap-2 rounded-xl border border-sky-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={refreshOriginalMissingInSystem}
+                      onChange={(event) => onRefreshOriginalMissingInSystemChange(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                    />
+                    <span>
+                      Původní smlouva není v systému
+                      <span className="mt-0.5 block font-medium text-slate-600">
+                        Použij pro REFRESH, kde neumíme dopočítat správnou základnu z původní smlouvy.
+                      </span>
+                    </span>
+                  </label>
+                )}
+                {!refreshOriginalMissingInSystem && (
+                  <>
+                    <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                      Číslo původní smlouvy
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="text"
+                      autoComplete="off"
+                      value={refreshOriginalContractNumber}
+                      onChange={(event) => onRefreshOriginalContractNumberChange(event.target.value)}
+                      placeholder="Např. 1234567890"
+                      className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+                        missingFields.includes("číslo původní smlouvy")
+                          ? "border-rose-400/70"
+                          : "border-slate-300"
+                      }`}
+                    />
+                    <p className="text-[11px] text-slate-600">
+                      Při uložení se původní smlouva stornuje ke dni počátku nové smlouvy.
+                    </p>
+                  </>
+                )}
+                {refreshOriginalMissingInSystem && (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-900">
+                    Výpočet provize je orientační. Po nahrání provizního výpisu se smlouva bere jako REFRESH bez původní smlouvy v systému a základna se musí sladit podle výpisu.
+                  </p>
+                )}
+                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "checking" && (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
                       <span>Ověřuji smlouvu v Bohemka.App</span>
@@ -264,27 +293,27 @@ export function CalculatorAmountAndActionsSection({
                     </div>
                   </div>
                 )}
-                {refreshOriginalLookupStatus === "found" && (
+                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "found" && (
                   <p className="text-[11px] font-semibold text-emerald-700">
                     Smlouva nalezena. Sjednatel: {refreshOriginalLookupAdviserName || "jméno není vyplněné"}.
                   </p>
                 )}
-                {refreshOriginalInfoText && (
+                {!refreshOriginalMissingInSystem && refreshOriginalInfoText && (
                   <p className="text-[11px] font-semibold text-sky-800">
                     {refreshOriginalInfoText}
                   </p>
                 )}
-                {refreshOriginalLookupStatus === "wrongProduct" && (
+                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "wrongProduct" && (
                   <p className="text-[11px] font-semibold text-amber-700">
                     Smlouva je evidována, ale není vedena jako {originalReplacementProductLabel}.
                   </p>
                 )}
-                {refreshOriginalLookupStatus === "notFound" && (
+                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "notFound" && (
                   <p className="text-[11px] font-semibold text-rose-700">
                     Smlouva s tímto číslem není evidována v systému Bohemka.App.
                   </p>
                 )}
-                {refreshOriginalLookupStatus === "error" && (
+                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "error" && (
                   <p className="text-[11px] font-semibold text-amber-700">
                     Ověření smlouvy se nepodařilo. Zkus to prosím znovu.
                   </p>

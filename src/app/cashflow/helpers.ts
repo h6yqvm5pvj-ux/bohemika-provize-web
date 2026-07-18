@@ -38,10 +38,11 @@ export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
     "koopmajetekobcan",
     "koopfit",
     "koopodzam",
+    "kooppmop",
     "maxdomov",
     "allianzmujdomov",
   ],
-  entrepreneurs: ["cppsimplex", "cppPPRs", "cppPPRbez"],
+  entrepreneurs: ["cppsimplex", "cppPPRs", "cppPPRbez", "kooppmop"],
   travel: ["cppcestovko", "axacestovko", "koopcestovko"],
   foreigners: ["maxcizinkomplex"],
   gold: ["comfortcc"],
@@ -121,6 +122,57 @@ export function matchesProductFilter(
   return CASHFLOW_PRODUCTS_BY_FILTER[productFilter].includes(product);
 }
 
+export function cashflowDisplayProductRank(item: CashflowItem): number {
+  const product = item.productKey === "unknown" ? undefined : item.productKey;
+  if (!product) return 2;
+  if (CASHFLOW_PRODUCTS_BY_FILTER.life.includes(product)) return 0;
+  if (CASHFLOW_PRODUCTS_BY_FILTER.auto.includes(product)) return 1;
+  return 2;
+}
+
+export function cashflowDisplaySourceRank(item: CashflowItem): number {
+  return item.source === "manager" || item.isManagerOverride ? 1 : 0;
+}
+
+export function compareCashflowItemsForDisplay(
+  a: CashflowItem,
+  b: CashflowItem
+): number {
+  const sourceRankDiff =
+    cashflowDisplaySourceRank(a) - cashflowDisplaySourceRank(b);
+  if (sourceRankDiff !== 0) return sourceRankDiff;
+
+  const productRankDiff =
+    cashflowDisplayProductRank(a) - cashflowDisplayProductRank(b);
+  if (productRankDiff !== 0) return productRankDiff;
+
+  const dateDiff = a.date.getTime() - b.date.getTime();
+  if (dateDiff !== 0) return dateDiff;
+
+  const productDiff = productLabel(a.productKey).localeCompare(
+    productLabel(b.productKey),
+    "cs"
+  );
+  if (productDiff !== 0) return productDiff;
+
+  const clientDiff = (a.clientName ?? "").localeCompare(b.clientName ?? "", "cs");
+  if (clientDiff !== 0) return clientDiff;
+
+  const contractDiff = (a.contractNumber ?? "").localeCompare(
+    b.contractNumber ?? "",
+    "cs"
+  );
+  if (contractDiff !== 0) return contractDiff;
+
+  return a.id.localeCompare(b.id, "cs");
+}
+
+export function sortCashflowItemsForDisplay(
+  items: CashflowItem[]
+): CashflowItem[] {
+  return [...items].sort(compareCashflowItemsForDisplay);
+}
+
 export function filterPastItems(
   cashflowItems: CashflowItem[],
   showPastYears: boolean
@@ -167,6 +219,25 @@ const monthKeyFromDate = (date: Date): string =>
 
 const addMonths = (date: Date, months: number): Date =>
   new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
+
+const monthSerial = (date: Date): number =>
+  date.getFullYear() * 12 + date.getMonth();
+
+const isStornoStatus = (status: CashflowItem["contractStatus"]): boolean => {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return (
+    normalized === "storno" ||
+    normalized === "stornovana" ||
+    normalized === "stornována"
+  );
+};
+
+const isOnOrAfterStornoMonth = (item: CashflowItem, date: Date): boolean => {
+  if (!isStornoStatus(item.contractStatus)) return false;
+  const stornoDate = toDate(item.stornoDate);
+  if (!stornoDate) return false;
+  return monthSerial(date) >= monthSerial(stornoDate);
+};
 
 export function filterItemsByContractNumber(
   cashflowItems: CashflowItem[],
@@ -236,7 +307,11 @@ const hasPaidCommissionForItem = ({
   const hasAnyPaidCodeForContract = [...paidCommissionKeys].some((key) =>
     key.startsWith(`${normalizedContractNumber.toUpperCase()}:`)
   );
-  if (commissionCodes.length > 0 && hasAnyPaidCodeForContract) {
+  if (hasAnyPaidCodeForContract) {
+    if (commissionCodes.length === 0) {
+      return item.productKey === "comfortcc" && paidContracts.has(normalizedContractNumber);
+    }
+
     return commissionCodes.some((code) =>
       paidCommissionKeys.has(`${normalizedContractNumber.toUpperCase()}:${code}`)
     );
@@ -261,41 +336,44 @@ export function applyStatementMissingPayoutShifts({
 }): CashflowItem[] {
   if (!enabled) return cashflowItems;
 
-  return cashflowItems.map((item) => {
-    if (item.isTipPayout) return item;
+  return cashflowItems.flatMap((item): CashflowItem[] => {
+    if (item.isTipPayout) return [item];
+    if (item.payoutStatus === "paid") return [item];
 
     const normalizedContractNumber = normalizeContractNumberSearch(item.contractNumber);
-    if (!normalizedContractNumber) return { ...item, payoutStatus: "predicted" };
+    if (!normalizedContractNumber) return [{ ...item, payoutStatus: "predicted" }];
 
     let date = item.date;
     let shifted = false;
     const missedStatementPeriods: string[] = [];
 
     for (let guard = 0; guard < 24; guard += 1) {
+      if (isOnOrAfterStornoMonth(item, date)) return [];
+
       const monthKey = monthKeyFromDate(date);
       const statements = statementsByMonthKey[monthKey];
       if (!statements || statements.length === 0) {
-        return {
+        return [{
           ...item,
           id: shifted ? `${item.id}-shifted-${monthKey}` : item.id,
           date,
           payoutStatus: shifted ? "shifted" : "predicted",
           originalDate: shifted ? item.date : null,
           missedStatementPeriods,
-        };
+        }];
       }
 
       const paidContracts = paidContractSetForStatements(statements);
       const paidCommissionKeys = paidCommissionKeySetForStatements(statements);
       if (paidContracts.size === 0) {
-        return {
+        return [{
           ...item,
           id: shifted ? `${item.id}-shifted-${monthKey}` : item.id,
           date,
           payoutStatus: shifted ? "shifted" : "predicted",
           originalDate: shifted ? item.date : null,
           missedStatementPeriods,
-        };
+        }];
       }
 
       if (
@@ -306,14 +384,14 @@ export function applyStatementMissingPayoutShifts({
           paidCommissionKeys,
         })
       ) {
-        return {
+        return [{
           ...item,
           id: shifted ? `${item.id}-paid-shifted-${monthKey}` : item.id,
           date,
           payoutStatus: "paid",
           originalDate: shifted ? item.date : null,
           missedStatementPeriods,
-        };
+        }];
       }
 
       missedStatementPeriods.push(...statementPeriodLabels(statements));
@@ -322,14 +400,16 @@ export function applyStatementMissingPayoutShifts({
     }
 
     const fallbackMonthKey = monthKeyFromDate(date);
-    return {
+    if (isOnOrAfterStornoMonth(item, date)) return [];
+
+    return [{
       ...item,
       id: `${item.id}-shifted-${fallbackMonthKey}`,
       date,
       payoutStatus: "shifted",
       originalDate: item.date,
       missedStatementPeriods,
-    };
+    }];
   });
 }
 
@@ -363,13 +443,15 @@ export function groupItemsByMonth(
 
     const group = map.get(key)!;
     group.total += item.amount;
-    group.predictedTotal += item.amount;
+    group.predictedTotal += item.isStatementOnly
+      ? 0
+      : item.predictedAmount ?? item.amount;
     group.items.push(item);
   }
 
   const groups = Array.from(map.values());
   groups.forEach((group) =>
-    group.items.sort((a, b) => a.date.getTime() - b.date.getTime())
+    group.items.sort(compareCashflowItemsForDisplay)
   );
 
   groups.sort((a, b) => {

@@ -4,9 +4,11 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { periodsPerYear } from "./shared";
+import { commissionInstallmentCodeRange, periodsPerYear } from "./shared";
 
 // ---------- ČPP ZAMEX ----------
+
+export const ZAMEX_COEFFICIENT_VALID_FROM = "2023-04-15";
 
 export function zamexCoefficient(position: Position): number {
   switch (position) {
@@ -55,14 +57,35 @@ export function calculateZamex(
   position: Position
 ): CommissionResultDTO {
   const coef = zamexCoefficient(position);
-  const perPayment = amount * coef;
-  const annualTotal = perPayment * periodsPerYear(frequency);
+  const perPaymentImmediate = amount * coef;
+  const perPaymentSubsequent = amount * coef;
+  const paymentsPerYear = periodsPerYear(frequency);
+  const annualImmediate = perPaymentImmediate * paymentsPerYear;
+  const annualSubsequent = perPaymentSubsequent * paymentsPerYear;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "🧑‍🔧 Okamžitá provize", amount: perPayment },
-    { title: "📅 Provize za rok", amount: annualTotal },
+    {
+      title: "🧑‍🔧 Okamžitá (získatelská) provize (z platby)",
+      amount: perPaymentImmediate,
+      code: commissionInstallmentCodeRange("A", frequency),
+    },
+    {
+      title: "🔁 Následná provize (z platby)",
+      amount: perPaymentSubsequent,
+      code: commissionInstallmentCodeRange("B", frequency),
+      excludeFromTotal: true,
+    },
+    {
+      title: "📅 Okamžitá (získatelská) provize za rok",
+      amount: annualImmediate,
+      note: `×${paymentsPerYear} plateb/rok`,
+    },
+    {
+      title: "📅 Následná provize za rok",
+      amount: annualSubsequent,
+      note: `×${paymentsPerYear} plateb/rok`,
+      excludeFromTotal: true,
+    },
   ];
-  return { items, total: annualTotal };
+  return { items, total: annualImmediate };
 }
-
-

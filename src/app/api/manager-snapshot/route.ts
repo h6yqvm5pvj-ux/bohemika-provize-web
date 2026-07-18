@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
+import { resolveServerImpersonation } from "@/lib/server/impersonation";
 
 export const runtime = "nodejs";
 
@@ -299,7 +300,7 @@ function getBearerToken(req: Request): string | null {
   return token || null;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     if (!adminAuth || !adminDb) {
       return NextResponse.json(
@@ -325,8 +326,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const tokenEmail = normalizeEmail(decoded.email);
-    const lockout = await getLoginAttemptLockoutError(req, tokenEmail);
+    const actorEmail = normalizeEmail(decoded.email);
+    const actorUid = String(decoded.uid ?? "").trim();
+    if (!actorEmail || !actorUid) {
+      return NextResponse.json({ ok: false, error: "User e-mail missing in token" }, { status: 401 });
+    }
+
+    const lockout = await getLoginAttemptLockoutError(req, actorEmail);
     if (lockout) {
       const response = NextResponse.json(
         { ok: false, error: lockout.error },
@@ -335,7 +341,27 @@ export async function POST(req: Request) {
       response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
       return response;
     }
-    const setupError = await getAdvisorAccessError({ email: tokenEmail, uid: decoded.uid });
+
+    let tokenEmail = actorEmail;
+    let uid = actorUid;
+    const impersonationResult = await resolveServerImpersonation({
+      req,
+      actorEmail,
+      actorUid,
+      decoded: decoded as Record<string, unknown>,
+    });
+    if (!impersonationResult.ok) {
+      return NextResponse.json(
+        { ok: false, error: impersonationResult.error },
+        { status: impersonationResult.status }
+      );
+    }
+    if (impersonationResult.impersonation) {
+      tokenEmail = impersonationResult.impersonation.targetEmail;
+      uid = impersonationResult.impersonation.targetUid;
+    }
+
+    const setupError = await getAdvisorAccessError({ email: tokenEmail, uid });
     if (setupError) {
       return NextResponse.json(
         { ok: false, error: setupError.error, missingSetup: setupError.missing },
@@ -348,7 +374,7 @@ export async function POST(req: Request) {
     const signedDateIso = isIsoDay(signedDateIsoRaw) ? signedDateIsoRaw : null;
 
     const callerProfile = await loadCallerProfile({
-      uid: decoded.uid,
+      uid,
       tokenEmail,
     });
 

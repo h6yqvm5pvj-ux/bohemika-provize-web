@@ -32,6 +32,8 @@ import {
 
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { isLifeProduct } from "@/app/lib/productCatalog";
+import type { Product } from "@/app/types/domain";
 import { AppLayout } from "@/components/AppLayout";
 
 type AccountType = "advisor" | "tipster";
@@ -59,6 +61,7 @@ type LinkedContractSummary = {
   entryId: string;
   path: string;
   number: string;
+  productKey: Product | string | null;
   tipsterPercent: number | null;
   immediateGrossFirstYear: number | null;
   immediateNetFirstYear: number | null;
@@ -790,6 +793,15 @@ function TipDetailContent() {
   const linkedContract = tip?.linkedContract ?? null;
   const linkedContractNumber =
     linkedContract?.number || tip?.linkedContractNumber || "";
+  const linkedContractLifeProduct = isLifeProduct(
+    (linkedContract?.productKey ?? null) as Product | null
+  );
+  const linkedContractTipBaseText = linkedContractLifeProduct
+    ? "Tipař má nárok pouze na podíl z provize A101."
+    : "Tipař má nárok pouze na podíl z okamžité provize v 1. roce.";
+  const linkedContractGrossLabel = linkedContractLifeProduct
+    ? "A101 základ"
+    : "Okamžitá provize";
   const linkedTipPercent =
     typeof linkedContract?.tipsterPercent === "number" &&
     Number.isFinite(linkedContract.tipsterPercent)
@@ -905,7 +917,7 @@ function TipDetailContent() {
                         {linkedContractNumber ? ` ${linkedContractNumber}` : ""}.
                       </h2>
                       <p className="mt-1 text-sm text-slate-700">
-                        Tipař má nárok pouze na podíl z okamžité provize v 1. roce.
+                        {linkedContractTipBaseText}
                       </p>
                       <div
                         className={`mt-4 grid gap-2 ${
@@ -931,7 +943,7 @@ function TipDetailContent() {
                         {showAdvisorLinkedContractData && (
                           <div className="rounded-2xl border border-fuchsia-200 bg-white/75 px-4 py-3">
                             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-fuchsia-700">
-                              Okamžitá provize
+                              {linkedContractGrossLabel}
                             </p>
                             <p className="mt-1 text-lg font-black text-slate-950">
                               {formatMoney(linkedContract?.immediateGrossFirstYear)}

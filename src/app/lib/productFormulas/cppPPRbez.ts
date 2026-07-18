@@ -4,9 +4,11 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { pct, periodsPerYear } from "./shared";
+import { commissionInstallmentCodeRange, pct, periodsPerYear } from "./shared";
 
 // ---------- ČPP Pojištění majetku a odpovědnosti podnikatelů (bez ÚPIS) ----------
+
+export const CPP_PPR_BEZ_COEFFICIENT_VALID_FROM = "2023-06-01";
 
 export function cppPPRbezImmediateCoefficient(position: Position): number {
   switch (position) {
@@ -106,10 +108,19 @@ export function calculateCppPPRbez(
   const annualSub = perPaymentSub * paymentsPerYear;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize (z platby)", amount: perPaymentImmediate },
-    { title: "🔁 Následná provize (z platby)", amount: perPaymentSub },
     {
-      title: "📅 Okamžitá provize za rok",
+      title: "💸 Okamžitá (získatelská) provize (z platby)",
+      amount: perPaymentImmediate,
+      code: commissionInstallmentCodeRange("A", frequency),
+    },
+    {
+      title: "🔁 Následná provize (z platby)",
+      amount: perPaymentSub,
+      code: commissionInstallmentCodeRange("B", frequency),
+      excludeFromTotal: true,
+    },
+    {
+      title: "📅 Okamžitá (získatelská) provize za rok",
       amount: annualImmediate,
       note: `×${paymentsPerYear} plateb/rok`,
     },
@@ -117,11 +128,10 @@ export function calculateCppPPRbez(
       title: "📅 Následná provize za rok",
       amount: annualSub,
       note: `×${paymentsPerYear} plateb/rok`,
+      excludeFromTotal: true,
     },
   ];
 
-  const total = annualImmediate + annualSub;
+  const total = annualImmediate;
   return { items, total };
 }
-
-

@@ -8,7 +8,7 @@ import {
   domexCoefficient,
   domexSubsequentCoefficient,
 } from "./domex";
-import { periodsPerYear } from "./shared";
+import { commissionInstallmentCodeRange, periodsPerYear } from "./shared";
 
 export const PILLOW_MAJETEK_COEFFICIENT_VALID_FROM = "2023-10-01";
 
@@ -30,12 +30,21 @@ export function calculatePillowMajetek(
   const subsequent = annualPremium * pillowMajetekSubsequentCoefficient(position);
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize", amount: immediate },
-    { title: "🔁 Následná provize", amount: subsequent },
+    {
+      title: "💸 Okamžitá provize",
+      amount: immediate,
+      code: commissionInstallmentCodeRange("A", frequency),
+    },
+    {
+      title: "🔁 Následná provize",
+      amount: subsequent,
+      code: commissionInstallmentCodeRange("B", frequency),
+      excludeFromTotal: true,
+    },
   ];
 
   return {
     items,
-    total: immediate + subsequent,
+    total: immediate,
   };
 }

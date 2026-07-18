@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import {
   adminRoleAtLeast,
-  getFallbackAdminRole,
-  normalizeAdminRole,
+  canCreateUserAccounts,
+  resolveAdminRoleFromClaims,
   type AdminRole,
 } from "@/lib/adminAccess";
 import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
@@ -14,6 +14,13 @@ export type AdminAuthContext = {
   adminEmail: string;
   adminUid: string;
   adminRole: AdminRole;
+  decoded: Awaited<ReturnType<NonNullable<typeof adminAuth>["verifyIdToken"]>>;
+};
+
+export type AccountCreatorAuthContext = {
+  adminEmail: string;
+  adminUid: string;
+  adminRole: AdminRole | null;
   decoded: Awaited<ReturnType<NonNullable<typeof adminAuth>["verifyIdToken"]>>;
 };
 
@@ -37,22 +44,19 @@ const resolveAdminRole = (
   email: string,
   decoded: Record<string, unknown>
 ): AdminRole | null => {
-  if (decoded.admin === true) {
-    return normalizeAdminRole(decoded.adminRole) ?? "admin";
-  }
-  return getFallbackAdminRole(email);
+  return resolveAdminRoleFromClaims(email, decoded);
 };
 
-export async function getAdminAuthContext(
-  req: Request,
-  {
-    minimumRole = "admin",
-    actionLabel = "tuto admin akci",
-  }: {
-    minimumRole?: AdminRole;
-    actionLabel?: string;
-  } = {}
-): Promise<AdminAuthContext | AdminAuthError> {
+async function getVerifiedInternalAuthContext(
+  req: Request
+): Promise<
+  | {
+      email: string;
+      uid: string;
+      decoded: Awaited<ReturnType<NonNullable<typeof adminAuth>["verifyIdToken"]>>;
+    }
+  | AdminAuthError
+> {
   if (!adminAuth) {
     return {
       error: "Server není správně nakonfigurován (Firebase Admin).",
@@ -65,7 +69,7 @@ export async function getAdminAuthContext(
     return { error: "Missing bearer token", status: 401 };
   }
 
-  let decoded: AdminAuthContext["decoded"];
+  let decoded: Awaited<ReturnType<NonNullable<typeof adminAuth>["verifyIdToken"]>>;
   try {
     decoded = await adminAuth.verifyIdToken(token, true);
   } catch (err: any) {
@@ -89,7 +93,23 @@ export async function getAdminAuthContext(
   const setupError = await getAdvisorAccessError({ email, uid });
   if (setupError) return setupError;
 
-  const role = resolveAdminRole(email, decoded as Record<string, unknown>);
+  return { email, uid, decoded };
+}
+
+export async function getAdminAuthContext(
+  req: Request,
+  {
+    minimumRole = "admin",
+    actionLabel = "tuto admin akci",
+  }: {
+    minimumRole?: AdminRole;
+    actionLabel?: string;
+  } = {}
+): Promise<AdminAuthContext | AdminAuthError> {
+  const base = await getVerifiedInternalAuthContext(req);
+  if ("error" in base) return base;
+
+  const role = resolveAdminRole(base.email, base.decoded as Record<string, unknown>);
   if (!role || !adminRoleAtLeast(role, minimumRole)) {
     return {
       error: `Nemáš oprávnění provést ${actionLabel}.`,
@@ -98,10 +118,37 @@ export async function getAdminAuthContext(
   }
 
   return {
-    adminEmail: email,
-    adminUid: uid,
+    adminEmail: base.email,
+    adminUid: base.uid,
     adminRole: role,
-    decoded,
+    decoded: base.decoded,
+  };
+}
+
+export async function getAccountCreatorAuthContext(
+  req: Request,
+  {
+    actionLabel = "vytváření uživatelů",
+  }: {
+    actionLabel?: string;
+  } = {}
+): Promise<AccountCreatorAuthContext | AdminAuthError> {
+  const base = await getVerifiedInternalAuthContext(req);
+  if ("error" in base) return base;
+
+  const decoded = base.decoded as Record<string, unknown>;
+  if (!canCreateUserAccounts(base.email, decoded)) {
+    return {
+      error: `Nemáš oprávnění provést ${actionLabel}.`,
+      status: 403,
+    };
+  }
+
+  return {
+    adminEmail: base.email,
+    adminUid: base.uid,
+    adminRole: resolveAdminRole(base.email, decoded),
+    decoded: base.decoded,
   };
 }
 

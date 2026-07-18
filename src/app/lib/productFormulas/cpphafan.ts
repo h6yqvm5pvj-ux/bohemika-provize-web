@@ -4,7 +4,7 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { pct, periodsPerYear } from "./shared";
+import { commissionInstallmentCodeRange, pct, periodsPerYear } from "./shared";
 
 // ---------- ČPP HAFAN ----------
 
@@ -106,8 +106,17 @@ export function calculateCppHafan(
   const annualSub = perPaymentSub * paymentsPerYear;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize (z platby)", amount: perPaymentImmediate },
-    { title: "🔁 Následná provize (z platby)", amount: perPaymentSub },
+    {
+      title: "💸 Okamžitá provize (z platby)",
+      amount: perPaymentImmediate,
+      code: commissionInstallmentCodeRange("A", frequency),
+    },
+    {
+      title: "🔁 Následná provize (z platby)",
+      amount: perPaymentSub,
+      code: commissionInstallmentCodeRange("B", frequency),
+      excludeFromTotal: true,
+    },
     {
       title: "📅 Okamžitá provize za rok",
       amount: annualImmediate,
@@ -117,9 +126,10 @@ export function calculateCppHafan(
       title: "📅 Následná provize za rok",
       amount: annualSub,
       note: `×${paymentsPerYear} plateb/rok`,
+      excludeFromTotal: true,
     },
   ];
 
-  const total = annualImmediate + annualSub;
+  const total = annualImmediate;
   return { items, total };
 }

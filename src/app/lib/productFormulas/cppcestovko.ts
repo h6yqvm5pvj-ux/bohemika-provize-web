@@ -6,6 +6,8 @@ import {
 
 // ---------- ČPP Cestovko ----------
 
+export const CPP_CESTOVKO_COEFFICIENT_VALID_FROM = "2019-09-01";
+
 export function cppCestovkoCoefficient(position: Position): number {
   switch (position) {
     // Poradci 1–10
@@ -55,9 +57,7 @@ export function calculateCppCestovko(
   const provize = amount * coef;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize", amount: provize },
+    { title: "💸 Okamžitá provize", amount: provize, code: "A101" },
   ];
   return { items, total: provize };
 }
-
-

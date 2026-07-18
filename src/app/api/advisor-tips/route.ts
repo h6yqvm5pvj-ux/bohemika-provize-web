@@ -169,6 +169,7 @@ export async function GET(req: NextRequest) {
     namespace: "api:advisor-tips:get",
     limit: ADVISOR_TIPS_GET_RATE_LIMIT,
     windowMs: ADVISOR_TIPS_GET_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
@@ -291,6 +292,7 @@ export async function PATCH(req: NextRequest) {
     namespace: "api:advisor-tips:patch",
     limit: ADVISOR_TIPS_PATCH_RATE_LIMIT,
     windowMs: ADVISOR_TIPS_PATCH_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

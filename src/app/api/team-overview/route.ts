@@ -19,6 +19,7 @@ import {
 } from "@/lib/server/rateLimit";
 import { adminRoleAtLeast, resolveAdminRoleFromClaims } from "@/lib/adminAccess";
 import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
+import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import type {
   AccountType,
@@ -610,6 +611,11 @@ function buildContractRefPayload({
 
 async function getAuthContext(req: NextRequest): Promise<{
   email: string;
+  uid: string;
+  actorEmail: string;
+  actorUid: string;
+  isImpersonating: boolean;
+  effectiveClaims: Record<string, unknown>;
   decoded: Awaited<ReturnType<NonNullable<typeof adminAuth>["verifyIdToken"]>>;
 }> {
   if (!adminAuth || !adminDb) {
@@ -637,25 +643,57 @@ async function getAuthContext(req: NextRequest): Promise<{
     });
   }
 
-  const email = normalizeEmail(decoded.email);
-  if (!email) {
+  const actorEmail = normalizeEmail(decoded.email);
+  const actorUid = String(decoded.uid ?? "").trim();
+  if (!actorEmail || !actorUid) {
     throw Object.assign(new Error("User e-mail missing in token"), { status: 401 });
   }
-  const lockout = await getLoginAttemptLockoutError(req, email);
+  const lockout = await getLoginAttemptLockoutError(req, actorEmail);
   if (lockout) {
     throw Object.assign(new Error(lockout.error), {
       status: lockout.status,
       retryAfterSeconds: lockout.retryAfterSeconds,
     });
   }
-  const setupError = await getAdvisorAccessError({ email, uid: decoded.uid });
+
+  let email = actorEmail;
+  let uid = actorUid;
+  let isImpersonating = false;
+  let effectiveClaims: Record<string, unknown> = decoded as Record<string, unknown>;
+  const impersonationResult = await resolveServerImpersonation({
+    req,
+    actorEmail,
+    actorUid,
+    decoded: decoded as Record<string, unknown>,
+  });
+  if (!impersonationResult.ok) {
+    throw Object.assign(new Error(impersonationResult.error), {
+      status: impersonationResult.status,
+    });
+  }
+  if (impersonationResult.impersonation) {
+    email = impersonationResult.impersonation.targetEmail;
+    uid = impersonationResult.impersonation.targetUid;
+    isImpersonating = true;
+    effectiveClaims = {};
+  }
+
+  const setupError = await getAdvisorAccessError({ email, uid });
   if (setupError) {
     throw Object.assign(new Error(setupError.error), {
       status: setupError.status,
       missingSetup: setupError.missing,
     });
   }
-  return { email, decoded };
+  return {
+    email,
+    uid,
+    actorEmail,
+    actorUid,
+    isImpersonating,
+    effectiveClaims,
+    decoded,
+  };
 }
 
 function candidateFromDoc(
@@ -2448,7 +2486,7 @@ export async function PATCH(req: NextRequest) {
     const { email } = authCtx;
     const rateLimitResult = await consumeRateLimit({
       namespace: "api:team-overview:patch",
-      key: email,
+      key: authCtx.actorEmail || email,
       limit: TEAM_OVERVIEW_PATCH_RATE_LIMIT,
       windowMs: TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS,
     });
@@ -2474,7 +2512,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (parsed.action === "endCollaborationApprove") {
-      if (!isEndCollaborationApprover(email, authCtx.decoded as Record<string, unknown>)) {
+      if (!isEndCollaborationApprover(email, authCtx.effectiveClaims)) {
         return NextResponse.json(
           {
             ok: false,
@@ -2500,7 +2538,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (parsed.action === "endCollaborationReject") {
-      if (!isEndCollaborationApprover(email, authCtx.decoded as Record<string, unknown>)) {
+      if (!isEndCollaborationApprover(email, authCtx.effectiveClaims)) {
         return NextResponse.json(
           {
             ok: false,
@@ -2693,7 +2731,7 @@ export async function GET(req: NextRequest) {
 
     const rateLimitResult = await consumeRateLimit({
       namespace: "api:team-overview:get",
-      key: email,
+      key: authCtx.actorEmail || email,
       limit: TEAM_OVERVIEW_RATE_LIMIT,
       windowMs: TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS,
     });
@@ -2711,7 +2749,7 @@ export async function GET(req: NextRequest) {
 
     const action = (req.nextUrl.searchParams.get("action") ?? "").trim();
     if (action === "endCollaborationRequests") {
-      if (!isEndCollaborationApprover(email, authCtx.decoded as Record<string, unknown>)) {
+      if (!isEndCollaborationApprover(email, authCtx.effectiveClaims)) {
         return NextResponse.json(
           {
             ok: false,

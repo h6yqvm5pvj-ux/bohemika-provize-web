@@ -12,6 +12,7 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { readAdminImpersonationState } from "@/app/lib/adminImpersonation";
 import {
   getUserProfileCached,
   invalidateUserProfileCache,
@@ -85,6 +86,21 @@ const InstitutionPortalLinksModal = dynamic(
     ),
   { ssr: false }
 );
+
+const normalizeEmail = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const resolveEffectiveAdvisorEmail = (
+  user: FirebaseUser | null,
+  profile: Record<string, unknown> | null
+): string | null => {
+  const profileEmail = normalizeEmail(profile?.email);
+  if (profileEmail) return profileEmail;
+  const impersonatedEmail = readAdminImpersonationState()?.email;
+  if (impersonatedEmail) return impersonatedEmail;
+  const userEmail = normalizeEmail(user?.email);
+  return userEmail || null;
+};
 
 function SplitTextHeading({ text }: { text: string }) {
   const words = text.split(" ").filter(Boolean);
@@ -577,14 +593,18 @@ export default function HomePage() {
   const [accessProfile, setAccessProfile] = useState<Record<string, unknown> | null>(null);
   const [mailUnreadCount, setMailUnreadCount] = useState(0);
   const normalizedEmail = useMemo(
-    () => user?.email?.toLowerCase() ?? null,
+    () => normalizeEmail(user?.email) || null,
     [user?.email]
+  );
+  const effectiveAdvisorEmail = useMemo(
+    () => resolveEffectiveAdvisorEmail(user, accessProfile),
+    [accessProfile, user]
   );
   const copy = HOME_COPY[language];
   const accountType = useMemo(() => resolveAccountType(accessProfile), [accessProfile]);
   const shouldLoadAdvisorHome =
     authReady && !!user && accessProfileReady && accountType !== "tipster";
-  const advisorDataEmail = shouldLoadAdvisorHome ? normalizedEmail : null;
+  const advisorDataEmail = shouldLoadAdvisorHome ? effectiveAdvisorEmail : null;
   const shouldLoadExpectedPayout =
     shouldLoadAdvisorHome && homeWidgets.expectedPayout;
 
@@ -687,30 +707,41 @@ export default function HomePage() {
     }
 
     let cancelled = false;
-    setAccessProfileReady(false);
-    setAccessProfileError(null);
 
-    getUserProfileCached(user, { maxAgeMs: 60 * 1000 })
-      .then((payload) => {
-        if (cancelled) return;
-        const profile = (payload?.profile ?? {}) as Record<string, unknown>;
-        setAccessProfile(profile);
-        if (typeof profile.language === "string") {
-          setLanguage(applyHomeLanguagePreference(profile.language));
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.error("Ověření typu účtu selhalo:", error);
-        setAccessProfile(null);
-        setAccessProfileError(HOME_COPY.cs.profileTypeLoadError);
-      })
-      .finally(() => {
-        if (!cancelled) setAccessProfileReady(true);
-      });
+    const loadProfile = (force = false) => {
+      setAccessProfileReady(false);
+      setAccessProfileError(null);
+
+      getUserProfileCached(user, { maxAgeMs: 60 * 1000, force })
+        .then((payload) => {
+          if (cancelled) return;
+          const profile = (payload?.profile ?? {}) as Record<string, unknown>;
+          setAccessProfile(profile);
+          if (typeof profile.language === "string") {
+            setLanguage(applyHomeLanguagePreference(profile.language));
+          }
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.error("Ověření typu účtu selhalo:", error);
+          setAccessProfile(null);
+          setAccessProfileError(HOME_COPY.cs.profileTypeLoadError);
+        })
+        .finally(() => {
+          if (!cancelled) setAccessProfileReady(true);
+        });
+    };
+
+    loadProfile();
+
+    const onRefreshProfile = () => {
+      loadProfile(true);
+    };
+    window.addEventListener("app:refresh-user-profile", onRefreshProfile);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("app:refresh-user-profile", onRefreshProfile);
     };
   }, [authReady, user]);
 

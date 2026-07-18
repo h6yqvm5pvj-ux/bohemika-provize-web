@@ -141,6 +141,7 @@ export async function DELETE(req: NextRequest) {
     namespace: "api:tips-bulk-delete:delete",
     limit: TIPS_BULK_DELETE_RATE_LIMIT,
     windowMs: TIPS_BULK_DELETE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

@@ -4,7 +4,7 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { periodsPerYear } from "./shared";
+import { commissionInstallmentCodeRange, periodsPerYear } from "./shared";
 
 // ---------- MAXDOMOV ----------
 
@@ -110,6 +110,7 @@ export function calculateMaxdomov(
     {
       title: "💸 Okamžitá provize (z platby)",
       amount: perPaymentImmediate,
+      code: commissionInstallmentCodeRange("A", frequency),
     },
     {
       title: "📅 Získatelská za rok",
@@ -118,11 +119,17 @@ export function calculateMaxdomov(
     {
       title: "🔁 Následná provize (z platby)",
       amount: perPaymentSubsequent,
+      code: commissionInstallmentCodeRange("B", frequency),
+      excludeFromTotal: true,
+    },
+    {
+      title: "📅 Následná provize za rok",
+      amount: annualSubsequent,
+      note: `×${paymentsPerYear} plateb/rok`,
+      excludeFromTotal: true,
     },
   ];
 
-  const total = annualImmediate + annualSubsequent;
+  const total = annualImmediate;
   return { items, total };
 }
-
-

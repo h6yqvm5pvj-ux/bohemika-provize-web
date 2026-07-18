@@ -6,6 +6,8 @@ import {
 
 // ---------- Kooperativa Cestovko ----------
 
+export const KOOP_CESTOVKO_COEFFICIENT_VALID_FROM = "2019-09-01";
+
 export function koopCestovkoCoefficient(position: Position): number {
   switch (position) {
     // Poradci 1–10
@@ -55,7 +57,7 @@ export function calculateKoopCestovko(
   const provize = amount * coef;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize", amount: provize },
+    { title: "💸 Okamžitá provize", amount: provize, code: "A101" },
   ];
   return { items, total: provize };
 }

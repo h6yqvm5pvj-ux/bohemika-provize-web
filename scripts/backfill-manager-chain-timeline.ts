@@ -16,22 +16,27 @@ import {
   calculateComfortCC,
   calculateCppAuto,
   calculateCppCestovko,
+  calculateCppHafan,
   calculateCppPPRbez,
   calculateCppPPRs,
   calculateCppSimplex,
   calculateCsobAuto,
   calculateDomex,
   calculateFlexi,
+  calculateAllianzMujDomov,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
+  calculateKoopPmop,
   calculateKooperativaAuto,
   calculateMaxEfekt,
   calculateMaxdomov,
   calculateNeon,
   calculatePillowAuto,
   calculatePillowInjury,
+  calculatePillowMajetek,
   calculateSlaviaAuto,
   calculateUniqaAuto,
+  calculateUniqaFlotila,
   calculateZamex,
 } from "../src/app/lib/productFormulas";
 import { totalWithMultipliers } from "../src/app/lib/commissionTotals";
@@ -65,9 +70,13 @@ const PRODUCT_SET = new Set<Product>([
   "pillowInjury",
   "zamex",
   "domex",
+  "cpphafan",
+  "pillowmajetek",
   "koopmajetekobcan",
   "koopodzam",
+  "kooppmop",
   "maxdomov",
+  "allianzmujdomov",
   "cppsimplex",
   "cppAuto",
   "slaviaauto",
@@ -353,7 +362,7 @@ function durationRange(product: Product): [number, number] {
     case "flexi":
       return [1, 80];
     case "maximaMaxEfekt":
-      return [1, 20];
+      return [1, 80];
     default:
       return [1, 1];
   }
@@ -366,7 +375,7 @@ function durationFallback(product: Product): number {
     case "flexi":
       return 30;
     case "maximaMaxEfekt":
-      return 20;
+      return 30;
     default:
       return 1;
   }
@@ -422,12 +431,16 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "maximaMaxEfekt":
       return ["monthly"];
     case "domex":
+    case "cpphafan":
       return ["quarterly", "semiannual", "annual"];
+    case "pillowmajetek":
     case "koopmajetekobcan":
     case "koopodzam":
+    case "kooppmop":
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "pillowAuto":
     case "maxdomov":
+    case "allianzmujdomov":
     case "kooperativaAuto":
     case "allianzAuto":
       return ["monthly", "quarterly", "semiannual", "annual"];
@@ -548,18 +561,27 @@ function computeItemsForEntry(
     }
     case "maximaMaxEfekt": {
       const y = normalizedDurationYears("maximaMaxEfekt", years);
-      return calculateMaxEfekt(val, y, pos, usedMode);
+      return calculateMaxEfekt(val, y, pos, usedMode, contractSignedDateIso);
     }
     case "pillowInjury":
       return calculatePillowInjury(val, pos, usedMode);
     case "domex":
+    case "cpphafan":
     case "koopmajetekobcan":
-    case "koopodzam": {
+    case "koopodzam":
+    case "kooppmop":
+    case "zamex": {
       const dto =
         product === "domex"
-          ? calculateDomex(val, freq, pos)
+          ? calculateDomex(val, freq, pos, contractSignedDateIso)
+          : product === "cpphafan"
+          ? calculateCppHafan(val, freq, pos)
           : product === "koopodzam"
           ? calculateKoopOdzam(val, freq, pos)
+          : product === "kooppmop"
+          ? calculateKoopPmop(val, freq, pos)
+          : product === "zamex"
+          ? calculateZamex(val, freq, pos)
           : calculateKoopMajetekObcan(val, freq, pos);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
@@ -567,20 +589,21 @@ function computeItemsForEntry(
       const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
       return {
         items: filtered,
-        total:
-          product === "domex"
-            ? totals.immediate
-            : totals.immediate + totals.subsequent,
+        total: totals.immediate,
       };
     }
+    case "pillowmajetek":
+      return calculatePillowMajetek(val, freq, pos);
     case "maxdomov": {
       const dto = calculateMaxdomov(val, freq, pos);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
       const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-      return { items: filtered, total: totals.immediate + totals.subsequent };
+      return { items: filtered, total: totals.immediate };
     }
+    case "allianzmujdomov":
+      return calculateAllianzMujDomov(val, freq, pos);
     case "cppAuto":
       return calculateCppAuto(val, freq, pos, contractSignedDateIso);
     case "slaviaauto":
@@ -590,13 +613,25 @@ function computeItemsForEntry(
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
-      const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
-      return { items: filtered, total: sum };
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
+      return { items: filtered, total: totals.immediate };
     }
-    case "cppPPRs":
-      return calculateCppPPRs(val, freq, pos);
-    case "cppsimplex":
-      return calculateCppSimplex(val, freq, pos);
+    case "cppPPRs": {
+      const dto = calculateCppPPRs(val, freq, pos);
+      const filtered = dto.items.filter((i) =>
+        (i.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
+      return { items: filtered, total: totals.immediate };
+    }
+    case "cppsimplex": {
+      const dto = calculateCppSimplex(val, freq, pos);
+      const filtered = dto.items.filter((i) =>
+        (i.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
+      return { items: filtered, total: totals.immediate };
+    }
     case "allianzAuto":
       return calculateAllianzAuto(val, freq, pos, contractSignedDateIso);
     case "csobAuto":
@@ -604,13 +639,11 @@ function computeItemsForEntry(
     case "uniqaAuto":
       return calculateUniqaAuto(val, freq, pos, contractSignedDateIso);
     case "uniqaflotila":
-      return calculateUniqaAuto(val, freq, pos);
+      return calculateUniqaFlotila(val, freq, pos, contractSignedDateIso);
     case "pillowAuto":
       return calculatePillowAuto(val, freq, pos, contractSignedDateIso);
     case "kooperativaAuto":
       return calculateKooperativaAuto(val, freq, pos, contractSignedDateIso);
-    case "zamex":
-      return calculateZamex(val, freq, pos);
     case "cppcestovko":
       return calculateCppCestovko(val, pos);
     case "axacestovko":

@@ -23,6 +23,11 @@ import {
 } from "./productFormulas/flexi";
 import {
   calculateMaxEfekt,
+  isMaxEfekt5Period,
+  isMaxEfekt7Period,
+  MAXEFEKT5_VALID_FROM,
+  MAXEFEKT7_VALID_FROM,
+  maxEfektCoefficientParts,
   maxEfektCoefficients,
 } from "./productFormulas/maximaMaxEfekt";
 import {
@@ -32,12 +37,17 @@ import {
 } from "./productFormulas/maxcizinkomplex";
 import {
   calculatePillowInjury,
+  PILLOW_INJURY_COEFFICIENT_VALID_FROM,
+  pillowInjuryCoefficientParts,
   pillowInjuryCoefficients,
 } from "./productFormulas/pillowInjury";
 import {
   calculateDomex,
+  DOMEX_CURRENT_VALID_FROM,
+  DOMEX_HISTORICAL_VALID_FROM,
   domexCoefficient,
   domexSubsequentCoefficient,
+  isDomexHistoricalPeriod,
 } from "./productFormulas/domex";
 import {
   calculateCppHafan,
@@ -61,6 +71,12 @@ import {
   koopOdzamSubsequentCoefficient,
 } from "./productFormulas/koopodzam";
 import {
+  calculateKoopPmop,
+  KOOP_PMOP_COEFFICIENT_VALID_FROM,
+  koopPmopImmediateCoefficient,
+  koopPmopSubsequentCoefficient,
+} from "./productFormulas/kooppmop";
+import {
   calculateMaxdomov,
   maxdomovImmediateCoefficient,
   maxdomovSubsequentCoefficient,
@@ -73,20 +89,28 @@ import {
 import { autoSubsequentCoefficientForProduct } from "./productFormulas/autoCommission";
 import {
   calculateSlaviaAuto,
+  isSlaviaAutoSupportedForSignedDate,
+  SLAVIA_AUTO_COEFFICIENT_VALID_FROM,
+  SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
   slaviaAutoCoefficient,
 } from "./productFormulas/slaviaAuto";
 import {
   calculateCppSimplex,
-  cppSimplexCoefficient,
+  CPP_SIMPLEX_COEFFICIENT_VALID_FROM,
+  cppSimplexImmediateCoefficient,
+  cppSimplexSubsequentCoefficient,
 } from "./productFormulas/cppsimplex";
 import {
   calculateCppPPRbez,
+  CPP_PPR_BEZ_COEFFICIENT_VALID_FROM,
   cppPPRbezImmediateCoefficient,
   cppPPRbezSubsequentCoefficient,
 } from "./productFormulas/cppPPRbez";
 import {
   calculateCppPPRs,
-  cppPPRsCoefficient,
+  CPP_PPRS_COEFFICIENT_VALID_FROM,
+  cppPPRsImmediateCoefficient,
+  cppPPRsSubsequentCoefficient,
 } from "./productFormulas/cppPPRs";
 import {
   calculateAllianzAuto,
@@ -106,11 +130,15 @@ import {
 } from "./productFormulas/csobAuto";
 import {
   calculateUniqaAuto,
+  calculateUniqaFlotila,
+  uniqaFlotilaCoefficient,
+  uniqaFlotilaSubsequentCoefficient,
   uniqaAutoCoefficient,
   uniqaAutoImmediateCoefficient,
   uniqaAutoSubsequentCoefficient,
   isUniqaAutoEarlyHistoricalPeriod,
   isUniqaAutoHistoricalPeriod,
+  isUniqaFlotilaHistoricalPeriod,
 } from "./productFormulas/uniqaAuto";
 import {
   calculatePillowAuto,
@@ -124,18 +152,22 @@ import {
 } from "./productFormulas/kooperativaAuto";
 import {
   calculateZamex,
+  ZAMEX_COEFFICIENT_VALID_FROM,
   zamexCoefficient,
 } from "./productFormulas/zamex";
 import {
   calculateCppCestovko,
+  CPP_CESTOVKO_COEFFICIENT_VALID_FROM,
   cppCestovkoCoefficient,
 } from "./productFormulas/cppcestovko";
 import {
   calculateAxaCestovko,
+  AXA_CESTOVKO_COEFFICIENT_VALID_FROM,
   axaCestovkoCoefficient,
 } from "./productFormulas/axacestovko";
 import {
   calculateKoopCestovko,
+  KOOP_CESTOVKO_COEFFICIENT_VALID_FROM,
   koopCestovkoCoefficient,
 } from "./productFormulas/koopcestovko";
 import {
@@ -154,36 +186,57 @@ export {
   normalizeNeonDurationYears,
   calculateFlexi,
   calculateMaxEfekt,
+  isMaxEfekt5Period,
+  isMaxEfekt7Period,
+  MAXEFEKT5_VALID_FROM,
+  MAXEFEKT7_VALID_FROM,
+  PILLOW_INJURY_COEFFICIENT_VALID_FROM,
+  DOMEX_CURRENT_VALID_FROM,
+  DOMEX_HISTORICAL_VALID_FROM,
   calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
+  isDomexHistoricalPeriod,
   calculateCppHafan,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
+  calculateKoopPmop,
+  KOOP_PMOP_COEFFICIENT_VALID_FROM,
   calculateMaxdomov,
   calculateCppAuto,
   isCppAutoHistoricalPeriod,
   calculateSlaviaAuto,
+  isSlaviaAutoSupportedForSignedDate,
+  SLAVIA_AUTO_COEFFICIENT_VALID_FROM,
+  SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
   calculateCppSimplex,
+  CPP_SIMPLEX_COEFFICIENT_VALID_FROM,
   calculateCppPPRbez,
   calculateCppPPRs,
+  CPP_PPRS_COEFFICIENT_VALID_FROM,
   calculateAllianzAuto,
   isAllianzAutoHistoricalPeriod,
   calculateAllianzMujDomov,
   calculateCsobAuto,
   isCsobAutoHistoricalPeriod,
   calculateUniqaAuto,
+  calculateUniqaFlotila,
   isUniqaAutoEarlyHistoricalPeriod,
   isUniqaAutoHistoricalPeriod,
+  isUniqaFlotilaHistoricalPeriod,
   calculatePillowAuto,
   isPillowAutoHistoricalPeriod,
   calculateKooperativaAuto,
   isKooperativaAutoHistoricalPeriod,
   calculateZamex,
+  ZAMEX_COEFFICIENT_VALID_FROM,
   calculateCppCestovko,
+  CPP_CESTOVKO_COEFFICIENT_VALID_FROM,
   calculateAxaCestovko,
+  AXA_CESTOVKO_COEFFICIENT_VALID_FROM,
   calculateKoopCestovko,
+  KOOP_CESTOVKO_COEFFICIENT_VALID_FROM,
   calculateComfortCCSimple,
   calculateComfortCCOneOff,
   calculateComfortCCGradual,
@@ -202,6 +255,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "koopmajetekobcan",
   "koopfit",
   "koopodzam",
+  "kooppmop",
   "maxdomov",
   "cppsimplex",
   "cppAuto",
@@ -221,6 +275,11 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "koopcestovko",
   "comfortcc",
 ];
+
+const AUTO_ACQUISITION_COEFFICIENT_LABEL =
+  "Získatelská provize - koeficient";
+const AUTO_SUBSEQUENT_COEFFICIENT_LABEL =
+  "Následná provize - koeficient";
 
 export function getCoefficientSummary(
   product: Product | null,
@@ -288,7 +347,25 @@ export function getCoefficientSummary(
       ];
     }
     case "maximaMaxEfekt": {
-      const k = maxEfektCoefficients(position, m);
+      const parts = maxEfektCoefficientParts(position, m, contractSignedDateIso);
+      if (parts) {
+        return [
+          { label: "Provize A101", value: parts.a101 },
+          { label: "Provize B0301", value: parts.b0301 },
+          ...(parts.b3601Immediate > 0
+            ? [
+                {
+                  label: "Provize 50% z B3601",
+                  value: parts.b3601Immediate,
+                },
+              ]
+            : []),
+          { label: "Provize po 3 letech", value: parts.po3 },
+          { label: "Provize po 4 letech", value: parts.po4 },
+          { label: "Následná provize (od 5. roku)", value: parts.n5plus },
+        ];
+      }
+      const k = maxEfektCoefficients(position, m, contractSignedDateIso);
       return [
         { label: "Okamžitá provize", value: k.okamzita },
         { label: "Provize po 3 letech", value: k.po3 },
@@ -304,6 +381,23 @@ export function getCoefficientSummary(
         },
       ];
     case "pillowInjury": {
+      const parts = pillowInjuryCoefficientParts(position, m);
+      if (parts) {
+        return [
+          { label: "Provize A101", value: parts.a101 },
+          { label: "Provize B0301", value: parts.b0301 },
+          ...(parts.b36Immediate > 0
+            ? [
+                {
+                  label: "Provize 50% z B36",
+                  value: parts.b36Immediate,
+                },
+              ]
+            : []),
+          { label: "Provize po 3 letech (B36)", value: parts.po3 },
+          { label: "Provize po 4 letech (B48)", value: parts.po4 },
+        ];
+      }
       const k = pillowInjuryCoefficients(position, m);
       return [
         { label: "Okamžitá provize", value: k.okamzita },
@@ -312,11 +406,20 @@ export function getCoefficientSummary(
       ];
     }
     case "domex": {
+      const historical = isDomexHistoricalPeriod(contractSignedDateIso);
+      const validFrom = new Date(
+        `${historical ? DOMEX_HISTORICAL_VALID_FROM : DOMEX_CURRENT_VALID_FROM}T00:00:00`
+      ).toLocaleDateString("cs-CZ");
       return [
-        { label: "Okamžitá provize (z platby)", value: domexCoefficient(position) },
         {
-          label: "Následná provize (z platby)",
-          value: domexSubsequentCoefficient(position),
+          label: `Okamžitá provize (z platby, platné od ${validFrom})`,
+          value: domexCoefficient(position, contractSignedDateIso),
+        },
+        {
+          label: historical
+            ? "Následná provize (z platby, max. 4 roky)"
+            : "Následná provize (z platby)",
+          value: domexSubsequentCoefficient(position, contractSignedDateIso),
         },
       ];
     }
@@ -371,27 +474,50 @@ export function getCoefficientSummary(
         },
       ];
     }
+    case "kooppmop": {
+      const validFrom = new Date(
+        `${KOOP_PMOP_COEFFICIENT_VALID_FROM}T00:00:00`
+      ).toLocaleDateString("cs-CZ");
+      return [
+        {
+          label: `Okamžitá provize (platné od ${validFrom})`,
+          value: koopPmopImmediateCoefficient(position),
+        },
+        {
+          label: `Následná provize (platné od ${validFrom})`,
+          value: koopPmopSubsequentCoefficient(position),
+        },
+      ];
+    }
     case "maxdomov": {
       return [
         { label: "Okamžitá provize", value: maxdomovImmediateCoefficient(position) },
         { label: "Následná provize", value: maxdomovSubsequentCoefficient(position) },
       ];
     }
-    case "cppsimplex":
-      return [{ label: "Koeficient (z platby)", value: cppSimplexCoefficient(position) }];
-    case "cppAuto": {
-      const isHistorical = isCppAutoHistoricalPeriod(contractSignedDateIso);
+    case "cppsimplex": {
+      const validFrom = new Date(
+        `${CPP_SIMPLEX_COEFFICIENT_VALID_FROM}T00:00:00`
+      ).toLocaleDateString("cs-CZ");
       return [
         {
-          label: isHistorical
-            ? "Historický koeficient (01.08.2020-31.03.2026)"
-            : "Koeficient (z platby)",
+          label: `Okamžitá provize (platné od ${validFrom})`,
+          value: cppSimplexImmediateCoefficient(position),
+        },
+        {
+          label: `Následná provize (platné od ${validFrom})`,
+          value: cppSimplexSubsequentCoefficient(position),
+        },
+      ];
+    }
+    case "cppAuto": {
+      return [
+        {
+          label: AUTO_ACQUISITION_COEFFICIENT_LABEL,
           value: cppAutoCoefficient(position, contractSignedDateIso),
         },
         {
-          label: isHistorical
-            ? "Historická následná provize"
-            : "Následná provize",
+          label: AUTO_SUBSEQUENT_COEFFICIENT_LABEL,
           value:
             autoSubsequentCoefficientForProduct(
               product,
@@ -402,33 +528,63 @@ export function getCoefficientSummary(
       ];
     }
     case "slaviaauto":
-      return [{ label: "Koeficient (z platby)", value: slaviaAutoCoefficient(position) }];
-    case "cppPPRbez":
       return [
         {
-          label: "Okamžitá provize (z platby)",
+          label: `${AUTO_ACQUISITION_COEFFICIENT_LABEL} (platné od ${new Date(
+            `${SLAVIA_AUTO_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value: slaviaAutoCoefficient(position),
+        },
+        {
+          label: `${AUTO_SUBSEQUENT_COEFFICIENT_LABEL} (platné od ${new Date(
+            `${SLAVIA_AUTO_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? slaviaAutoCoefficient(position),
+        },
+      ];
+    case "cppPPRbez": {
+      const validFrom = new Date(
+        `${CPP_PPR_BEZ_COEFFICIENT_VALID_FROM}T00:00:00`
+      ).toLocaleDateString("cs-CZ");
+      return [
+        {
+          label: `Okamžitá (získatelská) provize (platné od ${validFrom})`,
           value: cppPPRbezImmediateCoefficient(position),
         },
         {
-          label: "Následná provize (z platby)",
+          label: `Následná provize (platné od ${validFrom})`,
           value: cppPPRbezSubsequentCoefficient(position),
         },
       ];
-    case "cppPPRs":
-      return [{ label: "Koeficient (z platby)", value: cppPPRsCoefficient(position) }];
-    case "allianzAuto": {
-      const isHistorical = isAllianzAutoHistoricalPeriod(contractSignedDateIso);
+    }
+    case "cppPPRs": {
+      const validFrom = new Date(
+        `${CPP_PPRS_COEFFICIENT_VALID_FROM}T00:00:00`
+      ).toLocaleDateString("cs-CZ");
       return [
         {
-          label: isHistorical
-            ? "Historický koeficient (01.08.2019-31.03.2026)"
-            : "Koeficient (z platby)",
+          label: `Okamžitá provize (platné od ${validFrom})`,
+          value: cppPPRsImmediateCoefficient(position),
+        },
+        {
+          label: `Následná provize (platné od ${validFrom})`,
+          value: cppPPRsSubsequentCoefficient(position),
+        },
+      ];
+    }
+    case "allianzAuto": {
+      return [
+        {
+          label: AUTO_ACQUISITION_COEFFICIENT_LABEL,
           value: allianzAutoCoefficient(position, contractSignedDateIso),
         },
         {
-          label: isHistorical
-            ? "Historická následná provize"
-            : "Následná provize",
+          label: AUTO_SUBSEQUENT_COEFFICIENT_LABEL,
           value:
             autoSubsequentCoefficientForProduct(
               product,
@@ -454,18 +610,13 @@ export function getCoefficientSummary(
       ];
     }
     case "csobAuto": {
-      const isHistorical = isCsobAutoHistoricalPeriod(contractSignedDateIso);
       return [
         {
-          label: isHistorical
-            ? "Historický koeficient (01.05.2024-31.03.2026)"
-            : "Koeficient (z platby)",
+          label: AUTO_ACQUISITION_COEFFICIENT_LABEL,
           value: csobAutoCoefficient(position, contractSignedDateIso),
         },
         {
-          label: isHistorical
-            ? "Historická následná provize"
-            : "Následná provize",
+          label: AUTO_SUBSEQUENT_COEFFICIENT_LABEL,
           value:
             autoSubsequentCoefficientForProduct(
               product,
@@ -479,27 +630,22 @@ export function getCoefficientSummary(
       if (isUniqaAutoEarlyHistoricalPeriod(contractSignedDateIso)) {
         return [
           {
-            label: "Získatelská provize v 1. roce (01.02.2023-30.04.2024)",
+            label: AUTO_ACQUISITION_COEFFICIENT_LABEL,
             value: uniqaAutoImmediateCoefficient(position, contractSignedDateIso),
           },
           {
-            label: "Následná provize od 1. výročí (01.02.2023-30.04.2024)",
+            label: AUTO_SUBSEQUENT_COEFFICIENT_LABEL,
             value: uniqaAutoSubsequentCoefficient(position, contractSignedDateIso),
           },
         ];
       }
-      const isHistorical = isUniqaAutoHistoricalPeriod(contractSignedDateIso);
       return [
         {
-          label: isHistorical
-            ? "Historický koeficient (01.05.2024-31.03.2026)"
-            : "Koeficient (z platby)",
+          label: AUTO_ACQUISITION_COEFFICIENT_LABEL,
           value: uniqaAutoCoefficient(position, contractSignedDateIso),
         },
         {
-          label: isHistorical
-            ? "Historická následná provize"
-            : "Následná provize",
+          label: AUTO_SUBSEQUENT_COEFFICIENT_LABEL,
           value:
             autoSubsequentCoefficientForProduct(
               product,
@@ -510,20 +656,29 @@ export function getCoefficientSummary(
       ];
     }
     case "uniqaflotila":
-      return [{ label: "Koeficient (z platby)", value: uniqaAutoCoefficient(position) }];
-    case "pillowAuto": {
-      const isHistorical = isPillowAutoHistoricalPeriod(contractSignedDateIso);
       return [
         {
-          label: isHistorical
-            ? "Historický koeficient (01.10.2023-31.03.2026)"
-            : "Koeficient (z platby)",
+          label: AUTO_ACQUISITION_COEFFICIENT_LABEL,
+          value: uniqaFlotilaCoefficient(position, contractSignedDateIso),
+        },
+        {
+          label: AUTO_SUBSEQUENT_COEFFICIENT_LABEL,
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? uniqaFlotilaSubsequentCoefficient(position, contractSignedDateIso),
+        },
+      ];
+    case "pillowAuto": {
+      return [
+        {
+          label: AUTO_ACQUISITION_COEFFICIENT_LABEL,
           value: pillowAutoCoefficient(position, contractSignedDateIso),
         },
         {
-          label: isHistorical
-            ? "Historická následná provize"
-            : "Následná provize",
+          label: AUTO_SUBSEQUENT_COEFFICIENT_LABEL,
           value:
             autoSubsequentCoefficientForProduct(
               product,
@@ -536,11 +691,11 @@ export function getCoefficientSummary(
     case "kooperativaAuto":
       return [
         {
-          label: "Získatelská provize - koeficient",
+          label: AUTO_ACQUISITION_COEFFICIENT_LABEL,
           value: kooperativaAutoCoefficient(position, contractSignedDateIso),
         },
         {
-          label: "Následná provize - koeficient",
+          label: AUTO_SUBSEQUENT_COEFFICIENT_LABEL,
           value:
             autoSubsequentCoefficientForProduct(
               product,
@@ -550,13 +705,47 @@ export function getCoefficientSummary(
         },
       ];
     case "zamex":
-      return [{ label: "Koeficient (z platby)", value: zamexCoefficient(position) }];
+      return [
+        {
+          label: `Okamžitá (získatelská) provize (platné od ${new Date(
+            `${ZAMEX_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value: zamexCoefficient(position),
+        },
+        {
+          label: `Následná provize (platné od ${new Date(
+            `${ZAMEX_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value: zamexCoefficient(position),
+        },
+      ];
     case "cppcestovko":
-      return [{ label: "Koeficient", value: cppCestovkoCoefficient(position) }];
+      return [
+        {
+          label: `Koeficient (platné od ${new Date(
+            `${CPP_CESTOVKO_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value: cppCestovkoCoefficient(position),
+        },
+      ];
     case "axacestovko":
-      return [{ label: "Koeficient", value: axaCestovkoCoefficient(position) }];
+      return [
+        {
+          label: `Koeficient (platné od ${new Date(
+            `${AXA_CESTOVKO_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value: axaCestovkoCoefficient(position),
+        },
+      ];
     case "koopcestovko":
-      return [{ label: "Koeficient", value: koopCestovkoCoefficient(position) }];
+      return [
+        {
+          label: `Koeficient (platné od ${new Date(
+            `${KOOP_CESTOVKO_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value: koopCestovkoCoefficient(position),
+        },
+      ];
     case "comfortcc":
       return [
         { label: "Okamžitá provize", value: comfortCCImmediateCoefficient(position) },

@@ -147,6 +147,7 @@ export async function GET(req: NextRequest) {
     namespace: "api:tipster-tips:get",
     limit: TIPSTER_TIPS_GET_RATE_LIMIT,
     windowMs: TIPSTER_TIPS_GET_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

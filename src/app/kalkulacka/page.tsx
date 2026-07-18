@@ -27,6 +27,7 @@ import {
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
+  calculateKoopPmop,
   calculateMaxdomov,
   calculateCppAuto,
   calculateSlaviaAuto,
@@ -37,6 +38,7 @@ import {
   calculateAllianzMujDomov,
   calculateCsobAuto,
   calculateUniqaAuto,
+  calculateUniqaFlotila,
   calculatePillowAuto,
   calculateKooperativaAuto,
   calculateZamex,
@@ -51,8 +53,14 @@ import {
   isCsobAutoHistoricalPeriod,
   isUniqaAutoEarlyHistoricalPeriod,
   isUniqaAutoHistoricalPeriod,
+  isUniqaFlotilaHistoricalPeriod,
   isPillowAutoHistoricalPeriod,
   isKooperativaAutoHistoricalPeriod,
+  isMaxEfekt5Period,
+  isMaxEfekt7Period,
+  isDomexHistoricalPeriod,
+  isSlaviaAutoSupportedForSignedDate,
+  SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
 } from "../lib/productFormulas";
 import {
   calculateNeonRefreshCommissionBase,
@@ -64,6 +72,11 @@ import {
   productInstitutionId as productInstitutionIdFromCatalog,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
+import { tipContractGrossBaseForProduct } from "@/app/lib/tipContractCommission";
+import {
+  isAnnualSeparatedPeriodProduct,
+  isSeparatedPeriodCommissionProduct,
+} from "@/app/lib/separatedPeriodCommissions";
 import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
@@ -103,8 +116,6 @@ import {
   roundToCents,
   SUPPORTED_LABEL,
   paymentBasedTotals,
-  isImmediateCommissionTitle,
-  computeImmediateCommissionFirstYearTotal,
   type ContractEntryType,
   type EndorsementChangeType,
   type EndorsementSourceEntry,
@@ -203,7 +214,22 @@ const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   uniqaflotila: "/provize/uniqaflotila.jpg",
   pillowAuto: "/provize/pillowauto.jpg",
   kooperativaAuto: "/provize/koopauto.jpg",
+  cpphafan: "/provize/cpphafan.pdf",
   koopodzam: "/provize/koopodzam.pdf",
+  kooppmop: "/provize/kooppmop.pdf",
+  zamex: "/provize/cppzamex.pdf",
+  cppsimplex: "/provize/cppsimplex.pdf",
+  cppPPRbez: "/provize/cppbezupisu.pdf",
+  cppPPRs: "/provize/cppupis.pdf",
+  domex: "/provize/domex2024.pdf",
+  maxdomov: "/provize/maxdomov2025.pdf",
+  maximaMaxEfekt: "/provize/maxefekt7.pdf",
+  pillowInjury: "/provize/pillowuraznemoc.pdf",
+  pillowmajetek: "/provize/pillowmajetek.pdf",
+  allianzmujdomov: "/provize/allianzmujdomov.pdf",
+  cppcestovko: "/provize/cppcestovko.pdf",
+  koopcestovko: "/provize/koopcestovko.pdf",
+  axacestovko: "/provize/axacs.pdf",
 };
 const PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/pillowhistoricke.jpg";
@@ -211,12 +237,18 @@ const UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/uniqahistoricke.jpg";
 const UNIQA_AUTO_EARLY_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/BHMK-UNIQA-AUTO-230101-01_page-0001.jpg";
+const UNIQA_FLOTILA_HISTORICAL_TERMS_PREVIEW_URL =
+  "/provize/uniqaflotilahis.pdf";
+const ALLIANZ_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
+  "/provize/AlliHistoricke.jpg";
 const CSOB_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/csobhistoricke.jpg";
 const CPP_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/cpphistorickeauto.jpg";
 const KOOPERATIVA_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/koophistoricke.jpg";
+const MAXEFEKT5_TERMS_PREVIEW_URL = "/provize/maxefekt5.pdf";
+const DOMEX_HISTORICAL_TERMS_PREVIEW_URL = "/provize/domex2023.pdf";
 const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   id: MaxCizinKomplexVariant;
   label: string;
@@ -233,6 +265,13 @@ const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
 
 type CalculatorViewMode = "addContract" | "commissionOnly";
 type ParsedContractPdf = Record<string, any>;
+type PrepareEndorsementOptions = {
+  productOverride?: Product;
+  contractNumberOverride?: string | null;
+  contractSignedDateOverride?: string | null;
+  newPremiumAmountOverride?: number | null;
+  source?: "manual" | "pdf";
+};
 
 async function detectProductFromPdfLazy(file: File) {
   const { detectProductFromPdf } = await import("../lib/detectProductFromPdf");
@@ -486,6 +525,8 @@ type ContractsPrecheckApiResponse = {
 type ContractsMutationResponse = {
   ok?: boolean;
   error?: string;
+  entryId?: string;
+  idempotentReplay?: boolean;
   [key: string]: unknown;
 };
 
@@ -509,6 +550,13 @@ type TeamOverviewApiResponse = {
     position?: Position | null;
     commissionMode?: CommissionMode | null;
   }>;
+};
+
+type TeamOverviewPositionTimelineReadApiResponse = {
+  ok?: boolean;
+  error?: string;
+  targetEmail?: string | null;
+  positionTimeline?: unknown;
 };
 
 type SubordinateOption = {
@@ -772,6 +820,9 @@ function getContractsMutationError({
       ? data.error.trim()
       : fallback;
   }
+  if (!data || data.ok !== true) {
+    return `${fallback} Server nevrátil potvrzení uložení.`;
+  }
   return null;
 }
 
@@ -829,6 +880,26 @@ const entryPathFromContractOwner = (ownerEmail: unknown, entryId: unknown): stri
   const id = typeof entryId === "string" ? entryId.trim() : "";
   if (!owner || !id) return "";
   return `users/${owner}/entries/${id}`;
+};
+
+const currentIsoDay = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
+const resolveCurrentPositionTimelineRow = (
+  timeline: PositionTimelineEntry[]
+): PositionTimelineEntry | null => {
+  if (timeline.length === 0) return null;
+  return (
+    resolvePositionTimelineMatch(currentIsoDay(), timeline) ??
+    timeline.find((row) => !row.validTo) ??
+    timeline[timeline.length - 1] ??
+    null
+  );
 };
 
 // ---------- Kalkulačka ----------
@@ -957,6 +1028,9 @@ export default function CalculatorPage() {
     useState<NeonPdfDetailEditorFields>(() => createEmptyNeonPdfDetailFields());
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
   const [refreshOriginalContractNumber, setRefreshOriginalContractNumber] = useState("");
+  const [refreshOriginalMissingInSystem, setRefreshOriginalMissingInSystem] = useState(false);
+  const [refreshOriginalPdfLookupNumber, setRefreshOriginalPdfLookupNumber] =
+    useState<string | null>(null);
   const [refreshOriginalLookup, setRefreshOriginalLookup] = useState<RefreshOriginalLookupState>({
     status: "idle",
     progress: 0,
@@ -1114,36 +1188,43 @@ export default function CalculatorPage() {
     return true;
   };
 
+  const validateProductCoefficientPeriodBeforeSave = (
+    targetProduct: Product | null,
+    signedDateIsoRaw: string
+  ): boolean => {
+    if (
+      targetProduct === "slaviaauto" &&
+      !isSlaviaAutoSupportedForSignedDate(signedDateIsoRaw)
+    ) {
+      setSaveMessage(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
+      setValidationError(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
+      return false;
+    }
+    return true;
+  };
+
   const paymentBasedTotalsMemo = useMemo(() => {
     if (
-      (product !== "domex" &&
-        product !== "koopmajetekobcan" &&
-        product !== "koopfit" &&
-        product !== "koopodzam" &&
-        product !== "maxdomov" &&
+      (!isSeparatedPeriodCommissionProduct(product) &&
         !isFrequencyAutoPayoutProduct(product)) ||
       items.length === 0
     ) {
       return null;
     }
-    const multiplier = paymentsPerYear(frequency);
+    const multiplier = isAnnualSeparatedPeriodProduct(product)
+      ? 1
+      : paymentsPerYear(frequency);
     return paymentBasedTotals(items, multiplier);
   }, [product, items, frequency]);
 
-  const immediateCommissionTotal = useMemo(
-    () =>
-      items.reduce((sum, item) => {
-        if (!isImmediateCommissionTitle(item.title)) return sum;
-        return sum + (item.amount ?? 0);
-      }, 0),
-    [items]
-  );
   const tipContractImmediateGrossFirstYear = useMemo(
-    () => computeImmediateCommissionFirstYearTotal(items),
-    [items]
+    () => tipContractGrossBaseForProduct(product, items),
+    [product, items]
   );
   const neonRefreshCommissionBase = useMemo<NeonRefreshCommissionBase | null>(() => {
-    if (product !== "neon" || !refreshOriginalOpen) return null;
+    if (product !== "neon" || !refreshOriginalOpen || refreshOriginalMissingInSystem) {
+      return null;
+    }
     const original = refreshOriginalLookup.original;
     if (!original) return null;
 
@@ -1157,12 +1238,14 @@ export default function CalculatorPage() {
   }, [
     product,
     refreshOriginalOpen,
+    refreshOriginalMissingInSystem,
     refreshOriginalLookup.original,
     amountText,
     policyStartDate,
   ]);
   const neonRefreshInfoText = useMemo(() => {
     if (product !== "neon" || !refreshOriginalOpen) return null;
+    if (refreshOriginalMissingInSystem) return null;
     if (refreshOriginalLookup.status === "checking") {
       return "Po dohledání původní smlouvy přepočítám Refresh základnu pro provizi.";
     }
@@ -1195,6 +1278,7 @@ export default function CalculatorPage() {
   }, [
     product,
     refreshOriginalOpen,
+    refreshOriginalMissingInSystem,
     refreshOriginalLookup.status,
     refreshOriginalLookup.original,
     neonRefreshCommissionBase,
@@ -1220,8 +1304,8 @@ export default function CalculatorPage() {
     return roundToCents(Math.max(0, total - tipContractTipsterAmountFirstYear));
   }, [tipContractConfig, tipContractTipsterAmountFirstYear, total]);
   const tipsterImmediateCommission = useMemo(
-    () => immediateCommissionTotal * (tipsterPercent / 100),
-    [immediateCommissionTotal, tipsterPercent]
+    () => tipContractImmediateGrossFirstYear * (tipsterPercent / 100),
+    [tipContractImmediateGrossFirstYear, tipsterPercent]
   );
   const comfortPayoutCount = useMemo(() => {
     if (product !== "comfortcc" || !comfortGradual) return null;
@@ -1239,11 +1323,39 @@ export default function CalculatorPage() {
   >([]);
   const [userCommissionMode, setUserCommissionMode] = useState<CommissionMode | null>(null);
   const [positionTimeline, setPositionTimeline] = useState<PositionTimelineEntry[]>([]);
+  const [subordinatePositionTimeline, setSubordinatePositionTimeline] =
+    useState<PositionTimelineEntry[] | null>(null);
+  const [subordinatePositionTimelineEmail, setSubordinatePositionTimelineEmail] =
+    useState<string | null>(null);
+  const [subordinatePositionTimelineLoading, setSubordinatePositionTimelineLoading] =
+    useState(false);
+  const [subordinatePositionTimelineError, setSubordinatePositionTimelineError] =
+    useState<string | null>(null);
   const [timelineMatchedPosition, setTimelineMatchedPosition] = useState<{
     position: Position;
     validFrom: string;
     validTo: string | null;
   } | null>(null);
+  const selectedSubordinatePositionTimeline =
+    selectedSubordinateEmail &&
+    subordinatePositionTimelineEmail === selectedSubordinateEmail
+      ? subordinatePositionTimeline
+      : null;
+  const effectivePositionTimeline = useMemo(
+    () =>
+      isSavingForSubordinate
+        ? selectedSubordinatePositionTimeline ?? []
+        : positionTimeline,
+    [isSavingForSubordinate, positionTimeline, selectedSubordinatePositionTimeline]
+  );
+  const effectivePositionTimelineLoading =
+    isSavingForSubordinate && subordinatePositionTimelineLoading;
+  const selectedSubordinateTimelineMissing =
+    isSavingForSubordinate &&
+    !subordinatePositionTimelineLoading &&
+    !subordinatePositionTimelineError &&
+    selectedSubordinatePositionTimeline != null &&
+    selectedSubordinatePositionTimeline.length === 0;
   const [showCoefModal, setShowCoefModal] = useState(false);
   const [neonCoefficientView, setNeonCoefficientView] =
     useState<NeonCoefficientView>("current");
@@ -1292,6 +1404,12 @@ export default function CalculatorPage() {
       isUniqaAutoEarlyHistoricalPeriod(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
+  const isUniqaFlotilaHistoricalBySignedDate = useMemo(
+    () =>
+      product === "uniqaflotila" &&
+      isUniqaFlotilaHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
   const isPillowAutoHistoricalBySignedDate = useMemo(
     () =>
       product === "pillowAuto" &&
@@ -1302,6 +1420,12 @@ export default function CalculatorPage() {
     () =>
       product === "kooperativaAuto" &&
       isKooperativaAutoHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
+  const isMaxEfekt5BySignedDate = useMemo(
+    () =>
+      product === "maximaMaxEfekt" &&
+      isMaxEfekt5Period(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
   const neonCoefficientDateForView = useMemo(() => {
@@ -1325,6 +1449,10 @@ export default function CalculatorPage() {
     if (neonCoefficientView === "historical") return "2026-03-31";
     return "2026-04-01";
   }, [neonCoefficientView]);
+  const uniqaFlotilaCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2026-03-31";
+    return "2026-04-01";
+  }, [neonCoefficientView]);
   const pillowAutoCoefficientDateForView = useMemo(() => {
     if (neonCoefficientView === "historical") return "2026-03-31";
     return "2026-04-01";
@@ -1333,12 +1461,23 @@ export default function CalculatorPage() {
     if (neonCoefficientView === "historical") return "2026-03-31";
     return "2026-04-01";
   }, [neonCoefficientView]);
+  const maxEfektCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2023-04-21";
+    return "2026-04-23";
+  }, [neonCoefficientView]);
+  const domexCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "historical") return "2023-06-01";
+    return "2024-09-01";
+  }, [neonCoefficientView]);
   const coefficientDateForView = useMemo(() => {
     if (product === "neon") return neonCoefficientDateForView;
+    if (product === "maximaMaxEfekt") return maxEfektCoefficientDateForView;
+    if (product === "domex") return domexCoefficientDateForView;
     if (product === "cppAuto") return cppAutoCoefficientDateForView;
     if (product === "allianzAuto") return allianzAutoCoefficientDateForView;
     if (product === "csobAuto") return csobAutoCoefficientDateForView;
     if (product === "uniqaAuto") return uniqaAutoCoefficientDateForView;
+    if (product === "uniqaflotila") return uniqaFlotilaCoefficientDateForView;
     if (product === "pillowAuto") return pillowAutoCoefficientDateForView;
     if (product === "kooperativaAuto") return kooperativaAutoCoefficientDateForView;
     return contractSignedDateForNeon;
@@ -1349,10 +1488,29 @@ export default function CalculatorPage() {
     allianzAutoCoefficientDateForView,
     csobAutoCoefficientDateForView,
     uniqaAutoCoefficientDateForView,
+    uniqaFlotilaCoefficientDateForView,
     pillowAutoCoefficientDateForView,
     kooperativaAutoCoefficientDateForView,
+    maxEfektCoefficientDateForView,
+    domexCoefficientDateForView,
     contractSignedDateForNeon,
   ]);
+  const isMaxEfekt5InCoefModal = useMemo(
+    () =>
+      product === "maximaMaxEfekt" &&
+      isMaxEfekt5Period(coefficientDateForView),
+    [product, coefficientDateForView]
+  );
+  const isMaxEfekt7InCoefModal = useMemo(
+    () =>
+      product === "maximaMaxEfekt" &&
+      isMaxEfekt7Period(coefficientDateForView),
+    [product, coefficientDateForView]
+  );
+  const isDomexHistoricalInCoefModal = useMemo(
+    () => product === "domex" && isDomexHistoricalPeriod(coefficientDateForView),
+    [product, coefficientDateForView]
+  );
   const isNeonHistoricalInCoefModal = useMemo(
     () => product === "neon" && neonCoefficientView === "historical",
     [product, neonCoefficientView]
@@ -1380,6 +1538,10 @@ export default function CalculatorPage() {
     () => product === "uniqaAuto" && neonCoefficientView === "olderHistorical",
     [product, neonCoefficientView]
   );
+  const isUniqaFlotilaHistoricalInCoefModal = useMemo(
+    () => product === "uniqaflotila" && neonCoefficientView === "historical",
+    [product, neonCoefficientView]
+  );
   const isPillowAutoHistoricalInCoefModal = useMemo(
     () => product === "pillowAuto" && neonCoefficientView === "historical",
     [product, neonCoefficientView]
@@ -1394,6 +1556,18 @@ export default function CalculatorPage() {
         return "Okamžitá provize je součet 1. provize A101, 2. provize B0301 a 50 % z provize B36. Zbývajících 50 % z B36 zůstává jako provize po 3 letech.";
       }
       return "Okamžitá provize je součet 1. provize A101 a 2. provize B0301.";
+    }
+    if (product === "maximaMaxEfekt") {
+      if (mode === "accelerated") {
+        return "Okamžitá provize je součet provize A101, provize B0301 a 50 % z provize B3601. Zbývajících 50 % z B3601 zůstává jako provize po 3 letech.";
+      }
+      return "Okamžitá provize je součet provize A101 a provize B0301.";
+    }
+    if (product === "pillowInjury") {
+      if (mode === "accelerated") {
+        return "Okamžitá provize je součet provize A101, provize B0301 a 50 % z provize B36. Zbývajících 50 % z B36 zůstává jako provize po 3 letech.";
+      }
+      return "Okamžitá provize je součet provize A101 a provize B0301.";
     }
     if (product !== "neon") return null;
     if (isNeonHistoricalInCoefModal) {
@@ -1440,12 +1614,16 @@ export default function CalculatorPage() {
       case "maxcizinkomplex":
         return `Výpočet: jednorázové pojistné × koeficient (${maxCizinKomplexVariant === "premium" ? "PREMIUM" : "EXCLUSIVE / STANDARD"}). Provize je vyplacena pouze 1×.`;
       case "pillowInjury":
-        return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro jednotlivé položky.";
+        return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro jednotlivé položky. Koeficienty platné od 01.10.2023.";
       case "domex":
+        return isDomexHistoricalInCoefModal
+          ? `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Historická následná provize se vyplácí maximálně 4 roky.`
+          : `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Aktuální následná provize se vyplácí po dobu aktivní smlouvy.`;
       case "cpphafan":
       case "koopmajetekobcan":
       case "koopfit":
       case "koopodzam":
+      case "kooppmop":
         return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}).`;
       case "pillowmajetek":
         return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.10.2023.`;
@@ -1453,28 +1631,34 @@ export default function CalculatorPage() {
         return `Výpočet: platba (${payLabel}) × koeficient (získatelská i následná). Roční částka = × počet plateb (${payPerYear}).`;
       case "allianzmujdomov":
         return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.06.2020.`;
+      case "cppsimplex":
+        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 01.09.2021.`;
       case "uniqaAuto":
         if (isUniqaAutoEarlyHistoricalInCoefModal) {
           return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×). V 1. roce se použije získatelský koeficient, od 1. výročí následný koeficient.`;
         }
         return `Výpočet: platba (${payLabel}) × koeficient; roční částka = × počet plateb (${payPerYear}).`;
+      case "uniqaflotila":
+        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částka = × počet plateb (${payPerYear}).`;
       case "cppAuto":
       case "slaviaauto":
-      case "cppsimplex":
       case "allianzAuto":
       case "csobAuto":
-      case "uniqaflotila":
       case "pillowAuto":
       case "kooperativaAuto":
-      case "zamex":
         return `Výpočet: platba (${payLabel}) × koeficient; roční částka = × počet plateb (${payPerYear}).`;
-      case "cppPPRbez":
+      case "zamex":
+        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 15.04.2023.`;
       case "cppPPRs":
-        return `Výpočet: platba (${payLabel}) × koeficient (získatelská / následná). Roční varianta = × počet plateb (${payPerYear}).`;
+        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 01.06.2023.`;
+      case "cppPPRbez":
+        return `Výpočet: platba (${payLabel}) × koeficient pro okamžitou (získatelskou) nebo následnou provizi. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 01.06.2023.`;
       case "cppcestovko":
+        return "Výpočet: pojistné × koeficient (jednorázově). Koeficienty platné od 01.09.2019.";
       case "axacestovko":
+        return "Výpočet: pojistné × koeficient (jednorázově). Koeficienty platné od 15.04.2021.";
       case "koopcestovko":
-        return "Výpočet: pojistné × koeficient (jednorázově).";
+        return "Výpočet: pojistné × koeficient (jednorázově). Koeficienty platné od 01.09.2019.";
       case "comfortcc":
         return "Výpočet: následná provize z platby = pravidelná platba × koeficient. U postupného poplatku je tato částka započtená i do okamžité provize. Pokud zadáš cílovou částku, Celkem dopočítá celý součet za všechny výplaty následné.";
       default:
@@ -1485,11 +1669,15 @@ export default function CalculatorPage() {
     frequency,
     maxCizinKomplexVariant,
     isUniqaAutoEarlyHistoricalInCoefModal,
+    isDomexHistoricalInCoefModal,
   ]);
   const autoTermsPreviewUrl = useMemo(() => {
     if (!product) return null;
     if (product === "cppAuto" && isCppAutoHistoricalInCoefModal) {
       return CPP_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
+    }
+    if (product === "allianzAuto" && isAllianzAutoHistoricalInCoefModal) {
+      return ALLIANZ_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
     }
     if (product === "csobAuto" && isCsobAutoHistoricalInCoefModal) {
       return CSOB_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
@@ -1500,6 +1688,9 @@ export default function CalculatorPage() {
     if (product === "uniqaAuto" && isUniqaAutoHistoricalInCoefModal) {
       return UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
     }
+    if (product === "uniqaflotila" && isUniqaFlotilaHistoricalInCoefModal) {
+      return UNIQA_FLOTILA_HISTORICAL_TERMS_PREVIEW_URL;
+    }
     if (product === "pillowAuto" && isPillowAutoHistoricalInCoefModal) {
       return PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
     }
@@ -1509,19 +1700,31 @@ export default function CalculatorPage() {
     ) {
       return KOOPERATIVA_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
     }
+    if (product === "maximaMaxEfekt" && isMaxEfekt5InCoefModal) {
+      return MAXEFEKT5_TERMS_PREVIEW_URL;
+    }
+    if (product === "maximaMaxEfekt" && !isMaxEfekt7InCoefModal) {
+      return null;
+    }
+    if (product === "domex" && isDomexHistoricalInCoefModal) {
+      return DOMEX_HISTORICAL_TERMS_PREVIEW_URL;
+    }
     return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
   }, [
     product,
+    isMaxEfekt5InCoefModal,
+    isMaxEfekt7InCoefModal,
     isCppAutoHistoricalInCoefModal,
+    isAllianzAutoHistoricalInCoefModal,
     isCsobAutoHistoricalInCoefModal,
     isUniqaAutoHistoricalInCoefModal,
     isUniqaAutoEarlyHistoricalInCoefModal,
+    isUniqaFlotilaHistoricalInCoefModal,
     isPillowAutoHistoricalInCoefModal,
     isKooperativaAutoHistoricalInCoefModal,
+    isDomexHistoricalInCoefModal,
   ]);
-  const showAutoTermsPreview =
-    Boolean(autoTermsPreviewUrl) &&
-    !isAllianzAutoHistoricalInCoefModal;
+  const showAutoTermsPreview = Boolean(autoTermsPreviewUrl);
   const neonPeriod = neonCoefficientView === "historical" ? "2019" : "2024";
   const neonPreviewRole: "poradce" | "manazer" = (
     timelineMatchedPosition?.position ?? position
@@ -1620,9 +1823,14 @@ export default function CalculatorPage() {
     let cancelled = false;
 
     const fetchClientNames = async () => {
-      if (!user?.email) {
+      const targetOwnerEmail = effectiveSaveOwnerEmail;
+      if (!user?.email || !targetOwnerEmail) {
         if (!cancelled) setClientSuggestions([]);
         return;
+      }
+
+      if (!cancelled) {
+        setClientSuggestions([]);
       }
 
       try {
@@ -1632,10 +1840,13 @@ export default function CalculatorPage() {
 
         for (let page = 0; page < CLIENT_SUGGESTIONS_MAX_PAGES; page += 1) {
           const params = new URLSearchParams({
-            scope: "my",
+            scope: isSavingForSubordinate ? "team" : "my",
             limit: String(CLIENT_SUGGESTIONS_PAGE_LIMIT),
             shape: "clientNames",
           });
+          if (isSavingForSubordinate) {
+            params.set("subordinates", targetOwnerEmail);
+          }
           if (cursor) params.set("cursor", cursor);
 
           const requestWithToken = async (token: string) =>
@@ -1688,7 +1899,7 @@ export default function CalculatorPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, effectiveSaveOwnerEmail, isSavingForSubordinate]);
 
   useEffect(() => {
     if (!user || !canOverrideOwnerOnSave) {
@@ -1794,6 +2005,56 @@ export default function CalculatorPage() {
   ]);
 
   useEffect(() => {
+    if (!user || !canOverrideOwnerOnSave || !selectedSubordinateEmail) {
+      setSubordinatePositionTimeline(null);
+      setSubordinatePositionTimelineEmail(null);
+      setSubordinatePositionTimelineLoading(false);
+      setSubordinatePositionTimelineError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadSubordinateTimeline = async () => {
+      setSubordinatePositionTimelineLoading(true);
+      setSubordinatePositionTimelineError(null);
+      setSubordinatePositionTimeline(null);
+      setSubordinatePositionTimelineEmail(null);
+      try {
+        const payload =
+          await fetchAuthedJsonOrThrow<TeamOverviewPositionTimelineReadApiResponse>(
+            user,
+            `/api/team-overview?action=positionTimelineRead&targetEmail=${encodeURIComponent(
+              selectedSubordinateEmail
+            )}`,
+            { method: "GET" }
+          );
+        if (cancelled) return;
+        setSubordinatePositionTimeline(parsePositionTimeline(payload?.positionTimeline));
+        setSubordinatePositionTimelineEmail(selectedSubordinateEmail);
+      } catch (err) {
+        if (cancelled) return;
+        const message =
+          err instanceof Error && err.message.trim().length > 0
+            ? err.message.trim()
+            : "Nepodařilo se načíst kariérní historii vybraného poradce.";
+        setSubordinatePositionTimeline([]);
+        setSubordinatePositionTimelineEmail(selectedSubordinateEmail);
+        setSubordinatePositionTimelineError(message);
+      } finally {
+        if (!cancelled) {
+          setSubordinatePositionTimelineLoading(false);
+        }
+      }
+    };
+
+    void loadSubordinateTimeline();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, canOverrideOwnerOnSave, selectedSubordinateEmail]);
+
+  useEffect(() => {
     if (!pdfClientNameLoaded) {
       setPdfMatchedClientName(false);
       return;
@@ -1848,16 +2109,8 @@ export default function CalculatorPage() {
         const parsedPositionTimeline = parsePositionTimeline(data?.positionTimeline);
         setPositionTimeline(parsedPositionTimeline);
         if (parsedPositionTimeline.length > 0) {
-          const now = new Date();
-          const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-            2,
-            "0"
-          )}-${String(now.getDate()).padStart(2, "0")}`;
           const currentTimelineRow =
-            resolvePositionTimelineMatch(todayIso, parsedPositionTimeline) ??
-            parsedPositionTimeline.find((row) => !row.validTo) ??
-            parsedPositionTimeline[parsedPositionTimeline.length - 1] ??
-            null;
+            resolveCurrentPositionTimelineRow(parsedPositionTimeline);
           if (currentTimelineRow) {
             setPosition(currentTimelineRow.position);
           }
@@ -1936,17 +2189,35 @@ export default function CalculatorPage() {
   }, [user]);
 
   useEffect(() => {
-    if (isSavingForSubordinate) {
+    if (calculatorViewMode === "commissionOnly") {
       setTimelineMatchedPosition(null);
       return;
     }
 
-    if (!contractSignedDate.trim() || positionTimeline.length === 0) {
+    if (effectivePositionTimelineLoading) {
       setTimelineMatchedPosition(null);
       return;
     }
 
-    const match = resolvePositionTimelineMatch(contractSignedDate.trim(), positionTimeline);
+    const signedDateIso = contractSignedDate.trim();
+    if (!signedDateIso) {
+      setTimelineMatchedPosition(null);
+      const currentTimelineRow =
+        resolveCurrentPositionTimelineRow(effectivePositionTimeline);
+      if (currentTimelineRow) {
+        setPosition((prev) =>
+          prev === currentTimelineRow.position ? prev : currentTimelineRow.position
+        );
+      }
+      return;
+    }
+
+    if (effectivePositionTimeline.length === 0) {
+      setTimelineMatchedPosition(null);
+      return;
+    }
+
+    const match = resolvePositionTimelineMatch(signedDateIso, effectivePositionTimeline);
     if (!match) {
       setTimelineMatchedPosition(null);
       return;
@@ -1958,14 +2229,27 @@ export default function CalculatorPage() {
       validTo: match.validTo,
     });
     setPosition((prev) => (prev === match.position ? prev : match.position));
-  }, [contractSignedDate, positionTimeline, isSavingForSubordinate]);
+  }, [
+    calculatorViewMode,
+    contractSignedDate,
+    effectivePositionTimeline,
+    effectivePositionTimelineLoading,
+  ]);
 
   const validateTimelineBeforeSave = (): boolean => {
-    if (isSavingForSubordinate) return true;
+    if (effectivePositionTimelineLoading) {
+      const msg = isSavingForSubordinate
+        ? "Načítám kariérní historii vybraného poradce. Zkus uložení za chvíli."
+        : "Načítám kariérní historii. Zkus uložení za chvíli.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return false;
+    }
 
-    if (positionTimeline.length === 0) {
-      const msg =
-        "Bez nastavené timeline kariéry nejde smlouvu uložit. Doplň ji prosím v Nastavení.";
+    if (effectivePositionTimeline.length === 0) {
+      const msg = isSavingForSubordinate
+        ? `Vybraný poradce ${selectedSaveOwnerLabel} nemá vyplněnou kariérní historii. Bez timeline nejde smlouvu uložit.`
+        : "Bez nastavené timeline kariéry nejde smlouvu uložit. Doplň ji prosím v Nastavení.";
       setSaveMessage(msg);
       setValidationError(msg);
       return false;
@@ -1974,12 +2258,16 @@ export default function CalculatorPage() {
     const signedDateIso = contractSignedDate.trim();
     if (!signedDateIso || !isIsoDay(signedDateIso)) return true;
 
-    const match = resolvePositionTimelineMatch(signedDateIso, positionTimeline);
+    const match = resolvePositionTimelineMatch(signedDateIso, effectivePositionTimeline);
     if (match) return true;
 
-    const msg = `Pro datum sjednání ${formatIsoDay(
-      signedDateIso
-    )} nemáš v timeline nastavenou pozici.`;
+    const msg = isSavingForSubordinate
+      ? `Pro datum sjednání ${formatIsoDay(
+          signedDateIso
+        )} nemá vybraný poradce ${selectedSaveOwnerLabel} v timeline nastavenou pozici.`
+      : `Pro datum sjednání ${formatIsoDay(
+          signedDateIso
+        )} nemáš v timeline nastavenou pozici.`;
     setSaveMessage(msg);
     setValidationError(msg);
     return false;
@@ -1999,11 +2287,11 @@ export default function CalculatorPage() {
 
     const [min, max] = durationRange(product);
     if (durationYears == null) {
-      if (product === "neon") return;
-      setDurationYears(durationFallback(product));
-      return;
-    }
-    if (durationYears < min || durationYears > max) {
+      if (product !== "neon" && product !== "maximaMaxEfekt") {
+        setDurationYears(durationFallback(product));
+        return;
+      }
+    } else if (durationYears < min || durationYears > max) {
       setDurationYears(Math.min(max, Math.max(min, durationYears)));
     }
 
@@ -2026,11 +2314,8 @@ export default function CalculatorPage() {
 
   // Výchozí hodnota doby trvání po změně produktu
   useEffect(() => {
-    if (product === "neon") {
+    if (product === "neon" || product === "maximaMaxEfekt") {
       setDurationYears(null);
-    }
-    if (product === "maximaMaxEfekt") {
-      setDurationYears(20);
     }
     if (product === "maxcizinkomplex") {
       setDurationMonths(12);
@@ -2047,6 +2332,9 @@ export default function CalculatorPage() {
         if (key === "číslo smlouvy") return !contractNumber.trim();
         if (key === "datum sjednání") return !contractSignedDate.trim();
         if (key === "datum počátku") return !policyStartDate.trim();
+        if (key === "dobu trvání smlouvy") {
+          return product === "maximaMaxEfekt" && durationYears == null;
+        }
         if (key === "pravidelnou platbu") return product === "comfortcc" && comfortGradual && parseNumber(comfortPaymentText) <= 0;
         if (key === "dobu trvání v měsících") {
           return (
@@ -2063,6 +2351,7 @@ export default function CalculatorPage() {
     contractNumber,
     contractSignedDate,
     policyStartDate,
+    durationYears,
     comfortPaymentText,
     product,
     comfortGradual,
@@ -2360,6 +2649,7 @@ export default function CalculatorPage() {
       !user ||
       !supportsOriginalContractReplacement(product) ||
       !refreshOriginalOpen ||
+      refreshOriginalMissingInSystem ||
       !trimmedOriginalNumber ||
       trimmedOriginalNumber.length < 3 ||
       !targetOwnerEmail
@@ -2481,9 +2771,52 @@ export default function CalculatorPage() {
     user,
     product,
     refreshOriginalOpen,
+    refreshOriginalMissingInSystem,
     refreshOriginalContractNumber,
     effectiveSaveOwnerEmail,
     isSavingForSubordinate,
+  ]);
+
+  useEffect(() => {
+    if (
+      product !== "neon" ||
+      !refreshOriginalOpen ||
+      refreshOriginalMissingInSystem ||
+      !refreshOriginalPdfLookupNumber
+    ) {
+      return;
+    }
+
+    const currentNumber = refreshOriginalContractNumber.trim();
+    if (currentNumber !== refreshOriginalPdfLookupNumber) {
+      setRefreshOriginalPdfLookupNumber(null);
+      return;
+    }
+
+    if (refreshOriginalLookup.status === "notFound") {
+      setRefreshOriginalMissingInSystem(true);
+      setRefreshOriginalContractNumber("");
+      setRefreshOriginalPdfLookupNumber(null);
+      setPdfImportStatus(
+        "PDF je REFRESH a původní smlouva z PDF není v systému. Zapnul jsem volbu Původní smlouva není v systému."
+      );
+      return;
+    }
+
+    if (
+      refreshOriginalLookup.status === "found" ||
+      refreshOriginalLookup.status === "wrongProduct" ||
+      refreshOriginalLookup.status === "error"
+    ) {
+      setRefreshOriginalPdfLookupNumber(null);
+    }
+  }, [
+    product,
+    refreshOriginalOpen,
+    refreshOriginalMissingInSystem,
+    refreshOriginalPdfLookupNumber,
+    refreshOriginalContractNumber,
+    refreshOriginalLookup.status,
   ]);
 
   const persistTipsterMode = async (value: boolean) => {
@@ -2930,6 +3263,11 @@ export default function CalculatorPage() {
       }
 
       let applied = 0;
+      const parsedIsEndorsement =
+        importProduct === "neon" &&
+        "isEndorsement" in parsed &&
+        parsed.isEndorsement === true;
+      let endorsementPreparedFromPdf = false;
 
       if (parsed.contractNumber) {
         setContractNumber(parsed.contractNumber);
@@ -2956,6 +3294,18 @@ export default function CalculatorPage() {
         setAmountText(String(parsed.amount));
         applied += 1;
       }
+      if (parsedIsEndorsement) {
+        setRefreshOriginalOpen(false);
+        setRefreshOriginalContractNumber("");
+        setRefreshOriginalMissingInSystem(false);
+        setRefreshOriginalPdfLookupNumber(null);
+        setRefreshOriginalLookup({
+          status: "idle",
+          progress: 0,
+          adviserName: null,
+          original: null,
+        });
+      }
       if (supportsOriginalContractReplacement(importProduct)) {
         const parsedRefreshOriginalContractNumber =
           "refreshOriginalContractNumber" in parsed &&
@@ -2965,8 +3315,15 @@ export default function CalculatorPage() {
         const parsedIsRefresh = "isRefresh" in parsed && parsed.isRefresh === true;
         if (parsedIsRefresh || parsedRefreshOriginalContractNumber) {
           setRefreshOriginalOpen(true);
+          setRefreshOriginalMissingInSystem(false);
+          setRefreshOriginalPdfLookupNumber(null);
           if (parsedRefreshOriginalContractNumber) {
             setRefreshOriginalContractNumber(parsedRefreshOriginalContractNumber);
+            setRefreshOriginalPdfLookupNumber(
+              importProduct === "neon" && parsedIsRefresh
+                ? parsedRefreshOriginalContractNumber
+                : null
+            );
             applied += 1;
           }
         }
@@ -3424,6 +3781,26 @@ export default function CalculatorPage() {
         if (addon) applied += 1;
       }
 
+      if (parsedIsEndorsement) {
+        const parsedContractNumber =
+          typeof parsed.contractNumber === "string" ? parsed.contractNumber.trim() : "";
+        const parsedSignedDate =
+          typeof parsed.contractSignedDate === "string"
+            ? parsed.contractSignedDate.trim()
+            : "";
+        const parsedAmount =
+          typeof parsed.amount === "number" && Number.isFinite(parsed.amount)
+            ? parsed.amount
+            : null;
+        endorsementPreparedFromPdf = await handlePrepareEndorsement({
+          productOverride: importProduct,
+          contractNumberOverride: parsedContractNumber,
+          contractSignedDateOverride: parsedSignedDate,
+          newPremiumAmountOverride: parsedAmount ?? 0,
+          source: "pdf",
+        });
+      }
+
       if (applied === 0 && importProduct !== "maxcizinkomplex") {
         try {
           const maxCizinParsed = await parseMaxCizinKomplexPdfLazy(file);
@@ -3437,9 +3814,15 @@ export default function CalculatorPage() {
       }
 
       setImportedContractPdfFile(file);
-      const attachmentNote = " PDF se při uložení přiloží k detailu záznamu.";
+      const attachmentNote = parsedIsEndorsement
+        ? " PDF se při uložení přiloží k detailu dodatku."
+        : " PDF se při uložení přiloží k detailu záznamu.";
       setPdfImportStatus(
-        applied > 0
+        parsedIsEndorsement
+          ? endorsementPreparedFromPdf
+            ? `Načtena žádanka o změnu z PDF (${applied} polí). Připravil jsem dodatek podle rozdílu proti poslední uložené hodnotě smlouvy.${attachmentNote}`
+            : `Načtena žádanka o změnu z PDF (${applied} polí). Původní smlouvu se nepodařilo automaticky porovnat, zkontroluj hlášku a klikni na Změna znovu.${attachmentNote}`
+          : applied > 0
           ? `Načteno z PDF (${applied} polí). Zkontroluj prosím.${attachmentNote}`
           : importProduct === "cppsimplex"
             ? `PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku.${attachmentNote}`
@@ -3494,10 +3877,10 @@ export default function CalculatorPage() {
     const comfortTargetAmount = parseNumber(comfortTargetAmountText);
     const positionForCalc = calculatorViewMode === "commissionOnly"
       ? position
-      : isSavingForSubordinate
-      ? position
       : timelineMatchedPosition?.position ??
-        (positionTimeline.length > 0 ? position : null);
+        (!effectivePositionTimelineLoading && effectivePositionTimeline.length > 0
+          ? position
+          : null);
 
     if (val <= 0) {
       setItems([]);
@@ -3538,8 +3921,20 @@ export default function CalculatorPage() {
     }
 
     if (product === "maximaMaxEfekt") {
+      if (durationYears == null) {
+        setItems([]);
+        setTotal(0);
+        setUnsupported(false);
+        return;
+      }
       const y = normalizedDurationYears("maximaMaxEfekt", durationYears);
-      const dto = calculateMaxEfekt(val, y, positionForCalc, mode);
+      const dto = calculateMaxEfekt(
+        val,
+        y,
+        positionForCalc,
+        mode,
+        contractSignedDateForNeon
+      );
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -3567,26 +3962,28 @@ export default function CalculatorPage() {
       product === "cpphafan" ||
       product === "koopmajetekobcan" ||
       product === "koopfit" ||
-      product === "koopodzam"
+      product === "koopodzam" ||
+      product === "kooppmop" ||
+      product === "zamex"
     ) {
       const dto =
         product === "domex"
-          ? calculateDomex(val, frequency, positionForCalc)
+          ? calculateDomex(val, frequency, positionForCalc, contractSignedDateForNeon)
           : product === "cpphafan"
           ? calculateCppHafan(val, frequency, positionForCalc)
           : product === "koopodzam"
           ? calculateKoopOdzam(val, frequency, positionForCalc)
+          : product === "kooppmop"
+          ? calculateKoopPmop(val, frequency, positionForCalc)
+          : product === "zamex"
+          ? calculateZamex(val, frequency, positionForCalc)
           : calculateKoopMajetekObcan(val, frequency, positionForCalc);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
       const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
       setItems(filtered);
-      setTotal(
-        product === "domex"
-          ? totals.immediate
-          : totals.immediate + totals.subsequent
-      );
+      setTotal(totals.immediate);
       setUnsupported(false);
       return;
     }
@@ -3606,7 +4003,7 @@ export default function CalculatorPage() {
       );
       const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
       setItems(filtered);
-      setTotal(totals.immediate + totals.subsequent);
+      setTotal(totals.immediate);
       setUnsupported(false);
       return;
     }
@@ -3642,8 +4039,12 @@ export default function CalculatorPage() {
 
     if (product === "cppsimplex") {
       const dto = calculateCppSimplex(val, frequency, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
+      const filtered = dto.items.filter((i) =>
+        (i.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
+      setItems(filtered);
+      setTotal(totals.immediate);
       setUnsupported(false);
       return;
     }
@@ -3653,17 +4054,21 @@ export default function CalculatorPage() {
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );
-      const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
       setItems(filtered);
-      setTotal(sum);
+      setTotal(totals.immediate);
       setUnsupported(false);
       return;
     }
 
     if (product === "cppPPRs") {
       const dto = calculateCppPPRs(val, frequency, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
+      const filtered = dto.items.filter((i) =>
+        (i.title ?? "").toLowerCase().includes("(z platby)")
+      );
+      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
+      setItems(filtered);
+      setTotal(totals.immediate);
       setUnsupported(false);
       return;
     }
@@ -3695,12 +4100,20 @@ export default function CalculatorPage() {
     }
 
     if (product === "uniqaAuto" || product === "uniqaflotila") {
-      const dto = calculateUniqaAuto(
-        val,
-        frequency,
-        positionForCalc,
-        product === "uniqaAuto" ? contractSignedDateForNeon : null
-      );
+      const dto =
+        product === "uniqaAuto"
+          ? calculateUniqaAuto(
+              val,
+              frequency,
+              positionForCalc,
+              contractSignedDateForNeon
+            )
+          : calculateUniqaFlotila(
+              val,
+              frequency,
+              positionForCalc,
+              contractSignedDateForNeon
+            );
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -3727,14 +4140,6 @@ export default function CalculatorPage() {
         positionForCalc,
         contractSignedDateForNeon
       );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "zamex") {
-      const dto = calculateZamex(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -3792,6 +4197,8 @@ export default function CalculatorPage() {
     product,
     position,
     timelineMatchedPosition,
+    effectivePositionTimeline,
+    effectivePositionTimelineLoading,
     isSavingForSubordinate,
     mode,
     frequency,
@@ -3809,12 +4216,17 @@ export default function CalculatorPage() {
     if (!supportsOriginalContractReplacement(product)) {
       setRefreshOriginalOpen(false);
       setRefreshOriginalContractNumber("");
+      setRefreshOriginalMissingInSystem(false);
+      setRefreshOriginalPdfLookupNumber(null);
       setRefreshOriginalLookup({
         status: "idle",
         progress: 0,
         adviserName: null,
         original: null,
       });
+    } else if (product !== "neon") {
+      setRefreshOriginalMissingInSystem(false);
+      setRefreshOriginalPdfLookupNumber(null);
     }
     if (product !== "cppcestovko") {
       setPolicyEndDate("");
@@ -3828,7 +4240,11 @@ export default function CalculatorPage() {
   const resetContractFormAfterSave = () => {
     setAmountText("");
     setFrequency(allowedFrequencies(product)[0]);
-    setDurationYears(product === "neon" ? null : durationFallback(product));
+    setDurationYears(
+      product === "neon" || product === "maximaMaxEfekt"
+        ? null
+        : durationFallback(product)
+    );
     setDurationMonths(
       shouldShowDurationMonths(product) ? durationMonthsFallback(product) : null
     );
@@ -3916,6 +4332,8 @@ export default function CalculatorPage() {
     setNeonPdfDetailFields(createEmptyNeonPdfDetailFields());
     setRefreshOriginalOpen(false);
     setRefreshOriginalContractNumber("");
+    setRefreshOriginalMissingInSystem(false);
+    setRefreshOriginalPdfLookupNumber(null);
     setRefreshOriginalLookup({
       status: "idle",
       progress: 0,
@@ -3962,40 +4380,118 @@ export default function CalculatorPage() {
     }
   }, [endorsementDraft, isLifeProduct, product]);
 
-  const handlePrepareEndorsement = async () => {
-    if (!user) return;
+  const resolveEndorsementPositionForSignedDate = (
+    signedDateIso: string
+  ): Position | null => {
+    if (effectivePositionTimelineLoading) {
+      const msg = isSavingForSubordinate
+        ? "Načítám kariérní historii vybraného poradce. Zkus změnu připravit za chvíli."
+        : "Načítám kariérní historii. Zkus změnu připravit za chvíli.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return null;
+    }
+
+    if (effectivePositionTimeline.length === 0) {
+      const msg = isSavingForSubordinate
+        ? `Vybraný poradce ${selectedSaveOwnerLabel} nemá vyplněnou kariérní historii. Bez timeline nejde změnu připravit.`
+        : "Bez nastavené timeline kariéry nejde změnu připravit. Doplň ji prosím v Nastavení.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return null;
+    }
+
+    if (signedDateIso && !isIsoDay(signedDateIso)) {
+      const msg = "Datum sjednání změny má neplatný formát.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return null;
+    }
+
+    if (!signedDateIso) {
+      return (
+        timelineMatchedPosition?.position ??
+        resolveCurrentPositionTimelineRow(effectivePositionTimeline)?.position ??
+        position
+      );
+    }
+
+    const match = resolvePositionTimelineMatch(signedDateIso, effectivePositionTimeline);
+    if (!match) {
+      const msg = isSavingForSubordinate
+        ? `Pro datum sjednání ${formatIsoDay(
+            signedDateIso
+          )} nemá vybraný poradce ${selectedSaveOwnerLabel} v timeline nastavenou pozici.`
+        : `Pro datum sjednání ${formatIsoDay(
+            signedDateIso
+          )} nemáš v timeline nastavenou pozici.`;
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return null;
+    }
+
+    setTimelineMatchedPosition({
+      position: match.position,
+      validFrom: match.validFrom,
+      validTo: match.validTo,
+    });
+    setPosition((prev) => (prev === match.position ? prev : match.position));
+    return match.position;
+  };
+
+  const handlePrepareEndorsement = async (
+    options: PrepareEndorsementOptions = {}
+  ): Promise<boolean> => {
+    if (!user) {
+      setValidationError("Nejdřív se prosím přihlas.");
+      return false;
+    }
+    const targetProduct = options.productOverride ?? product;
     const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
     if (!targetOwnerEmail) {
       setValidationError("Chybí cílový vlastník smlouvy.");
-      return;
+      return false;
     }
 
     if (tipsterModeEnabled) {
       setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
-      return;
+      return false;
     }
 
-    if (!isLifeProduct) {
+    if (!LIFE_PRODUCTS.includes(targetProduct)) {
       setValidationError("Změnu zatím umíme jen pro ŽP produkty.");
-      return;
+      return false;
     }
 
-    const trimmedContractNumber = contractNumber.trim();
-    const newPremiumAmount = parseNumber(amountText);
+    const trimmedContractNumber = (
+      options.contractNumberOverride ?? contractNumber
+    ).trim();
+    const signedDateIso = (
+      options.contractSignedDateOverride ?? contractSignedDate
+    ).trim();
+    const newPremiumAmount =
+      options.newPremiumAmountOverride == null
+        ? parseNumber(amountText)
+        : toNonNegativeNumber(options.newPremiumAmountOverride);
 
     const missing: string[] = [];
     if (!trimmedContractNumber) missing.push("číslo smlouvy");
-    if (!contractSignedDate.trim()) missing.push("datum sjednání");
+    if (!signedDateIso) missing.push("datum sjednání");
     if (newPremiumAmount <= 0) missing.push("částku");
+    if (targetProduct === "maximaMaxEfekt" && durationYears == null) {
+      missing.push("dobu trvání smlouvy");
+    }
 
     if (missing.length > 0) {
       const msg = `Pro změnu doplň: ${missing.join(", ")}.`;
       setSaveMessage(msg);
       setValidationError(msg);
       setMissingFields((prev) => Array.from(new Set([...prev, ...missing])));
-      return;
+      return false;
     }
-    if (!validateTimelineBeforeSave()) return;
+
+    const positionForEndorsement = resolveEndorsementPositionForSignedDate(signedDateIso);
+    if (!positionForEndorsement) return false;
 
     try {
       const params = new URLSearchParams({
@@ -4016,7 +4512,7 @@ export default function CalculatorPage() {
         setValidationError(
           `Smlouvu č. ${trimmedContractNumber} jsem u vybraného poradce nenašel. Nejdřív musí být uložená jako původní smlouva.`
         );
-        return;
+        return false;
       }
 
       const productMatches: EndorsementSourceEntry[] = contracts
@@ -4038,13 +4534,13 @@ export default function CalculatorPage() {
           };
         })
         .filter((entry): entry is EndorsementSourceEntry => Boolean(entry))
-        .filter((entry) => entry.productKey === product);
+        .filter((entry) => entry.productKey === targetProduct);
 
       if (productMatches.length === 0) {
         setValidationError(
-          `Pro smlouvu č. ${trimmedContractNumber} není uložený produkt ${productLabel(product)}.`
+          `Pro smlouvu č. ${trimmedContractNumber} není uložený produkt ${productLabel(targetProduct)}.`
         );
-        return;
+        return false;
       }
 
       productMatches.sort(compareSourceEntriesByRecency);
@@ -4057,7 +4553,7 @@ export default function CalculatorPage() {
         setValidationError(
           `Nové pojistné je stejné jako poslední uložená hodnota (${formatMoney(previousPremiumAmount)}).`
         );
-        return;
+        return false;
       }
 
       const changeType: EndorsementChangeType =
@@ -4067,13 +4563,19 @@ export default function CalculatorPage() {
       let endorsementItems: CommissionResultItemDTO[] = [];
       let endorsementTotal = 0;
       if (calculationAmount > 0) {
-        const result = computeItemsForPositionAndMode(position, mode, calculationAmount);
+        const result = computeItemsForPositionAndMode(
+          positionForEndorsement,
+          mode,
+          calculationAmount,
+          targetProduct,
+          signedDateIso
+        );
         endorsementItems = result?.items ?? [];
         endorsementTotal = result?.total ?? 0;
       }
 
       setEndorsementDraft({
-        productKey: product,
+        productKey: targetProduct,
         contractNumber: trimmedContractNumber,
         sourceEntryId: latestEntry.id,
         sourceEntryPath: latestEntry.path,
@@ -4088,9 +4590,11 @@ export default function CalculatorPage() {
       });
       setValidationError(null);
       setSaveMessage(null);
+      return true;
     } catch (error) {
       console.error("Chyba při přípravě dodatku", error);
       setValidationError("Nepodařilo se připravit změnu smlouvy. Zkus to prosím znovu.");
+      return false;
     }
   };
 
@@ -4112,6 +4616,9 @@ export default function CalculatorPage() {
     if (!contractNumber.trim()) missing.push("číslo smlouvy");
     if (!contractSignedDate.trim()) missing.push("datum sjednání");
     if (!policyStartDate.trim()) missing.push("datum počátku");
+    if (product === "maximaMaxEfekt" && durationYears == null) {
+      missing.push("dobu trvání smlouvy");
+    }
 
     if (missing.length > 0) {
       const msg = `Doplň: ${missing.join(", ")}.`;
@@ -4121,6 +4628,14 @@ export default function CalculatorPage() {
       return;
     }
     if (!validateContractDatesBeforeSave()) return;
+    if (
+      !validateProductCoefficientPeriodBeforeSave(
+        product,
+        contractSignedDate.trim()
+      )
+    ) {
+      return;
+    }
     if (!validateTimelineBeforeSave()) return;
 
     const trimmedContractNumber = contractNumber.trim();
@@ -4236,7 +4751,10 @@ export default function CalculatorPage() {
           ownerEmail: targetOwnerEmail,
           entry: endorsementEntryPayload,
         },
-        idempotencyKey: buildContractsCreateIdempotencyKey(endorsementEntryPayload),
+        idempotencyKey: buildContractsCreateIdempotencyKey({
+          ownerEmail: targetOwnerEmail,
+          entry: endorsementEntryPayload,
+        }),
       });
       const apiError = getContractsMutationError({
         response,
@@ -4250,6 +4768,10 @@ export default function CalculatorPage() {
 
       const createdEntryId =
         typeof data?.entryId === "string" ? data.entryId.trim() : "";
+      if (!createdEntryId) {
+        setSaveMessage("Server potvrdil uložení bez ID smlouvy. Zkus to prosím znovu.");
+        return;
+      }
       const ownerEmail = targetOwnerEmail;
       if (createdEntryId && ownerEmail) {
         setLastSavedContractRef({
@@ -4340,6 +4862,9 @@ export default function CalculatorPage() {
     if (product === "comfortcc" && comfortGradual && comfortPayment <= 0) {
       missing.push("pravidelnou platbu");
     }
+    if (product === "maximaMaxEfekt" && durationYears == null) {
+      missing.push("dobu trvání smlouvy");
+    }
     if (
       product === "maxcizinkomplex" &&
       (durationMonths == null || normalizedDurationMonths(product, durationMonths) <= 0)
@@ -4355,8 +4880,16 @@ export default function CalculatorPage() {
     const shouldReplaceOriginalContract =
       supportsOriginalContractReplacement(product) &&
       refreshOriginalOpen;
+    const isRefreshWithoutOriginalInSystem =
+      shouldReplaceOriginalContract &&
+      product === "neon" &&
+      refreshOriginalMissingInSystem;
     const trimmedRefreshOriginalContractNumber = refreshOriginalContractNumber.trim();
-    if (shouldReplaceOriginalContract && !trimmedRefreshOriginalContractNumber) {
+    if (
+      shouldReplaceOriginalContract &&
+      !isRefreshWithoutOriginalInSystem &&
+      !trimmedRefreshOriginalContractNumber
+    ) {
       missing.push("číslo původní smlouvy");
     }
 
@@ -4376,6 +4909,7 @@ export default function CalculatorPage() {
     if (
       shouldReplaceOriginalContract &&
       product === "neon" &&
+      !isRefreshWithoutOriginalInSystem &&
       refreshOriginalLookup.status === "found" &&
       !neonRefreshCommissionBase
     ) {
@@ -4386,6 +4920,9 @@ export default function CalculatorPage() {
       return;
     }
     if (!validateContractDatesBeforeSave()) return;
+    if (!validateProductCoefficientPeriodBeforeSave(product, signedDateIsoDay)) {
+      return;
+    }
     if (!validateTimelineBeforeSave()) return;
 
     const neonNumberOrNull = (valueText: string) => {
@@ -4652,17 +5189,11 @@ export default function CalculatorPage() {
       }
 
       const calculationInputAmount =
-        shouldReplaceOriginalContract && product === "neon"
+        shouldReplaceOriginalContract && product === "neon" && !isRefreshWithoutOriginalInSystem
           ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? value
           : value;
 
-      const { response, data } = await requestContractsMutationWithAuth({
-        user,
-        path: "/api/contracts",
-        method: "POST",
-        payload: {
-          ownerEmail: targetOwnerEmail,
-          entry: {
+      const contractEntryPayload = {
             productKey: product,
             entryType: "contract" as ContractEntryType,
             commissionMode: canChooseMode ? mode : null,
@@ -4932,27 +5463,32 @@ export default function CalculatorPage() {
                   }
                 : null,
             isRefresh: shouldReplaceOriginalContract,
-            refreshOriginalContractNumber: shouldReplaceOriginalContract
-              ? trimmedRefreshOriginalContractNumber
+            refreshOriginalMissingInSystem: isRefreshWithoutOriginalInSystem,
+            requiresStatementRefresh: isRefreshWithoutOriginalInSystem,
+            commissionCalculationStatus: isRefreshWithoutOriginalInSystem
+              ? "provisional_refresh_missing_original"
               : null,
-          },
+            commissionBaseSource: isRefreshWithoutOriginalInSystem
+              ? "calculator_provisional"
+              : null,
+            refreshOriginalContractNumber: shouldReplaceOriginalContract
+              ? isRefreshWithoutOriginalInSystem
+                ? null
+                : trimmedRefreshOriginalContractNumber
+              : null,
+      };
+
+      const { response, data } = await requestContractsMutationWithAuth({
+        user,
+        path: "/api/contracts",
+        method: "POST",
+        payload: {
+          ownerEmail: targetOwnerEmail,
+          entry: contractEntryPayload,
         },
         idempotencyKey: buildContractsCreateIdempotencyKey({
-          entryType: "contract",
-          productKey: product,
-          commissionMode: canChooseMode ? mode : null,
-          contractNumber: trimmedContractNumber || null,
-          clientName: clientName.trim() || null,
-          contractSignedDate: contractSignedDate.trim(),
-          policyStartDate: policyStartDate.trim(),
-          policyEndDate: policyEndDate.trim() || null,
-          inputAmount: value,
-          calculationInputAmount,
-          frequencyRaw: frequency,
-          isRefresh: shouldReplaceOriginalContract,
-          refreshOriginalContractNumber: shouldReplaceOriginalContract
-            ? trimmedRefreshOriginalContractNumber
-            : null,
+          ownerEmail: targetOwnerEmail,
+          entry: contractEntryPayload,
         }),
       });
       const apiError = getContractsMutationError({
@@ -4967,6 +5503,10 @@ export default function CalculatorPage() {
 
       const createdEntryId =
         typeof data?.entryId === "string" ? data.entryId.trim() : "";
+      if (!createdEntryId) {
+        setSaveMessage("Server potvrdil uložení bez ID smlouvy. Zkus to prosím znovu.");
+        return;
+      }
       const ownerEmail = targetOwnerEmail;
       if (createdEntryId && ownerEmail) {
         setLastSavedContractRef({
@@ -5009,9 +5549,11 @@ export default function CalculatorPage() {
         }
       }
 
-      const savedMessage = shouldReplaceOriginalContract
-        ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ke dni počátku.`
-        : "Smlouva byla uložena mezi sepsané.";
+      const savedMessage = isRefreshWithoutOriginalInSystem
+        ? "Smlouva byla uložena jako REFRESH bez původní smlouvy v systému. Výpočet provize je orientační a musí se sladit podle provizního výpisu."
+        : shouldReplaceOriginalContract
+          ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ke dni počátku.`
+          : "Smlouva byla uložena mezi sepsané.";
       setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);
       setSaveSuccessFlash({
         contractNumber: contractNumber.trim() || null,
@@ -5111,6 +5653,12 @@ export default function CalculatorPage() {
       );
       return;
     }
+    if (product === "uniqaflotila") {
+      setNeonCoefficientView(
+        isUniqaFlotilaHistoricalBySignedDate ? "historical" : "current"
+      );
+      return;
+    }
     if (product === "pillowAuto") {
       setNeonCoefficientView(
         isPillowAutoHistoricalBySignedDate ? "historical" : "current"
@@ -5121,6 +5669,10 @@ export default function CalculatorPage() {
       setNeonCoefficientView(
         isKooperativaAutoHistoricalBySignedDate ? "historical" : "current"
       );
+      return;
+    }
+    if (product === "maximaMaxEfekt") {
+      setNeonCoefficientView(isMaxEfekt5BySignedDate ? "historical" : "current");
     }
   }, [
     showCoefModal,
@@ -5131,8 +5683,10 @@ export default function CalculatorPage() {
     isCsobAutoHistoricalBySignedDate,
     isUniqaAutoEarlyHistoricalBySignedDate,
     isUniqaAutoHistoricalBySignedDate,
+    isUniqaFlotilaHistoricalBySignedDate,
     isPillowAutoHistoricalBySignedDate,
     isKooperativaAutoHistoricalBySignedDate,
+    isMaxEfekt5BySignedDate,
   ]);
 
   useEffect(() => {
@@ -5250,7 +5804,7 @@ export default function CalculatorPage() {
   const allowed = allowedFrequencies(product);
   const isAddContractMode = calculatorViewMode === "addContract";
   const isCommissionOnlyMode = calculatorViewMode === "commissionOnly";
-  const canChoosePositionManually = isSavingForSubordinate || isCommissionOnlyMode;
+  const canChoosePositionManually = isCommissionOnlyMode;
   const headerTitle = tipsterModeEnabled
     ? "Kalkulačka - TIPAŘ"
     : isAddContractMode
@@ -6270,11 +6824,22 @@ export default function CalculatorPage() {
     : timelineMatchedPosition
       ? [timelineMatchedPosition.position]
       : [position];
+  const subordinateTimelineStatusText = isSavingForSubordinate
+    ? subordinatePositionTimelineLoading
+      ? "Načítám kariérní historii..."
+      : subordinatePositionTimelineError
+        ? subordinatePositionTimelineError
+        : selectedSubordinateTimelineMissing
+          ? "Vybraný poradce nemá vyplněnou kariérní historii."
+          : null
+    : null;
 
   const computeItemsForPositionAndMode = (
     pos: Position | null,
     customMode?: CommissionMode | null,
-    amountOverride?: number | null
+    amountOverride?: number | null,
+    productOverride?: Product | null,
+    contractSignedDateOverride?: string | null
   ): { items: CommissionResultItemDTO[]; total: number } | null => {
     if (!pos) return null;
     const val =
@@ -6282,8 +6847,11 @@ export default function CalculatorPage() {
     const freq = frequency;
     const years = durationYears;
     const usedMode = (customMode ?? mode) as CommissionMode;
+    const targetProduct = productOverride ?? product;
+    const signedDateForCalculation =
+      contractSignedDateOverride ?? contractSignedDateForNeon;
 
-    switch (product) {
+    switch (targetProduct) {
       case "neon": {
         const neonVal =
           amountOverride == null
@@ -6294,7 +6862,7 @@ export default function CalculatorPage() {
           pos,
           years,
           usedMode,
-          contractSignedDateForNeon
+          signedDateForCalculation
         );
       }
       case "flexi":
@@ -6304,7 +6872,7 @@ export default function CalculatorPage() {
       }
       case "maximaMaxEfekt": {
         const y = normalizedDurationYears("maximaMaxEfekt", years);
-        return calculateMaxEfekt(val, y, pos, usedMode);
+        return calculateMaxEfekt(val, y, pos, usedMode, signedDateForCalculation);
       }
       case "maxcizinkomplex":
         return calculateMaxCizinKomplex(val, pos, maxCizinKomplexVariant);
@@ -6314,14 +6882,20 @@ export default function CalculatorPage() {
       case "cpphafan":
       case "koopmajetekobcan":
       case "koopfit":
-      case "koopodzam": {
+      case "koopodzam":
+      case "kooppmop":
+      case "zamex": {
         const dto =
-          product === "domex"
-            ? calculateDomex(val, freq, pos)
-            : product === "cpphafan"
+          targetProduct === "domex"
+            ? calculateDomex(val, freq, pos, signedDateForCalculation)
+            : targetProduct === "cpphafan"
             ? calculateCppHafan(val, freq, pos)
-            : product === "koopodzam"
+            : targetProduct === "koopodzam"
             ? calculateKoopOdzam(val, freq, pos)
+            : targetProduct === "kooppmop"
+            ? calculateKoopPmop(val, freq, pos)
+            : targetProduct === "zamex"
+            ? calculateZamex(val, freq, pos)
             : calculateKoopMajetekObcan(val, freq, pos);
         const filtered = dto.items.filter((i) =>
           (i.title ?? "").toLowerCase().includes("(z platby)")
@@ -6329,10 +6903,7 @@ export default function CalculatorPage() {
         const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
         return {
           items: filtered,
-          total:
-            product === "domex"
-              ? totals.immediate
-              : totals.immediate + totals.subsequent,
+          total: totals.immediate,
         };
       }
       case "pillowmajetek":
@@ -6343,38 +6914,50 @@ export default function CalculatorPage() {
           (i.title ?? "").toLowerCase().includes("(z platby)")
         );
         const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-        return { items: filtered, total: totals.immediate + totals.subsequent };
+        return { items: filtered, total: totals.immediate };
       }
       case "allianzmujdomov":
         return calculateAllianzMujDomov(val, freq, pos);
       case "cppAuto":
-        return calculateCppAuto(val, freq, pos, contractSignedDateForNeon);
+        return calculateCppAuto(val, freq, pos, signedDateForCalculation);
       case "slaviaauto":
         return calculateSlaviaAuto(val, freq, pos);
+      case "cppsimplex": {
+        const dto = calculateCppSimplex(val, freq, pos);
+        const filtered = dto.items.filter((i) =>
+          (i.title ?? "").toLowerCase().includes("(z platby)")
+        );
+        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
+        return { items: filtered, total: totals.immediate };
+      }
       case "cppPPRbez": {
         const dto = calculateCppPPRbez(val, freq, pos);
         const filtered = dto.items.filter((i) =>
           (i.title ?? "").toLowerCase().includes("(z platby)")
         );
-        const sum = filtered.reduce((s, i) => s + (i.amount ?? 0), 0);
-        return { items: filtered, total: sum };
+        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
+        return { items: filtered, total: totals.immediate };
       }
-      case "cppPPRs":
-        return calculateCppPPRs(val, freq, pos);
+      case "cppPPRs": {
+        const dto = calculateCppPPRs(val, freq, pos);
+        const filtered = dto.items.filter((i) =>
+          (i.title ?? "").toLowerCase().includes("(z platby)")
+        );
+        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
+        return { items: filtered, total: totals.immediate };
+      }
       case "allianzAuto":
-        return calculateAllianzAuto(val, freq, pos, contractSignedDateForNeon);
+        return calculateAllianzAuto(val, freq, pos, signedDateForCalculation);
       case "csobAuto":
-        return calculateCsobAuto(val, freq, pos, contractSignedDateForNeon);
+        return calculateCsobAuto(val, freq, pos, signedDateForCalculation);
       case "uniqaAuto":
-        return calculateUniqaAuto(val, freq, pos, contractSignedDateForNeon);
+        return calculateUniqaAuto(val, freq, pos, signedDateForCalculation);
       case "uniqaflotila":
-        return calculateUniqaAuto(val, freq, pos);
+        return calculateUniqaFlotila(val, freq, pos, signedDateForCalculation);
       case "pillowAuto":
-        return calculatePillowAuto(val, freq, pos, contractSignedDateForNeon);
+        return calculatePillowAuto(val, freq, pos, signedDateForCalculation);
       case "kooperativaAuto":
-        return calculateKooperativaAuto(val, freq, pos, contractSignedDateForNeon);
-      case "zamex":
-        return calculateZamex(val, freq, pos);
+        return calculateKooperativaAuto(val, freq, pos, signedDateForCalculation);
       case "cppcestovko":
         return calculateCppCestovko(val, pos);
       case "axacestovko":
@@ -6449,6 +7032,7 @@ export default function CalculatorPage() {
         selectedTip={tipContractSelectedTip}
         hasExistingConfig={Boolean(tipContractConfig)}
         canShowTipsButton={canShowTipContractTipsButton}
+        isLifeProduct={isLifeProduct}
         exampleGrossFirstYearLabel={tipContractExampleGrossFirstYearLabel}
         exampleAdvisorRemainderLabel={tipContractExampleAdvisorRemainderLabel}
         onClose={() => setTipContractModalOpen(false)}
@@ -6647,6 +7231,7 @@ export default function CalculatorPage() {
                 hasTipContractConfig={Boolean(tipContractConfig)}
                 refreshOriginalOpen={refreshOriginalOpen}
                 refreshOriginalContractNumber={refreshOriginalContractNumber}
+                refreshOriginalMissingInSystem={refreshOriginalMissingInSystem}
                 refreshOriginalLookupStatus={refreshOriginalLookup.status}
                 refreshOriginalLookupProgress={refreshOriginalLookup.progress}
                 refreshOriginalLookupAdviserName={refreshOriginalLookup.adviserName}
@@ -6655,9 +7240,33 @@ export default function CalculatorPage() {
                 onAmountTextChange={setAmountText}
                 onComfortPaymentTextChange={setComfortPaymentText}
                 onComfortTargetAmountTextChange={setComfortTargetAmountText}
-                onRefreshOriginalContractNumberChange={setRefreshOriginalContractNumber}
+                onRefreshOriginalContractNumberChange={(value) => {
+                  setRefreshOriginalContractNumber(value);
+                  setRefreshOriginalPdfLookupNumber(null);
+                }}
+                onRefreshOriginalMissingInSystemChange={(value) => {
+                  setRefreshOriginalMissingInSystem(value);
+                  setRefreshOriginalPdfLookupNumber(null);
+                  if (value) {
+                    setRefreshOriginalContractNumber("");
+                    setRefreshOriginalLookup({
+                      status: "idle",
+                      progress: 0,
+                      adviserName: null,
+                      original: null,
+                    });
+                  }
+                }}
                 onOpenTipContractModal={openTipContractModal}
-                onToggleRefreshOriginal={() => setRefreshOriginalOpen((prev) => !prev)}
+                onToggleRefreshOriginal={() =>
+                  setRefreshOriginalOpen((prev) => {
+                    if (prev) {
+                      setRefreshOriginalMissingInSystem(false);
+                      setRefreshOriginalPdfLookupNumber(null);
+                    }
+                    return !prev;
+                  })
+                }
                 onPrepareEndorsement={() => {
                   void handlePrepareEndorsement();
                 }}
@@ -6749,6 +7358,11 @@ export default function CalculatorPage() {
                       <p className="truncate text-sm font-semibold text-slate-900">
                         {selectedSaveOwnerLabel}
                       </p>
+                      {subordinateTimelineStatusText && (
+                        <p className="mt-1 text-xs font-medium text-amber-700">
+                          {subordinateTimelineStatusText}
+                        </p>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -6802,7 +7416,8 @@ export default function CalculatorPage() {
               items.length > 0 &&
               parseNumber(amountText) > 0 &&
               !autoHullSumNeedsInput &&
-              (isSavingForSubordinate || positionTimeline.length > 0)
+              !effectivePositionTimelineLoading &&
+              effectivePositionTimeline.length > 0
             }
             lastSavedContractHref={lastSavedContractHref}
             onOpenCoefModal={() => setShowCoefModal(true)}
@@ -6829,8 +7444,12 @@ export default function CalculatorPage() {
         isCsobAutoHistorical={isCsobAutoHistoricalInCoefModal}
         isUniqaAutoHistorical={isUniqaAutoHistoricalInCoefModal}
         isUniqaAutoEarlyHistorical={isUniqaAutoEarlyHistoricalInCoefModal}
+        isUniqaFlotilaHistorical={isUniqaFlotilaHistoricalInCoefModal}
         isPillowAutoHistorical={isPillowAutoHistoricalInCoefModal}
         isKooperativaAutoHistorical={isKooperativaAutoHistoricalInCoefModal}
+        isDomexHistorical={isDomexHistoricalInCoefModal}
+        isMaxEfekt5={isMaxEfekt5InCoefModal}
+        isMaxEfekt7={isMaxEfekt7InCoefModal}
         coefExplanation={coefExplanation}
         immediatePayoutInfo={immediatePayoutInfo}
         coefList={coefList}
@@ -6840,6 +7459,7 @@ export default function CalculatorPage() {
           product !== "allianzAuto" &&
           product !== "csobAuto" &&
           product !== "uniqaAuto" &&
+          product !== "uniqaflotila" &&
           product !== "pillowAuto" &&
           product !== "kooperativaAuto"
         }

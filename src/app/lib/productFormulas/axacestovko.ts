@@ -6,6 +6,8 @@ import {
 
 // ---------- AXA Cestovko ----------
 
+export const AXA_CESTOVKO_COEFFICIENT_VALID_FROM = "2021-04-15";
+
 export function axaCestovkoCoefficient(position: Position): number {
   switch (position) {
     // Poradci 1–10
@@ -55,9 +57,7 @@ export function calculateAxaCestovko(
   const provize = amount * coef;
 
   const items: CommissionResultItemDTO[] = [
-    { title: "💸 Okamžitá provize", amount: provize },
+    { title: "💸 Okamžitá provize", amount: provize, code: "A101" },
   ];
   return { items, total: provize };
 }
-
-

@@ -21,6 +21,24 @@ export type EntryDoc = {
   frequencyRaw?: PaymentFrequency | null;
   total?: number;
   items?: CommissionResultItemDTO[];
+  commissionPayouts?: {
+    key?: string | null;
+    code?: string | null;
+    title?: string | null;
+    amount?: number | null;
+    expectedAmount?: number | null;
+    difference?: number | null;
+    differenceReason?: string | null;
+    status?: "paid" | "difference" | "storno" | string | null;
+    statementId?: string | null;
+    statementNumber?: string | null;
+    statementPeriod?: string | null;
+    statementDate?: string | null;
+    statementChronologyMs?: number | null;
+    payoutMonthKey?: string | null;
+    writtenAtMs?: number | null;
+    writtenBy?: string | null;
+  }[] | null;
 
   userEmail?: string | null;
   contractSignedDate?: unknown;
@@ -71,6 +89,7 @@ export type CashflowItem = {
   inputAmount?: number | null;
   policyStartDate?: Date | null;
   contractStatus?: "active" | "storno" | "dozita" | string | null;
+  stornoDate?: Date | null;
   ownerEmail: string | null;
   entryId: string | null;
   isManagerOverride?: boolean;
@@ -81,6 +100,11 @@ export type CashflowItem = {
   tipSourceAdviserEmail?: string | null;
   tipSourceAdviserName?: string | null;
   payoutStatus?: "predicted" | "paid" | "shifted";
+  predictedAmount?: number | null;
+  isStatementOnly?: boolean;
+  commissionPayoutKey?: string | null;
+  commissionStatementNumber?: string | null;
+  commissionStatementPeriod?: string | null;
   originalDate?: Date | null;
   missedStatementPeriods?: string[];
 };

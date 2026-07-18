@@ -163,6 +163,7 @@ export async function GET(req: NextRequest) {
     namespace: "api:mailbox:get",
     limit: MAILBOX_GET_RATE_LIMIT,
     windowMs: MAILBOX_GET_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
@@ -217,6 +218,7 @@ export async function PATCH(req: NextRequest) {
     namespace: "api:mailbox:patch",
     limit: MAILBOX_PATCH_RATE_LIMIT,
     windowMs: MAILBOX_PATCH_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
@@ -318,6 +320,7 @@ export async function DELETE(req: NextRequest) {
     namespace: "api:mailbox:delete",
     limit: MAILBOX_DELETE_RATE_LIMIT,
     windowMs: MAILBOX_DELETE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

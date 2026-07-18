@@ -44,10 +44,12 @@ import QRCode from "qrcode";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
+import { setAdminImpersonationState } from "@/app/lib/adminImpersonation";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import type { CommissionMode, Position } from "@/app/types/domain";
 import {
   adminRoleAtLeast,
+  canCreateUserAccounts,
   resolveAdminRoleFromClaims,
   type AdminRole,
 } from "@/lib/adminAccess";
@@ -961,14 +963,17 @@ export default function AdminRequestsPage() {
   const [subscriptionData, setSubscriptionData] = useState<AdminSubscriptionLookupResponse | null>(null);
   const [requestsNowMs, setRequestsNowMs] = useState(() => Date.now());
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
+  const [canCreateUsers, setCanCreateUsers] = useState(false);
 
   const isAllowedAdmin = adminRoleAtLeast(adminRole, "admin");
   const isOwnerAdmin = adminRoleAtLeast(adminRole, "owner");
+  const canAccessAdminPanel = isAllowedAdmin || canCreateUsers;
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setAdminRole(resolveAdminRoleFromClaims(user?.email, null));
+      setCanCreateUsers(canCreateUserAccounts(user?.email, null));
       setAuthReady(true);
     });
     return () => unsub();
@@ -978,6 +983,7 @@ export default function AdminRequestsPage() {
     let cancelled = false;
     if (!currentUser) {
       setAdminRole(null);
+      setCanCreateUsers(false);
       return;
     }
 
@@ -991,10 +997,17 @@ export default function AdminRequestsPage() {
             token.claims as Record<string, unknown>
           )
         );
+        setCanCreateUsers(
+          canCreateUserAccounts(
+            currentUser.email,
+            token.claims as Record<string, unknown>
+          )
+        );
       })
       .catch(() => {
         if (!cancelled) {
           setAdminRole(resolveAdminRoleFromClaims(currentUser.email, null));
+          setCanCreateUsers(canCreateUserAccounts(currentUser.email, null));
         }
       });
 
@@ -1002,6 +1015,13 @@ export default function AdminRequestsPage() {
       cancelled = true;
     };
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!isAllowedAdmin && canCreateUsers && activeAdminSection !== "createUser") {
+      setActiveAdminSection("createUser");
+    }
+  }, [activeAdminSection, authReady, canCreateUsers, isAllowedAdmin]);
 
   useEffect(() => {
     if (activeAdminSection === "subscriptions" && !isOwnerAdmin) {
@@ -1704,7 +1724,7 @@ export default function AdminRequestsPage() {
 
   const handleCreateUser = useCallback(async () => {
     const user = auth.currentUser;
-    if (!user || !isAllowedAdmin) return;
+    if (!user || !canCreateUsers) return;
 
     const email = normalizeEmail(newUserEmail);
     const managerEmail = normalizeEmail(newUserManagerEmail);
@@ -1792,7 +1812,7 @@ export default function AdminRequestsPage() {
       setCreateUserBusy(false);
     }
   }, [
-    isAllowedAdmin,
+    canCreateUsers,
     newUserEmail,
     newUserFullName,
     newUserAgencyNumber,
@@ -2278,6 +2298,29 @@ export default function AdminRequestsPage() {
     setAdminUsersError(null);
   }, [isOwnerAdmin]);
 
+  const handleImpersonateAdminUser = useCallback(
+    (row: AdminUsersRow) => {
+      if (!isAllowedAdmin || typeof window === "undefined") return;
+      const email = normalizeEmail(row.email);
+      const ownEmail = normalizeEmail(currentUser?.email);
+      const targetAdminRole = resolveAdminRoleFromClaims(email, null);
+      if (!email || row.disabled || email === ownEmail || targetAdminRole) {
+        return;
+      }
+
+      setAdminImpersonationState({
+        email,
+        name: row.fullName || nameFromEmail(row.email),
+      });
+      setAdminUsersStatus({
+        type: "success",
+        message: `Přepínám zobrazení za ${row.fullName || row.email}.`,
+      });
+      window.location.href = "/";
+    },
+    [currentUser?.email, isAllowedAdmin]
+  );
+
   const handleDeleteAdminUser = useCallback(async () => {
     const user = auth.currentUser;
     const target = adminUsersDeleteTarget;
@@ -2614,7 +2657,7 @@ export default function AdminRequestsPage() {
           >
             <span className={adminDarkTopBarClass} />
             <div className="grid gap-0 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.55fr)]">
-              <aside className="relative overflow-hidden bg-slate-950 px-5 py-5 text-white sm:px-6">
+              <aside className="relative overflow-hidden bg-slate-950 px-5 py-5 !text-white sm:px-6">
                 <button
                   type="button"
                   onClick={handleCancelAdminUserEdit}
@@ -2632,8 +2675,8 @@ export default function AdminRequestsPage() {
                     <span
                       className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
                         selectedAdminUserMissingItems.length === 0
-                          ? "border-violet-300/45 bg-violet-400/16 text-violet-100"
-                          : "border-amber-300/45 bg-amber-400/16 text-amber-100"
+                          ? "border-violet-200/55 bg-violet-300/18 !text-violet-50"
+                          : "border-amber-200/55 bg-amber-300/18 !text-amber-50"
                       }`}
                     >
                       {selectedAdminUserMissingItems.length === 0 ? (
@@ -2645,11 +2688,11 @@ export default function AdminRequestsPage() {
                         ? "OK"
                         : `K doplnění ${selectedAdminUserMissingItems.length}`}
                     </span>
-                    <span className="rounded-full border border-white/14 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-slate-100">
+                    <span className="rounded-full border border-white/22 bg-white/[0.13] px-2.5 py-1 text-xs font-semibold !text-white">
                       {formatAccountTypeLabel(adminUsersEditAccountType || selectedAdminUser.accountType)}
                     </span>
                     {adminUsersEditSpecialist ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-cyan-300/45 bg-cyan-400/16 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200/55 bg-cyan-300/18 px-2.5 py-1 text-xs font-semibold !text-cyan-50">
                         <ShieldCheck size={13} strokeWidth={2.4} aria-hidden="true" />
                         Specialista
                       </span>
@@ -2658,7 +2701,7 @@ export default function AdminRequestsPage() {
                   <h2 className="mt-4 break-words text-2xl font-bold leading-tight text-white">
                     {selectedAdminUser.fullName || nameFromEmail(selectedAdminUser.email)}
                   </h2>
-                  <p className="mt-1 break-all text-sm font-semibold text-slate-300">
+                  <p className="mt-1 break-all text-sm font-semibold !text-slate-100">
                     {selectedAdminUser.email}
                   </p>
                 </div>
@@ -2668,42 +2711,42 @@ export default function AdminRequestsPage() {
                     selectedAdminUserMissingItems.map((item) => (
                       <div
                         key={item.key}
-                        className="flex items-center justify-between gap-3 rounded-2xl border border-amber-300/22 bg-amber-300/10 px-3 py-2 text-sm font-semibold text-amber-50"
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200/40 bg-amber-300/16 px-3 py-2 text-sm font-semibold !text-amber-50"
                       >
                         <span>{item.label}</span>
-                        <span className="rounded-full bg-amber-200/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]">
+                        <span className="rounded-full bg-amber-100/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] !text-amber-50">
                           Chybí
                         </span>
                       </div>
                     ))
                   ) : (
-                    <div className="flex items-center gap-2 rounded-2xl border border-violet-300/22 bg-violet-300/10 px-3 py-3 text-sm font-semibold text-violet-50">
+                    <div className="flex items-center gap-2 rounded-2xl border border-violet-200/40 bg-violet-300/16 px-3 py-3 text-sm font-semibold !text-violet-50">
                       <CheckCircle2 size={16} strokeWidth={2.3} aria-hidden="true" />
                       Profil má vyplněné hlavní údaje.
                     </div>
                   )}
                 </div>
 
-                <div className="mt-5 grid gap-2 text-xs text-slate-300">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2">
-                    <span className="block font-semibold uppercase tracking-[0.14em] text-slate-400">
+                <div className="mt-5 grid gap-2 text-xs !text-slate-100">
+                  <div className="rounded-2xl border border-white/16 bg-white/[0.1] px-3 py-2">
+                    <span className="block font-semibold uppercase tracking-[0.14em] !text-slate-200">
                       Auth
                     </span>
-                    <span className="mt-1 block text-slate-100">
+                    <span className="mt-1 block font-semibold !text-white">
                       {selectedAdminUser.disabled ? "Deaktivovaný" : "Aktivní"} ·{" "}
                       {selectedAdminUser.emailVerified ? "E-mail ověřen" : "E-mail neověřen"}
                     </span>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-3">
+                  <div className="rounded-2xl border border-white/16 bg-white/[0.1] px-3 py-3">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <span className="font-semibold uppercase tracking-[0.14em] !text-slate-200">
                         2FA
                       </span>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                           selectedAdminUserMfaEnabled
-                            ? "border-violet-300/35 bg-violet-400/14 text-violet-100"
-                            : "border-rose-300/45 bg-rose-400/14 text-rose-100"
+                            ? "border-violet-200/55 bg-violet-300/18 !text-violet-50"
+                            : "border-rose-200/55 bg-rose-300/18 !text-rose-50"
                         }`}
                       >
                         {selectedAdminUserMfaEnabled ? (
@@ -2719,7 +2762,7 @@ export default function AdminRequestsPage() {
                         {selectedAdminUserMfaFactors.map((factor) => (
                           <span
                             key={factor.uid}
-                            className="inline-flex items-center gap-1 rounded-full border border-white/12 bg-white/[0.07] px-2 py-0.5 text-[11px] font-semibold text-slate-100"
+                            className="inline-flex items-center gap-1 rounded-full border border-white/18 bg-white/[0.13] px-2 py-0.5 text-[11px] font-semibold !text-white"
                             title={
                               factor.enrollmentTime
                                 ? `Zapsáno: ${formatAuthDateTime(factor.enrollmentTime)}`
@@ -2732,13 +2775,13 @@ export default function AdminRequestsPage() {
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                      <p className="mt-2 text-[11px] leading-relaxed !text-slate-200">
                         Uživatel si při dalším vstupu do aplikace nastaví nové 2FA.
                       </p>
                     )}
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-3">
-                    <span className="block font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  <div className="rounded-2xl border border-white/16 bg-white/[0.1] px-3 py-3">
+                    <span className="block font-semibold uppercase tracking-[0.14em] !text-slate-200">
                       Bezpečnostní akce
                     </span>
                     <div className="mt-3 grid gap-2">
@@ -2751,7 +2794,7 @@ export default function AdminRequestsPage() {
                           )
                         }
                         disabled={Boolean(adminUserSecurityBusyKey)}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-white/14 bg-white/[0.08] px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-white/22 bg-white/[0.14] px-3 py-2 text-xs font-semibold !text-white transition hover:bg-white/[0.2] disabled:cursor-not-allowed disabled:opacity-75"
                       >
                         {adminUserSecurityBusyKey === selectedAdminUserResetPasswordKey ? (
                           <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -2766,7 +2809,7 @@ export default function AdminRequestsPage() {
                           void handleAdminUserSecurityAction(selectedAdminUser, "resetMfa")
                         }
                         disabled={Boolean(adminUserSecurityBusyKey)}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-amber-300/28 bg-amber-300/12 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-300/18 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-amber-200/45 bg-amber-300/18 px-3 py-2 text-xs font-semibold !text-amber-50 transition hover:bg-amber-300/24 disabled:cursor-not-allowed disabled:opacity-75"
                       >
                         {adminUserSecurityBusyKey === selectedAdminUserResetMfaKey ? (
                           <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -2787,7 +2830,7 @@ export default function AdminRequestsPage() {
                             )
                           }
                           disabled={Boolean(adminUserSecurityBusyKey)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-sky-300/28 bg-sky-300/12 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-300/18 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-sky-200/45 bg-sky-300/18 px-3 py-2 text-xs font-semibold !text-sky-50 transition hover:bg-sky-300/24 disabled:cursor-not-allowed disabled:opacity-75"
                         >
                           {adminUserSecurityBusyKey === selectedAdminUserVerifyEmailKey ? (
                             <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -2806,7 +2849,7 @@ export default function AdminRequestsPage() {
                           )
                         }
                         disabled={Boolean(adminUserSecurityBusyKey)}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-300/30 bg-rose-400/12 px-3 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200/45 bg-rose-300/18 px-3 py-2 text-xs font-semibold !text-rose-50 transition hover:bg-rose-300/24 disabled:cursor-not-allowed disabled:opacity-75"
                       >
                         {adminUserSecurityBusyKey === selectedAdminUserRevokeSessionsKey ? (
                           <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -3215,52 +3258,60 @@ export default function AdminRequestsPage() {
                 <h1 className="text-2xl font-bold tracking-tight !text-white sm:text-3xl">
                   Admin
                 </h1>
-                {isAllowedAdmin ? (
+                {canAccessAdminPanel ? (
                   <div className="flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-white/14 bg-white/[0.06] p-1 shadow-[0_16px_34px_rgba(7,6,25,0.24)]">
-                    <button
-                      type="button"
-                      onClick={() => setActiveAdminSection("requests")}
-                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        activeAdminSection === "requests"
-                          ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
-                          : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
-                      }`}
-                    >
-                      Žádosti
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveAdminSection("createUser")}
-                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        activeAdminSection === "createUser"
-                          ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
-                          : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
-                      }`}
-                    >
-                      Přidat uživatele
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveAdminSection("users")}
-                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        activeAdminSection === "users"
-                          ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
-                          : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
-                      }`}
-                    >
-                      Uživatelé
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveAdminSection("broadcasts")}
-                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        activeAdminSection === "broadcasts"
-                          ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
-                          : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
-                      }`}
-                    >
-                      Notifikace
-                    </button>
+                    {isAllowedAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveAdminSection("requests")}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          activeAdminSection === "requests"
+                            ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
+                            : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                        }`}
+                      >
+                        Žádosti
+                      </button>
+                    ) : null}
+                    {canCreateUsers ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveAdminSection("createUser")}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          activeAdminSection === "createUser"
+                            ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
+                            : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                        }`}
+                      >
+                        Přidat uživatele
+                      </button>
+                    ) : null}
+                    {isAllowedAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveAdminSection("users")}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          activeAdminSection === "users"
+                            ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
+                            : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                        }`}
+                      >
+                        Uživatelé
+                      </button>
+                    ) : null}
+                    {isAllowedAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveAdminSection("broadcasts")}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          activeAdminSection === "broadcasts"
+                            ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
+                            : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                        }`}
+                      >
+                        Notifikace
+                      </button>
+                    ) : null}
                     {isOwnerAdmin ? (
                       <button
                         type="button"
@@ -3274,17 +3325,19 @@ export default function AdminRequestsPage() {
                         Předplatné
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => setActiveAdminSection("security")}
-                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                        activeAdminSection === "security"
-                          ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
-                          : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
-                      }`}
-                    >
-                      Zabezpečení
-                    </button>
+                    {isAllowedAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveAdminSection("security")}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          activeAdminSection === "security"
+                            ? "bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]"
+                            : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                        }`}
+                      >
+                        Zabezpečení
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -3302,13 +3355,13 @@ export default function AdminRequestsPage() {
             ) : null}
           </div>
 
-          {!isAllowedAdmin ? (
+          {!canAccessAdminPanel ? (
             <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-              Tato sekce je dostupná pouze pro účty s rolí owner nebo admin.
+              Tato sekce je dostupná pouze pro účty s rolí owner, admin nebo accountCreator.
             </div>
           ) : (
             <>
-              {activeAdminSection === "requests" ? (
+              {isAllowedAdmin && activeAdminSection === "requests" ? (
                 <div className="grid items-start gap-5 xl:grid-cols-[248px_minmax(0,1fr)]">
                   <aside className="space-y-3 xl:sticky xl:top-24">
                     <div className="overflow-hidden rounded-[24px] border border-violet-300/30 bg-[linear-gradient(145deg,#5b21b6_0%,#7c3aed_56%,#a855f7_100%)] p-4 text-white shadow-[0_22px_48px_rgba(109,40,217,0.28)]">
@@ -3879,7 +3932,7 @@ export default function AdminRequestsPage() {
           )}
         </section>
 
-        {isAllowedAdmin && activeAdminSection === "createUser" ? (
+        {canCreateUsers && activeAdminSection === "createUser" ? (
           <section className={adminDarkSectionClass}>
             <div className={adminDarkTopBarClass} />
             <div className="relative mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -4767,6 +4820,16 @@ export default function AdminRequestsPage() {
                   const positionLabel = formatPositionLabel(row.position);
                   const missingItems = buildAdminUserMissingItems(row);
                   const complete = missingItems.length === 0;
+                  const targetAdminRole = resolveAdminRoleFromClaims(row.email, null);
+                  const canImpersonate =
+                    isAllowedAdmin && !row.disabled && !isCurrentUser && !targetAdminRole;
+                  const impersonateDisabledTitle = isCurrentUser
+                    ? "Vlastní účet nejde zobrazit přes impersonaci."
+                    : row.disabled
+                      ? "Deaktivovaný účet nejde zobrazit přes impersonaci."
+                      : targetAdminRole
+                        ? "Administrátorský účet nejde zobrazit přes impersonaci."
+                        : undefined;
 
                   return (
                     <article
@@ -4852,6 +4915,25 @@ export default function AdminRequestsPage() {
                             <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
                             Detail
                           </span>
+                          {isAllowedAdmin ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleImpersonateAdminUser(row);
+                              }}
+                              disabled={!canImpersonate}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                                canImpersonate
+                                  ? "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                                  : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
+                              }`}
+                              title={impersonateDisabledTitle}
+                            >
+                              <UserRound size={13} strokeWidth={2.2} aria-hidden="true" />
+                              Zobrazit jako
+                            </button>
+                          ) : null}
                           {isOwnerAdmin ? (
                             <button
                               type="button"
@@ -5705,10 +5787,10 @@ export default function AdminRequestsPage() {
           </div>
         ) : null}
 
-        {!isAllowedAdmin && authReady ? (
+        {!canAccessAdminPanel && authReady ? (
           <div className="inline-flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <ShieldAlert size={16} strokeWidth={2.2} aria-hidden="true" className="mt-0.5" />
-            Pro schvalování žádostí je nutné přihlášení pod administrátorským účtem.
+            Pro tuto sekci je nutné přihlášení pod oprávněným účtem.
           </div>
         ) : null}
       </div>

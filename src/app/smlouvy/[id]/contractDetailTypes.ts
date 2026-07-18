@@ -19,18 +19,43 @@ export type ContractCommissionPayout = {
   amount?: number | null;
   expectedAmount?: number | null;
   difference?: number | null;
+  differenceReason?:
+    | "career_mismatch"
+    | "premium_base_mismatch"
+    | "commission_amount_mismatch"
+    | "storno"
+    | string
+    | null;
+  career?: string | null;
+  detail?: string | null;
   status?: ContractCommissionPayoutStatus | string | null;
   statementId?: string | null;
   statementNumber?: string | null;
   statementPeriod?: string | null;
   statementDate?: string | null;
+  statementChronologyMs?: number | null;
   payoutMonthKey?: string | null;
   writtenAtMs?: number | null;
   writtenBy?: string | null;
 };
 
+export type ContractCommissionStornoSummary = {
+  totalAmount?: number | null;
+  totalAbsAmount?: number | null;
+  count?: number | null;
+  latestStatementId?: string | null;
+  latestStatementNumber?: string | null;
+  latestStatementPeriod?: string | null;
+  latestStatementDate?: string | null;
+  latestStatementChronologyMs?: number | null;
+  latestPayoutMonthKey?: string | null;
+  updatedAtMs?: number | null;
+  updatedBy?: string | null;
+};
+
 export type ContractAutoPremiumStatementHistoryEntry = {
   key?: string | null;
+  premiumKind?: "auto_change" | "life_increase" | string | null;
   statementId?: string | null;
   statementNumber?: string | null;
   statementPeriod?: string | null;
@@ -41,6 +66,10 @@ export type ContractAutoPremiumStatementHistoryEntry = {
   previousPremium?: number | null;
   newPremium?: number | null;
   difference?: number | null;
+  previousAnnualPremium?: number | null;
+  newAnnualPremium?: number | null;
+  differenceAnnual?: number | null;
+  basePremiumPeriod?: "annual" | "payment" | string | null;
   productCode?: string | null;
   commissionCode?: string | null;
   rowId?: string | null;
@@ -76,6 +105,10 @@ export type ContractCommissionStatementSummary = {
   autoPremiumRows: ContractAutoPremiumStatementRow[];
 };
 
+export type ContractCommissionStatementDetail = ContractCommissionStatementSummary & {
+  html: string;
+};
+
 export type FirestoreTimestamp = {
   seconds: number;
   nanoseconds: number;
@@ -99,6 +132,14 @@ export type ContractDoc = {
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
+  refreshOriginalMissingInSystem?: boolean | null;
+  requiresStatementRefresh?: boolean | null;
+  commissionCalculationStatus?: string | null;
+  commissionBaseSource?: string | null;
+  refreshStatementResolvedAtMs?: number | null;
+  refreshStatementResolvedStatementId?: string | null;
+  refreshStatementResolvedStatementNumber?: string | null;
+  refreshStatementResolvedStatementPeriod?: string | null;
   refreshCommissionBase?: {
     productKey?: Product | null;
     method?: "cpp_neon_5y_storno" | string | null;
@@ -164,8 +205,10 @@ export type ContractDoc = {
   total?: number;
   items?: CommissionResultItemDTO[];
   commissionPayouts?: ContractCommissionPayout[] | null;
+  commissionStornoSummary?: ContractCommissionStornoSummary | null;
   premiumStatementHistory?: ContractAutoPremiumStatementHistoryEntry[] | null;
   premiumUpdatedFromStatementAtMs?: number | null;
+  premiumUpdatedFromStatementChronologyMs?: number | null;
   premiumUpdatedFromStatementId?: string | null;
 
   commissionMode?: CommissionMode | null;

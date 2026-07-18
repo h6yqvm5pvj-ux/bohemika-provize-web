@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User as FirebaseUser } from "firebase/auth";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { readAdminImpersonationState } from "@/app/lib/adminImpersonation";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import type { UserProfileResponse } from "@/app/lib/userProfileCache";
 import type { AccountType } from "@/components/account-setup/useAccountSetupFlow";
@@ -57,6 +58,11 @@ const readCachedHasTeam = (email?: string | null): boolean | null => {
 const writeCachedHasTeam = (email: string | null | undefined, value: boolean): void => {
   if (typeof window === "undefined" || !email) return;
   window.sessionStorage.setItem(hasTeamCacheKey(email), value ? "1" : "0");
+};
+
+const effectiveProfileEmail = (fallbackEmail: string | null | undefined): string | null => {
+  const impersonatedEmail = readAdminImpersonationState()?.email;
+  return impersonatedEmail || fallbackEmail || null;
 };
 
 export function useUserProfileAccess({
@@ -135,7 +141,7 @@ export function useUserProfileAccess({
       const hasTipsterAccounts = payload?.hasTipsters === true;
       setHasTeam(has);
       setHasTipsters(hasTipsterAccounts);
-      writeCachedHasTeam(currentUser.email, has);
+      writeCachedHasTeam(effectiveProfileEmail(currentUser.email), has);
     },
     [onLanguageResolved]
   );
@@ -188,7 +194,7 @@ export function useUserProfileAccess({
 
     setLoadingProfile(true);
     setHasInternalProfile(false);
-    setHasTeam(readCachedHasTeam(user.email) ?? true);
+    setHasTeam(readCachedHasTeam(effectiveProfileEmail(user.email)) ?? true);
     void loadProfileForUser(user);
   }, [loadProfileForUser, resetProfileAccess, user]);
 

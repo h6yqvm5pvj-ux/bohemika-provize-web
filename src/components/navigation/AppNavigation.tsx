@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Building2,
@@ -43,6 +43,7 @@ type NavigationItemConfig = {
   requiresTeam?: boolean;
   requiresTipsters?: boolean;
   requiresAdmin?: boolean;
+  requiresAdminArea?: boolean;
 };
 
 type NavigationItem = NavigationItemConfig & {
@@ -59,6 +60,7 @@ interface AppNavigationProps {
   hasTeam: boolean;
   hasTipsters: boolean;
   isAdminRequestsUser: boolean;
+  canAccessAdminArea: boolean;
   isTipsterAccount: boolean;
   isProfilePending: boolean;
   timelineSetupGateActive: boolean;
@@ -86,12 +88,11 @@ const NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
           key: "statements" as const,
           href: "/provizni-vypisy",
           icon: ReceiptText,
-          requiresAdmin: true,
         },
       ]
     : []),
   { key: "tools", href: "/pomucky", icon: Wrench },
-  { key: "admin", href: "/admin/zadosti", icon: ShieldCheck, requiresAdmin: true },
+  { key: "admin", href: "/admin/zadosti", icon: ShieldCheck, requiresAdminArea: true },
   { key: "settings", href: "/nastaveni", icon: Settings },
 ];
 
@@ -110,6 +111,17 @@ const NAV_ITEM_INACTIVE_CLASS =
   "text-slate-600 hover:bg-white/80 hover:text-slate-950 hover:shadow-[0_10px_22px_rgba(15,23,42,0.08)]";
 const ACTIVE_NAV_RAIL_CLASS =
   "bg-[linear-gradient(180deg,#a855f7_0%,#ec4899_100%)] shadow-[0_0_16px_rgba(168,85,247,0.55)]";
+const PREPARATION_SECTION_OWNER = "jakub.rauscher";
+const PREPARATION_GATED_NAV_KEYS = new Set<ActivePage>(["clients", "statements"]);
+
+const normalizeUserIdentifier = (value: string | null | undefined) =>
+  (value ?? "").trim().toLowerCase();
+
+const canAccessPreparationSectionsForUser = (userEmail: string) => {
+  const normalized = normalizeUserIdentifier(userEmail);
+  const localPart = normalized.split("@")[0] ?? "";
+  return normalized === PREPARATION_SECTION_OWNER || localPart === PREPARATION_SECTION_OWNER;
+};
 
 const buildNavigationItems = (
   configs: NavigationItemConfig[],
@@ -142,11 +154,13 @@ const shouldShowNavigationItem = (
     hasTeam: boolean;
     hasTipsters: boolean;
     isAdminRequestsUser: boolean;
+    canAccessAdminArea: boolean;
   }
 ) => {
   if (item.requiresTeam && !flags.hasTeam) return false;
   if (item.requiresTipsters && !flags.hasTipsters) return false;
   if (item.requiresAdmin && !flags.isAdminRequestsUser) return false;
+  if (item.requiresAdminArea && !flags.canAccessAdminArea) return false;
   return true;
 };
 
@@ -156,18 +170,24 @@ function NavigationList({
   hasTeam,
   hasTipsters,
   isAdminRequestsUser,
+  canAccessAdminArea,
   timelineSetupGateActive,
+  canAccessPreparationSections,
   activeRailHeightClass,
   onNavigate,
+  onBlockedPreparationClick,
 }: {
   active: ActivePage;
   items: NavigationItem[];
   hasTeam: boolean;
   hasTipsters: boolean;
   isAdminRequestsUser: boolean;
+  canAccessAdminArea: boolean;
   timelineSetupGateActive: boolean;
+  canAccessPreparationSections: boolean;
   activeRailHeightClass: string;
   onNavigate?: () => void;
+  onBlockedPreparationClick: (item: NavigationItem) => void;
 }) {
   return (
     <>
@@ -177,6 +197,7 @@ function NavigationList({
             hasTeam,
             hasTipsters,
             isAdminRequestsUser,
+            canAccessAdminArea,
           })
         ) {
           return null;
@@ -184,6 +205,7 @@ function NavigationList({
 
         const isActive = active === item.key;
         const navDisabled = timelineSetupGateActive && item.key !== "settings";
+        const isPreparationGated = PREPARATION_GATED_NAV_KEYS.has(item.key);
         const stateClass = isActive ? NAV_ITEM_ACTIVE_CLASS : NAV_ITEM_INACTIVE_CLASS;
         const activeRail = isActive ? (
           <span
@@ -216,7 +238,15 @@ function NavigationList({
             key={item.key}
             href={item.href}
             prefetch={item.key === "team" ? false : true}
-            onClick={onNavigate}
+            onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+              if (isPreparationGated && !canAccessPreparationSections) {
+                event.preventDefault();
+                onNavigate?.();
+                onBlockedPreparationClick(item);
+                return;
+              }
+              onNavigate?.();
+            }}
             className={`${NAV_ITEM_BASE} ${stateClass}`}
           >
             {activeRail}
@@ -238,6 +268,7 @@ export function AppNavigation({
   hasTeam,
   hasTipsters,
   isAdminRequestsUser,
+  canAccessAdminArea,
   isTipsterAccount,
   isProfilePending,
   timelineSetupGateActive,
@@ -247,6 +278,8 @@ export function AppNavigation({
   onCloseMobileMenu,
   onLogout,
 }: AppNavigationProps) {
+  const [blockedPreparationItem, setBlockedPreparationItem] =
+    useState<NavigationItem | null>(null);
   const navigationItems = isProfilePending
     ? []
     : buildNavigationItems(
@@ -254,6 +287,9 @@ export function AppNavigation({
         navLabels
       );
   const userInitial = userEmail.trim().charAt(0).toUpperCase() || "B";
+  const canAccessPreparationSections =
+    canAccessPreparationSectionsForUser(userEmail);
+  const BlockedPreparationIcon = blockedPreparationItem?.icon ?? ReceiptText;
 
   return (
     <>
@@ -293,8 +329,11 @@ export function AppNavigation({
             hasTeam={hasTeam}
             hasTipsters={hasTipsters}
             isAdminRequestsUser={isAdminRequestsUser}
+            canAccessAdminArea={canAccessAdminArea}
             timelineSetupGateActive={timelineSetupGateActive}
+            canAccessPreparationSections={canAccessPreparationSections}
             activeRailHeightClass="h-7"
+            onBlockedPreparationClick={setBlockedPreparationItem}
           />
         </nav>
 
@@ -396,9 +435,12 @@ export function AppNavigation({
                   hasTeam={hasTeam}
                   hasTipsters={hasTipsters}
                   isAdminRequestsUser={isAdminRequestsUser}
+                  canAccessAdminArea={canAccessAdminArea}
                   timelineSetupGateActive={timelineSetupGateActive}
+                  canAccessPreparationSections={canAccessPreparationSections}
                   activeRailHeightClass="h-6"
                   onNavigate={onCloseMobileMenu}
+                  onBlockedPreparationClick={setBlockedPreparationItem}
                 />
               </nav>
 
@@ -419,6 +461,56 @@ export function AppNavigation({
                   {logoutLabel}
                 </button>
               </div>
+            </div>
+          </div>
+        ) : null}
+
+        {blockedPreparationItem ? (
+          <div
+            className={`fixed inset-0 z-[90] flex items-center justify-center px-4 ${shellFontClass}`}
+          >
+            <button
+              type="button"
+              aria-label="Zavřít upozornění"
+              className="absolute inset-0 cursor-default bg-slate-950/55 backdrop-blur-sm"
+              onClick={() => setBlockedPreparationItem(null)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="preparation-section-dialog-title"
+              className="relative w-full max-w-md rounded-[24px] border border-slate-200 bg-white p-6 text-slate-950 shadow-[0_28px_70px_rgba(15,23,42,0.26)]"
+            >
+              <div className="flex items-start gap-4">
+                <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
+                  <BlockedPreparationIcon
+                    className="h-5 w-5"
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p
+                    id="preparation-section-dialog-title"
+                    className="text-lg font-bold tracking-tight"
+                  >
+                    Sekce je v přípravě
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Tato sekce je v přípravě a brzy bude dostupná.
+                  </p>
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    {blockedPreparationItem.label}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBlockedPreparationItem(null)}
+                className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-[0_12px_22px_rgba(15,23,42,0.18)] transition hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300/70 focus-visible:ring-offset-2"
+              >
+                Rozumím
+              </button>
             </div>
           </div>
         ) : null}

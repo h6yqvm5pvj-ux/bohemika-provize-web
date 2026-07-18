@@ -14,6 +14,7 @@ import {
 } from "./pillowAuto";
 import { slaviaAutoCoefficient } from "./slaviaAuto";
 import {
+  uniqaFlotilaSubsequentCoefficient,
   uniqaAutoSubsequentCoefficient,
 } from "./uniqaAuto";
 
@@ -42,8 +43,9 @@ export function autoSubsequentCoefficientForProduct(
     case "csobAuto":
       return csobAutoSubsequentCoefficient(position, contractSignedDateIso);
     case "uniqaAuto":
-    case "uniqaflotila":
       return uniqaAutoSubsequentCoefficient(position, contractSignedDateIso);
+    case "uniqaflotila":
+      return uniqaFlotilaSubsequentCoefficient(position, contractSignedDateIso);
     case "pillowAuto":
       return pillowAutoSubsequentCoefficient(position, contractSignedDateIso);
     case "slaviaauto":

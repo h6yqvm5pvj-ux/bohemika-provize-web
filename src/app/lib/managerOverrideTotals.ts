@@ -12,9 +12,16 @@ const LEGACY_FREQUENCY_OVERRIDE_PRODUCTS = new Set<Product>([
   "uniqaflotila",
   "kooperativaAuto",
   "slaviaauto",
+  "cpphafan",
+  "koopmajetekobcan",
+  "koopfit",
+  "koopodzam",
+  "kooppmop",
+  "maxdomov",
   "zamex",
   "cppsimplex",
   "cppPPRs",
+  "cppPPRbez",
 ]);
 
 const roundToCents = (value: number): number =>

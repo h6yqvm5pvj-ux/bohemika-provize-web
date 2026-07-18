@@ -109,7 +109,11 @@ export function CalculatorDurationAndFrequencySection({
       )}
       <input
         type="number"
-        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+        className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+          missingFields.includes("dobu trvání smlouvy")
+            ? "border-rose-400/70"
+            : "border-slate-300"
+        }`}
         value={durationYears ?? ""}
         onChange={(event) => {
           const raw = event.target.value.trim();

@@ -18,6 +18,11 @@ import {
   isCsobAutoHistoricalPeriod,
 } from "./csobAuto";
 import {
+  DOMEX_CURRENT_VALID_FROM,
+  DOMEX_HISTORICAL_VALID_FROM,
+  isDomexHistoricalPeriod,
+} from "./domex";
+import {
   KOOPERATIVA_AUTO_CURRENT_VALID_FROM,
   KOOPERATIVA_AUTO_HISTORICAL_VALID_FROM,
   isKooperativaAutoHistoricalPeriod,
@@ -36,8 +41,11 @@ import {
   UNIQA_AUTO_CURRENT_VALID_FROM,
   UNIQA_AUTO_EARLY_HISTORICAL_VALID_FROM,
   UNIQA_AUTO_HISTORICAL_VALID_FROM,
+  UNIQA_FLOTILA_CURRENT_VALID_FROM,
+  UNIQA_FLOTILA_HISTORICAL_VALID_FROM,
   isUniqaAutoEarlyHistoricalPeriod,
   isUniqaAutoHistoricalPeriod,
+  isUniqaFlotilaHistoricalPeriod,
 } from "./uniqaAuto";
 
 export const normalizeCommissionCoefficientSet = (
@@ -61,6 +69,7 @@ export function candidateCoefficientSetsForProduct(
     case "cppAuto":
     case "allianzAuto":
     case "csobAuto":
+    case "uniqaflotila":
     case "pillowAuto":
     case "kooperativaAuto":
       return ["historical", "current"];
@@ -87,12 +96,16 @@ export function defaultCoefficientSetForProduct(
         return "earlyHistorical";
       }
       return isUniqaAutoHistoricalPeriod(contractSignedDateIso) ? "historical" : "current";
+    case "uniqaflotila":
+      return isUniqaFlotilaHistoricalPeriod(contractSignedDateIso) ? "historical" : "current";
     case "pillowAuto":
       return isPillowAutoHistoricalPeriod(contractSignedDateIso) ? "historical" : "current";
     case "kooperativaAuto":
       return isKooperativaAutoHistoricalPeriod(contractSignedDateIso)
         ? "historical"
         : "current";
+    case "domex":
+      return isDomexHistoricalPeriod(contractSignedDateIso) ? "historical" : "current";
     default:
       return null;
   }
@@ -126,6 +139,10 @@ export function coefficientSetSignedDateForProduct(
       if (coefficientSet === "historical") return UNIQA_AUTO_HISTORICAL_VALID_FROM;
       if (coefficientSet === "current") return UNIQA_AUTO_CURRENT_VALID_FROM;
       return null;
+    case "uniqaflotila":
+      if (coefficientSet === "historical") return UNIQA_FLOTILA_HISTORICAL_VALID_FROM;
+      if (coefficientSet === "current") return UNIQA_FLOTILA_CURRENT_VALID_FROM;
+      return null;
     case "pillowAuto":
       if (coefficientSet === "historical") return PILLOW_AUTO_HISTORICAL_VALID_FROM;
       if (coefficientSet === "current") return PILLOW_AUTO_CURRENT_VALID_FROM;
@@ -135,6 +152,10 @@ export function coefficientSetSignedDateForProduct(
         return KOOPERATIVA_AUTO_HISTORICAL_VALID_FROM;
       }
       if (coefficientSet === "current") return KOOPERATIVA_AUTO_CURRENT_VALID_FROM;
+      return null;
+    case "domex":
+      if (coefficientSet === "historical") return DOMEX_HISTORICAL_VALID_FROM;
+      if (coefficientSet === "current") return DOMEX_CURRENT_VALID_FROM;
       return null;
     default:
       return null;

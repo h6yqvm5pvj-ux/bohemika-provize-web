@@ -127,14 +127,14 @@ export async function POST(req: NextRequest) {
     ownerEmail,
     entryId,
     viewerEmail: ctx.email,
-    teamEmails: ctx.teamEmails,
+    teamEmails: ctx.contractAccessEmails,
   });
   if (!loaded.ok) return withRateLimit(loaded.response);
 
   const canUpload =
     ctx.email === ownerEmail ||
     (ctx.email === CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL &&
-      ctx.teamEmails.includes(ownerEmail));
+      ctx.contractAccessEmails.includes(ownerEmail));
   if (!canUpload) {
     return withRateLimit(
       jsonError("PDF smlouvy může nahrát jen vlastník smlouvy.", 403)
@@ -212,7 +212,7 @@ export async function GET(req: NextRequest) {
     ownerEmail,
     entryId,
     viewerEmail: ctx.email,
-    teamEmails: ctx.teamEmails,
+    teamEmails: ctx.contractAccessEmails,
   });
   if (!loaded.ok) return withRateLimit(loaded.response);
 

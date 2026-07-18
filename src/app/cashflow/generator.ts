@@ -1,4 +1,5 @@
 import type { PaymentFrequency } from "../types/domain";
+import { domexSubsequentPayoutYears } from "../lib/productFormulas/domex";
 import { toDate } from "./helpers";
 import type { CashflowItem, EntryDoc } from "./types";
 
@@ -8,6 +9,14 @@ type ImmediateCashflowPart = {
   commissionCode: string;
   commissionCodeAliases: string[];
   commissionLabel: string;
+};
+
+type EntryCommissionPayout = NonNullable<EntryDoc["commissionPayouts"]>[number];
+
+type IndexedCommissionPayout = {
+  payout: EntryCommissionPayout;
+  key: string;
+  date: Date;
 };
 
 export function estimatePayoutDate(
@@ -113,19 +122,237 @@ function earlierDate(a: Date, b: Date): Date {
   return a.getTime() <= b.getTime() ? a : b;
 }
 
+function dateToIsoDay(value: Date | null | undefined): string | null {
+  if (!value || Number.isNaN(value.getTime())) return null;
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function isSplitImmediateProduct(product: EntryDoc["productKey"]): boolean {
-  return product === "neon" || product === "flexi";
+  return (
+    product === "neon" ||
+    product === "flexi" ||
+    product === "maximaMaxEfekt" ||
+    product === "pillowInjury"
+  );
 }
 
 const normalizeCommissionCode = (code: string | null | undefined): string =>
   String(code ?? "").trim().toUpperCase().replace(/\s+/g, "");
 
+const normalizeEmail = (value: string | null | undefined): string =>
+  String(value ?? "").trim().toLowerCase();
+
 const commissionCodeAliasesForCashflow = (code: string): string[] => {
-  if (code === "B36_HALF" || code === "B3601_HALF") return ["B36_HALF", "B3601_HALF"];
-  if (code === "B36" || code === "B3601") return ["B36", "B3601"];
-  if (code === "B48" || code === "B4801") return ["B48", "B4801"];
+  const installmentRangeMatch = code.match(/^([AB])(\d{3})-\1(\d{3})$/);
+  if (installmentRangeMatch) {
+    const prefix = installmentRangeMatch[1] ?? "";
+    const start = Number(installmentRangeMatch[2]);
+    const end = Number(installmentRangeMatch[3]);
+    if (
+      prefix &&
+      Number.isInteger(start) &&
+      Number.isInteger(end) &&
+      end >= start &&
+      end - start <= 24
+    ) {
+      return [
+        code,
+        ...Array.from({ length: end - start + 1 }, (_, index) =>
+          `${prefix}${String(start + index).padStart(3, "0")}`
+        ),
+      ];
+    }
+  }
+  const closingRoleMatch = code.match(/^(?:APZ|AP|AZ)(\d+)$/);
+  if (closingRoleMatch) return [code, `A${closingRoleMatch[1]}`];
+  if (code === "A101" || code === "A102") return ["A101", "A102"];
+  if (code === "B301") return ["B0301", "B301"];
+  if (code === "B101-B104") return ["B101-B104", "B101", "B102", "B103", "B104"];
+  if (/^B10[1-4]$/.test(code)) return [code, "B101-B104"];
+  if (code === "B201-B206") {
+    return ["B201-B206", "B201", "B202", "B203", "B204", "B205", "B206"];
+  }
+  if (/^B20[1-6]$/.test(code)) return [code, "B201-B206"];
+  if (code === "B36_HALF" || code === "B036_HALF" || code === "B3601_HALF") {
+    return ["B36_HALF", "B036_HALF", "B3601_HALF"];
+  }
+  if (code === "B36" || code === "B036" || code === "B3601") {
+    return ["B36", "B036", "B3601"];
+  }
+  if (code === "B48" || code === "B048" || code === "B4801") {
+    return ["B48", "B048", "B4801"];
+  }
   return [code];
 };
+
+const SETTLED_COMMISSION_PAYOUT_STATUSES = new Set(["paid", "difference"]);
+
+function uniqueCommissionCodes(codes: Array<string | null | undefined>): string[] {
+  const result = new Set<string>();
+
+  for (const code of codes) {
+    const normalizedCode = normalizeCommissionCode(code);
+    if (!normalizedCode || normalizedCode === "TOTAL") continue;
+    for (const alias of commissionCodeAliasesForCashflow(normalizedCode)) {
+      const normalizedAlias = normalizeCommissionCode(alias);
+      if (normalizedAlias && normalizedAlias !== "TOTAL") {
+        result.add(normalizedAlias);
+      }
+    }
+  }
+
+  return [...result];
+}
+
+function amountsMatchExpectedPayout(
+  expectedAmount: number,
+  candidateAmount: number | null | undefined
+): boolean {
+  const expected = Math.abs(Number(expectedAmount));
+  const candidate = Math.abs(Number(candidateAmount));
+  if (!Number.isFinite(expected) || !Number.isFinite(candidate)) return false;
+
+  const tolerance = Math.max(10, expected * 0.03);
+  return Math.abs(candidate - expected) <= tolerance;
+}
+
+function payoutMonthDateFromKey(value: string | null | undefined): Date | null {
+  const match = String(value ?? "").match(/^(\d{4})-(\d{1,2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month)) return null;
+  if (month < 1 || month > 12) return null;
+  return new Date(year, month - 1, 25);
+}
+
+function payoutSortValue(payout: IndexedCommissionPayout): number {
+  const chronology = Number(payout.payout.statementChronologyMs);
+  if (Number.isFinite(chronology)) return chronology;
+  return payout.date.getTime();
+}
+
+function isSettledCommissionPayout(payout: EntryCommissionPayout): boolean {
+  const status = String(payout.status ?? "").trim().toLowerCase();
+  if (!SETTLED_COMMISSION_PAYOUT_STATUSES.has(status)) return false;
+  const amount = Number(payout.amount);
+  return Number.isFinite(amount) && amount > 0;
+}
+
+function indexSettledCommissionPayouts(
+  payouts: EntryDoc["commissionPayouts"] | undefined | null
+): IndexedCommissionPayout[] {
+  return (payouts ?? [])
+    .map((payout, index): IndexedCommissionPayout | null => {
+      if (!isSettledCommissionPayout(payout)) return null;
+      const date = payoutMonthDateFromKey(payout.payoutMonthKey);
+      if (!date) return null;
+      return {
+        payout,
+        key:
+          payout.key ??
+          [
+            payout.code ?? "commission",
+            payout.payoutMonthKey ?? "month",
+            payout.amount ?? index,
+            index,
+          ].join(":"),
+        date,
+      };
+    })
+    .filter((payout): payout is IndexedCommissionPayout => Boolean(payout))
+    .sort((a, b) => payoutSortValue(a) - payoutSortValue(b));
+}
+
+function cashflowCommissionPayoutsForViewer(
+  entry: EntryDoc,
+  viewerEmail?: string | null
+): EntryDoc["commissionPayouts"] {
+  const payouts = entry.commissionPayouts ?? [];
+  const normalizedViewerEmail = normalizeEmail(viewerEmail);
+
+  return payouts.filter((payout) => {
+    const writtenBy = normalizeEmail(payout.writtenBy);
+    if (writtenBy) return writtenBy === normalizedViewerEmail;
+
+    return entry.source !== "manager";
+  });
+}
+
+function findSettledCommissionPayout(
+  payouts: IndexedCommissionPayout[],
+  consumedPayoutKeys: Set<string>,
+  amount: number,
+  metadata: Partial<
+    Pick<CashflowItem, "commissionCode" | "commissionCodeAliases" | "commissionLabel">
+  >,
+  expectedDate: Date
+): IndexedCommissionPayout | null {
+  const itemCodes = uniqueCommissionCodes([
+    metadata.commissionCode,
+    ...(metadata.commissionCodeAliases ?? []),
+  ]);
+  if (itemCodes.length === 0) return null;
+
+  const itemCodeSet = new Set(itemCodes);
+  const matchingPayouts = payouts.filter((indexedPayout) => {
+    if (consumedPayoutKeys.has(indexedPayout.key)) return false;
+
+    const payoutCodes = uniqueCommissionCodes([indexedPayout.payout.code]);
+    return payoutCodes.some((code) => itemCodeSet.has(code));
+  });
+  if (matchingPayouts.length === 0) return null;
+
+  const amountMatches = matchingPayouts.filter(
+    ({ payout }) =>
+      amountsMatchExpectedPayout(amount, payout.expectedAmount) ||
+      amountsMatchExpectedPayout(amount, payout.amount)
+  );
+  if (amountMatches.length === 0) return null;
+
+  const expectedMonth = monthSerial(expectedDate);
+  return amountMatches
+    .sort((a, b) => {
+      const aDistance = Math.abs(monthSerial(a.date) - expectedMonth);
+      const bDistance = Math.abs(monthSerial(b.date) - expectedMonth);
+      if (aDistance !== bDistance) return aDistance - bDistance;
+      return payoutSortValue(a) - payoutSortValue(b);
+    })[0] ?? null;
+}
+
+function commissionLabelFromCode(code: string | null | undefined): string | null {
+  const normalizedCode = normalizeCommissionCode(code);
+  if (!normalizedCode) return null;
+  if (normalizedCode === "A101" || normalizedCode === "A102") return `Provize ${normalizedCode}`;
+  if (normalizedCode === "B0301") return "Provize B0301";
+  if (normalizedCode === "B101-B104" || /^B10[1-4]$/.test(normalizedCode)) {
+    return "Následná provize";
+  }
+  if (normalizedCode === "B201-B206" || /^B20[1-6]$/.test(normalizedCode)) {
+    return "Pečovatelská provize";
+  }
+  if (
+    normalizedCode === "B36_HALF" ||
+    normalizedCode === "B036_HALF" ||
+    normalizedCode === "B3601_HALF"
+  ) {
+    return "Provize 50% z B3601";
+  }
+  if (
+    normalizedCode === "B36" ||
+    normalizedCode === "B036" ||
+    normalizedCode === "B3601"
+  ) return "Provize po 3 letech";
+  if (
+    normalizedCode === "B48" ||
+    normalizedCode === "B048" ||
+    normalizedCode === "B4801"
+  ) return "Provize po 4 letech";
+  return `Provize ${normalizedCode}`;
+}
 
 const commissionMetadataFromCode = (
   code: string | null | undefined,
@@ -174,17 +401,20 @@ function splitImmediatePartFromTitle(
 
   if (
     normalizedCode === "B3601_HALF" ||
+    normalizedCode === "B036_HALF" ||
     normalizedCode === "B36_HALF" ||
     title.includes("50% z b3601") ||
+    title.includes("50% z b036") ||
     title.includes("50% z b36")
   ) {
-    const label = product === "flexi" ? "Provize 50% z B36" : "Provize 50% z B3601";
-    const halfCode = product === "flexi" ? "B36_HALF" : "B3601_HALF";
+    const useB36Code = product === "flexi" || product === "pillowInjury";
+    const label = useB36Code ? "Provize 50% z B36" : "Provize 50% z B3601";
+    const halfCode = useB36Code ? "B36_HALF" : "B3601_HALF";
     return {
       title,
       amount,
       commissionCode: halfCode,
-      commissionCodeAliases: ["B36_HALF", "B3601_HALF"],
+      commissionCodeAliases: ["B36_HALF", "B036_HALF", "B3601_HALF"],
       commissionLabel: label,
     };
   }
@@ -194,7 +424,8 @@ function splitImmediatePartFromTitle(
 
 export function generateCashflow(
   entries: EntryDoc[],
-  horizonYears = 10
+  horizonYears = 10,
+  viewerEmail?: string | null
 ): CashflowItem[] {
   const out: CashflowItem[] = [];
   let globalItemSequence = 0;
@@ -215,6 +446,9 @@ export function generateCashflow(
     const isStorno = status === "storno";
     const parsedStornoDate = toDate(entry.stornoDate);
     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
+    const scopedPayouts = cashflowCommissionPayoutsForViewer(entry, viewerEmail);
+    const settledPayouts = indexSettledCommissionPayouts(scopedPayouts);
+    const consumedPayoutKeys = new Set<string>();
 
     const start =
       toDate(entry.policyStartDate) ??
@@ -226,6 +460,7 @@ export function generateCashflow(
       toDate(entry.createdAt) ??
       toDate(entry.policyStartDate) ??
       start;
+    const contractSignedDateIso = dateToIsoDay(toDate(entry.contractSignedDate));
     const policyEnd = toDate(entry.policyEndDate);
     const policyEndPayoutDate = policyEnd ? estimatePayoutDate(policyEnd) : null;
     const entryHorizonEnd = earlierDate(
@@ -255,6 +490,21 @@ export function generateCashflow(
             amount: immediateItems.reduce((sum, item) => sum + item.amount, 0),
           }
         : null;
+    const immediateCodes = uniqueCommissionCodes(
+      immediateItems.map((item) => item.code)
+    );
+    const immediateMetadata: Partial<
+      Pick<CashflowItem, "commissionCode" | "commissionCodeAliases" | "commissionLabel">
+    > =
+      immediateCodes.length > 0
+        ? {
+            commissionCode: immediateCodes[0],
+            commissionCodeAliases: immediateCodes,
+            commissionLabel: "Okamžitá provize",
+          }
+        : {
+            commissionLabel: "Okamžitá provize",
+          };
     const splitImmediateParts = items
       .map((item) => splitImmediatePartFromTitle(item.title, item.amount, product, item.code))
       .filter((item): item is ImmediateCashflowPart => Boolean(item));
@@ -282,6 +532,18 @@ export function generateCashflow(
         !item.title.includes("(od 5. roku)") &&
         !item.title.includes("(z platby)")
     );
+    const nasl25Metadata = nasl25
+      ? commissionMetadataFromCode(nasl25.code, "Následná provize")
+      : {};
+    const nasl510Metadata = nasl510
+      ? commissionMetadataFromCode(nasl510.code, "Následná provize")
+      : {};
+    const naslOd5Metadata = naslOd5
+      ? commissionMetadataFromCode(naslOd5.code, "Následná provize")
+      : {};
+    const naslOd6Metadata = naslOd6
+      ? commissionMetadataFromCode(naslOd6.code, "Následná provize")
+      : {};
 
     const pushItem = (
       amount: number,
@@ -296,10 +558,26 @@ export function generateCashflow(
       if (date > horizonLimit) return;
       if (stornoCutoffDate && isFromStornoMonth(date, stornoCutoffDate)) return;
 
-      out.push({
-        id: `${entry.id}-${date.getTime()}-${metadata.commissionCode ?? ""}-${note ?? ""}-${globalItemSequence++}`,
-        date,
+      const settledPayout = findSettledCommissionPayout(
+        settledPayouts,
+        consumedPayoutKeys,
         amount,
+        metadata,
+        date
+      );
+      if (settledPayout) {
+        consumedPayoutKeys.add(settledPayout.key);
+      }
+      const outputDate = settledPayout?.date ?? date;
+      const outputAmount =
+        settledPayout && Number.isFinite(Number(settledPayout.payout.amount))
+          ? Number(settledPayout.payout.amount)
+          : amount;
+
+      out.push({
+        id: `${entry.id}-${outputDate.getTime()}-${metadata.commissionCode ?? ""}-${settledPayout?.key ?? note ?? ""}-${globalItemSequence++}`,
+        date: outputDate,
+        amount: outputAmount,
         productKey: product ?? "unknown",
         frequency: entry.frequencyRaw ?? null,
         note:
@@ -316,11 +594,68 @@ export function generateCashflow(
         inputAmount: Number.isFinite(Number(entry.inputAmount)) ? Number(entry.inputAmount) : null,
         policyStartDate: start,
         contractStatus: status,
+        stornoDate: stornoCutoffDate,
         ownerEmail: normalizedOwnerEmail,
         entryId: baseEntryId ?? null,
         isManagerOverride: entry.source === "manager",
+        payoutStatus: settledPayout ? "paid" : undefined,
+        predictedAmount: settledPayout ? amount : null,
+        originalDate:
+          settledPayout && monthSerial(outputDate) !== monthSerial(date)
+            ? date
+            : null,
+        commissionPayoutKey: settledPayout?.key ?? null,
+        commissionStatementNumber: settledPayout?.payout.statementNumber ?? null,
+        commissionStatementPeriod: settledPayout?.payout.statementPeriod ?? null,
         ...metadata,
       });
+    };
+
+    const pushUnmatchedStatementPayouts = () => {
+      for (const indexedPayout of settledPayouts) {
+        if (consumedPayoutKeys.has(indexedPayout.key)) continue;
+        if (indexedPayout.date > horizonEnd) continue;
+
+        const amount = Number(indexedPayout.payout.amount);
+        if (!Number.isFinite(amount) || amount <= 0) continue;
+
+        consumedPayoutKeys.add(indexedPayout.key);
+        const code = normalizeCommissionCode(indexedPayout.payout.code);
+        const commissionLabel = commissionLabelFromCode(code);
+        const aliases = uniqueCommissionCodes([code]);
+
+        out.push({
+          id: `${entry.id}-${indexedPayout.date.getTime()}-${code || "statement"}-${indexedPayout.key}-${globalItemSequence++}`,
+          date: indexedPayout.date,
+          amount,
+          productKey: product ?? "unknown",
+          frequency: entry.frequencyRaw ?? null,
+          note:
+            entry.source === "manager"
+              ? "Manažerská · vyplaceno z výpisu"
+              : "Vlastní · vyplaceno z výpisu",
+          source: entry.source,
+          contractNumber: entry.contractNumber ?? null,
+          clientName: entry.clientName ?? null,
+          inputAmount: Number.isFinite(Number(entry.inputAmount)) ? Number(entry.inputAmount) : null,
+          policyStartDate: start,
+          contractStatus: status,
+          stornoDate: stornoCutoffDate,
+          ownerEmail: normalizedOwnerEmail,
+          entryId: baseEntryId ?? null,
+          isManagerOverride: entry.source === "manager",
+          commissionCode: code || null,
+          commissionCodeAliases: aliases,
+          commissionLabel,
+          payoutStatus: "paid",
+          predictedAmount: 0,
+          isStatementOnly: true,
+          originalDate: null,
+          commissionPayoutKey: indexedPayout.key,
+          commissionStatementNumber: indexedPayout.payout.statementNumber ?? null,
+          commissionStatementPeriod: indexedPayout.payout.statementPeriod ?? null,
+        });
+      }
     };
 
     const pushImmediateCashflowItems = (
@@ -339,9 +674,7 @@ export function generateCashflow(
       }
 
       if (immediate) {
-        pushItem(immediate.amount, payoutDate, undefined, horizonLimit, {
-          commissionLabel: "Okamžitá provize",
-        });
+        pushItem(immediate.amount, payoutDate, undefined, horizonLimit, immediateMetadata);
       }
     };
 
@@ -381,34 +714,69 @@ export function generateCashflow(
         if (nasl25) {
           // ČPP NEON: položka "2.–5. rok" se v praxi vyplácí už od 1. výročí.
           for (let year = 1; year <= 4 && year <= maxYears; year++) {
-            pushItem(nasl25.amount, annPlusYears(year), "ročně");
+            pushItem(
+              nasl25.amount,
+              annPlusYears(year),
+              "ročně",
+              entryHorizonEnd,
+              Object.keys(nasl25Metadata).length > 0
+                ? nasl25Metadata
+                : commissionMetadataFromCode("B101-B104", "Následná provize")
+            );
           }
         }
         if (nasl510) {
           // Stejné posunutí o 1 rok i pro blok "5.–10. rok".
           for (let year = 4; year <= 9 && year <= maxYears; year++) {
-            pushItem(nasl510.amount, annPlusYears(year), "ročně");
+            pushItem(
+              nasl510.amount,
+              annPlusYears(year),
+              "ročně",
+              entryHorizonEnd,
+              Object.keys(nasl510Metadata).length > 0
+                ? nasl510Metadata
+                : commissionMetadataFromCode("B201-B206", "Pečovatelská provize")
+            );
           }
         }
         break;
       }
 
       case "maximaMaxEfekt": {
-        if (immediate) {
+        pushImmediateCashflowItems();
+        if (po3) {
           pushItem(
-            immediate.amount,
-            estimatePayoutDate(start, agreement)
+            po3.amount,
+            annPlusYears(3),
+            "Provize po 3 letech",
+            entryHorizonEnd,
+            commissionMetadataFromCode(po3.code ?? "B3601", "Provize po 3 letech")
           );
         }
-        if (po3) pushItem(po3.amount, annPlusYears(3));
-        if (po4) pushItem(po4.amount, annPlusYears(4));
+        if (po4) {
+          pushItem(
+            po4.amount,
+            annPlusYears(4),
+            "Provize po 4 letech",
+            entryHorizonEnd,
+            commissionMetadataFromCode(po4.code ?? "B4801", "Provize po 4 letech")
+          );
+        }
 
-        const maxYears = Math.max(1, entry.durationYears ?? 15);
+        const maxYears = Math.max(1, entry.durationYears ?? 30);
         if (naslOd5) {
           for (let year = 5; year <= maxYears; year++) {
             const date = annPlusYears(year);
             if (date > entryHorizonEnd) break;
-            pushItem(naslOd5.amount, date, "ročně");
+            pushItem(
+              naslOd5.amount,
+              date,
+              "ročně",
+              entryHorizonEnd,
+              Object.keys(naslOd5Metadata).length > 0
+                ? naslOd5Metadata
+                : commissionMetadataFromCode("B101-B104", "Následná provize")
+            );
           }
         }
         break;
@@ -450,7 +818,15 @@ export function generateCashflow(
           while (true) {
             const date = annPlusYears(year);
             if (date > flexiHorizonEnd) break;
-            pushItem(naslOd6.amount, date, "ročně", flexiHorizonEnd);
+            pushItem(
+              naslOd6.amount,
+              date,
+              "ročně",
+              flexiHorizonEnd,
+              Object.keys(naslOd6Metadata).length > 0
+                ? naslOd6Metadata
+                : commissionMetadataFromCode("B201-B206", "Následná provize")
+            );
             year += 1;
           }
         }
@@ -462,27 +838,50 @@ export function generateCashflow(
       case "koopmajetekobcan":
       case "koopfit":
       case "koopodzam":
-      case "cppPPRbez": {
-        const immediateDomex =
-          items.find((item) =>
-            item.title.includes("okamžitá provize (z platby)")
-          ) ?? immediate;
+      case "kooppmop":
+      case "cppPPRbez":
+      case "cppsimplex":
+      case "cppPPRs":
+      case "zamex": {
+        const immediateDomexItem = items.find((item) =>
+          item.title.includes("okamžitá") && item.title.includes("(z platby)")
+        );
+        const immediateDomexAmount = immediateDomexItem?.amount ?? immediate?.amount;
         const subsequentDomex = items.find((item) =>
           item.title.includes("následná provize (z platby)")
         );
+        const immediateDomexMetadata =
+          normalizeCommissionCode(immediateDomexItem?.code)
+            ? commissionMetadataFromCode(immediateDomexItem?.code, "Okamžitá provize")
+            : immediateMetadata;
+        const subsequentDomexMetadata =
+          normalizeCommissionCode(subsequentDomex?.code)
+            ? commissionMetadataFromCode(subsequentDomex?.code, "Následná provize")
+            : {};
 
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
         const firstPayout = estimatePayoutDate(start, agreement);
         // Přechod na následnou provizi musí být navázaný na výplatní kalendář
         // (stejné cutoff pravidlo jako u první výplaty), ne na holé výročí.
         const subsequentStart = annPlusYears(1);
+        const domexHistoricalSubsequentYears =
+          product === "domex" ? domexSubsequentPayoutYears(contractSignedDateIso) : null;
+        const subsequentEnd =
+          domexHistoricalSubsequentYears != null
+            ? annPlusYears(1 + domexHistoricalSubsequentYears)
+            : null;
 
         let payout = firstPayout;
         while (payout <= entryHorizonEnd) {
+          const isImmediatePayout = payout < subsequentStart;
+          const isWithinSubsequentWindow =
+            subsequentEnd == null || payout < subsequentEnd;
           const amount =
-            payout < subsequentStart
-              ? immediateDomex?.amount
-              : subsequentDomex?.amount;
+            isImmediatePayout
+              ? immediateDomexAmount
+              : isWithinSubsequentWindow
+              ? subsequentDomex?.amount ?? (product === "zamex" ? immediateDomexAmount : undefined)
+              : undefined;
           if (amount && Number.isFinite(amount) && amount !== 0) {
             pushItem(
               amount,
@@ -498,10 +897,22 @@ export function generateCashflow(
                   ? "Kooperativa Sportovní výbava FIT"
                   : product === "koopodzam"
                   ? "Kooperativa odpovědnost zaměstnance"
+                  : product === "kooppmop"
+                  ? "Kooperativa PMOP"
+                  : product === "zamex"
+                  ? "ZAMEX"
+                  : product === "cppsimplex"
+                  ? "ČPP Simplex"
+                  : product === "cppPPRs"
+                  ? "ČPP PPR ÚPIS"
+                  : product === "cppPPRbez"
+                  ? "ČPP PPR bez ÚPIS"
                   : "ČPP PPR"
               }, ${
                 stepMonths === 1 ? "měsíčně" : `každých ${stepMonths} měsíců`
-              }`
+              }`,
+              entryHorizonEnd,
+              isImmediatePayout ? immediateDomexMetadata : subsequentDomexMetadata
             );
           }
           payout = new Date(
@@ -514,14 +925,25 @@ export function generateCashflow(
       }
 
       case "pillowInjury": {
-        if (immediate) {
+        pushImmediateCashflowItems();
+        if (po3) {
           pushItem(
-            immediate.amount,
-            estimatePayoutDate(start, agreement)
+            po3.amount,
+            annPlusYears(3),
+            "Provize po 3 letech",
+            entryHorizonEnd,
+            commissionMetadataFromCode(po3.code ?? "B36", "Provize po 3 letech")
           );
         }
-        if (po3) pushItem(po3.amount, annPlusYears(3));
-        if (po4) pushItem(po4.amount, annPlusYears(4));
+        if (po4) {
+          pushItem(
+            po4.amount,
+            annPlusYears(4),
+            "Provize po 4 letech",
+            entryHorizonEnd,
+            commissionMetadataFromCode(po4.code ?? "B48", "Provize po 4 letech")
+          );
+        }
         break;
       }
 
@@ -530,6 +952,9 @@ export function generateCashflow(
 
         const perPaymentImmediate = immediate.amount;
         const perPaymentSub = naslMaxdomov?.amount;
+        const subsequentMaxdomovMetadata = naslMaxdomov
+          ? commissionMetadataFromCode(naslMaxdomov.code, "Následná provize")
+          : {};
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
         const endFirstYear = annPlusYears(1);
 
@@ -539,12 +964,20 @@ export function generateCashflow(
             pushItem(
               perPaymentImmediate,
               payout,
-              "získatelská z platby"
+              "získatelská z platby",
+              entryHorizonEnd,
+              immediateMetadata
             );
           } else if (perPaymentSub != null) {
-            pushItem(perPaymentSub, payout, "následná z platby");
+            pushItem(
+              perPaymentSub,
+              payout,
+              "následná z platby",
+              entryHorizonEnd,
+              subsequentMaxdomovMetadata
+            );
           } else {
-            pushItem(perPaymentImmediate, payout);
+            pushItem(perPaymentImmediate, payout, undefined, entryHorizonEnd, immediateMetadata);
           }
 
           payout = new Date(
@@ -562,7 +995,9 @@ export function generateCashflow(
           pushItem(
             immediate.amount,
             estimatePayoutDate(start, agreement),
-            "roční provize"
+            "roční provize",
+            entryHorizonEnd,
+            immediateMetadata
           );
         }
 
@@ -571,7 +1006,13 @@ export function generateCashflow(
           while (true) {
             const date = annPlusYears(year);
             if (date > entryHorizonEnd) break;
-            pushItem(naslGeneric.amount, date, "roční následná provize");
+            pushItem(
+              naslGeneric.amount,
+              date,
+              "roční následná provize",
+              entryHorizonEnd,
+              commissionMetadataFromCode(naslGeneric.code, "Následná provize")
+            );
             year += 1;
           }
         }
@@ -587,6 +1028,9 @@ export function generateCashflow(
         const anniversaryNote = naslGeneric
           ? "roční následná provize"
           : "ročně k výročí";
+        const anniversaryMetadata = naslGeneric
+          ? commissionMetadataFromCode(naslGeneric.code, "Následná provize")
+          : {};
 
         const first = isAutoCashflowProduct(product)
           ? estimateAutoFirstPayoutDate(start, agreement)
@@ -595,7 +1039,9 @@ export function generateCashflow(
           pushItem(
             immediate.amount,
             first,
-            "okamžitá provize"
+            "okamžitá provize",
+            entryHorizonEnd,
+            immediateMetadata
           );
         }
 
@@ -603,46 +1049,47 @@ export function generateCashflow(
         while (true) {
           const date = annPlusYears(year);
           if (date > entryHorizonEnd) break;
-          pushItem(anniversaryAmount, date, anniversaryNote);
-          year += 1;
-        }
-        break;
-      }
-
-      case "zamex": {
-        if (!immediate) break;
-
-        const amount = immediate.amount;
-        const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
-
-        let payout = estimatePayoutDate(start, agreement);
-        while (payout <= entryHorizonEnd) {
-          pushItem(amount, payout);
-          payout = new Date(
-            payout.getFullYear(),
-            payout.getMonth() + stepMonths,
-            payout.getDate()
+          pushItem(
+            anniversaryAmount,
+            date,
+            anniversaryNote,
+            entryHorizonEnd,
+            anniversaryMetadata
           );
+          year += 1;
         }
         break;
       }
 
       case "cppAuto":
       case "slaviaauto":
-      case "cppsimplex":
-      case "cppPPRs":
       case "csobAuto":
       case "kooperativaAuto": {
         if (!immediate) break;
 
-        const amount = immediate.amount;
+        const subsequentMetadata = naslGeneric
+          ? commissionMetadataFromCode(naslGeneric.code, "Následná provize")
+          : {};
+        const firstAnniversary = new Date(
+          start.getFullYear() + 1,
+          start.getMonth(),
+          start.getDate()
+        );
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
         let payout = isAutoCashflowProduct(product)
           ? estimateAutoFirstPayoutDate(start, agreement)
           : estimatePayoutDate(start, agreement);
 
         while (payout <= entryHorizonEnd) {
-          pushItem(amount, payout);
+          const isSubsequent = monthSerial(payout) >= monthSerial(firstAnniversary);
+          const amount = isSubsequent ? naslGeneric?.amount ?? immediate.amount : immediate.amount;
+          pushItem(
+            amount,
+            payout,
+            isSubsequent ? "následná provize" : "okamžitá provize",
+            entryHorizonEnd,
+            isSubsequent ? subsequentMetadata : immediateMetadata
+          );
           payout = new Date(
             payout.getFullYear(),
             payout.getMonth() + stepMonths,
@@ -704,12 +1151,19 @@ export function generateCashflow(
         if (immediate) {
           pushItem(
             immediate.amount,
-            estimatePayoutDate(start, agreement)
+            estimatePayoutDate(start, agreement),
+            undefined,
+            entryHorizonEnd,
+            product === "maxcizinkomplex" && immediateCodes.length === 0
+              ? commissionMetadataFromCode("A101", "Okamžitá provize")
+              : immediateMetadata
           );
         }
         break;
       }
     }
+
+    pushUnmatchedStatementPayouts();
   }
 
   return out.sort((a, b) => a.date.getTime() - b.date.getTime());

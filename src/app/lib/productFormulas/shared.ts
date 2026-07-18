@@ -26,3 +26,15 @@ export function periodsPerYear(f: PaymentFrequency): number {
       return 1;
   }
 }
+
+export function commissionInstallmentCodeRange(
+  prefix: string,
+  frequency: PaymentFrequency
+): string {
+  const count = periodsPerYear(frequency);
+  const normalizedPrefix = prefix.trim().toUpperCase();
+  if (!normalizedPrefix) return "";
+  const start = `${normalizedPrefix}101`;
+  if (count <= 1) return start;
+  return `${start}-${normalizedPrefix}${100 + count}`;
+}

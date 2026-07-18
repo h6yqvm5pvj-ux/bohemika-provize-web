@@ -4,9 +4,11 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { pct, periodsPerYear } from "./shared";
+import { commissionInstallmentCodeRange, pct, periodsPerYear } from "./shared";
 
 // ---------- ČPP Pojištění majetku a odpovědnosti podnikatelů (ÚPIS) ----------
+
+export const CPP_PPRS_COEFFICIENT_VALID_FROM = "2023-06-01";
 
 export function cppPPRsCoefficient(position: Position): number {
   switch (position) {
@@ -49,23 +51,50 @@ export function cppPPRsCoefficient(position: Position): number {
   }
 }
 
+export function cppPPRsImmediateCoefficient(position: Position): number {
+  return cppPPRsCoefficient(position);
+}
+
+export function cppPPRsSubsequentCoefficient(position: Position): number {
+  return cppPPRsCoefficient(position);
+}
+
 export function calculateCppPPRs(
   amount: number,
   frequency: PaymentFrequency,
   position: Position
 ): CommissionResultDTO {
   const coef = cppPPRsCoefficient(position);
-  const perPayment = amount * coef;
-  const annualTotal = perPayment * periodsPerYear(frequency);
+  const perPaymentImmediate = amount * coef;
+  const perPaymentSubsequent = amount * coef;
+  const paymentsPerYear = periodsPerYear(frequency);
+  const annualImmediate = perPaymentImmediate * paymentsPerYear;
+  const annualSubsequent = perPaymentSubsequent * paymentsPerYear;
 
-  const items: CommissionResultItemDTO[] = [{ title: "💼 Okamžitá provize", amount: perPayment }];
+  const items: CommissionResultItemDTO[] = [
+    {
+      title: "💼 Okamžitá provize (z platby)",
+      amount: perPaymentImmediate,
+      code: commissionInstallmentCodeRange("A", frequency),
+    },
+    {
+      title: "🔁 Následná provize (z platby)",
+      amount: perPaymentSubsequent,
+      code: commissionInstallmentCodeRange("B", frequency),
+      excludeFromTotal: true,
+    },
+    {
+      title: "📅 Okamžitá provize za rok",
+      amount: annualImmediate,
+      note: `×${paymentsPerYear} plateb/rok`,
+    },
+    {
+      title: "📅 Následná provize za rok",
+      amount: annualSubsequent,
+      note: `×${paymentsPerYear} plateb/rok`,
+      excludeFromTotal: true,
+    },
+  ];
 
-  // pro roční frekvenci je roční provize shodná s okamžitou, proto ji neukládáme duplicitně
-  if (frequency !== "annual") {
-    items.push({ title: "📅 Provize za rok", amount: annualTotal });
-  }
-
-  return { items, total: annualTotal };
+  return { items, total: annualImmediate };
 }
-
-

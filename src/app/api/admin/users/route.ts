@@ -12,6 +12,7 @@ import {
   ONLINE_CARD_SLUG_RE,
 } from "@/lib/server/onlineCard";
 import { isSpecialistProfile } from "@/lib/specialistAccess";
+import type { Position } from "@/app/types/domain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,25 @@ const PHONE_NUMBER_MAX_LEN = 40;
 const PROFILE_ICO_MAX_LEN = 8;
 type AccountType = "advisor" | "tipster";
 const ACCOUNT_TYPE_SET = new Set<AccountType>(["advisor", "tipster"]);
+const POSITION_SET = new Set<Position>([
+  "poradce1",
+  "poradce2",
+  "poradce3",
+  "poradce4",
+  "poradce5",
+  "poradce6",
+  "poradce7",
+  "poradce8",
+  "poradce9",
+  "poradce10",
+  "manazer4",
+  "manazer5",
+  "manazer6",
+  "manazer7",
+  "manazer8",
+  "manazer9",
+  "manazer10",
+]);
 
 type ApiError = { ok: false; error: string };
 
@@ -125,6 +145,45 @@ function sanitizePositionTimeline(value: unknown): AdminUsersRow["positionTimeli
       };
     })
     .filter((row): row is AdminUsersRow["positionTimeline"][number] => Boolean(row));
+}
+
+function isIsoDay(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function currentIsoDay(): string {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Prague",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(new Date());
+}
+
+function resolveCurrentPositionFromTimeline(
+  timeline: AdminUsersRow["positionTimeline"]
+): string | null {
+  const today = currentIsoDay();
+  const candidates = timeline.filter((row) => {
+    if (!POSITION_SET.has(row.position as Position)) return false;
+    if (!isIsoDay(row.validFrom)) return false;
+    if (row.validTo && !isIsoDay(row.validTo)) return false;
+    if (row.validFrom > today) return false;
+    if (row.validTo && row.validTo < today) return false;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    if (a.validFrom !== b.validFrom) return b.validFrom.localeCompare(a.validFrom);
+    const aTo = a.validTo ?? "9999-12-31";
+    const bTo = b.validTo ?? "9999-12-31";
+    return bTo.localeCompare(aTo);
+  });
+  return candidates[0]?.position ?? null;
 }
 
 function summarizeOnlineCard(value: unknown): AdminUsersRow["onlineCard"] {
@@ -237,6 +296,11 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
     normalizeText(mergedData.userRole) ||
     null;
   const factors = (authUser.multiFactor?.enrolledFactors ?? []).map(serializeFactor);
+  const positionTimeline = sanitizePositionTimeline(mergedData.positionTimeline);
+  const currentPosition =
+    resolveCurrentPositionFromTimeline(positionTimeline) ||
+    normalizeText(mergedData.position) ||
+    null;
 
   return {
     uid: authUser.uid,
@@ -245,8 +309,8 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
     agencyNumber: normalizeText(mergedData.agencyNumber) || null,
     ico: normalizeText(mergedData.ico).replace(/\D+/g, "") || null,
     phoneNumber: normalizeText(mergedData.phoneNumber) || null,
-    position: normalizeText(mergedData.position) || null,
-    positionTimeline: sanitizePositionTimeline(mergedData.positionTimeline),
+    position: currentPosition,
+    positionTimeline,
     accountType,
     managerEmail: normalizeEmail(mergedData.managerEmail) || null,
     tipRecipientEmail: normalizeEmail(mergedData.tipRecipientEmail) || null,
