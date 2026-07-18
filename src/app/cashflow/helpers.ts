@@ -217,6 +217,27 @@ export function normalizeContractNumberSearch(value?: string | null): string {
 const monthKeyFromDate = (date: Date): string =>
   `${date.getFullYear()}-${date.getMonth() + 1}`;
 
+export const statementMonthKey = (
+  statement: CashflowCommissionStatementSummary
+): string | null => {
+  if (statement.payoutMonthKey) return statement.payoutMonthKey;
+
+  const sourceMs =
+    statement.statementDateMs ??
+    (statement.periodEndMs != null
+      ? Date.UTC(
+          new Date(statement.periodEndMs).getUTCFullYear(),
+          new Date(statement.periodEndMs).getUTCMonth() + 1,
+          1
+        )
+      : statement.periodStartMs);
+  if (sourceMs == null) return null;
+
+  const date = new Date(sourceMs);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`;
+};
+
 const addMonths = (date: Date, months: number): Date =>
   new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
 

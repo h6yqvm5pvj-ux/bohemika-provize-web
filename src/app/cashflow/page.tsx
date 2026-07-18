@@ -21,6 +21,7 @@ import {
   groupItemsByMonth,
   groupMonthsByYear,
   normalizeContractNumberSearch,
+  statementMonthKey,
 } from "./helpers";
 import type {
   CashflowCommissionStatementDetail,
@@ -74,25 +75,6 @@ function introDelay(delayMs: number): CSSProperties {
     ["--cf-delay" as string]: `${delayMs}ms`,
   };
 }
-
-const statementMonthKey = (statement: CashflowCommissionStatementSummary): string | null => {
-  if (statement.payoutMonthKey) return statement.payoutMonthKey;
-
-  const sourceMs =
-    statement.statementDateMs ??
-    (statement.periodEndMs != null
-      ? Date.UTC(
-          new Date(statement.periodEndMs).getUTCFullYear(),
-          new Date(statement.periodEndMs).getUTCMonth() + 1,
-          1
-        )
-      : statement.periodStartMs);
-  if (sourceMs == null) return null;
-
-  const date = new Date(sourceMs);
-  if (Number.isNaN(date.getTime())) return null;
-  return `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`;
-};
 
 const statementDisplayTitle = (statement: CashflowCommissionStatementSummary): string => {
   if (statement.statementNumber) return `Provizní výpis ${statement.statementNumber}`;
