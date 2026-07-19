@@ -377,6 +377,10 @@ async function parseContractPdfByProduct(
       const { parseCppSimplexPdf } = await import("../lib/parseCppSimplexPdf");
       return parseCppSimplexPdf(file);
     }
+    case "zamex": {
+      const { parseCppZamexPdf } = await import("../lib/parseCppZamexPdf");
+      return parseCppZamexPdf(file);
+    }
     default:
       return null;
   }
@@ -871,6 +875,7 @@ const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
   "flexi",
   "domex",
   "cpphafan",
+  "zamex",
   "koopodzam",
   "maxdomov",
   "maxcizinkomplex",

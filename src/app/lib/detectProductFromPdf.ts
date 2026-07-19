@@ -107,6 +107,16 @@ const DETECTION_RULES: DetectionRule[] = [
       "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“ a „SIMPLEX“.",
   },
   {
+    product: "zamex",
+    mustContain: [
+      { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },
+      { page: "any", text: normalizeText("ZAMEX") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“ a „ZAMEX“.",
+  },
+  {
     product: "cpphafan",
     mustContain: [
       { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },
