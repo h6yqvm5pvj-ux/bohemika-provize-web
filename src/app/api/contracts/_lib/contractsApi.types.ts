@@ -9,6 +9,10 @@ import type {
   Product,
 } from "@/app/types/domain";
 import type { ProductInstitutionId } from "@/app/lib/productCatalog";
+import type {
+  CommissionAuditCodeFilter,
+  CommissionAuditMode,
+} from "@/app/lib/commissionAudit";
 
 export type FirestoreTimestamp = {
   seconds: number;
@@ -485,6 +489,8 @@ export type ContractListFilters = {
   mode: ContractListFilterMode;
   unpaidOnly: boolean;
   refreshOnly: boolean;
+  commissionAuditMode: CommissionAuditMode;
+  commissionAuditCodeFilter: CommissionAuditCodeFilter;
   categories: Set<ContractListProductCategory>;
   institutions: Set<ProductInstitutionId>;
   signedFrom: Date | null;

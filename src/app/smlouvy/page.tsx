@@ -2,13 +2,14 @@
 "use client";
 
 import { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   ArrowDownUp,
   CalendarDays,
+  Clock,
+  ExternalLink,
   LayoutGrid,
   List,
   RefreshCw,
@@ -16,6 +17,7 @@ import {
   SlidersHorizontal,
   UserRound,
   UsersRound,
+  X,
 } from "lucide-react";
 
 import { auth } from "../firebase";
@@ -29,6 +31,7 @@ import {
   type Position,
   type PaymentFrequency,
   type MaxCizinKomplexVariant,
+  type CommissionResultItemDTO,
 } from "../types/domain";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -51,6 +54,16 @@ import {
   productLabel as productLabelFromCatalog,
   type ProductInstitutionId,
 } from "@/app/lib/productCatalog";
+import {
+  commissionAuditSummaryForContract,
+  isCommissionAuditFilterActive,
+  parseCommissionAuditCodeFilter,
+  parseCommissionAuditMode,
+  type CommissionAuditCodeFilter,
+  type CommissionAuditItem,
+  type CommissionAuditMode,
+  type CommissionAuditSummary,
+} from "@/app/lib/commissionAudit";
 import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
@@ -108,6 +121,29 @@ type ContractDoc = {
   durationYears?: number | null;
   durationMonths?: number | null;
   maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
+  items?: CommissionResultItemDTO[] | null;
+  result?: {
+    items?: CommissionResultItemDTO[] | null;
+    total?: number | null;
+  } | null;
+  commissionPayouts?: {
+    key?: string | null;
+    code?: string | null;
+    title?: string | null;
+    amount?: number | null;
+    expectedAmount?: number | null;
+    difference?: number | null;
+    differenceReason?: string | null;
+    status?: "paid" | "difference" | "storno" | string | null;
+    statementId?: string | null;
+    statementNumber?: string | null;
+    statementPeriod?: string | null;
+    statementDate?: string | null;
+    statementChronologyMs?: number | null;
+    payoutMonthKey?: string | null;
+    writtenAtMs?: number | null;
+    writtenBy?: string | null;
+  }[] | null;
 };
 
 type AppUser = {
@@ -133,6 +169,8 @@ type DisplayedContract = ContractDoc & {
 
 type FilterMode = "latest" | "anniversary";
 type ContractListViewMode = "cards" | "compact";
+type CommissionAuditFilterMode = CommissionAuditMode;
+type CommissionAuditFilterCode = CommissionAuditCodeFilter;
 type ProductCategory =
   | "life"
   | "auto"
@@ -183,6 +221,45 @@ const INSTITUTION_LOGO_BY_ID: Partial<Record<Institution, string>> = Object.from
     INSTITUTION_CATALOG[inst.id].logoPath,
   ])
 ) as Partial<Record<Institution, string>>;
+
+const COMMISSION_AUDIT_MODE_DEFS: {
+  id: Exclude<CommissionAuditFilterMode, "off">;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "overdue",
+    label: "Nevyplacené",
+    description: "Provize po termínu za posledních 180 dní bez zapsané platby.",
+  },
+  {
+    id: "upcoming",
+    label: "Blíží se",
+    description: "Provize s očekávanou výplatou do 90 dní.",
+  },
+  {
+    id: "difference",
+    label: "Rozdíl",
+    description: "Vyplacená částka se liší od očekávané.",
+  },
+  {
+    id: "all",
+    label: "Vše k provizím",
+    description: "Nevyplacené, blížící se i rozdílové položky.",
+  },
+];
+
+const COMMISSION_AUDIT_CODE_DEFS: {
+  id: CommissionAuditFilterCode;
+  label: string;
+}[] = [
+  { id: "all", label: "Všechny kódy" },
+  { id: "a101", label: "A101-A112" },
+  { id: "b0301", label: "B0301 / B301" },
+  { id: "b36", label: "B36 / B036 / B3601" },
+  { id: "b48", label: "B48 / B048 / B4801" },
+  { id: "subsequent", label: "Následné B101-B112" },
+];
 
 const LIFE_PRODUCTS = new Set<Product>(LIFE_PRODUCTS_LIST);
 const GOLD_PRODUCT: Product = "comfortcc";
@@ -497,6 +574,143 @@ function formatDaysLeft(days: number): string {
   return `${days} dnů`;
 }
 
+function formatCommissionAuditDate(ms: number | null): string {
+  if (ms == null) return "termín nezjištěn";
+  const date = toDate(ms);
+  return date ? date.toLocaleDateString("cs-CZ") : "termín nezjištěn";
+}
+
+function commissionAuditStatusLabel(item: CommissionAuditItem): string {
+  const label = commissionAuditTimingLabel(item);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function formatCzechMonthCount(months: number): string {
+  const normalized = Math.max(1, Math.round(months));
+  if (normalized === 1) return "1 měsíc";
+  if (normalized >= 2 && normalized <= 4) return `${normalized} měsíce`;
+  return `${normalized} měsíců`;
+}
+
+function commissionAuditMonthDistance(item: CommissionAuditItem): number | null {
+  if (item.daysUntilDue == null) return null;
+  if (item.daysUntilDue === 0) return 0;
+
+  if (item.expectedDateMs != null) {
+    const expectedDate = toDate(item.expectedDateMs);
+    if (expectedDate) {
+      const today = startOfLocalDay(new Date());
+      const expected = startOfLocalDay(expectedDate);
+      const months = Math.abs(
+        (today.getFullYear() - expected.getFullYear()) * 12 +
+          (today.getMonth() - expected.getMonth())
+      );
+      return Math.max(1, months);
+    }
+  }
+
+  return Math.max(1, Math.ceil(Math.abs(item.daysUntilDue) / 31));
+}
+
+function commissionAuditTimingLabel(item: CommissionAuditItem): string {
+  if (item.status === "difference") return "rozdíl ve výpisu";
+  if (item.daysUntilDue === 0) return "výplata dnes";
+  const months = commissionAuditMonthDistance(item);
+  if (months == null) return item.status === "upcoming" ? "blíží se" : "po termínu";
+  const formatted = formatCzechMonthCount(months);
+  return item.status === "upcoming"
+    ? `za ${formatted}`
+    : `po termínu ${formatted}`;
+}
+
+function normalizedAuditCode(code: string | null | undefined): string {
+  return String(code ?? "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function commissionAuditKindLabel(item: CommissionAuditItem): string {
+  const code = normalizedAuditCode(item.code);
+
+  if (code === "ATP") return "Provize z tipu";
+  if (code === "B0301" || code === "B301") {
+    return "Provize po 3 měsících (Karta klienta)";
+  }
+  if (code === "B36" || code === "B036" || code === "B3601") {
+    return "Provize po 36 měsících";
+  }
+  if (
+    code === "B36_HALF" ||
+    code === "B036_HALF" ||
+    code === "B3601_HALF"
+  ) {
+    return "Provize 50% z B36";
+  }
+  if (code === "B48" || code === "B048" || code === "B4801") {
+    return "Provize po 48 měsících";
+  }
+  if (code === "B101-B104" || /^B1\d+$/.test(code)) {
+    return "Následná provize";
+  }
+  if (code === "B201-B206" || /^B20[1-6]$/.test(code)) {
+    return "Pečovatelská provize";
+  }
+
+  const aMatch = code.match(/^A(\d+)$/);
+  if (aMatch) {
+    const numeric = Number(aMatch[1]);
+    const part = numeric >= 101 && numeric <= 112 ? numeric - 100 : 1;
+    return part <= 1 ? "Vzniková provize" : `Vzniková provize ${part}. část`;
+  }
+
+  if (!code) return String(item.label ?? "").trim() || "Provize";
+
+  const cleanedLabel = String(item.label ?? "")
+    .replace(new RegExp(`\\b${code}\\b`, "i"), "")
+    .replace(/^provize\s*/i, "")
+    .trim();
+  return cleanedLabel || "Provize";
+}
+
+function commissionAuditCompactLabel(item: CommissionAuditItem): string {
+  const code = normalizedAuditCode(item.code);
+  const kind = commissionAuditKindLabel(item);
+  return code ? `${code} ${kind}` : kind;
+}
+
+function commissionAuditSummaryLabel(summary: CommissionAuditSummary): string {
+  const parts = [
+    summary.overdueCount > 0 ? `${summary.overdueCount} nevypl.` : null,
+    summary.upcomingCount > 0 ? `${summary.upcomingCount} brzy` : null,
+    summary.differenceCount > 0 ? `${summary.differenceCount} rozdíl` : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function commissionAuditToneClasses(item: CommissionAuditItem): {
+  compact: string;
+  card: string;
+} {
+  if (item.status === "difference") {
+    return {
+      compact: "border-amber-200 bg-amber-50 text-amber-800",
+      card: "border-amber-300/45 bg-amber-300/12 text-amber-100",
+    };
+  }
+  if (item.status === "upcoming") {
+    return {
+      compact: "border-sky-200 bg-sky-50 text-sky-800",
+      card: "border-sky-300/45 bg-sky-300/12 text-sky-100",
+    };
+  }
+  return {
+    compact: "border-rose-200 bg-rose-50 text-rose-800",
+    card: "border-rose-300/45 bg-rose-300/12 text-rose-100",
+  };
+}
+
 function productMatchesCategory(
   product: Product | undefined,
   categories: Set<ProductCategory>
@@ -620,6 +834,8 @@ type ContractsListFilters = {
   filterMode: FilterMode;
   showUnpaidOnly: boolean;
   showRefreshOnly: boolean;
+  commissionAuditMode: CommissionAuditFilterMode;
+  commissionAuditCodeFilter: CommissionAuditFilterCode;
   selectedCategories: ProductCategory[];
   selectedInstitutions: Institution[];
   selectedSubordinates: string[];
@@ -634,6 +850,7 @@ const CONTRACT_LIST_WINDOWING_THRESHOLD = 90;
 const CONTRACT_LIST_ESTIMATED_CARD_ROW_HEIGHT = 340;
 const CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT = 92;
 const CONTRACT_LIST_OVERSCAN_ROWS = 3;
+const DEFAULT_CONTRACT_LIST_VIEW_MODE: ContractListViewMode = "compact";
 
 type ContractsViewState = {
   userEmail: string;
@@ -643,10 +860,19 @@ type ContractsViewState = {
   searchText: string;
   showUnpaidOnly: boolean;
   showRefreshOnly: boolean;
+  commissionAuditMode: CommissionAuditFilterMode;
+  commissionAuditCodeFilter: CommissionAuditFilterCode;
   selectedCategories: ProductCategory[];
   selectedInstitutions: Institution[];
   selectedSubordinates: string[];
   scrollY: number;
+};
+
+type ContractDetailWindowState = {
+  href: string;
+  pageHref: string;
+  title: string;
+  subtitle: string;
 };
 
 const normalizeEmail = (email?: string | null) =>
@@ -717,11 +943,24 @@ function readContractsViewState(userEmail: string | null | undefined): Contracts
     return {
       userEmail: normalized,
       showTeam: Boolean(parsed.showTeam),
-      listViewMode: parsed.listViewMode === "compact" ? "compact" : "cards",
+      listViewMode:
+        parsed.listViewMode === "cards"
+          ? "cards"
+          : DEFAULT_CONTRACT_LIST_VIEW_MODE,
       filterMode: parsed.filterMode === "anniversary" ? "anniversary" : "latest",
       searchText: typeof parsed.searchText === "string" ? parsed.searchText : "",
       showUnpaidOnly: Boolean(parsed.showUnpaidOnly),
       showRefreshOnly: Boolean(parsed.showRefreshOnly),
+      commissionAuditMode: parseCommissionAuditMode(
+        typeof parsed.commissionAuditMode === "string"
+          ? parsed.commissionAuditMode
+          : null
+      ),
+      commissionAuditCodeFilter: parseCommissionAuditCodeFilter(
+        typeof parsed.commissionAuditCodeFilter === "string"
+          ? parsed.commissionAuditCodeFilter
+          : null
+      ),
       selectedCategories: Array.isArray(parsed.selectedCategories)
         ? parsed.selectedCategories.filter((v): v is ProductCategory =>
             CATEGORY_DEFS.some((d) => d.id === v)
@@ -830,12 +1069,18 @@ function ContractsPageContent() {
   const [teamCursorDate, setTeamCursorDate] = useState<string | null>(null);
 
   const [showTeam, setShowTeam] = useState(false);
-  const [listViewMode, setListViewMode] = useState<ContractListViewMode>("cards");
+  const [listViewMode, setListViewMode] = useState<ContractListViewMode>(
+    DEFAULT_CONTRACT_LIST_VIEW_MODE
+  );
   const [listViewModeReadyForEmail, setListViewModeReadyForEmail] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
   const [showRefreshOnly, setShowRefreshOnly] = useState(false);
+  const [commissionAuditMode, setCommissionAuditMode] =
+    useState<CommissionAuditFilterMode>("off");
+  const [commissionAuditCodeFilter, setCommissionAuditCodeFilter] =
+    useState<CommissionAuditFilterCode>("all");
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -854,6 +1099,10 @@ function ContractsPageContent() {
   const [listMicroAnimating, setListMicroAnimating] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
   const [searchProgressVisible, setSearchProgressVisible] = useState(false);
+  const [commissionAuditFilterPending, setCommissionAuditFilterPending] =
+    useState(false);
+  const [contractDetailWindow, setContractDetailWindow] =
+    useState<ContractDetailWindowState | null>(null);
   const contractsListRef = useRef<HTMLDivElement | null>(null);
   const searchProgressHideTimerRef = useRef<number | null>(null);
   const [contractsColumns, setContractsColumns] = useState(1);
@@ -883,11 +1132,16 @@ function ContractsPageContent() {
     () => Array.from(selectedSubordinates).sort(),
     [selectedSubordinates]
   );
+  const commissionAuditActive = isCommissionAuditFilterActive({
+    mode: commissionAuditMode,
+    codeFilter: commissionAuditCodeFilter,
+  });
   const serverFilterActive =
     hasSearchQuery ||
     anniversaryModeActive ||
     showUnpaidOnly ||
     showRefreshOnly ||
+    commissionAuditActive ||
     selectedCategoryList.length > 0 ||
     selectedInstitutionList.length > 0 ||
     (showTeam && canShowTeamToggle && selectedSubordinateList.length > 0);
@@ -897,6 +1151,8 @@ function ContractsPageContent() {
       filterMode: anniversaryModeActive ? "anniversary" : "latest",
       showUnpaidOnly,
       showRefreshOnly,
+      commissionAuditMode,
+      commissionAuditCodeFilter,
       selectedCategories: selectedCategoryList,
       selectedInstitutions: selectedInstitutionList,
       selectedSubordinates: selectedSubordinateList,
@@ -906,6 +1162,8 @@ function ContractsPageContent() {
       anniversaryModeActive,
       showUnpaidOnly,
       showRefreshOnly,
+      commissionAuditMode,
+      commissionAuditCodeFilter,
       selectedCategoryList,
       selectedInstitutionList,
       selectedSubordinateList,
@@ -951,6 +1209,12 @@ function ContractsPageContent() {
         }
         if (filters.showRefreshOnly) {
           params.set("refreshOnly", "1");
+        }
+        if (filters.commissionAuditMode !== "off") {
+          params.set("commissionAudit", filters.commissionAuditMode);
+          if (filters.commissionAuditCodeFilter !== "all") {
+            params.set("commissionCode", filters.commissionAuditCodeFilter);
+          }
         }
         if (filters.selectedCategories.length > 0) {
           params.set("categories", filters.selectedCategories.join(","));
@@ -1269,6 +1533,8 @@ function ContractsPageContent() {
     const requestId = serverFilterRequestRef.current + 1;
     serverFilterRequestRef.current = requestId;
     let cancelled = false;
+    const includesCommissionAudit =
+      activeListFilters.commissionAuditMode !== "off";
 
     const loadFiltered = async () => {
       setLoading(true);
@@ -1297,6 +1563,9 @@ function ContractsPageContent() {
       } finally {
         if (!cancelled && serverFilterRequestRef.current === requestId) {
           setLoading(false);
+          if (includesCommissionAudit) {
+            setCommissionAuditFilterPending(false);
+          }
         }
       }
     };
@@ -1315,6 +1584,12 @@ function ContractsPageContent() {
     fetchTeamPage,
     refreshContracts,
   ]);
+
+  useEffect(() => {
+    if (!commissionAuditActive && commissionAuditFilterPending) {
+      setCommissionAuditFilterPending(false);
+    }
+  }, [commissionAuditActive, commissionAuditFilterPending]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !user?.email) return;
@@ -1627,6 +1902,19 @@ function ContractsPageContent() {
       base = base.filter((c) => isRefreshContract(c));
     }
 
+    if (commissionAuditActive) {
+      const now = new Date();
+      base = base.filter(
+        (c) =>
+          commissionAuditSummaryForContract(c, {
+            mode: commissionAuditMode,
+            codeFilter: commissionAuditCodeFilter,
+            viewerEmail: contractOwnerEmail(c),
+            now,
+          }).items.length > 0
+      );
+    }
+
     if (anniversaryOnly) {
       const enriched = base
         .map((c) => {
@@ -1676,6 +1964,9 @@ function ContractsPageContent() {
     deferredSearchText,
     showUnpaidOnly,
     showRefreshOnly,
+    commissionAuditActive,
+    commissionAuditMode,
+    commissionAuditCodeFilter,
     filterMode,
     selectedCategories,
     selectedInstitutions,
@@ -1746,6 +2037,8 @@ function ContractsPageContent() {
         mode: filterMode,
         unpaidOnly: showUnpaidOnly,
         refreshOnly: showRefreshOnly,
+        commissionAuditMode,
+        commissionAuditCodeFilter,
         categories: Array.from(selectedCategories).sort(),
         institutions: Array.from(selectedInstitutions).sort(),
         subordinates: Array.from(selectedSubordinates).sort(),
@@ -1757,6 +2050,8 @@ function ContractsPageContent() {
       filterMode,
       showUnpaidOnly,
       showRefreshOnly,
+      commissionAuditMode,
+      commissionAuditCodeFilter,
       selectedCategories,
       selectedInstitutions,
       selectedSubordinates,
@@ -1899,6 +2194,9 @@ function ContractsPageContent() {
     serverFilterActive &&
     effectiveFilteredContracts.length === 0 &&
     (loading || loadingMore || isFilterPending);
+  const isCommissionAuditFilterLoading =
+    commissionAuditActive &&
+    (commissionAuditFilterPending || loading || isFilterPending);
   const isSearchProgressComplete =
     searchProgressVisible &&
     hasImmediateSearchQuery &&
@@ -1964,6 +2262,8 @@ function ContractsPageContent() {
       searchText,
       showUnpaidOnly,
       showRefreshOnly,
+      commissionAuditMode,
+      commissionAuditCodeFilter,
       selectedCategories: Array.from(selectedCategories),
       selectedInstitutions: Array.from(selectedInstitutions),
       selectedSubordinates: Array.from(selectedSubordinates),
@@ -1977,10 +2277,80 @@ function ContractsPageContent() {
     searchText,
     showUnpaidOnly,
     showRefreshOnly,
+    commissionAuditMode,
+    commissionAuditCodeFilter,
     selectedCategories,
     selectedInstitutions,
     selectedSubordinates,
   ]);
+
+  const closeContractDetailWindow = useCallback(() => {
+    setContractDetailWindow(null);
+  }, []);
+
+  const openContractDetailWindow = useCallback(
+    (contract: ContractDoc, slug: string, displayProductName: string) => {
+      persistContractsViewState();
+      const pageHref = `/smlouvy/${slug}?from=list`;
+      const contractNumber = contract.contractNumber?.trim();
+      const title = contractNumber ? `Smlouva ${contractNumber}` : "Detail smlouvy";
+      const subtitle = [contract.clientName?.trim(), displayProductName]
+        .filter(Boolean)
+        .join(" · ");
+
+      setContractDetailWindow({
+        href: `${pageHref}&embedded=1`,
+        pageHref,
+        title,
+        subtitle,
+      });
+    },
+    [persistContractsViewState]
+  );
+
+  useEffect(() => {
+    if (!contractDetailWindow) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeContractDetailWindow();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeContractDetailWindow, contractDetailWindow]);
+
+  const applyCommissionAuditMode = useCallback(
+    (nextMode: CommissionAuditFilterMode) => {
+      if (nextMode !== "off") {
+        setCommissionAuditFilterPending(true);
+      }
+      startFilterTransition(() => setCommissionAuditMode(nextMode));
+    },
+    [startFilterTransition]
+  );
+
+  const toggleCommissionAuditQuickFilter = useCallback(() => {
+    applyCommissionAuditMode(
+      commissionAuditMode === "overdue" ? "off" : "overdue"
+    );
+  }, [applyCommissionAuditMode, commissionAuditMode]);
+
+  const changeCommissionAuditCodeFilter = useCallback(
+    (value: string) => {
+      if (commissionAuditMode !== "off") {
+        setCommissionAuditFilterPending(true);
+      }
+      startFilterTransition(() =>
+        setCommissionAuditCodeFilter(parseCommissionAuditCodeFilter(value))
+      );
+    },
+    [commissionAuditMode, startFilterTransition]
+  );
 
   useEffect(() => {
     if (!normalizedUserEmail) {
@@ -1989,7 +2359,7 @@ function ContractsPageContent() {
     }
     setListViewModeReadyForEmail(null);
     const savedMode = readContractListViewMode(normalizedUserEmail);
-    setListViewMode(savedMode ?? "cards");
+    setListViewMode(savedMode ?? DEFAULT_CONTRACT_LIST_VIEW_MODE);
     setListViewModeReadyForEmail(normalizedUserEmail);
   }, [normalizedUserEmail]);
 
@@ -2011,6 +2381,8 @@ function ContractsPageContent() {
     setSearchText(saved.searchText);
     setShowUnpaidOnly(saved.showUnpaidOnly);
     setShowRefreshOnly(saved.showRefreshOnly);
+    setCommissionAuditMode(saved.commissionAuditMode);
+    setCommissionAuditCodeFilter(saved.commissionAuditCodeFilter);
     setSelectedCategories(new Set(saved.selectedCategories));
     setSelectedInstitutions(new Set(saved.selectedInstitutions));
     setSelectedSubordinates(new Set(saved.selectedSubordinates));
@@ -2049,6 +2421,8 @@ function ContractsPageContent() {
     showTeam,
     showUnpaidOnly,
     showRefreshOnly,
+    commissionAuditMode,
+    commissionAuditCodeFilter,
     selectedCategoryList,
     selectedInstitutionList,
     selectedSubordinateList,
@@ -2063,7 +2437,8 @@ function ContractsPageContent() {
   const advancedFilterCount =
     selectedCategoryList.length +
     selectedInstitutionList.length +
-    (showTeam && canShowTeamToggle ? selectedSubordinateList.length : 0);
+    (showTeam && canShowTeamToggle ? selectedSubordinateList.length : 0) +
+    (commissionAuditActive ? 1 : 0);
 
   const toggleSelect = (key: string) => {
     setSelectedKeys((prev) => {
@@ -2202,26 +2577,61 @@ function ContractsPageContent() {
     <AppLayout active="contracts">
       <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
-        {/* SEARCH BAR + FILTER + BULK ACTIONS */}
-        <div className="sticky top-16 z-40 space-y-2 rounded-[24px] border border-slate-200/85 bg-white/95 p-2.5 shadow-[0_16px_34px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/88 lg:top-2">
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-            <div className="min-w-0 flex-1 xl:max-w-[380px]">
-              <div className="flex h-11 w-full items-center gap-2 rounded-[18px] border border-slate-200 bg-slate-50/85 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900/8">
-                <Search size={17} strokeWidth={2.2} className="shrink-0 text-slate-400" aria-hidden="true" />
-                <input
-                  type="text"
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  placeholder="Hledat klienta nebo číslo smlouvy"
-                  className="min-w-0 flex-1 border-none bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
-                />
+          {/* SEARCH BAR + FILTER + BULK ACTIONS */}
+          <div className="sticky top-16 z-40 space-y-2 rounded-[22px] border border-slate-200/85 bg-white/96 p-3 shadow-[0_14px_30px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/90 lg:top-2">
+            <div className="grid gap-3">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 flex-1 lg:max-w-[520px]">
+                  <div className="flex h-11 w-full items-center gap-2 rounded-[16px] border border-slate-200 bg-slate-50/85 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900/8">
+                    <Search size={17} strokeWidth={2.2} className="shrink-0 text-slate-400" aria-hidden="true" />
+                    <input
+                      type="text"
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      placeholder="Hledat klienta nebo číslo smlouvy"
+                      className="min-w-0 flex-1 border-none bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setFilterModalOpen(true)}
+                  className="ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
+                >
+                  <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                  <span>Filtr</span>
+                  {advancedFilterCount > 0 ? (
+                    <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-slate-950 px-1.5 text-[10px] font-black leading-5 text-white">
+                      {advancedFilterCount}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectMode) {
+                      clearSelection();
+                    } else {
+                      setSelectMode(true);
+                    }
+                  }}
+                  className={`ui-focus inline-flex h-10 items-center rounded-[16px] border px-3 text-xs font-bold transition ${
+                    selectMode
+                      ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                      : "border-emerald-700 bg-emerald-600 !text-white shadow-[0_10px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-700"
+                  }`}
+                >
+                  {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
+                </button>
               </div>
             </div>
 
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:justify-center">
+            <div className="-mx-1 overflow-x-auto px-1 pb-0.5">
+              <div className="flex min-w-max items-center gap-2">
               {canShowTeamToggle && (
                 <div
-                  className="inline-flex min-h-10 items-center gap-1 rounded-[18px] border border-slate-200 bg-slate-100/75 p-1"
+                  className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
                   aria-label="Rozsah smluv"
                 >
                   <button
@@ -2252,7 +2662,7 @@ function ContractsPageContent() {
               )}
 
               <div
-                className="inline-flex min-h-10 items-center gap-1 rounded-[18px] border border-slate-200 bg-slate-100/75 p-1"
+                className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
                 aria-label="Řazení smluv"
               >
                 <button
@@ -2288,7 +2698,7 @@ function ContractsPageContent() {
               <button
                 type="button"
                 onClick={() => setShowUnpaidOnly((prev) => !prev)}
-                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[18px] border px-3 text-xs font-bold transition ${
+                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border px-3 text-xs font-bold transition ${
                   showUnpaidOnly
                     ? "border-rose-600 bg-rose-600 text-white shadow-[0_8px_18px_rgba(225,29,72,0.18)]"
                     : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
@@ -2300,8 +2710,29 @@ function ContractsPageContent() {
 
               <button
                 type="button"
+                onClick={toggleCommissionAuditQuickFilter}
+                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border px-3 text-xs font-bold transition ${
+                  commissionAuditActive
+                    ? "border-amber-600 bg-amber-500 text-white shadow-[0_8px_18px_rgba(217,119,6,0.2)]"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
+                }`}
+                aria-busy={isCommissionAuditFilterLoading}
+              >
+                {isCommissionAuditFilterLoading ? (
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Clock size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                )}
+                <span>{isCommissionAuditFilterLoading ? "Načítám…" : "Provize"}</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setShowRefreshOnly((prev) => !prev)}
-                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[18px] border px-3 text-xs font-bold transition ${
+                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border px-3 text-xs font-bold transition ${
                   showRefreshOnly
                     ? "border-sky-700 bg-sky-600 text-white shadow-[0_8px_18px_rgba(2,132,199,0.2)]"
                     : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
@@ -2312,7 +2743,7 @@ function ContractsPageContent() {
               </button>
 
               <div
-                className="inline-flex min-h-10 items-center gap-1 rounded-[18px] border border-slate-200 bg-slate-100/75 p-1"
+                className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
                 aria-label="Zobrazení seznamu smluv"
               >
                 <button
@@ -2343,38 +2774,6 @@ function ContractsPageContent() {
                 </button>
               </div>
             </div>
-
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5 xl:justify-end">
-              <button
-                type="button"
-                onClick={() => setFilterModalOpen(true)}
-                className="ui-focus inline-flex h-10 items-center gap-1.5 rounded-[18px] border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
-              >
-                <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Filtr</span>
-                {advancedFilterCount > 0 ? (
-                  <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-slate-950 px-1.5 text-[10px] font-black leading-5 text-white">
-                    {advancedFilterCount}
-                  </span>
-                ) : null}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectMode) {
-                    clearSelection();
-                  } else {
-                    setSelectMode(true);
-                  }
-                }}
-                className={`ui-focus inline-flex h-10 items-center rounded-[18px] border px-3 text-xs font-bold transition ${
-                  selectMode
-                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                    : "border-emerald-700 bg-emerald-600 !text-white shadow-[0_10px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-700"
-                }`}
-              >
-                {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
-              </button>
             </div>
           </div>
 
@@ -2448,7 +2847,15 @@ function ContractsPageContent() {
               {loadError}
             </div>
           )}
-          {loading && !serverFilterActive ? (
+          {isCommissionAuditFilterLoading ? (
+            <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
+              <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-amber-200 border-t-amber-600" />
+              <p className="font-medium">Načítám provizní filtr…</p>
+              <p className="text-xs text-slate-500">
+                Kontroluji očekávané kódy provizí proti zapsaným výpisům.
+              </p>
+            </div>
+          ) : loading && !serverFilterActive ? (
             <p className="mt-4 text-sm text-slate-600">
               Načítám smlouvy…
             </p>
@@ -2500,6 +2907,13 @@ function ContractsPageContent() {
                     V aktuálním výběru nejsou žádné smlouvy označené jako Refresh.
                   </p>
                 </>
+              ) : commissionAuditActive ? (
+                <>
+                  <p className="font-medium">Žádné provize ke kontrole</p>
+                  <p className="text-xs text-slate-500">
+                    V aktuálním výběru nejsou žádné smlouvy odpovídající proviznímu filtru.
+                  </p>
+                </>
               ) : searchText.trim() !== "" ? (
                 <>
                   <p className="font-medium">Nic nenalezeno</p>
@@ -2547,7 +2961,7 @@ function ContractsPageContent() {
                 </div>
               )}
               {listViewMode === "compact" && (
-                <div className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.04)] lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(130px,0.75fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_auto] lg:items-center lg:gap-3">
+                <div className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.04)] lg:grid lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center lg:gap-3">
                   <span>Smlouva</span>
                   <span>Datum</span>
                   <span>Pojistné</span>
@@ -2630,6 +3044,19 @@ function ContractsPageContent() {
                   isDozita,
                   paid: c.paid,
                 });
+                const commissionAuditSummary =
+                  commissionAuditActive
+                    ? commissionAuditSummaryForContract(c as ContractDoc, {
+                        mode: commissionAuditMode,
+                        codeFilter: commissionAuditCodeFilter,
+                        viewerEmail: ownerEmail,
+                      })
+                    : null;
+                const primaryCommissionAuditItem =
+                  commissionAuditSummary?.items[0] ?? null;
+                const commissionAuditTone = primaryCommissionAuditItem
+                  ? commissionAuditToneClasses(primaryCommissionAuditItem)
+                  : null;
                 const compactRowToneClass = isStorno
                   ? "border-amber-200/80 bg-amber-50/70"
                   : isDozita
@@ -2648,7 +3075,7 @@ function ContractsPageContent() {
                         containIntrinsicSize: "92px",
                       }}
                     >
-                      <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(130px,0.75fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_auto] lg:items-center">
+                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center">
                         <div className="flex min-w-0 items-start gap-3">
                           {selectMode ? (
                             <span
@@ -2748,6 +3175,28 @@ function ContractsPageContent() {
                             />
                             {statusBadge.label}
                           </span>
+                          {primaryCommissionAuditItem && commissionAuditTone ? (
+                            <div
+                              className={`mt-1.5 flex w-full max-w-full items-start gap-1.5 rounded-2xl border px-2.5 py-1 text-[11px] font-bold leading-snug ${commissionAuditTone.compact}`}
+                              title={`${commissionAuditCompactLabel(primaryCommissionAuditItem)} · ${commissionAuditTimingLabel(primaryCommissionAuditItem)} · ${formatCommissionAuditDate(
+                                primaryCommissionAuditItem.expectedDateMs
+                              )}`}
+                            >
+                              <Clock size={12} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden="true" />
+                              <span className="min-w-0 flex-1 whitespace-normal break-words">
+                                <span>{commissionAuditCompactLabel(primaryCommissionAuditItem)}</span>
+                                <span className="mx-1">·</span>
+                                <span>{commissionAuditTimingLabel(primaryCommissionAuditItem)}</span>
+                                {commissionAuditSummary &&
+                                commissionAuditSummary.items.length > 1 ? (
+                                  <span>
+                                    {" "}
+                                    · +{commissionAuditSummary.items.length - 1}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="flex justify-start lg:justify-end">
@@ -2859,6 +3308,30 @@ function ContractsPageContent() {
                         </div>
                       )}
 
+                      {primaryCommissionAuditItem && commissionAuditTone ? (
+                        <div
+                          className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${commissionAuditTone.card}`}
+                          title={`${primaryCommissionAuditItem.label} · ${formatCommissionAuditDate(
+                            primaryCommissionAuditItem.expectedDateMs
+                          )}`}
+                        >
+                          <Clock size={12} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                          <span className="truncate">
+                            {primaryCommissionAuditItem.code ??
+                              primaryCommissionAuditItem.label}
+                          </span>
+                          <span className="shrink-0">
+                            {commissionAuditStatusLabel(primaryCommissionAuditItem)}
+                          </span>
+                          {commissionAuditSummary &&
+                          commissionAuditSummary.items.length > 1 ? (
+                            <span className="shrink-0">
+                              · {commissionAuditSummaryLabel(commissionAuditSummary)}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+
                         <div className="mt-3 grid grid-cols-1 gap-1.5 text-[15px] leading-tight text-[#d8bcf3]">
                           <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                             <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
@@ -2967,14 +3440,16 @@ function ContractsPageContent() {
                   {renderedContract}
                 </button>
               ) : (
-                <Link
+                <button
                   key={c.id}
-                  href={`/smlouvy/${slug}?from=list`}
-                  onClick={persistContractsViewState}
-                  className="block group h-full"
+                  type="button"
+                  onClick={() =>
+                    openContractDetailWindow(c as ContractDoc, slug, displayProductName)
+                  }
+                  className="block group h-full w-full text-left"
                 >
                   {renderedContract}
-                </Link>
+                </button>
               );
               })}
               {virtualizedContracts.enabled &&
@@ -3032,6 +3507,86 @@ function ContractsPageContent() {
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className="space-y-4 xl:max-h-[68vh] xl:overflow-y-auto xl:pr-2">
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-slate-900">Kontrola provizí</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => applyCommissionAuditMode("off")}
+                      className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
+                        commissionAuditMode === "off"
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="text-sm font-medium">Vypnuto</span>
+                      <span
+                        className={`h-5 w-5 rounded-full border text-center text-xs leading-[18px] ${
+                          commissionAuditMode === "off"
+                            ? "border-slate-900 bg-white text-slate-900"
+                            : "border-slate-300 text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </span>
+                    </button>
+                    {COMMISSION_AUDIT_MODE_DEFS.map((item) => {
+                      const active = commissionAuditMode === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => applyCommissionAuditMode(item.id)}
+                          className={`flex items-start justify-between gap-3 rounded-2xl border px-3 py-3 text-left transition ${
+                            active
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium">
+                              {item.label}
+                            </span>
+                            <span
+                              className={`mt-1 block text-xs ${
+                                active ? "text-slate-200" : "text-slate-500"
+                              }`}
+                            >
+                              {item.description}
+                            </span>
+                          </span>
+                          <span
+                            className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border text-center text-xs leading-[18px] ${
+                              active
+                                ? "border-slate-900 bg-white text-slate-900"
+                                : "border-slate-300 text-transparent"
+                            }`}
+                          >
+                            ✓
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <label className="mt-3 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Kód provize
+                  </label>
+                  <select
+                    value={commissionAuditCodeFilter}
+                    onChange={(event) =>
+                      changeCommissionAuditCodeFilter(event.target.value)
+                    }
+                    className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                  >
+                    {COMMISSION_AUDIT_CODE_DEFS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-slate-900">Produkty</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3254,6 +3809,8 @@ function ContractsPageContent() {
                 onClick={() => {
                   setShowUnpaidOnly(false);
                   setShowRefreshOnly(false);
+                  setCommissionAuditMode("off");
+                  setCommissionAuditCodeFilter("all");
                   setSelectedCategories(new Set());
                   setSelectedInstitutions(new Set());
                   setSelectedSubordinates(new Set());
@@ -3273,6 +3830,62 @@ function ContractsPageContent() {
           </div>
         </div>
       )}
+      {contractDetailWindow ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 px-3 py-4 backdrop-blur-md sm:px-5 sm:py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={contractDetailWindow.title}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeContractDetailWindow();
+            }
+          }}
+        >
+          <div className="flex h-[min(960px,94vh)] w-[min(1520px,96vw)] flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_36px_92px_rgba(2,6,23,0.42)]">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black uppercase tracking-[0.14em] text-slate-500">
+                  Detail smlouvy
+                </div>
+                <div className="truncate text-xl font-black tracking-tight text-slate-950">
+                  {contractDetailWindow.title}
+                </div>
+                {contractDetailWindow.subtitle ? (
+                  <div className="truncate text-sm font-semibold text-slate-500">
+                    {contractDetailWindow.subtitle}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={contractDetailWindow.pageHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ui-focus hidden h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 sm:inline-flex"
+                >
+                  <ExternalLink size={15} strokeWidth={2.2} aria-hidden="true" />
+                  <span>Otevřít jako stránku</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={closeContractDetailWindow}
+                  className="ui-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:bg-black"
+                  aria-label="Zavřít detail smlouvy"
+                >
+                  <X size={18} strokeWidth={2.4} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <iframe
+              key={contractDetailWindow.href}
+              src={contractDetailWindow.href}
+              title={contractDetailWindow.title}
+              className="min-h-0 flex-1 bg-white"
+            />
+          </div>
+        </div>
+      ) : null}
       </div>
     </AppLayout>
   );

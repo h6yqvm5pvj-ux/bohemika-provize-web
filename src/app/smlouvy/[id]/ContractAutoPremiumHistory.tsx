@@ -39,6 +39,8 @@ type PremiumChangeStatus = "initial" | "increased" | "decreased" | "same" | "det
 type PremiumHistoryRow = {
   key: string;
   premiumKind: ContractAutoPremiumStatementHistoryEntry["premiumKind"];
+  statementId: string | null;
+  rowId: string | null;
   anniversaryNumber: number;
   anniversaryDate: Date;
   policyStartDate: Date;
@@ -73,6 +75,60 @@ const formatDate = (date: Date | null | undefined): string =>
 
 const validNumber = (value: number | null | undefined): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const moneyKey = (value: number | null | undefined): string => {
+  const amount = validNumber(value);
+  return amount == null ? "" : String(Math.round(amount * 100));
+};
+
+const premiumHistorySemanticKey = (row: PremiumHistoryRow): string =>
+  [
+    row.premiumKind ?? "",
+    row.source,
+    row.statementId ||
+      [row.statementNumber ?? "", row.statementPeriod ?? "", row.statementDate ?? ""].join("|"),
+    row.rowId ?? "",
+    row.anniversaryNumber,
+    row.anniversaryDate.toISOString().slice(0, 10),
+    row.productCode,
+    row.commissionCodes.join("+"),
+    moneyKey(row.previousAnnualPremium ?? row.previousPremium),
+    moneyKey(row.newAnnualPremium ?? row.basePremium),
+    moneyKey(row.differenceAnnual ?? row.difference),
+  ].join("::");
+
+const premiumHistoryCompletenessScore = (row: PremiumHistoryRow): number => {
+  let score = 0;
+  if (row.basePremiumPeriod) score += 20;
+  if (row.previousAnnualPremium != null) score += 10;
+  if (row.newAnnualPremium != null) score += 10;
+  if (row.differenceAnnual != null) score += 10;
+  if (row.statementNumber) score += 2;
+  if (row.statementPeriod) score += 2;
+  return score;
+};
+
+const dedupePremiumHistoryRows = (rows: PremiumHistoryRow[]): PremiumHistoryRow[] => {
+  const bySemanticKey = new Map<string, PremiumHistoryRow>();
+  const order: string[] = [];
+
+  for (const row of rows) {
+    const semanticKey = premiumHistorySemanticKey(row) || row.key;
+    const existing = bySemanticKey.get(semanticKey);
+    if (!existing) {
+      bySemanticKey.set(semanticKey, row);
+      order.push(semanticKey);
+      continue;
+    }
+    if (premiumHistoryCompletenessScore(row) > premiumHistoryCompletenessScore(existing)) {
+      bySemanticKey.set(semanticKey, row);
+    }
+  }
+
+  return order
+    .map((key) => bySemanticKey.get(key))
+    .filter((row): row is PremiumHistoryRow => Boolean(row));
+};
 
 const paymentFrequencyLabel = (frequency: PaymentFrequency | null | undefined): string | null => {
   switch (frequency) {
@@ -357,6 +413,8 @@ const buildPremiumHistoryRows = ({
       rows.set(key, {
         key,
         premiumKind: "auto_change",
+        statementId: statement.id,
+        rowId: row.rowId,
         anniversaryNumber: anniversary.number,
         anniversaryDate: anniversary.date,
         policyStartDate: policyStart,
@@ -389,8 +447,8 @@ const buildPremiumHistoryRows = ({
 
 const buildStoredPremiumHistoryRows = (
   history: ContractAutoPremiumStatementHistoryEntry[] | null | undefined
-): PremiumHistoryRow[] =>
-  (history ?? [])
+): PremiumHistoryRow[] => {
+  const rows = (history ?? [])
     .map((entry): PremiumHistoryRow | null => {
       const premiumKind = entry.premiumKind ?? "auto_change";
       const annualNewPremium = validNumber(entry.newAnnualPremium);
@@ -417,6 +475,8 @@ const buildStoredPremiumHistoryRows = (
       return {
         key: entry.key ?? `${entry.statementId ?? "statement"}-${entry.rowId ?? newPremium}`,
         premiumKind,
+        statementId: entry.statementId ?? null,
+        rowId: entry.rowId ?? null,
         anniversaryNumber:
           typeof entry.anniversaryNumber === "number" && Number.isFinite(entry.anniversaryNumber)
             ? entry.anniversaryNumber
@@ -441,8 +501,11 @@ const buildStoredPremiumHistoryRows = (
         source: entry.source === "manager" ? "manager" : "own",
       };
     })
-    .filter((row): row is PremiumHistoryRow => Boolean(row))
+    .filter((row): row is PremiumHistoryRow => Boolean(row));
+
+  return dedupePremiumHistoryRows(rows)
     .sort((a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime());
+};
 
 const premiumRowsMatchStoredChange = (
   storedRow: PremiumHistoryRow,
@@ -508,6 +571,8 @@ const buildInitialPremiumHistoryRow = ({
   return {
     key: `initial:${productCode}:${policyStart.toISOString().slice(0, 10)}:${initialPremium}`,
     premiumKind: "auto_initial",
+    statementId: null,
+    rowId: null,
     anniversaryNumber: 0,
     anniversaryDate: policyStart,
     policyStartDate: policyStart,
@@ -573,7 +638,7 @@ export function ContractAutoPremiumHistory({
     }
     if (!rowsByKey.has(row.key)) rowsByKey.set(row.key, row);
   });
-  const rows = [...rowsByKey.values()].sort(
+  const rows = dedupePremiumHistoryRows([...rowsByKey.values()]).sort(
     (a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime()
   );
   const initialPremiumBase =

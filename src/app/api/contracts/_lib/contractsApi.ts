@@ -10,6 +10,7 @@ import {
   requireAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
+import type { ServerImpersonationContext } from "@/lib/server/impersonation";
 import {
   adminRoleAtLeast,
   resolveAdminRoleFromClaims,
@@ -30,6 +31,12 @@ import {
 } from "@/app/lib/teamHierarchy";
 import { toDate } from "@/app/lib/formatters";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
+import {
+  contractMatchesCommissionAuditFilter,
+  isCommissionAuditFilterActive,
+  parseCommissionAuditCodeFilter,
+  parseCommissionAuditMode,
+} from "@/app/lib/commissionAudit";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
 import { computeLegacyFrequencyOverrideTotal } from "@/app/lib/managerOverrideTotals";
 import {
@@ -864,6 +871,8 @@ const parseContractListFilters = (
     refreshOnly:
       search.get("refreshOnly") === "1" ||
       search.get("refreshOnly") === "true",
+    commissionAuditMode: parseCommissionAuditMode(search.get("commissionAudit")),
+    commissionAuditCodeFilter: parseCommissionAuditCodeFilter(search.get("commissionCode")),
     categories: parseCsvSet(
       search.get("categories"),
       CONTRACT_LIST_PRODUCT_CATEGORY_SET
@@ -881,6 +890,10 @@ const hasContractListClientFilters = (filters: ContractListFilters): boolean =>
   filters.mode === "anniversary" ||
   filters.unpaidOnly ||
   filters.refreshOnly ||
+  isCommissionAuditFilterActive({
+    mode: filters.commissionAuditMode,
+    codeFilter: filters.commissionAuditCodeFilter,
+  }) ||
   filters.categories.size > 0 ||
   filters.institutions.size > 0;
 
@@ -5284,7 +5297,8 @@ function contractMatchesRefreshFilter(contract: ContractDoc): boolean {
 
 function contractMatchesListFilters(
   contract: ContractDoc,
-  filters: ContractListFilters
+  filters: ContractListFilters,
+  ownerEmail?: string | null
 ): boolean {
   const product = contract.productKey as Product | undefined;
   if (filters.signedFrom) {
@@ -5308,6 +5322,16 @@ function contractMatchesListFilters(
   const lifecycleStatus = contractLifecycleStatus(contract);
   if (filters.unpaidOnly) {
     if (contract.paid === true || lifecycleStatus !== "active") return false;
+  }
+
+  if (
+    !contractMatchesCommissionAuditFilter(contract, {
+      mode: filters.commissionAuditMode,
+      codeFilter: filters.commissionAuditCodeFilter,
+      viewerEmail: ownerEmail ?? contract.userEmail ?? null,
+    })
+  ) {
+    return false;
   }
 
   if (filters.mode === "anniversary") {
@@ -5410,7 +5434,13 @@ async function fetchContractsForOwners(
 
     const pushOwnerDoc = (docId: string, data: ContractDoc) => {
       if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
-      if (filtersActive && filters && !contractMatchesListFilters(data, filters)) return;
+      if (
+        filtersActive &&
+        filters &&
+        !contractMatchesListFilters(data, filters, ownerEmail)
+      ) {
+        return;
+      }
       const key = `${ownerEmail}___${docId}`;
       if (seen.has(key)) return;
       seen.add(key);
@@ -5493,7 +5523,13 @@ async function fetchContractsForOwners(
 
   const pushCollected = (docId: string, ownerEmail: string, data: ContractDoc) => {
     if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
-    if (filtersActive && filters && !contractMatchesListFilters(data, filters)) return;
+    if (
+      filtersActive &&
+      filters &&
+      !contractMatchesListFilters(data, filters, ownerEmail)
+    ) {
+      return;
+    }
     const key = `${ownerEmail}___${docId}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -5872,11 +5908,16 @@ type ContractsEntryGuardResult =
   | { ok: false; response: NextResponse }
   | {
       ok: true;
-      ctx: Awaited<ReturnType<typeof getAuthContext>> extends infer T
+      ctx: (Awaited<ReturnType<typeof getAuthContext>> extends infer T
         ? T extends { error: string; status: number }
           ? never
           : T
-        : never;
+        : never) & {
+        actorEmail: string;
+        actorUid: string;
+        isImpersonating: boolean;
+        impersonation: ServerImpersonationContext | null;
+      };
       withRateLimit: (response: NextResponse) => NextResponse;
     };
 
@@ -5937,7 +5978,13 @@ export async function requireContractsEntryGuard(
 
   return {
     ok: true,
-    ctx: authCtx,
+    ctx: {
+      ...authCtx,
+      actorEmail: guard.ctx.actorEmail,
+      actorUid: guard.ctx.actorUid,
+      isImpersonating: guard.ctx.isImpersonating,
+      impersonation: guard.ctx.impersonation,
+    },
     withRateLimit: (response: NextResponse) =>
       withRateLimitHeaders(response, guard.ctx),
   };
@@ -6579,16 +6626,26 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
 
-    const targetOwnerEmail = requestedOwnerEmail || email;
+    const adminImpersonationCanManage =
+      ctx.isImpersonating &&
+      adminRoleAtLeast(ctx.impersonation?.actorRole ?? null, "admin");
+    const actorEmail = normalizeEmail(ctx.actorEmail);
+    const targetOwnerEmail =
+      adminImpersonationCanManage &&
+      (!requestedOwnerEmail || requestedOwnerEmail === actorEmail)
+        ? email
+        : requestedOwnerEmail || email;
     const isOwnerOverride = targetOwnerEmail !== email;
     if (isOwnerOverride) {
-      if (email !== CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL) {
+      const canUseLegacyOwnerOverride =
+        email === CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL;
+      if (!canUseLegacyOwnerOverride && !adminImpersonationCanManage) {
         return NextResponse.json(
           { ok: false, error: "Nemáš oprávnění uložit smlouvu za jiného uživatele." },
           { status: 403 }
         );
       }
-      if (!teamEmails.includes(targetOwnerEmail)) {
+      if (!adminImpersonationCanManage && !teamEmails.includes(targetOwnerEmail)) {
         return NextResponse.json(
           { ok: false, error: "Vybraný uživatel není mezi tvými podřízenými." },
           { status: 403 }

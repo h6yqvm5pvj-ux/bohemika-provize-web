@@ -762,9 +762,9 @@ const commissionCodeAliases = (value: string | null | undefined): string[] => {
   if (code === "B48" || code === "B048" || code === "B4801") {
     return ["B48", "B048", "B4801"];
   }
-  if (code === "A101" || code === "A102") return ["A101", "A102"];
+  if (/^A\d+$/.test(code)) return [code];
   if (code === "B101-B104") return ["B101-B104", "B101", "B102", "B103", "B104"];
-  if (/^B10[1-4]$/.test(code)) return [code, "B101-B104"];
+  if (/^B1(?:0[1-9]|1[0-2])$/.test(code)) return [code];
   if (code === "B201-B206") {
     return ["B201-B206", "B201", "B202", "B203", "B204", "B205", "B206"];
   }
@@ -780,7 +780,7 @@ const commissionCodesFromOtherPaymentText = (value: string): string[] => {
     /\bB(?:036|36|3601)\b/i.test(value);
   const codeMatches = [
     ...value.matchAll(
-      /\b(A101|A102|B0301|B10[1-4]|B20[1-6]|B4801|B48|B048|B3601|B36|B036)\b/gi
+      /\b(A1(?:0[1-9]|1[0-2])|B0301|B1(?:0[1-9]|1[0-2])|B20[1-6]|B4801|B48|B048|B3601|B36|B036)\b/gi
     ),
   ];
 
@@ -1526,29 +1526,93 @@ const statementExternalLinkPatch = (
   return patch;
 };
 
-const mergeRecordsByKey = <T extends { key: string; writtenAtMs?: number | null }>(
-  existing: T[],
-  incoming: T[],
+const premiumHistoryMoneyKey = (value: unknown): string => {
+  const amount = finiteMoneyOrNull(value);
+  return amount == null ? "" : String(Math.round(amount * 100));
+};
+
+const premiumHistorySemanticKey = (entry: ContractPremiumStatementHistoryEntry): string =>
+  [
+    entry.premiumKind,
+    entry.source,
+    entry.statementId ||
+      [entry.statementNumber ?? "", entry.statementPeriod ?? "", entry.statementDate ?? ""].join("|"),
+    entry.rowId,
+    entry.anniversaryNumber,
+    entry.anniversaryDate,
+    entry.productCode,
+    normalizeCommissionCodeKey(entry.commissionCode),
+    premiumHistoryMoneyKey(entry.previousAnnualPremium ?? entry.previousPremium),
+    premiumHistoryMoneyKey(entry.newAnnualPremium ?? entry.newPremium),
+    premiumHistoryMoneyKey(entry.differenceAnnual ?? entry.difference),
+  ].join("::");
+
+const premiumHistoryCompletenessScore = (
+  entry: ContractPremiumStatementHistoryEntry
+): number => {
+  let score = 0;
+  if (entry.basePremiumPeriod) score += 20;
+  if (entry.previousAnnualPremium != null) score += 10;
+  if (entry.newAnnualPremium != null) score += 10;
+  if (entry.differenceAnnual != null) score += 10;
+  if (entry.statementChronologyMs != null) score += 4;
+  if (entry.payoutMonthKey) score += 2;
+  return score + (entry.writtenAtMs ?? 0) / 1_000_000_000_000;
+};
+
+const mergePremiumHistoryRecords = (
+  existing: ContractPremiumStatementHistoryEntry[],
+  incoming: ContractPremiumStatementHistoryEntry[],
   maxCount: number
-): { merged: T[]; added: number; existingCount: number } => {
-  const recordsByKey = new Map<string, T>();
-  existing.forEach((item) => recordsByKey.set(item.key, item));
+): {
+  merged: ContractPremiumStatementHistoryEntry[];
+  added: number;
+  existingCount: number;
+  updatedExisting: number;
+} => {
+  const recordsBySemanticKey = new Map<string, ContractPremiumStatementHistoryEntry>();
+  const order: string[] = [];
+  let updatedExisting = 0;
+
+  for (const item of existing) {
+    const semanticKey = premiumHistorySemanticKey(item) || item.key;
+    const current = recordsBySemanticKey.get(semanticKey);
+    if (!current) {
+      recordsBySemanticKey.set(semanticKey, item);
+      order.push(semanticKey);
+      continue;
+    }
+    updatedExisting += 1;
+    if (premiumHistoryCompletenessScore(item) > premiumHistoryCompletenessScore(current)) {
+      recordsBySemanticKey.set(semanticKey, item);
+    }
+  }
 
   let added = 0;
   let existingCount = 0;
   for (const item of incoming) {
-    if (recordsByKey.has(item.key)) {
-      existingCount += 1;
+    const semanticKey = premiumHistorySemanticKey(item) || item.key;
+    const current = recordsBySemanticKey.get(semanticKey);
+    if (!current) {
+      recordsBySemanticKey.set(semanticKey, item);
+      order.push(semanticKey);
+      added += 1;
       continue;
     }
-    recordsByKey.set(item.key, item);
-    added += 1;
+
+    existingCount += 1;
+    if (premiumHistoryCompletenessScore(item) > premiumHistoryCompletenessScore(current)) {
+      recordsBySemanticKey.set(semanticKey, item);
+      updatedExisting += 1;
+    }
   }
 
-  const merged = [...recordsByKey.values()]
+  const merged = order
+    .map((key) => recordsBySemanticKey.get(key))
+    .filter((item): item is ContractPremiumStatementHistoryEntry => Boolean(item))
     .sort((a, b) => (a.writtenAtMs ?? 0) - (b.writtenAtMs ?? 0))
     .slice(-maxCount);
-  return { merged, added, existingCount };
+  return { merged, added, existingCount, updatedExisting };
 };
 
 const payoutRecordNeedsRefresh = (
@@ -3554,7 +3618,7 @@ const processStatementWrites = async ({
     const premiumHistoryEntriesForMerge = canApplyPremiumToCurrentContract
       ? premiumHistoryEntries
       : premiumHistoryEntries.filter((entry) => existingPremiumKeys.has(entry.key));
-    const premiumMerge = mergeRecordsByKey(
+    const premiumMerge = mergePremiumHistoryRecords(
       existingPremiumHistory,
       premiumHistoryEntriesForMerge,
       MAX_STORED_PREMIUM_HISTORY
@@ -3632,7 +3696,7 @@ const processStatementWrites = async ({
     });
     updatePayload.commissionStornoSummary = commissionStornoSummary;
 
-    if (premiumMerge.added > 0) {
+    if (premiumMerge.added > 0 || premiumMerge.updatedExisting > 0) {
       updatePayload.premiumStatementHistory = premiumMerge.merged;
       const latestPremium = [...actionablePremiumHistoryEntries]
         .sort(
@@ -3655,6 +3719,7 @@ const processStatementWrites = async ({
     if (
       hasPayoutChanges ||
       premiumMerge.added > 0 ||
+      premiumMerge.updatedExisting > 0 ||
       hasExternalLinkPatch ||
       coefficientSetOverride ||
       neonRefreshMissingOriginalUpdate

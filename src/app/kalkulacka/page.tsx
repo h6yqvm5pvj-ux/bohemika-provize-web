@@ -83,6 +83,11 @@ import {
 } from "@/app/lib/institutionLogoDisplay";
 import { autoAssistancePlanLabel } from "@/app/lib/autoAssistanceLabels";
 import { AppLayout } from "@/components/AppLayout";
+import {
+  ADMIN_IMPERSONATION_EVENT,
+  readAdminImpersonationState,
+  type AdminImpersonationState,
+} from "@/app/lib/adminImpersonation";
 import { formatMoney, positionLabel, toDate } from "@/app/lib/formatters";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
@@ -1101,18 +1106,24 @@ export default function CalculatorPage() {
   const [subordinateLoading, setSubordinateLoading] = useState(false);
   const [subordinateLoadError, setSubordinateLoadError] = useState<string | null>(null);
   const [selectedSubordinateEmail, setSelectedSubordinateEmail] = useState<string | null>(null);
+  const [adminImpersonation, setAdminImpersonation] =
+    useState<AdminImpersonationState | null>(() =>
+      typeof window === "undefined" ? null : readAdminImpersonationState()
+    );
 
   const normalizedUserEmail = normalizeEmailValue(user?.email);
+  const impersonatedUserEmail = normalizeEmailValue(adminImpersonation?.email);
+  const activeSaveBaseEmail = impersonatedUserEmail || normalizedUserEmail;
   const canOverrideOwnerOnSave =
     normalizedUserEmail === CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL;
   const effectiveSaveOwnerEmail =
     canOverrideOwnerOnSave && selectedSubordinateEmail
       ? selectedSubordinateEmail
-      : normalizedUserEmail;
+      : activeSaveBaseEmail;
   const isSavingForSubordinate =
     canOverrideOwnerOnSave &&
     !!selectedSubordinateEmail &&
-    selectedSubordinateEmail !== normalizedUserEmail;
+    selectedSubordinateEmail !== activeSaveBaseEmail;
   const subordinateOptionsByEmail = useMemo(
     () => new Map(subordinateOptions.map((item) => [item.email, item] as const)),
     [subordinateOptions]
@@ -1135,7 +1146,24 @@ export default function CalculatorPage() {
   }, [subordinateOptions, subordinateSearchQuery]);
   const selectedSaveOwnerLabel = selectedSubordinate
     ? `${selectedSubordinate.name} (${selectedSubordinate.email})`
+    : impersonatedUserEmail
+      ? `${
+          adminImpersonation?.name?.trim() || simpleNameFromEmail(impersonatedUserEmail)
+        } (${impersonatedUserEmail})`
     : "Můj účet";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncImpersonation = () => {
+      setAdminImpersonation(readAdminImpersonationState());
+      setSelectedSubordinateEmail(null);
+    };
+    syncImpersonation();
+    window.addEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    return () => {
+      window.removeEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    };
+  }, []);
 
   const contractDateIssues = useMemo(
     () => collectContractDateIssues(contractSignedDate, policyStartDate, policyEndDate),

@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { adminRoleAtLeast } from "@/lib/adminAccess";
 import {
   buildContractPdfStoredFileName,
   contractPdfContentDisposition,
@@ -133,6 +134,8 @@ export async function POST(req: NextRequest) {
 
   const canUpload =
     ctx.email === ownerEmail ||
+    (ctx.isImpersonating &&
+      adminRoleAtLeast(ctx.impersonation?.actorRole ?? null, "admin")) ||
     (ctx.email === CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL &&
       ctx.contractAccessEmails.includes(ownerEmail));
   if (!canUpload) {

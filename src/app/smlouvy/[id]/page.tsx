@@ -803,9 +803,15 @@ export default function ContractDetailPage() {
   const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
   const rawId = params?.id;
+  const isEmbedded = searchParams?.get("embedded") === "1";
   const backToContractsHref =
     searchParams?.get("from") === "list" ? "/smlouvy?restore=1" : "/smlouvy";
-  const fromListSuffix = searchParams?.get("from") === "list" ? "?from=list" : "";
+  const fromListSuffix =
+    searchParams?.get("from") === "list"
+      ? `?from=list${isEmbedded ? "&embedded=1" : ""}`
+      : isEmbedded
+        ? "?embedded=1"
+        : "";
 
   // slug: email___entryId
   let ownerEmail: string | null = null;
@@ -827,6 +833,8 @@ export default function ContractDetailPage() {
 
   const [contract, setContract] = useState<ContractDoc | null>(null);
   const [loading, setLoading] = useState(true);
+  const [embeddedLoadProgress, setEmbeddedLoadProgress] = useState(0);
+  const [showEmbeddedLoader, setShowEmbeddedLoader] = useState(isEmbedded);
   const [error, setError] = useState<string | null>(null);
   const [contractTimeline, setContractTimeline] = useState<ContractDoc[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
@@ -897,6 +905,30 @@ export default function ContractDetailPage() {
   const [serverCanManageContract, setServerCanManageContract] = useState(false);
   const isNeonImmediateBreakdownOpen = neonImmediateBreakdown != null;
   const isStatementPreviewOpen = statementPreview != null;
+
+  useEffect(() => {
+    if (!isEmbedded) return;
+
+    if (loading) {
+      setShowEmbeddedLoader(true);
+      setEmbeddedLoadProgress(0);
+      const timer = window.setInterval(() => {
+        setEmbeddedLoadProgress((current) => {
+          if (current < 32) return Math.min(current + 8, 32);
+          if (current < 68) return Math.min(current + 5, 68);
+          if (current < 92) return Math.min(current + 2, 92);
+          return current;
+        });
+      }, 120);
+      return () => window.clearInterval(timer);
+    }
+
+    setEmbeddedLoadProgress(100);
+    const doneTimer = window.setTimeout(() => {
+      setShowEmbeddedLoader(false);
+    }, 280);
+    return () => window.clearTimeout(doneTimer);
+  }, [isEmbedded, loading]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -4827,6 +4859,63 @@ export default function ContractDetailPage() {
     </div>
   );
 
+  if (isEmbedded && showEmbeddedLoader) {
+    return (
+      <main className="relative min-h-screen overflow-hidden bg-white font-mono text-slate-900">
+        <div className="fixed inset-0 -z-10 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_48%,#eef6ff_100%)]" />
+        <Toasts items={toasts} onDismiss={dismissToast} />
+        <div className="flex min-h-screen items-center justify-center px-4 py-8">
+          <div className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-[0_26px_70px_rgba(15,23,42,0.16)] sm:p-8">
+            <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,rgba(15,23,42,0),rgba(15,23,42,0.28),rgba(15,23,42,0))]" />
+            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[24px] border border-slate-200 bg-slate-950 shadow-[0_18px_36px_rgba(15,23,42,0.28)]">
+              <span
+                className="inline-block animate-spin text-5xl leading-none"
+                aria-hidden="true"
+              >
+                📄
+              </span>
+            </div>
+
+            <div className="mt-6 space-y-2">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">
+                Detail smlouvy
+              </p>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950">
+                Načítám smlouvu
+              </h1>
+              <p className="text-sm font-semibold text-slate-500">
+                Připravuji údaje, provize a historii výpisů.
+              </p>
+            </div>
+
+            <div className="mt-7 space-y-3">
+              <div className="flex items-end justify-between gap-3">
+                <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Průběh
+                </span>
+                <span className="text-3xl font-black tabular-nums text-slate-950">
+                  {embeddedLoadProgress}%
+                </span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#2563eb_52%,#10b981_100%)] transition-[width] duration-200 ease-out"
+                  style={{ width: `${embeddedLoadProgress}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400 [animation-delay:140ms]" />
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400 [animation-delay:280ms]" />
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden font-mono text-slate-900">
       <div className="fixed inset-0 -z-10 bg-white" />
@@ -4841,13 +4930,15 @@ export default function ContractDetailPage() {
             {/* HEADER */}
             <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <Link
-                  href={backToContractsHref}
-                  className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
-                >
-                  <ArrowLeft size={15} strokeWidth={2} aria-hidden="true" />
-                  <span>Zpět na smlouvy</span>
-                </Link>
+                {!isEmbedded && (
+                  <Link
+                    href={backToContractsHref}
+                    className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                  >
+                    <ArrowLeft size={15} strokeWidth={2} aria-hidden="true" />
+                    <span>Zpět na smlouvy</span>
+                  </Link>
+                )}
                 <p className="mb-1 text-base uppercase tracking-[0.18em] text-slate-600">
                   Detail smlouvy
                 </p>
