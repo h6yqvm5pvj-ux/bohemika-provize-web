@@ -390,8 +390,13 @@ const readSectionValue = (
 const parseFrequency = (value: string | null | undefined): PaymentFrequency | null => {
   if (!value) return null;
   const normalized = stripDiacritics(value).toLowerCase().replace(/\s+/g, " ").trim();
-  const fromWord = mapFrequencyWord(normalized);
-  if (fromWord) return fromWord;
+
+  const monthPeriodMatch = normalized.match(/\b(12|6|3|1)\s*mesic\w*\b/);
+  const periodMonths = monthPeriodMatch?.[1] ? Number(monthPeriodMatch[1]) : null;
+  if (periodMonths === 12) return "annual";
+  if (periodMonths === 6) return "semiannual";
+  if (periodMonths === 3) return "quarterly";
+  if (periodMonths === 1) return "monthly";
 
   const byCount = normalized.match(/\b(1|2|4|12)\s*x\b/)?.[1];
   if (byCount === "12") return "monthly";
@@ -399,6 +404,28 @@ const parseFrequency = (value: string | null | undefined): PaymentFrequency | nu
   if (byCount === "2") return "semiannual";
   if (byCount === "1") return "annual";
 
+  const fromWord = mapFrequencyWord(normalized);
+  if (fromWord) return fromWord;
+
+  return null;
+};
+
+const inferFrequencyFromPremiumRatio = ({
+  periodPremium,
+  annualPremium,
+}: {
+  periodPremium: number | null;
+  annualPremium: number | null;
+}): PaymentFrequency | null => {
+  if (periodPremium == null || annualPremium == null) return null;
+  if (periodPremium <= 0 || annualPremium <= 0) return null;
+
+  const ratio = annualPremium / periodPremium;
+  const isClose = (target: number) => Math.abs(ratio - target) <= 0.08;
+  if (isClose(1)) return "annual";
+  if (isClose(2)) return "semiannual";
+  if (isClose(4)) return "quarterly";
+  if (isClose(12)) return "monthly";
   return null;
 };
 
@@ -685,15 +712,34 @@ export async function parseKooperativaAutoPdf(
     }
   }
 
+  const insurancePeriodFrequency = parseFrequency(
+    readNearestValueByLabel(lines, asciiLines, /pojistne\s+obdobi/i, 3)
+  );
+  const premiumRatioFrequency = inferFrequencyFromPremiumRatio({
+    periodPremium: parseAmount(
+      readNearestValueByLabel(lines, asciiLines, /pojistne\s+za\s+pojistne\s+obdobi/i, 4)
+    ),
+    annualPremium: parseAmount(
+      readNearestValueByLabel(lines, asciiLines, /celkove\s+rocni\s+pojistne/i, 4) ??
+        readNearestValueByLabel(lines, asciiLines, /rocni\s+pojistne/i, 4)
+    ),
+  });
   const freqSources = [
+    insurancePeriodFrequency,
+    premiumRatioFrequency,
     readNearestValueByLabel(lines, asciiLines, /frekvence\s+placeni/i, 3),
     readNearestValueByLabel(lines, asciiLines, /frekvence\s+platby/i, 3),
-    readNearestValueByLabel(lines, asciiLines, /pojistne\s+obdobi/i, 3),
     readNearestValueByLabel(lines, asciiLines, /splatnost\s+pojistneho/i, 3),
     asciiText,
   ];
   for (const source of freqSources) {
-    const freq = parseFrequency(source);
+    const freq =
+      source === "monthly" ||
+      source === "quarterly" ||
+      source === "semiannual" ||
+      source === "annual"
+        ? source
+        : parseFrequency(source);
     if (freq) {
       result.frequency = freq;
       break;
