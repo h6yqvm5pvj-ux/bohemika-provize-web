@@ -1303,6 +1303,8 @@ export default function CalculatorPage() {
     const stornoBaseAnnual =
       neonRefreshCommissionBase.stornoBaseMonthlyPremium * 12;
     const newAnnual = neonRefreshCommissionBase.newMonthlyPremium * 12;
+    const usesMotivationalBase =
+      neonRefreshCommissionBase.calculationMethod === "motivational_48_percent";
     const usesDifferentStornoBase =
       Math.abs(stornoBaseAnnual - originalAnnual) >= 0.01;
     const stornoPartLabel = usesDifferentStornoBase
@@ -1312,11 +1314,19 @@ export default function CalculatorPage() {
       : ` + stornovaná část ${formatMoney(
           neonRefreshCommissionBase.stornedOriginalAnnualPremium
         )}`;
+    const originalBasePartLabel = usesMotivationalBase
+      ? ` + motivační základna 48 % z ${formatMoney(
+          stornoBaseAnnual
+        )} = ${formatMoney(neonRefreshCommissionBase.motivationalAnnualPremium)}`
+      : stornoPartLabel;
+    const periodLabel = usesMotivationalBase
+      ? "motivační provize po 5 letech"
+      : `${neonRefreshCommissionBase.remainingMonths}/60 původní storno lhůty`;
     return `Refresh základna pro provizi: ${formatMoney(
       neonRefreshCommissionBase.calculationAnnualPremium
-    )} ročně (${neonRefreshCommissionBase.remainingMonths}/60 původní storno lhůty). Výpočet: navýšení ${formatMoney(
+    )} ročně (${periodLabel}). Výpočet: navýšení ${formatMoney(
       neonRefreshCommissionBase.premiumIncreaseAnnual
-    )} (${formatMoney(newAnnual)} - ${formatMoney(originalAnnual)})${stornoPartLabel}.`;
+    )} (${formatMoney(newAnnual)} - ${formatMoney(originalAnnual)})${originalBasePartLabel}.`;
   }, [
     product,
     refreshOriginalOpen,

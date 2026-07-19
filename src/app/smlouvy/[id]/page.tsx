@@ -1402,6 +1402,15 @@ export default function ContractDetailPage() {
       refreshCommissionBase?.originalAnnualPremium ??
       Number.NaN
   );
+  const refreshCalculationMethod =
+    typeof refreshCommissionBase?.calculationMethod === "string"
+      ? refreshCommissionBase.calculationMethod
+      : null;
+  const isRefreshMotivationalBase =
+    refreshCalculationMethod === "motivational_48_percent";
+  const refreshMotivationalAnnualPremium = Number(
+    refreshCommissionBase?.motivationalAnnualPremium ?? Number.NaN
+  );
   const hasDifferentRefreshStornoBase =
     Number.isFinite(refreshOriginalAnnualPremium) &&
     Number.isFinite(refreshStornoBaseAnnualPremium) &&
@@ -5545,12 +5554,16 @@ export default function ContractDetailPage() {
                                     </div>
                                   )}
                                   <div>
-                                    Stornovaná část základny:{" "}
+                                    {isRefreshMotivationalBase
+                                      ? "Motivační základna 48 %:"
+                                      : "Stornovaná část základny:"}{" "}
                                     <span className="font-semibold text-slate-900">
                                       {formatMoney(
-                                        Number(
-                                          refreshCommissionBase.stornedOriginalAnnualPremium
-                                        )
+                                        isRefreshMotivationalBase
+                                          ? refreshMotivationalAnnualPremium
+                                          : Number(
+                                              refreshCommissionBase.stornedOriginalAnnualPremium
+                                            )
                                       )}
                                     </span>
                                   </div>

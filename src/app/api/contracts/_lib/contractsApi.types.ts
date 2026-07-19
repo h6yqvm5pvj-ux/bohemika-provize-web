@@ -50,6 +50,7 @@ export type ContractDoc = {
   refreshCommissionBase?: {
     productKey?: Product | null;
     method?: "cpp_neon_5y_storno" | string | null;
+    calculationMethod?: "storno_60_60" | "motivational_48_percent" | string | null;
     originalContractNumber?: string | null;
     originalStornoStartDateIso?: string | null;
     refreshPolicyStartDateIso?: string | null;
@@ -68,6 +69,8 @@ export type ContractDoc = {
     stornoBaseAnnualPremium?: number | null;
     stornedOriginalMonthlyPremium?: number | null;
     stornedOriginalAnnualPremium?: number | null;
+    motivationalMonthlyPremium?: number | null;
+    motivationalAnnualPremium?: number | null;
     calculationMonthlyPremium?: number | null;
     calculationAnnualPremium?: number | null;
   } | null;

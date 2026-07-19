@@ -1489,6 +1489,7 @@ const parseOptionalDateField = (
 type RefreshCommissionBasePayload = {
   productKey: Product;
   method: "cpp_neon_5y_storno";
+  calculationMethod: "storno_60_60" | "motivational_48_percent";
   originalContractNumber: string | null;
   originalStornoStartDateIso: string | null;
   refreshPolicyStartDateIso: string | null;
@@ -1507,6 +1508,8 @@ type RefreshCommissionBasePayload = {
   stornoBaseAnnualPremium: number;
   stornedOriginalMonthlyPremium: number;
   stornedOriginalAnnualPremium: number;
+  motivationalMonthlyPremium: number;
+  motivationalAnnualPremium: number;
   calculationMonthlyPremium: number;
   calculationAnnualPremium: number;
 };
@@ -6903,6 +6906,7 @@ export async function handleContractsCreate(req: NextRequest) {
         refreshCommissionBase = {
           productKey: "neon",
           method: "cpp_neon_5y_storno",
+          calculationMethod: refreshBase.calculationMethod,
           originalContractNumber: originalContractNumber || null,
           originalStornoStartDateIso: originalPremiumInfo?.stornoStartDateIso ?? null,
           refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
@@ -6921,6 +6925,8 @@ export async function handleContractsCreate(req: NextRequest) {
           stornoBaseAnnualPremium: refreshBase.stornoBaseAnnualPremium,
           stornedOriginalMonthlyPremium: refreshBase.stornedOriginalMonthlyPremium,
           stornedOriginalAnnualPremium: refreshBase.stornedOriginalAnnualPremium,
+          motivationalMonthlyPremium: refreshBase.motivationalMonthlyPremium,
+          motivationalAnnualPremium: refreshBase.motivationalAnnualPremium,
           calculationMonthlyPremium: refreshBase.calculationMonthlyPremium,
           calculationAnnualPremium: refreshBase.calculationAnnualPremium,
         };

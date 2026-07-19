@@ -38,6 +38,7 @@ export const NEON_CURRENT_VALID_FROM = "2024-07-01";
 export const NEON_HISTORICAL_MAX_YEARS = 20;
 export const NEON_CURRENT_MAX_YEARS = 15;
 export const NEON_REFRESH_STORNO_MONTHS = 60;
+export const NEON_REFRESH_MOTIVATIONAL_RATIO = 0.48;
 
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -91,6 +92,7 @@ function completedCalendarMonthsBetween(
 }
 
 export type NeonRefreshCommissionBase = {
+  calculationMethod: "storno_60_60" | "motivational_48_percent";
   newMonthlyPremium: number;
   originalMonthlyPremium: number;
   calculationMonthlyPremium: number;
@@ -105,6 +107,8 @@ export type NeonRefreshCommissionBase = {
   stornoBaseAnnualPremium: number;
   stornedOriginalMonthlyPremium: number;
   stornedOriginalAnnualPremium: number;
+  motivationalMonthlyPremium: number;
+  motivationalAnnualPremium: number;
 };
 
 export function calculateNeonRefreshCommissionBase({
@@ -148,18 +152,34 @@ export function calculateNeonRefreshCommissionBase({
   if (elapsed == null) return null;
 
   const elapsedMonths = Math.min(safeStornoMonths, Math.max(0, elapsed));
-  const remainingMonths = Math.max(0, safeStornoMonths - elapsedMonths);
+  const usesMotivationalBase = elapsed >= safeStornoMonths;
+  const remainingMonths = usesMotivationalBase
+    ? 0
+    : Math.max(0, safeStornoMonths - elapsedMonths);
   const earnedRatio = elapsedMonths / safeStornoMonths;
   const remainingRatio = remainingMonths / safeStornoMonths;
   const premiumIncreaseMonthly = safeNew - safeOriginal;
-  const stornedOriginalMonthlyPremium = safeStornoBase * remainingRatio;
+  const isPremiumIncrease = premiumIncreaseMonthly >= 0;
+  const motivationalSourceMonthlyPremium = isPremiumIncrease ? safeStornoBase : safeNew;
+  const motivationalMonthlyPremium = usesMotivationalBase
+    ? motivationalSourceMonthlyPremium * NEON_REFRESH_MOTIVATIONAL_RATIO
+    : 0;
+  const stornedOriginalMonthlyPremium = usesMotivationalBase
+    ? 0
+    : safeStornoBase * remainingRatio;
+  const refreshBaseMonthlyPremium = usesMotivationalBase
+    ? Math.max(0, (isPremiumIncrease ? premiumIncreaseMonthly : 0) + motivationalMonthlyPremium)
+    : Math.max(0, premiumIncreaseMonthly + stornedOriginalMonthlyPremium);
   const calculationMonthlyPremium = Math.max(
     0,
-    premiumIncreaseMonthly + stornedOriginalMonthlyPremium
+    refreshBaseMonthlyPremium
   );
   const calculationAnnualPremium = roundToCents(calculationMonthlyPremium * 12);
 
   return {
+    calculationMethod: usesMotivationalBase
+      ? "motivational_48_percent"
+      : "storno_60_60",
     newMonthlyPremium: roundToCents(safeNew),
     originalMonthlyPremium: roundToCents(safeOriginal),
     calculationMonthlyPremium: calculationAnnualPremium / 12,
@@ -174,6 +194,8 @@ export function calculateNeonRefreshCommissionBase({
     stornoBaseAnnualPremium: roundToCents(safeStornoBase * 12),
     stornedOriginalMonthlyPremium: roundToCents(stornedOriginalMonthlyPremium),
     stornedOriginalAnnualPremium: roundToCents(stornedOriginalMonthlyPremium * 12),
+    motivationalMonthlyPremium: roundToCents(motivationalMonthlyPremium),
+    motivationalAnnualPremium: roundToCents(motivationalMonthlyPremium * 12),
   };
 }
 

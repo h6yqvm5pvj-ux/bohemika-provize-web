@@ -508,9 +508,11 @@ type MatchedSystemContract = {
     calculationAnnualPremium?: number | null;
     originalAnnualPremium?: number | null;
     newAnnualPremium?: number | null;
+    motivationalAnnualPremium?: number | null;
     elapsedMonths?: number | null;
     remainingMonths?: number | null;
     stornoMonths?: number | null;
+    calculationMethod?: string | null;
     method?: string | null;
   } | null;
   frequencyRaw?: string | null;
