@@ -81,6 +81,7 @@ export function preloadFormulaModule(product?: Product | null) {
       import("../../lib/productFormulas/cppAuto");
       break;
     case "slaviaauto":
+    case "slaviaflotila":
       import("../../lib/productFormulas/slaviaAuto");
       break;
     case "cppPPRs":
@@ -103,6 +104,7 @@ export function preloadFormulaModule(product?: Product | null) {
       import("../../lib/productFormulas/pillowAuto");
       break;
     case "kooperativaAuto":
+    case "koopflotila":
       import("../../lib/productFormulas/kooperativaAuto");
       break;
     case "zamex":
@@ -528,6 +530,12 @@ export async function calculateResultForPosition(
       );
       return calculateSlaviaAuto(amount, freq, position);
     }
+    case "slaviaflotila": {
+      const { calculateSlaviaFlotila } = await import(
+        "../../lib/productFormulas/slaviaAuto"
+      );
+      return calculateSlaviaFlotila(amount, freq, position);
+    }
     case "cppPPRs": {
       const { calculateCppPPRs } = await import("../../lib/productFormulas/cppPPRs");
       return calculateCppPPRs(amount, freq, position);
@@ -571,6 +579,12 @@ export async function calculateResultForPosition(
         "../../lib/productFormulas/kooperativaAuto"
       );
       return calculateKooperativaAuto(amount, freq, position, contractSignedDateIso);
+    }
+    case "koopflotila": {
+      const { calculateKoopFlotila } = await import(
+        "../../lib/productFormulas/kooperativaAuto"
+      );
+      return calculateKoopFlotila(amount, freq, position);
     }
     case "zamex": {
       const { calculateZamex } = await import("../../lib/productFormulas/zamex");

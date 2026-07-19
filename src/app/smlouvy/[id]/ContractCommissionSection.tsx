@@ -80,12 +80,14 @@ const COMMISSION_PAYOUT_AMOUNT_TOLERANCE = 10;
 const AUTO_COMMISSION_PRODUCTS = new Set<Product>([
   "cppAuto",
   "slaviaauto",
+  "slaviaflotila",
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",
   "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
+  "koopflotila",
 ]);
 
 const isAutoCommissionProduct = (product: Product | undefined): boolean =>

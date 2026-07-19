@@ -11,7 +11,9 @@ const LEGACY_FREQUENCY_OVERRIDE_PRODUCTS = new Set<Product>([
   "uniqaAuto",
   "uniqaflotila",
   "kooperativaAuto",
+  "koopflotila",
   "slaviaauto",
+  "slaviaflotila",
   "cpphafan",
   "koopmajetekobcan",
   "koopfit",
@@ -96,4 +98,7 @@ export const computeLegacyFrequencyOverrideTotal = ({
 
 export const expectedLegacyAnnualItemTitle = (
   productKey: Product | null | undefined
-): string => (productKey === "kooperativaAuto" ? "Celkem za rok" : "📅 Provize za rok");
+): string =>
+  productKey === "kooperativaAuto" || productKey === "koopflotila"
+    ? "Celkem za rok"
+    : "📅 Provize za rok";

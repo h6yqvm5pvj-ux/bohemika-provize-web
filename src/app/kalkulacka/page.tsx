@@ -31,6 +31,7 @@ import {
   calculateMaxdomov,
   calculateCppAuto,
   calculateSlaviaAuto,
+  calculateSlaviaFlotila,
   calculateCppPPRbez,
   calculateCppPPRs,
   calculateCppSimplex,
@@ -41,6 +42,7 @@ import {
   calculateUniqaFlotila,
   calculatePillowAuto,
   calculateKooperativaAuto,
+  calculateKoopFlotila,
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
@@ -60,6 +62,7 @@ import {
   isMaxEfekt7Period,
   isDomexHistoricalPeriod,
   isSlaviaAutoSupportedForSignedDate,
+  isSlaviaFlotilaSupportedForSignedDate,
   SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
 } from "../lib/productFormulas";
 import {
@@ -213,12 +216,14 @@ const EMAIL_LOOKUP_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   cppAuto: "/provize/cppauto.jpg",
   slaviaauto: "/provize/slaviaauto.jpg",
+  slaviaflotila: "/provize/slaviaflotila.pdf",
   allianzAuto: "/provize/allianzauto.jpg",
   csobAuto: "/provize/csobauto.jpg",
   uniqaAuto: "/provize/uniqaauto.jpg",
   uniqaflotila: "/provize/uniqaflotila.jpg",
   pillowAuto: "/provize/pillowauto.jpg",
   kooperativaAuto: "/provize/koopauto.jpg",
+  koopflotila: "/provize/koopflotila.pdf",
   cpphafan: "/provize/cpphafan.pdf",
   koopodzam: "/provize/koopodzam.pdf",
   kooppmop: "/provize/kooppmop.pdf",
@@ -269,6 +274,10 @@ const POLICY_END_DATE_PRODUCTS = new Set<Product>([
   "axacestovko",
   "koopcestovko",
 ]);
+const isKooperativaAutoDetailProduct = (product: Product): boolean =>
+  product === "kooperativaAuto" || product === "koopflotila";
+const isSlaviaAutoDetailProduct = (product: Product): boolean =>
+  product === "slaviaauto" || product === "slaviaflotila";
 const AUTO_HULL_USUAL_PRICE_TEXT = "Obvyklá cena vozidla";
 const CLIENT_SUGGESTIONS_PAGE_LIMIT = 50;
 const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
@@ -1242,6 +1251,14 @@ export default function CalculatorPage() {
       setValidationError(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
       return false;
     }
+    if (
+      targetProduct === "slaviaflotila" &&
+      !isSlaviaFlotilaSupportedForSignedDate(signedDateIsoRaw)
+    ) {
+      setSaveMessage(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
+      setValidationError(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
+      return false;
+    }
     return true;
   };
 
@@ -1692,6 +1709,10 @@ export default function CalculatorPage() {
         return `Výpočet: platba (${payLabel}) × koeficient; roční částka = × počet plateb (${payPerYear}).`;
       case "uniqaflotila":
         return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částka = × počet plateb (${payPerYear}).`;
+      case "slaviaflotila":
+        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částka = × počet plateb (${payPerYear}). Koeficienty platné od 01.08.2025. Zrychlený režim výpočet nemění.`;
+      case "koopflotila":
+        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částka = × počet plateb (${payPerYear}). Koeficienty platné od 01.04.2026.`;
       case "cppAuto":
       case "slaviaauto":
       case "allianzAuto":
@@ -4089,6 +4110,14 @@ export default function CalculatorPage() {
       return;
     }
 
+    if (product === "slaviaflotila") {
+      const dto = calculateSlaviaFlotila(val, frequency, positionForCalc);
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
     if (product === "cppsimplex") {
       const dto = calculateCppSimplex(val, frequency, positionForCalc);
       const filtered = dto.items.filter((i) =>
@@ -4192,6 +4221,14 @@ export default function CalculatorPage() {
         positionForCalc,
         contractSignedDateForNeon
       );
+      setItems(dto.items);
+      setTotal(dto.total);
+      setUnsupported(false);
+      return;
+    }
+
+    if (product === "koopflotila") {
+      const dto = calculateKoopFlotila(val, frequency, positionForCalc);
       setItems(dto.items);
       setTotal(dto.total);
       setUnsupported(false);
@@ -5279,8 +5316,8 @@ export default function CalculatorPage() {
             tipContractSourceTipCreatedAtMs: tipContractConfig?.sourceTipCreatedAtMs ?? null,
             carMake:
               product === "cppAuto" ||
-              product === "slaviaauto" ||
-              product === "kooperativaAuto" ||
+              isSlaviaAutoDetailProduct(product) ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
@@ -5288,8 +5325,8 @@ export default function CalculatorPage() {
                 : null,
             carPlate:
               product === "cppAuto" ||
-              product === "slaviaauto" ||
-              product === "kooperativaAuto" ||
+              isSlaviaAutoDetailProduct(product) ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
@@ -5297,18 +5334,18 @@ export default function CalculatorPage() {
                 : null,
             carVin:
               product === "cppAuto" ||
-              product === "slaviaauto" ||
-              product === "kooperativaAuto" ||
+              isSlaviaAutoDetailProduct(product) ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarVin.trim() || null
                 : null,
-            carTp: product === "slaviaauto" ? autoCarTp.trim() || null : null,
+            carTp: isSlaviaAutoDetailProduct(product) ? autoCarTp.trim() || null : null,
             carOrv:
               product === "cppAuto" ||
-              product === "slaviaauto" ||
-              product === "kooperativaAuto" ||
+              isSlaviaAutoDetailProduct(product) ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
@@ -5322,15 +5359,15 @@ export default function CalculatorPage() {
               product === "allianzAuto" ? autoCarAllianzScope.trim() || null : null,
             carLiabilityLimit:
               product === "cppAuto" ||
-              product === "slaviaauto" ||
-              product === "kooperativaAuto" ||
+              isSlaviaAutoDetailProduct(product) ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarLiabilityLimit
                 : null,
             carHullSumInsured:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto" ||
@@ -5342,7 +5379,7 @@ export default function CalculatorPage() {
                 ? autoCarHullSumInsuredText.trim() || null
                 : null,
             carHullDeductible:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
@@ -5350,7 +5387,7 @@ export default function CalculatorPage() {
                 ? autoCarHullDeductible
                 : null,
             carHullDeductibleText:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
@@ -5358,42 +5395,42 @@ export default function CalculatorPage() {
                 ? autoCarHullDeductibleText.trim() || null
                 : null,
             carHullRiskAccident:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
                 ? autoCarHullRiskAccident
                 : null,
             carHullRiskTheft:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
                 ? autoCarHullRiskTheft
                 : null,
             carHullRiskNatural:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
                 ? autoCarHullRiskNatural
                 : null,
             carHullRiskVandalism:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
                 ? autoCarHullRiskVandalism
                 : null,
             carHullRiskAnimalCollision:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
                 ? autoCarHullRiskAnimalCollision
                 : null,
             carAssistancePlan:
-              product === "kooperativaAuto" ||
+              isKooperativaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
@@ -6068,22 +6105,22 @@ export default function CalculatorPage() {
         carAddonNonFaultAccident: autoCarAddonNonFaultAccident,
         carAddonPassengerInjury: autoCarAddonPassengerInjury,
         carAddonKeyLossTheft: autoCarAddonKeyLossTheft,
-        showTp: product === "slaviaauto",
+        showTp: isSlaviaAutoDetailProduct(product),
         showAnnualMileage: product === "allianzAuto" || product === "pillowAuto",
         showAllianzScope: product === "allianzAuto",
         showHull:
-          product === "kooperativaAuto" ||
+          isKooperativaAutoDetailProduct(product) ||
           product === "cppAuto" ||
           product === "allianzAuto" ||
           product === "pillowAuto" ||
           product === "csobAuto",
         showHullRisks:
-          product === "kooperativaAuto" ||
+          isKooperativaAutoDetailProduct(product) ||
           product === "cppAuto" ||
           product === "allianzAuto" ||
           product === "pillowAuto",
         showAssistance:
-          product === "kooperativaAuto" ||
+          isKooperativaAutoDetailProduct(product) ||
           product === "cppAuto" ||
           product === "allianzAuto" ||
           product === "csobAuto" ||
@@ -6347,7 +6384,7 @@ export default function CalculatorPage() {
     addText("vehicle", "Značka/model", autoCarMake);
     addText("vehicle", "RZ", autoCarPlate);
     addText("vehicle", "VIN", autoCarVin);
-    if (product === "slaviaauto") addText("vehicle", "TP", autoCarTp);
+    if (isSlaviaAutoDetailProduct(product)) addText("vehicle", "TP", autoCarTp);
     addText("vehicle", "ORV", autoCarOrv);
     if (product === "allianzAuto" || product === "pillowAuto") {
       addText("vehicle", "Roční nájezd", autoCarAnnualMileage);
@@ -6974,6 +7011,8 @@ export default function CalculatorPage() {
         return calculateCppAuto(val, freq, pos, signedDateForCalculation);
       case "slaviaauto":
         return calculateSlaviaAuto(val, freq, pos);
+      case "slaviaflotila":
+        return calculateSlaviaFlotila(val, freq, pos);
       case "cppsimplex": {
         const dto = calculateCppSimplex(val, freq, pos);
         const filtered = dto.items.filter((i) =>
@@ -7010,6 +7049,8 @@ export default function CalculatorPage() {
         return calculatePillowAuto(val, freq, pos, signedDateForCalculation);
       case "kooperativaAuto":
         return calculateKooperativaAuto(val, freq, pos, signedDateForCalculation);
+      case "koopflotila":
+        return calculateKoopFlotila(val, freq, pos);
       case "cppcestovko":
         return calculateCppCestovko(val, pos);
       case "axacestovko":
@@ -7512,6 +7553,7 @@ export default function CalculatorPage() {
           product !== "csobAuto" &&
           product !== "uniqaAuto" &&
           product !== "uniqaflotila" &&
+          product !== "slaviaflotila" &&
           product !== "pillowAuto" &&
           product !== "kooperativaAuto"
         }

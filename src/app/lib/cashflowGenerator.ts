@@ -455,8 +455,10 @@ export const CashflowGenerator = {
         // ============= OSTATNÍ AUTO – podle frekvence (ČPP, ČSOB, Kooperativa) =============
         case "cppAuto":
         case "slaviaauto":
+        case "slaviaflotila":
         case "csobAuto":
-        case "kooperativaAuto": {
+        case "kooperativaAuto":
+        case "koopflotila": {
           if (!immediate) break;
           const amount = immediate.amount;
           const stepMonths = monthsBetweenPayments(entry.frequencyRaw);

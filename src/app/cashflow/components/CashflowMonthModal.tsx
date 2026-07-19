@@ -185,8 +185,10 @@ function buildCashflowDisplayGroups(items: CashflowItem[]): CashflowDisplayGroup
 const COMMISSION_BY_PAYMENT_FREQUENCY_PRODUCTS = new Set<Product>([
   "cppAuto",
   "slaviaauto",
+  "slaviaflotila",
   "csobAuto",
   "kooperativaAuto",
+  "koopflotila",
   "domex",
   "cpphafan",
   "koopmajetekobcan",

@@ -79,6 +79,7 @@ export const PRODUCT_ORDER: Product[] = [
   "cppsimplex",
   "cppAuto",
   "slaviaauto",
+  "slaviaflotila",
   "cppPPRs",
   "cppPPRbez",
   "allianzAuto",
@@ -87,6 +88,7 @@ export const PRODUCT_ORDER: Product[] = [
   "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
+  "koopflotila",
   "koopcestovko",
   "cppcestovko",
   "axacestovko",
@@ -201,6 +203,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     institutionId: "slavia",
     category: "auto",
   },
+  slaviaflotila: {
+    label: "SLAVIA Auto Flotila",
+    icon: "/icons/icon_auto.png",
+    institutionId: "slavia",
+    category: "auto",
+  },
   cppPPRs: {
     label: "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS",
     icon: "/icons/icon_domex.png",
@@ -247,6 +255,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
   },
   kooperativaAuto: {
     label: "Kooperativa Auto",
+    icon: "/icons/icon_auto.png",
+    institutionId: "kooperativa",
+    category: "auto",
+  },
+  koopflotila: {
+    label: "Kooperativa Auto Flotila",
     icon: "/icons/icon_auto.png",
     institutionId: "kooperativa",
     category: "auto",

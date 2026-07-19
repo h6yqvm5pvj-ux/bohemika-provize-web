@@ -31,10 +31,12 @@ import {
   calculateDomex,
   calculatePillowMajetek,
   calculateFlexi,
+  calculateSlaviaFlotila,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
   calculateKoopPmop,
   calculateKooperativaAuto,
+  calculateKoopFlotila,
   calculateMaxEfekt,
   calculateMaxdomov,
   calculateNeon,
@@ -226,6 +228,8 @@ function calculateCommission(
       return immediateCommission(calculateCppAuto(premium, "annual", pos));
     case "slaviaauto":
       return immediateCommission(calculateSlaviaAuto(premium, "annual", pos));
+    case "slaviaflotila":
+      return immediateCommission(calculateSlaviaFlotila(premium, "annual", pos));
     case "cppsimplex":
       return immediateCommission(calculateCppSimplex(premium, "annual", pos));
     case "allianzAuto":
@@ -241,6 +245,8 @@ function calculateCommission(
       return immediateCommission(calculatePillowAuto(premium, "annual", pos));
     case "kooperativaAuto":
       return immediateCommission(calculateKooperativaAuto(premium, "annual", pos));
+    case "koopflotila":
+      return immediateCommission(calculateKoopFlotila(premium, "annual", pos));
     case "zamex":
       return immediateCommission(calculateZamex(premium, "annual", pos));
     case "cppPPRbez":

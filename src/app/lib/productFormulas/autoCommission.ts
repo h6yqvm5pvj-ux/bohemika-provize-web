@@ -8,11 +8,17 @@ import {
 import {
   csobAutoSubsequentCoefficient,
 } from "./csobAuto";
-import { kooperativaAutoSubsequentCoefficient } from "./kooperativaAuto";
+import {
+  kooperativaAutoSubsequentCoefficient,
+  koopFlotilaSubsequentCoefficient,
+} from "./kooperativaAuto";
 import {
   pillowAutoSubsequentCoefficient,
 } from "./pillowAuto";
-import { slaviaAutoCoefficient } from "./slaviaAuto";
+import {
+  slaviaAutoCoefficient,
+  slaviaFlotilaSubsequentCoefficient,
+} from "./slaviaAuto";
 import {
   uniqaFlotilaSubsequentCoefficient,
   uniqaAutoSubsequentCoefficient,
@@ -50,8 +56,12 @@ export function autoSubsequentCoefficientForProduct(
       return pillowAutoSubsequentCoefficient(position, contractSignedDateIso);
     case "slaviaauto":
       return slaviaAutoCoefficient(position);
+    case "slaviaflotila":
+      return slaviaFlotilaSubsequentCoefficient(position);
     case "kooperativaAuto":
       return kooperativaAutoSubsequentCoefficient(position, contractSignedDateIso);
+    case "koopflotila":
+      return koopFlotilaSubsequentCoefficient(position);
     default:
       return null;
   }

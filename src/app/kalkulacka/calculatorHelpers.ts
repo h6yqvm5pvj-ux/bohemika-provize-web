@@ -437,7 +437,9 @@ export function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "maxdomov":
     case "allianzmujdomov":
     case "kooperativaAuto":
+    case "koopflotila":
     case "allianzAuto":
+    case "slaviaflotila":
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "cppAuto":
     case "slaviaauto":

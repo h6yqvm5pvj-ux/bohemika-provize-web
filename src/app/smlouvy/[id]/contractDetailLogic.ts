@@ -45,6 +45,7 @@ export const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
   "koopodzam",
   "kooppmop",
   "kooperativaAuto",
+  "koopflotila",
   "koopcestovko",
 ]);
 

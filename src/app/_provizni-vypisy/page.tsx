@@ -59,8 +59,10 @@ import {
   calculateCsobAuto,
   calculateKooperativaAuto,
   calculatePillowAuto,
+  calculateSlaviaFlotila,
   calculateUniqaAuto,
   calculateUniqaFlotila,
+  calculateKoopFlotila,
 } from "@/app/lib/productFormulas";
 import {
   candidateCoefficientSetsForProduct,
@@ -4298,6 +4300,8 @@ const calculateResultForCoefficientSet = ({
       return calculateUniqaFlotila(amount, frequencyRaw, position, coefficientSignedDateIso);
     case "pillowAuto":
       return calculatePillowAuto(amount, frequencyRaw, position, coefficientSignedDateIso);
+    case "slaviaflotila":
+      return calculateSlaviaFlotila(amount, frequencyRaw, position);
     case "kooperativaAuto":
       return calculateKooperativaAuto(
         amount,
@@ -4305,6 +4309,8 @@ const calculateResultForCoefficientSet = ({
         position,
         coefficientSignedDateIso
       );
+    case "koopflotila":
+      return calculateKoopFlotila(amount, frequencyRaw, position);
     default:
       return null;
   }

@@ -89,10 +89,15 @@ import {
 import { autoSubsequentCoefficientForProduct } from "./productFormulas/autoCommission";
 import {
   calculateSlaviaAuto,
+  calculateSlaviaFlotila,
   isSlaviaAutoSupportedForSignedDate,
+  isSlaviaFlotilaSupportedForSignedDate,
   SLAVIA_AUTO_COEFFICIENT_VALID_FROM,
+  SLAVIA_FLOTILA_COEFFICIENT_VALID_FROM,
   SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
   slaviaAutoCoefficient,
+  slaviaFlotilaCoefficient,
+  slaviaFlotilaSubsequentCoefficient,
 } from "./productFormulas/slaviaAuto";
 import {
   calculateCppSimplex,
@@ -147,7 +152,11 @@ import {
 } from "./productFormulas/pillowAuto";
 import {
   calculateKooperativaAuto,
+  calculateKoopFlotila,
+  KOOP_FLOTILA_COEFFICIENT_VALID_FROM,
   kooperativaAutoCoefficient,
+  koopFlotilaCoefficient,
+  koopFlotilaSubsequentCoefficient,
   isKooperativaAutoHistoricalPeriod,
 } from "./productFormulas/kooperativaAuto";
 import {
@@ -207,8 +216,11 @@ export {
   calculateCppAuto,
   isCppAutoHistoricalPeriod,
   calculateSlaviaAuto,
+  calculateSlaviaFlotila,
   isSlaviaAutoSupportedForSignedDate,
+  isSlaviaFlotilaSupportedForSignedDate,
   SLAVIA_AUTO_COEFFICIENT_VALID_FROM,
+  SLAVIA_FLOTILA_COEFFICIENT_VALID_FROM,
   SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
   calculateCppSimplex,
   CPP_SIMPLEX_COEFFICIENT_VALID_FROM,
@@ -228,6 +240,7 @@ export {
   calculatePillowAuto,
   isPillowAutoHistoricalPeriod,
   calculateKooperativaAuto,
+  calculateKoopFlotila,
   isKooperativaAutoHistoricalPeriod,
   calculateZamex,
   ZAMEX_COEFFICIENT_VALID_FROM,
@@ -260,12 +273,14 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "cppsimplex",
   "cppAuto",
   "slaviaauto",
+  "slaviaflotila",
   "allianzAuto",
   "csobAuto",
   "uniqaAuto",
   "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
+  "koopflotila",
   "allianzmujdomov",
   "zamex",
   "cppPPRbez",
@@ -547,6 +562,26 @@ export function getCoefficientSummary(
             ) ?? slaviaAutoCoefficient(position),
         },
       ];
+    case "slaviaflotila":
+      return [
+        {
+          label: `${AUTO_ACQUISITION_COEFFICIENT_LABEL} (platné od ${new Date(
+            `${SLAVIA_FLOTILA_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value: slaviaFlotilaCoefficient(position),
+        },
+        {
+          label: `${AUTO_SUBSEQUENT_COEFFICIENT_LABEL} (platné od ${new Date(
+            `${SLAVIA_FLOTILA_COEFFICIENT_VALID_FROM}T00:00:00`
+          ).toLocaleDateString("cs-CZ")})`,
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? slaviaFlotilaSubsequentCoefficient(position),
+        },
+      ];
     case "cppPPRbez": {
       const validFrom = new Date(
         `${CPP_PPR_BEZ_COEFFICIENT_VALID_FROM}T00:00:00`
@@ -704,6 +739,26 @@ export function getCoefficientSummary(
             ) ?? kooperativaAutoCoefficient(position, contractSignedDateIso),
         },
       ];
+    case "koopflotila": {
+      const validFrom = new Date(
+        `${KOOP_FLOTILA_COEFFICIENT_VALID_FROM}T00:00:00`
+      ).toLocaleDateString("cs-CZ");
+      return [
+        {
+          label: `${AUTO_ACQUISITION_COEFFICIENT_LABEL} (platné od ${validFrom})`,
+          value: koopFlotilaCoefficient(position),
+        },
+        {
+          label: `${AUTO_SUBSEQUENT_COEFFICIENT_LABEL} (platné od ${validFrom})`,
+          value:
+            autoSubsequentCoefficientForProduct(
+              product,
+              position,
+              contractSignedDateIso
+            ) ?? koopFlotilaSubsequentCoefficient(position),
+        },
+      ];
+    }
     case "zamex":
       return [
         {

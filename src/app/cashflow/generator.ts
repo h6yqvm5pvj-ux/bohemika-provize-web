@@ -64,8 +64,10 @@ const AUTO_CASHFLOW_PRODUCTS = new Set<EntryDoc["productKey"]>([
   "cppAuto",
   "csobAuto",
   "kooperativaAuto",
+  "koopflotila",
   "pillowAuto",
   "slaviaauto",
+  "slaviaflotila",
   "uniqaAuto",
   "uniqaflotila",
 ]);
@@ -1114,8 +1116,10 @@ export function generateCashflow(
 
       case "cppAuto":
       case "slaviaauto":
+      case "slaviaflotila":
       case "csobAuto":
-      case "kooperativaAuto": {
+      case "kooperativaAuto":
+      case "koopflotila": {
         if (!immediate) break;
 
         const subsequentMetadata = naslGeneric

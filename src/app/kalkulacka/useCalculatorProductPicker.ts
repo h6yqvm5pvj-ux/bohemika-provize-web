@@ -47,12 +47,14 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
     products: [
       "cppAuto",
       "slaviaauto",
+      "slaviaflotila",
       "allianzAuto",
       "csobAuto",
       "uniqaAuto",
       "uniqaflotila",
       "pillowAuto",
       "kooperativaAuto",
+      "koopflotila",
     ],
   },
   {

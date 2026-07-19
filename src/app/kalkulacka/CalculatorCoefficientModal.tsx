@@ -324,6 +324,8 @@ export function CalculatorCoefficientModal({
       ? isUniqaFlotilaHistorical
         ? "Historické koeficienty – platnost 01.05.2024 až 31.03.2026"
         : "Aktuální koeficienty – platnost od 01.04.2026"
+      : product === "slaviaflotila"
+      ? "SLAVIA Auto Flotila – koeficienty platné od 01.08.2025"
       : product === "pillowAuto"
       ? isPillowAutoHistorical
         ? "Historické koeficienty – platnost 01.10.2023 až 31.03.2026"
@@ -369,6 +371,8 @@ export function CalculatorCoefficientModal({
     product === "neon" && isNeonHistorical
       ? "historické podmínky (bez režimu)"
       : product === "cppAuto" ||
+        product === "slaviaauto" ||
+        product === "slaviaflotila" ||
         product === "allianzAuto" ||
         product === "csobAuto" ||
         product === "uniqaAuto" ||

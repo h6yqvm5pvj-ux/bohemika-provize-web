@@ -24,12 +24,14 @@ export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
   auto: [
     "cppAuto",
     "slaviaauto",
+    "slaviaflotila",
     "allianzAuto",
     "csobAuto",
     "uniqaAuto",
     "uniqaflotila",
     "pillowAuto",
     "kooperativaAuto",
+    "koopflotila",
   ],
   property: [
     "domex",

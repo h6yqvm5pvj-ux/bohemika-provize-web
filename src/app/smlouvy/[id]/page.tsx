@@ -1579,7 +1579,7 @@ export default function ContractDetailPage() {
   const paymentVerificationUrl =
     prod === "allianzAuto" || prod === "allianzmujdomov"
       ? ALLIANZ_PAYMENT_CHECK_URL
-      : prod === "slaviaauto"
+      : prod === "slaviaauto" || prod === "slaviaflotila"
       ? SLAVIA_PAYMENT_CHECK_URL
       : prod && CPP_PAYMENT_CHECK_PRODUCTS.has(prod)
       ? CPP_PAYMENT_CHECK_URL

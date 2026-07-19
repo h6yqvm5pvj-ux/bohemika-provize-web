@@ -89,6 +89,7 @@ import {
   calculateMaxdomov,
   calculateCppAuto,
   calculateSlaviaAuto,
+  calculateSlaviaFlotila,
   calculateCppSimplex,
   calculateCppPPRbez,
   calculateCppPPRs,
@@ -98,12 +99,14 @@ import {
   calculateUniqaFlotila,
   calculatePillowAuto,
   calculateKooperativaAuto,
+  calculateKoopFlotila,
   calculateZamex,
   calculateCppCestovko,
   calculateAxaCestovko,
   calculateKoopCestovko,
   calculateComfortCC,
   isSlaviaAutoSupportedForSignedDate,
+  isSlaviaFlotilaSupportedForSignedDate,
   SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
 } from "@/app/lib/productFormulas";
 import {
@@ -276,6 +279,7 @@ const SUPPORTED_PRODUCTS = new Set<Product>([
   "cppsimplex",
   "cppAuto",
   "slaviaauto",
+  "slaviaflotila",
   "allianzAuto",
   "allianzmujdomov",
   "csobAuto",
@@ -283,6 +287,7 @@ const SUPPORTED_PRODUCTS = new Set<Product>([
   "uniqaflotila",
   "pillowAuto",
   "kooperativaAuto",
+  "koopflotila",
   "koopcestovko",
   "cppcestovko",
   "axacestovko",
@@ -3002,7 +3007,9 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
     case "maxdomov":
     case "allianzmujdomov":
     case "kooperativaAuto":
+    case "koopflotila":
     case "allianzAuto":
+    case "slaviaflotila":
       return ["monthly", "quarterly", "semiannual", "annual"];
     case "cppAuto":
     case "slaviaauto":
@@ -3688,6 +3695,8 @@ const computeItemsForProductPositionAndMode = ({
       );
     case "slaviaauto":
       return calculateSlaviaAuto(safeAmount, usedFrequency, position);
+    case "slaviaflotila":
+      return calculateSlaviaFlotila(safeAmount, usedFrequency, position);
     case "cppPPRbez": {
       const dto = calculateCppPPRbez(safeAmount, usedFrequency, position);
       const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
@@ -3746,6 +3755,8 @@ const computeItemsForProductPositionAndMode = ({
         position,
         coefficientSignedDateIso
       );
+    case "koopflotila":
+      return calculateKoopFlotila(safeAmount, usedFrequency, position);
     case "cppcestovko":
       return calculateCppCestovko(safeAmount, position);
     case "axacestovko":
@@ -6718,6 +6729,15 @@ export async function handleContractsCreate(req: NextRequest) {
     if (
       normalizedEntry.payload.productKey === "slaviaauto" &&
       !isSlaviaAutoSupportedForSignedDate(signedDateIso)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE },
+        { status: 400 }
+      );
+    }
+    if (
+      normalizedEntry.payload.productKey === "slaviaflotila" &&
+      !isSlaviaFlotilaSupportedForSignedDate(signedDateIso)
     ) {
       return NextResponse.json(
         { ok: false, error: SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE },
