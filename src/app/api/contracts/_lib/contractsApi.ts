@@ -1286,10 +1286,10 @@ const resolveRefreshOriginalPremiumInfo = async ({
       Boolean(isoDayFromUnknown(change.policyStartDate))
   );
   const stornoStartDateIso =
-    isoDayFromUnknown(firstChangeWithDate?.contractSignedDate) ??
-    isoDayFromUnknown(contract.contractSignedDate) ??
     isoDayFromUnknown(firstChangeWithDate?.policyStartDate) ??
-    isoDayFromUnknown(contract.policyStartDate);
+    isoDayFromUnknown(contract.policyStartDate) ??
+    isoDayFromUnknown(firstChangeWithDate?.contractSignedDate) ??
+    isoDayFromUnknown(contract.contractSignedDate);
 
   return {
     premiumAmount,

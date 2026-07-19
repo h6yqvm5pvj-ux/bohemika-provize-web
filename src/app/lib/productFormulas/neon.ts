@@ -157,12 +157,13 @@ export function calculateNeonRefreshCommissionBase({
     0,
     premiumIncreaseMonthly + stornedOriginalMonthlyPremium
   );
+  const calculationAnnualPremium = roundToCents(calculationMonthlyPremium * 12);
 
   return {
     newMonthlyPremium: roundToCents(safeNew),
     originalMonthlyPremium: roundToCents(safeOriginal),
-    calculationMonthlyPremium: roundToCents(calculationMonthlyPremium),
-    calculationAnnualPremium: roundToCents(calculationMonthlyPremium * 12),
+    calculationMonthlyPremium: calculationAnnualPremium / 12,
+    calculationAnnualPremium,
     elapsedMonths,
     remainingMonths,
     earnedRatio,
