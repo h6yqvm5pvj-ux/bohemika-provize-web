@@ -67,6 +67,36 @@ const DETECTION_RULES: DetectionRule[] = [
       "Na 1. stránce jsou texty „Česká podnikatelská pojišťovna“ a „CESTOVNÍ POJIŠTĚNÍ“.",
   },
   {
+    product: "axacestovko",
+    mustContain: [
+      { page: "any", text: normalizeText("Inter Partner Assistance") },
+      { page: "any", text: normalizeText("cestovní pojištění") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Inter Partner Assistance“ a „cestovní pojištění“.",
+  },
+  {
+    product: "axacestovko",
+    mustContain: [
+      { page: "any", text: normalizeText("Inter Partner Assistance") },
+      { page: "any", text: normalizeText("cestovního pojištění") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Inter Partner Assistance“ a „cestovního pojištění“.",
+  },
+  {
+    product: "axacestovko",
+    mustContain: [
+      { page: "any", text: normalizeText("Inter Partner Assistance") },
+      { page: "any", text: normalizeText("travel insurance") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Inter Partner Assistance“ a „travel insurance“.",
+  },
+  {
     product: "cppsimplex",
     mustContain: [
       { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },

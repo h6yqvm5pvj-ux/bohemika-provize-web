@@ -134,7 +134,7 @@ export function calculateDomex(
       title: "🔁 Následná provize (z platby)",
       amount: naslednaPlatba,
       code: commissionInstallmentCodeRange("B", frequency),
-      note: historical ? "Vyplácí se maximálně 4 roky." : undefined,
+      ...(historical ? { note: "Vyplácí se maximálně 4 roky." } : {}),
       excludeFromTotal: true,
     },
     {

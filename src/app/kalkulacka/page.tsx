@@ -264,6 +264,11 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["neon", "domex", "cppAuto"]);
+const POLICY_END_DATE_PRODUCTS = new Set<Product>([
+  "cppcestovko",
+  "axacestovko",
+  "koopcestovko",
+]);
 const AUTO_HULL_USUAL_PRICE_TEXT = "Obvyklá cena vozidla";
 const CLIENT_SUGGESTIONS_PAGE_LIMIT = 50;
 const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
@@ -355,6 +360,10 @@ async function parseContractPdfByProduct(
       const { parseCppCestovkoPdf } = await import("../lib/parseCppCestovkoPdf");
       return parseCppCestovkoPdf(file);
     }
+    case "axacestovko": {
+      const { parseAxaCestovkoPdf } = await import("../lib/parseAxaCestovkoPdf");
+      return parseAxaCestovkoPdf(file);
+    }
     case "cppsimplex": {
       const { parseCppSimplexPdf } = await import("../lib/parseCppSimplexPdf");
       return parseCppSimplexPdf(file);
@@ -366,6 +375,10 @@ async function parseContractPdfByProduct(
 
 function supportsOriginalContractReplacement(product: Product): boolean {
   return ORIGINAL_REPLACEMENT_PRODUCTS.has(product);
+}
+
+function supportsPolicyEndDate(product: Product): boolean {
+  return POLICY_END_DATE_PRODUCTS.has(product);
 }
 
 function originalReplacementLabel(product: Product): string {
@@ -842,6 +855,7 @@ const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
   "pillowAuto",
   "kooperativaAuto",
   "cppcestovko",
+  "axacestovko",
   "cppsimplex",
   "neon",
   "flexi",
@@ -4256,7 +4270,7 @@ export default function CalculatorPage() {
       setRefreshOriginalMissingInSystem(false);
       setRefreshOriginalPdfLookupNumber(null);
     }
-    if (product !== "cppcestovko") {
+    if (!supportsPolicyEndDate(product)) {
       setPolicyEndDate("");
     }
   }, [product]);
@@ -5839,7 +5853,7 @@ export default function CalculatorPage() {
       ? "Přidat smlouvu"
       : "Kalkulačka provizí";
   const hasFrequencyPicker = allowed.length > 1;
-  const showPolicyEndDateField = product === "cppcestovko";
+  const showPolicyEndDateField = supportsPolicyEndDate(product);
   const lastSavedContractHref = lastSavedContractRef
     ? `/smlouvy/${encodeURIComponent(
         `${lastSavedContractRef.ownerEmail}___${lastSavedContractRef.entryId}`
