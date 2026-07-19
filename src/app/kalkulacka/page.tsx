@@ -553,6 +553,7 @@ type ContractsMutationResponse = {
   ok?: boolean;
   error?: string;
   entryId?: string;
+  refreshOriginalEntryId?: string | null;
   idempotentReplay?: boolean;
   [key: string]: unknown;
 };
@@ -5596,6 +5597,10 @@ export default function CalculatorPage() {
         setSaveMessage("Server potvrdil uložení bez ID smlouvy. Zkus to prosím znovu.");
         return;
       }
+      const linkedRefreshOriginalEntryId =
+        typeof data?.refreshOriginalEntryId === "string"
+          ? data.refreshOriginalEntryId.trim()
+          : "";
       const ownerEmail = targetOwnerEmail;
       if (createdEntryId && ownerEmail) {
         setLastSavedContractRef({
@@ -5638,10 +5643,13 @@ export default function CalculatorPage() {
         }
       }
 
+      const linkedRefreshOriginal = linkedRefreshOriginalEntryId.length > 0;
       const savedMessage = isRefreshWithoutOriginalInSystem
         ? "Smlouva byla uložena jako REFRESH bez původní smlouvy v systému. Výpočet provize je orientační a musí se sladit podle provizního výpisu."
         : shouldReplaceOriginalContract
-          ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ke dni počátku.`
+          ? linkedRefreshOriginal
+            ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ke dni počátku.`
+            : `Smlouva byla uložena jako ${originalReplacementLabel(product)}. Původní smlouva nebyla v systému nalezena, takže se automaticky nestornovala.`
           : "Smlouva byla uložena mezi sepsané.";
       setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);
       setSaveSuccessFlash({

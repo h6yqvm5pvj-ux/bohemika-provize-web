@@ -667,6 +667,7 @@ const NEW_CONTRACT_PUSH_RECENT_SIGNED_DAYS = 45;
 const NEW_CONTRACT_PUSH_MAX_RECIPIENTS = 40;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER = 30;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
+const UNLINKED_ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["domex", "cppAuto"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
 
@@ -743,6 +744,9 @@ const encodeCursorToken = (ts: number, key: string) =>
 
 const contractCursorKey = (ownerEmail: string, docId: string) =>
   `${normalizeEmail(ownerEmail)}___${docId}`;
+
+const canSaveUnlinkedOriginalReplacement = (productKey: Product): boolean =>
+  UNLINKED_ORIGINAL_REPLACEMENT_PRODUCTS.has(productKey);
 
 const responseCursorKey = (item: ContractResponseItem) =>
   contractCursorKey(
@@ -6810,146 +6814,165 @@ export async function handleContractsCreate(req: NextRequest) {
       normalizedEntry.payload.productKey === "neon" &&
       normalizedEntry.payload.isRefresh === true &&
       normalizedEntry.payload.refreshOriginalMissingInSystem === true;
+    const allowUnlinkedOriginalReplacement =
+      normalizedEntry.payload.entryType === "contract" &&
+      normalizedEntry.payload.isRefresh === true &&
+      canSaveUnlinkedOriginalReplacement(normalizedEntry.payload.productKey);
 
     if (
       normalizedEntry.payload.entryType === "contract" &&
       normalizedEntry.payload.isRefresh === true &&
       !refreshWithoutOriginalInSystem
     ) {
+      const skipUnlinkedOriginalIfAllowed = (
+        error: string,
+        status: number = 400
+      ): NextResponse | null => {
+        if (!allowUnlinkedOriginalReplacement) {
+          return NextResponse.json({ ok: false, error }, { status });
+        }
+        refreshOriginalLink = null;
+        refreshOriginalForSync = null;
+        return null;
+      };
       const originalContractNumber =
         normalizedEntry.payload.refreshOriginalContractNumber ?? "";
       refreshOriginalLink = await findExistingContractByNumber(originalContractNumber);
       const ownerEntryPrefix = `users/${targetOwnerEmail}/entries/`;
       if (!refreshOriginalLink || !refreshOriginalLink.entryPath.startsWith(ownerEntryPrefix)) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Původní smlouva pro Refresh/Náhradu nebyla nalezena u vlastníka nové smlouvy.",
-          },
-          { status: 400 }
+        const response = skipUnlinkedOriginalIfAllowed(
+          "Původní smlouva pro Refresh/Náhradu nebyla nalezena u vlastníka nové smlouvy."
         );
+        if (response) return response;
       }
 
-      const refreshOriginalEntryId =
-        refreshOriginalLink.entryId ??
-        refreshOriginalLink.entryPath.split("/").pop()?.trim() ??
-        "";
-      if (!refreshOriginalEntryId) {
-        return NextResponse.json(
-          { ok: false, error: "Původní smlouva pro Refresh/Náhradu nemá platné entryId." },
-          { status: 400 }
-        );
-      }
-      refreshOriginalForSync = {
-        ownerEmail: targetOwnerEmail,
-        entryId: refreshOriginalEntryId,
-      };
-
-      const refreshOriginalSnap = await db.doc(refreshOriginalLink.entryPath).get();
-      if (!refreshOriginalSnap.exists) {
-        return NextResponse.json(
-          { ok: false, error: "Původní smlouva pro Refresh/Náhradu už nebyla nalezena." },
-          { status: 400 }
-        );
-      }
-
-      const originalData = (refreshOriginalSnap.data() ?? {}) as ContractDoc;
-      if (normalizeContractEntryType(originalData.entryType ?? "contract") !== "contract") {
-        return NextResponse.json(
-          { ok: false, error: "Původní záznam pro Refresh/Náhradu není smlouva." },
-          { status: 400 }
-        );
-      }
-      if (originalData.productKey !== normalizedEntry.payload.productKey) {
-        return NextResponse.json(
-          { ok: false, error: "Původní smlouva pro Refresh/Náhradu musí mít stejný produkt jako nová smlouva." },
-          { status: 400 }
-        );
-      }
-      if (
-        normalizeContractNumber(originalData.contractNumber) !==
-        normalizeContractNumber(originalContractNumber)
-      ) {
-        return NextResponse.json(
-          { ok: false, error: "Původní smlouva pro Refresh/Náhradu neodpovídá zadanému číslu." },
-          { status: 400 }
-        );
-      }
-
-      const existingReplacementEntryId =
-        typeof originalData.refreshReplacedByEntryId === "string"
-          ? originalData.refreshReplacedByEntryId.trim()
-          : "";
-      if (
-        existingReplacementEntryId &&
-        existingReplacementEntryId !== (idempotentEntryRef?.id ?? "")
-      ) {
-        return NextResponse.json(
-          { ok: false, error: "Původní smlouva už má navazující Refresh/Náhradu." },
-          { status: 409 }
-        );
-      }
-      if (normalizedEntry.payload.productKey === "neon") {
-        const originalItem = toContractResponseItem(
-          refreshOriginalSnap.id,
-          targetOwnerEmail,
-          originalData,
-          trustedProfile.name,
-          trustedProfile
-        );
-        const originalPremiumInfo = await resolveRefreshOriginalPremiumInfo({
-          ownerEmail: targetOwnerEmail,
-          contract: originalItem,
-        });
-        const refreshBase = originalPremiumInfo
-          ? calculateNeonRefreshCommissionBase({
-              newMonthlyPremium:
-                normalizedEntry.payload.effectiveInputAmount ||
-                normalizedEntry.payload.inputAmount,
-              originalMonthlyPremium: originalPremiumInfo.premiumAmount,
-              stornoBaseMonthlyPremium: originalPremiumInfo.stornoBasePremiumAmount,
-              originalStornoStartDateIso: originalPremiumInfo.stornoStartDateIso,
-              refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
-            })
-          : null;
-        if (!refreshBase) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error:
-                "Nepodařilo se spočítat Refresh základnu pro ČPP ŽP NEON. Zkontroluj pojistné a datum původní smlouvy.",
-            },
-            { status: 400 }
+      if (refreshOriginalLink) {
+        const refreshOriginalEntryId =
+          refreshOriginalLink.entryId ??
+          refreshOriginalLink.entryPath.split("/").pop()?.trim() ??
+          "";
+        if (!refreshOriginalEntryId) {
+          const response = skipUnlinkedOriginalIfAllowed(
+            "Původní smlouva pro Refresh/Náhradu nemá platné entryId."
           );
+          if (response) return response;
         }
-        commissionInputAmount = refreshBase.calculationMonthlyPremium;
-        refreshCommissionBase = {
-          productKey: "neon",
-          method: "cpp_neon_5y_storno",
-          calculationMethod: refreshBase.calculationMethod,
-          originalContractNumber: originalContractNumber || null,
-          originalStornoStartDateIso: originalPremiumInfo?.stornoStartDateIso ?? null,
-          refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
-          stornoMonths: NEON_REFRESH_STORNO_MONTHS,
-          elapsedMonths: refreshBase.elapsedMonths,
-          remainingMonths: refreshBase.remainingMonths,
-          earnedRatio: refreshBase.earnedRatio,
-          remainingRatio: refreshBase.remainingRatio,
-          newMonthlyPremium: refreshBase.newMonthlyPremium,
-          newAnnualPremium: refreshBase.newMonthlyPremium * 12,
-          originalMonthlyPremium: refreshBase.originalMonthlyPremium,
-          originalAnnualPremium: refreshBase.originalMonthlyPremium * 12,
-          premiumIncreaseMonthly: refreshBase.premiumIncreaseMonthly,
-          premiumIncreaseAnnual: refreshBase.premiumIncreaseAnnual,
-          stornoBaseMonthlyPremium: refreshBase.stornoBaseMonthlyPremium,
-          stornoBaseAnnualPremium: refreshBase.stornoBaseAnnualPremium,
-          stornedOriginalMonthlyPremium: refreshBase.stornedOriginalMonthlyPremium,
-          stornedOriginalAnnualPremium: refreshBase.stornedOriginalAnnualPremium,
-          motivationalMonthlyPremium: refreshBase.motivationalMonthlyPremium,
-          motivationalAnnualPremium: refreshBase.motivationalAnnualPremium,
-          calculationMonthlyPremium: refreshBase.calculationMonthlyPremium,
-          calculationAnnualPremium: refreshBase.calculationAnnualPremium,
-        };
+
+        const refreshOriginalSnap = await db.doc(refreshOriginalLink.entryPath).get();
+        if (!refreshOriginalSnap.exists) {
+          const response = skipUnlinkedOriginalIfAllowed(
+            "Původní smlouva pro Refresh/Náhradu už nebyla nalezena."
+          );
+          if (response) return response;
+        }
+
+        if (refreshOriginalLink && refreshOriginalSnap.exists) {
+          const originalData = (refreshOriginalSnap.data() ?? {}) as ContractDoc;
+          if (normalizeContractEntryType(originalData.entryType ?? "contract") !== "contract") {
+            const response = skipUnlinkedOriginalIfAllowed(
+              "Původní záznam pro Refresh/Náhradu není smlouva."
+            );
+            if (response) return response;
+          }
+          if (refreshOriginalLink && originalData.productKey !== normalizedEntry.payload.productKey) {
+            const response = skipUnlinkedOriginalIfAllowed(
+              "Původní smlouva pro Refresh/Náhradu musí mít stejný produkt jako nová smlouva."
+            );
+            if (response) return response;
+          }
+          if (
+            refreshOriginalLink &&
+            normalizeContractNumber(originalData.contractNumber) !==
+              normalizeContractNumber(originalContractNumber)
+          ) {
+            const response = skipUnlinkedOriginalIfAllowed(
+              "Původní smlouva pro Refresh/Náhradu neodpovídá zadanému číslu."
+            );
+            if (response) return response;
+          }
+
+          if (refreshOriginalLink) {
+            const existingReplacementEntryId =
+              typeof originalData.refreshReplacedByEntryId === "string"
+                ? originalData.refreshReplacedByEntryId.trim()
+                : "";
+            if (
+              existingReplacementEntryId &&
+              existingReplacementEntryId !== (idempotentEntryRef?.id ?? "")
+            ) {
+              return NextResponse.json(
+                { ok: false, error: "Původní smlouva už má navazující Refresh/Náhradu." },
+                { status: 409 }
+              );
+            }
+            refreshOriginalForSync = {
+              ownerEmail: targetOwnerEmail,
+              entryId: refreshOriginalEntryId,
+            };
+            if (normalizedEntry.payload.productKey === "neon") {
+              const originalItem = toContractResponseItem(
+                refreshOriginalSnap.id,
+                targetOwnerEmail,
+                originalData,
+                trustedProfile.name,
+                trustedProfile
+              );
+              const originalPremiumInfo = await resolveRefreshOriginalPremiumInfo({
+                ownerEmail: targetOwnerEmail,
+                contract: originalItem,
+              });
+              const refreshBase = originalPremiumInfo
+                ? calculateNeonRefreshCommissionBase({
+                    newMonthlyPremium:
+                      normalizedEntry.payload.effectiveInputAmount ||
+                      normalizedEntry.payload.inputAmount,
+                    originalMonthlyPremium: originalPremiumInfo.premiumAmount,
+                    stornoBaseMonthlyPremium: originalPremiumInfo.stornoBasePremiumAmount,
+                    originalStornoStartDateIso: originalPremiumInfo.stornoStartDateIso,
+                    refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
+                  })
+                : null;
+              if (!refreshBase) {
+                return NextResponse.json(
+                  {
+                    ok: false,
+                    error:
+                      "Nepodařilo se spočítat Refresh základnu pro ČPP ŽP NEON. Zkontroluj pojistné a datum původní smlouvy.",
+                  },
+                  { status: 400 }
+                );
+              }
+              commissionInputAmount = refreshBase.calculationMonthlyPremium;
+              refreshCommissionBase = {
+                productKey: "neon",
+                method: "cpp_neon_5y_storno",
+                calculationMethod: refreshBase.calculationMethod,
+                originalContractNumber: originalContractNumber || null,
+                originalStornoStartDateIso: originalPremiumInfo?.stornoStartDateIso ?? null,
+                refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
+                stornoMonths: NEON_REFRESH_STORNO_MONTHS,
+                elapsedMonths: refreshBase.elapsedMonths,
+                remainingMonths: refreshBase.remainingMonths,
+                earnedRatio: refreshBase.earnedRatio,
+                remainingRatio: refreshBase.remainingRatio,
+                newMonthlyPremium: refreshBase.newMonthlyPremium,
+                newAnnualPremium: refreshBase.newMonthlyPremium * 12,
+                originalMonthlyPremium: refreshBase.originalMonthlyPremium,
+                originalAnnualPremium: refreshBase.originalMonthlyPremium * 12,
+                premiumIncreaseMonthly: refreshBase.premiumIncreaseMonthly,
+                premiumIncreaseAnnual: refreshBase.premiumIncreaseAnnual,
+                stornoBaseMonthlyPremium: refreshBase.stornoBaseMonthlyPremium,
+                stornoBaseAnnualPremium: refreshBase.stornoBaseAnnualPremium,
+                stornedOriginalMonthlyPremium: refreshBase.stornedOriginalMonthlyPremium,
+                stornedOriginalAnnualPremium: refreshBase.stornedOriginalAnnualPremium,
+                motivationalMonthlyPremium: refreshBase.motivationalMonthlyPremium,
+                motivationalAnnualPremium: refreshBase.motivationalAnnualPremium,
+                calculationMonthlyPremium: refreshBase.calculationMonthlyPremium,
+                calculationAnnualPremium: refreshBase.calculationAnnualPremium,
+              };
+            }
+          }
+        }
       }
     }
 

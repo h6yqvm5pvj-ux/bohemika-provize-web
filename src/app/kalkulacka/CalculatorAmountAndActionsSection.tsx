@@ -88,6 +88,7 @@ export function CalculatorAmountAndActionsSection({
   const activeRefreshContractActionButtonClass = `${refreshContractActionButtonClass} ring-2 ring-sky-200`;
   const changeContractActionButtonClass = `${contractActionButtonBaseClass} border-emerald-500/70 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] shadow-[0_12px_24px_rgba(5,150,105,0.24)]`;
   const canUseOriginalReplacement = product === "neon" || product === "domex" || product === "cppAuto";
+  const canSaveUnlinkedOriginalReplacement = product === "domex" || product === "cppAuto";
   const originalReplacementButtonLabel =
     product === "neon"
       ? refreshOriginalOpen
@@ -264,7 +265,9 @@ export function CalculatorAmountAndActionsSection({
                       }`}
                     />
                     <p className="text-[11px] text-slate-600">
-                      Při uložení se původní smlouva stornuje ke dni počátku nové smlouvy.
+                      {canSaveUnlinkedOriginalReplacement
+                        ? "Pokud se původní smlouva najde u stejného vlastníka a produktu, při uložení se stornuje ke dni počátku nové smlouvy."
+                        : "Při uložení se původní smlouva stornuje ke dni počátku nové smlouvy."}
                     </p>
                   </>
                 )}
@@ -305,12 +308,20 @@ export function CalculatorAmountAndActionsSection({
                 )}
                 {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "wrongProduct" && (
                   <p className="text-[11px] font-semibold text-amber-700">
-                    Smlouva je evidována, ale není vedena jako {originalReplacementProductLabel}.
+                    {canSaveUnlinkedOriginalReplacement
+                      ? `Smlouva je evidována, ale není vedena jako ${originalReplacementProductLabel}. Náhradu lze uložit bez automatického storna původní smlouvy.`
+                      : `Smlouva je evidována, ale není vedena jako ${originalReplacementProductLabel}.`}
                   </p>
                 )}
                 {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "notFound" && (
-                  <p className="text-[11px] font-semibold text-rose-700">
-                    Smlouva s tímto číslem není evidována v systému Bohemka.App.
+                  <p
+                    className={`text-[11px] font-semibold ${
+                      canSaveUnlinkedOriginalReplacement ? "text-amber-700" : "text-rose-700"
+                    }`}
+                  >
+                    {canSaveUnlinkedOriginalReplacement
+                      ? "Původní smlouva s tímto číslem není evidována v systému Bohemka.App. Náhradu lze uložit bez automatického storna původní smlouvy."
+                      : "Smlouva s tímto číslem není evidována v systému Bohemka.App."}
                   </p>
                 )}
                 {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "error" && (
