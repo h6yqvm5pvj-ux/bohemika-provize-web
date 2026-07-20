@@ -278,6 +278,8 @@ const isKooperativaAutoDetailProduct = (product: Product): boolean =>
   product === "kooperativaAuto" || product === "koopflotila";
 const isSlaviaAutoDetailProduct = (product: Product): boolean =>
   product === "slaviaauto" || product === "slaviaflotila";
+const isUniqaAutoDetailProduct = (product: Product): boolean =>
+  product === "uniqaAuto";
 const AUTO_HULL_USUAL_PRICE_TEXT = "Obvyklá cena vozidla";
 const CLIENT_SUGGESTIONS_PAGE_LIMIT = 50;
 const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
@@ -291,6 +293,110 @@ type PrepareEndorsementOptions = {
   newPremiumAmountOverride?: number | null;
   source?: "manual" | "pdf";
 };
+
+const PDF_IMPORT_REQUIRED_FIELD_MESSAGES: Record<string, string> = {
+  clientName: "pojistníka",
+  contractNumber: "číslo smlouvy",
+  contractSignedDate: "datum sjednání",
+  policyStartDate: "počátek pojištění",
+  frequency: "frekvenci plateb",
+  amount: "částku pojistného",
+};
+
+function parsedTextValue(parsed: ParsedContractPdf, key: string): string {
+  if (!(key in parsed)) return "";
+  const value = parsed[key];
+  if (typeof value === "string") return value.trim();
+  if (value == null) return "";
+  return String(value).trim();
+}
+
+function parsedNumberValue(parsed: ParsedContractPdf, key: string): number | null {
+  if (!(key in parsed)) return null;
+  const value = Number(parsed[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function buildPdfImportIssueMessage({
+  product,
+  parsed,
+}: {
+  product: Product;
+  parsed: ParsedContractPdf;
+}): string | null {
+  const contractNumber = parsedTextValue(parsed, "contractNumber");
+  const clientName = parsedTextValue(parsed, "clientName");
+  const policyStartDate = parsedTextValue(parsed, "policyStartDate");
+  const contractSignedDate = parsedTextValue(parsed, "contractSignedDate");
+  const amount = parsedNumberValue(parsed, "amount");
+  const parsedFrequencyRaw = parsedTextValue(parsed, "frequency");
+  const parsedFrequency = parsed.frequency as PaymentFrequency | null | undefined;
+  const frequencyAllowed =
+    parsedFrequency != null && allowedFrequencies(product).includes(parsedFrequency);
+  const contractSignedDateInvalid = Boolean(contractSignedDate && !isIsoDay(contractSignedDate));
+  const policyStartDateInvalid = Boolean(policyStartDate && !isIsoDay(policyStartDate));
+  const signedDateAfterPolicyStart =
+    isIsoDay(contractSignedDate) &&
+    isIsoDay(policyStartDate) &&
+    contractSignedDate > policyStartDate;
+
+  const missing = [
+    ["clientName", clientName],
+    ["contractNumber", contractNumber],
+    ["contractSignedDate", contractSignedDate],
+    ["policyStartDate", policyStartDate],
+    ["frequency", parsedFrequencyRaw || (parsedFrequency ? String(parsedFrequency) : "")],
+    ["amount", amount == null ? "" : String(amount)],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => PDF_IMPORT_REQUIRED_FIELD_MESSAGES[key])
+    .filter((value): value is string => Boolean(value));
+
+  const warnings: string[] = [];
+  if (clientName && clientName.split(/\s+/).filter(Boolean).length < 2) {
+    warnings.push("Klient: jméno vypadá neúplně");
+  }
+  if (contractNumber && !/^\d{6,14}$/.test(contractNumber.replace(/\s+/g, ""))) {
+    warnings.push("Smlouva: číslo má nezvyklý formát");
+  }
+  if (contractSignedDateInvalid) {
+    warnings.push("Datum sjednání: datum má nezvyklý formát");
+  } else if (signedDateAfterPolicyStart) {
+    warnings.push("Datum sjednání: sjednání je po počátku pojištění");
+  }
+  if (policyStartDateInvalid) {
+    warnings.push("Počátek: datum má nezvyklý formát");
+  }
+  if (parsedFrequency && !frequencyAllowed) {
+    warnings.push("Frekvence: není pro vybraný produkt povolená");
+  }
+  if (amount != null && amount <= 0) {
+    warnings.push("Částka: není kladná");
+  }
+
+  const parts: string[] = [];
+  if (missing.length > 0) {
+    parts.push(`Nenašel jsem ${missing.join(", ")}.`);
+  }
+  if (warnings.length > 0) {
+    parts.push(`Podezřelé hodnoty: ${warnings.join("; ")}.`);
+  }
+  if (parts.length === 0) return null;
+  return `${parts.join(" ")} Doplň nebo zkontroluj ručně před uložením.`;
+}
+
+function unreadablePdfImportMessage({
+  product,
+  productDetected,
+}: {
+  product: Product;
+  productDetected: boolean;
+}): string {
+  const productPart = productDetected
+    ? `PDF jsem rozpoznal jako ${productLabelFromCatalog(product, product)}, ale`
+    : `Produkt z PDF jsem nerozpoznal a`;
+  return `${productPart} nenašel jsem čitelné hodnoty smlouvy. Zkontroluj vybraný produkt, případně údaje doplň ručně.`;
+}
 
 async function detectProductFromPdfLazy(file: File) {
   const { detectProductFromPdf } = await import("../lib/detectProductFromPdf");
@@ -324,6 +430,10 @@ async function parseContractPdfByProduct(
     case "csobAuto": {
       const { parseCsobAutoPdf } = await import("../lib/parseCsobAutoPdf");
       return parseCsobAutoPdf(file);
+    }
+    case "uniqaAuto": {
+      const { parseUniqaAutoPdf } = await import("../lib/parseUniqaAutoPdf");
+      return parseUniqaAutoPdf(file);
     }
     case "pillowAuto": {
       const { parsePillowAutoPdf } = await import("../lib/parsePillowAutoPdf");
@@ -866,6 +976,7 @@ const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
   "slaviaauto",
   "allianzAuto",
   "csobAuto",
+  "uniqaAuto",
   "pillowAuto",
   "kooperativaAuto",
   "cppcestovko",
@@ -887,8 +998,10 @@ const hasAutomatedPdfImport = (product: Product) => PDF_AUTOMATED_PRODUCTS.has(p
 const manualPdfImportMessage = (product: Product) =>
   `Pro produkt ${productLabel(product)} zatím není automatické načítání dat z PDF hotové. PDF se při uložení přiloží ke smlouvě, údaje prosím vyplň ručně.`;
 
-const failedPdfImportMessage = (product: Product) =>
-  `PDF se pro produkt ${productLabel(product)} nepodařilo automaticky přečíst. PDF se při uložení přiloží ke smlouvě, údaje prosím vyplň ručně.`;
+const failedPdfImportMessage = (product: Product, productDetected = true) =>
+  productDetected
+    ? `PDF se pro produkt ${productLabel(product)} nepodařilo automaticky přečíst. Zkontroluj, jestli je PDF čitelné, nebo údaje doplň ručně.`
+    : `Produkt z PDF jsem nerozpoznal a import podle vybraného produktu ${productLabel(product)} selhal. Zkontroluj vybraný produkt, nebo údaje doplň ručně.`;
 
 const normalizeEmailValue = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -3235,22 +3348,34 @@ export default function CalculatorPage() {
     setPdfClientNameLoaded(false);
     setPdfMatchedClientName(false);
     let importProduct: Product = product;
+    let productDetected = false;
     try {
       const detected = await detectProductFromPdfLazy(file);
-      if (detected && detected.product !== product) {
-        importProduct = detected.product;
-        setProduct(detected.product);
-        setProductPickerSectionForProduct(detected.product);
-        setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detected.product)}. Načítám data…`);
+      if (detected) {
+        productDetected = true;
+        if (detected.product !== product) {
+          importProduct = detected.product;
+          setProduct(detected.product);
+          setProductPickerSectionForProduct(detected.product);
+          setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detected.product)}. Načítám data…`);
+        }
+      } else {
+        setPdfImportStatus(
+          `Produkt z PDF jsem nerozpoznal. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
+        );
       }
     } catch (detectErr) {
       console.warn("Auto-detekce produktu z PDF selhala", detectErr);
+      setPdfImportStatus(
+        `Produkt z PDF se nepodařilo rozpoznat. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
+      );
     }
     if (
       importProduct === "cppAuto" ||
       importProduct === "slaviaauto" ||
       importProduct === "allianzAuto" ||
       importProduct === "csobAuto" ||
+      importProduct === "uniqaAuto" ||
       importProduct === "pillowAuto" ||
       importProduct === "kooperativaAuto"
     ) {
@@ -3329,17 +3454,26 @@ export default function CalculatorPage() {
       if (!hasAutomatedPdfImport(importProduct)) {
         setImportedContractPdfFile(file);
         setPdfImportStatus(manualPdfImportMessage(importProduct));
-        setPdfImportError(null);
+        setPdfImportError(
+          productDetected
+            ? null
+            : `Produkt z PDF jsem nerozpoznal. Vyber produkt ručně; PDF se při uložení přiloží.`
+        );
         return;
       }
 
       const parsed = await parseContractPdfByProduct(importProduct, file);
       if (!parsed) {
         setImportedContractPdfFile(file);
-        setPdfImportStatus(manualPdfImportMessage(importProduct));
-        setPdfImportError(null);
+        setPdfImportStatus(
+          "PDF se při uložení přiloží k detailu záznamu, údaje prosím doplň ručně."
+        );
+        setPdfImportError(
+          unreadablePdfImportMessage({ product: importProduct, productDetected })
+        );
         return;
       }
+      const importIssueMessage = buildPdfImportIssueMessage({ product: importProduct, parsed });
 
       let applied = 0;
       const parsedIsEndorsement =
@@ -3896,17 +4030,21 @@ export default function CalculatorPage() {
       const attachmentNote = parsedIsEndorsement
         ? " PDF se při uložení přiloží k detailu dodatku."
         : " PDF se při uložení přiloží k detailu záznamu.";
+      const productDetectionPrefix = productDetected
+        ? ""
+        : `Produkt z PDF jsem nerozpoznal; použil jsem vybraný produkt ${productLabel(importProduct)}. `;
       setPdfImportStatus(
         parsedIsEndorsement
           ? endorsementPreparedFromPdf
-            ? `Načtena žádanka o změnu z PDF (${applied} polí). Připravil jsem dodatek podle rozdílu proti poslední uložené hodnotě smlouvy.${attachmentNote}`
-            : `Načtena žádanka o změnu z PDF (${applied} polí). Původní smlouvu se nepodařilo automaticky porovnat, zkontroluj hlášku a klikni na Změna znovu.${attachmentNote}`
+            ? `${productDetectionPrefix}Načtena žádanka o změnu z PDF (${applied} polí). Připravil jsem dodatek podle rozdílu proti poslední uložené hodnotě smlouvy.${attachmentNote}`
+            : `${productDetectionPrefix}Načtena žádanka o změnu z PDF (${applied} polí). Původní smlouvu se nepodařilo automaticky porovnat, zkontroluj hlášku a klikni na Změna znovu.${attachmentNote}`
           : applied > 0
-          ? `Načteno z PDF (${applied} polí). Zkontroluj prosím.${attachmentNote}`
+          ? `${productDetectionPrefix}Načteno z PDF (${applied} polí). Zkontroluj prosím.${attachmentNote}`
           : importProduct === "cppsimplex"
-            ? `PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku.${attachmentNote}`
-            : `V PDF se nenašla čitelná data, doplň ručně.${attachmentNote}`
+            ? `${productDetectionPrefix}PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku.${attachmentNote}`
+            : `${productDetectionPrefix}V PDF se nenašla čitelná data, doplň ručně.${attachmentNote}`
       );
+      setPdfImportError(importIssueMessage);
     } catch (err) {
       console.error("PDF import selhal", err);
       if (importProduct !== "maxcizinkomplex") {
@@ -3921,7 +4059,7 @@ export default function CalculatorPage() {
         }
       }
       setImportedContractPdfFile(file);
-      setPdfImportError(failedPdfImportMessage(importProduct));
+      setPdfImportError(failedPdfImportMessage(importProduct, productDetected));
       setPdfImportStatus(null);
     } finally {
       setPdfImporting(false);
@@ -5324,6 +5462,7 @@ export default function CalculatorPage() {
               product === "cppAuto" ||
               isSlaviaAutoDetailProduct(product) ||
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
@@ -5333,6 +5472,7 @@ export default function CalculatorPage() {
               product === "cppAuto" ||
               isSlaviaAutoDetailProduct(product) ||
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
@@ -5342,16 +5482,21 @@ export default function CalculatorPage() {
               product === "cppAuto" ||
               isSlaviaAutoDetailProduct(product) ||
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
                 ? autoCarVin.trim() || null
                 : null,
-            carTp: isSlaviaAutoDetailProduct(product) ? autoCarTp.trim() || null : null,
+            carTp:
+              isSlaviaAutoDetailProduct(product) || isUniqaAutoDetailProduct(product)
+                ? autoCarTp.trim() || null
+                : null,
             carOrv:
               product === "cppAuto" ||
               isSlaviaAutoDetailProduct(product) ||
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
@@ -5367,6 +5512,7 @@ export default function CalculatorPage() {
               product === "cppAuto" ||
               isSlaviaAutoDetailProduct(product) ||
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
               product === "pillowAuto"
@@ -5374,6 +5520,7 @@ export default function CalculatorPage() {
                 : null,
             carHullSumInsured:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto" ||
@@ -5386,6 +5533,7 @@ export default function CalculatorPage() {
                 : null,
             carHullDeductible:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
@@ -5394,6 +5542,7 @@ export default function CalculatorPage() {
                 : null,
             carHullDeductibleText:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
@@ -5402,6 +5551,7 @@ export default function CalculatorPage() {
                 : null,
             carHullRiskAccident:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
@@ -5409,6 +5559,7 @@ export default function CalculatorPage() {
                 : null,
             carHullRiskTheft:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
@@ -5416,6 +5567,7 @@ export default function CalculatorPage() {
                 : null,
             carHullRiskNatural:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
@@ -5423,6 +5575,7 @@ export default function CalculatorPage() {
                 : null,
             carHullRiskVandalism:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
@@ -5430,6 +5583,7 @@ export default function CalculatorPage() {
                 : null,
             carHullRiskAnimalCollision:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "pillowAuto"
@@ -5437,6 +5591,7 @@ export default function CalculatorPage() {
                 : null,
             carAssistancePlan:
               isKooperativaAutoDetailProduct(product) ||
+              isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
               product === "allianzAuto" ||
               product === "csobAuto" ||
@@ -6118,22 +6273,25 @@ export default function CalculatorPage() {
         carAddonNonFaultAccident: autoCarAddonNonFaultAccident,
         carAddonPassengerInjury: autoCarAddonPassengerInjury,
         carAddonKeyLossTheft: autoCarAddonKeyLossTheft,
-        showTp: isSlaviaAutoDetailProduct(product),
+        showTp: isSlaviaAutoDetailProduct(product) || isUniqaAutoDetailProduct(product),
         showAnnualMileage: product === "allianzAuto" || product === "pillowAuto",
         showAllianzScope: product === "allianzAuto",
         showHull:
           isKooperativaAutoDetailProduct(product) ||
+          isUniqaAutoDetailProduct(product) ||
           product === "cppAuto" ||
           product === "allianzAuto" ||
           product === "pillowAuto" ||
           product === "csobAuto",
         showHullRisks:
           isKooperativaAutoDetailProduct(product) ||
+          isUniqaAutoDetailProduct(product) ||
           product === "cppAuto" ||
           product === "allianzAuto" ||
           product === "pillowAuto",
         showAssistance:
           isKooperativaAutoDetailProduct(product) ||
+          isUniqaAutoDetailProduct(product) ||
           product === "cppAuto" ||
           product === "allianzAuto" ||
           product === "csobAuto" ||
@@ -6397,7 +6555,9 @@ export default function CalculatorPage() {
     addText("vehicle", "Značka/model", autoCarMake);
     addText("vehicle", "RZ", autoCarPlate);
     addText("vehicle", "VIN", autoCarVin);
-    if (isSlaviaAutoDetailProduct(product)) addText("vehicle", "TP", autoCarTp);
+    if (isSlaviaAutoDetailProduct(product) || isUniqaAutoDetailProduct(product)) {
+      addText("vehicle", "TP", autoCarTp);
+    }
     addText("vehicle", "ORV", autoCarOrv);
     if (product === "allianzAuto" || product === "pillowAuto") {
       addText("vehicle", "Roční nájezd", autoCarAnnualMileage);

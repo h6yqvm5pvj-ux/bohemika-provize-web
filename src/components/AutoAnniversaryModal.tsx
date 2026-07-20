@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, ExternalLink, X } from "lucide-react";
 import { auth } from "@/app/firebase";
 import { toDate } from "@/app/lib/formatters";
 import {
@@ -29,6 +31,7 @@ type EntryDoc = {
 
 type AnniversaryRow = {
   id: string;
+  href: string;
   client: string;
   contractNumber: string;
   product: Product;
@@ -66,6 +69,18 @@ const localDayStamp = (date: Date) => {
 };
 const modalShownStorageKey = (email: string) =>
   `${ANNIVERSARY_MODAL_SHOWN_KEY_PREFIX}:${email}`;
+
+const contractDetailHref = (ownerEmail: string, entryId: string) =>
+  `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}?from=anniversary`;
+
+const anniversaryCountLabel = (count: number) => {
+  if (count === 1) return "1 smlouva s výročním datem do 60 dní";
+  if (count >= 2 && count <= 4) {
+    return `${count} smlouvy s výročním datem do 60 dní`;
+  }
+  return `${count} smluv s výročním datem do 60 dní`;
+};
+
 const normalizeCursorToken = (
   token: string | null | undefined,
   legacyCursor: number | null | undefined
@@ -176,7 +191,7 @@ export function AutoAnniversaryModal({
             const key = `${owner}___${id}`;
             byEntryKey.set(key, {
               ...(item as Omit<EntryDoc, "id">),
-              id: key,
+              id,
               userEmail: owner,
             });
           });
@@ -205,8 +220,13 @@ export function AutoAnniversaryModal({
           const product = data.productKey;
           if (!product || !isAutoProduct(product)) return;
 
+          const ownerEmail = normalizeEmail(data.userEmail);
+          const entryId = String(data.id ?? "").trim();
+          if (!ownerEmail || !entryId) return;
+
           results.push({
-            id: data.id,
+            id: `${ownerEmail}___${entryId}`,
+            href: contractDetailHref(ownerEmail, entryId),
             client: data.clientName ?? "Neznámý klient",
             contractNumber: data.contractNumber ?? "—",
             product,
@@ -226,7 +246,6 @@ export function AutoAnniversaryModal({
           return;
         }
         setOpen(true);
-        markModalShownToday(normalizedEmail);
       } catch (e) {
         console.error("Chyba při načítání výročí", e);
       } finally {
@@ -235,6 +254,24 @@ export function AutoAnniversaryModal({
     };
     void load();
   }, [userEmail]);
+
+  useEffect(() => {
+    if (!open) return;
+    const normalizedEmail = normalizeEmail(userEmail);
+    if (!normalizedEmail) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      markModalShownToday(normalizedEmail);
+      setOpen(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, userEmail]);
 
   const content = useMemo(
     () =>
@@ -248,60 +285,102 @@ export function AutoAnniversaryModal({
   if (!open || rows.length === 0) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-[min(720px,90vw)] rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-              Blížící se výročí – Auto
-            </p>
-            <p className="text-sm text-slate-700">
-              Smlouvy s výročním datem do 60 dní
-            </p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-3 py-4 backdrop-blur-md sm:px-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auto-anniversary-title"
+    >
+      <div className="flex max-h-[min(720px,92vh)] w-[min(860px,94vw)] flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4 sm:px-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#7c2d12] text-white shadow-[0_10px_24px_rgba(124,45,18,0.24)]">
+              <CalendarDays className="h-5 w-5" strokeWidth={2.3} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p
+                id="auto-anniversary-title"
+                className="text-xs font-black uppercase tracking-[0.18em] text-slate-500"
+              >
+                Blížící se výročí - Auto
+              </p>
+              <p className="mt-1 text-base font-semibold text-slate-800">
+                {anniversaryCountLabel(content.length)}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                Kliknutím na řádek otevřeš detail smlouvy.
+              </p>
+            </div>
           </div>
           <button
-            className="text-xs text-slate-500 hover:text-slate-800"
+            type="button"
+            className="ui-focus inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+            aria-label="Zavřít upozornění na výročí"
             onClick={() => {
               markModalShownToday(normalizeEmail(userEmail));
               setOpen(false);
             }}
           >
-            Zavřít
+            <X className="h-4.5 w-4.5" strokeWidth={2.5} aria-hidden="true" />
           </button>
         </div>
 
-        <div className="max-h-[420px] overflow-auto">
+        <div className="min-h-0 overflow-auto">
           {loading && (
-            <p className="text-sm text-slate-500 px-4 py-3">
+            <p className="px-5 py-4 text-sm text-slate-500">
               Načítám smlouvy…
             </p>
           )}
           {!loading && (
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr className="text-left text-xs uppercase tracking-[0.08em] text-slate-500">
-                  <th className="px-4 py-2">Klient</th>
-                  <th className="px-4 py-2">Číslo smlouvy</th>
-                  <th className="px-4 py-2">Produkt</th>
-                  <th className="px-4 py-2 text-right">Dnů do výročí</th>
-                </tr>
-              </thead>
-              <tbody>
+            <div className="text-sm">
+              <div className="sticky top-0 z-[1] hidden grid-cols-[minmax(150px,1.35fr)_minmax(110px,0.8fr)_minmax(110px,0.9fr)_92px_34px] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-2 text-xs font-black uppercase tracking-[0.08em] text-slate-500 sm:grid">
+                <span>Klient</span>
+                <span>Číslo smlouvy</span>
+                <span>Produkt</span>
+                <span className="text-right">Dnů</span>
+                <span className="sr-only">Otevřít</span>
+              </div>
+              <div className="divide-y divide-slate-100">
                 {content.map((r) => (
-                  <tr
+                  <Link
                     key={r.id}
-                    className="border-b border-slate-100 last:border-0"
+                    href={r.href}
+                    onClick={() => {
+                      markModalShownToday(normalizeEmail(userEmail));
+                    }}
+                    className="group grid gap-2 px-5 py-3 text-slate-800 transition hover:bg-amber-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 sm:grid-cols-[minmax(150px,1.35fr)_minmax(110px,0.8fr)_minmax(110px,0.9fr)_92px_34px] sm:items-center sm:gap-3"
+                    title={`Otevřít smlouvu ${r.contractNumber}`}
                   >
-                    <td className="px-4 py-2">{r.client}</td>
-                    <td className="px-4 py-2">{r.contractNumber}</td>
-                    <td className="px-4 py-2">{r.productLabel}</td>
-                    <td className="px-4 py-2 text-right font-semibold text-slate-900">
-                      {r.daysToAnniversary}
-                    </td>
-                  </tr>
+                    <div className="min-w-0">
+                      <div className="truncate font-bold text-slate-950">
+                        {r.client}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-slate-500 sm:hidden">
+                        {r.productLabel} · {r.contractNumber}
+                      </div>
+                    </div>
+                    <div className="hidden font-semibold text-slate-700 sm:block">
+                      {r.contractNumber}
+                    </div>
+                    <div className="hidden text-slate-700 sm:block">
+                      {r.productLabel}
+                    </div>
+                    <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      <span className="text-xs font-black uppercase tracking-[0.08em] text-slate-500 sm:hidden">
+                        Dnů do výročí
+                      </span>
+                      <span className="inline-flex min-w-11 justify-center rounded-full bg-slate-950 px-2.5 py-1 text-sm font-black text-white">
+                        {r.daysToAnniversary}
+                      </span>
+                    </div>
+                    <span className="hidden h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition group-hover:border-amber-200 group-hover:text-amber-800 sm:inline-flex">
+                      <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden="true" />
+                      <span className="sr-only">Otevřít detail smlouvy</span>
+                    </span>
+                  </Link>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
           )}
         </div>
       </div>

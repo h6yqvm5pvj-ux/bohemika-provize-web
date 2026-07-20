@@ -296,6 +296,25 @@ const DETECTION_RULES: DetectionRule[] = [
   },
   {
     product: "uniqaAuto",
+    mustContain: [
+      { page: "any", text: normalizeText("UNIQA pojišťovna") },
+      { page: "any", text: normalizeText("Pojištění vozidel") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „UNIQA pojišťovna“ a „Pojištění vozidel“.",
+  },
+  {
+    product: "uniqaAuto",
+    mustContain: [
+      { page: "any", text: normalizeText("UNIQA pojišťovna") },
+      { page: "any", text: normalizeText("Auto"), wholeWord: true },
+    ],
+    confidence: "medium",
+    reason: "V PDF jsou nalezeny texty „UNIQA pojišťovna“ a samostatné slovo „Auto“.",
+  },
+  {
+    product: "uniqaAuto",
     page: 1,
     allOf: [normalizeText("UNIQA pojišťovna"), normalizeText("Vlastník vozidla")],
     confidence: "high",

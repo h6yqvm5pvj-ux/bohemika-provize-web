@@ -130,6 +130,7 @@ import { parseMaxdomovPdf } from "@/app/lib/parseMaxdomovPdf";
 import { parseNeonPdf } from "@/app/lib/parseNeonPdf";
 import { parsePillowAutoPdf } from "@/app/lib/parsePillowAutoPdf";
 import { parseSlaviaAutoPdf } from "@/app/lib/parseSlaviaAutoPdf";
+import { parseUniqaAutoPdf } from "@/app/lib/parseUniqaAutoPdf";
 
 const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
@@ -425,6 +426,7 @@ const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
   slaviaauto: parseSlaviaAutoPdf,
   allianzAuto: parseAllianzAutoPdf,
   csobAuto: parseCsobAutoPdf,
+  uniqaAuto: parseUniqaAutoPdf,
   pillowAuto: parsePillowAutoPdf,
   kooperativaAuto: parseKooperativaAutoPdf,
   cppcestovko: parseCppCestovkoPdf,

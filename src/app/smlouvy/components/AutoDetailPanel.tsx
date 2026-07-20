@@ -508,6 +508,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                 >
                   <option value="">Vyber limit</option>
                   <option value={50_000_000}>50/50 mil. Kč</option>
+                  <option value={60_000_000}>60/60 mil. Kč</option>
                   <option value={70_000_000}>70/70 mil. Kč</option>
                   <option value={100_000_000}>100/100 mil. Kč</option>
                   <option value={150_000_000}>150/150 mil. Kč</option>
