@@ -5,6 +5,7 @@ export type RecordInsuranceType =
   | "car"
   | "property"
   | "liability"
+  | "business"
   | "travel";
 
 export interface RecordInsuranceTypeConfig {
@@ -38,6 +39,12 @@ export const RECORD_INSURANCE_TYPES: RecordInsuranceTypeConfig[] = [
     shortTitle: "Odpovědnost",
     title: "Odpovědnost občanů",
     subtitle: "Občanská i zaměstnanecká.",
+  },
+  {
+    id: "business",
+    shortTitle: "Podnikatelé",
+    title: "Podnikatelé",
+    subtitle: "SIMPLEX, KOMPLEX III, TREND.",
   },
   {
     id: "travel",

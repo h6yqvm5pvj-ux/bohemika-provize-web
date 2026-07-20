@@ -1,18 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ClipboardCopy, Home } from "lucide-react";
+import { Check, ClipboardCopy, ShieldCheck } from "lucide-react";
 
-const DOMEX_BONUS_PHRASE =
-  "Klient byl seznámen s podmínkami vstupního bonusu 30 % za bezeškodní průběh a byl upozorněn, že v případě pojistné události může dojít ke snížení bonusu a následnému navýšení pojistného při výročí smlouvy v souladu s podmínkami pojišťovny.";
-
-const UNIVERSAL_PROPERTY_PHRASES = [
-  "Klient byl seznámen s rozsahem sjednaného pojistného krytí, hlavními výlukami z pojištění, limity a sublimity pojistného plnění, výší spoluúčasti a územní platností pojištění.",
-  "Klient byl informován o způsobu stanovení pojistných částek a limitů, rozdílu mezi novou a obvyklou cenou (je-li relevantní) a o možných důsledcích podpojištění nebo nesprávně stanovených pojistných částek.",
-  "Byly vysvětleny povinnosti pojistníka a pojištěného při sjednání pojištění, během jeho trvání i při vzniku pojistné události, včetně povinnosti předcházet vzniku škod a oznamovat změny rozhodné pro pojištění.",
-  "Klient byl seznámen s možnostmi rozšíření pojistné ochrany, výší pojistných limitů a dopady případného nesjednání doporučeného rozsahu pojištění. Rozsah sjednaného pojištění odpovídá zjištěným potřebám a požadavkům klienta.",
-  "Klient byl informován o možnosti změny hodnoty pojištěného majetku v průběhu trvání pojištění a bylo mu doporučeno pravidelně přehodnocovat pojistné částky, limity a rozsah pojistného krytí, aby pojištění i nadále odpovídalo jeho aktuálním potřebám a byla minimalizována rizika podpojištění nebo nedostatečného pojistného krytí.",
+const UNIVERSAL_LIABILITY_PHRASES = [
+  "Klient byl seznámen s rozsahem pojistného krytí, hlavními výlukami z pojištění, limity pojistného plnění a sjednanou spoluúčastí.",
+  "Klient byl seznámen s pojistnými podmínkami, jejich obsahem a měl možnost klást doplňující dotazy, které mu byly zodpovězeny.",
+  "Klient byl upozorněn na výluky z pojištění a skutečnost, že pojistitel poskytuje pojistné plnění pouze v rozsahu sjednaném pojistnou smlouvou a pojistnými podmínkami.",
+  "Klient byl seznámen s možnostmi nastavení rozsahu pojištění, výší pojistných limitů a jejich vlivem na rozsah pojistné ochrany a výši pojistného.",
 ];
+
+const LIMIT_RECOMMENDATION_TEXT =
+  "Klientovi bylo důrazně doporučeno sjednat limit 50 mil. Kč - Přesto požaduje ";
 
 function CopyButton({
   text,
@@ -61,8 +60,8 @@ function CopyPhraseRow({
           {String(index).padStart(2, "0")}
         </span>
       ) : (
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800">
-          <Home className="h-4 w-4" />
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-800">
+          <ShieldCheck className="h-4 w-4" />
         </span>
       )}
       <div className="min-w-0">
@@ -78,7 +77,7 @@ function CopyPhraseRow({
   );
 }
 
-export function PropertyRecordForm() {
+export function LiabilityRecordForm() {
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
   const handleCopy = async (text: string) => {
@@ -95,40 +94,20 @@ export function PropertyRecordForm() {
         <div className="border-b border-amber-100 px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-700">
-              <Home className="h-4 w-4" />
+              <ShieldCheck className="h-4.5 w-4.5" />
             </span>
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">
-                Majetek
+                Odpovědnost
               </p>
               <h2 className="mt-1 text-lg font-semibold leading-tight text-slate-950 sm:text-xl">
                 Tato sekce je v přípravě
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
-                Zatím je možné využít větu pro ČPP DOMEX a univerzální věty
-                níže.
+                Zatím je možné využít Doporučené univerzální věty níže.
               </p>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-[28px] border border-emerald-200/75 bg-[linear-gradient(180deg,#ffffff_0%,#f0fdf4_100%)] shadow-[0_18px_44px_rgba(6,95,70,0.10)]">
-        <div className="border-b border-emerald-100 px-4 py-4 sm:px-5">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
-            ČPP DOMEX
-          </p>
-          <h2 className="mt-1 text-lg font-semibold leading-tight text-slate-950 sm:text-xl">
-            V případě sjednání produktu ČPP DOMEX:
-          </h2>
-        </div>
-        <div className="px-4 py-4 sm:px-5">
-          <CopyPhraseRow
-            text={DOMEX_BONUS_PHRASE}
-            helper="Použij u produktu ČPP DOMEX."
-            copiedText={copiedText}
-            onCopy={handleCopy}
-          />
         </div>
       </section>
 
@@ -142,7 +121,7 @@ export function PropertyRecordForm() {
           </h2>
         </div>
         <div className="space-y-3 px-4 py-4 sm:px-5">
-          {UNIVERSAL_PROPERTY_PHRASES.map((phrase, index) => (
+          {UNIVERSAL_LIABILITY_PHRASES.map((phrase, index) => (
             <CopyPhraseRow
               key={phrase}
               index={index + 1}
@@ -151,6 +130,30 @@ export function PropertyRecordForm() {
               onCopy={handleCopy}
             />
           ))}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
+        <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+            Limit plnění
+          </p>
+          <h2 className="mt-1 text-lg font-semibold leading-tight text-slate-950 sm:text-xl">
+            Jaký limit plnění odpovědnosti klient požaduje sjednat?
+          </h2>
+          <p className="mt-2 max-w-4xl text-sm leading-relaxed text-slate-600">
+            Při nižších limitech než 50.000.000 Kč doporučuji do dopadů uvést,
+            že klientovi bylo důrazně doporučeno sjednat limit 50 mil. Kč -
+            Přesto požaduje (požadovaný limit klienta v Kč).
+          </p>
+        </div>
+        <div className="px-4 py-4 sm:px-5">
+          <CopyPhraseRow
+            text={LIMIT_RECOMMENDATION_TEXT}
+            helper="Za větu doplň požadovaný limit klienta v Kč."
+            copiedText={copiedText}
+            onCopy={handleCopy}
+          />
         </div>
       </section>
     </div>

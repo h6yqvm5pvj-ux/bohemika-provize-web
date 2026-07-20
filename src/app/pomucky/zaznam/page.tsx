@@ -4,7 +4,15 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import type { LucideIcon } from "lucide-react";
-import { CarFront, HeartPulse, Home, Plane, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  Briefcase,
+  CarFront,
+  HeartPulse,
+  Home,
+  Plane,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import {
   type RecordInsuranceType,
   RECORD_INSURANCE_TYPES,
@@ -14,12 +22,16 @@ import {
 import { LifeRecordForm } from "./LifeRecordForm";
 import { CarRecordForm } from "./CarRecordForm";
 import { PropertyRecordForm } from "./PropertyRecordForm";
+import { LiabilityRecordForm } from "./LiabilityRecordForm";
+import { TravelRecordForm } from "./TravelRecordForm";
+import { BusinessRecordForm } from "./BusinessRecordForm";
 
 const INSURANCE_TYPE_ICONS: Record<RecordInsuranceType, LucideIcon> = {
   life: HeartPulse,
   car: CarFront,
   property: Home,
   liability: ShieldCheck,
+  business: Briefcase,
   travel: Plane,
 };
 
@@ -76,7 +88,9 @@ export default function RecordOfMeetingPage() {
           {selectedType === "life" && <LifeRecordForm />}
           {selectedType === "car" && <CarRecordForm />}
           {selectedType === "property" && <PropertyRecordForm />}
-          {/* ostatní typy necháme zatím jako placeholdery */}
+          {selectedType === "liability" && <LiabilityRecordForm />}
+          {selectedType === "business" && <BusinessRecordForm />}
+          {selectedType === "travel" && <TravelRecordForm />}
         </section>
       </div>
     </AppLayout>
