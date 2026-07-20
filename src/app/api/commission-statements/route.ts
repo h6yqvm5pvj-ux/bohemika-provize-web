@@ -1631,6 +1631,56 @@ const payoutRecordNeedsRefresh = (
   (existing.detail ?? null) !== (incoming.detail ?? null) ||
   existing.title !== incoming.title;
 
+const payoutRecordMoneyKey = (value: unknown): string => {
+  const amount = finiteMoneyOrNull(value);
+  return amount == null ? "" : String(Math.round(amount * 100));
+};
+
+const payoutRecordCanonicalCommissionCode = (
+  value: string | null | undefined
+): string => {
+  const aliases = commissionCodeAliases(value);
+  return aliases[0] ?? normalizeCommissionCodeKey(value);
+};
+
+const payoutRecordStatementKey = (record: ContractCommissionPayoutRecord): string =>
+  record.statementId ||
+  [
+    record.statementNumber ?? "",
+    record.statementPeriod ?? "",
+    record.statementDate ?? "",
+  ].join("|");
+
+const payoutRecordSemanticKey = (
+  record: ContractCommissionPayoutRecord
+): string =>
+  [
+    payoutRecordStatementKey(record),
+    normalizeEmail(record.writtenBy),
+    payoutRecordCanonicalCommissionCode(record.code),
+    record.status ?? "",
+    payoutRecordMoneyKey(record.amount),
+    normalizeText(record.career, 24) ?? "",
+  ].join("::");
+
+const payoutRecordCompletenessScore = (
+  record: ContractCommissionPayoutRecord
+): number => {
+  let score = 0;
+  if (record.statementId) score += 20;
+  if (record.statementChronologyMs != null) score += 8;
+  if (record.statementNumber) score += 4;
+  if (record.statementPeriod) score += 4;
+  if (record.statementDate) score += 4;
+  if (record.expectedAmount != null) score += 4;
+  if (record.difference != null) score += 3;
+  if (record.differenceReason) score += 4;
+  if (record.career) score += 2;
+  if (record.detail) score += 2;
+  if (record.title) score += 1;
+  return score + (record.writtenAtMs ?? 0) / 1_000_000_000_000;
+};
+
 const mergePayoutRecordsByKey = (
   existing: ContractCommissionPayoutRecord[],
   incoming: ContractCommissionPayoutRecord[],
@@ -1641,23 +1691,39 @@ const mergePayoutRecordsByKey = (
   existingCount: number;
   updatedExisting: number;
 } => {
-  const recordsByKey = new Map<string, ContractCommissionPayoutRecord>();
-  existing.forEach((item) => recordsByKey.set(item.key, item));
+  const recordsBySemanticKey = new Map<string, ContractCommissionPayoutRecord>();
+  const order: string[] = [];
+  let updatedExisting = 0;
+
+  for (const item of existing) {
+    const semanticKey = payoutRecordSemanticKey(item) || item.key;
+    const current = recordsBySemanticKey.get(semanticKey);
+    if (!current) {
+      recordsBySemanticKey.set(semanticKey, item);
+      order.push(semanticKey);
+      continue;
+    }
+    updatedExisting += 1;
+    if (payoutRecordCompletenessScore(item) > payoutRecordCompletenessScore(current)) {
+      recordsBySemanticKey.set(semanticKey, item);
+    }
+  }
 
   let added = 0;
   let existingCount = 0;
-  let updatedExisting = 0;
   for (const item of incoming) {
-    const previous = recordsByKey.get(item.key);
+    const semanticKey = payoutRecordSemanticKey(item) || item.key;
+    const previous = recordsBySemanticKey.get(semanticKey);
     if (!previous) {
-      recordsByKey.set(item.key, item);
+      recordsBySemanticKey.set(semanticKey, item);
+      order.push(semanticKey);
       added += 1;
       continue;
     }
 
     existingCount += 1;
     if (payoutRecordNeedsRefresh(previous, item)) {
-      recordsByKey.set(item.key, {
+      recordsBySemanticKey.set(semanticKey, {
         ...item,
         writtenAtMs: previous.writtenAtMs ?? item.writtenAtMs,
         writtenBy: previous.writtenBy ?? item.writtenBy,
@@ -1666,7 +1732,9 @@ const mergePayoutRecordsByKey = (
     }
   }
 
-  const merged = [...recordsByKey.values()]
+  const merged = order
+    .map((key) => recordsBySemanticKey.get(key))
+    .filter((item): item is ContractCommissionPayoutRecord => Boolean(item))
     .sort((a, b) => (a.writtenAtMs ?? 0) - (b.writtenAtMs ?? 0))
     .slice(-maxCount);
   return { merged, added, existingCount, updatedExisting };

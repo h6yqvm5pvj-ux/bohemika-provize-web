@@ -85,6 +85,7 @@ import {
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
 import { autoAssistancePlanLabel } from "@/app/lib/autoAssistanceLabels";
+import { type PdfOcrProgress } from "@/app/lib/pdfOcr";
 import { AppLayout } from "@/components/AppLayout";
 import {
   ADMIN_IMPERSONATION_EVENT,
@@ -286,6 +287,10 @@ const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
 
 type CalculatorViewMode = "addContract" | "commissionOnly";
 type ParsedContractPdf = Record<string, any>;
+type PdfParserOptions = {
+  onOcrStart?: () => void;
+  onOcrProgress?: (progress: PdfOcrProgress) => void;
+};
 type PrepareEndorsementOptions = {
   productOverride?: Product;
   contractNumberOverride?: string | null;
@@ -412,7 +417,8 @@ async function parseMaxCizinKomplexPdfLazy(file: File): Promise<ParsedContractPd
 
 async function parseContractPdfByProduct(
   product: Product,
-  file: File
+  file: File,
+  options: PdfParserOptions = {}
 ): Promise<ParsedContractPdf | null> {
   switch (product) {
     case "cppAuto": {
@@ -455,7 +461,7 @@ async function parseContractPdfByProduct(
     }
     case "domex": {
       const { parseDomexPdf } = await import("../lib/parseDomexPdf");
-      return parseDomexPdf(file);
+      return parseDomexPdf(file, options);
     }
     case "cpphafan": {
       const { parseCppHafanPdf } = await import("../lib/parseCppHafanPdf");
@@ -3462,7 +3468,22 @@ export default function CalculatorPage() {
         return;
       }
 
-      const parsed = await parseContractPdfByProduct(importProduct, file);
+      const parsed = await parseContractPdfByProduct(importProduct, file, {
+        onOcrStart: () => {
+          setPdfImportStatus("PDF vypadá jako sken. Spouštím OCR…");
+        },
+        onOcrProgress: (progress) => {
+          const pagePart =
+            progress.page > 0
+              ? `strana ${progress.page}/${progress.totalPages}`
+              : "připravuji OCR";
+          const percent =
+            progress.progress > 0
+              ? ` (${Math.round(progress.progress * 100)} %)`
+              : "";
+          setPdfImportStatus(`PDF je sken, OCR ${pagePart}${percent}…`);
+        },
+      });
       if (!parsed) {
         setImportedContractPdfFile(file);
         setPdfImportStatus(
@@ -4033,16 +4054,17 @@ export default function CalculatorPage() {
       const productDetectionPrefix = productDetected
         ? ""
         : `Produkt z PDF jsem nerozpoznal; použil jsem vybraný produkt ${productLabel(importProduct)}. `;
+      const ocrPrefix = parsed.ocrTextUsed === true ? "PDF bylo skenované, načteno přes OCR. " : "";
       setPdfImportStatus(
         parsedIsEndorsement
           ? endorsementPreparedFromPdf
-            ? `${productDetectionPrefix}Načtena žádanka o změnu z PDF (${applied} polí). Připravil jsem dodatek podle rozdílu proti poslední uložené hodnotě smlouvy.${attachmentNote}`
-            : `${productDetectionPrefix}Načtena žádanka o změnu z PDF (${applied} polí). Původní smlouvu se nepodařilo automaticky porovnat, zkontroluj hlášku a klikni na Změna znovu.${attachmentNote}`
+            ? `${ocrPrefix}${productDetectionPrefix}Načtena žádanka o změnu z PDF (${applied} polí). Připravil jsem dodatek podle rozdílu proti poslední uložené hodnotě smlouvy.${attachmentNote}`
+            : `${ocrPrefix}${productDetectionPrefix}Načtena žádanka o změnu z PDF (${applied} polí). Původní smlouvu se nepodařilo automaticky porovnat, zkontroluj hlášku a klikni na Změna znovu.${attachmentNote}`
           : applied > 0
-          ? `${productDetectionPrefix}Načteno z PDF (${applied} polí). Zkontroluj prosím.${attachmentNote}`
+          ? `${ocrPrefix}${productDetectionPrefix}Načteno z PDF (${applied} polí). Zkontroluj prosím.${attachmentNote}`
           : importProduct === "cppsimplex"
-            ? `${productDetectionPrefix}PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku.${attachmentNote}`
-            : `${productDetectionPrefix}V PDF se nenašla čitelná data, doplň ručně.${attachmentNote}`
+            ? `${ocrPrefix}${productDetectionPrefix}PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku.${attachmentNote}`
+            : `${ocrPrefix}${productDetectionPrefix}V PDF se nenašla čitelná data, doplň ručně.${attachmentNote}`
       );
       setPdfImportError(importIssueMessage);
     } catch (err) {

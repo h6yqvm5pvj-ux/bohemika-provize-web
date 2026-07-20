@@ -134,6 +134,8 @@ type ContractDoc = {
     expectedAmount?: number | null;
     difference?: number | null;
     differenceReason?: string | null;
+    career?: string | null;
+    detail?: string | null;
     status?: "paid" | "difference" | "storno" | string | null;
     statementId?: string | null;
     statementNumber?: string | null;
@@ -243,9 +245,14 @@ const COMMISSION_AUDIT_MODE_DEFS: {
     description: "Vyplacená částka se liší od očekávané.",
   },
   {
+    id: "career_mismatch",
+    label: "Jiný kariérní stupeň",
+    description: "Vyplaceno na jiném stupni bez pozdější opravy přes storno a správnou platbu.",
+  },
+  {
     id: "all",
     label: "Vše k provizím",
-    description: "Nevyplacené, blížící se i rozdílové položky.",
+    description: "Nevyplacené, blížící se, rozdílové i kariérní položky.",
   },
 ];
 
@@ -583,6 +590,7 @@ function formatCommissionAuditDate(ms: number | null): string {
 }
 
 function commissionAuditStatusLabel(item: CommissionAuditItem): string {
+  if (item.status === "career_mismatch") return "Jiný kariérní stupeň";
   const label = commissionAuditTimingLabel(item);
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
@@ -619,6 +627,7 @@ function commissionAuditMonthDistance(item: CommissionAuditItem): number | null 
 }
 
 function commissionAuditTimingLabel(item: CommissionAuditItem): string {
+  if (item.status === "career_mismatch") return "jiný kariérní stupeň";
   if (item.status === "difference") return "rozdíl ve výpisu";
   if (item.daysUntilDue === 0) return "výplata dnes";
   const months = commissionAuditMonthDistance(item);
@@ -686,6 +695,7 @@ function commissionAuditSummaryLabel(summary: CommissionAuditSummary): string {
   const parts = [
     summary.overdueCount > 0 ? `${summary.overdueCount} nevypl.` : null,
     summary.upcomingCount > 0 ? `${summary.upcomingCount} brzy` : null,
+    summary.careerMismatchCount > 0 ? `${summary.careerMismatchCount} stupeň` : null,
     summary.differenceCount > 0 ? `${summary.differenceCount} rozdíl` : null,
   ].filter(Boolean);
   return parts.join(" · ");
@@ -695,6 +705,12 @@ function commissionAuditToneClasses(item: CommissionAuditItem): {
   compact: string;
   card: string;
 } {
+  if (item.status === "career_mismatch") {
+    return {
+      compact: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800",
+      card: "border-fuchsia-300/45 bg-fuchsia-300/12 text-fuchsia-100",
+    };
+  }
   if (item.status === "difference") {
     return {
       compact: "border-amber-200 bg-amber-50 text-amber-800",

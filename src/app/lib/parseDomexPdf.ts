@@ -1,5 +1,9 @@
 // src/app/lib/parseDomexPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import {
+  extractOcrLinesFromPdf,
+  type PdfOcrProgress,
+} from "./pdfOcr";
 
 export type DomexPdfResult = {
   isRefresh?: boolean | null;
@@ -25,6 +29,12 @@ export type DomexPdfResult = {
   domexLiabilityTenant?: boolean | null;
   domexLiabilityLandlord?: boolean | null;
   domexAssistancePlus?: boolean | null;
+  ocrTextUsed?: boolean | null;
+};
+
+export type DomexPdfParseOptions = {
+  onOcrStart?: () => void;
+  onOcrProgress?: (progress: PdfOcrProgress) => void;
 };
 
 type PositionedTextItem = {
@@ -65,6 +75,15 @@ const parseAmount = (val: string | null | undefined): number | null => {
 
 const stripDiacritics = (text: string) =>
   text.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+
+const normalizeSearchText = (text: string) =>
+  stripDiacritics(text)
+    .toLowerCase()
+    .replace(/\bpfijmeni\b/g, "prijmeni")
+    .replace(/\bpfedmet\b/g, "predmet")
+    .replace(/\bpfedmetu\b/g, "predmetu")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const findLabelIndexes = (asciiLines: string[], label: RegExp): number[] => {
   const indexes: number[] = [];
@@ -114,6 +133,68 @@ const pickFirstLongNumber = (value: string | null | undefined): string | null =>
   const matches = value.match(/\b\d{6,}\b/g);
   if (!matches?.length) return null;
   return matches[0] ?? null;
+};
+
+const hasUsefulExtractedText = (lines: string[]): boolean =>
+  lines.join(" ").replace(/\s+/g, "").length >= 80;
+
+const normalizeDomexClientName = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const cleaned = value
+    .replace(/\s+(?:Rodn[eé]|Rodne)\s+c[ií]s(?:lo|io)\b.*$/i, "")
+    .replace(/\s+R[ČC]\b.*$/i, "")
+    .replace(/\s+Telefon\b.*$/i, "")
+    .replace(/\s+E-?mail\b.*$/i, "")
+    .replace(/\s+Trval[ýy]\s+pobyt\b.*$/i, "")
+    .replace(/^[\s:;,\-–—]+|[\s:;,\-–—]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length < 3) return null;
+  if (/\d/.test(cleaned)) return null;
+  if (!/[A-Za-zÀ-ž]/.test(cleaned)) return null;
+  return cleaned;
+};
+
+const pickDomexValueAfterLabel = (
+  lines: string[],
+  asciiLines: string[],
+  label: RegExp,
+  stripLabel: RegExp,
+  maxLookahead = 4
+): string | null => {
+  for (let idx = 0; idx < asciiLines.length; idx++) {
+    if (!label.test(asciiLines[idx] ?? "")) continue;
+
+    const current = (lines[idx] ?? "").replace(stripLabel, "").trim();
+    if (current && !label.test(normalizeSearchText(current))) return current;
+
+    for (let step = 1; step <= maxLookahead; step++) {
+      const next = lines[idx + step]?.trim();
+      const nextAscii = asciiLines[idx + step] ?? "";
+      if (!next) continue;
+      if (
+        /^(rodne\s+cis(?:lo|io)|telefon|e-?mail|trvaly\s+pobyt|elektronicka\s+komunikace|pojisteny|misto\s+pojisteni|adresa|tarifni\s+zona)\b/.test(
+          nextAscii
+        )
+      ) {
+        break;
+      }
+      return next;
+    }
+  }
+  return null;
+};
+
+const parseAmountAtOrAfterLine = (
+  lines: string[],
+  startIndex: number,
+  maxLookahead = 2
+): number | null => {
+  for (let step = 0; step <= maxLookahead; step++) {
+    const amount = parseAmount(lines[startIndex + step] ?? "");
+    if (amount != null) return amount;
+  }
+  return null;
 };
 
 const pickDomexReplacementOriginalContractNumber = (
@@ -217,7 +298,10 @@ async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
     .filter(Boolean);
 }
 
-export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
+export async function parseDomexPdf(
+  file: File,
+  options: DomexPdfParseOptions = {}
+): Promise<DomexPdfResult> {
   const buffer = await file.arrayBuffer();
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
@@ -233,7 +317,7 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
   }
 
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-  const lines: string[] = [];
+  let lines: string[] = [];
 
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
@@ -241,12 +325,31 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
     lines.push(...pageLines);
   }
 
+  let ocrTextUsed = false;
+  if (!hasUsefulExtractedText(lines)) {
+    try {
+      options.onOcrStart?.();
+      const ocr = await extractOcrLinesFromPdf(file, {
+        onProgress: options.onOcrProgress,
+      });
+      if (hasUsefulExtractedText(ocr.lines)) {
+        lines = ocr.lines;
+        ocrTextUsed = true;
+      }
+    } catch (err) {
+      console.warn("OCR fallback pro DOMEX PDF selhal", err);
+    }
+  }
+
   const fullText = lines.join("\n");
-  const asciiLines = lines.map((line) => stripDiacritics(line).toLowerCase());
+  const asciiLines = lines.map(normalizeSearchText);
   const normalized = fullText.replace(/\s+/g, " ").trim();
-  const ascii = stripDiacritics(normalized).toLowerCase();
+  const ascii = normalizeSearchText(normalized);
 
   const result: DomexPdfResult = {};
+  if (ocrTextUsed) {
+    result.ocrTextUsed = true;
+  }
 
   // Náhrada smlouvy -> číslo nahrazované smlouvy.
   const replacementOriginalContractNumber = pickDomexReplacementOriginalContractNumber(
@@ -274,10 +377,23 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
 
   // Jméno a příjmení pojistníka
   const nameMatch =
-    normalized.match(/Jméno\s+a\s+příjmení\s+(.+?)(?:\s+Rodné\s+číslo|$)/i)?.[1]?.trim() ??
-    ascii.match(/jmeno\s+a\s+prijmeni\s+(.+?)(?:\s+rodne\s+cislo|$)/i)?.[1]?.trim();
+    normalizeDomexClientName(
+      pickDomexValueAfterLabel(
+        lines,
+        asciiLines,
+        /jmeno\s+a\s+prijmeni\b/i,
+        /Jm[eé]no\s+a\s+(?:př[ií]jmen[ií]|prijmeni|pfijmeni)\s*:?\s*/i,
+        4
+      )
+    ) ??
+    normalizeDomexClientName(
+      normalized.match(/Jméno\s+a\s+příjmení\s+(.+?)(?:\s+Rodné\s+číslo|$)/i)?.[1]
+    ) ??
+    normalizeDomexClientName(
+      ascii.match(/jmeno\s+a\s+prijmeni\s+(.+?)(?:\s+rodne\s+cis(?:lo|io)|$)/i)?.[1]
+    );
   if (nameMatch) {
-    result.clientName = nameMatch.replace(/\s+/g, " ").trim();
+    result.clientName = nameMatch;
   }
 
   // Počátek pojištění
@@ -350,8 +466,19 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
       if (!line) continue;
       if (!/^predmet\s+pojisteni\b/i.test(asciiLine)) continue;
       const rawType = line.replace(/^Předmět\s+pojištění\s*/i, "").trim();
-      const normalizedType = normalizeDomexPropertyType(rawType);
-      if (normalizedType) result.domexPropertyType = normalizedType;
+      const typeCandidates = [
+        rawType,
+        lines[idx + step + 1],
+        lines[idx + step + 2],
+        lines[idx + step + 3],
+      ];
+      for (const candidate of typeCandidates) {
+        const normalizedType = normalizeDomexPropertyType(candidate);
+        if (normalizedType) {
+          result.domexPropertyType = normalizedType;
+          break;
+        }
+      }
       break;
     }
     if (result.domexPropertyType) break;
@@ -366,8 +493,19 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
       if (!line) continue;
       if (!/^predmet\s+pojisteni\b/i.test(asciiLine)) continue;
       const rawType = line.replace(/^Předmět\s+pojištění\s*/i, "").trim();
-      const normalizedType = normalizeDomexHouseholdType(rawType);
-      if (normalizedType) result.domexHouseholdType = normalizedType;
+      const typeCandidates = [
+        rawType,
+        lines[idx + step + 1],
+        lines[idx + step + 2],
+        lines[idx + step + 3],
+      ];
+      for (const candidate of typeCandidates) {
+        const normalizedType = normalizeDomexHouseholdType(candidate);
+        if (normalizedType) {
+          result.domexHouseholdType = normalizedType;
+          break;
+        }
+      }
       break;
     }
     if (result.domexHouseholdType) break;
@@ -478,7 +616,7 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
       }
 
       if (!/pojistna\s+castka\b/i.test(asciiLine)) continue;
-      const amountFromLine = parseAmount(line);
+      const amountFromLine = parseAmountAtOrAfterLine(lines, idx + step, 2);
       if (amountFromLine == null) continue;
 
       if (sectionContext === "household") {
@@ -512,7 +650,7 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
       }
 
       if (!/spoluucast\b/i.test(asciiLine)) continue;
-      const deductibleFromLine = parseAmount(line);
+      const deductibleFromLine = parseAmountAtOrAfterLine(lines, idx + step, 2);
       if (deductibleFromLine == null) continue;
 
       if (sectionContext === "household") {
@@ -543,7 +681,7 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
           result.domexPropertySumInsured == null &&
           /pojistna\s+castka\b/i.test(asciiLine)
         ) {
-          const amountFromLine = parseAmount(line);
+          const amountFromLine = parseAmountAtOrAfterLine(lines, idx + step, 2);
           if (amountFromLine != null) {
             result.domexPropertySumInsured = amountFromLine;
           }
@@ -553,7 +691,7 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
           result.domexPropertyDeductible == null &&
           /spoluucast\b/i.test(asciiLine)
         ) {
-          const deductibleFromLine = parseAmount(line);
+          const deductibleFromLine = parseAmountAtOrAfterLine(lines, idx + step, 2);
           if (deductibleFromLine != null) {
             result.domexPropertyDeductible = deductibleFromLine;
           }
@@ -581,7 +719,7 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
         result.domexHouseholdSumInsured == null &&
         /pojistna\s+castka\b/i.test(asciiLine)
       ) {
-        const amountFromLine = parseAmount(line);
+        const amountFromLine = parseAmountAtOrAfterLine(lines, firstIdx + step, 2);
         if (amountFromLine != null) {
           result.domexHouseholdSumInsured = amountFromLine;
         }
@@ -591,7 +729,7 @@ export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
         result.domexHouseholdDeductible == null &&
         /spoluucast\b/i.test(asciiLine)
       ) {
-        const deductibleFromLine = parseAmount(line);
+        const deductibleFromLine = parseAmountAtOrAfterLine(lines, firstIdx + step, 2);
         if (deductibleFromLine != null) {
           result.domexHouseholdDeductible = deductibleFromLine;
         }

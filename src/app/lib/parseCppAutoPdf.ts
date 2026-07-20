@@ -458,8 +458,14 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
 
   // Datum sjednání
   const signedMatch = fullText.match(
-    /N[áa]vrh\s+pojistn[eé]\s+smlouvy\s+vyhotoven\s+dne:\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i
-  )?.[1];
+    /N[áa]vrh\s+pojistn[eé]\s+smlouvy\s+(?:vyhotoven|předložen)\s+dne:\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i
+  )?.[1] ??
+    ascii.match(
+      /navrh\s+pojistne\s+smlouvy\s+(?:vyhotoven|predlozen)\s+dne:\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i
+    )?.[1] ??
+    fullText.match(/Tisk\s+SUS\s+Plus,\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i)
+      ?.[1] ??
+    ascii.match(/tisk\s+sus\s+plus,\s*([0-9]{1,2}\.[0-9]{1,2}\.[0-9]{4})/i)?.[1];
   const signedIso = toDateInput(signedMatch);
   if (signedIso) {
     result.contractSignedDate = signedIso;

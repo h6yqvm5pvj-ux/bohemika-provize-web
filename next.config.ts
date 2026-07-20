@@ -64,6 +64,10 @@ const nextConfig: NextConfig = {
         headers: staticImageCacheHeaders,
       },
       {
+        source: "/ocr/:path*",
+        headers: staticImageCacheHeaders,
+      },
+      {
         source: "/pwa/:path*",
         headers: staticImageCacheHeaders,
       },

@@ -29,6 +29,8 @@ export type EntryDoc = {
     expectedAmount?: number | null;
     difference?: number | null;
     differenceReason?: string | null;
+    career?: string | null;
+    detail?: string | null;
     status?: "paid" | "difference" | "storno" | string | null;
     statementId?: string | null;
     statementNumber?: string | null;
