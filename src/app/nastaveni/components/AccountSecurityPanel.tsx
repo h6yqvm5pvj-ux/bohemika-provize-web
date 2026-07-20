@@ -1,15 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import {
   Apple,
   AtSign,
   ExternalLink,
   Fingerprint,
+  HelpCircle,
   KeyRound,
   Play,
   QrCode as QrCodeIcon,
   ShieldCheck,
+  X,
 } from "lucide-react";
 
 import type { PasskeyCredentialSummary } from "@/app/lib/passkeys";
@@ -138,6 +141,8 @@ export function AccountSecurityPanel({
   onCancelDisableMfa,
   onDisableMfa,
 }: AccountSecurityPanelProps) {
+  const [passkeyHelpOpen, setPasskeyHelpOpen] = useState(false);
+
   return (
     <section className={`space-y-5 ${className}`}>
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#164e63_52%,#10b981_100%)]" />
@@ -211,13 +216,13 @@ export function AccountSecurityPanel({
 
         <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Passkeys
+            Přístupový klíč
           </p>
           <p className={`mt-2 text-xl font-black ${passkeyCredentials.length > 0 ? "text-emerald-700" : "text-slate-950"}`}>
             {passkeySummary}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
-            Face ID / Touch ID podle zařízení.
+            Face ID, Touch ID nebo PIN zařízení.
           </p>
         </article>
       </div>
@@ -320,9 +325,19 @@ export function AccountSecurityPanel({
 
             <div className="mt-4 border-t border-slate-100 pt-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <Fingerprint size={13} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
-                  <span>Face ID / passkeys</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <Fingerprint size={13} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
+                    <span>Přístupový klíč</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPasskeyHelpOpen(true)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                    aria-label="Co je přístupový klíč?"
+                  >
+                    <HelpCircle size={14} strokeWidth={2} aria-hidden="true" />
+                  </button>
                 </div>
                 <span
                   className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
@@ -347,7 +362,7 @@ export function AccountSecurityPanel({
                     <input
                       type="text"
                       className={fieldClass}
-                      placeholder={passkeyPlatformAvailable ? "Název zařízení (např. iPhone)" : "Název passkey"}
+                      placeholder={passkeyPlatformAvailable ? "Název zařízení (např. iPhone)" : "Název přístupového klíče"}
                       value={passkeyName}
                       onChange={(event) => onPasskeyNameChange(event.target.value)}
                       disabled={passkeyBusy}
@@ -359,24 +374,24 @@ export function AccountSecurityPanel({
                       className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <Fingerprint size={16} strokeWidth={2} aria-hidden="true" />
-                      {passkeyBusy ? "Otevírám ověření…" : "Zapnout Face ID / passkey"}
+                      {passkeyBusy ? "Otevírám ověření…" : "Zapnout přístupový klíč"}
                     </button>
                   </>
                 ) : (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    Tento prohlížeč passkeys nepodporuje.
+                    Tento prohlížeč přístupové klíče nepodporuje.
                   </div>
                 )}
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    <span>Uložené passkeys</span>
+                    <span>Uložené přístupové klíče</span>
                     {passkeysLoading ? <span>Načítám…</span> : null}
                   </div>
 
                   {!passkeysLoading && passkeyCredentials.length === 0 ? (
                     <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                      Zatím není uložený žádný passkey.
+                      Zatím není uložený žádný přístupový klíč.
                     </div>
                   ) : null}
 
@@ -676,6 +691,51 @@ export function AccountSecurityPanel({
           </div>
         </div>
       </div>
+      {passkeyHelpOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6">
+          <div className="w-full max-w-lg overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+                  <Fingerprint size={18} strokeWidth={2.2} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                    Nápověda
+                  </p>
+                  <h3 className="mt-1 text-lg font-bold text-slate-950">
+                    Co je přístupový klíč?
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPasskeyHelpOpen(false)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                aria-label="Zavřít nápovědu"
+              >
+                <X size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="space-y-3 px-5 py-5 text-sm leading-relaxed text-slate-600">
+              <p>
+                Přístupový klíč je bezpečné přihlášení uložené v konkrétním
+                zařízení nebo ve správci hesel. Při přihlášení se ověříš přes
+                Face ID, Touch ID, otisk prstu, PIN nebo heslo zařízení.
+              </p>
+              <p>
+                Po nastavení můžeš na daném zařízení používat přístupový klíč
+                místo opisování kódu z Microsoft Authenticatoru. Heslo ani
+                jednorázový kód se při tomto způsobu přihlášení nezadává.
+              </p>
+              <p>
+                Pro nejlepší dostupnost si ulož přístupový klíč na každém
+                zařízení, ze kterého se běžně přihlašuješ.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

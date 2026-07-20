@@ -118,10 +118,10 @@ export function resolvePasskeyErrorMessage(
     return "Ověření bylo zrušené nebo vypršel časový limit.";
   }
   if (err?.name === "InvalidStateError") {
-    return "Tento passkey už je pro účet uložený.";
+    return "Tento přístupový klíč už je pro účet uložený.";
   }
   if (err?.name === "NotSupportedError") {
-    return "Tento prohlížeč nebo zařízení passkeys nepodporuje.";
+    return "Tento prohlížeč nebo zařízení přístupové klíče nepodporuje.";
   }
   if (typeof err?.message === "string" && err.message.trim()) {
     return err.message.trim();

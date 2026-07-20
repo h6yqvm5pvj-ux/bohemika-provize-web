@@ -1562,16 +1562,21 @@ export function LifeRecordForm() {
 
   return (
     <>
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-base sm:text-lg font-semibold text-slate-900">
-            Životní pojištění – přehled sjednávaných krytí
-          </h2>
-          <p className="mt-1 text-xs sm:text-sm text-slate-600">
-            Zaklikni rizika, která s klientem řešíš, a doplň jejich částky. Slouží jako tahák k
-            vyplnění Záznamu z jednání.
-          </p>
-        </div>
+      <div className="space-y-4">
+        <section className="overflow-hidden rounded-[28px] border border-violet-200/75 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] shadow-[0_18px_44px_rgba(42,20,72,0.12)]">
+          <div className="border-b border-violet-100/80 px-4 py-4 sm:px-5">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
+              Životní pojištění
+            </p>
+            <h2 className="text-base sm:text-lg font-semibold text-slate-900">
+              Životní pojištění – přehled sjednávaných krytí
+            </h2>
+            <p className="mt-1 text-xs sm:text-sm text-slate-600">
+              Zaklikni rizika, která s klientem řešíš, a doplň jejich částky.
+              Slouží jako tahák k vyplnění Záznamu z jednání.
+            </p>
+          </div>
+        </section>
 
         {/* Všechny glassy boxy ve 2 sloupcích */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -2202,15 +2207,9 @@ export function LifeRecordForm() {
           onToggle={() => setHealthSocialOn((v) => !v)}
         />
 
-        <section className="relative isolate overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-4 py-4 shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 ring-[#7a35a7]/22">
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
-          />
-          <div className="relative z-[1] space-y-3">
-            <div className="text-sm font-semibold leading-tight text-[#fbf7ff] sm:text-base">
+        <section className="rounded-[22px] border border-violet-200/70 bg-white/95 p-4 shadow-[0_8px_22px_rgba(42,20,72,0.08)]">
+          <div className="space-y-3">
+            <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
               Zákazník má již uzavřenou pojistnou smlouvu týkající se stejného
               pojistného zájmu
             </div>
@@ -2229,7 +2228,7 @@ export function LifeRecordForm() {
               </ChipButton>
             </div>
 
-            <div className="text-sm font-semibold leading-tight text-[#fbf7ff] sm:text-base">
+            <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
               Změna na stávající smlouvě
             </div>
             <div className={SEGMENTED_CONTROL_CLASS}>
@@ -2247,7 +2246,7 @@ export function LifeRecordForm() {
               </ChipButton>
             </div>
 
-            <div className="text-sm font-semibold leading-tight text-[#fbf7ff] sm:text-base">
+            <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
               Refresh nebo Renovace stávající smlouvy
             </div>
             <div className={SEGMENTED_CONTROL_CLASS}>
@@ -2265,7 +2264,7 @@ export function LifeRecordForm() {
               </ChipButton>
             </div>
 
-            <div className="text-sm font-semibold leading-tight text-[#fbf7ff] sm:text-base">
+            <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
               Výpověď smlouvy z důvodu sjednání nové
             </div>
             <div className={SEGMENTED_CONTROL_CLASS}>
@@ -2409,33 +2408,22 @@ function BenefitCard({
 
   return (
     <section
-      className={`relative isolate overflow-hidden rounded-[26px] border bg-[#150e1f] px-4 py-4 shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 transition-[transform,border-color,box-shadow] duration-200 sm:px-5 sm:py-5 ${
+      className={`rounded-[22px] border bg-white/95 p-4 shadow-[0_8px_22px_rgba(42,20,72,0.08)] transition-[transform,border-color,box-shadow] duration-200 sm:p-5 ${
         enabled
-          ? "border-[#c084fc] shadow-[0_24px_44px_rgba(20,8,34,0.5)] ring-[#b967ff]/45"
-          : "border-[#653493] ring-[#7a35a7]/22 hover:-translate-y-0.5 hover:border-[#9756d1] hover:shadow-[0_24px_44px_rgba(20,8,34,0.5)]"
+          ? "border-violet-300 shadow-[0_16px_34px_rgba(88,28,135,0.14)]"
+          : "border-violet-200/70 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_16px_34px_rgba(88,28,135,0.12)]"
       }`}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
-      <div className="pointer-events-none absolute -top-16 left-12 h-56 w-px rotate-[34deg] bg-[#9d61ca]/16" />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-10 top-[2px] z-[1] h-px rounded-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(250,245,255,0.62),rgba(168,85,247,0))]"
-      />
       <button
         type="button"
         onClick={onToggle}
-        className="group relative z-[1] flex w-full items-center gap-3 text-left"
+        className="group flex w-full items-center gap-3 text-left"
       >
         <div
           className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold ring-1 transition ${
             enabled
-              ? "border-[#d8b4fe] bg-[linear-gradient(135deg,#b967ff_0%,#9350ea_100%)] text-[#fbf7ff] shadow-[0_10px_20px_rgba(168,79,240,0.36)] ring-[#fbf7ff]/35"
-              : "border-[#9a67d0]/80 bg-[#2e1c43]/92 text-transparent ring-[#d8bcf3]/20 group-hover:border-[#c084fc]/80"
+              ? "border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_8px_16px_rgba(109,40,217,0.26)] ring-violet-100"
+              : "border-violet-200 bg-violet-50 text-transparent ring-white group-hover:border-violet-300"
           }`}
         >
           {enabled ? "✓" : ""}
@@ -2443,27 +2431,27 @@ function BenefitCard({
         <div
           className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border transition ${
             enabled
-              ? "border-[#c084fc]/70 bg-white/[0.08] text-[#f3e8ff] shadow-[0_10px_20px_rgba(168,85,247,0.18)]"
-              : "border-[#9a67d0]/55 bg-white/[0.04] text-[#d8bcf3]/75 group-hover:border-[#c084fc]/80 group-hover:text-[#fbf7ff]"
+              ? "border-violet-300 bg-violet-50 text-violet-800"
+              : "border-violet-200 bg-violet-50/70 text-violet-700 group-hover:border-violet-300 group-hover:text-violet-900"
           }`}
         >
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-tight text-[#fbf7ff] sm:text-base">
+          <h3 className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
             {title}
           </h3>
         </div>
         {enabled ? (
-          <span className="inline-flex shrink-0 rounded-full border border-[#d8b4fe]/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-[#fbf7ff] shadow-[0_10px_22px_rgba(82,25,147,0.32)]">
+          <span className="inline-flex shrink-0 rounded-full border border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-white shadow-[0_7px_14px_rgba(109,40,217,0.22)]">
             Aktivní
           </span>
         ) : null}
       </button>
 
       {enabled && children && (
-        <div className="relative z-[1] mt-4 border-t-2 border-[#a855f7]/55 pt-4">
-          <div className="rounded-2xl border border-violet-200/55 bg-[#fbf7ff]/95 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_12px_28px_rgba(22,10,38,0.22)] [&>*:first-child]:mt-0">
+        <div className="mt-4 border-t border-violet-100 pt-4">
+          <div className="rounded-2xl border border-violet-200/70 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] p-3 shadow-[0_6px_18px_rgba(42,20,72,0.06)] [&>*:first-child]:mt-0">
             {children}
           </div>
         </div>

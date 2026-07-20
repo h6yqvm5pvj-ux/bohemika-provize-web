@@ -67,6 +67,13 @@ const ASSISTANCE_LEVELS = [
 
 const OWN_DAMAGE_LEVELS = ["Malá škoda", "Velká / totální škoda"];
 
+const PANEL_CLASS =
+  "overflow-hidden rounded-[28px] border border-violet-200/75 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] px-4 py-4 shadow-[0_18px_44px_rgba(42,20,72,0.12)] sm:px-5 sm:py-5";
+const OPTION_CARD_CLASS =
+  "rounded-[22px] border border-violet-200/70 bg-white/95 p-4 shadow-[0_8px_22px_rgba(42,20,72,0.08)]";
+const TEXT_INPUT_CLASS =
+  "w-full rounded-2xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-violet-500/80 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+
 type GlassSwitchProps = {
   label: string;
   checked: boolean;
@@ -78,17 +85,17 @@ function GlassSwitch({ label, checked, onChange }: GlassSwitchProps) {
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
         checked
-          ? "border-emerald-600 bg-emerald-500 text-white"
-          : "border-slate-900 bg-white text-slate-900 hover:bg-slate-100"
+          ? "border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_7px_14px_rgba(109,40,217,0.22)]"
+          : "border-violet-200 bg-white text-violet-900 hover:border-violet-300 hover:bg-violet-50"
       }`}
     >
       <span
-        className={`h-4 w-4 rounded-full border flex items-center justify-center text-[10px] ${
+        className={`flex h-4 w-4 items-center justify-center rounded-full border text-[10px] ${
           checked
-            ? "border-emerald-700 bg-white text-emerald-700"
-            : "border-slate-400"
+            ? "border-white bg-white text-violet-700"
+            : "border-violet-300 bg-violet-50"
         }`}
       >
         {checked ? "✓" : ""}
@@ -116,8 +123,8 @@ function PillPicker({ value, options, onChange }: PillPickerProps) {
             onClick={() => onChange(opt)}
             className={`rounded-full border px-3 py-1.5 text-xs sm:text-sm transition ${
               active
-                ? "border-slate-900 bg-slate-900 text-white"
-                : "border-slate-900 bg-white text-slate-800 hover:bg-slate-100"
+                ? "border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_7px_14px_rgba(109,40,217,0.22)]"
+                : "border-violet-200 bg-white text-violet-900 hover:border-violet-300 hover:bg-violet-50"
             }`}
           >
             {opt}
@@ -220,7 +227,7 @@ export function CarRecordForm() {
   return (
     <div className="space-y-6">
       {/* Hlavní header + přepínač SROVNÁVAČ / PORTÁL */}
-      <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+      <section className={PANEL_CLASS}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <p className="text-[11px] uppercase tracking-[0.18em] text-slate-600">
@@ -231,14 +238,14 @@ export function CarRecordForm() {
             </h2>
           </div>
 
-          <div className="inline-flex rounded-full bg-white border border-slate-900 p-1">
+          <div className="inline-flex rounded-full border border-violet-200/70 bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(88,28,135,0.12)]">
             <button
               type="button"
               onClick={() => setMode("srovnavac")}
               className={`px-4 py-1.5 text-xs sm:text-sm rounded-full transition ${
                 mode === "srovnavac"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "text-slate-700 hover:bg-slate-100"
+                  ? "bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_7px_14px_rgba(109,40,217,0.22)]"
+                  : "text-violet-900 hover:bg-violet-50"
               }`}
             >
               SROVNÁVAČ
@@ -248,8 +255,8 @@ export function CarRecordForm() {
               onClick={() => setMode("portal")}
               className={`px-4 py-1.5 text-xs sm:text-sm rounded-full transition ${
                 mode === "portal"
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "text-slate-700 hover:bg-slate-100"
+                  ? "bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_7px_14px_rgba(109,40,217,0.22)]"
+                  : "text-violet-900 hover:bg-violet-50"
               }`}
             >
               PORTÁL POJIŠŤOVNY
@@ -269,7 +276,7 @@ export function CarRecordForm() {
       {/* Povinné ručení + Havarijní */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Povinné ručení */}
-        <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-4 sm:px-6 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+        <div className={OPTION_CARD_CLASS}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-600">
@@ -301,7 +308,7 @@ export function CarRecordForm() {
         </div>
 
         {/* Havarijní */}
-        <div className="rounded-3xl border border-slate-900 bg-white  px-5 py-4 sm:px-6 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+        <div className={OPTION_CARD_CLASS}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-600">
@@ -329,7 +336,7 @@ export function CarRecordForm() {
                     type="text"
                     inputMode="decimal"
                     placeholder="např. 350 000"
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    className={TEXT_INPUT_CLASS}
                     value={cascoAmount}
                     onChange={(e) => setCascoAmount(e.target.value)}
                   />
@@ -343,14 +350,14 @@ export function CarRecordForm() {
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                   S DPH / bez DPH
                 </label>
-                <div className="inline-flex rounded-full bg-white border border-slate-900 p-1">
+                <div className="inline-flex rounded-full border border-violet-200/70 bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(88,28,135,0.12)]">
                   <button
                     type="button"
                     onClick={() => setCascoWithVat("sDPH")}
                     className={`px-3 py-1.5 text-xs rounded-full transition ${
                       cascoWithVat === "sDPH"
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-700 hover:bg-slate-100"
+                        ? "bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white"
+                        : "text-violet-900 hover:bg-violet-50"
                     }`}
                   >
                     S DPH
@@ -360,8 +367,8 @@ export function CarRecordForm() {
                     onClick={() => setCascoWithVat("bezDPH")}
                     className={`px-3 py-1.5 text-xs rounded-full transition ${
                       cascoWithVat === "bezDPH"
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-700 hover:bg-slate-100"
+                        ? "bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white"
+                        : "text-violet-900 hover:bg-violet-50"
                     }`}
                   >
                     Bez DPH
@@ -385,7 +392,7 @@ export function CarRecordForm() {
       </section>
 
       {/* Roční nájezd */}
-      <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 space-y-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+      <section className={`${PANEL_CLASS} space-y-3`}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
@@ -411,14 +418,14 @@ export function CarRecordForm() {
       </section>
 
       {/* Doplňková krytí */}
-      <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+      <section className={`${PANEL_CLASS} space-y-4`}>
         <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
           Doplňková krytí
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Střet se zvěří */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Střet se zvěří"
               checked={collisionAnimal}
@@ -427,7 +434,7 @@ export function CarRecordForm() {
             {collisionAnimal && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className={TEXT_INPUT_CLASS}
                 placeholder="Limit v Kč"
                 value={collisionAnimalLimit}
                 onChange={(e) =>
@@ -438,7 +445,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Poškození zvířetem */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Poškození zvířetem"
               checked={animalDamage}
@@ -447,7 +454,7 @@ export function CarRecordForm() {
             {animalDamage && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className={TEXT_INPUT_CLASS}
                 placeholder="Limit v Kč"
                 value={animalDamageLimit}
                 onChange={(e) =>
@@ -458,7 +465,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Živel */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Živel"
               checked={naturalHazard}
@@ -467,7 +474,7 @@ export function CarRecordForm() {
             {naturalHazard && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className={TEXT_INPUT_CLASS}
                 placeholder="Limit v Kč"
                 value={naturalHazardLimit}
                 onChange={(e) =>
@@ -478,7 +485,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Skla */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Skla"
               checked={glass}
@@ -487,7 +494,7 @@ export function CarRecordForm() {
             {glass && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className={TEXT_INPUT_CLASS}
                 placeholder="Limit v Kč"
                 value={glassLimit}
                 onChange={(e) => setGlassLimit(e.target.value)}
@@ -496,7 +503,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Odcizení */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Odcizení"
               checked={theft}
@@ -505,7 +512,7 @@ export function CarRecordForm() {
             {theft && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className={TEXT_INPUT_CLASS}
                 placeholder="Limit v Kč"
                 value={theftLimit}
                 onChange={(e) => setTheftLimit(e.target.value)}
@@ -514,7 +521,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Vandalismus */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Vandalismus"
               checked={vandalism}
@@ -523,7 +530,7 @@ export function CarRecordForm() {
             {vandalism && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className={TEXT_INPUT_CLASS}
                 placeholder="Limit v Kč"
                 value={vandalismLimit}
                 onChange={(e) =>
@@ -534,7 +541,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Náhradní vozidlo */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Náhradní vozidlo"
               checked={replacementCar}
@@ -543,7 +550,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Asistence */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Asistence"
               checked={assistance}
@@ -559,7 +566,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Zavazadla */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Zavazadla"
               checked={luggage}
@@ -568,7 +575,7 @@ export function CarRecordForm() {
             {luggage && (
               <input
                 type="text"
-                className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className={TEXT_INPUT_CLASS}
                 placeholder="Limit v Kč"
                 value={luggageLimit}
                 onChange={(e) => setLuggageLimit(e.target.value)}
@@ -577,7 +584,7 @@ export function CarRecordForm() {
           </div>
 
           {/* Poškození vlastního vozidla */}
-          <div className="space-y-2">
+          <div className={`${OPTION_CARD_CLASS} space-y-2`}>
             <GlassSwitch
               label="Poškození vlastního vozidla"
               checked={ownDamage}
@@ -595,13 +602,13 @@ export function CarRecordForm() {
       </section>
 
       {/* Slevy */}
-      <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 space-y-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+      <section className={`${PANEL_CLASS} space-y-4`}>
         <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-600">
           Uplatnil jsi některou z uvedených slev?
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               ČPP
             </p>
@@ -612,7 +619,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               Kooperativa
             </p>
@@ -623,7 +630,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               ČPP &amp; Kooperativa
             </p>
@@ -634,7 +641,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               ČSOB
             </p>
@@ -645,7 +652,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               Slavia
             </p>
@@ -656,7 +663,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               Pillow
             </p>
@@ -667,7 +674,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               UNIQA
             </p>
@@ -678,7 +685,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               UNIQA
             </p>
@@ -689,7 +696,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               UNIQA
             </p>
@@ -700,7 +707,7 @@ export function CarRecordForm() {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className={`${OPTION_CARD_CLASS} space-y-1.5`}>
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-900">
               UNIQA
             </p>

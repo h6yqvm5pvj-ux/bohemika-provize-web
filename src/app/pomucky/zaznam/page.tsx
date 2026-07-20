@@ -73,11 +73,11 @@ export default function RecordOfMeetingPage() {
                 onClick={() => setSelectedType(t.id)}
                 className={`inline-flex min-w-[170px] items-center justify-center gap-2.5 rounded-[22px] border px-5 py-3.5 text-base font-semibold tracking-tight transition-all sm:text-lg ${
                   active
-                    ? "border-blue-500 bg-[linear-gradient(135deg,#60a5fa_0%,#2563eb_100%)] text-slate-950 shadow-[0_14px_32px_rgba(37,99,235,0.34)]"
+                    ? "border-blue-500 bg-[linear-gradient(135deg,#60a5fa_0%,#2563eb_100%)] text-white shadow-[0_14px_32px_rgba(37,99,235,0.34)]"
                     : "border-slate-300 bg-white text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.08)] hover:-translate-y-[1px] hover:border-slate-400 hover:bg-slate-50/60 hover:text-slate-900"
                 }`}
               >
-                <Icon className={`h-5 w-5 ${active ? "text-slate-900" : "text-slate-600"}`} />
+                <Icon className={`h-5 w-5 ${active ? "text-white" : "text-slate-600"}`} />
                 <span>{t.shortTitle}</span>
               </button>
             );

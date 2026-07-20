@@ -818,7 +818,7 @@ export default function SettingsPage() {
         type: "error",
         message: resolvePasskeyErrorMessage(
           error,
-          "Passkeys se nepodařilo načíst."
+          "Přístupové klíče se nepodařilo načíst."
         ),
       });
     } finally {
@@ -2586,7 +2586,7 @@ export default function SettingsPage() {
     if (!passkeySupported) {
       setPasskeyStatus({
         type: "error",
-        message: "Tento prohlížeč nebo zařízení passkeys nepodporuje.",
+        message: "Tento prohlížeč nebo zařízení přístupové klíče nepodporuje.",
       });
       return;
     }
@@ -2606,14 +2606,15 @@ export default function SettingsPage() {
       setPasskeyName("");
       setPasskeyStatus({
         type: "success",
-        message: "Passkey byl uložený. Příště se můžeš přihlásit přes Face ID.",
+        message:
+          "Přístupový klíč byl uložený. Příště se na tomto zařízení můžeš přihlásit bez kódu z Microsoft Authenticatoru.",
       });
     } catch (error) {
       setPasskeyStatus({
         type: "error",
         message: resolvePasskeyErrorMessage(
           error,
-          "Passkey se nepodařilo vytvořit."
+          "Přístupový klíč se nepodařilo vytvořit."
         ),
       });
     } finally {
@@ -2633,14 +2634,14 @@ export default function SettingsPage() {
       );
       setPasskeyStatus({
         type: "success",
-        message: "Passkey byl odebraný.",
+        message: "Přístupový klíč byl odebraný.",
       });
     } catch (error) {
       setPasskeyStatus({
         type: "error",
         message: resolvePasskeyErrorMessage(
           error,
-          "Passkey se nepodařilo odebrat."
+          "Přístupový klíč se nepodařilo odebrat."
         ),
       });
     } finally {

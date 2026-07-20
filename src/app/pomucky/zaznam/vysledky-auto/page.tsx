@@ -55,6 +55,22 @@ type RecommendationItem = {
   reason?: string;
 };
 
+function getUsualPriceLimitCovers(data: CarResultsInput): string[] {
+  const covers: string[] = [];
+  if (data.collisionAnimal) covers.push("Střet se zvěří");
+  if (data.animalDamage) covers.push("Poškození zvířetem");
+  if (data.naturalHazard) covers.push("Živel");
+  if (data.vandalism) covers.push("Vandalismus");
+  if (data.theft) covers.push("Odcizení");
+  return covers;
+}
+
+function getInsurerLabel(insurer: Insurer): string {
+  return (
+    INSURER_OPTIONS.find((option) => option.id === insurer)?.label ?? insurer
+  );
+}
+
 function buildRecommendations(
   data: CarResultsInput | null,
   currentInsurer: Insurer | null
@@ -132,7 +148,21 @@ function buildRecommendations(
     });
   }
 
-  // 5) Extrabenefit Profi – POUZE pokud nahoře zvolena ČPP
+  // 5) Allianz & Pillow – vybraná rizika s limitem na obvyklou cenu
+  if (currentInsurer === "allianz" || currentInsurer === "pillow") {
+    const usualPriceLimitCovers = getUsualPriceLimitCovers(data);
+
+    if (usualPriceLimitCovers.length > 0) {
+      const insurerLabel = getInsurerLabel(currentInsurer);
+      const joined = usualPriceLimitCovers.join(", ");
+      recs.push({
+        text: `Klient byl upozorněn, že u produktu ${insurerLabel} je u připojištění ${joined} standardně nastaven limit pojistného plnění na obvyklou cenu vozidla.`,
+        reason: `${insurerLabel}: limit na obvyklou cenu`,
+      });
+    }
+  }
+
+  // 6) Extrabenefit Profi – POUZE pokud nahoře zvolena ČPP
   if (data.discountCppProfi && currentInsurer === "cpp") {
     recs.push({
       text: "Klient byl upozorněn, že pokud dojde v následujícím tříletém období k pojistné události, pojistník se zavazuje pojistiteli vrátit slevu za poskytnutý EBP na pojistném za všechna pojistná období, v nichž byla sleva od počátku pojištění poskytnuta.",
@@ -140,7 +170,7 @@ function buildRecommendations(
     });
   }
 
-  // 6) Sleva za neoriginální sklo
+  // 7) Sleva za neoriginální sklo
   if (data.discountUniqaNonOemGlass) {
     recs.push({
       text: "Klient si přeje využít slevu na neoriginální sklo.",
@@ -202,12 +232,7 @@ function buildProductRecommendations(
     case "allianz": {
       recs.push("Málo jezdím, málo platím.");
 
-      const covers: string[] = [];
-      if (data.glass) covers.push("Skla");
-      if (data.collisionAnimal) covers.push("Střet se zvěří");
-      if (data.naturalHazard) covers.push("Živel");
-      if (data.animalDamage) covers.push("Poškození zvířetem");
-      if (data.theft) covers.push("Odcizení");
+      const covers = getUsualPriceLimitCovers(data);
 
       if (covers.length > 0) {
         const joined = covers.join(", ");
@@ -223,18 +248,13 @@ function buildProductRecommendations(
       // základní benefit Pillow
       recs.push("Cena pojistného dle ujetých kilometrů.");
 
-      // připojištění s limitem na OBYVKLOU CENU
-      const covers: string[] = [];
-      if (data.glass) covers.push("Skla");
-      if (data.collisionAnimal) covers.push("Střet se zvěří");
-      if (data.naturalHazard) covers.push("Živel");
-      if (data.animalDamage) covers.push("Poškození zvířetem");
-      if (data.theft) covers.push("Odcizení");
+      // připojištění s limitem na obvyklou cenu
+      const covers = getUsualPriceLimitCovers(data);
 
       if (covers.length > 0) {
         const joined = covers.join(", ");
         recs.push(
-          `Připojištění: ${joined} – limit plnění na OBYVKLOU CENU.`
+          `Připojištění: ${joined} – limit plnění na obvyklou cenu.`
         );
       }
 

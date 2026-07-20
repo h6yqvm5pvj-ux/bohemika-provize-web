@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     return response;
   } catch (error) {
     console.error("passkey credentials list error", error);
-    return jsonError(error, "Passkeys se nepodařilo načíst.");
+    return jsonError(error, "Přístupové klíče se nepodařilo načíst.");
   }
 }
 
@@ -79,6 +79,6 @@ export async function DELETE(req: NextRequest) {
     return response;
   } catch (error) {
     console.error("passkey credential delete error", error);
-    return jsonError(error, "Passkey se nepodařilo odebrat.");
+    return jsonError(error, "Přístupový klíč se nepodařilo odebrat.");
   }
 }

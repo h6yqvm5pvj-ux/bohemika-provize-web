@@ -1061,6 +1061,7 @@ export default function CalculatorPage() {
   const [user, setUser] = useState<User | null>(null);
 
   const [product, setProduct] = useState<Product>("neon");
+  const [hasSelectedProduct, setHasSelectedProduct] = useState(false);
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [frequency, setFrequency] = useState<PaymentFrequency>("monthly");
@@ -1213,9 +1214,10 @@ export default function CalculatorPage() {
     filteredProducts: filteredSectionProducts,
     selectProduct,
   } = useCalculatorProductPicker({
-    product,
+    product: hasSelectedProduct ? product : null,
     onProductSelect: (nextProduct) => {
       setProduct(nextProduct);
+      setHasSelectedProduct(true);
       setPdfClientNameLoaded(false);
       setPdfMatchedClientName(false);
     },
@@ -2530,6 +2532,7 @@ export default function CalculatorPage() {
         if (key === "číslo smlouvy") return !contractNumber.trim();
         if (key === "datum sjednání") return !contractSignedDate.trim();
         if (key === "datum počátku") return !policyStartDate.trim();
+        if (key === "produkt") return !hasSelectedProduct;
         if (key === "dobu trvání smlouvy") {
           return product === "maximaMaxEfekt" && durationYears == null;
         }
@@ -2552,6 +2555,7 @@ export default function CalculatorPage() {
     durationYears,
     comfortPaymentText,
     product,
+    hasSelectedProduct,
     comfortGradual,
     durationMonths,
   ]);
@@ -3353,7 +3357,7 @@ export default function CalculatorPage() {
     setImportedContractPdfFile(null);
     setPdfClientNameLoaded(false);
     setPdfMatchedClientName(false);
-    let importProduct: Product = product;
+    let importProduct: Product | null = hasSelectedProduct ? product : null;
     let productDetected = false;
     try {
       const detected = await detectProductFromPdfLazy(file);
@@ -3362,19 +3366,40 @@ export default function CalculatorPage() {
         if (detected.product !== product) {
           importProduct = detected.product;
           setProduct(detected.product);
+          setHasSelectedProduct(true);
           setProductPickerSectionForProduct(detected.product);
           setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detected.product)}. Načítám data…`);
+        } else {
+          importProduct = detected.product;
+          setHasSelectedProduct(true);
         }
-      } else {
+      } else if (importProduct) {
         setPdfImportStatus(
           `Produkt z PDF jsem nerozpoznal. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
+        );
+      } else {
+        setPdfImportStatus(
+          "PDF je připravené k přiložení, ale produkt se nepodařilo automaticky rozpoznat."
         );
       }
     } catch (detectErr) {
       console.warn("Auto-detekce produktu z PDF selhala", detectErr);
-      setPdfImportStatus(
-        `Produkt z PDF se nepodařilo rozpoznat. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
+      if (importProduct) {
+        setPdfImportStatus(
+          `Produkt z PDF se nepodařilo rozpoznat. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
+        );
+      } else {
+        setPdfImportStatus(
+          "PDF je připravené k přiložení, ale produkt se nepodařilo automaticky rozpoznat."
+        );
+      }
+    }
+    if (!importProduct) {
+      setImportedContractPdfFile(file);
+      setPdfImportError(
+        "Vyber produkt ručně. Údaje z tohoto PDF zatím nebyly načtené, ale PDF zůstane připravené k přiložení po uložení smlouvy."
       );
+      return;
     }
     if (
       importProduct === "cppAuto" ||
@@ -4081,7 +4106,11 @@ export default function CalculatorPage() {
         }
       }
       setImportedContractPdfFile(file);
-      setPdfImportError(failedPdfImportMessage(importProduct, productDetected));
+      setPdfImportError(
+        importProduct
+          ? failedPdfImportMessage(importProduct, productDetected)
+          : "Produkt z PDF se nepodařilo rozpoznat. Vyber produkt ručně."
+      );
       setPdfImportStatus(null);
     } finally {
       setPdfImporting(false);
@@ -4120,6 +4149,13 @@ export default function CalculatorPage() {
         (!effectivePositionTimelineLoading && effectivePositionTimeline.length > 0
           ? position
           : null);
+
+    if (!hasSelectedProduct) {
+      setItems([]);
+      setTotal(0);
+      setUnsupported(false);
+      return;
+    }
 
     if (val <= 0) {
       setItems([]);
@@ -4450,6 +4486,7 @@ export default function CalculatorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     product,
+    hasSelectedProduct,
     position,
     timelineMatchedPosition,
     effectivePositionTimeline,
@@ -4701,7 +4738,7 @@ export default function CalculatorPage() {
       setValidationError("Nejdřív se prosím přihlas.");
       return false;
     }
-    const targetProduct = options.productOverride ?? product;
+    const targetProduct = options.productOverride ?? (hasSelectedProduct ? product : null);
     const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
     if (!targetOwnerEmail) {
       setValidationError("Chybí cílový vlastník smlouvy.");
@@ -4710,6 +4747,11 @@ export default function CalculatorPage() {
 
     if (tipsterModeEnabled) {
       setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
+      return false;
+    }
+
+    if (!targetProduct) {
+      setValidationError("Nejdřív vyber produkt.");
       return false;
     }
 
@@ -5102,6 +5144,14 @@ export default function CalculatorPage() {
 
     if (tipsterModeEnabled) {
       setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
+      return;
+    }
+
+    if (!hasSelectedProduct) {
+      const msg = "Nejdřív vyber produkt.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      setMissingFields(["produkt"]);
       return;
     }
 
@@ -7285,6 +7335,44 @@ export default function CalculatorPage() {
         tipContractLookupState.email !== normalizedDraftEmail
       );
     })();
+    const renderProductAndPdfSection = (large = false) => (
+      <CalculatorProductAndPdfSection
+        canImportFromPdf={canImportFromPdf && isAddContractMode}
+        productOpen={productOpen}
+        productSelected={hasSelectedProduct}
+        large={large}
+        currentProductLabel={
+          hasSelectedProduct ? currentProduct.label : "Klikni pro výběr produktu"
+        }
+        productLogoSrc={hasSelectedProduct ? productInstitutionLogo(product) : null}
+        productInstitutionId={hasSelectedProduct ? currentProductInstitutionId : null}
+        productLogoImageClass={
+          hasSelectedProduct
+            ? institutionLogoImageClass(currentProductInstitutionId)
+            : undefined
+        }
+        productLogoFrameClass={
+          hasSelectedProduct
+            ? institutionLogoFrameClass(currentProductInstitutionId, "chip")
+            : undefined
+        }
+        pdfDropActive={pdfDropActive}
+        pdfImporting={pdfImporting}
+        pdfImportStatus={pdfImportStatus}
+        pdfImportError={pdfImportError}
+        fileInputRef={fileInputRef}
+        onToggleProductPicker={toggleProductPicker}
+        onOpenFileDialog={() => fileInputRef.current?.click()}
+        onFileInputChange={(file) => {
+          resetPdfDropState();
+          void handlePdfImport(file);
+        }}
+        onDragEnter={handlePdfDragEnter}
+        onDragOver={handlePdfDragOver}
+        onDragLeave={handlePdfDragLeave}
+        onDrop={handlePdfDrop}
+      />
+    );
   
     return (
     <AppLayout active="calc">
@@ -7373,7 +7461,7 @@ export default function CalculatorPage() {
 
       <CalculatorProductPickerModal
         isOpen={productOpen}
-        product={product}
+        product={hasSelectedProduct ? product : null}
         columns={productPickerColumns}
         activeColumn={activeProductPickerColumn}
         allProducts={allProductPickerProducts}
@@ -7447,33 +7535,17 @@ export default function CalculatorPage() {
           </div>
         )}
 
+        {!hasSelectedProduct ? (
+          <div className="flex min-h-[calc(100vh-18rem)] items-center justify-center py-6">
+            <div className="w-full max-w-4xl">
+              {renderProductAndPdfSection(true)}
+            </div>
+          </div>
+        ) : (
         <div className="grid gap-5 items-start lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-3.5 w-full lg:max-w-3xl">
             {/* Produkt + PDF import */}
-            <CalculatorProductAndPdfSection
-              canImportFromPdf={canImportFromPdf && isAddContractMode}
-              productOpen={productOpen}
-              currentProductLabel={currentProduct.label}
-              productLogoSrc={productInstitutionLogo(product)}
-              productInstitutionId={currentProductInstitutionId}
-              productLogoImageClass={institutionLogoImageClass(currentProductInstitutionId)}
-              productLogoFrameClass={institutionLogoFrameClass(currentProductInstitutionId, "chip")}
-              pdfDropActive={pdfDropActive}
-              pdfImporting={pdfImporting}
-              pdfImportStatus={pdfImportStatus}
-              pdfImportError={pdfImportError}
-              fileInputRef={fileInputRef}
-              onToggleProductPicker={toggleProductPicker}
-              onOpenFileDialog={() => fileInputRef.current?.click()}
-              onFileInputChange={(file) => {
-                resetPdfDropState();
-                void handlePdfImport(file);
-              }}
-              onDragEnter={handlePdfDragEnter}
-              onDragOver={handlePdfDragOver}
-              onDragLeave={handlePdfDragLeave}
-              onDrop={handlePdfDrop}
-            />
+            {renderProductAndPdfSection(false)}
 
             <section className="rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] space-y-3">
               {/* Doba trvání + platba */}
@@ -7700,6 +7772,7 @@ export default function CalculatorPage() {
             saving={saving}
             canSaveContract={
               isAddContractMode &&
+              hasSelectedProduct &&
               !saving &&
               items.length > 0 &&
               parseNumber(amountText) > 0 &&
@@ -7717,8 +7790,10 @@ export default function CalculatorPage() {
             }}
           />
         </div>
+        )}
       </div>
 
+      {hasSelectedProduct && (
       <CalculatorCoefficientModal
         isOpen={showCoefModal}
         product={product}
@@ -7764,6 +7839,7 @@ export default function CalculatorPage() {
         onCoefficientViewChange={setNeonCoefficientView}
         onNeonDocumentAction={handleNeonDocumentAction}
       />
+      )}
       </div>
       </div>
     </AppLayout>

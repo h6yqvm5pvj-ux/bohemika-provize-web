@@ -47,6 +47,6 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (error) {
     console.error("passkey registration options error", error);
-    return jsonError(error, "Nepodařilo se připravit passkey registraci.");
+    return jsonError(error, "Nepodařilo se připravit registraci přístupového klíče.");
   }
 }

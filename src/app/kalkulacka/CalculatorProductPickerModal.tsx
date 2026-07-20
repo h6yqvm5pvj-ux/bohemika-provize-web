@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Check, Search, X } from "lucide-react";
+import { Check, Package, Search, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { type Product } from "../types/domain";
@@ -24,7 +24,7 @@ const PRODUCT_OPTION_BY_ID = new Map<Product, { id: Product; label: string }>(
 
 type CalculatorProductPickerModalProps = {
   isOpen: boolean;
-  product: Product;
+  product: Product | null;
   columns: ProductPickerColumn[];
   activeColumn: ProductPickerColumn;
   allProducts: Product[];
@@ -60,7 +60,7 @@ export function CalculatorProductPickerModal({
 
   if (!isOpen) return null;
 
-  const currentProduct = PRODUCT_OPTION_BY_ID.get(product);
+  const currentProduct = product ? PRODUCT_OPTION_BY_ID.get(product) : null;
   const sectionTotal = isGlobalSearch ? allProducts.length : activeColumn.products.length;
 
   return (
@@ -84,16 +84,22 @@ export function CalculatorProductPickerModal({
                 Vyber produkt
               </p>
               <div className="mt-1 flex min-w-0 items-center gap-2">
-                <span className="relative h-6 w-10 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
-                  <Image
-                    src={productInstitutionLogo(product)}
-                    alt=""
-                    fill
-                    className={productLogoScaleClass(product)}
-                  />
-                </span>
+                {product ? (
+                  <span className="relative h-6 w-10 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                    <Image
+                      src={productInstitutionLogo(product)}
+                      alt=""
+                      fill
+                      className={productLogoScaleClass(product)}
+                    />
+                  </span>
+                ) : (
+                  <span className="inline-flex h-6 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-500">
+                    <Package size={14} strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                )}
                 <span className="truncate text-sm font-bold text-slate-950">
-                  {currentProduct?.label ?? product}
+                  {currentProduct?.label ?? "Zatím není vybrán žádný produkt"}
                 </span>
               </div>
             </div>
@@ -179,7 +185,7 @@ export function CalculatorProductPickerModal({
                     {filteredProducts.map((productId) => {
                       const option = PRODUCT_OPTION_BY_ID.get(productId);
                       if (!option) return null;
-                      const isActive = productId === product;
+                      const isActive = product != null && productId === product;
                       const unsupportedText = SUPPORTED_PRODUCTS.includes(productId)
                         ? null
                         : "zatím bez výpočtu";

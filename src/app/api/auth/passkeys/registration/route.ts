@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     } | null;
     if (!payload?.response) {
       return NextResponse.json(
-        { ok: false, error: "Chybí passkey odpověď." } satisfies ApiError,
+        { ok: false, error: "Chybí odpověď přístupového klíče." } satisfies ApiError,
         { status: 400 }
       );
     }
@@ -59,6 +59,6 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (error) {
     console.error("passkey registration error", error);
-    return jsonError(error, "Passkey se nepodařilo uložit.");
+    return jsonError(error, "Přístupový klíč se nepodařilo uložit.");
   }
 }

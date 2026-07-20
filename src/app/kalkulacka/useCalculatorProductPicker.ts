@@ -89,7 +89,8 @@ const PRODUCT_PICKER_COLUMN_BY_KEY = new Map<ProductPickerSectionKey, ProductPic
   PRODUCT_PICKER_COLUMNS.map((column) => [column.key, column] as const)
 );
 
-function productPickerSectionForProduct(product: Product): ProductPickerSectionKey {
+function productPickerSectionForProduct(product: Product | null): ProductPickerSectionKey {
+  if (!product) return "life";
   for (const column of PRODUCT_PICKER_COLUMNS) {
     if (column.products.includes(product)) return column.key;
   }
@@ -105,7 +106,7 @@ function normalizeProductPickerSearch(value: string): string {
 }
 
 type UseCalculatorProductPickerArgs = {
-  product: Product;
+  product: Product | null;
   onProductSelect: (nextProduct: Product) => void;
 };
 

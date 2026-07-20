@@ -529,7 +529,7 @@ export default function LoginPage() {
 
   const handlePasskeyLogin = async () => {
     if (!passkeySupported) {
-      setError("Tento prohlížeč nebo zařízení passkeys nepodporuje.");
+      setError("Tento prohlížeč nebo zařízení přístupové klíče nepodporuje.");
       return;
     }
 
@@ -547,7 +547,7 @@ export default function LoginPage() {
       setError(
         resolvePasskeyErrorMessage(
           error,
-          "Passkey přihlášení se nepodařilo dokončit."
+          "Přihlášení přes přístupový klíč se nepodařilo dokončit."
         )
       );
       setLoading(false);
@@ -768,7 +768,7 @@ export default function LoginPage() {
                     ? "Ověřuji 2FA…"
                     : "Přihlašuji…"
                   : passkeyLoading
-                    ? "Ověřuji passkey…"
+                    ? "Ověřuji přístupový klíč…"
                   : mfaResolver
                     ? "Potvrdit 2FA"
                     : "Přihlásit se"}
@@ -791,7 +791,7 @@ export default function LoginPage() {
                       ? "Otevírám ověření…"
                       : installPlatform === "ios"
                         ? "Přihlásit přes Face ID"
-                        : "Přihlásit přes passkey"}
+                        : "Přihlásit přes přístupový klíč"}
                   </button>
                 </div>
               ) : null}

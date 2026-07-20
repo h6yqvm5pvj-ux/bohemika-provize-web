@@ -45,6 +45,6 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (error) {
     console.error("passkey authentication options error", error);
-    return jsonError(error, "Nepodařilo se připravit passkey přihlášení.");
+    return jsonError(error, "Nepodařilo se připravit přihlášení přes přístupový klíč.");
   }
 }
