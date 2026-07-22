@@ -92,6 +92,7 @@ type UseHomeDataOptions = {
   email: string | null;
   loadPersonalHistory: boolean;
   loadTeamHistory: boolean;
+  reloadKey?: number;
 };
 
 type ContractsApiResponse = {
@@ -140,9 +141,10 @@ const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> =
 
 export const invalidateHomeCache = (email?: string | null) => {
   if (!email) return;
-  const prefix = `${email.toLowerCase()}|`;
+  const normalizedEmail = email.toLowerCase();
+  const keyPart = `|${normalizedEmail}|`;
   Object.keys(homeDataCache).forEach((key) => {
-    if (key.startsWith(prefix)) {
+    if (key.includes(keyPart)) {
       delete homeDataCache[key];
     }
   });
@@ -153,7 +155,7 @@ export const invalidateHomeCache = (email?: string | null) => {
       const k = window.localStorage.key(i);
       if (k && k.startsWith(HOME_CACHE_STORAGE_PREFIX)) {
         const val = k.slice(HOME_CACHE_STORAGE_PREFIX.length);
-        if (val.startsWith(prefix)) {
+        if (val.includes(keyPart)) {
           toDelete.push(k);
         }
       }
@@ -207,6 +209,7 @@ export function useHomeData({
   email,
   loadPersonalHistory,
   loadTeamHistory,
+  reloadKey = 0,
 }: UseHomeDataOptions): HomeDataState {
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
   const [myEntries, setMyEntries] = useState<EntryDoc[]>([]);
@@ -695,6 +698,7 @@ export function useHomeData({
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
+        const forceReload = reloadKey > 0;
 
         const cacheKey = `${HOME_CACHE_VERSION}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|${loadTeamHistory ? "teamhist" : "noteamhist"}`;
         const cached = homeDataCache[cacheKey];
@@ -702,7 +706,7 @@ export function useHomeData({
           fallbackPayload = cached.payload;
         }
         const seededFromMemory = Boolean(
-          cached && Date.now() - cached.ts < HOME_CACHE_TTL_MS
+          !forceReload && cached && Date.now() - cached.ts < HOME_CACHE_TTL_MS
         );
         if (seededFromMemory && cached) {
           applyCachedHomeState(cached.payload);
@@ -713,7 +717,7 @@ export function useHomeData({
           fallbackPayload = persisted.payload;
         }
         const seededFromPersist = Boolean(
-          persisted && Date.now() - persisted.ts < HOME_CACHE_TTL_MS
+          !forceReload && persisted && Date.now() - persisted.ts < HOME_CACHE_TTL_MS
         );
         if (!seededFromMemory && seededFromPersist && persisted) {
           homeDataCache[cacheKey] = persisted;
@@ -811,7 +815,7 @@ export function useHomeData({
     return () => {
       cancelled = true;
     };
-  }, [email, loadPersonalHistory, loadTeamHistory]);
+  }, [email, loadPersonalHistory, loadTeamHistory, reloadKey]);
 
   return {
     userMeta,

@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import Image from "next/image";
+import Link from "next/link";
 import QRCode from "qrcode";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -3337,6 +3338,14 @@ export default function AdminRequestsPage() {
                       >
                         Zabezpečení
                       </button>
+                    ) : null}
+                    {isAllowedAdmin ? (
+                      <Link
+                        href="/admin/data-health"
+                        className="whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold !text-violet-100/72 transition hover:bg-white/[0.08] hover:!text-white"
+                      >
+                        Data Health
+                      </Link>
                     ) : null}
                   </div>
                 ) : null}

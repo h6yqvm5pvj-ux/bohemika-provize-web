@@ -132,6 +132,22 @@
     Roboto, Helvetica, Arial, sans-serif;
 }
 
+html {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 1180px) {
+  html {
+    font-size: 13px;
+  }
+}
+
 /* základní font + reset marginu */
 body {
   font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont,
@@ -165,6 +181,32 @@ body {
   }
   to {
     transform: translateX(-50%);
+  }
+}
+
+@keyframes calculator-pdf-import-progress {
+  0% {
+    transform: translateX(-120%) scaleX(0.65);
+  }
+  45% {
+    transform: translateX(45%) scaleX(1.12);
+  }
+  100% {
+    transform: translateX(230%) scaleX(0.78);
+  }
+}
+
+@keyframes calculator-pdf-import-glint {
+  0% {
+    transform: translateX(-160%);
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(520%);
+    opacity: 0;
   }
 }
 

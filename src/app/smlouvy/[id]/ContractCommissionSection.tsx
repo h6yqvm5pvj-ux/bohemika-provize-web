@@ -58,24 +58,24 @@ type ContractCommissionSectionProps = {
 };
 
 const commissionPanelClass =
-  "rounded-[24px] border border-slate-300/90 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_58%,#eef4ff_100%)] px-5 py-4 shadow-[0_16px_38px_rgba(15,23,42,0.1)]";
+  "rounded-[20px] border border-slate-300/90 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_58%,#eef4ff_100%)] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]";
 const commissionRowClass =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 rounded-2xl border border-slate-200/90 bg-white/88 px-4 py-3 shadow-[0_6px_18px_rgba(15,23,42,0.04)] backdrop-blur-sm sm:items-center";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 rounded-xl border border-slate-200/90 bg-white/88 px-3 py-2.5 shadow-[0_6px_16px_rgba(15,23,42,0.035)] backdrop-blur-sm sm:items-center";
 const commissionTotalHighlightClass =
-  "relative mt-4 overflow-hidden rounded-2xl border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-4 py-3 text-white shadow-[0_20px_48px_rgba(2,6,23,0.45)]";
+  "mt-3 overflow-hidden rounded-2xl border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-3.5 py-2.5 text-white shadow-[0_16px_36px_rgba(2,6,23,0.38)]";
 const commissionTotalLineDarkClass =
   "flex items-center justify-between gap-3";
 const commissionTotalLabelDarkClass =
-  "text-sm font-semibold uppercase tracking-[0.1em] text-slate-200/90";
+  "text-xs font-semibold uppercase tracking-[0.1em] text-slate-200/90";
 const commissionTotalValueDarkClass =
-  "text-2xl font-bold tracking-tight text-emerald-300 sm:text-3xl";
+  "text-xl font-bold tracking-tight text-emerald-300 sm:text-2xl";
 const monoHeadingClass = "font-mono tracking-tight text-slate-900";
 const monoChipClass =
-  "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-base font-mono tracking-tight text-slate-900";
+  "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-mono tracking-tight text-slate-900";
 const monoChipDarkClass =
-  "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white";
+  "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-mono tracking-tight text-white";
 const collapsibleButtonClass =
-  "flex h-12 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-4 text-base font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
+  "flex h-10 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
 const COMMISSION_PAYOUT_AMOUNT_TOLERANCE = 10;
 const AUTO_COMMISSION_PRODUCTS = new Set<Product>([
   "cppAuto",
@@ -364,6 +364,42 @@ const payoutStatusClass = (status: CommissionPayoutReadStatus): string => {
   }
 };
 
+const formatSignedMoney = (value: number): string =>
+  `${value >= 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
+
+const payoutDifferenceAmountFromRecords = ({
+  expectedAmount,
+  paidAmount,
+  records,
+}: {
+  expectedAmount: number;
+  paidAmount: number;
+  records: ContractCommissionPayout[];
+}): number | null => {
+  if (records.length === 0) return null;
+
+  const importantRecord = importantPayoutRecord(records);
+  const storedDifference = Number(importantRecord?.difference);
+  if (
+    Number.isFinite(storedDifference) &&
+    Math.abs(storedDifference) > COMMISSION_PAYOUT_AMOUNT_TOLERANCE
+  ) {
+    return Math.round(storedDifference * 100) / 100;
+  }
+
+  const calculatedDifference = paidAmount - expectedAmount;
+  if (Math.abs(calculatedDifference) <= COMMISSION_PAYOUT_AMOUNT_TOLERANCE) {
+    return null;
+  }
+
+  return Math.round(calculatedDifference * 100) / 100;
+};
+
+const payoutDifferenceAmountClass = (difference: number): string =>
+  difference < 0
+    ? "border-rose-200 bg-rose-50 text-rose-800"
+    : "border-amber-200 bg-amber-50 text-amber-900";
+
 const payoutRowClass = (status: CommissionPayoutReadStatus): string =>
   status === "paid"
     ? "border-emerald-200 bg-emerald-50/80"
@@ -514,12 +550,31 @@ export function ContractCommissionSection({
 
   const renderPayoutStatusChip = (
     status: CommissionPayoutReadStatus,
-    paidAmount: number
-  ) => (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutStatusClass(status)}`}>
-      {payoutStatusLabel(status, paidAmount)}
-    </span>
-  );
+    paidAmount: number,
+    expectedAmount: number,
+    records: ContractCommissionPayout[]
+  ) => {
+    const differenceAmount = payoutDifferenceAmountFromRecords({
+      expectedAmount,
+      paidAmount,
+      records,
+    });
+
+    return (
+      <>
+        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutStatusClass(status)}`}>
+          {payoutStatusLabel(status, paidAmount)}
+        </span>
+        {differenceAmount !== null && (
+          <span
+            className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutDifferenceAmountClass(differenceAmount)}`}
+          >
+            Rozdíl {formatSignedMoney(differenceAmount)}
+          </span>
+        )}
+      </>
+    );
+  };
 
   const renderPayoutRecordHint = (records: ContractCommissionPayout[]) => {
     const label = latestPayoutRecordLabel(records);
@@ -561,7 +616,7 @@ export function ContractCommissionSection({
         <summary
           className={`${commissionRowClass} cursor-pointer list-none transition hover:border-slate-400 hover:bg-slate-100 [&::-webkit-details-marker]:hidden`}
         >
-          <span className="flex min-w-0 items-start gap-3 text-base font-medium text-slate-900 sm:items-center sm:text-lg">
+          <span className="flex min-w-0 items-start gap-2.5 text-sm font-medium text-slate-900 sm:items-center sm:text-base">
             <span className="relative h-[22px] w-[22px] flex-shrink-0">
               <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
             </span>
@@ -572,7 +627,7 @@ export function ContractCommissionSection({
               </span>
             </span>
           </span>
-          <span className="flex items-center justify-end gap-2 whitespace-nowrap text-right text-lg font-semibold text-slate-900">
+          <span className="flex items-center justify-end gap-2 whitespace-nowrap text-right text-base font-semibold text-slate-900">
             {formatMoney(total)}
             <ChevronDown
               size={18}
@@ -609,7 +664,12 @@ export function ContractCommissionSection({
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
                   <span>{formatMoney(part.amount)}</span>
-                  {renderPayoutStatusChip(payoutState.status, payoutState.paidAmount)}
+                  {renderPayoutStatusChip(
+                    payoutState.status,
+                    payoutState.paidAmount,
+                    validPayoutAmount(part.amount),
+                    payoutState.records
+                  )}
                 </span>
               </div>
             );
@@ -667,7 +727,7 @@ export function ContractCommissionSection({
           <summary
             className={`${commissionRowClass} cursor-pointer list-none transition hover:border-slate-400 hover:bg-slate-100 [&::-webkit-details-marker]:hidden`}
           >
-            <span className="flex min-w-0 items-start gap-3 text-base font-medium text-slate-900 sm:items-center sm:text-lg">
+            <span className="flex min-w-0 items-start gap-2.5 text-sm font-medium text-slate-900 sm:items-center sm:text-base">
               {icon && (
                 <span className="relative h-[22px] w-[22px] flex-shrink-0">
                   <Image src={icon} alt="" fill className="object-contain" />
@@ -683,7 +743,7 @@ export function ContractCommissionSection({
                 </span>
               </span>
             </span>
-            <span className="flex items-center justify-end gap-2 whitespace-nowrap text-right text-lg font-semibold text-slate-900">
+            <span className="flex items-center justify-end gap-2 whitespace-nowrap text-right text-base font-semibold text-slate-900">
               {formatMoney(item.amount)}
               <ChevronDown
                 size={18}
@@ -717,7 +777,12 @@ export function ContractCommissionSection({
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
                     <span>{formatMoney(installment.amount)}</span>
-                    {renderPayoutStatusChip(installmentState.status, installmentState.paidAmount)}
+                    {renderPayoutStatusChip(
+                      installmentState.status,
+                      installmentState.paidAmount,
+                      validPayoutAmount(installment.amount),
+                      installmentState.records
+                    )}
                   </span>
                 </div>
               );
@@ -729,7 +794,7 @@ export function ContractCommissionSection({
 
     const content = (
       <>
-        <span className="flex min-w-0 items-start gap-3 text-base font-medium text-slate-900 sm:items-center sm:text-lg">
+        <span className="flex min-w-0 items-start gap-2.5 text-sm font-medium text-slate-900 sm:items-center sm:text-base">
           {icon && (
             <span className="relative h-[22px] w-[22px] flex-shrink-0">
               <Image src={icon} alt="" fill className="object-contain" />
@@ -745,10 +810,15 @@ export function ContractCommissionSection({
             {payoutCodes.length > 0 && renderPayoutRecordHint(payoutState.records)}
           </span>
         </span>
-        <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap text-right text-lg font-semibold text-slate-900">
+        <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap text-right text-base font-semibold text-slate-900">
           <span>{formatMoney(item.amount)}</span>
           {payoutCodes.length > 0 &&
-            renderPayoutStatusChip(payoutState.status, payoutState.paidAmount)}
+            renderPayoutStatusChip(
+              payoutState.status,
+              payoutState.paidAmount,
+              validPayoutAmount(item.amount),
+              payoutState.records
+            )}
         </span>
       </>
     );
@@ -815,13 +885,13 @@ export function ContractCommissionSection({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {showAnyMeziprovision && (
-        <section className="space-y-4">
+        <section className="space-y-3">
           {meziprovisionCards.map((card) => {
             const isExpanded = expandedMeziprovisionKeys.includes(card.key);
             return (
-              <div key={card.key} className="space-y-3">
+              <div key={card.key} className="space-y-2.5">
                 <button
                   type="button"
                   onClick={() => onToggleMeziprovisionCard(card.key)}
@@ -841,9 +911,9 @@ export function ContractCommissionSection({
                 </button>
 
                 {isExpanded && (
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     <h4
-                      className={`flex flex-wrap items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}
+                      className={`flex flex-wrap items-center gap-2 text-base font-semibold ${monoHeadingClass}`}
                     >
                       <span className={monoChipClass}>Meziprovize</span>
                       Meziprovize: {card.userName}
@@ -867,11 +937,8 @@ export function ContractCommissionSection({
 
                       {!hideAnnualAutoTotals && (
                         <div className={commissionTotalHighlightClass}>
-                          <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
-                          <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
-                          <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
                           {isPaymentBasedProduct && card.totals ? (
-                            <div className="relative z-10 w-full space-y-2.5">
+                            <div className="w-full space-y-2">
                               <div className={commissionTotalLineDarkClass}>
                                 <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
                                 <span className={commissionTotalValueDarkClass}>
@@ -886,7 +953,7 @@ export function ContractCommissionSection({
                               </div>
                             </div>
                           ) : (
-                            <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
+                            <div className={`${commissionTotalLineDarkClass} w-full`}>
                               <span className={commissionTotalLabelDarkClass}>Celkem meziprovize</span>
                               <span className={commissionTotalValueDarkClass}>
                                 {formatMoney(card.totalDisplay)}
@@ -905,8 +972,8 @@ export function ContractCommissionSection({
       )}
 
       {isOwnContract ? (
-        <section className="space-y-4">
-          <h3 className={`flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
+        <section className="space-y-3">
+          <h3 className={`flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
             <span className={monoChipDarkClass}>Provize</span>
             Výpočet provizí
           </h3>
@@ -923,11 +990,8 @@ export function ContractCommissionSection({
 
             {!hideAnnualAutoTotals && (
               <div className={commissionTotalHighlightClass}>
-                <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
-                <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
-                <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
                 {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                  <div className="relative z-10 w-full space-y-2.5">
+                  <div className="w-full space-y-2">
                     <div className={commissionTotalLineDarkClass}>
                       <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
                       <span className={commissionTotalValueDarkClass}>
@@ -942,7 +1006,7 @@ export function ContractCommissionSection({
                     </div>
                   </div>
                 ) : (
-                  <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
+                  <div className={`${commissionTotalLineDarkClass} w-full`}>
                     <span className={commissionTotalLabelDarkClass}>Celkem</span>
                     <span className={commissionTotalValueDarkClass}>
                       {formatMoney(adviserTotalDisplay)}
@@ -954,7 +1018,7 @@ export function ContractCommissionSection({
           </div>
         </section>
       ) : (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <button
             type="button"
             onClick={onToggleAdvisorDetails}
@@ -987,11 +1051,8 @@ export function ContractCommissionSection({
 
               {!hideAnnualAutoTotals && (
                 <div className={commissionTotalHighlightClass}>
-                  <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-emerald-400/28 blur-3xl" />
-                  <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-cyan-400/18 blur-3xl" />
-                  <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
                   {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
-                    <div className="relative z-10 w-full space-y-2.5">
+                    <div className="w-full space-y-2">
                       <div className={commissionTotalLineDarkClass}>
                         <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
                         <span className={commissionTotalValueDarkClass}>
@@ -1006,7 +1067,7 @@ export function ContractCommissionSection({
                       </div>
                     </div>
                   ) : (
-                    <div className={`${commissionTotalLineDarkClass} relative z-10 w-full`}>
+                    <div className={`${commissionTotalLineDarkClass} w-full`}>
                       <span className={commissionTotalLabelDarkClass}>Celkem</span>
                       <span className={commissionTotalValueDarkClass}>
                         {formatMoney(adviserTotalDisplay)}

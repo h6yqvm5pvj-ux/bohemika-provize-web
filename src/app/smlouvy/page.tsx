@@ -890,7 +890,6 @@ type ContractDetailWindowState = {
   href: string;
   pageHref: string;
   title: string;
-  subtitle: string;
 };
 
 const normalizeEmail = (email?: string | null) =>
@@ -2307,20 +2306,16 @@ function ContractsPageContent() {
   }, []);
 
   const openContractDetailWindow = useCallback(
-    (contract: ContractDoc, slug: string, displayProductName: string) => {
+    (contract: ContractDoc, slug: string) => {
       persistContractsViewState();
       const pageHref = `/smlouvy/${slug}?from=list`;
       const contractNumber = contract.contractNumber?.trim();
       const title = contractNumber ? `Smlouva ${contractNumber}` : "Detail smlouvy";
-      const subtitle = [contract.clientName?.trim(), displayProductName]
-        .filter(Boolean)
-        .join(" · ");
 
       setContractDetailWindow({
         href: `${pageHref}&embedded=1`,
         pageHref,
         title,
-        subtitle,
       });
     },
     [persistContractsViewState]
@@ -3462,7 +3457,7 @@ function ContractsPageContent() {
                   key={c.id}
                   type="button"
                   onClick={() =>
-                    openContractDetailWindow(c as ContractDoc, slug, displayProductName)
+                    openContractDetailWindow(c as ContractDoc, slug)
                   }
                   className="block group h-full w-full text-left"
                 >
@@ -3861,26 +3856,13 @@ function ContractsPageContent() {
           }}
         >
           <div className="flex h-[min(960px,94vh)] w-[min(1520px,96vw)] flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_36px_92px_rgba(2,6,23,0.42)]">
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-black uppercase tracking-[0.14em] text-slate-500">
-                  Detail smlouvy
-                </div>
-                <div className="truncate text-xl font-black tracking-tight text-slate-950">
-                  {contractDetailWindow.title}
-                </div>
-                {contractDetailWindow.subtitle ? (
-                  <div className="truncate text-sm font-semibold text-slate-500">
-                    {contractDetailWindow.subtitle}
-                  </div>
-                ) : null}
-              </div>
+            <div className="flex shrink-0 items-center justify-end gap-2 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4">
               <div className="flex shrink-0 items-center gap-2">
                 <a
                   href={contractDetailWindow.pageHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="ui-focus hidden h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 sm:inline-flex"
+                  className="ui-focus hidden h-8 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 sm:inline-flex"
                 >
                   <ExternalLink size={15} strokeWidth={2.2} aria-hidden="true" />
                   <span>Otevřít jako stránku</span>
@@ -3888,7 +3870,7 @@ function ContractsPageContent() {
                 <button
                   type="button"
                   onClick={closeContractDetailWindow}
-                  className="ui-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:bg-black"
+                  className="ui-focus inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:bg-black"
                   aria-label="Zavřít detail smlouvy"
                 >
                   <X size={18} strokeWidth={2.4} aria-hidden="true" />

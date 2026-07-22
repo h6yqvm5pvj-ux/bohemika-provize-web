@@ -125,6 +125,7 @@ export function ExpectedPayoutSection({
             stage={loadingStage}
             progress={clampedLoadingProgress}
             accentLabel={copy.loadingAccent}
+            visual="money"
           />
         </div>
       ) : (

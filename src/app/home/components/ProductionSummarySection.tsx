@@ -103,7 +103,7 @@ const PRODUCTION_SUMMARY_COPY: Record<
       "Počítám vlastní, týmovou a tipařskou produkci…",
       "Finalizuji součty a trendy…",
     ],
-    swipeHint: "Swipe do strany pro týmovou a celkovou produkci.",
+    swipeHint: "Swipe do strany pro další produkci.",
     cards: {
       own: {
         titleTop: "Vlastní",
@@ -414,13 +414,21 @@ export function ProductionSummarySection({
     : hasManagerTipIncome
       ? [ownCard, teamCard, tipCard, totalCard]
       : [ownCard, teamCard, totalCard];
-  const mobileCards = showTeamBox ? [ownCard, teamCard, totalCard] : [ownCard];
+  const mobileCards = !showTeamBox
+    ? hasTipIncome
+      ? [ownCard, tipCard]
+      : [ownCard]
+    : hasManagerTipIncome
+      ? [ownCard, teamCard, tipCard, totalCard]
+      : [ownCard, teamCard, totalCard];
 
   useEffect(() => {
     if (mobileCarouselRef.current) {
       mobileCarouselRef.current.scrollTo({ left: 0, behavior: "auto" });
     }
-  }, [showTeamBox]);
+    const resetFrame = window.requestAnimationFrame(() => setMobileCardIndex(0));
+    return () => window.cancelAnimationFrame(resetFrame);
+  }, [showTeamBox, mobileCards.length]);
 
   const handleMobileCarouselScroll = (event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
@@ -474,6 +482,23 @@ export function ProductionSummarySection({
               ))}
             </div>
           </div>
+          {mobileCards.length > 1 ? (
+            <>
+              <div className="mt-2 flex items-center justify-center gap-1.5">
+                {mobileCards.map((card, index) => (
+                  <span
+                    key={card.id}
+                    className={`h-1.5 rounded-full transition-all ${
+                      index === mobileCardIndex ? "w-5 bg-violet-100/90" : "w-1.5 bg-violet-100/35"
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-center text-[11px] font-medium text-violet-100/68">
+                {copy.swipeHint}
+              </p>
+            </>
+          ) : null}
         </div>
 
         <div className={`relative z-10 hidden gap-3 md:grid ${hasTipIncome ? "md:grid-cols-2" : ""}`}>

@@ -121,23 +121,11 @@ function isClientCardsPath(pathname: string): boolean {
   return pathname === "/klienti" || pathname.startsWith("/klienti/");
 }
 
-function isCommissionStatementsPath(pathname: string): boolean {
-  return pathname === "/provizni-vypisy" || pathname.startsWith("/provizni-vypisy/");
-}
-
 function isClientCardsEnabled(): boolean {
   return (
     process.env.NODE_ENV !== "production" ||
     process.env.ENABLE_CLIENTS_PAGE === "1" ||
     process.env.NEXT_PUBLIC_ENABLE_CLIENTS_PAGE === "1"
-  );
-}
-
-function isCommissionStatementsEnabled(): boolean {
-  return (
-    process.env.NODE_ENV !== "production" ||
-    process.env.ENABLE_COMMISSION_STATEMENTS_PAGE === "1" ||
-    process.env.NEXT_PUBLIC_ENABLE_COMMISSION_STATEMENTS_PAGE === "1"
   );
 }
 
@@ -162,9 +150,6 @@ export function middleware(req: NextRequest) {
   if (isClientCardsPath(pathname) && !isClientCardsEnabled()) {
     return privateNotFoundResponse();
   }
-  if (isCommissionStatementsPath(pathname) && !isCommissionStatementsEnabled()) {
-    return privateNotFoundResponse();
-  }
 
   if (pathname.startsWith("/dokumenty/")) {
     return new NextResponse("Not found", {
@@ -181,7 +166,13 @@ export function middleware(req: NextRequest) {
   }
 
   const isMeetingEmbed = pathname.startsWith("/embed/schuzka/");
-  const frameAncestors = isMeetingEmbed ? getMeetingEmbedFrameAncestors() : "'none'";
+  const isContractDetailEmbed =
+    pathname.startsWith("/smlouvy/") && req.nextUrl.searchParams.get("embedded") === "1";
+  const frameAncestors = isMeetingEmbed
+    ? getMeetingEmbedFrameAncestors()
+    : isContractDetailEmbed
+      ? "'self'"
+      : "'none'";
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-csp-nonce", nonce);
 
@@ -196,6 +187,8 @@ export function middleware(req: NextRequest) {
     res.headers.delete("X-Frame-Options");
     res.headers.set("Cross-Origin-Opener-Policy", "unsafe-none");
     res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+  } else if (isContractDetailEmbed) {
+    res.headers.set("X-Frame-Options", "SAMEORIGIN");
   } else {
     res.headers.set("X-Frame-Options", "DENY");
   }

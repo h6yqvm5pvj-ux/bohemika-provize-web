@@ -9,14 +9,17 @@ import {
   AlertTriangle,
   CalendarDays,
   ChevronDown,
+  Download,
   Eye,
   ExternalLink,
   FileText,
   IdCard,
   Package,
   PencilLine,
+  RotateCcw,
   StickyNote,
   Tag,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -54,10 +57,8 @@ import {
 } from "./ContractDetailPanels";
 import { Spinner, Skeleton, Toasts } from "./ContractDetailUi";
 import {
-  type ContractCommissionPayout,
   type ContractCommissionStatementDetail,
   type ContractCommissionStatementSummary,
-  type ContractCommissionStornoSummary,
   type ContractDoc,
 } from "./contractDetailTypes";
 import {
@@ -91,12 +92,6 @@ import {
   computeLegacyFrequencyOverrideTotal,
 } from "@/app/lib/managerOverrideTotals";
 import {
-  ALLIANZ_PAYMENT_CHECK_URL,
-  SLAVIA_PAYMENT_CHECK_URL,
-  CPP_PAYMENT_CHECK_URL,
-  KOOPERATIVA_PAYMENT_CHECK_URL,
-  CPP_PAYMENT_CHECK_PRODUCTS,
-  KOOPERATIVA_PAYMENT_CHECK_PRODUCTS,
   LIFE_PRODUCT_KEYS,
   type ContractsApiError,
   type ContractsApiResponseBase,
@@ -192,49 +187,6 @@ type PropertyDetailField = keyof PropertyDetail;
 type NeonDetail = NonNullable<ContractDoc["neonDetail"]>;
 type NeonDetailField = keyof NeonDetail;
 type ContractUpdateField = keyof ContractDoc;
-
-type CommissionStornoSummaryDisplay = {
-  totalAmount: number;
-  totalAbsAmount: number;
-  count: number;
-  latestStatementLabel: string | null;
-};
-
-const finiteNumberOrNull = (value: unknown): number | null => {
-  const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? number : null;
-};
-
-const roundMoneyValue = (value: number): number =>
-  Math.round(value * 100) / 100;
-
-const payoutChronologyMs = (payout: ContractCommissionPayout): number => {
-  const direct = finiteNumberOrNull(payout.statementChronologyMs);
-  if (direct != null) return direct;
-  const statementDate = toDate(payout.statementDate ?? null);
-  if (statementDate) return statementDate.getTime();
-  return finiteNumberOrNull(payout.writtenAtMs) ?? 0;
-};
-
-const statementLabelFromParts = ({
-  statementNumber,
-  statementPeriod,
-  payoutMonthKey,
-  statementDate,
-}: {
-  statementNumber?: string | null;
-  statementPeriod?: string | null;
-  payoutMonthKey?: string | null;
-  statementDate?: string | null;
-}): string | null => {
-  const label = [
-    statementNumber ? `výpis ${statementNumber}` : null,
-    statementPeriod ?? payoutMonthKey ?? statementDate ?? null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return label || null;
-};
 
 const statementDisplayTitle = (statement: ContractCommissionStatementDetail): string => {
   if (statement.statementNumber) return `Provizní výpis ${statement.statementNumber}`;
@@ -350,76 +302,6 @@ function CommissionStatementPreviewModal({
     </div>
   );
 }
-
-const storedCommissionStornoSummaryForDisplay = (
-  summary: ContractCommissionStornoSummary | null | undefined
-): CommissionStornoSummaryDisplay | null => {
-  const totalAbsAmount = finiteNumberOrNull(summary?.totalAbsAmount);
-  if (totalAbsAmount == null || totalAbsAmount <= 0) return null;
-
-  const storedTotalAmount = finiteNumberOrNull(summary?.totalAmount);
-  const count = Math.max(
-    1,
-    Math.trunc(finiteNumberOrNull(summary?.count) ?? 1)
-  );
-
-  return {
-    totalAmount: storedTotalAmount ?? -totalAbsAmount,
-    totalAbsAmount,
-    count,
-    latestStatementLabel: statementLabelFromParts({
-      statementNumber: summary?.latestStatementNumber,
-      statementPeriod: summary?.latestStatementPeriod,
-      payoutMonthKey: summary?.latestPayoutMonthKey,
-      statementDate: summary?.latestStatementDate,
-    }),
-  };
-};
-
-const commissionStornoSummaryForDisplay = (
-  contract: ContractDoc | null
-): CommissionStornoSummaryDisplay | null => {
-  const stored = storedCommissionStornoSummaryForDisplay(
-    contract?.commissionStornoSummary
-  );
-  if (stored) return stored;
-
-  const stornoPayouts = (contract?.commissionPayouts ?? []).filter((payout) => {
-    const amount = finiteNumberOrNull(payout.amount) ?? 0;
-    return payout.status === "storno" || amount < 0;
-  });
-  if (stornoPayouts.length === 0) return null;
-
-  const totalAbsAmount = roundMoneyValue(
-    stornoPayouts.reduce(
-      (sum, payout) => sum + Math.abs(finiteNumberOrNull(payout.amount) ?? 0),
-      0
-    )
-  );
-  if (totalAbsAmount <= 0) return null;
-
-  const latest = [...stornoPayouts].sort(
-    (a, b) => payoutChronologyMs(a) - payoutChronologyMs(b)
-  )[stornoPayouts.length - 1];
-
-  return {
-    totalAmount: -totalAbsAmount,
-    totalAbsAmount,
-    count: stornoPayouts.length,
-    latestStatementLabel: statementLabelFromParts({
-      statementNumber: latest?.statementNumber,
-      statementPeriod: latest?.statementPeriod,
-      payoutMonthKey: latest?.payoutMonthKey,
-      statementDate: latest?.statementDate,
-    }),
-  };
-};
-
-const stornoPayoutCountLabel = (count: number): string => {
-  if (count === 1) return "1 položka";
-  if (count >= 2 && count <= 4) return `${count} položky`;
-  return `${count} položek`;
-};
 
 const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
   cppAuto: parseCppAutoPdf,
@@ -877,6 +759,7 @@ export default function ContractDetailPage() {
   const [ownerManagerPosition, setOwnerManagerPosition] = useState<Position | null>(null);
   const [currentChainEmails, setCurrentChainEmails] = useState<string[]>([]);
   const [noteDraft, setNoteDraft] = useState("");
+  const [noteExpanded, setNoteExpanded] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
@@ -887,8 +770,6 @@ export default function ContractDetailPage() {
   const [stornoDateInput, setStornoDateInput] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showStornoModal, setShowStornoModal] = useState(false);
-  const [showPaymentVerificationModal, setShowPaymentVerificationModal] =
-    useState(false);
   const [showContractPdfModal, setShowContractPdfModal] = useState(false);
   const [showContractPdfOptions, setShowContractPdfOptions] = useState(false);
   const [selectedContractPdf, setSelectedContractPdf] =
@@ -937,7 +818,6 @@ export default function ContractDetailPage() {
       if (e.key === "Escape") {
         setShowDeleteModal(false);
         setShowStornoModal(false);
-        setShowPaymentVerificationModal(false);
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
         setSelectedContractPdf(null);
@@ -948,7 +828,6 @@ export default function ContractDetailPage() {
     if (
       showDeleteModal ||
       showStornoModal ||
-      showPaymentVerificationModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
       isNeonImmediateBreakdownOpen ||
@@ -962,7 +841,6 @@ export default function ContractDetailPage() {
   }, [
     showDeleteModal,
     showStornoModal,
-    showPaymentVerificationModal,
     showContractPdfModal,
     showContractPdfOptions,
     isNeonImmediateBreakdownOpen,
@@ -1089,7 +967,9 @@ export default function ContractDetailPage() {
 
         setContract(payload.contract);
         setServerCanManageContract(payload.canManageContract === true);
-        setNoteDraft((payload.contract.note as string | undefined) ?? "");
+        const loadedNote = (payload.contract.note as string | undefined) ?? "";
+        setNoteDraft(loadedNote);
+        setNoteExpanded(loadedNote.trim().length > 0);
         const timeline =
           Array.isArray(payload.timeline) && payload.timeline.length > 0
             ? payload.timeline
@@ -1421,10 +1301,6 @@ export default function ContractDetailPage() {
     isRefreshContract &&
     Number.isFinite(refreshCalculationAnnualPremium) &&
     refreshCalculationAnnualPremium > 0;
-  const commissionStornoSummary = useMemo(
-    () => commissionStornoSummaryForDisplay(contract),
-    [contract]
-  );
   const endorsementDelta = (() => {
     if (!isEndorsement) return null;
     const explicit = Number(contract?.premiumDelta ?? Number.NaN);
@@ -1578,16 +1454,6 @@ export default function ContractDetailPage() {
     : "Tipař má nárok pouze na podíl z okamžité provize v 1. roce.";
   const tipContractGrossLabel = tipContractLifeProduct ? "A101 základ" : "Brutto";
   const tipContractNetLabel = tipContractLifeProduct ? "Sjednatel z A101" : "Sjednatel";
-  const paymentVerificationUrl =
-    prod === "allianzAuto" || prod === "allianzmujdomov"
-      ? ALLIANZ_PAYMENT_CHECK_URL
-      : prod === "slaviaauto" || prod === "slaviaflotila"
-      ? SLAVIA_PAYMENT_CHECK_URL
-      : prod && CPP_PAYMENT_CHECK_PRODUCTS.has(prod)
-      ? CPP_PAYMENT_CHECK_URL
-      : prod && KOOPERATIVA_PAYMENT_CHECK_PRODUCTS.has(prod)
-      ? KOOPERATIVA_PAYMENT_CHECK_URL
-      : null;
   const maxxContractDetailUrl = normalizeMaxxContractDetailUrl(contract?.maxxContractDetailUrl);
   const cppExtranetDetailUrl = buildCppExtranetDetailUrl(contract);
   const contractPdfAttachment = contract?.contractPdfAttachment ?? null;
@@ -1677,13 +1543,35 @@ export default function ContractDetailPage() {
     }
     setShowContractPdfOptions((prev) => !prev);
   }, [contractPdfOptions, openContractPdfOption]);
-  const canEmbedPaymentVerification =
-    paymentVerificationUrl === KOOPERATIVA_PAYMENT_CHECK_URL ||
-    paymentVerificationUrl === CPP_PAYMENT_CHECK_URL;
   const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
   const showTimelineSection = isLifeInsuranceContract && hasTimelineChange;
   const isAutoCommissionProduct = isAutoProduct(prod ?? null);
   const isFrequencyAutoCommissionProduct = isFrequencyAutoPayoutProduct(prod ?? null);
+  const signedPremiumEntry = useMemo(() => {
+    const sourceEntries =
+      contractTimeline.length > 0 ? contractTimeline : contract ? [contract] : [];
+    return (
+      sourceEntries.find((entry) => entry.entryType !== "endorsement") ??
+      sourceEntries[0] ??
+      null
+    );
+  }, [contract, contractTimeline]);
+  const signedPremiumFrequency =
+    (signedPremiumEntry?.frequencyRaw as PaymentFrequency | null | undefined) ??
+    (contract?.frequencyRaw as PaymentFrequency | null | undefined) ??
+    null;
+  const signedPremiumAmount = Number(
+    signedPremiumEntry?.entryType === "endorsement"
+      ? signedPremiumEntry.previousInputAmount ??
+          signedPremiumEntry.effectiveInputAmount ??
+          signedPremiumEntry.inputAmount ??
+          Number.NaN
+      : signedPremiumEntry?.inputAmount ?? Number.NaN
+  );
+  const signedAnnualPremium =
+    Number.isFinite(signedPremiumAmount) && signedPremiumAmount > 0
+      ? Math.round(signedPremiumAmount * paymentsPerYear(signedPremiumFrequency) * 100) / 100
+      : null;
   const isPaymentBasedProduct =
     isSeparatedPeriodCommissionProduct(prod) || isFrequencyAutoCommissionProduct;
   const hideSeparatedPeriodTotals = Boolean(
@@ -1900,7 +1788,7 @@ export default function ContractDetailPage() {
         for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
           if (cancelled) return;
           const page = await doc.getPage(pageNumber);
-          const viewport = page.getViewport({ scale: 1.75 });
+          const viewport = page.getViewport({ scale: 2.35 });
           const canvas = contractPdfCanvasRefs.current[pageNumber - 1];
           const context = canvas?.getContext("2d", { alpha: false });
           if (!canvas || !context) continue;
@@ -4404,59 +4292,6 @@ export default function ContractDetailPage() {
     );
   };
 
-  const handlePaymentVerificationClick = async () => {
-    const contractNo = (contract?.contractNumber ?? "").trim();
-    if (!contractNo) {
-      pushToast("Číslo smlouvy není k dispozici pro zkopírování.", "error");
-      return;
-    }
-
-    const pasteShortcut =
-      typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
-        ? "⌘+V"
-        : "Ctrl+V";
-    const targetFieldHint =
-      prod === "allianzAuto" || prod === "allianzmujdomov"
-        ? "v Allianz do pole „Zadejte číslo pojistné smlouvy“"
-        : prod && CPP_PAYMENT_CHECK_PRODUCTS.has(prod)
-        ? "v ČPP do pole „Číslo pojistné smlouvy“"
-        : "do pole čísla smlouvy";
-    const copiedMessage = `Číslo smlouvy ${contractNo} bylo zkopírováno. Vlož ho ${targetFieldHint} (${pasteShortcut}).`;
-
-    try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(contractNo);
-        pushToast(copiedMessage, "success");
-        return;
-      }
-
-      if (typeof document !== "undefined") {
-        const textarea = document.createElement("textarea");
-        textarea.value = contractNo;
-        textarea.setAttribute("readonly", "");
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        const copied = document.execCommand("copy");
-        document.body.removeChild(textarea);
-        if (copied) {
-          pushToast(copiedMessage, "success");
-          return;
-        }
-      }
-
-      pushToast("Nepodařilo se zkopírovat číslo smlouvy.", "error");
-    } catch {
-      pushToast("Nepodařilo se zkopírovat číslo smlouvy.", "error");
-    }
-  };
-
-  const handleOpenEmbeddedPaymentVerification = async () => {
-    await handlePaymentVerificationClick();
-    setShowPaymentVerificationModal(true);
-  };
-
   const adviserItems =
     filterAnnualYearlyDupes(
       filterPaymentBasedItems(
@@ -4679,39 +4514,42 @@ export default function ContractDetailPage() {
     }
   }, [loading, user, contract, canViewContract, unauthorized, router, backToContractsHref]);
 
-  const shellCardClass = "min-w-0 flex-1 space-y-8 px-2 py-2 font-mono";
+  const shellCardClass = "min-w-0 space-y-6 px-2 py-2 font-mono";
   const surfaceCardClass =
-    "rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)]";
+    "rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]";
   const surfaceSoftClass =
-    "rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4";
+    "rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3";
   const successPanelClass =
-    "rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-[0_8px_20px_rgba(15,23,42,0.08)]";
+    "rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)]";
   const noteCardClass =
-    "rounded-[22px] border border-slate-300 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_100%)] px-5 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
+    "rounded-[20px] border border-slate-300 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_100%)] px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
   const monoHeadingClass = "font-mono tracking-tight text-slate-900";
   const monoChipClass =
-    "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-base font-mono tracking-tight text-slate-900";
+    "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-mono tracking-tight text-slate-900";
   const monoChipDarkClass =
-    "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white";
+    "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-mono tracking-tight text-white";
   const ghostButtonClass =
-    "rounded-xl border border-slate-900 bg-slate-900 px-5 py-3 text-base sm:text-lg font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
-  const headerActionButtonClass =
     "rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm sm:text-base font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
+  const headerActionButtonClass =
+    "inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold font-mono tracking-tight text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60";
   const saveButtonClass =
-    "inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-5 py-3 text-base sm:text-lg font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
+    "inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm sm:text-base font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
   const inputClass =
-    "w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300";
+    "w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-base font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300";
   const inputCompactClass =
-    "rounded-lg border border-slate-300 bg-white px-3 py-2 text-base font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300";
-  const metaLabelClass = "text-sm uppercase tracking-[0.2em] text-slate-600";
-  const keyValueLabelClass = "text-lg text-slate-600";
-  const keyValueValueClass = "text-lg font-semibold text-right text-slate-900";
-  const statusErrorClass = "px-1 text-base text-slate-700";
-  const statusSuccessClass = "px-1 text-base text-slate-900";
-  const sectionPanelClass = "space-y-4 px-1 py-1";
+    "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300";
+  const metaLabelClass = "text-xs uppercase tracking-[0.18em] text-slate-600";
+  const keyValueLabelClass = "text-base text-slate-600";
+  const keyValueValueClass = "text-base font-semibold text-right text-slate-900";
+  const statusErrorClass = "px-1 text-sm text-slate-700";
+  const statusSuccessClass = "px-1 text-sm text-slate-900";
+  const sectionPanelClass = "space-y-3 px-1 py-1";
+  const cautionButtonClass =
+    "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 text-sm font-semibold font-mono tracking-tight text-amber-900 shadow-[0_8px_18px_rgba(217,119,6,0.14)] transition hover:border-amber-400 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60";
+  const neutralActionButtonClass =
+    "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold font-mono tracking-tight text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
   const destructiveButtonClass =
-    "inline-flex items-center rounded-xl border border-rose-700 bg-rose-700 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white shadow-[0_8px_20px_rgba(190,24,93,0.28)] transition hover:bg-rose-800 disabled:opacity-60 disabled:cursor-not-allowed";
-  const productPanelClass = "w-full max-w-[400px] space-y-4 p-2 font-mono lg:w-[400px]";
+    "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-rose-300 bg-rose-50 px-4 text-sm font-semibold font-mono tracking-tight text-rose-700 shadow-[0_8px_18px_rgba(225,29,72,0.12)] transition hover:border-rose-400 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60";
   const adviserBreakdownPosition =
     ((contract?.position as Position | null | undefined) ?? ownerPosition ?? null);
   const adviserBreakdownMode = toCommissionMode(contract?.commissionMode);
@@ -4743,10 +4581,14 @@ export default function ContractDetailPage() {
   const renderProductPanelContent = () => (
     <>
       <div className="flex items-center justify-between gap-3">
-        <h3 className={`text-lg font-semibold ${monoHeadingClass}`}>
+        <h3 className={`flex items-center gap-2 text-base font-semibold ${monoHeadingClass}`}>
+          <span className={monoChipDarkClass}>
+            <Package size={13} strokeWidth={2} aria-hidden="true" />
+            Produkt
+          </span>
           Detail produktu
         </h3>
-        <span className="text-base text-slate-600">{productLabel(prod)}</span>
+        <span className="text-sm font-semibold text-slate-600">{productLabel(prod)}</span>
       </div>
       {canManageContract && !editMode && hasContractPdfAttachment && (
         <button
@@ -4927,63 +4769,88 @@ export default function ContractDetailPage() {
     );
   }
 
+  const savedNoteText = contract?.note?.trim() ?? "";
+  const notePreviewText = noteDraft.trim() || savedNoteText;
+  const noteContentId = "contract-note-content";
+
   return (
     <main className="relative min-h-screen overflow-hidden font-mono text-slate-900">
       <div className="fixed inset-0 -z-10 bg-white" />
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(1200px_520px_at_18%_-10%,rgba(15,23,42,0.06),transparent_60%),radial-gradient(950px_520px_at_100%_0%,rgba(15,23,42,0.04),transparent_55%)]" />
+      <div className="fixed inset-0 -z-10 bg-slate-50" />
 
       <Toasts items={toasts} onDismiss={dismissToast} />
 
-      <div className="relative flex min-h-screen items-start justify-center px-3 py-6 sm:px-5 sm:py-12">
-        <div className="w-full max-w-6xl">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+      <div className="relative flex min-h-screen items-start justify-center px-3 py-5 sm:px-5 sm:py-9">
+        <div className="w-full max-w-[1220px]">
+          <div className="min-w-0">
             <div className={shellCardClass}>
             {/* HEADER */}
-            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
+            <header className="px-1 py-1">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-0">
                 {!isEmbedded && (
                   <Link
                     href={backToContractsHref}
-                    className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                    className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-white"
                   >
-                    <ArrowLeft size={15} strokeWidth={2} aria-hidden="true" />
+                    <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" />
                     <span>Zpět na smlouvy</span>
                   </Link>
                 )}
-                <p className="mb-1 text-base uppercase tracking-[0.18em] text-slate-600">
-                  Detail smlouvy
-                </p>
-                <h1 className="flex flex-wrap items-center gap-3 text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-                  <span>
-                    {contract?.contractNumber?.trim()
-                      ? contract.contractNumber.trim()
-                      : "Číslo smlouvy není uvedené"}
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                    Detail smlouvy
                   </span>
                   {isEndorsement && (
-                    <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-800">
+                    <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
                       Dodatek
                     </span>
                   )}
                   <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-1.5 py-1 pr-2.5 text-sm font-semibold leading-none tracking-[0.01em] sm:text-base ${contractLifecycleBadgeStyle.wrapper}`}
+                    className={`inline-flex items-center gap-1 rounded-full border px-1 py-0.5 pr-2 text-xs font-semibold leading-none tracking-[0.01em] ${contractLifecycleBadgeStyle.wrapper}`}
                   >
                     <span
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border ring-1 ring-white/45 ${contractLifecycleBadgeStyle.iconWrap}`}
+                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ring-1 ring-white/45 ${contractLifecycleBadgeStyle.iconWrap}`}
                     >
                       {contractLifecycleBadgeStyle.icon}
                     </span>
-                    <span className="pr-1">{contractLifecycleBadgeText}</span>
+                    <span>{contractLifecycleBadgeText}</span>
                   </span>
-                </h1>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <h1 className="text-4xl font-black leading-none tracking-tight text-slate-950 sm:text-5xl">
+                    {contract?.contractNumber?.trim()
+                      ? contract.contractNumber.trim()
+                      : "Číslo smlouvy není uvedené"}
+                  </h1>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-lg font-bold text-slate-800 sm:text-xl">
+                    <span className="inline-flex items-center gap-2">
+                      <UserRound size={19} strokeWidth={2.1} aria-hidden="true" />
+                      {contract?.clientName ?? "—"}
+                    </span>
+                    <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:inline-block" />
+                    <span className="inline-flex items-center gap-2">
+                      <Package size={19} strokeWidth={2.1} aria-hidden="true" />
+                      {productLabel(prod)}
+                      <Image
+                        src={productIcon(prod)}
+                        alt="Produkt"
+                        width={40}
+                        height={40}
+                        className="h-9 w-auto flex-shrink-0"
+                      />
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 {canManageContract && (
                   <button
                     type="button"
                     onClick={handleTogglePaid}
                     disabled={updatingPaid}
-                    className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-base font-semibold tracking-tight transition sm:text-lg ${
+                    className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-semibold tracking-tight shadow-sm transition ${
                       contract?.paid
                         ? "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
                         : "border-rose-700 bg-rose-600 text-white hover:bg-rose-700"
@@ -5001,9 +4868,9 @@ export default function ContractDetailPage() {
                       setDetailsSaved(false);
                       setEditMode(true);
                     }}
-                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                    className={headerActionButtonClass}
                   >
-                    <PencilLine size={16} strokeWidth={2} aria-hidden="true" />
+                    <PencilLine size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Upravit údaje</span>
                   </button>
                 )}
@@ -5011,12 +4878,21 @@ export default function ContractDetailPage() {
                 {clientCardHref && (
                   <Link
                     href={clientCardHref}
-                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                    className={headerActionButtonClass}
                   >
-                    <IdCard size={16} strokeWidth={2} aria-hidden="true" />
+                    <IdCard size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Karta klienta</span>
                   </Link>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowProductPanel((v) => !v)}
+                  className={headerActionButtonClass}
+                >
+                  <Package size={14} strokeWidth={2} aria-hidden="true" />
+                  <span>{showProductPanel ? "Skrýt detail" : "Detail produktu"}</span>
+                </button>
 
                 {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
                   <div className="relative">
@@ -5026,9 +4902,9 @@ export default function ContractDetailPage() {
                       aria-expanded={
                         contractPdfOptions.length > 1 ? showContractPdfOptions : undefined
                       }
-                      className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                      className={headerActionButtonClass}
                     >
-                      <Eye size={16} strokeWidth={2} aria-hidden="true" />
+                      <Eye size={14} strokeWidth={2} aria-hidden="true" />
                       <span>Zobrazit smlouvu</span>
                       {contractPdfOptions.length > 1 && (
                         <ChevronDown
@@ -5075,9 +4951,9 @@ export default function ContractDetailPage() {
                     href={maxxContractDetailUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                    className={headerActionButtonClass}
                   >
-                    <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
+                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Otevřít smlouvu v MAXX</span>
                   </a>
                 )}
@@ -5087,35 +4963,11 @@ export default function ContractDetailPage() {
                     href={cppExtranetDetailUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
+                    className={headerActionButtonClass}
                   >
-                    <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
+                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Otevřít extranet</span>
                   </a>
-                )}
-
-                {paymentVerificationUrl && !canEmbedPaymentVerification && (
-                  <a
-                    href={paymentVerificationUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={handlePaymentVerificationClick}
-                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
-                  >
-                    <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
-                    <span>Ověřit zaplacení</span>
-                  </a>
-                )}
-
-                {paymentVerificationUrl && canEmbedPaymentVerification && (
-                  <button
-                    type="button"
-                    onClick={handleOpenEmbeddedPaymentVerification}
-                    className={`${headerActionButtonClass} inline-flex items-center gap-2`}
-                  >
-                    <ExternalLink size={16} strokeWidth={2} aria-hidden="true" />
-                    <span>Ověřit zaplacení</span>
-                  </button>
                 )}
 
                 {canManageContract && editMode && (
@@ -5145,6 +4997,7 @@ export default function ContractDetailPage() {
                   </>
                 )}
               </div>
+              </div>
             </header>
 
             {detailsError && (
@@ -5166,20 +5019,19 @@ export default function ContractDetailPage() {
               </div>
             ) : contract ? (
               <>
-                {/* Klient / Produkt boxy */}
-                <section className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                  <div className={sectionPanelClass}>
-                    <div className={`${metaLabelClass} inline-flex items-center gap-2`}>
-                      <UserRound size={14} strokeWidth={2} aria-hidden="true" />
-                      <span>Klient</span>
-                    </div>
-                    {editMode ? (
-                      <div className="space-y-2">
+                {editMode && (
+                  <section className={`${surfaceCardClass} grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)]`}>
+                    <div className="space-y-2.5">
+                      <div className={`${metaLabelClass} inline-flex items-center gap-2`}>
+                        <UserRound size={14} strokeWidth={2} aria-hidden="true" />
+                        <span>Klient</span>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
                         <input
                           type="text"
                           value={editClientName}
                           onChange={(e) => setEditClientName(e.target.value)}
-                          className={`${inputClass} text-2xl font-semibold`}
+                          className={`${inputClass} font-semibold`}
                           placeholder="Jméno klienta"
                         />
                         <input
@@ -5204,49 +5056,31 @@ export default function ContractDetailPage() {
                           placeholder="Adresa"
                         />
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="text-4xl font-semibold tracking-tight leading-none text-slate-900">
-                          {contract?.clientName ?? "—"}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <div className="min-w-0">
+                        <div className={`${metaLabelClass} inline-flex items-center gap-2`}>
+                          <Package size={14} strokeWidth={2} aria-hidden="true" />
+                          <span>Produkt</span>
+                        </div>
+                        <div className="mt-1 truncate text-xl font-bold tracking-tight text-slate-950">
+                          {productLabel(prod)}
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  <div className={sectionPanelClass}>
-                    <div className={`${metaLabelClass} inline-flex items-center gap-2`}>
-                      <Package size={14} strokeWidth={2} aria-hidden="true" />
-                      <span>Produkt</span>
+                      <Image
+                        src={productIcon(prod)}
+                        alt="Produkt"
+                        width={56}
+                        height={56}
+                        className="h-9 w-auto flex-shrink-0"
+                      />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-4xl font-semibold tracking-tight leading-none text-slate-900">
-                          {productLabel(prod)}
-                        </span>
-                        <Image
-                          src={productIcon(prod)}
-                          alt="Produkt"
-                          width={56}
-                          height={56}
-                          className="h-11 w-auto flex-shrink-0"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="lg:hidden">
-                  <button
-                    type="button"
-                    onClick={() => setShowProductPanel((v) => !v)}
-                    className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold tracking-[0.08em] text-white transition hover:bg-black"
-                  >
-                    {showProductPanel ? "Skrýt detail produktu" : "Zobrazit detail produktu"}
-                  </button>
-                </section>
+                  </section>
+                )}
 
                 {showProductPanel && (
-                  <section className="space-y-4 rounded-2xl border border-slate-300 bg-slate-50 p-3 lg:hidden">
+                  <section className={`${surfaceCardClass} space-y-4`}>
                     {renderProductPanelContent()}
                   </section>
                 )}
@@ -5254,17 +5088,17 @@ export default function ContractDetailPage() {
                 {/* Info o poradci – zobraz pouze manažerovi na podřízené smlouvě */}
                 {contract && isManagerViewingSubordinate && (
                   <section className={sectionPanelClass}>
-                    <h3 className={`mb-2 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
+                    <h3 className={`mb-2 flex items-center gap-2 text-base font-semibold ${monoHeadingClass}`}>
                       <span className={monoChipClass}>Sjednatel</span>
                     </h3>
-                    <dl className="grid max-w-[560px] grid-cols-[120px_minmax(0,1fr)] gap-x-6 gap-y-2 text-lg text-slate-800">
+                    <dl className="grid max-w-[520px] grid-cols-[112px_minmax(0,1fr)] gap-x-5 gap-y-2 text-base text-slate-800">
                       <dt className={keyValueLabelClass}>Sjednal</dt>
-                      <dd className="text-lg font-semibold text-slate-900">
+                      <dd className="text-base font-semibold text-slate-900">
                         {nameFromEmail(contract.userEmail)}
                       </dd>
 
                       <dt className={keyValueLabelClass}>Pozice</dt>
-                      <dd className="text-lg font-semibold text-slate-900">
+                      <dd className="text-base font-semibold text-slate-900">
                         {positionLabel(
                           ownerPosition ?? (contract.position as Position | null)
                         )}
@@ -5273,7 +5107,7 @@ export default function ContractDetailPage() {
                       {ownerManagerEmail && (
                         <>
                           <dt className={keyValueLabelClass}>Nadřízený</dt>
-                          <dd className="text-lg font-semibold text-slate-900">
+                          <dd className="text-base font-semibold text-slate-900">
                             {nameFromEmail(ownerManagerEmail)}
                             {ownerManagerPosition && (
                               <span className="block text-sm text-slate-600">
@@ -5292,17 +5126,16 @@ export default function ContractDetailPage() {
                     {paidError}
                   </div>
                 )}
-                <div className="space-y-7">
-                {/* ZÁKLADNÍ INFO */}
-                <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="space-y-5">
+                <section className="grid grid-cols-1 gap-5 md:grid-cols-2">
                   <div className={sectionPanelClass}>
-                    <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
+                    <h3 className={`mb-2.5 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
                       <span className={monoChipDarkClass}>
                         <FileText size={14} strokeWidth={2} aria-hidden="true" />
                         <span>Základní údaje</span>
                       </span>
                     </h3>
-                    <dl className="space-y-3 text-lg text-slate-800">
+                    <dl className="space-y-2.5 text-base text-slate-800">
                       <div className="flex justify-between gap-2">
                         <dt className={keyValueLabelClass}>Sjednána jako</dt>
                         <dd className={keyValueValueClass}>
@@ -5372,30 +5205,6 @@ export default function ContractDetailPage() {
                             : "Aktivní"}
                         </dd>
                       </div>
-                      {commissionStornoSummary && (
-                        <div className="rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <dt className="text-base font-semibold text-rose-900">
-                              Storno provize
-                            </dt>
-                            <dd className="text-right">
-                              <span className="block text-lg font-bold text-rose-800">
-                                {formatMoney(commissionStornoSummary.totalAbsAmount)}
-                              </span>
-                              <span className="block text-xs font-semibold text-rose-700/80">
-                                {stornoPayoutCountLabel(commissionStornoSummary.count)}
-                              </span>
-                            </dd>
-                          </div>
-                          <p className="mt-2 text-xs leading-snug text-rose-900/80">
-                            Staženo podle provizního výpisu
-                            {commissionStornoSummary.latestStatementLabel
-                              ? `, poslední zápis ${commissionStornoSummary.latestStatementLabel}`
-                              : ""}
-                            .
-                          </p>
-                        </div>
-                      )}
                       {hasTipContract && (
                         <div className="rounded-2xl border border-fuchsia-200 bg-[linear-gradient(160deg,#fff7ff_0%,#f6f3ff_100%)] px-3 py-3 shadow-[0_8px_20px_rgba(147,51,234,0.1)]">
                           <div className="flex items-center justify-between gap-3">
@@ -5616,13 +5425,13 @@ export default function ContractDetailPage() {
 
                   {/* DATA SMLOUVY */}
                   <div className={sectionPanelClass}>
-                    <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
+                    <h3 className={`mb-2.5 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
                       <span className={monoChipDarkClass}>
                         <CalendarDays size={14} strokeWidth={2} aria-hidden="true" />
                         <span>Data smlouvy</span>
                       </span>
                     </h3>
-                    <dl className="space-y-3 text-lg text-slate-800">
+                    <dl className="space-y-2.5 text-base text-slate-800">
                       <div className="flex justify-between gap-2">
                         <dt className={keyValueLabelClass}>Datum sjednání</dt>
                         <dd className={keyValueValueClass}>
@@ -5724,7 +5533,7 @@ export default function ContractDetailPage() {
 
             {showTimelineSection && (
               <section className={sectionPanelClass}>
-                <h3 className={`mb-3 flex items-center gap-2 text-xl font-semibold ${monoHeadingClass}`}>
+                <h3 className={`mb-2.5 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
                   <span className={monoChipDarkClass}>
                     <CalendarDays size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Timeline smlouvy</span>
@@ -5839,129 +5648,154 @@ export default function ContractDetailPage() {
               </section>
             )}
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)] lg:items-start">
-              <div className="space-y-5">
-                <ContractCommissionSection
-                  product={prod}
-                  isOwnContract={isOwnContract}
-                  isPaymentBasedProduct={isPaymentBasedProduct}
-                  hideAnnualAutoTotals={hideSeparatedPeriodTotals}
-                  showAnyMeziprovision={showAnyMeziprovision}
-                  meziprovisionCards={meziprovisionCards}
-                  expandedMeziprovisionKeys={expandedMeziprovisionKeys}
-                  onToggleMeziprovisionCard={toggleMeziprovisionCard}
-                  adviserItems={adviserItems}
-                  commissionPayouts={contract?.commissionPayouts ?? []}
-                  viewerEmail={normalizedViewerEmail}
-                  contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
-                  contractDurationYears={contract?.durationYears ?? null}
-                  adviserBreakdownPosition={adviserBreakdownPosition}
-                  adviserBreakdownMode={adviserBreakdownMode}
-                  paymentBasedAdviserTotals={paymentBasedAdviserTotals}
-                  adviserTotalDisplay={adviserTotalDisplay}
-                  contractAuthorName={contractAuthorName}
-                  showAdvisorDetails={showAdvisorDetails}
-                  onToggleAdvisorDetails={() => setShowAdvisorDetails((v) => !v)}
-                  onOpenNeonImmediateBreakdown={handleOpenNeonImmediateBreakdown}
-                />
+            <div className="space-y-5">
+              <ContractCommissionSection
+                product={prod}
+                isOwnContract={isOwnContract}
+                isPaymentBasedProduct={isPaymentBasedProduct}
+                hideAnnualAutoTotals={hideSeparatedPeriodTotals}
+                showAnyMeziprovision={showAnyMeziprovision}
+                meziprovisionCards={meziprovisionCards}
+                expandedMeziprovisionKeys={expandedMeziprovisionKeys}
+                onToggleMeziprovisionCard={toggleMeziprovisionCard}
+                adviserItems={adviserItems}
+                commissionPayouts={contract?.commissionPayouts ?? []}
+                viewerEmail={normalizedViewerEmail}
+                contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
+                contractDurationYears={contract?.durationYears ?? null}
+                adviserBreakdownPosition={adviserBreakdownPosition}
+                adviserBreakdownMode={adviserBreakdownMode}
+                paymentBasedAdviserTotals={paymentBasedAdviserTotals}
+                adviserTotalDisplay={adviserTotalDisplay}
+                contractAuthorName={contractAuthorName}
+                showAdvisorDetails={showAdvisorDetails}
+                onToggleAdvisorDetails={() => setShowAdvisorDetails((v) => !v)}
+                onOpenNeonImmediateBreakdown={handleOpenNeonImmediateBreakdown}
+              />
 
-                <ContractCommissionHistory
-                  payouts={contract?.commissionPayouts ?? []}
-                  viewerEmail={normalizedViewerEmail}
-                  contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
-                  onOpenStatement={handleOpenCommissionStatementPreview}
-                  statementPreviewLoadingId={statementPreviewLoadingId}
-                />
+              <ContractAutoPremiumHistory
+                product={prod}
+                contractNumber={contract?.contractNumber ?? null}
+                policyStartDate={contract?.policyStartDate ?? null}
+                signedAnnualPremium={signedAnnualPremium}
+                systemAnnualPremium={premium * paymentsPerYear(freq)}
+                paymentFrequency={freq}
+                contractPaymentFrequency={freq}
+                statements={commissionStatements}
+                storedHistory={contract?.premiumStatementHistory ?? []}
+                loading={commissionStatementsLoading}
+                error={commissionStatementsError}
+              />
 
-                <ContractAutoPremiumHistory
-                  product={prod}
-                  contractNumber={contract?.contractNumber ?? null}
-                  policyStartDate={contract?.policyStartDate ?? null}
-                  systemAnnualPremium={
-                    isAutoCommissionProduct ? premium * paymentsPerYear(freq) : premium
-                  }
-                  paymentFrequency={isAutoCommissionProduct ? "annual" : freq}
-                  contractPaymentFrequency={freq}
-                  statements={commissionStatements}
-                  storedHistory={contract?.premiumStatementHistory ?? []}
-                  loading={commissionStatementsLoading}
-                  error={commissionStatementsError}
-                />
-              </div>
+              <ContractCommissionHistory
+                payouts={contract?.commissionPayouts ?? []}
+                viewerEmail={normalizedViewerEmail}
+                contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
+                onOpenStatement={handleOpenCommissionStatementPreview}
+                statementPreviewLoadingId={statementPreviewLoadingId}
+              />
 
-                {/* POZNÁMKA */}
-                <section className={`${noteCardClass} space-y-4 lg:h-fit lg:mt-10 lg:w-full lg:max-w-[500px] lg:justify-self-end`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className={`text-xl font-semibold ${monoHeadingClass} flex items-center gap-2`}>
-                      <span className={monoChipDarkClass}>
-                        <StickyNote size={14} strokeWidth={2} aria-hidden="true" />
-                        <span>Poznámka</span>
-                      </span>
-                      Poznámka ke smlouvě
-                    </h3>
+              {/* POZNÁMKA */}
+              <section className={`${noteCardClass} space-y-3`}>
+                <button
+                  type="button"
+                  aria-controls={noteContentId}
+                  aria-expanded={noteExpanded}
+                  onClick={() => setNoteExpanded((value) => !value)}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className={monoChipDarkClass}>
+                      <StickyNote size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Poznámka</span>
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className={`text-base font-semibold ${monoHeadingClass}`}>
+                        Poznámka ke smlouvě
+                      </h3>
+                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+                        {notePreviewText || "Bez poznámky"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
                     {noteSaved && (
-                      <span className="text-sm text-slate-700 font-mono">
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
                         Uloženo
                       </span>
                     )}
-                  </div>
-
-                  {noteError && (
-                    <p className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-base text-slate-800">
-                      {noteError}
-                    </p>
-                  )}
-
-                  {canManageContract ? (
-                    <div className="space-y-3">
-                      <textarea
-                        value={noteDraft}
-                        onChange={(e) => {
-                          setNoteDraft(e.target.value);
-                          setNoteSaved(false);
-                        }}
-                        rows={6}
-                        className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300"
-                        placeholder="Sem si můžeš napsat poznámku jen pro sebe…"
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700">
+                      <ChevronDown
+                        size={16}
+                        strokeWidth={2.2}
+                        aria-hidden="true"
+                        className={`transition-transform ${
+                          noteExpanded ? "rotate-180" : ""
+                        }`}
                       />
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={handleSaveNote}
-                          disabled={savingNote}
-                          className="inline-flex items-center rounded-xl border border-slate-900 bg-slate-900 px-6 py-3 text-base sm:text-lg font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {savingNote && (
-                            <Spinner className="h-4 w-4 border-slate-400 border-t-slate-900" />
-                          )}
-                          <span>{savingNote ? "Ukládám…" : "Uložit poznámku"}</span>
-                        </button>
+                    </span>
+                  </div>
+                </button>
+
+                {noteExpanded && (
+                  <div id={noteContentId} className="space-y-2.5">
+                    {noteError && (
+                      <p className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                        {noteError}
+                      </p>
+                    )}
+
+                    {canManageContract ? (
+                      <>
+                        <textarea
+                          value={noteDraft}
+                          onChange={(e) => {
+                            setNoteDraft(e.target.value);
+                            setNoteSaved(false);
+                          }}
+                          rows={4}
+                          className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300"
+                          placeholder="Sem si můžeš napsat poznámku jen pro sebe…"
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleSaveNote}
+                            disabled={savingNote}
+                            className="inline-flex items-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {savingNote && (
+                              <Spinner className="h-4 w-4 border-slate-400 border-t-slate-900" />
+                            )}
+                            <span>{savingNote ? "Ukládám…" : "Uložit poznámku"}</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900">
+                        {savedNoteText ||
+                          "Autor smlouvy zatím žádnou poznámku nepřidal."}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900">
-                      {contract.note?.trim()
-                        ? contract.note.trim()
-                        : "Autor smlouvy zatím žádnou poznámku nepřidal."}
-                    </div>
-                  )}
-                </section>
+                    )}
+                  </div>
+                )}
+              </section>
             </div>
 
                 {/* STORNO / SMAZAT SMLOUVU */}
                 {(canSetStorno || canDelete) && (
-                  <section className="pt-2">
+                  <section className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                     {deleteError && (
-                      <p className="mb-2 text-base text-slate-700">
+                      <p className="mb-2 text-sm font-medium text-slate-700">
                         {deleteError}
                       </p>
                     )}
                     {stornoError && (
-                      <p className="mb-2 text-base text-slate-700">
+                      <p className="mb-2 text-sm font-medium text-slate-700">
                         {stornoError}
                       </p>
                     )}
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                       {canSetStorno && (
                         <button
                           type="button"
@@ -5971,10 +5805,13 @@ export default function ContractDetailPage() {
                             setShowStornoModal(true);
                           }}
                           disabled={updatingStorno}
-                          className="inline-flex items-center gap-2 rounded-xl border border-amber-700 bg-amber-600 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white shadow-[0_8px_20px_rgba(180,83,9,0.25)] transition hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                          className={cautionButtonClass}
                         >
                           {updatingStorno && (
-                            <Spinner className="h-5 w-5 border-amber-200/70 border-t-white" />
+                            <Spinner className="h-4 w-4 border-amber-300 border-t-amber-800" />
+                          )}
+                          {!updatingStorno && (
+                            <AlertTriangle size={15} strokeWidth={2.2} aria-hidden="true" />
                           )}
                           <span>{isStornoContract ? "Upravit storno" : "Stornovat smlouvu"}</span>
                         </button>
@@ -5984,9 +5821,10 @@ export default function ContractDetailPage() {
                           type="button"
                           onClick={handleClearStorno}
                           disabled={updatingStorno}
-                          className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-700 px-6 py-3 text-base sm:text-lg font-medium font-mono text-white transition hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                          className={neutralActionButtonClass}
                         >
-                          Zrušit storno
+                          <RotateCcw size={15} strokeWidth={2.2} aria-hidden="true" />
+                          <span>Zrušit storno</span>
                         </button>
                       )}
                       {canDelete && (
@@ -6001,7 +5839,10 @@ export default function ContractDetailPage() {
                           className={destructiveButtonClass}
                         >
                           {deleting && (
-                            <Spinner className="h-5 w-5 border-slate-400 border-t-slate-900" />
+                            <Spinner className="h-4 w-4 border-rose-300 border-t-rose-800" />
+                          )}
+                          {!deleting && (
+                            <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" />
                           )}
                           <span>{deleting ? "Mažu…" : "Smazat smlouvu"}</span>
                         </button>
@@ -6019,26 +5860,6 @@ export default function ContractDetailPage() {
             ) : null}
             </div>
 
-            <div className="hidden flex-col items-center lg:flex">
-              <button
-                type="button"
-                onClick={() => setShowProductPanel((v) => !v)}
-                className={`h-full min-h-[210px] w-14 rounded-2xl border transition ${
-                  showProductPanel
-                    ? "border-slate-900 bg-slate-900 text-white shadow-[0_12px_30px_rgba(15,23,42,0.25)]"
-                    : "border-slate-900 bg-slate-900 text-white hover:bg-black"
-                } flex items-center justify-center text-base font-semibold tracking-[0.2em]`}
-                style={{ writingMode: "vertical-rl" }}
-              >
-                DETAIL
-              </button>
-            </div>
-
-            {showProductPanel && (
-              <div className={`hidden lg:block ${productPanelClass}`}>
-                {renderProductPanelContent()}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -6244,60 +6065,6 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      {showPaymentVerificationModal &&
-        canEmbedPaymentVerification &&
-        paymentVerificationUrl && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-            <button
-              type="button"
-              className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-              aria-label="Zavřít okno ověření zaplacení"
-              onClick={() => setShowPaymentVerificationModal(false)}
-            />
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Ověření zaplacení smlouvy"
-              className="relative z-10 flex h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl shadow-slate-300/40"
-            >
-              <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
-                <div>
-                  <h3 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
-                    Ověření zaplacení
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-600 sm:text-base">
-                    Číslo smlouvy je zkopírované. Vlož ho do formuláře
-                    pomocí ⌘+V / Ctrl+V.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={paymentVerificationUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
-                  >
-                    Otevřít v nové kartě
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => setShowPaymentVerificationModal(false)}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
-                  >
-                    Zavřít
-                  </button>
-                </div>
-              </div>
-
-              <iframe
-                src={paymentVerificationUrl}
-                title="Kooperativa – Ověření zaplacení"
-                className="h-full min-h-0 w-full flex-1 bg-white"
-              />
-            </div>
-          </div>
-        )}
-
       {showContractPdfModal && selectedContractPdf && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
           <button
@@ -6310,39 +6077,50 @@ export default function ContractDetailPage() {
             role="dialog"
             aria-modal="true"
             aria-label="Náhled PDF smlouvy"
-            className="relative z-10 flex h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl shadow-slate-300/40"
+            className="relative z-10 flex h-[94vh] w-full max-w-[min(96vw,1680px)] flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-2xl shadow-slate-300/40"
           >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-2">
               <div className="min-w-0">
-                <h3 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+                <h3 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
                   PDF smlouvy
                 </h3>
-                <p className="mt-1 truncate text-sm text-slate-600 sm:text-base">
+                <p className="mt-0.5 truncate text-xs text-slate-600 sm:text-sm">
                   {selectedContractPdfFileName}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 {contractPdfBlobUrl && (
-                  <a
-                    href={contractPdfBlobUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
-                  >
-                    Otevřít v nové kartě
-                  </a>
+                  <>
+                    <a
+                      href={contractPdfBlobUrl}
+                      download={selectedContractPdfFileName}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+                    >
+                      <Download size={15} strokeWidth={2.2} aria-hidden="true" />
+                      <span>Stáhnout</span>
+                    </a>
+                    <a
+                      href={contractPdfBlobUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+                    >
+                      <ExternalLink size={15} strokeWidth={2.2} aria-hidden="true" />
+                      <span>Otevřít v nové kartě</span>
+                    </a>
+                  </>
                 )}
                 <button
                   type="button"
                   onClick={closeContractPdfModal}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
                 >
                   Zavřít
                 </button>
               </div>
             </div>
 
-            <div className="relative min-h-0 flex-1 overflow-y-auto bg-slate-100 px-3 py-4 sm:px-6">
+            <div className="relative min-h-0 flex-1 overflow-y-auto bg-slate-100 px-2 py-3 sm:px-4">
               {contractPdfLoading && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/85">
                   <div className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm">
@@ -6361,7 +6139,7 @@ export default function ContractDetailPage() {
               )}
 
               {!contractPdfError && contractPdfPages.length > 0 && (
-                <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+                <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-5">
                   {contractPdfPages.map((page, pageIndex) => (
                     <div
                       key={page.pageNumber}

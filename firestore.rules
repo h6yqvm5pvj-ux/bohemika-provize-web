@@ -400,6 +400,8 @@ service cloud.firestore {
         "pillowmajetek",
         "koopmajetekobcan",
         "koopfit",
+        "koopodzam",
+        "kooppmop",
         "maxdomov",
         "cppsimplex",
         "cppAuto",

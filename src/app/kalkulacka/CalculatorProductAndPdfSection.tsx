@@ -28,6 +28,34 @@ type CalculatorProductAndPdfSectionProps = {
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
 };
 
+function PdfImportProgressBar({ large = false }: { large?: boolean }) {
+  return (
+    <div
+      role="progressbar"
+      aria-label="Načítání PDF"
+      aria-valuetext="Načítání PDF"
+      className={`rounded-2xl border border-violet-200/75 bg-violet-50/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] ${
+        large ? "px-4 py-4" : "px-3 py-2.5"
+      }`}
+    >
+      <div
+        className={`relative overflow-hidden rounded-full bg-violet-100/95 ring-1 ring-violet-200/70 ${
+          large ? "h-3" : "h-2.5"
+        }`}
+      >
+        <span
+          className="absolute inset-y-0 left-0 w-[42%] rounded-full bg-[linear-gradient(90deg,#d946ef_0%,#8b5cf6_48%,#6d28d9_100%)] shadow-[0_0_18px_rgba(139,92,246,0.5)] motion-safe:animate-[calculator-pdf-import-progress_1.15s_ease-in-out_infinite] motion-reduce:w-2/3"
+          aria-hidden="true"
+        />
+        <span
+          className="absolute inset-y-0 left-0 w-[18%] rounded-full bg-white/50 blur-[2px] motion-safe:animate-[calculator-pdf-import-glint_1.15s_ease-in-out_infinite] motion-reduce:hidden"
+          aria-hidden="true"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function CalculatorProductAndPdfSection({
   canImportFromPdf,
   productOpen,
@@ -75,9 +103,63 @@ export function CalculatorProductAndPdfSection({
 
         <div
           className={`grid gap-4 ${
-            canImportFromPdf ? "lg:grid-cols-[0.98fr_1.02fr]" : "lg:grid-cols-1"
+            canImportFromPdf ? "lg:grid-cols-[1.02fr_0.98fr]" : "lg:grid-cols-1"
           }`}
         >
+          {canImportFromPdf && (
+            <div
+              className={`relative flex min-h-[15rem] w-full flex-col justify-between rounded-[1.55rem] border-2 border-dashed p-5 transition sm:p-6 ${
+                pdfDropActive
+                  ? "border-slate-900 bg-slate-100 shadow-[0_22px_46px_rgba(15,23,42,0.14)]"
+                  : "border-slate-300 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] hover:border-slate-400"
+              }`}
+              onDragEnter={onDragEnter}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm">
+                  <UploadCloud size={24} strokeWidth={2.2} aria-hidden="true" />
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 shadow-sm">
+                  PDF import
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-3xl font-black leading-none tracking-normal text-slate-950 sm:text-4xl">
+                  Nahrát smlouvu
+                </h3>
+                <p className="mt-3 max-w-md text-sm font-semibold leading-6 text-slate-600">
+                  Přetáhni PDF sem, nebo ho vyber ze souborů.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-xs font-semibold text-slate-500">
+                  Soubor zůstane připravený k přiložení.
+                </span>
+                <button
+                  type="button"
+                  onClick={onOpenFileDialog}
+                  disabled={pdfImporting}
+                  className="ui-btn-primary ui-focus inline-flex shrink-0 items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <UploadCloud size={18} strokeWidth={2.2} className="shrink-0" aria-hidden="true" />
+                  {pdfImporting ? "Načítám…" : "Nahrát PDF"}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={(event) => onFileInputChange(event.target.files?.[0] ?? null)}
+                />
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={onToggleProductPicker}
@@ -144,69 +226,17 @@ export function CalculatorProductAndPdfSection({
               </span>
             </span>
           </button>
-
-          {canImportFromPdf && (
-            <div
-              className={`relative flex min-h-[15rem] w-full flex-col justify-between rounded-[1.55rem] border-2 border-dashed p-5 transition sm:p-6 ${
-                pdfDropActive
-                  ? "border-slate-900 bg-slate-100 shadow-[0_22px_46px_rgba(15,23,42,0.14)]"
-                  : "border-slate-300 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] hover:border-slate-400"
-              }`}
-              onDragEnter={onDragEnter}
-              onDragOver={onDragOver}
-              onDragLeave={onDragLeave}
-              onDrop={onDrop}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm">
-                  <UploadCloud size={24} strokeWidth={2.2} aria-hidden="true" />
-                </span>
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 shadow-sm">
-                  PDF import
-                </span>
-              </div>
-
-              <div>
-                <h3 className="text-3xl font-black leading-none tracking-normal text-slate-950 sm:text-4xl">
-                  Nahrát smlouvu
-                </h3>
-                <p className="mt-3 max-w-md text-sm font-semibold leading-6 text-slate-600">
-                  Přetáhni PDF sem, nebo ho vyber ze souborů.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-xs font-semibold text-slate-500">
-                  Soubor zůstane připravený k přiložení.
-                </span>
-                <button
-                  type="button"
-                  onClick={onOpenFileDialog}
-                  disabled={pdfImporting}
-                  className="ui-btn-primary ui-focus inline-flex shrink-0 items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <UploadCloud size={18} strokeWidth={2.2} className="shrink-0" aria-hidden="true" />
-                  {pdfImporting ? "Načítám…" : "Nahrát PDF"}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  onChange={(event) => onFileInputChange(event.target.files?.[0] ?? null)}
-                />
-              </div>
-            </div>
-          )}
         </div>
 
-        {(pdfImportStatus || pdfImportError) && (
+        {(pdfImporting || pdfImportStatus || pdfImportError) && (
           <div className="mt-4 space-y-2">
-            {pdfImportStatus && (
+            {pdfImporting ? (
+              <PdfImportProgressBar large />
+            ) : pdfImportStatus ? (
               <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
                 {pdfImportStatus}
               </p>
-            )}
+            ) : null}
             {pdfImportError && (
               <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
                 {pdfImportError}
@@ -366,7 +396,11 @@ export function CalculatorProductAndPdfSection({
               onChange={(event) => onFileInputChange(event.target.files?.[0] ?? null)}
             />
           </div>
-          {pdfImportStatus && <p className="text-[12px] text-slate-700">{pdfImportStatus}</p>}
+          {pdfImporting ? (
+            <PdfImportProgressBar />
+          ) : (
+            pdfImportStatus && <p className="text-[12px] text-slate-700">{pdfImportStatus}</p>
+          )}
           {pdfImportError && <p className="text-[12px] text-rose-700">{pdfImportError}</p>}
         </div>
       )}

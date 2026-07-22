@@ -1,4 +1,13 @@
-import { CalendarDays, Car, Minus, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  Car,
+  CheckCircle2,
+  CircleDollarSign,
+  Minus,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 
 import { type PaymentFrequency, type Product } from "../../types/domain";
 import {
@@ -6,7 +15,6 @@ import {
   isAnnualAutoPayoutProduct,
   isAutoProduct,
   paymentsPerYear,
-  productLabel,
   toDate,
 } from "./contractDetailHelpers";
 import {
@@ -20,6 +28,7 @@ type ContractAutoPremiumHistoryProps = {
   product: Product | undefined;
   contractNumber?: string | null;
   policyStartDate?: ContractDoc["policyStartDate"];
+  signedAnnualPremium?: number | null;
   systemAnnualPremium: number;
   paymentFrequency?: PaymentFrequency | null;
   contractPaymentFrequency?: PaymentFrequency | null;
@@ -130,29 +139,6 @@ const dedupePremiumHistoryRows = (rows: PremiumHistoryRow[]): PremiumHistoryRow[
     .filter((row): row is PremiumHistoryRow => Boolean(row));
 };
 
-const paymentFrequencyLabel = (frequency: PaymentFrequency | null | undefined): string | null => {
-  switch (frequency) {
-    case "monthly":
-      return "měsíčně";
-    case "quarterly":
-      return "čtvrtletně";
-    case "semiannual":
-      return "pololetně";
-    case "annual":
-      return "ročně";
-    default:
-      return null;
-  }
-};
-
-const premiumAmountLabel = (
-  amount: number,
-  frequency: PaymentFrequency | null | undefined
-): string => {
-  const frequencyLabel = paymentFrequencyLabel(frequency);
-  return frequencyLabel ? `${formatMoney(amount)} ${frequencyLabel}` : formatMoney(amount);
-};
-
 const signedMoneyLabel = (value: number | null | undefined): string =>
   value == null
     ? "—"
@@ -160,6 +146,62 @@ const signedMoneyLabel = (value: number | null | undefined): string =>
 
 const signedAnnualMoneyLabel = (value: number | null | undefined): string =>
   value == null ? "—" : `${signedMoneyLabel(value)} ročně`;
+
+const annualPremiumLabel = (value: number | null | undefined): string =>
+  value == null || !Number.isFinite(value) || value <= 0
+    ? "—"
+    : `${formatMoney(value)} ročně`;
+
+const positivePremiumOrNull = (value: number | null | undefined): number | null => {
+  const amount = validNumber(value);
+  return amount != null && amount > 0 ? amount : null;
+};
+
+const annualPremiumFromRow = (
+  row: PremiumHistoryRow,
+  paymentFrequency: PaymentFrequency | null | undefined
+): number | null => {
+  const annualPremium = validNumber(row.newAnnualPremium);
+  if (annualPremium != null) return annualPremium;
+  if (row.basePremiumPeriod === "payment") {
+    return Math.round(row.basePremium * paymentsPerYear(paymentFrequency) * 100) / 100;
+  }
+  return validNumber(row.basePremium);
+};
+
+const previousAnnualPremiumFromRow = (
+  row: PremiumHistoryRow,
+  paymentFrequency: PaymentFrequency | null | undefined
+): number | null => {
+  const annualPremium = validNumber(row.previousAnnualPremium);
+  if (annualPremium != null) return annualPremium;
+  const previousPremium = validNumber(row.previousPremium);
+  if (previousPremium == null) return null;
+  if (row.basePremiumPeriod === "payment") {
+    return Math.round(previousPremium * paymentsPerYear(paymentFrequency) * 100) / 100;
+  }
+  return previousPremium;
+};
+
+const differenceAnnualFromRow = (
+  row: PremiumHistoryRow,
+  paymentFrequency: PaymentFrequency | null | undefined
+): number | null => {
+  const annualDifference = validNumber(row.differenceAnnual);
+  if (annualDifference != null) return annualDifference;
+  const difference = validNumber(row.difference);
+  if (difference == null) return null;
+  if (row.basePremiumPeriod === "payment") {
+    return Math.round(difference * paymentsPerYear(paymentFrequency) * 100) / 100;
+  }
+  return difference;
+};
+
+const changeCountLabel = (count: number): string => {
+  if (count === 1) return "1 změna";
+  if (count >= 2 && count <= 4) return `${count} změny`;
+  return `${count} změn`;
+};
 
 const statementPeriodDate = (value: number | null): Date | null => {
   if (value == null) return null;
@@ -317,22 +359,6 @@ const statusIcon = (status: PremiumChangeStatus) => {
   }
 };
 
-const premiumChangeTitle = (
-  row: PremiumHistoryRow,
-  frequency: PaymentFrequency | null | undefined
-): string => {
-  if (row.status === "initial") {
-    return `Sjednání smlouvy: ${premiumAmountLabel(row.basePremium, frequency)}`;
-  }
-  if (row.status === "decreased") {
-    return `Snížení pojistného na ${premiumAmountLabel(row.basePremium, frequency)}`;
-  }
-  if (row.status === "same") {
-    return `Pojistné beze změny: ${premiumAmountLabel(row.basePremium, frequency)}`;
-  }
-  return `Navýšení pojistného na ${premiumAmountLabel(row.basePremium, frequency)}`;
-};
-
 const statementSourceLabel = (row: PremiumHistoryRow): string => {
   if (row.statementPeriod) {
     return `Provizní výpis z období ${row.statementPeriod}`;
@@ -393,6 +419,7 @@ const buildPremiumHistoryRows = ({
         paymentFrequency
       );
       const { status, difference } = premiumStatus(annualPremium, systemAnnualPremium);
+      if (status === "same") continue;
       const key = [
         statement.id,
         anniversary.number,
@@ -532,7 +559,8 @@ const premiumRowsMatchStoredChange = (
 
 const shouldSuppressDetectedPremiumRow = (
   detectedRow: PremiumHistoryRow,
-  storedRows: PremiumHistoryRow[]
+  storedRows: PremiumHistoryRow[],
+  paymentFrequency: PaymentFrequency | null | undefined
 ): boolean => {
   if (detectedRow.premiumKind !== "auto_change") return false;
   const storedAutoChanges = storedRows.filter((row) => row.premiumKind === "auto_change");
@@ -545,60 +573,30 @@ const shouldSuppressDetectedPremiumRow = (
   const latestStoredChangeTime = Math.max(
     ...storedAutoChanges.map((row) => row.anniversaryDate.getTime())
   );
-  return detectedRow.anniversaryDate.getTime() < latestStoredChangeTime;
-};
+  if (detectedRow.anniversaryDate.getTime() < latestStoredChangeTime) return true;
 
-const buildInitialPremiumHistoryRow = ({
-  storedRows,
-  policyStartDate,
-  paymentFrequency,
-}: {
-  storedRows: PremiumHistoryRow[];
-  policyStartDate?: ContractDoc["policyStartDate"];
-  paymentFrequency?: PaymentFrequency | null;
-}): PremiumHistoryRow | null => {
-  const autoRows = storedRows.filter((row) => row.premiumKind !== "life_increase");
-  if (autoRows.length === 0) return null;
-  if (autoRows.some((row) => row.premiumKind === "auto_initial")) return null;
-  const firstRow = [...autoRows].sort(
-    (a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime()
-  )[0];
-  const initialPremium = firstRow.previousPremium ?? firstRow.basePremium;
-  if (!Number.isFinite(initialPremium) || initialPremium <= 0) return null;
+  const detectedAnnualPremium = annualPremiumFromRow(detectedRow, paymentFrequency);
+  if (detectedAnnualPremium == null) return false;
 
-  const policyStart = toDate(policyStartDate) ?? firstRow.policyStartDate;
-  const productCode = firstRow.productCode || "AUTO";
-  return {
-    key: `initial:${productCode}:${policyStart.toISOString().slice(0, 10)}:${initialPremium}`,
-    premiumKind: "auto_initial",
-    statementId: null,
-    rowId: null,
-    anniversaryNumber: 0,
-    anniversaryDate: policyStart,
-    policyStartDate: policyStart,
-    policyStartSource: firstRow.policyStartSource,
-    statementPeriod: null,
-    statementDate: null,
-    statementNumber: null,
-    productCode,
-    productKey: firstRow.productKey,
-    previousPremium: null,
-    basePremium: initialPremium,
-    difference: 0,
-    previousAnnualPremium: null,
-    newAnnualPremium: paymentFrequency === "annual" ? initialPremium : null,
-    differenceAnnual: null,
-    basePremiumPeriod: "annual",
-    status: "initial",
-    commissionCodes: [],
-    source: firstRow.source,
-  };
+  const latestStoredBeforeDetected = [...storedAutoChanges]
+    .filter((row) => row.anniversaryDate.getTime() <= detectedRow.anniversaryDate.getTime())
+    .sort((a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime())
+    .at(-1);
+  const latestStoredAnnualPremium = latestStoredBeforeDetected
+    ? annualPremiumFromRow(latestStoredBeforeDetected, paymentFrequency)
+    : null;
+
+  return (
+    latestStoredAnnualPremium != null &&
+    Math.abs(detectedAnnualPremium - latestStoredAnnualPremium) <= ANNUAL_PREMIUM_TOLERANCE
+  );
 };
 
 export function ContractAutoPremiumHistory({
   product,
   contractNumber,
   policyStartDate,
+  signedAnnualPremium,
   systemAnnualPremium,
   paymentFrequency = null,
   contractPaymentFrequency = null,
@@ -621,19 +619,19 @@ export function ContractAutoPremiumHistory({
       })
     : [];
   const storedRows = buildStoredPremiumHistoryRows(storedHistory);
+  const storedChangeRows = storedRows.filter(
+    (row) => row.premiumKind !== "auto_initial" && row.status !== "same"
+  );
 
-  if (!showAutoStatementScan && storedRows.length === 0) return null;
+  if (!showAutoStatementScan && storedChangeRows.length === 0) return null;
 
   const rowsByKey = new Map<string, PremiumHistoryRow>();
-  const initialRow = buildInitialPremiumHistoryRow({
-    storedRows,
-    policyStartDate,
-    paymentFrequency,
-  });
-  if (initialRow) rowsByKey.set(initialRow.key, initialRow);
-  storedRows.forEach((row) => rowsByKey.set(row.key, row));
+  storedChangeRows.forEach((row) => rowsByKey.set(row.key, row));
   detectedRows.forEach((row) => {
-    if (shouldSuppressDetectedPremiumRow(row, storedRows)) {
+    if (row.status === "same" || row.premiumKind === "auto_initial") {
+      return;
+    }
+    if (shouldSuppressDetectedPremiumRow(row, storedChangeRows, paymentFrequency)) {
       return;
     }
     if (!rowsByKey.has(row.key)) rowsByKey.set(row.key, row);
@@ -641,134 +639,172 @@ export function ContractAutoPremiumHistory({
   const rows = dedupePremiumHistoryRows([...rowsByKey.values()]).sort(
     (a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime()
   );
-  const initialPremiumBase =
-    rows.find((row) => row.status === "initial")?.basePremium ??
-    rows.find((row) => row.previousPremium != null)?.previousPremium ??
-    null;
+  const storedInitialAnnualPremium =
+    storedRows
+      .filter((row) => row.premiumKind === "auto_initial")
+      .map((row) => annualPremiumFromRow(row, paymentFrequency))
+      .find((amount) => amount != null && amount > 0) ?? null;
+  const firstKnownPreviousAnnualPremium =
+    rows
+      .map((row) => previousAnnualPremiumFromRow(row, paymentFrequency))
+      .find((amount) => amount != null && amount > 0) ?? null;
+  const signedAnnualPremiumValue =
+    positivePremiumOrNull(signedAnnualPremium) ??
+    storedInitialAnnualPremium ??
+    firstKnownPreviousAnnualPremium ??
+    positivePremiumOrNull(systemAnnualPremium);
+  const latestAnnualPremium =
+    rows.length > 0
+      ? annualPremiumFromRow(rows[rows.length - 1], paymentFrequency)
+      : signedAnnualPremiumValue ?? positivePremiumOrNull(systemAnnualPremium);
+  const totalAnnualChange =
+    signedAnnualPremiumValue != null && latestAnnualPremium != null
+      ? Math.round((latestAnnualPremium - signedAnnualPremiumValue) * 100) / 100
+      : null;
   const HeaderIcon = showAutoStatementScan ? Car : TrendingUp;
 
   return (
-    <section className="rounded-[24px] border border-slate-300/90 bg-white px-5 py-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <h3 className="flex items-center gap-2 font-mono text-xl font-semibold tracking-tight text-slate-900">
-          <span className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-base font-mono tracking-tight text-white">
-            <HeaderIcon size={14} strokeWidth={2} aria-hidden="true" />
-            {showAutoStatementScan ? "Výročí" : "Pojistné"}
+    <section className="overflow-hidden rounded-[20px] border border-slate-300/90 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.07)]">
+      <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_55%,#eef6ff_100%)] px-4 py-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <h3 className="flex items-center gap-2 font-mono text-lg font-semibold tracking-tight text-slate-900">
+            <span className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-mono tracking-tight text-white">
+              <HeaderIcon size={14} strokeWidth={2} aria-hidden="true" />
+              <span>Pojistné</span>
+            </span>
+            Změny pojistného
+          </h3>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
+            {changeCountLabel(rows.length)}
           </span>
-          Změny pojistného
-        </h3>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">
-          {rows.length} záznamů
-        </span>
-      </div>
+        </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Aktuálně v systému
+        <div className="mt-2.5 grid items-start gap-2.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(220px,0.65fr)]">
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.045)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  Roční pojistné při sjednání
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <div className="text-lg font-black tracking-tight text-slate-950 sm:text-xl">
+                    {annualPremiumLabel(signedAnnualPremiumValue)}
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                    <CalendarDays size={12} strokeWidth={2.1} aria-hidden="true" />
+                    Počátek {formatDate(policyStart)}
+                  </span>
+                </div>
+              </div>
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-900">
+                <CircleDollarSign size={16} strokeWidth={2.2} aria-hidden="true" />
+              </span>
+            </div>
           </div>
-          <div className="mt-1 text-xl font-bold text-slate-950">
-            {premiumAmountLabel(systemAnnualPremium, paymentFrequency)}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Počátek smlouvy
-          </div>
-          <div className="mt-1 text-xl font-bold text-slate-950">
-            {formatDate(policyStart)}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Produkt
-          </div>
-          <div className="mt-1 text-xl font-bold text-slate-950">
-            {productLabel(product)}
+
+          <div
+            className={`rounded-xl border px-3 py-2 ${
+              rows.length > 0
+                ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                : "border-slate-200 bg-white text-slate-950"
+            }`}
+          >
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide opacity-75">
+              {rows.length > 0 ? (
+                <TrendingUp size={13} strokeWidth={2.2} aria-hidden="true" />
+              ) : (
+                <CheckCircle2 size={13} strokeWidth={2.2} aria-hidden="true" />
+              )}
+              {rows.length > 0 ? "Poslední známé pojistné" : "Stav z výpisů"}
+            </div>
+            <div className="mt-1 text-base font-black tracking-tight">
+              {rows.length > 0 ? annualPremiumLabel(latestAnnualPremium) : "Beze změn"}
+            </div>
+            <div className="mt-1 text-xs font-semibold leading-snug opacity-80">
+              {rows.length > 0 && totalAnnualChange != null
+                ? `Celkem ${signedAnnualMoneyLabel(totalAnnualChange)}`
+                : "Z výpisů se uloží až reálná změna pojistného."}
+            </div>
           </div>
         </div>
       </div>
 
       {showAutoStatementScan && loading ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
+        <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-600">
           Načítám provizní výpisy pro kontrolu výročí.
         </div>
       ) : showAutoStatementScan && error ? (
-        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-900">
+        <div className="m-4 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm font-semibold text-amber-900">
           {error}
         </div>
       ) : showAutoStatementScan && !normalizedContractNumber ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
+        <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-600">
           Smlouva nemá číslo smlouvy, takže ji nejde spárovat s provizním výpisem.
         </div>
       ) : rows.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
-          Zatím žádný výpis neobsahuje uloženou změnu pojistného.
+        <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-600">
+          Zatím žádný provizní výpis neobsahuje změnu pojistného.
         </div>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="space-y-2.5 px-4 py-3">
           {rows.map((row, index) => {
-            const StatusIcon = statusIcon(row.status);
-            const isLifeIncrease = row.premiumKind === "life_increase";
-            const rowFrequency: PaymentFrequency | null = isLifeIncrease
-              ? "monthly"
-              : row.newAnnualPremium != null ||
-                  row.basePremiumPeriod === "annual" ||
-                  row.basePremiumPeriod === "payment"
-                ? "annual"
-              : paymentFrequency;
-            const isInitial = row.status === "initial";
-            const effectiveLabel = isInitial
-              ? "Počátek"
-              : isLifeIncrease
-                ? "Účinnost"
-                : "Výročí";
-            const previousDisplayedPremium =
+            const rowAnnualPremium = annualPremiumFromRow(row, paymentFrequency);
+            const previousDisplayedAnnualPremium =
               [...rows]
                 .slice(0, index)
                 .reverse()
-                .find((item) => item.premiumKind === row.premiumKind && item.status !== "same")
-                ?.basePremium ?? null;
-            const previousPremium =
-              previousDisplayedPremium ??
-              row.previousPremium ??
-              null;
-            const changeFromInitial =
-              !isInitial && initialPremiumBase != null
-                ? Math.round((row.basePremium - initialPremiumBase) * 100) / 100
-                : null;
-            const changeFromPrevious =
-              !isInitial && previousPremium != null
-                ? Math.round((row.basePremium - previousPremium) * 100) / 100
-                : null;
+                .map((item) => annualPremiumFromRow(item, paymentFrequency))
+                .find((amount) => amount != null && amount > 0) ?? null;
+            const previousAnnualPremium =
+              previousAnnualPremiumFromRow(row, paymentFrequency) ??
+              previousDisplayedAnnualPremium ??
+              signedAnnualPremiumValue;
+            const rowDifferenceAnnual =
+              differenceAnnualFromRow(row, paymentFrequency) ??
+              (rowAnnualPremium != null && previousAnnualPremium != null
+                ? Math.round((rowAnnualPremium - previousAnnualPremium) * 100) / 100
+                : null);
+            const displayStatus =
+              row.status === "detected"
+                ? premiumStatusFromDifference(rowDifferenceAnnual)
+                : row.status;
+            const StatusIcon = statusIcon(displayStatus);
+            const isLifeIncrease = row.premiumKind === "life_increase";
+            const effectiveLabel = isLifeIncrease ? "Účinnost" : "Výročí";
+            const changeToneClass =
+              rowDifferenceAnnual == null
+                ? "text-slate-950"
+                : rowDifferenceAnnual >= 0
+                  ? "text-emerald-700"
+                  : "text-rose-700";
             return (
               <article
                 key={row.key}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                className="rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.045)]"
               >
-                <div className="flex flex-col gap-3">
-                  <div className="min-w-0">
+                <div className="flex gap-3">
+                  <span
+                    className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border ${statusClass(displayStatus)}`}
+                  >
+                    <StatusIcon size={16} strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(row.status)}`}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(displayStatus)}`}
                       >
-                        <StatusIcon size={13} strokeWidth={2.2} aria-hidden="true" />
-                        {statusLabel(row.status)}
+                        {statusLabel(displayStatus)}
                       </span>
                       <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                        {isInitial
-                          ? "Sjednání"
-                          : isLifeIncrease
-                          ? "Změna pojistného"
-                          : `${row.anniversaryNumber}. výročí`}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                        {row.productCode}
+                        {isLifeIncrease ? "Změna pojistného" : `${row.anniversaryNumber}. výročí`}
                       </span>
                     </div>
 
-                    <div className="mt-3 text-lg font-bold text-slate-950">
-                      {premiumChangeTitle(row, rowFrequency)}
+                    <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span className="text-sm font-semibold text-slate-500">Nově</span>
+                      <span className="text-xl font-black tracking-tight text-slate-950">
+                        {annualPremiumLabel(rowAnnualPremium)}
+                      </span>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate-600">
                       <span className="inline-flex items-center gap-1.5">
@@ -777,28 +813,40 @@ export function ContractAutoPremiumHistory({
                       </span>
                       <span>Zdroj: {statementSourceLabel(row)}</span>
                     </div>
-                  </div>
 
-                  {!isInitial && (
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <div className="mt-3 grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_minmax(0,0.85fr)] sm:items-center">
+                      <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                         <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Oproti sjednání
+                          Před změnou
                         </div>
-                        <div className="mt-1 text-lg font-bold text-slate-950">
-                          {signedAnnualMoneyLabel(changeFromInitial)}
+                        <div className="mt-1 text-base font-bold text-slate-950">
+                          {annualPremiumLabel(previousAnnualPremium)}
                         </div>
                       </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <ArrowRight
+                        size={18}
+                        strokeWidth={2.2}
+                        className="hidden text-slate-400 sm:block"
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                         <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Oproti poslednímu výročí
+                          Po změně
                         </div>
-                        <div className="mt-1 text-lg font-bold text-slate-950">
-                          {signedAnnualMoneyLabel(changeFromPrevious)}
+                        <div className="mt-1 text-base font-bold text-slate-950">
+                          {annualPremiumLabel(rowAnnualPremium)}
+                        </div>
+                      </div>
+                      <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          Rozdíl
+                        </div>
+                        <div className={`mt-1 text-base font-black ${changeToneClass}`}>
+                          {signedAnnualMoneyLabel(rowDifferenceAnnual)}
                         </div>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </article>
             );

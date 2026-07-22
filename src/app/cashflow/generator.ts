@@ -756,7 +756,17 @@ export function generateCashflow(
       }
 
       case "maximaMaxEfekt": {
-        pushImmediateCashflowItems();
+        if (immediate) {
+          pushItem(
+            immediate.amount,
+            estimatePayoutDate(start, agreement),
+            undefined,
+            entryHorizonEnd,
+            immediateCodes.length > 0
+              ? immediateMetadata
+              : commissionMetadataFromCode("A101", "Okamžitá provize")
+          );
+        }
         if (po3) {
           pushItem(
             po3.amount,

@@ -28,6 +28,7 @@ type UseCashflowDataParams = {
   productFilter: ProductFilter;
   tipsterMode?: boolean;
   enabled?: boolean;
+  reloadKey?: number;
 };
 
 type UseCashflowDataResult = {
@@ -450,6 +451,7 @@ export function useCashflowData({
   productFilter,
   tipsterMode = false,
   enabled = true,
+  reloadKey = 0,
 }: UseCashflowDataParams): UseCashflowDataResult {
   const snapshotMode: SnapshotMode = tipsterMode ? "tipster" : "standard";
   const [loading, setLoading] = useState(() => {
@@ -476,10 +478,14 @@ export function useCashflowData({
     const load = async () => {
       const normalized = normalizeEmail(userEmail);
       const cacheKey = snapshotCacheKey(normalized, snapshotMode);
+      const forceReload = reloadKey > 0;
+      if (forceReload) {
+        delete contractsSnapshotCache[cacheKey];
+      }
       const cachedRaw = contractsSnapshotCache[cacheKey];
       const updatedAtMs = getContractsUpdatedAtMs();
       const cached =
-        cachedRaw && isSnapshotFresh(cachedRaw.ts, updatedAtMs)
+        cachedRaw && !forceReload && isSnapshotFresh(cachedRaw.ts, updatedAtMs)
           ? cachedRaw
           : undefined;
       if (cachedRaw && !cached) {
@@ -533,7 +539,7 @@ export function useCashflowData({
         window.clearTimeout(finishLoadingTimer);
       }
     };
-  }, [userEmail, enabled, snapshotMode]);
+  }, [userEmail, enabled, snapshotMode, reloadKey]);
 
   const cashflowItems = useMemo<CashflowItem[]>(() => {
     if (!enabled || !snapshot) return [];

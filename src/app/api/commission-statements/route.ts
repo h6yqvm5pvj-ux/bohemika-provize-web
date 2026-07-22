@@ -3074,63 +3074,6 @@ const premiumHistoryEntryFromStatementRow = ({
   };
 };
 
-const initialAutoPremiumHistoryEntryFromChange = (
-  entry: ContractPremiumStatementHistoryEntry,
-  contract: ContractDoc,
-  nowMs: number,
-  writtenBy: string
-): ContractPremiumStatementHistoryEntry | null => {
-  if (entry.premiumKind !== "auto_change") return null;
-  const initialPremium =
-    finiteMoneyOrNull(entry.previousAnnualPremium) ?? finiteMoneyOrNull(entry.previousPremium);
-  if (initialPremium == null || initialPremium <= 0) return null;
-
-  const policyStartMs =
-    parseCzechDate(entry.validFrom) ??
-    toMillis(contract.policyStartDate) ??
-    premiumHistoryEntryDateMs(entry) ??
-    nowMs;
-  const validFrom =
-    entry.validFrom ??
-    (policyStartMs != null ? new Date(policyStartMs).toLocaleDateString("cs-CZ") : null);
-
-  return {
-    key: compactHash(
-      [
-        "auto-initial",
-        normalizeContractNumber(contract.contractNumber ?? null),
-        entry.productCode,
-        isoDateFromMs(policyStartMs),
-        initialPremium,
-      ].join(":"),
-      32
-    ),
-    premiumKind: "auto_initial",
-    statementId: entry.statementId,
-    statementNumber: entry.statementNumber,
-    statementPeriod: entry.statementPeriod,
-    statementDate: entry.statementDate,
-    statementChronologyMs: entry.statementChronologyMs,
-    payoutMonthKey: entry.payoutMonthKey,
-    anniversaryNumber: 0,
-    anniversaryDate: isoDateFromMs(policyStartMs),
-    previousPremium: null,
-    newPremium: initialPremium,
-    difference: 0,
-    previousAnnualPremium: null,
-    newAnnualPremium: initialPremium,
-    differenceAnnual: null,
-    basePremiumPeriod: "annual",
-    productCode: entry.productCode,
-    commissionCode: null,
-    rowId: `initial:${entry.rowId}`,
-    validFrom,
-    source: entry.source,
-    writtenAtMs: nowMs,
-    writtenBy,
-  };
-};
-
 type AccessibleContractResolution =
   | {
       status: "matched";
@@ -3674,15 +3617,7 @@ const processStatementWrites = async ({
         })
       )
       .filter((entry): entry is ContractPremiumStatementHistoryEntry => Boolean(entry));
-    const initialPremiumHistoryEntries = detectedPremiumHistoryEntries
-      .map((entry) =>
-        initialAutoPremiumHistoryEntryFromChange(entry, contract, nowMs, ctxEmail)
-      )
-      .filter((entry): entry is ContractPremiumStatementHistoryEntry => Boolean(entry));
-    const premiumHistoryEntries = [
-      ...initialPremiumHistoryEntries,
-      ...detectedPremiumHistoryEntries,
-    ];
+    const premiumHistoryEntries = detectedPremiumHistoryEntries;
     const existingPremiumHistory = contractPremiumHistoryArray(contract);
     const existingPremiumKeys = new Set(existingPremiumHistory.map((entry) => entry.key));
     const canApplyPremiumToCurrentContract = canApplyPremiumStatementToCurrentContract(

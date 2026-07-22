@@ -3399,6 +3399,10 @@ export default function CalculatorPage() {
       setPdfImportError(
         "Vyber produkt ručně. Údaje z tohoto PDF zatím nebyly načtené, ale PDF zůstane připravené k přiložení po uložení smlouvy."
       );
+      setPdfImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       return;
     }
     if (
@@ -3942,6 +3946,11 @@ export default function CalculatorPage() {
         setAutoCarAddonEso(addon);
         if (addon) applied += 1;
       }
+      if ("carAddonNaturalRisks" in parsed) {
+        const addon = parsed.carAddonNaturalRisks === true;
+        setAutoCarAddonNaturalRisks(addon);
+        if (addon) applied += 1;
+      }
       if ("carAddonGlass" in parsed) {
         const addon = parsed.carAddonGlass === true;
         setAutoCarAddonGlass(addon);
@@ -3963,6 +3972,18 @@ export default function CalculatorPage() {
         const addon = parsed.carAddonAnimalCollision === true;
         setAutoCarAddonAnimalCollision(addon);
         if (addon) applied += 1;
+      }
+      if ("carAddonAnimalCollisionLimit" in parsed) {
+        const limit =
+          typeof parsed.carAddonAnimalCollisionLimit === "number" &&
+          Number.isFinite(parsed.carAddonAnimalCollisionLimit)
+            ? Math.round(parsed.carAddonAnimalCollisionLimit)
+            : null;
+        setAutoCarAddonAnimalCollisionLimit(limit);
+        if (limit != null) {
+          setAutoCarAddonAnimalCollision(true);
+          applied += 1;
+        }
       }
       if ("carAddonAnimalDamage" in parsed) {
         const addon = parsed.carAddonAnimalDamage === true;

@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Globe2, Mail, SlidersHorizontal } from "lucide-react";
+import { Globe2, Mail, RefreshCw, SlidersHorizontal } from "lucide-react";
 
 import { auth } from "./firebase";
 import {
@@ -305,6 +305,7 @@ const HOME_COPY: Record<
     profileTypeLoadError: string;
     homeHeadingPrefix: string;
     mail: string;
+    reloadData: string;
     customizeHomeAria: string;
     customizeTitle: string;
     customizeButtonTitle: string;
@@ -356,6 +357,7 @@ const HOME_COPY: Record<
     profileTypeLoadError: "Nepodařilo se ověřit typ účtu.",
     homeHeadingPrefix: "Produkce",
     mail: "Pošta",
+    reloadData: "Obnovit data",
     customizeHomeAria: "Přizpůsobit domovskou stránku",
     customizeTitle: "Přizpůsobení domova",
     customizeButtonTitle: "Přizpůsobit",
@@ -587,6 +589,7 @@ export default function HomePage() {
   const [goldLoading, setGoldLoading] = useState(false);
   const [goldError, setGoldError] = useState<string | null>(null);
   const [goldReloadKey, setGoldReloadKey] = useState(0);
+  const [homeReloadKey, setHomeReloadKey] = useState(0);
   const [goldData, setGoldData] = useState<{
     czkPerOz: number;
     ts: number;
@@ -637,12 +640,14 @@ export default function HomePage() {
     email: advisorDataEmail,
     loadPersonalHistory: false,
     loadTeamHistory: shouldLoadAdvisorHome && homeWidgets.teamLeaderboard,
+    reloadKey: homeReloadKey,
   });
   const { loading: cashflowLoading, cashflowItems } = useCashflowData({
     userEmail: advisorDataEmail,
     scopeFilter: "combined",
     productFilter: "all",
     enabled: shouldLoadExpectedPayout,
+    reloadKey: homeReloadKey,
   });
   const [commissionStatements, setCommissionStatements] = useState<
     CashflowCommissionStatementSummary[]
@@ -704,7 +709,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [shouldLoadExpectedPayout, user]);
+  }, [homeReloadKey, shouldLoadExpectedPayout, user]);
 
   const now = new Date();
   const monthLabel = formatHomeMonthLabel(now, language);
@@ -931,6 +936,13 @@ export default function HomePage() {
   };
 
   const refreshGoldWidget = () => {
+    setGoldReloadKey((k) => k + 1);
+  };
+
+  const refreshHomeData = () => {
+    if (!advisorDataEmail) return;
+    invalidateHomeCache(advisorDataEmail);
+    setHomeReloadKey((k) => k + 1);
     setGoldReloadKey((k) => k + 1);
   };
 
@@ -1185,6 +1197,12 @@ export default function HomePage() {
   const goldChangeAbs =
     goldData?.czkPerOz && goldChangePct != null ? (goldData.czkPerOz * goldChangePct) / 100 : null;
   const goldDir = goldChangePct == null ? "flat" : goldChangePct > 0 ? "up" : goldChangePct < 0 ? "down" : "flat";
+  const homeRefreshBusy =
+    summaryLoading ||
+    historyLoading ||
+    cashflowLoading ||
+    commissionStatementsLoading ||
+    goldLoading;
 
   const expectedPayoutStatementsByMonthKey = useMemo(() => {
     const map: Record<string, CashflowCommissionStatementSummary[]> = {};
@@ -1795,6 +1813,21 @@ export default function HomePage() {
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SplitTextHeading text={`${copy.homeHeadingPrefix} ${monthLabelCapitalized} ${year}`} />
           <div className="self-start flex items-center gap-3">
+            <button
+              type="button"
+              onClick={refreshHomeData}
+              disabled={!advisorDataEmail || homeRefreshBusy}
+              className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-900 bg-white text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.12)] transition hover:scale-[1.03] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 sm:hidden"
+              aria-label={copy.reloadData}
+              title={copy.reloadData}
+            >
+              <RefreshCw
+                size={20}
+                aria-hidden="true"
+                className={homeRefreshBusy ? "animate-spin" : ""}
+              />
+            </button>
+
             <button
               type="button"
               onClick={() => setPortalLinksModalOpen(true)}

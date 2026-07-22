@@ -25,8 +25,11 @@ export type CppAutoPdfResult = {
   carHullRiskAnimalCollision?: boolean | null;
   carAssistancePlan?: string | null;
   carAddonEso?: boolean | null;
+  carAddonNaturalRisks?: boolean | null;
   carAddonGlass?: boolean | null;
   carAddonGlassLimit?: number | null;
+  carAddonAnimalCollision?: boolean | null;
+  carAddonAnimalCollisionLimit?: number | null;
 };
 
 type PositionedTextItem = {
@@ -581,6 +584,32 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   }
 
   result.carAddonEso = /pojisteni\s+eso/i.test(ascii);
+
+  const naturalRisksSectionStarts = findLabelIndexes(
+    asciiLines,
+    /^pojisteni\s+prirodnich\s+rizik\b/i
+  );
+  result.carAddonNaturalRisks =
+    naturalRisksSectionStarts.length > 0 || /^pojisteni\s+prirodnich\s+rizik\b/im.test(ascii);
+  for (const sectionStart of naturalRisksSectionStarts) {
+    const naturalRisksLimit = parseAmount(
+      readSectionValue(lines, asciiLines, sectionStart, /^limit\s+plneni\b/i, 6, 45)
+    );
+    if (naturalRisksLimit != null && naturalRisksLimit > 0) {
+      result.carAddonAnimalCollisionLimit = naturalRisksLimit;
+    }
+
+    const sectionText = asciiLines
+      .slice(sectionStart, Math.min(asciiLines.length, sectionStart + 45))
+      .join(" ");
+    if (/\bminippr\b/i.test(sectionText) || /stret\s+se\s+zv(?:iretem|eri)\b/i.test(sectionText)) {
+      result.carAddonAnimalCollision = true;
+    }
+
+    if (result.carAddonAnimalCollision || result.carAddonAnimalCollisionLimit != null) {
+      break;
+    }
+  }
 
   const glassSectionStarts = findLabelIndexes(asciiLines, /pojisteni\s+skel\s+vozidla/i);
   result.carAddonGlass =

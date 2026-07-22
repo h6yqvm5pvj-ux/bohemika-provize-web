@@ -44,6 +44,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/documents/file": ["./private/dokumenty/**/*"],
     "/api/documents/neon": ["./private/dokumenty/**/*"],
+    "/api/admin/data-health": ["./firestore.rules"],
   },
   async headers() {
     return [

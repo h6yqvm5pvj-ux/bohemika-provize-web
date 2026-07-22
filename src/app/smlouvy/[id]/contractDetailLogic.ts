@@ -20,35 +20,6 @@ export const LIFE_PRODUCT_KEYS = new Set<Product>([
   "pillowInjury",
 ]);
 
-export const ALLIANZ_PAYMENT_CHECK_URL =
-  "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
-export const SLAVIA_PAYMENT_CHECK_URL = "https://www.slavia-pojistovna.cz/over-ps/";
-export const CPP_PAYMENT_CHECK_URL =
-  "https://insure.cpp.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml#kotva";
-export const KOOPERATIVA_PAYMENT_CHECK_URL =
-  "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
-export const CPP_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
-  "neon",
-  "zamex",
-  "domex",
-  "cpphafan",
-  "cppsimplex",
-  "cppAuto",
-  "cppPPRs",
-  "cppPPRbez",
-  "cppcestovko",
-]);
-export const KOOPERATIVA_PAYMENT_CHECK_PRODUCTS = new Set<Product>([
-  "flexi",
-  "koopmajetekobcan",
-  "koopfit",
-  "koopodzam",
-  "kooppmop",
-  "kooperativaAuto",
-  "koopflotila",
-  "koopcestovko",
-]);
-
 export type ContractsApiError = Error & { status?: number };
 
 export type ContractsApiResponseBase = {
