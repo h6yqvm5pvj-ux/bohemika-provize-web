@@ -577,6 +577,10 @@ function isRefreshContract(contract: ContractDoc | null | undefined): boolean {
   return Boolean(contract.refreshCommissionBase);
 }
 
+function originalReplacementLabel(product?: Product | null): string {
+  return product === "neon" ? "Refresh" : "Náhrada";
+}
+
 function formatDaysLeft(days: number): string {
   if (days === 1) return "1 den";
   if (days >= 2 && days <= 4) return `${days} dny`;
@@ -2752,7 +2756,7 @@ function ContractsPageContent() {
                 }`}
               >
                 <RefreshCw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Refresh</span>
+                <span>Refresh/Náhrada</span>
               </button>
 
               <div
@@ -2915,9 +2919,9 @@ function ContractsPageContent() {
                 </>
               ) : showRefreshOnly ? (
                 <>
-                  <p className="font-medium">Žádné Refresh smlouvy</p>
+                  <p className="font-medium">Žádné navazující smlouvy</p>
                   <p className="text-xs text-slate-500">
-                    V aktuálním výběru nejsou žádné smlouvy označené jako Refresh.
+                    V aktuálním výběru nejsou žádné smlouvy označené jako Refresh nebo Náhrada.
                   </p>
                 </>
               ) : commissionAuditActive ? (
@@ -3030,12 +3034,10 @@ function ContractsPageContent() {
                     : "";
                 const premiumDisplay = premiumDisplayForContract(c as ContractDoc);
                 const isEndorsement = c.entryType === "endorsement";
-                const isRefreshContract =
-                  (c as ContractDoc).isRefresh === true ||
-                  Boolean(
-                    typeof (c as ContractDoc).refreshOriginalContractNumber === "string" &&
-                      (c as ContractDoc).refreshOriginalContractNumber?.trim()
-                  );
+                const hasOriginalReplacement = isRefreshContract(c as ContractDoc);
+                const originalReplacementBadgeLabel = originalReplacementLabel(
+                  (c as ContractDoc).productKey
+                );
                 const premiumDelta = endorsementDeltaAmount(c as ContractDoc);
                 const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
                 const isStorno = lifecycleStatus === "storno";
@@ -3117,9 +3119,9 @@ function ContractsPageContent() {
                                   Dodatek
                                 </span>
                               ) : null}
-                              {isRefreshContract ? (
+                              {hasOriginalReplacement ? (
                                 <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
-                                  Refresh
+                                  {originalReplacementBadgeLabel}
                                 </span>
                               ) : null}
                               {groupedEndorsementCount > 0 ? (
@@ -3284,9 +3286,9 @@ function ContractsPageContent() {
                               Dodatek
                             </span>
                           )}
-                          {isRefreshContract && (
+                          {hasOriginalReplacement && (
                             <span className="inline-flex items-center rounded-full border border-indigo-300/45 bg-indigo-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-100">
-                              Refresh
+                              {originalReplacementBadgeLabel}
                             </span>
                           )}
                           {groupedEndorsementCount > 0 && (

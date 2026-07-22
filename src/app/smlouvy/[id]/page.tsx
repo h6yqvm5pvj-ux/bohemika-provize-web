@@ -131,6 +131,10 @@ const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
 const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = true;
 
+function originalReplacementLabel(product?: Product | null): string {
+  return product === "neon" ? "Refresh" : "Náhrada";
+}
+
 const normalizeCppExtranetParam = (
   value: string | number | null | undefined
 ): string | null => {
@@ -1220,6 +1224,9 @@ export default function ContractDetailPage() {
       : "";
   const isRefreshContract =
     contract?.isRefresh === true || refreshOriginalContractNumber.length > 0;
+  const originalReplacementLabelText = originalReplacementLabel(
+    contract?.productKey
+  );
   const refreshOriginalMissingInSystem =
     contract?.refreshOriginalMissingInSystem === true;
   const hasProvisionalRefreshCalculation =
@@ -5292,20 +5299,24 @@ export default function ContractDetailPage() {
                       {isRefreshContract && (
                         <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3">
                           <div className="flex justify-between gap-2">
-                          <dt className={keyValueLabelClass}>Refresh</dt>
-                          <dd className={`${keyValueValueClass} max-w-[70%] text-right text-sm leading-snug`}>
-                            <span className="block">Tato smlouva je označena jako Refresh.</span>
-                            {refreshOriginalContractNumber && (
-                              <span className="mt-1 block text-xs text-slate-500">
-                                Původní č. smlouvy: {refreshOriginalContractNumber}
+                            <dt className={keyValueLabelClass}>
+                              {originalReplacementLabelText}
+                            </dt>
+                            <dd className={`${keyValueValueClass} max-w-[70%] text-right text-sm leading-snug`}>
+                              <span className="block">
+                                Tato smlouva je označena jako {originalReplacementLabelText}.
                               </span>
-                            )}
-                            {refreshOriginalMissingInSystem && (
-                              <span className="mt-1 block text-xs text-amber-700">
-                                Původní smlouva není v systému.
-                              </span>
-                            )}
-                          </dd>
+                              {refreshOriginalContractNumber && (
+                                <span className="mt-1 block text-xs text-slate-500">
+                                  Původní č. smlouvy: {refreshOriginalContractNumber}
+                                </span>
+                              )}
+                              {refreshOriginalMissingInSystem && (
+                                <span className="mt-1 block text-xs text-amber-700">
+                                  Původní smlouva není v systému.
+                                </span>
+                              )}
+                            </dd>
                           </div>
                           {hasProvisionalRefreshCalculation && (
                             <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-900">
@@ -5316,7 +5327,10 @@ export default function ContractDetailPage() {
                                 aria-hidden="true"
                               />
                               <span>
-                                Provize je zatím orientační. U REFRESH smlouvy bez původní smlouvy v systému se správná základna musí sladit podle provizního výpisu.
+                                Provize je zatím orientační. U smlouvy typu{" "}
+                                {originalReplacementLabelText} bez původní smlouvy v
+                                systému se správná základna musí sladit podle provizního
+                                výpisu.
                               </span>
                             </div>
                           )}
@@ -5396,10 +5410,11 @@ export default function ContractDetailPage() {
                       )}
                       {(contract?.refreshReplacedBySignedDate || hasRefreshReplacement) && (
                         <div className="flex justify-between gap-2">
-                          <dt className={keyValueLabelClass}>Navazující refresh</dt>
+                          <dt className={keyValueLabelClass}>Navazující smlouva</dt>
                           <dd className={`${keyValueValueClass} max-w-[70%] text-right text-sm leading-snug`}>
                             <span className="block">
-                              Na tuto smlouvu byl sjednán Refresh dne{" "}
+                              Na tuto smlouvu navazuje smlouva typu{" "}
+                              {originalReplacementLabelText} ze dne{" "}
                               {refreshReplacementSignedLabel !== "—"
                                 ? refreshReplacementSignedLabel
                                 : "—"}
