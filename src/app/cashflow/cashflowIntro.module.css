@@ -90,175 +90,616 @@
   will-change: transform, opacity, filter;
 }
 
-.loadingShell {
+.initialLoaderShell {
   position: relative;
-  overflow: hidden;
   background: linear-gradient(
     145deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(248, 250, 252, 0.95) 58%,
-    rgba(241, 245, 249, 0.93) 100%
+    #ffffff 0%,
+    #fbfbfb 48%,
+    #fdf2f8 100%
   );
+  isolation: isolate;
 }
 
-.loadingShell::before {
+.initialLoaderShell::before {
   content: "";
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-  background-size: 28px 28px;
-  opacity: 0.44;
+  background:
+    linear-gradient(
+      116deg,
+      transparent 0%,
+      transparent 36%,
+      rgba(217, 70, 239, 0.09) 36%,
+      rgba(217, 70, 239, 0.03) 58%,
+      transparent 58%,
+      transparent 100%
+    ),
+    linear-gradient(
+      174deg,
+      rgba(2, 6, 23, 0.035) 0%,
+      transparent 28%,
+      transparent 100%
+    );
   pointer-events: none;
 }
 
-.loadingAuraA,
-.loadingAuraB {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(44px);
-  opacity: 0.56;
-  pointer-events: none;
-  animation: cashflowLoaderDrift 11s ease-in-out infinite;
-}
-
-.loadingAuraA {
-  width: 17rem;
-  height: 17rem;
-  top: -7rem;
-  left: -4rem;
-  background: radial-gradient(circle at 35% 35%, #22d3ee 0%, #0ea5e9 52%, #2563eb 100%);
-}
-
-.loadingAuraB {
-  width: 14rem;
-  height: 14rem;
-  right: -5rem;
-  bottom: -6rem;
-  background: radial-gradient(circle at 45% 38%, #34d399 0%, #10b981 52%, #0f766e 100%);
-  animation-delay: -5.5s;
-}
-
-.loadingSweep {
-  position: absolute;
-  inset: -42% -10% auto;
-  height: 78%;
-  background: linear-gradient(
-    108deg,
-    transparent 16%,
-    rgba(255, 255, 255, 0.7) 38%,
-    rgba(186, 230, 253, 0.45) 50%,
-    transparent 74%
-  );
-  opacity: 0;
-  transform: translate3d(-112%, 0, 0) rotate(7deg);
-  pointer-events: none;
-  animation: cashflowLoaderSweep 2200ms cubic-bezier(0.2, 0.8, 0.22, 1) infinite;
-}
-
-.loadingProgress {
-  position: relative;
-  height: 0.5rem;
-  border-radius: 9999px;
-  background: rgba(148, 163, 184, 0.28);
-  overflow: hidden;
-}
-
-.loadingProgress::before {
+.initialLoaderShell::after {
   content: "";
   position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), transparent);
-}
-
-.loadingProgress::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  transform: translateX(-68%);
-  background: linear-gradient(
-    90deg,
-    rgba(6, 182, 212, 0.9) 0%,
-    rgba(59, 130, 246, 0.88) 52%,
-    rgba(16, 185, 129, 0.9) 100%
-  );
-  animation: cashflowLoaderProgress 1300ms cubic-bezier(0.24, 0.88, 0.34, 1) infinite;
-}
-
-.loadingEngine {
-  position: relative;
-  width: 10.5rem;
-  height: 10.5rem;
-  display: grid;
-  place-items: center;
-}
-
-.loadingRing {
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  border: 2px solid rgba(15, 23, 42, 0.12);
-  border-top-color: rgba(14, 165, 233, 0.94);
-  border-left-color: rgba(59, 130, 246, 0.8);
-  box-shadow: 0 0 42px rgba(14, 165, 233, 0.24);
-  animation: cashflowLoaderSpin 2200ms linear infinite;
-}
-
-.loadingRingSecondary {
-  inset: 0.9rem;
-  border-color: rgba(15, 23, 42, 0.14);
-  border-bottom-color: rgba(16, 185, 129, 0.95);
-  border-right-color: rgba(5, 150, 105, 0.78);
-  animation-duration: 1700ms;
-  animation-direction: reverse;
-}
-
-.loadingCore {
-  position: relative;
-  width: 4rem;
-  height: 4rem;
-  border-radius: 9999px;
-  background: radial-gradient(
-    circle at 34% 30%,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(219, 234, 254, 0.95) 48%,
-    rgba(147, 197, 253, 0.88) 100%
-  );
-  box-shadow:
-    0 0 0 1px rgba(59, 130, 246, 0.2),
-    0 0 34px rgba(59, 130, 246, 0.38);
-  animation: cashflowLoaderPulse 1200ms ease-in-out infinite;
-}
-
-.loadingCore::after {
-  content: "";
-  position: absolute;
-  inset: -0.55rem;
-  border-radius: inherit;
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  opacity: 0.8;
-  animation: cashflowLoaderPulseRing 1200ms ease-out infinite;
-}
-
-.loadingSkeletonCard {
-  position: relative;
-  overflow: hidden;
-}
-
-.loadingSkeletonCard::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-120%);
+  inset: auto -10% -1px;
+  height: 38%;
   background: linear-gradient(
     112deg,
-    transparent 10%,
-    rgba(255, 255, 255, 0.5) 48%,
-    transparent 84%
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(253, 244, 255, 0.74) 42%,
+    rgba(217, 70, 239, 0.12) 100%
   );
-  animation: cashflowLoaderShimmer 1550ms ease-in-out infinite;
+  clip-path: polygon(0 46%, 100% 12%, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+
+.initialLoaderBeam {
+  position: absolute;
+  inset: -30% -18% auto;
+  height: 58%;
+  background: linear-gradient(
+    108deg,
+    transparent 18%,
+    rgba(255, 255, 255, 0.82) 39%,
+    rgba(217, 70, 239, 0.12) 50%,
+    transparent 72%
+  );
+  pointer-events: none;
+  transform: translate3d(-106%, 0, 0) rotate(6deg);
+  animation: cashflowInitialBeam 2600ms cubic-bezier(0.2, 0.82, 0.28, 1) infinite;
+}
+
+.initialLoaderStage {
+  animation: cashflowInitialStage 420ms cubic-bezier(0.2, 0.82, 0.24, 1) both;
+}
+
+.initialLoaderProgress {
+  position: relative;
+  height: 1.25rem;
+  max-width: 48rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background:
+    linear-gradient(90deg, rgba(2, 6, 23, 0.11), rgba(255, 255, 255, 0.72)),
+    rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(2, 6, 23, 0.14),
+    0 18px 42px rgba(162, 28, 175, 0.11);
+}
+
+.initialLoaderProgressFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 1.6rem;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    #020617 0%,
+    #a21caf 54%,
+    #e879f9 100%
+  );
+  box-shadow:
+    0 0 28px rgba(217, 70, 239, 0.28),
+    0 0 42px rgba(162, 28, 175, 0.17);
+  transition: width 360ms cubic-bezier(0.2, 0.82, 0.24, 1);
+}
+
+.initialLoaderProgressFill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.28) 0,
+    rgba(255, 255, 255, 0.28) 0.55rem,
+    transparent 0.55rem,
+    transparent 1.1rem
+  );
+  animation: cashflowInitialStripes 720ms linear infinite;
+}
+
+.initialLoaderConsole {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  min-height: 25rem;
+  border: 1px solid rgba(2, 6, 23, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 1.35rem;
+  box-shadow:
+    0 26px 62px rgba(2, 6, 23, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(18px);
+}
+
+.initialLoaderConsole::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgba(2, 6, 23, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(2, 6, 23, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+}
+
+.initialLoaderChart {
+  position: relative;
+  z-index: 1;
+  margin-top: 1.2rem;
+  min-height: 20rem;
+  overflow: hidden;
+  border-radius: 26px;
+  border: 1px solid rgba(2, 6, 23, 0.1);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(253, 244, 255, 0.46)),
+    rgba(255, 255, 255, 0.5);
+  padding: 1.25rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 20px 44px rgba(2, 6, 23, 0.1);
+}
+
+.initialLoaderChart::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgba(2, 6, 23, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(2, 6, 23, 0.055) 1px, transparent 1px);
+  background-size: 34px 34px;
+  pointer-events: none;
+}
+
+.initialLoaderChartBars {
+  position: absolute;
+  inset: auto 1.25rem 1.2rem 1.25rem;
+  z-index: 1;
+  display: grid;
+  height: 13rem;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.initialLoaderChartBars span {
+  display: block;
+  border-radius: 9999px 9999px 0.45rem 0.45rem;
+  background: linear-gradient(180deg, rgba(217, 70, 239, 0.62), rgba(2, 6, 23, 0.88));
+  box-shadow: 0 12px 24px rgba(162, 28, 175, 0.16);
+  transform-origin: bottom center;
+  animation: cashflowInitialChartBar 1300ms ease-in-out infinite;
+  animation-delay: calc(var(--cf-bar) * -110ms);
+}
+
+.initialLoaderChartSvg {
+  position: absolute;
+  inset: 5.6rem 1rem 1rem;
+  z-index: 2;
+  overflow: visible;
+  filter: drop-shadow(0 14px 24px rgba(162, 28, 175, 0.22));
+}
+
+.initialLoaderChartStroke {
+  stroke-dasharray: 720;
+  stroke-dashoffset: 720;
+  animation: cashflowInitialChartLine 1800ms cubic-bezier(0.18, 0.82, 0.24, 1) infinite;
+}
+
+.initialLoaderGrowthArrow {
+  position: relative;
+  z-index: 3;
+  width: 4.6rem;
+  height: 4.6rem;
+  color: #16a34a;
+  filter: drop-shadow(0 10px 18px rgba(22, 163, 74, 0.24));
+  animation: cashflowInitialGrowthArrow 1200ms ease-in-out infinite;
+}
+
+.statementLoaderDropZone {
+  position: relative;
+  z-index: 1;
+  margin-top: 1.2rem;
+  min-height: 20rem;
+  overflow: hidden;
+  border-radius: 26px;
+  border: 1px solid rgba(2, 6, 23, 0.1);
+  background:
+    radial-gradient(circle at 50% 86%, rgba(217, 70, 239, 0.18), transparent 42%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(253, 244, 255, 0.58));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 20px 44px rgba(2, 6, 23, 0.1);
+}
+
+.statementLoaderDropZone::before {
+  content: "";
+  position: absolute;
+  inset: 1.2rem 1.2rem auto;
+  height: 7.5rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    180deg,
+    rgba(217, 70, 239, 0.12),
+    rgba(255, 255, 255, 0)
+  );
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.statementLoaderDropZone::after {
+  content: "";
+  position: absolute;
+  inset: auto 12% 1.35rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.14);
+  filter: blur(14px);
+  pointer-events: none;
+}
+
+.statementLoaderPaper {
+  position: absolute;
+  top: -7.2rem;
+  z-index: 4;
+  display: flex;
+  height: 6.9rem;
+  width: 5.1rem;
+  flex-direction: column;
+  gap: 0.46rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(2, 6, 23, 0.14);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(252, 244, 255, 0.95));
+  padding: 1.1rem 0.72rem 0.72rem;
+  box-shadow:
+    0 18px 36px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  transform-origin: center 72%;
+  animation: statementPaperFall 2300ms cubic-bezier(0.18, 0.82, 0.28, 1) infinite;
+}
+
+.statementLoaderPaper::before {
+  content: "";
+  position: absolute;
+  right: 0.58rem;
+  top: 0.58rem;
+  height: 1rem;
+  width: 1rem;
+  border-radius: 0.28rem;
+  background: linear-gradient(135deg, rgba(217, 70, 239, 0.42), rgba(255, 255, 255, 0.9));
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+
+.statementLoaderPaper span {
+  display: block;
+  height: 0.42rem;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.16);
+}
+
+.statementLoaderPaper span:first-child {
+  width: 68%;
+  background: rgba(217, 70, 239, 0.6);
+}
+
+.statementLoaderPaper span:nth-child(2) {
+  width: 100%;
+}
+
+.statementLoaderPaper span:nth-child(3) {
+  width: 78%;
+}
+
+.statementLoaderPaper:nth-child(1) {
+  left: 9%;
+  --statement-paper-drift: 2.1rem;
+  --statement-paper-start-rotate: -9deg;
+  --statement-paper-rotate: 10deg;
+  animation-delay: -180ms;
+}
+
+.statementLoaderPaper:nth-child(2) {
+  left: 28%;
+  --statement-paper-drift: -1.2rem;
+  --statement-paper-start-rotate: 7deg;
+  --statement-paper-rotate: -8deg;
+  animation-delay: -620ms;
+}
+
+.statementLoaderPaper:nth-child(3) {
+  left: 47%;
+  --statement-paper-drift: 0.8rem;
+  --statement-paper-start-rotate: -6deg;
+  --statement-paper-rotate: 6deg;
+  animation-delay: -1080ms;
+}
+
+.statementLoaderPaper:nth-child(4) {
+  left: 64%;
+  --statement-paper-drift: -2rem;
+  --statement-paper-start-rotate: 10deg;
+  --statement-paper-rotate: -11deg;
+  animation-delay: -1480ms;
+}
+
+.statementLoaderPaper:nth-child(5) {
+  left: 78%;
+  --statement-paper-drift: 1rem;
+  --statement-paper-start-rotate: -7deg;
+  --statement-paper-rotate: 8deg;
+  animation-delay: -1900ms;
+}
+
+.statementLoaderPile {
+  position: absolute;
+  right: 12%;
+  bottom: 2.15rem;
+  left: 12%;
+  z-index: 3;
+  height: var(--statement-pile-height, 8rem);
+  max-height: 10.8rem;
+  transition: height 360ms cubic-bezier(0.2, 0.82, 0.24, 1);
+}
+
+.statementLoaderPile > span {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 4.7rem;
+  flex-direction: column;
+  gap: 0.45rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(2, 6, 23, 0.12);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(252, 244, 255, 0.96));
+  padding: 0.9rem 1rem;
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform-origin: center bottom;
+  animation: statementPileSheetIn 420ms cubic-bezier(0.2, 0.82, 0.24, 1) both;
+}
+
+.statementLoaderPile > span > span {
+  display: block;
+  height: 0.42rem;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.15);
+}
+
+.statementLoaderPile > span > span:first-child {
+  width: 42%;
+  background: rgba(217, 70, 239, 0.62);
+}
+
+.statementLoaderPile > span > span:nth-child(2) {
+  width: 74%;
+}
+
+.teamLoaderNetwork {
+  --team-loader-progress: 50%;
+  position: relative;
+  z-index: 1;
+  margin-top: 1.2rem;
+  min-height: 20rem;
+  overflow: hidden;
+  border-radius: 26px;
+  border: 1px solid rgba(2, 6, 23, 0.1);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(253, 244, 255, 0.56)),
+    rgba(255, 255, 255, 0.56);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 20px 44px rgba(2, 6, 23, 0.1);
+}
+
+.teamLoaderNetwork::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgba(2, 6, 23, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(2, 6, 23, 0.04) 1px, transparent 1px);
+  background-size: 34px 34px;
+  pointer-events: none;
+}
+
+.teamLoaderNetwork::after {
+  content: "";
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  bottom: 1.55rem;
+  height: 1.2rem;
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.16);
+  filter: blur(15px);
+  pointer-events: none;
+}
+
+.teamLoaderConnection {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  height: 3px;
+  width: var(--team-line-width, 9rem);
+  border-radius: 9999px;
+  background: linear-gradient(90deg, rgba(2, 6, 23, 0.22), rgba(217, 70, 239, 0.72));
+  box-shadow: 0 0 18px rgba(217, 70, 239, 0.18);
+  opacity: 0;
+  transform: rotate(var(--team-line-rotate, 0deg)) scaleX(0);
+  transform-origin: left center;
+  animation: teamLoaderLineDraw 1700ms cubic-bezier(0.18, 0.82, 0.24, 1) infinite;
+  animation-delay: var(--team-line-delay, 0ms);
+}
+
+.teamLoaderConnectionA {
+  --team-line-width: 8.8rem;
+  --team-line-rotate: -143deg;
+  --team-line-delay: -80ms;
+}
+
+.teamLoaderConnectionB {
+  --team-line-width: 8.6rem;
+  --team-line-rotate: -95deg;
+  --team-line-delay: -260ms;
+}
+
+.teamLoaderConnectionC {
+  --team-line-width: 8.5rem;
+  --team-line-rotate: -35deg;
+  --team-line-delay: -440ms;
+}
+
+.teamLoaderConnectionD {
+  --team-line-width: 8.7rem;
+  --team-line-rotate: 35deg;
+  --team-line-delay: -620ms;
+}
+
+.teamLoaderConnectionE {
+  --team-line-width: 8.4rem;
+  --team-line-rotate: 93deg;
+  --team-line-delay: -800ms;
+}
+
+.teamLoaderConnectionF {
+  --team-line-width: 8.9rem;
+  --team-line-rotate: 143deg;
+  --team-line-delay: -980ms;
+}
+
+.teamLoaderNode {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  height: 3.55rem;
+  width: 3.55rem;
+  place-items: center;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(2, 6, 23, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  color: #020617;
+  font-size: 0.82rem;
+  font-weight: 800;
+  box-shadow:
+    0 14px 28px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  animation: teamLoaderNodePulse 1900ms ease-in-out infinite;
+  animation-delay: var(--team-node-delay, 0ms);
+}
+
+.teamLoaderLead {
+  left: 50%;
+  top: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: center;
+  justify-content: center;
+  height: 4.55rem;
+  width: 4.55rem;
+  transform: translate(-50%, -50%);
+  border-color: rgba(217, 70, 239, 0.34);
+  background:
+    linear-gradient(135deg, #020617 0%, #111827 58%, #a21caf 100%);
+  color: #fff;
+  box-shadow:
+    0 22px 42px rgba(15, 23, 42, 0.2),
+    0 0 0 8px rgba(217, 70, 239, 0.08);
+}
+
+.teamLoaderLead > span {
+  font-size: 0.7rem;
+}
+
+.teamLoaderNodeA {
+  left: 18%;
+  top: 18%;
+  --team-node-delay: -100ms;
+}
+
+.teamLoaderNodeB {
+  left: 46%;
+  top: 9%;
+  --team-node-delay: -260ms;
+}
+
+.teamLoaderNodeC {
+  right: 15%;
+  top: 24%;
+  --team-node-delay: -420ms;
+}
+
+.teamLoaderNodeD {
+  right: 17%;
+  bottom: 24%;
+  --team-node-delay: -580ms;
+}
+
+.teamLoaderNodeE {
+  left: 47%;
+  bottom: 12%;
+  --team-node-delay: -740ms;
+}
+
+.teamLoaderNodeF {
+  left: 16%;
+  bottom: 26%;
+  --team-node-delay: -900ms;
+}
+
+.teamLoaderRoster {
+  position: absolute;
+  right: 1.2rem;
+  bottom: 1.1rem;
+  left: 1.2rem;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.teamLoaderRoster > span {
+  display: flex;
+  min-height: 3rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(2, 6, 23, 0.1);
+  background: rgba(255, 255, 255, 0.84);
+  padding: 0.65rem;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.09);
+  animation: teamLoaderRosterCard 1600ms cubic-bezier(0.18, 0.82, 0.24, 1) infinite;
+  animation-delay: calc(var(--team-card-index) * -180ms);
+}
+
+.teamLoaderRoster > span > span {
+  display: block;
+  height: 0.42rem;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.16);
+}
+
+.teamLoaderRoster > span > span:first-child {
+  width: 42%;
+  background: rgba(217, 70, 239, 0.58);
+}
+
+.teamLoaderRoster > span > span:nth-child(2) {
+  width: 78%;
 }
 
 @keyframes cashflowReveal {
@@ -324,83 +765,151 @@
   }
 }
 
-@keyframes cashflowLoaderSweep {
+@keyframes cashflowInitialBeam {
   0% {
     opacity: 0;
-    transform: translate3d(-112%, 0, 0) rotate(7deg);
+    transform: translate3d(-106%, 0, 0) rotate(6deg);
   }
   22% {
-    opacity: 0.82;
+    opacity: 0.78;
   }
   100% {
     opacity: 0;
-    transform: translate3d(118%, 0, 0) rotate(7deg);
+    transform: translate3d(116%, 0, 0) rotate(6deg);
   }
 }
 
-@keyframes cashflowLoaderDrift {
+@keyframes cashflowInitialStage {
   0% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(1.8rem, -1.6rem, 0) scale(1.08);
+    opacity: 0;
+    transform: translate3d(0, 0.5rem, 0);
   }
   100% {
-    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 }
 
-@keyframes cashflowLoaderProgress {
+@keyframes cashflowInitialStripes {
   0% {
-    transform: translateX(-68%);
+    transform: translateX(-1.1rem);
   }
   100% {
-    transform: translateX(72%);
+    transform: translateX(0);
   }
 }
 
-@keyframes cashflowLoaderSpin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes cashflowLoaderPulse {
+@keyframes cashflowInitialChartBar {
   0%,
   100% {
-    transform: scale(0.95);
-    box-shadow:
-      0 0 0 1px rgba(59, 130, 246, 0.2),
-      0 0 30px rgba(59, 130, 246, 0.32);
+    opacity: 0.74;
+    transform: scaleY(0.82);
   }
   50% {
-    transform: scale(1.06);
-    box-shadow:
-      0 0 0 1px rgba(59, 130, 246, 0.3),
-      0 0 42px rgba(34, 211, 238, 0.48);
+    opacity: 1;
+    transform: scaleY(1);
   }
 }
 
-@keyframes cashflowLoaderPulseRing {
+@keyframes cashflowInitialChartLine {
   0% {
-    transform: scale(0.82);
-    opacity: 0.72;
+    opacity: 0.28;
+    stroke-dashoffset: 720;
   }
+  62%,
   100% {
-    transform: scale(1.14);
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cashflowInitialGrowthArrow {
+  0%,
+  100% {
+    transform: translate3d(-0.18rem, 0.18rem, 0) scale(0.96);
+  }
+  50% {
+    transform: translate3d(0.24rem, -0.24rem, 0) scale(1.06);
+  }
+}
+
+@keyframes statementPaperFall {
+  0% {
     opacity: 0;
+    transform: translate3d(0, -1.6rem, 0) rotate(var(--statement-paper-start-rotate, -8deg)) scale(0.94);
+  }
+  12% {
+    opacity: 1;
+  }
+  74% {
+    opacity: 1;
+    transform: translate3d(var(--statement-paper-drift, 1rem), 17rem, 0) rotate(var(--statement-paper-rotate, 8deg)) scale(1);
+  }
+  86% {
+    opacity: 0.82;
+    transform: translate3d(var(--statement-paper-drift, 1rem), 17.8rem, 0) rotate(var(--statement-paper-rotate, 8deg)) scale(0.96);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--statement-paper-drift, 1rem), 18.4rem, 0) rotate(var(--statement-paper-rotate, 8deg)) scale(0.9);
   }
 }
 
-@keyframes cashflowLoaderShimmer {
+@keyframes statementPileSheetIn {
   0% {
-    transform: translateX(-120%);
+    opacity: 0;
+    filter: blur(4px);
   }
   100% {
-    transform: translateX(120%);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes teamLoaderLineDraw {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--team-line-rotate, 0deg)) scaleX(0);
+  }
+  28% {
+    opacity: 0.85;
+  }
+  62% {
+    opacity: 1;
+    transform: rotate(var(--team-line-rotate, 0deg)) scaleX(1);
+  }
+  100% {
+    opacity: 0.45;
+    transform: rotate(var(--team-line-rotate, 0deg)) scaleX(1);
+  }
+}
+
+@keyframes teamLoaderNodePulse {
+  0%,
+  100% {
+    filter: none;
+    box-shadow:
+      0 14px 28px rgba(15, 23, 42, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  }
+  50% {
+    filter: saturate(1.18);
+    box-shadow:
+      0 18px 34px rgba(15, 23, 42, 0.14),
+      0 0 0 7px rgba(217, 70, 239, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+}
+
+@keyframes teamLoaderRosterCard {
+  0%,
+  100% {
+    opacity: 0.76;
+    transform: translate3d(0, 0.25rem, 0);
+  }
+  50% {
+    opacity: 1;
+    transform: translate3d(0, -0.08rem, 0);
   }
 }
 
@@ -418,19 +927,55 @@
     animation-duration: 980ms;
   }
 
-  .loadingAuraA,
-  .loadingAuraB {
-    filter: blur(34px);
+  .initialLoaderConsole {
+    min-height: 21rem;
   }
 
-  .loadingEngine {
-    width: 8.7rem;
-    height: 8.7rem;
+  .initialLoaderChart {
+    min-height: 16rem;
   }
 
-  .loadingCore {
-    width: 3.3rem;
-    height: 3.3rem;
+  .initialLoaderChartBars {
+    height: 10rem;
+  }
+
+  .statementLoaderDropZone {
+    min-height: 16rem;
+  }
+
+  .statementLoaderPaper {
+    height: 5.8rem;
+    width: 4.35rem;
+  }
+
+  .statementLoaderPile {
+    right: 8%;
+    left: 8%;
+    max-height: 8.8rem;
+  }
+
+  .teamLoaderNetwork {
+    min-height: 16rem;
+  }
+
+  .teamLoaderNode {
+    height: 3rem;
+    width: 3rem;
+    border-radius: 1rem;
+    font-size: 0.72rem;
+  }
+
+  .teamLoaderLead {
+    height: 3.85rem;
+    width: 3.85rem;
+  }
+
+  .teamLoaderRoster {
+    grid-template-columns: 1fr;
+  }
+
+  .teamLoaderRoster > span:nth-child(n + 2) {
+    display: none;
   }
 }
 
@@ -451,14 +996,16 @@
     opacity: 0;
   }
 
-  .loadingAuraA,
-  .loadingAuraB,
-  .loadingSweep,
-  .loadingProgress::after,
-  .loadingRing,
-  .loadingCore,
-  .loadingCore::after,
-  .loadingSkeletonCard::after {
+  .initialLoaderBeam,
+  .initialLoaderProgressFill::after,
+  .initialLoaderChartBars span,
+  .initialLoaderChartStroke,
+  .initialLoaderGrowthArrow,
+  .statementLoaderPaper,
+  .statementLoaderPile > span,
+  .teamLoaderConnection,
+  .teamLoaderNode,
+  .teamLoaderRoster > span {
     animation: none;
   }
 }

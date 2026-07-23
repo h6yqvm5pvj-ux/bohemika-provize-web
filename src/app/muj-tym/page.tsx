@@ -5,15 +5,12 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   BarChart3,
-  Check,
   Copy,
-  LoaderCircle,
   Mail,
   MessageSquare,
   Network,
   Search,
   Trophy,
-  UsersRound,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -32,6 +29,7 @@ import {
 import { type Position } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import introStyles from "../cashflow/cashflowIntro.module.css";
+import { TeamOverviewLoader } from "./TeamOverviewLoader";
 
 type AccountType = "advisor" | "tipster";
 
@@ -860,37 +858,6 @@ export default function TeamPage() {
       return a.name.localeCompare(b.name, "cs");
     });
   }, [members, search, sortBy, lastActive, contractCounts, tipCounts]);
-
-  const loadingStage =
-    clampedLoadingProgress < 34
-      ? "Stahuju členy týmu z organizační struktury…"
-      : clampedLoadingProgress < 68
-        ? "Mapuju aktivitu a páruju data smluv…"
-        : "Finalizuji produkční statistiky a přehledy…";
-  const loadingPhaseIndex =
-    clampedLoadingProgress < 34 ? 0 : clampedLoadingProgress < 68 ? 1 : 2;
-  const loadingPhaseItems = [
-    {
-      label: "Členové",
-      caption: "Organizační struktura",
-      Icon: UsersRound,
-    },
-    {
-      label: "Aktivita",
-      caption: "Poslední přihlášení",
-      Icon: Network,
-    },
-    {
-      label: "Statistiky",
-      caption: "Produkční přehled",
-      Icon: BarChart3,
-    },
-  ];
-  const loadingStatusItems = [
-    ["Profil manažera", "ověřeno"],
-    ["Týmová struktura", loadingPhaseIndex > 0 ? "hotovo" : "běží"],
-    ["Produkce a tipy", loadingPhaseIndex >= 2 ? "běží" : "čeká"],
-  ];
 
   useEffect(() => {
     const el = membersListRef.current;
@@ -1747,206 +1714,16 @@ export default function TeamPage() {
       <div
         className={`${introStyles.pageEnter} team-panel-root w-full max-w-6xl space-y-6 rounded-[34px] bg-[linear-gradient(180deg,#fbfaff_0%,#ffffff_46%,#fbfaff_100%)] px-1 py-1 text-slate-900 sm:px-2 sm:py-2`}
       >
-        <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <SplitTitle text="Můj tým" className="team-panel-title !text-slate-900" />
-        </header>
+        {!loading && (
+          <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <SplitTitle text="Můj tým" className="team-panel-title !text-slate-900" />
+          </header>
+        )}
 
         {!authReady ? (
           <p className="text-sm text-slate-600">Načítám přihlášení…</p>
         ) : loading ? (
-          <div className={`${introStyles.loadingShell} rounded-[32px] border border-violet-100/90 bg-white/92 px-4 py-5 shadow-[0_24px_64px_rgba(76,29,149,0.12)] backdrop-blur-xl sm:px-6 sm:py-6`}>
-            <span className={introStyles.loadingAuraA} aria-hidden="true" />
-            <span className={introStyles.loadingAuraB} aria-hidden="true" />
-            <span className={introStyles.loadingSweep} aria-hidden="true" />
-
-            <div className="relative z-10 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-stretch">
-              <div className="space-y-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/88 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800 shadow-[0_8px_20px_rgba(109,40,217,0.10)]">
-                      <span className="relative inline-flex h-2 w-2">
-                        <span className="absolute inset-0 rounded-full bg-violet-500/80 animate-ping" />
-                        <span className="relative h-2 w-2 rounded-full bg-violet-600" />
-                      </span>
-                      Synchronizace týmu
-                    </span>
-                    <h3 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950 sm:text-[2rem]">
-                      Připravuju týmový přehled
-                    </h3>
-                    <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
-                      Načítám členy, poslední aktivitu a produkční data. Přehled se zobrazí hned, jak budou hotové hlavní statistiky.
-                    </p>
-                  </div>
-
-	                  <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-violet-100 bg-white/86 px-4 py-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)]">
-	                    <div className="grid h-11 w-11 place-items-center rounded-xl bg-violet-50 text-violet-700">
-                      <UsersRound className="h-5 w-5" strokeWidth={2.2} />
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Průběh
-                      </div>
-                      <div className="text-2xl font-bold text-slate-950">
-                        {clampedLoadingProgress}%
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  {loadingPhaseItems.map(({ label, caption, Icon }, index) => {
-                    const state =
-                      index < loadingPhaseIndex
-                        ? "done"
-                        : index === loadingPhaseIndex
-                          ? "active"
-                          : "idle";
-
-                    return (
-                      <div
-                        key={label}
-                        className={`rounded-2xl border px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
-                          state === "done"
-	                            ? "border-violet-200 bg-violet-50/88"
-                            : state === "active"
-	                              ? "border-purple-200 bg-purple-50/92"
-                              : "border-slate-200 bg-white/76"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={`grid h-9 w-9 place-items-center rounded-xl ${
-                              state === "done"
-	                                ? "bg-violet-100 text-violet-700"
-                                : state === "active"
-	                                  ? "bg-purple-100 text-purple-700"
-                                  : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
-                            {state === "done" ? (
-                              <Check className="h-4 w-4" />
-                            ) : state === "active" ? (
-                              <LoaderCircle className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Icon className="h-4 w-4" />
-                            )}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-slate-950">
-                              {label}
-                            </div>
-                            <div className="mt-0.5 truncate text-xs text-slate-500">
-                              {caption}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    <span>Aktuální krok</span>
-                    <span>{clampedLoadingProgress}%</span>
-                  </div>
-                  <div className="h-3 overflow-hidden rounded-full bg-slate-200/80 shadow-[inset_0_1px_2px_rgba(15,23,42,0.08)]">
-                    <div
-	                      className="relative h-full rounded-full bg-gradient-to-r from-violet-400 via-purple-500 to-indigo-500 transition-[width] duration-300 ease-out"
-                      style={{ width: `${clampedLoadingProgress}%` }}
-                    >
-                      <span className="absolute inset-y-0 right-0 w-12 bg-gradient-to-r from-transparent via-white/60 to-transparent opacity-90 animate-pulse" />
-                    </div>
-                  </div>
-                  <div className="inline-flex items-center gap-2 text-xs text-slate-600">
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin text-slate-500" />
-                    {loadingStage}
-                  </div>
-                </div>
-              </div>
-
-	              <aside className="rounded-[26px] border border-violet-100 bg-white/86 p-4 shadow-[0_16px_38px_rgba(76,29,149,0.08)]">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Stav načítání
-                    </div>
-                    <div className="mt-1 text-lg font-semibold text-slate-950">
-                      Týmový panel
-                    </div>
-                  </div>
-	                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-violet-50 text-violet-700">
-                    <Check className="h-5 w-5" />
-                  </div>
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  {loadingStatusItems.map(([label, state]) => (
-                    <div
-                      key={label}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2"
-                    >
-                      <span className="text-sm font-medium text-slate-700">
-                        {label}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                          state === "ověřeno" || state === "hotovo"
-	                            ? "bg-violet-100 text-violet-700"
-                            : state === "běží"
-	                              ? "bg-purple-100 text-purple-700"
-                              : "bg-slate-200 text-slate-600"
-                        }`}
-                      >
-                        {state}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-	                <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/80 px-3 py-3 text-sm leading-relaxed text-slate-700">
-                  <div className="font-semibold text-slate-950">Připravuju data pro seznam i detail člena.</div>
-                  <div className="mt-1 text-xs text-slate-600">
-                    Po načtení se automaticky vybere první osoba v týmu.
-                  </div>
-                </div>
-              </aside>
-            </div>
-
-	              <div className="relative z-10 mt-5 rounded-[26px] border border-violet-100 bg-white/72 p-3 shadow-[0_14px_34px_rgba(76,29,149,0.07)]">
-              <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Náhled seznamu
-                  </div>
-                  <div className="mt-0.5 text-sm font-semibold text-slate-900">
-                    Členové týmu se řadí podle aktivity
-                  </div>
-                </div>
-                <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500 sm:inline-flex">
-                  Synchronizuji
-                </span>
-              </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                {[0, 1, 2].map((index) => (
-                  <div
-                    key={index}
-                    className={`${introStyles.loadingSkeletonCard} rounded-2xl border border-slate-200/90 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]`}
-                  >
-	                    <div className="inline-flex items-center rounded-full border border-violet-100 bg-violet-50/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-700">
-                      Člen týmu
-                    </div>
-                    <div className="mt-2 h-7 w-28 rounded-lg bg-slate-200/90" />
-                    <div className="mt-3 space-y-2">
-                      <div className="h-3 w-5/6 rounded-full bg-slate-200/85" />
-                      <div className="h-3 w-3/4 rounded-full bg-slate-200/85" />
-                      <div className="h-3 w-2/3 rounded-full bg-slate-200/85" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <TeamOverviewLoader progress={clampedLoadingProgress} />
         ) : members.length === 0 ? (
           <div className={introStyles.bodyReveal} style={teamRevealStyle(70)}>
             <p className="text-sm text-slate-600">Nemáš nastavené žádné podřízené.</p>

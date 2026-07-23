@@ -22,7 +22,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ExternalLink,
-  FileUp,
   HandCoins,
   HeartPulse,
   ListChecks,
@@ -32,6 +31,7 @@ import {
   ReceiptText,
   RotateCcw,
   Trash2,
+  UploadCloud,
   UsersRound,
   WalletCards,
   X,
@@ -82,6 +82,7 @@ import {
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import { auth } from "@/app/firebase";
 import { AppLayout } from "@/components/AppLayout";
+import { StatementPairingLoader } from "./StatementPairingLoader";
 import {
   downloadDiscrepancySummaryPdf,
   printDiscrepancyReport,
@@ -814,6 +815,7 @@ type ProcessedStatementHistoryPanelProps = {
   error: string | null;
   selectedId: string | null;
   openingId: string | null;
+  onClose?: () => void;
   onRefresh: () => void;
   onOpen: (statementId: string) => void;
 };
@@ -824,6 +826,7 @@ function ProcessedStatementHistoryPanel({
   error,
   selectedId,
   openingId,
+  onClose,
   onRefresh,
   onOpen,
 }: ProcessedStatementHistoryPanelProps) {
@@ -843,19 +846,31 @@ function ProcessedStatementHistoryPanel({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-          ) : (
-            <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
+            ) : (
+              <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+            )}
+            Obnovit
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              aria-label="Zavřít historii"
+            >
+              <X className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+            </button>
           )}
-          Obnovit
-        </button>
+        </div>
       </div>
 
       {error && (
@@ -955,6 +970,44 @@ function ProcessedStatementHistoryPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function ProcessedStatementHistoryModal({
+  onClose,
+  ...panelProps
+}: ProcessedStatementHistoryPanelProps & { onClose: () => void }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Historie zpracovaných provizních výpisů"
+        className="w-full max-w-3xl"
+      >
+        <ProcessedStatementHistoryPanel {...panelProps} onClose={onClose} />
+      </div>
+    </div>
   );
 }
 
@@ -6291,78 +6344,6 @@ function NeonRefreshConversionPromptModal({
   );
 }
 
-function MatchingProgressBar({
-  stats,
-  hasUser,
-}: {
-  stats: ContractMatchStats;
-  hasUser: boolean;
-}) {
-  if (stats.total === 0) return null;
-
-  const isComplete = stats.completed >= stats.total;
-  const activeCount = stats.loading + stats.pending;
-  const fillClass =
-    stats.errors > 0 && isComplete
-      ? "bg-rose-500"
-      : isComplete
-        ? "bg-emerald-500"
-        : "bg-slate-950";
-  const statusText = !hasUser
-    ? "Čekám na přihlášení"
-    : isComplete
-      ? "Párování dokončeno"
-      : `Páruji ${activeCount} smluv`;
-
-  return (
-    <section className="h-full rounded-xl border border-slate-200 bg-white px-4 py-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
-            isComplete
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-slate-200 bg-slate-50 text-slate-700"
-          }`}>
-            {isComplete ? (
-              <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            ) : (
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-            )}
-          </span>
-          <div>
-            <h2 className="text-sm font-bold text-slate-950">Párování smluv</h2>
-            <p className="text-xs font-medium text-slate-500">
-              {statusText} · {stats.completed}/{stats.total} hotovo
-            </p>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xl font-bold tabular-nums text-slate-950">
-            {stats.progress} %
-          </div>
-          <div className="text-xs font-semibold text-slate-500">
-            {stats.matched} shod · {stats.notFound} nenalezeno · {stats.errors} chyby
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ease-out ${fillClass}`}
-          style={{
-            width: `${stats.progress}%`,
-            minWidth: stats.progress > 0 ? "1.25rem" : undefined,
-          }}
-        >
-          {!isComplete && stats.progress > 0 && (
-            <div className="h-full w-full animate-pulse rounded-full bg-white/25" />
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 const summaryIconToneClass: Record<"slate" | "emerald" | "sky" | "indigo", string> = {
   slate: "border-slate-200 bg-slate-50 text-slate-600",
   emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -10473,105 +10454,6 @@ export default function CommissionStatementsPage() {
     [statements]
   );
 
-  const overviewTotals = useMemo(() => {
-    const unpairedContractNumbers = new Set<string>();
-    const issueContractNumbers = new Set<string>();
-
-    for (const request of statementContractMatchRequests) {
-      const key = contractMatchKey(request.scope, request.contractNumber);
-      if (!key) continue;
-      if (
-        isUnpairedContractMatch(
-          contractMatchForNumber(matchesByContractNumber, request.contractNumber, request.scope)
-        )
-      ) {
-        unpairedContractNumbers.add(key);
-      }
-    }
-
-    const markIssue = (
-      contractNumber: string | null | undefined,
-      hasIssue: boolean,
-      scope: ContractMatchScope = "my"
-    ) => {
-      if (!hasIssue) return;
-      const key = contractMatchKey(scope, contractNumber);
-      if (!key || unpairedContractNumbers.has(key)) return;
-      issueContractNumbers.add(key);
-    };
-
-    for (const statement of statements) {
-      const statementKey = statementDiscrepancyKey(statement);
-      for (const contract of statement.lifeSplitContracts) {
-        markIssue(
-          contract.contractNumber,
-          lifeSplitContractUncertaintyCount(
-            contract,
-            matchesByContractNumber,
-            statement.header.period,
-            statementKey,
-            statementCorrectionContext
-          ) > 0,
-          lifeSplitContractMatchScope(contract)
-        );
-      }
-
-      for (const contract of statement.otherProductContracts) {
-        markIssue(
-          contract.contractNumber,
-          otherProductContractUncertaintyCount(
-            contract,
-            matchesByContractNumber,
-            statement.header.period,
-            statementKey,
-            statementCorrectionContext
-          ) > 0,
-          otherProductContractMatchScope(contract)
-        );
-      }
-
-      for (const advisor of statement.managerCommissions) {
-        for (const row of advisor.rows) {
-          const match = contractMatchForNumber(
-            matchesByContractNumber,
-            row.contractNumber,
-            "team"
-          );
-          markIssue(row.contractNumber, match?.status === "matched" && !matchedSystemContract(match), "team");
-        }
-      }
-
-      for (const row of statement.stornoRows) {
-        markIssue(
-          row.contractNumber,
-          matchNeedsSystemStorno(
-            contractMatchForNumber(matchesByContractNumber, row.contractNumber)
-          )
-        );
-      }
-
-      for (const payment of statement.otherPayments.filter((item) => item.isStorno)) {
-        markIssue(
-          payment.contractNumber,
-          matchNeedsSystemStorno(
-            contractMatchForNumber(matchesByContractNumber, payment.contractNumber)
-          )
-        );
-      }
-    }
-
-    return {
-      contractCount: statementContractMatchRequests.length,
-      issueContractCount: issueContractNumbers.size,
-      unpairedContractCount: unpairedContractNumbers.size,
-    };
-  }, [
-    matchesByContractNumber,
-    statementContractMatchRequests,
-    statementCorrectionContext,
-    statements,
-  ]);
-
   const markedDiscrepancyItems = useMemo(
     () => Object.values(markedDiscrepancies),
     [markedDiscrepancies]
@@ -10932,189 +10814,75 @@ export default function CommissionStatementsPage() {
     <BohemkaContractDetailModalContext.Provider value={setContractDetailModal}>
       <AppLayout active="statements">
       <div className="w-full max-w-7xl space-y-4">
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div
-            className={`grid gap-4 p-4 sm:p-5 ${
-              freshUploadPairingInProgress
-                ? ""
-                : "lg:grid-cols-[minmax(0,1fr)_minmax(32rem,0.9fr)] lg:items-center"
+        {!freshUploadPairingInProgress && (
+          <section
+            className={`px-1 py-1 ${
+              statements.length === 0 ? "mx-auto w-full max-w-5xl" : ""
             }`}
           >
-            <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
-                <ReceiptText className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                Provizní výpisy
-              </div>
-              <h1 className="mt-3 max-w-3xl text-2xl font-black text-slate-950 sm:text-3xl">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h1 className="text-2xl font-black text-slate-950 sm:text-4xl">
                 Kontrola provizního výpisu
               </h1>
-              <div className="mt-2 flex flex-wrap gap-2 text-sm font-semibold text-slate-500">
-                {freshUploadPairingInProgress ? (
-                  <>
-                    <span>Páruji smlouvy</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{matchStats.completed}/{matchStats.total} hotovo</span>
-                  </>
-                ) : (
-                  <>
-                    <span>{statements.length > 0 ? `${statements.length} výpisů v kontrole` : "Čeká na HTML výpis"}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{overviewTotals.contractCount} smluv v náhledu</span>
-                  </>
+              <button
+                type="button"
+                onClick={() => setProcessedStatementHistoryVisible(true)}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:bg-black"
+              >
+                <CalendarDays className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                Zobrazit historii
+                {processedStatementHistory.length > 0 && (
+                  <span className="rounded-full bg-fuchsia-500 px-2 py-0.5 text-xs text-white">
+                    {processedStatementHistory.length}
+                  </span>
                 )}
-              </div>
+              </button>
+            </div>
+
+            {statements.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setProcessedStatementHistoryVisible((value) => !value)}
+                  onClick={() => setMarkingMode((value) => !value)}
                   className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                    processedStatementHistoryVisible
-                      ? "border border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                    markingMode
+                      ? "border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100"
                       : "bg-slate-950 text-white hover:bg-slate-800"
                   }`}
                 >
-                  <CalendarDays className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                  {processedStatementHistoryVisible ? "Skrýt historii" : "Zobrazit historii"}
-                  {processedStatementHistory.length > 0 && !processedStatementHistoryVisible && (
-                    <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
-                      {processedStatementHistory.length}
-                    </span>
-                  )}
+                  <ListChecks className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                  {markingMode ? "Dokončit označení" : "Označit"}
                 </button>
-
-                {statements.length > 0 && !freshUploadPairingInProgress && (
-                  <>
+                {markedDiscrepancyItems.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setMarkingMode((value) => !value)}
-                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                      markingMode
-                        ? "border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100"
-                        : "bg-slate-950 text-white hover:bg-slate-800"
-                    }`}
-                  >
-                    <ListChecks className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    {markingMode ? "Dokončit označení" : "Označit"}
-                  </button>
-                  {markedDiscrepancyItems.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPdfError(null);
-                        setReportModalOpen(true);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100"
-                    >
-                      <Printer className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                      Stáhnout souhrn nesrovnalostí
-                    </button>
-                  )}
-                  {markedDiscrepancyItems.length > 0 && (
-                    <span className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800">
-                      Označeno {markedDiscrepancyItems.length}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={resetStatementWorkspace}
+                    onClick={() => {
+                      setPdfError(null);
+                      setReportModalOpen(true);
+                    }}
                     className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100"
                   >
-                    <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    Vymazat
-                  </button>
-                  </>
-                )}
-                {statements.length > 0 && freshUploadPairingInProgress && (
-                  <button
-                    type="button"
-                    onClick={resetStatementWorkspace}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100"
-                  >
-                    <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    Vymazat
+                    <Printer className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                    Stáhnout souhrn nesrovnalostí
                   </button>
                 )}
+                {markedDiscrepancyItems.length > 0 && (
+                  <span className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800">
+                    Označeno {markedDiscrepancyItems.length}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={resetStatementWorkspace}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100"
+                >
+                  <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                  Vymazat
+                </button>
               </div>
-            </div>
-
-            {!freshUploadPairingInProgress && (
-            <div className="grid min-w-0 gap-2 sm:grid-cols-3">
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                <div className="flex items-center justify-between gap-3 text-xs font-bold uppercase text-slate-500">
-                  <span>Celkem smluv</span>
-                  <ReceiptText className="h-4 w-4 text-slate-400" strokeWidth={2.2} aria-hidden="true" />
-                </div>
-                <div className="mt-2 text-2xl font-black text-slate-950">
-                  {overviewTotals.contractCount}
-                </div>
-                <div className="mt-1 text-xs text-slate-600">
-                  {statements.length > 0 ? `${statements.length} výpisů` : "Bez nahraného výpisu"}
-                </div>
-              </div>
-              <div
-                className={`rounded-lg border bg-white px-3 py-3 ${
-                  overviewTotals.issueContractCount > 0
-                    ? "border-rose-200"
-                    : "border-emerald-200"
-                }`}
-              >
-                <div
-                  className={`flex items-center justify-between gap-3 text-xs font-bold uppercase ${
-                    overviewTotals.issueContractCount > 0 ? "text-rose-700" : "text-emerald-700"
-                  }`}
-                >
-                  <span>Něco nesedí</span>
-                  <AlertTriangle className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                </div>
-                <div
-                  className={`mt-2 text-2xl font-black ${
-                    overviewTotals.issueContractCount > 0 ? "text-rose-950" : "text-emerald-950"
-                  }`}
-                >
-                  {overviewTotals.issueContractCount}
-                </div>
-                <div
-                  className={`mt-1 text-xs ${
-                    overviewTotals.issueContractCount > 0 ? "text-rose-700" : "text-emerald-700"
-                  }`}
-                >
-                  Rozdíly nebo varování
-                </div>
-              </div>
-              <div
-                className={`rounded-lg border bg-white px-3 py-3 ${
-                  overviewTotals.unpairedContractCount > 0
-                    ? "border-amber-200"
-                    : "border-slate-200"
-                }`}
-              >
-                <div
-                  className={`flex items-center justify-between gap-3 text-xs font-bold uppercase ${
-                    overviewTotals.unpairedContractCount > 0 ? "text-amber-700" : "text-slate-500"
-                  }`}
-                >
-                  <span>Nespárované</span>
-                  <UsersRound className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                </div>
-                <div
-                  className={`mt-2 text-2xl font-black ${
-                    overviewTotals.unpairedContractCount > 0 ? "text-amber-950" : "text-slate-950"
-                  }`}
-                >
-                  {overviewTotals.unpairedContractCount}
-                </div>
-                <div
-                  className={`mt-1 text-xs ${
-                    overviewTotals.unpairedContractCount > 0 ? "text-amber-700" : "text-slate-600"
-                  }`}
-                >
-                  Nenalezeno / více shod / chyba
-                </div>
-              </div>
-            </div>
             )}
-          </div>
-        </section>
+          </section>
+        )}
 
         <input
           ref={fileInputRef}
@@ -11129,13 +10897,14 @@ export default function CommissionStatementsPage() {
           }}
         />
 
-        {processedStatementHistoryVisible && (
-          <ProcessedStatementHistoryPanel
+        {!freshUploadPairingInProgress && processedStatementHistoryVisible && (
+          <ProcessedStatementHistoryModal
             statements={processedStatementHistory}
             loading={processedStatementHistoryLoading}
             error={processedStatementHistoryError}
             selectedId={selectedHistoryStatementId}
             openingId={openingHistoryStatementId}
+            onClose={() => setProcessedStatementHistoryVisible(false)}
             onRefresh={refreshProcessedStatementHistory}
             onOpen={(statementId) => {
               void openProcessedStatementFromHistory(statementId);
@@ -11192,49 +10961,92 @@ export default function CommissionStatementsPage() {
         )}
 
         {statements.length === 0 ? (
-          <section
-            className="group rounded-xl border border-dashed border-slate-300 bg-white px-5 py-9 text-center transition hover:border-slate-400"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              void parseFiles(event.dataTransfer.files);
-            }}
-          >
-            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700 transition group-hover:bg-slate-100">
-              <FileUp className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-            </div>
-            <h2 className="mt-4 text-base font-black text-slate-950">
-              Vyber HTML výpis
-            </h2>
-            <p className="mx-auto mt-1 max-w-md text-sm font-medium text-slate-500">
-              Po nahrání se zobrazí přehled smluv, párování a nesrovnalosti.
-            </p>
-            <div className="mt-5 flex justify-center">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={parsing}
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {parsing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-                ) : (
-                  <FileUp className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                )}
-                Vybrat HTML
-              </button>
+          <section className="mx-auto w-full max-w-5xl pt-3">
+            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_34px_110px_rgba(15,23,42,0.12)]">
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#d946ef_58%,#ec4899_100%)]"
+                aria-hidden="true"
+              />
+              <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
+                <div className="relative min-h-[19rem] overflow-hidden bg-slate-950 p-6 text-white sm:p-7">
+                  <div
+                    className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.18)_1px,transparent_1px)] [background-size:28px_28px]"
+                    aria-hidden="true"
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-y-0 right-0 w-px bg-white/12"
+                    aria-hidden="true"
+                  />
+                  <div className="relative flex h-full min-h-[16rem] flex-col justify-between">
+                    <div>
+                      <span className="inline-flex rounded-full border border-fuchsia-300/35 bg-fuchsia-400/14 px-3 py-1 text-xs font-bold uppercase text-fuchsia-100">
+                        HTML import
+                      </span>
+                      <h2 className="mt-5 max-w-sm text-4xl font-black leading-none text-white sm:text-5xl">
+                        Nahrát výpis
+                      </h2>
+                    </div>
+
+                    <div className="mt-8 space-y-3">
+                      <div className="h-2.5 w-24 rounded-full bg-white/90" />
+                      <div className="h-2.5 w-full max-w-[18rem] rounded-full bg-white/18" />
+                      <div className="h-2.5 w-4/5 max-w-[15rem] rounded-full bg-fuchsia-400/70" />
+                      <div className="h-2.5 w-3/5 max-w-[12rem] rounded-full bg-white/18" />
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className="relative flex min-h-[19rem] flex-col justify-between p-6 transition hover:bg-slate-50/70 sm:p-7"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    void parseFiles(event.dataTransfer.files);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-[0_12px_26px_rgba(15,23,42,0.09)]">
+                      <UploadCloud size={27} strokeWidth={2.2} aria-hidden="true" />
+                    </span>
+                    <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-xs font-bold uppercase text-fuchsia-700 shadow-sm">
+                      .HTML / .HTM
+                    </span>
+                  </div>
+
+                  <div>
+                    <p className="max-w-md text-xl font-black leading-7 text-slate-950 sm:text-2xl">
+                      Přetáhni výpis sem
+                    </p>
+                    <p className="mt-2 max-w-md text-sm font-semibold leading-6 text-slate-600">
+                      nebo vyber HTML soubor ze zařízení.
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={parsing}
+                      className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-[0_18px_34px_rgba(15,23,42,0.2)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
+                    >
+                      {parsing ? (
+                        <Loader2
+                          className="h-[18px] w-[18px] animate-spin shrink-0"
+                          strokeWidth={2.2}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <UploadCloud size={18} strokeWidth={2.2} className="shrink-0" aria-hidden="true" />
+                      )}
+                      {parsing ? "Načítám…" : "Nahrát výpis"}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
         ) : freshUploadPairingInProgress ? (
-          <section
-            className="rounded-xl border border-slate-200 bg-white px-4 py-4 sm:px-5"
-            aria-live="polite"
-          >
-            <MatchingProgressBar stats={matchStats} hasUser={Boolean(user)} />
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
-              Výsledky kontroly zobrazím až po dokončení párování všech smluv.
-            </div>
-          </section>
+          <StatementPairingLoader stats={matchStats} hasUser={Boolean(user)} />
         ) : (
           <div className="space-y-4">
             {statements.map((statement) => {

@@ -1,5 +1,3 @@
-import { useEffect, useRef } from "react";
-import { Check, LoaderCircle } from "lucide-react";
 import { type AppLanguage } from "@/lib/appLanguage";
 
 type Props = {
@@ -8,7 +6,7 @@ type Props = {
   stage: string;
   progress: number;
   accentLabel: string;
-  visual?: "progress" | "money";
+  visual?: "progress" | "money" | "payout" | "production";
 };
 
 const LOADING_PROGRESS_COPY: Record<
@@ -24,6 +22,64 @@ const LOADING_PROGRESS_COPY: Record<
   },
 };
 
+function PayoutVisual() {
+  const renderBanknote = (className: string, amount: string) => (
+    <span className={`home-loader-banknote ${className}`}>
+      <span className="note-corner">{amount}</span>
+      <span className="note-corner note-corner-opposite">{amount}</span>
+      <span className="note-strip" />
+      <span className="note-portrait" />
+      <span className="note-seal" />
+      <span className="note-line note-line-a" />
+      <span className="note-line note-line-b" />
+      <span className="note-line note-line-c" />
+    </span>
+  );
+
+  return (
+    <div className="home-loader-visual" aria-hidden="true">
+      {renderBanknote("bill-a", "500")}
+      {renderBanknote("bill-b", "1000")}
+      {renderBanknote("bill-c", "200")}
+      {renderBanknote("bill-d", "500")}
+      <div className="home-loader-wallet">
+        <span className="wallet-line" />
+        <span className="wallet-line short" />
+        <span className="wallet-dot" />
+      </div>
+      <div className="home-loader-stack">
+        {[0, 1, 2, 3].map((index) => (
+          <span key={index} style={{ bottom: `${index * 7}px` }}>
+            <span />
+            <span />
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductionVisual() {
+  return (
+    <div className="home-loader-visual production" aria-hidden="true">
+      <span className="home-loader-contract contract-a"><span /><span /></span>
+      <span className="home-loader-contract contract-b"><span /><span /></span>
+      <span className="home-loader-contract contract-c"><span /><span /></span>
+      <div className="home-loader-columns">
+        {[46, 64, 82, 58].map((height, index) => (
+          <span
+            key={height}
+            style={{
+              height: `${height}%`,
+              ["--home-column-index" as string]: index,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function LoadingProgressPanel({
   language,
   title,
@@ -36,151 +92,552 @@ export function LoadingProgressPanel({
   const safeProgress = Math.max(8, Math.min(97, progress));
   const activePhaseIndex =
     safeProgress < 35 ? 0 : safeProgress < 72 ? 1 : 2;
-  const moneyFloatRef = useRef<HTMLDivElement | null>(null);
-  const moneyBillRef = useRef<HTMLSpanElement | null>(null);
-  const moneyTrailOneRef = useRef<HTMLSpanElement | null>(null);
-  const moneyTrailTwoRef = useRef<HTMLSpanElement | null>(null);
-  const moneySweepRef = useRef<HTMLSpanElement | null>(null);
-
-  useEffect(() => {
-    if (visual !== "money") return undefined;
-
-    let frame = 0;
-    const startedAt = performance.now();
-
-    const animate = (now: number) => {
-      const seconds = (now - startedAt) / 1000;
-      const spinDegrees = seconds * 430;
-      const floatY = Math.sin(seconds * 3.2) * -7;
-      const tilt = Math.sin(seconds * 2.4) * 10;
-      const scale = 1 + Math.sin(seconds * 5.4) * 0.045;
-      const trailScale = 0.82 + Math.sin(seconds * 4) * 0.08;
-      const sweepX = ((seconds * 95) % 280) - 170;
-
-      if (moneyFloatRef.current) {
-        moneyFloatRef.current.style.transform = `translate3d(0, ${floatY}px, 0) rotate(${tilt}deg)`;
-      }
-      if (moneyBillRef.current) {
-        moneyBillRef.current.style.transform = `rotate(${spinDegrees}deg) scale(${scale})`;
-        moneyBillRef.current.style.filter = `drop-shadow(0 18px 22px rgba(6, 182, 212, ${0.22 + Math.abs(Math.sin(seconds * 2.5)) * 0.18}))`;
-      }
-      if (moneyTrailOneRef.current) {
-        moneyTrailOneRef.current.style.transform = `rotate(${spinDegrees * 0.72 - 28}deg) scale(${trailScale})`;
-        moneyTrailOneRef.current.style.opacity = `${0.2 + Math.abs(Math.sin(seconds * 2.2)) * 0.22}`;
-      }
-      if (moneyTrailTwoRef.current) {
-        moneyTrailTwoRef.current.style.transform = `rotate(${spinDegrees * 0.58 + 34}deg) scale(${0.72 + Math.abs(Math.cos(seconds * 2.4)) * 0.16})`;
-        moneyTrailTwoRef.current.style.opacity = `${0.18 + Math.abs(Math.cos(seconds * 2.1)) * 0.22}`;
-      }
-      if (moneySweepRef.current) {
-        moneySweepRef.current.style.transform = `translateX(${sweepX}%) translateY(-50%) rotate(-18deg)`;
-      }
-
-      frame = window.requestAnimationFrame(animate);
-    };
-
-    frame = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frame);
-  }, [visual]);
+  const visualType = visual === "money" ? "payout" : visual;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-[24px] border border-violet-100/32 bg-[linear-gradient(145deg,rgba(54,26,102,0.68)_0%,rgba(30,11,70,0.78)_58%,rgba(17,7,46,0.9)_100%)] px-4 py-4 sm:px-6 sm:py-5">
-      <style jsx>{`
-        .payout-scene {
-          perspective: 680px;
-          transform-style: preserve-3d;
+    <div className="home-loader-panel relative h-full min-h-[168px] w-full overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,#ffffff_0%,#fbfbfb_54%,#fdf2f8_100%)] px-4 py-4 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_20px_44px_rgba(10,5,35,0.22)] sm:px-5">
+      <style jsx global>{`
+        .home-loader-panel::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(
+              116deg,
+              transparent 0%,
+              transparent 38%,
+              rgba(217, 70, 239, 0.09) 38%,
+              rgba(217, 70, 239, 0.03) 59%,
+              transparent 59%
+            ),
+            radial-gradient(circle at 76% 20%, rgba(217, 70, 239, 0.14), transparent 34%);
+          pointer-events: none;
         }
 
-        .payout-emoji-bill {
-          display: block;
-          transform-style: preserve-3d;
-          transform-origin: center;
-          will-change: transform, filter;
+        .home-loader-panel::after {
+          content: "";
+          position: absolute;
+          inset: -38% -28% auto;
+          height: 62%;
+          background: linear-gradient(
+            108deg,
+            transparent 18%,
+            rgba(255, 255, 255, 0.88) 40%,
+            rgba(217, 70, 239, 0.12) 52%,
+            transparent 74%
+          );
+          transform: translate3d(-108%, 0, 0) rotate(6deg);
+          animation: homeLoaderBeam 2600ms cubic-bezier(0.2, 0.82, 0.28, 1) infinite;
+          pointer-events: none;
         }
 
-        .payout-emoji-trail {
+        .home-loader-visual {
+          position: relative;
+          min-height: 142px;
+          overflow: hidden;
+          border-radius: 22px;
+          background:
+            radial-gradient(circle at 50% 78%, rgba(217, 70, 239, 0.16), transparent 46%),
+            rgba(255, 255, 255, 0.66);
+        }
+
+        .home-loader-visual::after {
+          content: "";
+          position: absolute;
+          left: 16%;
+          right: 16%;
+          bottom: 18px;
+          height: 15px;
+          border-radius: 9999px;
+          background: rgba(2, 6, 23, 0.16);
+          filter: blur(13px);
+        }
+
+        .home-loader-banknote {
+          position: absolute;
+          top: -64px;
+          z-index: 5;
+          height: 50px;
+          width: 112px;
+          overflow: hidden;
+          border-radius: 10px;
+          border: 1px solid rgba(2, 6, 23, 0.14);
+          background:
+            linear-gradient(90deg, rgba(255, 255, 255, 0.92), rgba(252, 231, 243, 0.82) 48%, rgba(255, 255, 255, 0.95)),
+            repeating-linear-gradient(90deg, rgba(2, 6, 23, 0.055) 0 1px, transparent 1px 8px),
+            repeating-linear-gradient(0deg, rgba(217, 70, 239, 0.045) 0 1px, transparent 1px 7px);
+          box-shadow:
+            0 18px 30px rgba(15, 23, 42, 0.16),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9);
+          opacity: 0;
+          animation: homeLoaderDrop 2100ms cubic-bezier(0.18, 0.82, 0.28, 1) infinite;
+        }
+
+        .home-loader-banknote::before {
+          content: "";
+          position: absolute;
+          inset: 5px;
+          border-radius: 7px;
+          border: 1px solid rgba(2, 6, 23, 0.08);
+          background: radial-gradient(circle at 74% 50%, rgba(217, 70, 239, 0.1), transparent 38%);
+          pointer-events: none;
+        }
+
+        .note-corner {
+          position: absolute;
+          left: 8px;
+          top: 7px;
+          z-index: 2;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+          font-size: 12px;
+          font-weight: 900;
+          line-height: 1;
+          color: #a21caf;
+        }
+
+        .note-corner-opposite {
+          inset: auto 8px 7px auto;
+          color: rgba(2, 6, 23, 0.76);
+          transform: rotate(180deg);
+        }
+
+        .note-strip {
+          position: absolute;
+          top: 7px;
+          bottom: 7px;
+          left: 36px;
+          z-index: 2;
+          width: 5px;
+          border-radius: 9999px;
+          background: linear-gradient(180deg, rgba(2, 6, 23, 0.86), rgba(217, 70, 239, 0.78), rgba(2, 6, 23, 0.86));
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.46);
+        }
+
+        .note-portrait {
+          position: absolute;
+          top: 10px;
+          right: 30px;
+          z-index: 2;
+          height: 28px;
+          width: 28px;
+          border-radius: 9999px;
+          border: 1px solid rgba(2, 6, 23, 0.12);
+          background:
+            radial-gradient(circle at 46% 42%, rgba(255, 255, 255, 0.95) 0 27%, rgba(217, 70, 239, 0.18) 28% 47%, transparent 48%),
+            rgba(255, 255, 255, 0.5);
+        }
+
+        .note-portrait::after {
+          content: "";
+          position: absolute;
+          inset: 7px 9px;
+          border-radius: 9999px 9999px 6px 6px;
+          background: rgba(2, 6, 23, 0.16);
+        }
+
+        .note-seal {
+          position: absolute;
+          right: 9px;
+          top: 9px;
+          z-index: 2;
+          height: 12px;
+          width: 12px;
+          border-radius: 9999px;
+          border: 2px solid rgba(217, 70, 239, 0.72);
+          box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.82);
+        }
+
+        .note-line {
+          position: absolute;
+          left: 48px;
+          z-index: 2;
+          height: 4px;
+          border-radius: 9999px;
+          background: rgba(2, 6, 23, 0.18);
+        }
+
+        .note-line-a {
+          top: 13px;
+          width: 38px;
+          background: rgba(217, 70, 239, 0.58);
+        }
+
+        .note-line-b {
+          top: 23px;
+          width: 50px;
+        }
+
+        .note-line-c {
+          top: 33px;
+          width: 34px;
+        }
+
+        .bill-a {
+          left: 8%;
+          --drop-x: 34px;
+          --drop-start-rotate: -7deg;
+          --drop-rotate: 10deg;
+          animation-delay: -120ms;
+        }
+
+        .bill-b {
+          left: 29%;
+          --drop-x: -12px;
+          --drop-start-rotate: 6deg;
+          --drop-rotate: -8deg;
+          animation-delay: -580ms;
+        }
+
+        .bill-c {
+          left: 52%;
+          --drop-x: 14px;
+          --drop-start-rotate: -6deg;
+          --drop-rotate: 7deg;
+          animation-delay: -1040ms;
+        }
+
+        .bill-d {
+          left: 67%;
+          --drop-x: -28px;
+          --drop-start-rotate: 8deg;
+          --drop-rotate: -11deg;
+          animation-delay: -1500ms;
+        }
+
+        .home-loader-contract {
+          position: absolute;
+          top: -58px;
+          z-index: 4;
+          display: flex;
+          height: 50px;
+          width: 76px;
+          flex-direction: column;
+          gap: 6px;
+          border-radius: 12px;
+          border: 1px solid rgba(2, 6, 23, 0.12);
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(252, 244, 255, 0.96));
+          padding: 10px;
+          box-shadow: 0 16px 28px rgba(15, 23, 42, 0.14);
+          opacity: 0;
+          animation: homeLoaderDrop 2100ms cubic-bezier(0.18, 0.82, 0.28, 1) infinite;
+        }
+
+        .home-loader-contract span {
           display: block;
-          filter: blur(0.5px);
-          transform-style: preserve-3d;
+          height: 5px;
+          border-radius: 9999px;
+          background: rgba(15, 23, 42, 0.15);
+        }
+
+        .home-loader-contract span:first-child {
+          width: 44%;
+          background: rgba(217, 70, 239, 0.62);
+        }
+
+        .home-loader-contract span:nth-child(2) {
+          width: 82%;
+        }
+
+        .home-loader-wallet {
+          position: absolute;
+          right: 10%;
+          bottom: 32px;
+          z-index: 3;
+          height: 72px;
+          width: 140px;
+          border-radius: 22px;
+          background:
+            linear-gradient(145deg, #020617 0%, #111827 58%, #a21caf 100%);
+          box-shadow:
+            0 22px 38px rgba(15, 23, 42, 0.2),
+            0 0 0 8px rgba(217, 70, 239, 0.08);
+        }
+
+        .home-loader-wallet::before {
+          content: "";
+          position: absolute;
+          inset: 12px 14px auto;
+          height: 25px;
+          border-radius: 9999px;
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .wallet-line,
+        .wallet-line.short,
+        .wallet-dot {
+          position: absolute;
+          left: 18px;
+          border-radius: 9999px;
+          background: rgba(255, 255, 255, 0.72);
+        }
+
+        .wallet-line {
+          bottom: 22px;
+          height: 6px;
+          width: 66px;
+        }
+
+        .wallet-line.short {
+          bottom: 36px;
+          width: 42px;
+        }
+
+        .wallet-dot {
+          right: 18px;
+          bottom: 23px;
+          left: auto;
+          height: 16px;
+          width: 16px;
+          background: #d946ef;
+        }
+
+        .home-loader-stack {
+          position: absolute;
+          left: 8%;
+          bottom: 30px;
+          z-index: 2;
+          height: 62px;
+          width: 126px;
+          transform: rotate(-2deg);
+        }
+
+        .home-loader-stack > span {
+          position: absolute;
+          right: 0;
+          left: 0;
+          height: 40px;
+          overflow: hidden;
+          border-radius: 10px;
+          border: 1px solid rgba(2, 6, 23, 0.11);
+          background:
+            linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(252, 231, 243, 0.72), rgba(255, 255, 255, 0.96)),
+            repeating-linear-gradient(90deg, rgba(2, 6, 23, 0.045) 0 1px, transparent 1px 7px);
+          box-shadow: 0 12px 22px rgba(15, 23, 42, 0.11);
+        }
+
+        .home-loader-stack > span::before {
+          content: "500";
+          position: absolute;
+          left: 9px;
+          top: 8px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+          font-size: 10px;
+          font-weight: 900;
+          line-height: 1;
+          color: #a21caf;
+        }
+
+        .home-loader-stack > span::after {
+          content: "";
+          position: absolute;
+          top: 7px;
+          bottom: 7px;
+          left: 34px;
+          width: 4px;
+          border-radius: 9999px;
+          background: rgba(2, 6, 23, 0.72);
+        }
+
+        .home-loader-stack > span > span {
+          position: absolute;
+          left: 48px;
+          display: block;
+          height: 4px;
+          border-radius: 9999px;
+          background: rgba(2, 6, 23, 0.16);
+        }
+
+        .home-loader-stack > span > span:first-child {
+          top: 13px;
+          width: 46px;
+          background: rgba(217, 70, 239, 0.5);
+        }
+
+        .home-loader-stack > span > span:nth-child(2) {
+          top: 24px;
+          width: 58px;
+        }
+
+        .production .home-loader-contract {
+          height: 54px;
+          width: 68px;
+          animation-name: homeLoaderContractFlow;
+        }
+
+        .contract-a {
+          left: 10%;
+          --drop-x: 104px;
+          --drop-start-rotate: -6deg;
+          --drop-rotate: 8deg;
+          animation-delay: -100ms;
+        }
+
+        .contract-b {
+          left: 36%;
+          --drop-x: 54px;
+          --drop-start-rotate: 7deg;
+          --drop-rotate: -9deg;
+          animation-delay: -640ms;
+        }
+
+        .contract-c {
+          left: 62%;
+          --drop-x: -14px;
+          --drop-start-rotate: -6deg;
+          --drop-rotate: 7deg;
+          animation-delay: -1180ms;
+        }
+
+        .home-loader-columns {
+          position: absolute;
+          right: 12%;
+          bottom: 28px;
+          left: 12%;
+          z-index: 2;
+          display: grid;
+          height: 100px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          align-items: end;
+          gap: 10px;
+        }
+
+        .home-loader-columns span {
+          display: block;
+          border-radius: 16px 16px 8px 8px;
+          background: linear-gradient(180deg, rgba(217, 70, 239, 0.66), rgba(2, 6, 23, 0.88));
+          box-shadow: 0 14px 26px rgba(162, 28, 175, 0.14);
+          animation: homeLoaderColumnPulse 1250ms ease-in-out infinite;
+          animation-delay: calc(var(--home-column-index) * -120ms);
+        }
+
+        @keyframes homeLoaderBeam {
+          0% {
+            opacity: 0;
+            transform: translate3d(-108%, 0, 0) rotate(6deg);
+          }
+          22% {
+            opacity: 0.74;
+          }
+          100% {
+            opacity: 0;
+            transform: translate3d(118%, 0, 0) rotate(6deg);
+          }
+        }
+
+        @keyframes homeLoaderDrop {
+          0% {
+            opacity: 0;
+            transform: translate3d(0, -20px, 0) rotate(var(--drop-start-rotate, -7deg)) scale(0.94);
+          }
+          14% {
+            opacity: 1;
+          }
+          76% {
+            opacity: 1;
+            transform: translate3d(var(--drop-x, 12px), 136px, 0) rotate(var(--drop-rotate, 8deg)) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translate3d(var(--drop-x, 12px), 148px, 0) rotate(var(--drop-rotate, 8deg)) scale(0.92);
+          }
+        }
+
+        @keyframes homeLoaderContractFlow {
+          0% {
+            opacity: 0;
+            transform: translate3d(0, -20px, 0) rotate(var(--drop-start-rotate, -7deg)) scale(0.94);
+          }
+          14% {
+            opacity: 1;
+          }
+          72% {
+            opacity: 1;
+            transform: translate3d(var(--drop-x, 60px), 110px, 0) rotate(var(--drop-rotate, 8deg)) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translate3d(var(--drop-x, 60px), 122px, 0) rotate(var(--drop-rotate, 8deg)) scale(0.92);
+          }
+        }
+
+        @keyframes homeLoaderColumnPulse {
+          0%,
+          100% {
+            opacity: 0.78;
+            transform: scaleY(0.88);
+          }
+          50% {
+            opacity: 1;
+            transform: scaleY(1);
+          }
+        }
+
+        @media (max-width: 640px) {
+          .home-loader-visual {
+            min-height: 132px;
+          }
+
+          .home-loader-wallet {
+            right: 10%;
+            bottom: 34px;
+            height: 74px;
+            width: 132px;
+          }
+
+          .home-loader-stack {
+            left: 8%;
+            bottom: 32px;
+          }
+
+          .home-loader-banknote {
+            height: 46px;
+            width: 100px;
+          }
+
+          .home-loader-columns {
+            height: 104px;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .home-loader-panel::after,
+          .home-loader-banknote,
+          .home-loader-contract,
+          .home-loader-columns span {
+            animation: none;
+          }
         }
       `}</style>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_14%_0%,rgba(196,181,253,0.28),transparent_42%)]" />
-      <div className="pointer-events-none absolute -right-14 -top-16 h-40 w-40 rounded-full bg-fuchsia-300/22 blur-3xl animate-pulse" />
-      <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:36px_36px]" />
 
-      {visual === "money" ? (
-        <div className="relative z-10 flex min-h-[148px] items-center justify-center px-2 py-1 sm:min-h-[164px]">
-          <div className="payout-scene relative h-[8.5rem] w-[11.5rem] shrink-0 sm:h-[10rem] sm:w-[13rem]" aria-label={`${safeProgress}% ${copy.ready}`}>
-            <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(167,243,208,0.2),transparent_64%)] blur-2xl" />
-            <div className="absolute left-1/2 top-1/2 h-28 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-100/18 bg-violet-100/6 shadow-[0_0_46px_rgba(52,211,153,0.18)] sm:h-32 sm:w-48" />
-            <div className="absolute left-1/2 top-[44%] h-28 w-40 -translate-x-1/2 -translate-y-1/2 sm:h-[8.5rem] sm:w-48">
-              <div ref={moneyFloatRef} className="relative flex h-full w-full items-center justify-center">
-                <span
-                  ref={moneyTrailOneRef}
-                  className="payout-emoji-trail absolute left-1 top-7 text-4xl opacity-30 sm:left-2 sm:top-8 sm:text-5xl"
-                >
-                  💸
-                </span>
-                <span
-                  ref={moneyTrailTwoRef}
-                  className="payout-emoji-trail absolute right-2 top-8 text-3xl opacity-25 sm:right-3 sm:top-9 sm:text-4xl"
-                >
-                  💸
-                </span>
-                <span
-                  ref={moneyBillRef}
-                  className="payout-emoji-bill relative z-10 inline-flex h-24 w-24 items-center justify-center text-8xl leading-none sm:h-28 sm:w-28 sm:text-9xl"
-                >
-                  💸
-                </span>
-                <span
-                  ref={moneySweepRef}
-                  className="payout-sweep pointer-events-none absolute -inset-x-10 top-1/2 h-7 rounded-full bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.6),transparent)] blur-md"
-                />
-              </div>
-            </div>
-            <div className="absolute bottom-0 left-1/2 flex h-8 min-w-[4.5rem] -translate-x-1/2 items-center justify-center rounded-full border border-violet-100/40 bg-violet-950/82 px-4 text-base font-extrabold text-violet-50 shadow-[0_12px_24px_rgba(10,5,35,0.32)]">
-              {safeProgress}%
-            </div>
+      <div className="relative z-10 grid h-full min-h-[136px] grid-cols-1 gap-4 md:grid-cols-[minmax(0,0.82fr)_minmax(230px,1fr)] md:items-center">
+        <div className="min-w-0">
+          <div className="inline-flex items-center rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-xs font-bold uppercase text-fuchsia-700">
+            {accentLabel}
           </div>
-        </div>
-      ) : (
-        <>
-          <div className="relative z-10 flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-full border border-violet-100/35 bg-violet-200/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-50/90">
-                <span className="relative inline-flex h-2.5 w-2.5">
-                  <span className="absolute inset-0 rounded-full bg-emerald-300/85 animate-ping" />
-                  <span className="relative rounded-full bg-emerald-200 h-2.5 w-2.5" />
-                </span>
-                {accentLabel}
-              </div>
 
-              <div className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-violet-50 sm:text-base">
-                <LoaderCircle className="h-4 w-4 animate-spin text-violet-100/90" />
-                {title}
-              </div>
-              <div className="mt-2 text-sm text-violet-100/80">{stage}</div>
-              <div className="mt-1 text-xs uppercase tracking-[0.14em] text-violet-100/75">
-                {safeProgress}% {copy.ready}
-              </div>
-            </div>
+          <div className="mt-3 flex items-end gap-1 font-mono text-4xl font-semibold leading-none text-black sm:text-5xl">
+            <span>{safeProgress}</span>
+            <span className="pb-1 text-2xl text-fuchsia-700">%</span>
+          </div>
 
-            <div className="relative h-16 w-16 shrink-0">
-              <div
-                className="absolute inset-0 rounded-full"
-                style={{
-                  background: `conic-gradient(from -90deg, rgba(244,232,255,0.95) 0deg ${safeProgress * 3.6}deg, rgba(196,181,253,0.24) ${safeProgress * 3.6}deg 360deg)`,
-                }}
-              />
-              <div className="absolute inset-[5px] rounded-full bg-violet-950/92" />
-              <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-violet-100">
-                {safeProgress}%
-              </div>
+          <h3 className="mt-2 text-lg font-black leading-6 text-black sm:text-xl">
+            {title}
+          </h3>
+          <p className="mt-1 text-sm font-semibold leading-5 text-black/58">
+            {stage}
+          </p>
+
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-black/10">
+            <div
+              className="relative h-full min-w-5 rounded-full bg-[linear-gradient(90deg,#020617_0%,#a21caf_54%,#e879f9_100%)] transition-[width] duration-300 ease-out"
+              style={{ width: `${safeProgress}%` }}
+            >
+              <span className="absolute inset-y-0 right-0 w-10 bg-gradient-to-r from-transparent via-white/55 to-transparent opacity-90" />
             </div>
           </div>
 
-          <div className="relative z-10 mt-4 grid grid-cols-3 gap-2">
+          <div className="mt-3 flex flex-wrap gap-1.5">
             {copy.phases.map((phase, index) => {
               const state =
                 index < activePhaseIndex
@@ -190,39 +647,25 @@ export function LoadingProgressPanel({
                     : "idle";
 
               return (
-                <div
+                <span
                   key={phase}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${
                     state === "done"
-                      ? "border-emerald-300/45 bg-emerald-300/14 text-emerald-100"
+                      ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
                       : state === "active"
-                        ? "border-violet-100/55 bg-violet-200/20 text-violet-50"
-                        : "border-violet-100/25 bg-violet-200/8 text-violet-100/65"
+                        ? "border-black bg-black text-white"
+                        : "border-black/10 bg-white/72 text-black/48"
                   }`}
                 >
-                  {state === "done" ? <Check className="h-3 w-3" /> : null}
-                  <span>{phase}</span>
-                </div>
+                  {phase}
+                </span>
               );
             })}
           </div>
+        </div>
 
-          <div className="relative z-10 mt-3 h-2.5 overflow-hidden rounded-full bg-violet-100/18">
-            <div
-              className="relative h-full rounded-full bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-200 transition-[width] duration-300 ease-out"
-              style={{ width: `${safeProgress}%` }}
-            >
-              <span className="absolute inset-y-0 right-0 w-10 bg-gradient-to-r from-transparent via-white/50 to-transparent opacity-80 animate-pulse" />
-            </div>
-          </div>
-
-          <div className="relative z-10 mt-4 space-y-2">
-            <div className="h-2 w-[82%] animate-pulse rounded-full bg-violet-100/30" />
-            <div className="h-2 w-[66%] animate-pulse rounded-full bg-violet-100/22 [animation-delay:140ms]" />
-            <div className="h-2 w-[54%] animate-pulse rounded-full bg-violet-100/16 [animation-delay:240ms]" />
-          </div>
-        </>
-      )}
+        {visualType === "production" ? <ProductionVisual /> : <PayoutVisual />}
+      </div>
     </div>
   );
 }

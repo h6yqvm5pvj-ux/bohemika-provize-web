@@ -44,6 +44,7 @@ type UseCashflowDataParams = {
 
 type UseCashflowDataResult = {
   loading: boolean;
+  ready: boolean;
   cashflowItems: CashflowItem[];
   hasTeam: boolean;
 };
@@ -646,6 +647,7 @@ export function useCashflowData({
   });
   const [snapshot, setSnapshot] = useState<RawContractsSnapshot | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let finishLoadingTimer: number | null = null;
@@ -653,6 +655,7 @@ export function useCashflowData({
       setSnapshot(null);
       setHasTeam(false);
       setLoading(false);
+      setReady(false);
       return;
     }
 
@@ -679,8 +682,12 @@ export function useCashflowData({
       if (cached?.payload) {
         setSnapshot(cached.payload);
         setHasTeam(cached.payload.hasAnyTeam);
+        setReady(true);
       }
       setLoading(!hasCachedPayload);
+      if (!hasCachedPayload) {
+        setReady(false);
+      }
 
       try {
         const emailRaw = userEmail.trim();
@@ -690,12 +697,14 @@ export function useCashflowData({
         if (cancelled) return;
         setSnapshot(payload);
         setHasTeam(payload.hasAnyTeam);
+        setReady(true);
       } catch (error) {
         console.error("Chyba při načítání cashflow:", error);
         if (!hasCachedPayload) {
           setSnapshot(null);
           setHasTeam(false);
         }
+        setReady(true);
       } finally {
         if (cancelled) return;
         if (hasCachedPayload) {
@@ -724,8 +733,13 @@ export function useCashflowData({
     };
   }, [userEmail, enabled, snapshotMode, reloadKey]);
 
+  const currentEmail = normalizeEmail(userEmail);
+  const snapshotMatchesCurrentUser = Boolean(
+    snapshot && currentEmail && normalizeEmail(snapshot.email) === currentEmail
+  );
+  const dataReady = ready && (!snapshot || snapshotMatchesCurrentUser);
   const cashflowItems = useMemo<CashflowItem[]>(() => {
-    if (!enabled || !snapshot) return [];
+    if (!enabled || !snapshot || !snapshotMatchesCurrentUser) return [];
 
     const email = snapshot.email;
     const allEntriesByKey = new Map<string, EntryDoc>();
@@ -1031,11 +1045,12 @@ export function useCashflowData({
     }
 
     return cashflow;
-  }, [enabled, snapshot, scopeFilter, productFilter, tipsterMode]);
+  }, [enabled, productFilter, scopeFilter, snapshot, snapshotMatchesCurrentUser, tipsterMode]);
 
   return {
     loading,
+    ready: dataReady,
     cashflowItems,
-    hasTeam,
+    hasTeam: snapshotMatchesCurrentUser ? hasTeam : false,
   };
 }

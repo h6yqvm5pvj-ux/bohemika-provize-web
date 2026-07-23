@@ -459,6 +459,7 @@ export function ProductionSummarySection({
             stage={loadingStage}
             progress={clampedLoadingProgress}
             accentLabel={copy.loadingAccent}
+            visual="production"
           />
         </div>
       </section>

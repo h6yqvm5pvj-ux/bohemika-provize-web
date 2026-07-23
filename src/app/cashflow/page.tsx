@@ -35,6 +35,7 @@ import { useCashflowData } from "./useCashflowData";
 import { CashflowAccordion } from "./components/CashflowAccordion";
 import { CashflowFilters } from "./components/CashflowFilters";
 import { CashflowHeader } from "./components/CashflowHeader";
+import { CashflowInitialLoader } from "./components/CashflowInitialLoader";
 import { CashflowMonthModal } from "./components/CashflowMonthModal";
 import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
 import introStyles from "./cashflowIntro.module.css";
@@ -331,13 +332,52 @@ export default function CashflowPage() {
     }
   }, [canViewSubscriptionCashflow, productFilter]);
 
-  const { loading, cashflowItems, hasTeam } = useCashflowData({
+  const cashflowDataEnabled =
+    profileReady && Boolean(dataEmail) && hasInternalProfile === true;
+  const { loading, ready: cashflowReady, cashflowItems, hasTeam } = useCashflowData({
     userEmail: dataEmail,
     scopeFilter,
     productFilter,
     tipsterMode: isTipsterMode,
-    enabled: profileReady && Boolean(dataEmail) && hasInternalProfile === true,
+    enabled: cashflowDataEnabled,
   });
+
+  const initialLoadingActive =
+    !profileReady || (cashflowDataEnabled && (!cashflowReady || loading));
+  const [showInitialLoader, setShowInitialLoader] = useState(true);
+  const [initialLoaderCompleting, setInitialLoaderCompleting] = useState(false);
+
+  useEffect(() => {
+    let finishTimer: number | null = null;
+
+    if (initialLoadingActive) {
+      setShowInitialLoader(true);
+      setInitialLoaderCompleting(false);
+      return () => undefined;
+    }
+
+    if (profileLoadError || hasInternalProfile === false) {
+      setShowInitialLoader(false);
+      setInitialLoaderCompleting(false);
+      return () => undefined;
+    }
+
+    if (!showInitialLoader) {
+      return () => undefined;
+    }
+
+    setInitialLoaderCompleting(true);
+    finishTimer = window.setTimeout(() => {
+      setShowInitialLoader(false);
+      setInitialLoaderCompleting(false);
+    }, 760);
+
+    return () => {
+      if (finishTimer != null) {
+        window.clearTimeout(finishTimer);
+      }
+    };
+  }, [hasInternalProfile, initialLoadingActive, profileLoadError, showInitialLoader]);
 
   const contractNumberSearchActive = useMemo(
     () => normalizeContractNumberSearch(contractNumberQuery).length > 0,
@@ -540,130 +580,81 @@ export default function CashflowPage() {
     <AppLayout active="cashflow">
       <div className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
         <div className="relative z-10 mx-auto w-full max-w-7xl space-y-5 px-3 sm:px-4 lg:px-6">
-          <div className={introStyles.heroReveal} style={introDelay(40)}>
-            <CashflowHeader
-              totalCashflow={totalCashflow}
-              hasPaidMonthTotals={hasPaidMonthTotals}
-              showPastYears={showPastYears}
-              onTogglePastYears={() => setShowPastYears((value) => !value)}
+          {showInitialLoader ? (
+            <CashflowInitialLoader
+              completing={initialLoaderCompleting}
               tipsterMode={isTipsterMode}
             />
-          </div>
-
-          {!isTipsterMode && hasInternalProfile === true && (
-            <div className={introStyles.filtersReveal} style={introDelay(170)}>
-              <CashflowFilters
-                hasTeam={hasTeam}
-                scopeFilter={scopeFilter}
-                productFilter={productFilter}
-                showSubscriptionFilter={canViewSubscriptionCashflow}
-                contractNumberQuery={contractNumberQuery}
-                contractNumberSearchActive={contractNumberSearchActive}
-                contractNumberMatchCount={contractSearchStats.itemCount}
-                contractNumberContractCount={contractSearchStats.contractCount}
-                contractNumberSummary={contractSearchStats.summary}
-                onScopeChange={setScopeFilter}
-                onProductChange={setProductFilter}
-                onContractNumberChange={setContractNumberQuery}
-              />
-            </div>
-          )}
-
-          <div className={introStyles.bodyReveal} style={introDelay(290)}>
-            {loading || !profileReady ? (
-              <div className={`${introStyles.loadingShell} rounded-[28px] border border-white/80 px-4 py-5 shadow-[0_24px_60px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-6 sm:py-6`}>
-                <span className={introStyles.loadingAuraA} aria-hidden="true" />
-                <span className={introStyles.loadingAuraB} aria-hidden="true" />
-                <span className={introStyles.loadingSweep} aria-hidden="true" />
-
-                <div className="relative z-10 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-center">
-                  <div className="space-y-4">
-                    <span className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-800">
-                      Cashflow engine
-                    </span>
-
-                    <div className="space-y-1.5">
-                      <h3 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-[2rem]">
-                        Skládám provize do měsíční mapy…
-                      </h3>
-                      <p className="text-sm text-slate-600 sm:text-base">
-                        Počítám brutto, STORNO fond i čisté cashflow podle tvých filtrů.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        <span>Synchronizace</span>
-                        <span>probíhá</span>
-                      </div>
-                      <div className={introStyles.loadingProgress} />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-center xl:justify-end">
-                    <div className={introStyles.loadingEngine} aria-hidden="true">
-                      <span className={introStyles.loadingRing} />
-                      <span className={`${introStyles.loadingRing} ${introStyles.loadingRingSecondary}`} />
-                      <span className={introStyles.loadingCore} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative z-10 mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-                  {[0, 1, 2].map((index) => (
-                    <div
-                      key={index}
-                      className={`${introStyles.loadingSkeletonCard} rounded-2xl border border-slate-200/90 bg-white/85 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.07)]`}
-                    >
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
-                        Rok
-                      </div>
-                      <div className="mt-2 h-7 w-24 rounded-lg bg-slate-200/90" />
-                      <div className="mt-3 space-y-2">
-                        <div className="h-3 w-5/6 rounded-full bg-slate-200/85" />
-                        <div className="h-3 w-2/3 rounded-full bg-slate-200/85" />
-                        <div className="h-3 w-3/4 rounded-full bg-slate-200/85" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          ) : (
+            <>
+              <div className={introStyles.heroReveal} style={introDelay(40)}>
+                <CashflowHeader
+                  totalCashflow={totalCashflow}
+                  hasPaidMonthTotals={hasPaidMonthTotals}
+                  showPastYears={showPastYears}
+                  onTogglePastYears={() => setShowPastYears((value) => !value)}
+                  tipsterMode={isTipsterMode}
+                />
               </div>
-            ) : profileLoadError ? (
-              <p className="rounded-[24px] border border-rose-100 bg-white/90 px-5 py-4 text-sm text-rose-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
-                {profileLoadError}
-              </p>
-            ) : hasInternalProfile === false ? (
-              <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
-                Nejdřív dokonči nastavení účtu. Cashflow se načte po založení interního profilu.
-              </p>
-            ) : yearGroups.length === 0 ? (
-              <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
-                {contractNumberSearchActive
-                  ? "Smlouva s tímto číslem není v aktuálním cashflow výběru."
-                  : isTipsterMode
-                  ? "Zatím nemáš žádné sjednané tipy, ze kterých by šlo cashflow zobrazit."
-                  : "Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat."}
-              </p>
-            ) : (
-              <CashflowAccordion
-                yearGroups={yearGroups}
-                expandedYears={displayedExpandedYears}
-                onToggleYear={toggleYear}
-                onSelectMonth={setSelectedMonth}
-                tipsterMode={isTipsterMode}
-              />
-            )}
-          </div>
 
-          <aside className="rounded-[24px] border border-amber-200/80 bg-amber-50/90 px-5 py-4 text-sm leading-relaxed text-amber-950 shadow-[0_16px_38px_rgba(146,64,14,0.08)] backdrop-blur-lg">
-            <p className="font-semibold">Upozornění k predikci cashflow</p>
-            <p className="mt-1">
-              Jedná se pouze o predikci na základě data sjednání, počátku a frekvencí
-              plateb smluv. Predikce může mít odchylky například z důvodu pozdního
-              uhrazení klientem. Za správnost dat si zodpovídá každý uživatel sám.
-              Při stornu smlouvy si uživatel musí sám označit smlouvu jako stornovanou.
-            </p>
-          </aside>
+              {!isTipsterMode && hasInternalProfile === true && (
+                <div className={introStyles.filtersReveal} style={introDelay(170)}>
+                  <CashflowFilters
+                    hasTeam={hasTeam}
+                    scopeFilter={scopeFilter}
+                    productFilter={productFilter}
+                    showSubscriptionFilter={canViewSubscriptionCashflow}
+                    contractNumberQuery={contractNumberQuery}
+                    contractNumberSearchActive={contractNumberSearchActive}
+                    contractNumberMatchCount={contractSearchStats.itemCount}
+                    contractNumberContractCount={contractSearchStats.contractCount}
+                    contractNumberSummary={contractSearchStats.summary}
+                    onScopeChange={setScopeFilter}
+                    onProductChange={setProductFilter}
+                    onContractNumberChange={setContractNumberQuery}
+                  />
+                </div>
+              )}
+
+              <div className={introStyles.bodyReveal} style={introDelay(290)}>
+                {profileLoadError ? (
+                  <p className="rounded-[24px] border border-rose-100 bg-white/90 px-5 py-4 text-sm text-rose-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
+                    {profileLoadError}
+                  </p>
+                ) : hasInternalProfile === false ? (
+                  <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
+                    Nejdřív dokonči nastavení účtu. Cashflow se načte po založení interního profilu.
+                  </p>
+                ) : yearGroups.length === 0 ? (
+                  <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
+                    {contractNumberSearchActive
+                      ? "Smlouva s tímto číslem není v aktuálním cashflow výběru."
+                      : isTipsterMode
+                      ? "Zatím nemáš žádné sjednané tipy, ze kterých by šlo cashflow zobrazit."
+                      : "Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat."}
+                  </p>
+                ) : (
+                  <CashflowAccordion
+                    yearGroups={yearGroups}
+                    expandedYears={displayedExpandedYears}
+                    onToggleYear={toggleYear}
+                    onSelectMonth={setSelectedMonth}
+                    tipsterMode={isTipsterMode}
+                  />
+                )}
+              </div>
+
+              <aside className="rounded-[24px] border border-amber-200/80 bg-amber-50/90 px-5 py-4 text-sm leading-relaxed text-amber-950 shadow-[0_16px_38px_rgba(146,64,14,0.08)] backdrop-blur-lg">
+                <p className="font-semibold">Upozornění k predikci cashflow</p>
+                <p className="mt-1">
+                  Jedná se pouze o predikci na základě data sjednání, počátku a frekvencí
+                  plateb smluv. Predikce může mít odchylky například z důvodu pozdního
+                  uhrazení klientem. Za správnost dat si zodpovídá každý uživatel sám.
+                  Při stornu smlouvy si uživatel musí sám označit smlouvu jako stornovanou.
+                </p>
+              </aside>
+            </>
+          )}
         </div>
 
         <CashflowMonthModal
