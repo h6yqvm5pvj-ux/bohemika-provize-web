@@ -18,6 +18,15 @@ const DOZITA_MONTH_PRODUCTS = new Set<Product>(["maxcizinkomplex"]);
 const startOfDay = (value: Date): Date =>
   new Date(value.getFullYear(), value.getMonth(), value.getDate());
 
+const normalizeStatusToken = (value: unknown): string =>
+  typeof value === "string"
+    ? value
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+    : "";
+
 export function contractMaturityDate(
   contract: ContractLifecycleInput | null | undefined
 ): Date | null {
@@ -79,13 +88,19 @@ export function contractLifecycleStatus(
   contract: ContractLifecycleInput | null | undefined,
   now: Date = new Date()
 ): ContractLifecycleStatus {
-  const rawStatus = (contract?.status ?? "").toString().trim().toLowerCase();
+  const rawStatus = normalizeStatusToken(contract?.status);
   if (
     rawStatus === "storno" ||
-    rawStatus === "stornovana" ||
-    rawStatus === "stornována"
+    rawStatus === "stornovana"
   ) {
     return "storno";
+  }
+  if (
+    rawStatus === "dozita" ||
+    rawStatus === "dozite" ||
+    rawStatus === "dozito"
+  ) {
+    return "dozita";
   }
   if (isContractDozita(contract, now)) return "dozita";
   return "active";

@@ -4,44 +4,18 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ExternalLink, X } from "lucide-react";
 import { auth } from "@/app/firebase";
-import { toDate } from "@/app/lib/formatters";
+import { productLabel as productLabelFromCatalog } from "@/app/lib/productCatalog";
 import {
-  isAutoProduct,
-  productLabel as productLabelFromCatalog,
-} from "@/app/lib/productCatalog";
-import { type Product } from "@/app/types/domain";
-
-type FirestoreTimestamp = {
-  seconds: number;
-  nanoseconds?: number;
-  toDate?: () => Date;
-};
-
-type EntryDoc = {
-  id: string;
-  userEmail?: string | null;
-  productKey?: Product;
-  clientName?: string | null;
-  contractNumber?: string | null;
-  policyStartDate?: string | FirestoreTimestamp | Date | null;
-  contractSignedDate?: string | FirestoreTimestamp | Date | null;
-  createdAt?: string | FirestoreTimestamp | Date | null;
-  contractStartDate?: string | FirestoreTimestamp | Date | null;
-};
-
-type AnniversaryRow = {
-  id: string;
-  href: string;
-  client: string;
-  contractNumber: string;
-  product: Product;
-  daysToAnniversary: number;
-};
+  buildAutoAnniversaryRows,
+  normalizeAutoAnniversaryEmail,
+  type AutoAnniversaryEntry,
+  type AutoAnniversaryRow,
+} from "@/components/autoAnniversary";
 
 type ContractsApiResponse = {
   ok?: boolean;
   error?: string;
-  contracts?: (EntryDoc & { adviserEmail?: string | null })[];
+  contracts?: AutoAnniversaryEntry[];
   hasMore?: boolean;
   nextCursorToken?: string | null;
   nextCursor?: number | null;
@@ -51,16 +25,6 @@ const CONTRACTS_PAGE_LIMIT = 50;
 const CONTRACTS_MAX_PAGES = 80;
 const ANNIVERSARY_MODAL_SHOWN_KEY_PREFIX = "home.auto-anniversary.shown";
 
-function nextAnniversary(start: Date, now: Date): Date {
-  const ann = new Date(start);
-  ann.setFullYear(ann.getFullYear() + 1);
-  while (ann < now) {
-    ann.setFullYear(ann.getFullYear() + 1);
-  }
-  return ann;
-}
-
-const normalizeEmail = (email?: string | null) => (email ?? "").trim().toLowerCase();
 const localDayStamp = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -69,9 +33,6 @@ const localDayStamp = (date: Date) => {
 };
 const modalShownStorageKey = (email: string) =>
   `${ANNIVERSARY_MODAL_SHOWN_KEY_PREFIX}:${email}`;
-
-const contractDetailHref = (ownerEmail: string, entryId: string) =>
-  `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}?from=anniversary`;
 
 const anniversaryCountLabel = (count: number) => {
   if (count === 1) return "1 smlouva s výročním datem do 60 dní";
@@ -99,7 +60,7 @@ export function AutoAnniversaryModal({
 }: {
   userEmail?: string | null;
 }) {
-  const [rows, setRows] = useState<AnniversaryRow[]>([]);
+  const [rows, setRows] = useState<AutoAnniversaryRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -126,7 +87,7 @@ export function AutoAnniversaryModal({
   };
 
   useEffect(() => {
-    const normalizedEmail = normalizeEmail(userEmail);
+    const normalizedEmail = normalizeAutoAnniversaryEmail(userEmail);
     if (!normalizedEmail) {
       setRows([]);
       setOpen(false);
@@ -172,25 +133,23 @@ export function AutoAnniversaryModal({
           return payload;
         };
 
-        const byEntryKey = new Map<string, EntryDoc>();
+        const byEntryKey = new Map<string, AutoAnniversaryEntry>();
         let cursor: string | null = null;
         let hasMore = true;
         let page = 0;
         while (hasMore && page < CONTRACTS_MAX_PAGES) {
           page += 1;
           const payload = await requestContracts(cursor);
-          const items = (payload.contracts ?? []) as (EntryDoc & {
-            adviserEmail?: string | null;
-          })[];
+          const items = payload.contracts ?? [];
           items.forEach((item) => {
-            const owner = normalizeEmail(
+            const owner = normalizeAutoAnniversaryEmail(
               item.adviserEmail ?? item.userEmail ?? normalizedEmail
             );
             const id = String(item.id ?? "").trim();
             if (!owner || !id) return;
             const key = `${owner}___${id}`;
             byEntryKey.set(key, {
-              ...(item as Omit<EntryDoc, "id">),
+              ...item,
               id,
               userEmail: owner,
             });
@@ -201,40 +160,11 @@ export function AutoAnniversaryModal({
         }
 
         const now = new Date();
-
-        const results: AnniversaryRow[] = [];
-        byEntryKey.forEach((data) => {
-          const start =
-            toDate(data.policyStartDate) ??
-            toDate(data.contractSignedDate) ??
-            toDate(data.createdAt) ??
-            toDate(data.contractStartDate);
-          if (!start) return;
-
-          const ann = nextAnniversary(start, now);
-          const diffDays = Math.ceil(
-            (ann.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-          );
-          if (diffDays < 0 || diffDays > 60) return;
-
-          const product = data.productKey;
-          if (!product || !isAutoProduct(product)) return;
-
-          const ownerEmail = normalizeEmail(data.userEmail);
-          const entryId = String(data.id ?? "").trim();
-          if (!ownerEmail || !entryId) return;
-
-          results.push({
-            id: `${ownerEmail}___${entryId}`,
-            href: contractDetailHref(ownerEmail, entryId),
-            client: data.clientName ?? "Neznámý klient",
-            contractNumber: data.contractNumber ?? "—",
-            product,
-            daysToAnniversary: diffDays,
-          });
-        });
-
-        results.sort((a, b) => a.daysToAnniversary - b.daysToAnniversary);
+        const results = buildAutoAnniversaryRows(
+          Array.from(byEntryKey.values()),
+          now,
+          normalizedEmail
+        );
         setRows(results);
         const hasRows = results.length > 0;
         if (!hasRows) {
@@ -257,7 +187,7 @@ export function AutoAnniversaryModal({
 
   useEffect(() => {
     if (!open) return;
-    const normalizedEmail = normalizeEmail(userEmail);
+    const normalizedEmail = normalizeAutoAnniversaryEmail(userEmail);
     if (!normalizedEmail) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -317,7 +247,7 @@ export function AutoAnniversaryModal({
             className="ui-focus inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
             aria-label="Zavřít upozornění na výročí"
             onClick={() => {
-              markModalShownToday(normalizeEmail(userEmail));
+              markModalShownToday(normalizeAutoAnniversaryEmail(userEmail));
               setOpen(false);
             }}
           >
@@ -346,7 +276,7 @@ export function AutoAnniversaryModal({
                     key={r.id}
                     href={r.href}
                     onClick={() => {
-                      markModalShownToday(normalizeEmail(userEmail));
+                      markModalShownToday(normalizeAutoAnniversaryEmail(userEmail));
                     }}
                     className="group grid gap-2 px-5 py-3 text-slate-800 transition hover:bg-amber-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 sm:grid-cols-[minmax(150px,1.35fr)_minmax(110px,0.8fr)_minmax(110px,0.9fr)_92px_34px] sm:items-center sm:gap-3"
                     title={`Otevřít smlouvu ${r.contractNumber}`}
