@@ -2750,7 +2750,7 @@ export default function ExportProductionPage() {
                   Filtry připravené k exportu
                 </div>
                 <Image
-                  src="/icons/export-produkce.png"
+                  src="/icons/export-produkce.webp"
                   alt="Export produkce"
                   width={320}
                   height={320}

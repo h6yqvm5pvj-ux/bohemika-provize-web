@@ -2297,7 +2297,7 @@ export default function IntranetPage() {
                         <div className="flex min-w-0 items-start gap-3">
                           <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200">
                             <Image
-                              src="/icons/klient.png"
+                              src="/icons/klient.webp"
                               alt="Ikona klienta"
                               fill
                               sizes="44px"
@@ -2492,7 +2492,7 @@ export default function IntranetPage() {
                                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                                       <span className="relative inline-flex h-6 w-6 overflow-hidden rounded-full ring-1 ring-slate-300">
                                         <Image
-                                          src="/icons/klient.png"
+                                          src="/icons/klient.webp"
                                           alt="Ikona klienta"
                                           fill
                                           sizes="24px"
@@ -2561,7 +2561,7 @@ export default function IntranetPage() {
                                               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                                                 <span className="relative inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-slate-300">
                                                   <Image
-                                                    src="/icons/klient.png"
+                                                    src="/icons/klient.webp"
                                                     alt="Ikona klienta"
                                                     fill
                                                     sizes="20px"

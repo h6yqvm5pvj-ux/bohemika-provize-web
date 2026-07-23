@@ -278,6 +278,8 @@ const currentYearMonth = (now: Date): string =>
 const previousYearMonth = (now: Date): string =>
   currentYearMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
+const utcDayIndex = (ms: number): number => Math.floor(ms / (24 * 60 * 60 * 1000));
+
 const teamOverviewMonthDocId = (ownerEmail: string, yearMonth: string): string =>
   `${normalizeEmail(ownerEmail)}___${yearMonth}`;
 
@@ -1107,7 +1109,6 @@ function buildSuspiciousStornosCheck({
   truncated: boolean;
 }): HealthCheck {
   const samples: HealthSample[] = [];
-  const now = Date.now();
   let issues = 0;
 
   for (const entry of entries) {
@@ -1119,16 +1120,18 @@ function buildSuspiciousStornosCheck({
     if (status !== "storno" && entry.stornoDateMs) {
       reasons.push("aktivní smlouva má stornoDate");
     }
-    if (
-      status === "storno" &&
-      entry.stornoDateMs &&
-      entry.contractSignedDateMs &&
-      entry.stornoDateMs < entry.contractSignedDateMs - 24 * 60 * 60 * 1000
-    ) {
-      reasons.push("stornoDate je před datem podpisu");
-    }
-    if (entry.stornoDateMs && entry.stornoDateMs > now + 24 * 60 * 60 * 1000) {
-      reasons.push("stornoDate je v budoucnosti");
+    if (status === "storno" && entry.stornoDateMs) {
+      const startDateMs = entry.policyStartDateMs ?? entry.contractSignedDateMs;
+      if (
+        startDateMs != null &&
+        utcDayIndex(entry.stornoDateMs) < utcDayIndex(startDateMs)
+      ) {
+        reasons.push(
+          entry.policyStartDateMs != null
+            ? "stornoDate je před datem počátku"
+            : "stornoDate je před datem podpisu"
+        );
+      }
     }
 
     if (reasons.length === 0) continue;
@@ -1144,6 +1147,7 @@ function buildSuspiciousStornosCheck({
       meta: {
         status,
         contractSignedDateMs: entry.contractSignedDateMs,
+        policyStartDateMs: entry.policyStartDateMs,
         stornoDateMs: entry.stornoDateMs,
       },
     });
@@ -1158,7 +1162,7 @@ function buildSuspiciousStornosCheck({
     samples,
     severityWhenFound: "warning",
     description:
-      "Kontroluje storna bez data, aktivní smlouvy se stornoDate a časově nelogická storna.",
+      "Kontroluje storna bez data, aktivní smlouvy se stornoDate a storna před počátkem smlouvy.",
   });
 }
 

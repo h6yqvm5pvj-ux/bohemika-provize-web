@@ -24,6 +24,11 @@ const DUE_SOON_DAYS = 7;
 
 type PaidSubscriptionPlan = "monthly" | "semiannual" | "yearly";
 type SubscriptionPaymentPlan = PaidSubscriptionPlan | "unlimited";
+type NormalizedPaidPaymentRow = {
+  plan: PaidSubscriptionPlan;
+  periodFrom: string;
+  periodUntil: string;
+};
 
 const PLAN_AMOUNT_CZK: Record<PaidSubscriptionPlan, number> = {
   monthly: 300,
@@ -37,6 +42,12 @@ const PLAN_MONTHS: Record<PaidSubscriptionPlan, number> = {
   yearly: 12,
 };
 
+const PAID_SUBSCRIPTION_PLANS = new Set<string>([
+  "monthly",
+  "semiannual",
+  "yearly",
+]);
+
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
@@ -49,6 +60,31 @@ const normalizeNote = (value: unknown): string | null => {
   if (!trimmed) return null;
   return trimmed.slice(0, 1200);
 };
+
+const normalizePaymentId = (value: unknown): string => {
+  const id = normalizeText(value);
+  if (!id || id.length > 160 || id.includes("/")) return "";
+  return id;
+};
+
+function isPaidSubscriptionPlan(value: unknown): value is PaidSubscriptionPlan {
+  const plan = normalizeSubscriptionPlan(value);
+  return Boolean(plan && PAID_SUBSCRIPTION_PLANS.has(plan));
+}
+
+function parseAmountCzk(value: unknown, fallback: number): number | null {
+  if (value == null || value === "") return fallback;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.replace(/\s+/g, "").replace(",", "."))
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  if (rounded <= 0 || rounded > 1_000_000) return null;
+  return rounded;
+}
 
 function addMonthsMinusOneDay(fromIso: string, months: number): string {
   const fromDate = new Date(`${fromIso}T00:00:00.000Z`);
@@ -156,6 +192,92 @@ async function loadPayments(targetEmail: string) {
       createdByEmail: normalizeEmail(data.createdByEmail) || null,
     };
   });
+}
+
+async function syncPaidSubscriptionProfileFromPayments(
+  target: Awaited<ReturnType<typeof loadTargetProfile>>,
+  adminEmail: string
+): Promise<{ revokeSessions: boolean }> {
+  if (!target) return { revokeSessions: false };
+
+  const currentPlan = normalizeSubscriptionPlan(
+    target.profile.subscriptionPlan ?? target.profile.subscriptionplan
+  );
+  const currentStatus = normalizeText(
+    target.profile.subscriptionStatus ?? target.profile.subscriptionstatus
+  ).toLowerCase();
+
+  if (currentPlan === "unlimited" || currentStatus === "unpaid") {
+    return { revokeSessions: false };
+  }
+
+  const snap = await target.privateRef
+    .collection("subscriptionPayments")
+    .orderBy("periodFrom", "desc")
+    .limit(MAX_HISTORY_ROWS)
+    .get();
+
+  const paidPayments = snap.docs
+    .map((doc) => {
+      const data = (doc.data() as Record<string, unknown> | undefined) ?? {};
+      const plan = normalizeSubscriptionPlan(data.plan);
+      const periodFrom = normalizeText(data.periodFrom);
+      const periodUntil = normalizeText(data.periodUntil);
+      const amountCzk = Number(data.amountCzk ?? 0) || 0;
+      if (
+        !isPaidSubscriptionPlan(plan) ||
+        !isIsoDay(periodFrom) ||
+        !isIsoDay(periodUntil) ||
+        amountCzk <= 0
+      ) {
+        return null;
+      }
+      return {
+        plan,
+        periodFrom,
+        periodUntil,
+      };
+    })
+    .filter((row): row is NormalizedPaidPaymentRow => Boolean(row));
+
+  paidPayments.sort((a, b) => {
+    if (a.periodUntil !== b.periodUntil) {
+      return b.periodUntil.localeCompare(a.periodUntil);
+    }
+    return b.periodFrom.localeCompare(a.periodFrom);
+  });
+
+  const latest = paidPayments[0];
+  if (latest) {
+    await target.privateRef.set(
+      {
+        subscriptionStatus: "active",
+        subscriptionPlan: latest.plan,
+        subscriptionPaidFrom: latest.periodFrom,
+        subscriptionPaidUntil: latest.periodUntil,
+        subscriptionBlockedReason: FieldValue.delete(),
+        subscriptionUpdatedAt: FieldValue.serverTimestamp(),
+        subscriptionUpdatedByEmail: adminEmail,
+      },
+      { merge: true }
+    );
+    return { revokeSessions: false };
+  }
+
+  await target.privateRef.set(
+    {
+      subscriptionStatus: FieldValue.delete(),
+      subscriptionPlan: FieldValue.delete(),
+      subscriptionPaidFrom: FieldValue.delete(),
+      subscriptionPaidUntil: FieldValue.delete(),
+      subscriptionBlockedReason: FieldValue.delete(),
+      subscriptionUpdatedAt: FieldValue.serverTimestamp(),
+      subscriptionUpdatedByEmail: adminEmail,
+    },
+    { merge: true }
+  );
+
+  return { revokeSessions: Boolean(target.userId) };
 }
 
 async function loadSubscriptionDirectoryUsers() {
@@ -351,13 +473,34 @@ type AddPaymentPayload = {
   note?: string;
 };
 
+type UpdatePaymentPayload = {
+  action: "updatePayment";
+  email: string;
+  paymentId: string;
+  plan: PaidSubscriptionPlan;
+  amountCzk: number;
+  periodFrom: string;
+  periodUntil: string;
+  note?: string;
+};
+
+type DeletePaymentPayload = {
+  action: "deletePayment";
+  email: string;
+  paymentId: string;
+};
+
 type SetUnpaidPayload = {
   action: "setUnpaid";
   email: string;
   note?: string;
 };
 
-type AdminPatchPayload = AddPaymentPayload | SetUnpaidPayload;
+type AdminPatchPayload =
+  | AddPaymentPayload
+  | UpdatePaymentPayload
+  | DeletePaymentPayload
+  | SetUnpaidPayload;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -397,6 +540,55 @@ function parsePatchPayload(body: unknown): AdminPatchPayload | { error: string }
       plan,
       periodFrom: periodFromRaw || undefined,
       note: normalizeNote(body.note) ?? undefined,
+    };
+  }
+
+  if (action === "updatePayment") {
+    const paymentId = normalizePaymentId(body.paymentId);
+    if (!paymentId) {
+      return { error: "Chybí identifikátor platby." };
+    }
+    const plan = normalizeSubscriptionPlan(body.plan);
+    if (!isPaidSubscriptionPlan(plan)) {
+      return { error: "Zadej platný placený tarif (monthly / semiannual / yearly)." };
+    }
+    const amountCzk = parseAmountCzk(body.amountCzk, PLAN_AMOUNT_CZK[plan]);
+    if (amountCzk == null) {
+      return { error: "Částka musí být kladné číslo v Kč." };
+    }
+    const periodFrom = normalizeText(body.periodFrom);
+    if (!periodFrom || !isIsoDay(periodFrom)) {
+      return { error: "Pole periodFrom musí být ve formátu YYYY-MM-DD." };
+    }
+    const periodUntilRaw = normalizeText(body.periodUntil);
+    const periodUntil = periodUntilRaw || addMonthsMinusOneDay(periodFrom, PLAN_MONTHS[plan]);
+    if (!isIsoDay(periodUntil)) {
+      return { error: "Pole periodUntil musí být ve formátu YYYY-MM-DD." };
+    }
+    if (periodUntil < periodFrom) {
+      return { error: "Konec období nesmí být před začátkem." };
+    }
+    return {
+      action: "updatePayment",
+      email,
+      paymentId,
+      plan,
+      amountCzk,
+      periodFrom,
+      periodUntil,
+      note: normalizeNote(body.note) ?? undefined,
+    };
+  }
+
+  if (action === "deletePayment") {
+    const paymentId = normalizePaymentId(body.paymentId);
+    if (!paymentId) {
+      return { error: "Chybí identifikátor platby." };
+    }
+    return {
+      action: "deletePayment",
+      email,
+      paymentId,
     };
   }
 
@@ -442,6 +634,71 @@ export async function PATCH(req: NextRequest) {
       );
 
       if (target.userId) {
+        await adminAuth.revokeRefreshTokens(target.userId).catch((error) => {
+          console.warn("revokeRefreshTokens failed", error);
+        });
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (parsed.action === "updatePayment") {
+      const paymentRef = target.privateRef
+        .collection("subscriptionPayments")
+        .doc(parsed.paymentId);
+      const paymentSnap = await paymentRef.get();
+      if (!paymentSnap.exists) {
+        return NextResponse.json(
+          { ok: false, error: "Platba nebyla nalezena." },
+          { status: 404 }
+        );
+      }
+
+      await paymentRef.set(
+        {
+          plan: parsed.plan,
+          amountCzk: parsed.amountCzk,
+          periodFrom: parsed.periodFrom,
+          periodUntil: parsed.periodUntil,
+          note: parsed.note ?? null,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedByEmail: auth.adminEmail,
+        },
+        { merge: true }
+      );
+
+      const syncResult = await syncPaidSubscriptionProfileFromPayments(
+        target,
+        auth.adminEmail
+      );
+      if (syncResult.revokeSessions && target.userId) {
+        await adminAuth.revokeRefreshTokens(target.userId).catch((error) => {
+          console.warn("revokeRefreshTokens failed", error);
+        });
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (parsed.action === "deletePayment") {
+      const paymentRef = target.privateRef
+        .collection("subscriptionPayments")
+        .doc(parsed.paymentId);
+      const paymentSnap = await paymentRef.get();
+      if (!paymentSnap.exists) {
+        return NextResponse.json(
+          { ok: false, error: "Platba nebyla nalezena." },
+          { status: 404 }
+        );
+      }
+
+      await paymentRef.delete();
+
+      const syncResult = await syncPaidSubscriptionProfileFromPayments(
+        target,
+        auth.adminEmail
+      );
+      if (syncResult.revokeSessions && target.userId) {
         await adminAuth.revokeRefreshTokens(target.userId).catch((error) => {
           console.warn("revokeRefreshTokens failed", error);
         });

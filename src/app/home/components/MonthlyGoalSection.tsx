@@ -115,7 +115,7 @@ export function MonthlyGoalSection({
         className="monthly-goal-ghost-wrap pointer-events-none absolute inset-y-0 right-0 z-0 w-[52%] overflow-hidden"
       >
         <Image
-          src="/icons/cilmesice.png"
+          src="/icons/cilmesice.webp"
           alt=""
           width={3000}
           height={3000}

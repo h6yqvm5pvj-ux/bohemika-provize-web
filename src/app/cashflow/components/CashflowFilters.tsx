@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BriefcaseBusiness,
   CarFront,
+  CreditCard,
   Globe2,
   HeartPulse,
   Home,
@@ -31,6 +32,7 @@ type CashflowFiltersProps = {
   hasTeam: boolean;
   scopeFilter: ScopeFilter;
   productFilter: ProductFilter;
+  showSubscriptionFilter?: boolean;
   contractNumberQuery: string;
   contractNumberSearchActive: boolean;
   contractNumberMatchCount: number;
@@ -44,6 +46,7 @@ type CashflowFiltersProps = {
 const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "all", label: "Všechny" },
   { value: "tip", label: "TIP" },
+  { value: "subscription", label: "Předplatné" },
   { value: "life", label: "Život" },
   { value: "auto", label: "Auto" },
   { value: "property", label: "Majetek" },
@@ -56,6 +59,7 @@ const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
 const PRODUCT_FILTER_ICONS: Partial<Record<ProductFilter, LucideIcon>> = {
   all: Sparkles,
   tip: Tag,
+  subscription: CreditCard,
   life: HeartPulse,
   auto: CarFront,
   property: Home,
@@ -89,6 +93,10 @@ const PRODUCT_FILTER_VISUALS: Record<ProductFilter, ChipVisual> = {
   },
   tip: {
     activeClass: REVENUE_SCOPE_THEME.tip.activeChipClass,
+  },
+  subscription: {
+    activeClass:
+      "z-10 border-emerald-500/55 bg-[linear-gradient(135deg,#34d399_0%,#047857_100%)] text-[#f8fafc] shadow-[0_12px_24px_rgba(4,120,87,0.32)]",
   },
   life: {
     activeClass:
@@ -153,6 +161,7 @@ export function CashflowFilters({
   hasTeam,
   scopeFilter,
   productFilter,
+  showSubscriptionFilter = false,
   contractNumberQuery,
   contractNumberSearchActive,
   contractNumberMatchCount,
@@ -183,6 +192,9 @@ export function CashflowFilters({
     ? frequencyText(contractNumberSummary.frequency)
     : "frekvence neuvedena";
   const summaryStatus = contractStatusLabel(contractNumberSummary?.contractStatus);
+  const productFilterOptions = showSubscriptionFilter
+    ? PRODUCT_FILTER_OPTIONS
+    : PRODUCT_FILTER_OPTIONS.filter((option) => option.value !== "subscription");
 
   return (
     <section className="relative overflow-visible px-1 py-1">
@@ -248,7 +260,7 @@ export function CashflowFilters({
           </p>
           <div className="mt-2.5 -mx-1 px-1">
             <div className="flex flex-nowrap gap-2 overflow-x-auto pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible md:pb-3 md:pt-1">
-              {PRODUCT_FILTER_OPTIONS.map((option) => {
+              {productFilterOptions.map((option) => {
                 const Icon = PRODUCT_FILTER_ICONS[option.value];
                 const isActive = productFilter === option.value;
 

@@ -1,6 +1,5 @@
 // src/app/api/contracts/route.ts
 import { NextResponse, type NextRequest } from "next/server";
-import { createHash } from "node:crypto";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
 
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
@@ -27,16 +26,9 @@ import {
 } from "@/app/types/domain";
 import {
   buildChildrenByManager,
-  collectSubordinateHierarchy,
 } from "@/app/lib/teamHierarchy";
 import { toDate } from "@/app/lib/formatters";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
-import {
-  contractMatchesCommissionAuditFilter,
-  isCommissionAuditFilterActive,
-  parseCommissionAuditCodeFilter,
-  parseCommissionAuditMode,
-} from "@/app/lib/commissionAudit";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
 import { computeLegacyFrequencyOverrideTotal } from "@/app/lib/managerOverrideTotals";
 import {
@@ -46,14 +38,11 @@ import {
 import {
   AUTO_PRODUCTS,
   COMFORT_PRODUCTS,
-  INSTITUTION_CATALOG,
   LIFE_PRODUCTS as CATALOG_LIFE_PRODUCTS,
   LIABILITY_PRODUCTS,
   PROPERTY_PRODUCTS,
   TRAVEL_PRODUCTS,
   productLabel,
-  productInstitutionId,
-  type ProductInstitutionId,
 } from "@/app/lib/productCatalog";
 import type {
   AuthContextOptions,
@@ -61,7 +50,6 @@ import type {
   ContractDoc,
   ContractLifePremiumChange,
   ContractListFilters,
-  ContractListProductCategory,
   ContractListResponseShape,
   ContractResponseItem,
   ContractsFindResponse,
@@ -134,6 +122,77 @@ import {
   toPublicContractPdfAttachment,
   type StoredContractPdfAttachment,
 } from "@/lib/server/contractPdfStorage";
+import {
+  isValidContractNumber,
+  validateContractCoreInvariants,
+} from "./contractsApi.validation";
+import {
+  contractMatchesListFilters,
+  contractSortDate,
+  hasContractListClientFilters,
+  hasContractListFilters,
+  parseContractListFilters,
+} from "./contractsApi.listFilters";
+import {
+  DOMEX_DETAIL_ALLOWED_KEYS,
+  FLEXI_DETAIL_ALLOWED_KEYS,
+  NEON_DETAIL_ALLOWED_KEYS,
+  SUPPORTED_PRODUCTS,
+  TIP_CONTRACT_PERCENT_MAX,
+  TIP_CONTRACT_PERCENT_MIN,
+  isPlainObject,
+  normalizeCreateEntryPayload,
+  parseOptionalBoolean,
+  parseOptionalFiniteNumber,
+  parseOptionalInteger,
+  parseOptionalMaxCizinKomplexVariant,
+  parseOptionalTrimmedText,
+  parseRequiredTrimmedText,
+  sanitizeDetailObject,
+  type NormalizedCreateEntryPayload,
+  type NormalizedManagerChainEntry,
+  type NormalizedManagerOverrideEntry,
+  type ParseResult,
+  type RefreshCommissionBasePayload,
+} from "./contractsApi.createPayload";
+import {
+  buildDuplicateLookupKey,
+  buildIdempotentEntryId,
+  contractNumberClaimDocId,
+  createDuplicateContractError,
+  idempotentReplayMatchesPayload,
+  isoDayFromUnknown,
+  normalizeClientNameForDuplicate,
+  normalizeContractEntryType,
+  normalizeContractNumber,
+  normalizeContractNumberLoose,
+} from "./contractsApi.identity";
+import {
+  CONTRACT_NUMBER_CLAIMS_COLLECTION,
+  CONTRACT_REFS_COLLECTION,
+  applyContractRefToBatch,
+  collectContractDuplicateGuardRefs,
+  contractRefDocId,
+  contractRefFromData,
+  findExistingContractByNumber,
+  resolveEntryRefsByContractNumber,
+  type ExistingContractByNumber,
+} from "./contractsApi.duplicates";
+import {
+  buildFindAllowedOwnerSet,
+  canManageContractOwner,
+  extractEmailFromUnknown,
+  hasContractAccess,
+  resolveAccountType,
+  resolveContractFindScope,
+  resolveContractListScope,
+  resolveContractTeamAccess,
+  selectedSubordinateEmailsFromParam,
+  selectContractListOwners,
+  shouldFetchTeamContractsInParallel,
+} from "./contractsApi.access";
+
+export { hasContractAccess } from "./contractsApi.access";
 
 export type ContractsGetMode = "auto" | "detail" | "list";
 export type ContractsPatchAction =
@@ -144,6 +203,7 @@ export type ContractsPatchAction =
 
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
+const CASHFLOW_PAGE_SIZE_MAX = 100;
 const FILTERED_LIST_QUERY_LIMIT = 250;
 const CONTRACTS_MUTATION_RATE_LIMIT = 60;
 const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -152,149 +212,14 @@ const CONTRACTS_GET_RATE_LIMIT_WINDOW_MS = 60_000;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const USER_TREE_CACHE_TTL_MS = 5 * 60 * 1000;
 const SUBSCRIPTION_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
-const CONTRACT_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTRACTS_CREATE_RATE_LIMIT = 30;
 const CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
 const CONTRACTS_CREATE_IDEMPOTENCY_HEADER = "x-idempotency-key";
 const CONTRACTS_CREATE_IDEMPOTENCY_MAX_LEN = 200;
-const TIP_CONTRACT_PERCENT_MIN = 5;
-const TIP_CONTRACT_PERCENT_MAX = 95;
-const TIP_CONTRACT_PERCENT_STEP = 5;
 const TIP_PAYOUTS_SUBCOLLECTION = "tipPayouts";
 const TIP_PAYOUTS_BATCH_LIMIT = 350;
 const TIP_PAYOUT_CUTOFF_DAY = 25;
-const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
-  "productKey",
-  "entryType",
-  "commissionMode",
-  "inputAmount",
-  "effectiveInputAmount",
-  "comfortPayment",
-  "comfortGradual",
-  "comfortTargetAmount",
-  "frequencyRaw",
-  "clientName",
-  "contractSignedDate",
-  "policyStartDate",
-  "policyEndDate",
-  "durationYears",
-  "durationMonths",
-  "maxCizinKomplexVariant",
-  "contractNumber",
-  "tipContractTipsterEmail",
-  "tipContractTipsterPercent",
-  "tipContractSourceTipId",
-  "tipContractSourceTipTitle",
-  "tipContractSourceTipProductLabel",
-  "tipContractSourceTipClientName",
-  "tipContractSourceTipCreatedAtMs",
-  "carMake",
-  "carPlate",
-  "carVin",
-  "carTp",
-  "carOrv",
-  "carAnnualMileage",
-  "carAllianzScope",
-  "carLiabilityLimit",
-  "carAssistancePlan",
-  "carHullSumInsured",
-  "carHullSumInsuredText",
-  "carHullDeductible",
-  "carHullDeductibleText",
-  "carHullRiskAccident",
-  "carHullRiskTheft",
-  "carHullRiskNatural",
-  "carHullRiskVandalism",
-  "carHullRiskAnimalCollision",
-  "carAddonEso",
-  "carAddonNaturalRisks",
-  "carAddonKlika",
-  "carAddonGlass",
-  "carAddonGlassLimit",
-  "carAddonAnimalCollision",
-  "carAddonAnimalCollisionLimit",
-  "carAddonAnimalDamage",
-  "carAddonAnimalDamageLimit",
-  "carAddonVandalism",
-  "carAddonTheft",
-  "carAddonTheftLimit",
-  "carAddonNatural",
-  "carAddonNaturalLimit",
-  "carAddonOwnDamage",
-  "carAddonOwnDamageLimit",
-  "carAddonGap",
-  "carAddonGapLimit",
-  "carAddonSmartGap",
-  "carAddonServisPro",
-  "carAddonReplacementCar",
-  "carAddonLuggage",
-  "carAddonTransportedGoods",
-  "carAddonFireExplosion",
-  "carAddonLegalAdvice",
-  "carAddonPothole",
-  "carAddonNonFaultAccident",
-  "carAddonPassengerInjury",
-  "carAddonKeyLossTheft",
-  "neonDetail",
-  "domexDetail",
-  "maxdomovDetail",
-  "isRefresh",
-  "refreshOriginalContractNumber",
-  "refreshOriginalMissingInSystem",
-  "requiresStatementRefresh",
-  "commissionCalculationStatus",
-  "commissionBaseSource",
-  "refreshStatementResolvedAtMs",
-  "refreshStatementResolvedStatementId",
-  "refreshStatementResolvedStatementNumber",
-  "refreshStatementResolvedStatementPeriod",
-  "rootContractEntryId",
-  "parentContractEntryId",
-  "parentContractEntryPath",
-  "calculationInputAmount",
-  "previousInputAmount",
-  "newInputAmount",
-  "premiumDelta",
-  "premiumIncreaseAmount",
-  "premiumDecreaseAmount",
-  "changeType",
-]);
-const SUPPORTED_ENTRY_TYPES = new Set(["contract", "endorsement"] as const);
-const SUPPORTED_PRODUCTS = new Set<Product>([
-  "neon",
-  "flexi",
-  "maximaMaxEfekt",
-  "maxcizinkomplex",
-  "pillowInjury",
-  "zamex",
-  "domex",
-  "cpphafan",
-  "pillowmajetek",
-  "koopmajetekobcan",
-  "koopfit",
-  "koopodzam",
-  "kooppmop",
-  "maxdomov",
-  "cppsimplex",
-  "cppAuto",
-  "slaviaauto",
-  "slaviaflotila",
-  "allianzAuto",
-  "allianzmujdomov",
-  "csobAuto",
-  "uniqaAuto",
-  "uniqaflotila",
-  "pillowAuto",
-  "kooperativaAuto",
-  "koopflotila",
-  "koopcestovko",
-  "cppcestovko",
-  "axacestovko",
-  "comfortcc",
-  "cppPPRs",
-  "cppPPRbez",
-]);
 const POSITION_ORDER: Position[] = [
   "poradce1",
   "poradce2",
@@ -315,21 +240,6 @@ const POSITION_ORDER: Position[] = [
   "manazer10",
 ];
 const SUPPORTED_POSITIONS = new Set<Position>(POSITION_ORDER);
-const SUPPORTED_PAYMENT_FREQUENCIES = new Set<PaymentFrequency>([
-  "monthly",
-  "quarterly",
-  "semiannual",
-  "annual",
-]);
-const SUPPORTED_ENDORSEMENT_CHANGE_TYPES = new Set([
-  "increase",
-  "decrease",
-  "same",
-] as const);
-const SUPPORTED_MAX_CIZIN_KOMPLEX_VARIANTS = new Set<MaxCizinKomplexVariant>([
-  "exclusiveStandard",
-  "premium",
-]);
 const CPP_STATUS_SYNC_PRODUCTS = new Set<Product>([
   "neon",
   "zamex",
@@ -347,32 +257,6 @@ const LIFE_TIMELINE_PRODUCTS = new Set<Product>([
   "maximaMaxEfekt",
   "pillowInjury",
 ]);
-const CONTRACT_LIST_PROPERTY_PRODUCTS = PROPERTY_PRODUCTS.filter(
-  (product) => product !== "zamex"
-);
-const CONTRACT_LIST_PRODUCT_CATEGORY_MAP: Record<
-  ContractListProductCategory,
-  Product[]
-> = {
-  life: CATALOG_LIFE_PRODUCTS,
-  auto: AUTO_PRODUCTS,
-  property: CONTRACT_LIST_PROPERTY_PRODUCTS,
-  travel: TRAVEL_PRODUCTS,
-  comfort: COMFORT_PRODUCTS,
-  liability: LIABILITY_PRODUCTS,
-};
-const CONTRACT_LIST_PRODUCT_CATEGORY_SET = new Set<ContractListProductCategory>([
-  "life",
-  "auto",
-  "property",
-  "travel",
-  "comfort",
-  "liability",
-]);
-const CONTRACT_LIST_INSTITUTION_SET = new Set<ProductInstitutionId>(
-  Object.keys(INSTITUTION_CATALOG) as ProductInstitutionId[]
-);
-const ANNIVERSARY_WINDOW_DAYS = 90;
 const UPDATE_DATE_FIELDS = new Set<string>([
   "createdAt",
   "contractSignedDate",
@@ -521,144 +405,11 @@ const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
   "carAddonPassengerInjury",
   "carAddonKeyLossTheft",
 ]);
-const UPDATE_FIELDS_CONTRACT_CORE_KEYS = new Set<string>([
-  "clientName",
-  "contractNumber",
-  "contractSignedDate",
-  "policyStartDate",
-  "policyEndDate",
-]);
-const NEON_DETAIL_ALLOWED_KEYS = new Set<string>([
-  "version",
-  "deathType",
-  "deathAmount",
-  "death2Type",
-  "death2Amount",
-  "deathTerminalAmount",
-  "waiverInvalidity",
-  "waiverUnemployment",
-  "invalidityAType",
-  "invalidityA1",
-  "invalidityA2",
-  "invalidityA3",
-  "invalidityBType",
-  "invalidityB1",
-  "invalidityB2",
-  "invalidityB3",
-  "invalidityPension",
-  "criticalIllnessType",
-  "criticalIllnessVariant",
-  "criticalIllnessAmount",
-  "childSurgeryAmount",
-  "vaccinationCompAmount",
-  "accidentDailyBenefitStart",
-  "accidentDailyBenefitBackpay",
-  "accidentDailyBenefit",
-  "diabetesAmount",
-  "deathAccidentAmount",
-  "injuryPermanentAmount",
-  "injuryPermanentFulfillmentFrom",
-  "injuryPermanentProgression",
-  "injuryPermanent2Amount",
-  "injuryPermanent2FulfillmentFrom",
-  "injuryPermanent2Progression",
-  "hospitalizationAmount",
-  "hospitalizationIllnessAmount",
-  "hospitalizationInjuryAmount",
-  "workIncapacityStart",
-  "workIncapacityBackpay",
-  "workIncapacityAmount",
-  "workIncapacityInjury",
-  "workIncapacityIllness",
-  "workIncapacity2Start",
-  "workIncapacity2Backpay",
-  "workIncapacity2Amount",
-  "workIncapacity2Injury",
-  "workIncapacity2Illness",
-  "careDependencyAmount",
-  "specialAidAmount",
-  "caregivingAmount",
-  "reproductionCostAmount",
-  "cppHelp",
-  "liabilityCitizenLimit",
-  "liabilityEmployeeLimit",
-  "travelInsurance",
-  "neonPdfRisks",
-]);
-const FLEXI_DETAIL_ALLOWED_KEYS = new Set<string>([
-  "deathAmount",
-  "deathTypedType",
-  "deathTypedAmount",
-  "deathAccidentAmount",
-  "seriousIllnessType",
-  "seriousIllnessAmount",
-  "seriousIllnessForHim",
-  "seriousIllnessForHer",
-  "permanentIllnessAmount",
-  "invalidityIllnessType",
-  "invalidityIllness1",
-  "invalidityIllness2",
-  "invalidityIllness3",
-  "hospitalGeneralAmount",
-  "workIncapacityStart",
-  "workIncapacityBackpay",
-  "workIncapacityAmount",
-  "caregivingAmount",
-  "permanentAccidentAmount",
-  "injuryDamageAmount",
-  "accidentDailyBenefit",
-  "hospitalAccidentAmount",
-  "invalidityAccidentType",
-  "invalidityAccident1",
-  "invalidityAccident2",
-  "invalidityAccident3",
-  "trafficDeathAccidentAmount",
-  "trafficPermanentAccidentAmount",
-  "trafficInjuryDamageAmount",
-  "trafficAccidentDailyBenefit",
-  "trafficHospitalAccidentAmount",
-  "trafficWorkIncapacityAmount",
-  "trafficInvalidityAmount",
-  "loanDeathAmount",
-  "loanInvalidityType",
-  "loanInvalidity1",
-  "loanInvalidity2",
-  "loanInvalidity3",
-  "loanIllnessAmount",
-  "loanWorkIncapacityAmount",
-  "addonMajakBasic",
-  "addonMajakPlus",
-  "addonLiabilityCitizen",
-  "addonTravel",
-]);
-const DOMEX_DETAIL_ALLOWED_KEYS = new Set<string>([
-  "address",
-  "propertyType",
-  "propertyCoverage",
-  "sumInsured",
-  "deductible",
-  "householdType",
-  "householdCoverage",
-  "householdSumInsured",
-  "householdDeductible",
-  "outbuildingSumInsured",
-  "liabilitySumInsured",
-  "liabilityDeductible",
-  "liabilityMobile",
-  "liabilityTenant",
-  "liabilityLandlord",
-  "assistancePlus",
-  "note",
-]);
-const MIN_REASONABLE_CONTRACT_DATE = new Date("2000-01-01T00:00:00.000Z");
-const MAX_REASONABLE_CONTRACT_DATE = new Date("2101-01-01T00:00:00.000Z");
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_MANAGER_CHAIN_DEPTH = 9;
 const CPP_WSEXTRA_URL = "https://wsextra.cpp.cz/extranet/extranet.asmx";
 const CPP_SOAP_ACTION_STAV_SMLOUVY_ZP = "https://extranet.cpp.cz/StavSmlouvyZP";
 const CPP_STATUS_SYNC_ENABLED = false;
-const CONTRACT_REFS_COLLECTION = "contractRefs";
-const CONTRACT_NUMBER_CLAIMS_COLLECTION = "contractNumberClaims";
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
 export const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
@@ -719,16 +470,10 @@ const writeCachedSubscriptionStatus = (
   }
 };
 
-const isManagerPosition = (pos: Position | null | undefined): boolean =>
-  Boolean(pos) && (pos as Position).startsWith("manazer");
-
 const toMillis = (value: any): number | null => {
   const d = toDate(value);
   return d ? d.getTime() : null;
 };
-
-const contractSortDate = (data: ContractDoc): Date | null =>
-  toDate(data.contractSignedDate) ?? toDate(data.createdAt);
 
 const timelineSortDate = (data: ContractDoc): Date | null =>
   toDate(data.policyStartDate) ?? toDate(data.contractSignedDate) ?? toDate(data.createdAt);
@@ -806,108 +551,11 @@ const parseCursor = (search: URLSearchParams): ParsedCursor | null => {
 const normalizeEmail = (email: string | null | undefined) =>
   (email ?? "").trim().toLowerCase();
 
-const resolveAccountType = (
-  data: Record<string, unknown> | null | undefined
-): "advisor" | "tipster" => {
-  const raw =
-    typeof data?.accountType === "string"
-      ? data.accountType
-      : typeof data?.userRole === "string"
-        ? data.userRole
-        : "";
-  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
-};
-
 const tipsterContractsMutationResponse = () =>
   NextResponse.json(
     { ok: false, error: "Tipařské účty nemají oprávnění ukládat ani upravovat smlouvy." },
     { status: 403 }
   );
-
-const stripDiacritics = (value: string): string =>
-  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-const normalizeSearchValue = (value?: string | null): string =>
-  stripDiacritics((value ?? "").trim().toLowerCase());
-
-const normalizeContractNumberForSearch = (value?: string | null): string =>
-  normalizeSearchValue(value).replace(/[^a-z0-9]/g, "");
-
-const parseCsvSet = <T extends string>(
-  value: string | null,
-  allowed: Set<T>
-): Set<T> => {
-  const out = new Set<T>();
-  if (!value) return out;
-  value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .forEach((item) => {
-      if (allowed.has(item as T)) {
-        out.add(item as T);
-      }
-    });
-  return out;
-};
-
-const parseContractListFilters = (
-  search: URLSearchParams
-): ContractListFilters => {
-  const rawSignedFrom = (search.get("signedFrom") ?? "").trim();
-  let signedFrom: Date | null = null;
-  if (rawSignedFrom) {
-    const maybeNum = Number(rawSignedFrom);
-    if (Number.isFinite(maybeNum)) {
-      const parsed = new Date(maybeNum);
-      if (!Number.isNaN(parsed.getTime())) {
-        signedFrom = parsed;
-      }
-    } else {
-      const parsed = new Date(rawSignedFrom);
-      if (!Number.isNaN(parsed.getTime())) {
-        signedFrom = parsed;
-      }
-    }
-  }
-
-  return {
-    query: (search.get("q") ?? "").trim().slice(0, 120),
-    mode: search.get("mode") === "anniversary" ? "anniversary" : "latest",
-    unpaidOnly:
-      search.get("unpaidOnly") === "1" ||
-      search.get("unpaidOnly") === "true",
-    refreshOnly:
-      search.get("refreshOnly") === "1" ||
-      search.get("refreshOnly") === "true",
-    commissionAuditMode: parseCommissionAuditMode(search.get("commissionAudit")),
-    commissionAuditCodeFilter: parseCommissionAuditCodeFilter(search.get("commissionCode")),
-    categories: parseCsvSet(
-      search.get("categories"),
-      CONTRACT_LIST_PRODUCT_CATEGORY_SET
-    ),
-    institutions: parseCsvSet(
-      search.get("institutions"),
-      CONTRACT_LIST_INSTITUTION_SET
-    ),
-    signedFrom,
-  };
-};
-
-const hasContractListClientFilters = (filters: ContractListFilters): boolean =>
-  normalizeSearchValue(filters.query).length > 0 ||
-  filters.mode === "anniversary" ||
-  filters.unpaidOnly ||
-  filters.refreshOnly ||
-  isCommissionAuditFilterActive({
-    mode: filters.commissionAuditMode,
-    codeFilter: filters.commissionAuditCodeFilter,
-  }) ||
-  filters.categories.size > 0 ||
-  filters.institutions.size > 0;
-
-const hasContractListFilters = (filters: ContractListFilters): boolean =>
-  hasContractListClientFilters(filters) || filters.signedFrom != null;
 
 const normalizeOptionalDisplayName = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -941,69 +589,6 @@ const currentYearMonth = (now: Date): string =>
 
 const teamOverviewMonthDocId = (ownerEmail: string, yearMonth: string): string =>
   `${normalizeEmail(ownerEmail)}___${yearMonth}`;
-
-const isValidContractNumber = (value: string) =>
-  CONTRACT_NUMBER_RE.test(value);
-
-const extractEmailFromUnknown = (value: unknown): string => {
-  if (typeof value === "string") return normalizeEmail(value);
-  if (value && typeof value === "object") {
-    const nested = (value as { email?: string | null }).email;
-    return normalizeEmail(nested);
-  }
-  return "";
-};
-
-const includesEmailInCollection = (value: unknown, targetEmail: string): boolean => {
-  if (!Array.isArray(value) || !targetEmail) return false;
-  return value.some((item) => extractEmailFromUnknown(item) === targetEmail);
-};
-
-export const hasContractAccess = ({
-  viewerEmail,
-  teamEmails,
-  ownerEmail,
-  contract,
-}: {
-  viewerEmail: string;
-  teamEmails: string[];
-  ownerEmail: string;
-  contract: ContractDoc;
-}): boolean => {
-  if (!viewerEmail || !ownerEmail) return false;
-  if (viewerEmail === ownerEmail) return true;
-  if (teamEmails.includes(ownerEmail)) return true;
-
-  const contractOwnerEmail = normalizeEmail(contract.userEmail);
-  if (contractOwnerEmail && contractOwnerEmail === viewerEmail) return true;
-
-  const managerEmailSnapshot = normalizeEmail(contract.managerEmailSnapshot as string | null);
-  if (managerEmailSnapshot && managerEmailSnapshot === viewerEmail) return true;
-
-  if (includesEmailInCollection(contract.managerChain, viewerEmail)) return true;
-  if (includesEmailInCollection(contract.managerOverrides, viewerEmail)) return true;
-
-  return false;
-};
-
-const canManageContractOwner = ({
-  viewerEmail,
-  teamEmails,
-  ownerEmail,
-  canManageContractsAsAdmin,
-}: {
-  viewerEmail: string;
-  teamEmails: string[];
-  ownerEmail: string;
-  canManageContractsAsAdmin?: boolean;
-}): boolean => {
-  const normalizedViewer = normalizeEmail(viewerEmail);
-  const normalizedOwner = normalizeEmail(ownerEmail);
-  if (!normalizedViewer || !normalizedOwner) return false;
-  if (normalizedViewer === normalizedOwner) return true;
-  if (teamEmails.includes(normalizedOwner)) return true;
-  return canManageContractsAsAdmin === true;
-};
 
 const toContractResponseItem = (
   docId: string,
@@ -1088,6 +673,52 @@ const toContractListResponseItem = ({
       frequencyRaw: data.frequencyRaw ?? null,
       comfortPayment: data.comfortPayment ?? null,
       items: Array.isArray(data.items) ? data.items : [],
+      managerOverrides: Array.isArray(data.managerOverrides)
+        ? data.managerOverrides
+        : [],
+    };
+  }
+
+  if (shape === "cashflow") {
+    const normalizedOwner = normalizeEmail(ownerEmail);
+    return {
+      id: docId,
+      adviserEmail: normalizedOwner,
+      adviserName: normalizedAdviserName,
+      userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      effectivePosition: timelinePosition ?? storedPosition ?? null,
+      timelinePosition,
+      status: data.status ?? null,
+      stornoDate: toMillis((data as any).stornoDate),
+      productKey: data.productKey,
+      frequencyRaw: data.frequencyRaw ?? null,
+      inputAmount:
+        typeof data.inputAmount === "number" && Number.isFinite(data.inputAmount)
+          ? data.inputAmount
+          : undefined,
+      items: Array.isArray(data.items) ? data.items : [],
+      commissionPayouts: Array.isArray(data.commissionPayouts)
+        ? data.commissionPayouts
+        : [],
+      contractSignedDate: toMillis(data.contractSignedDate),
+      policyStartDate: toMillis((data as any).policyStartDate),
+      policyEndDate: toMillis((data as any).policyEndDate),
+      createdAt: toMillis(data.createdAt),
+      durationYears:
+        typeof data.durationYears === "number" && Number.isFinite(data.durationYears)
+          ? data.durationYears
+          : undefined,
+      durationMonths:
+        typeof data.durationMonths === "number" && Number.isFinite(data.durationMonths)
+          ? data.durationMonths
+          : undefined,
+      contractNumber: data.contractNumber ?? null,
+      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      position: data.position ?? null,
+      commissionMode: data.commissionMode ?? null,
+      managerEmailSnapshot: data.managerEmailSnapshot ?? null,
+      managerPositionSnapshot: data.managerPositionSnapshot ?? null,
+      managerModeSnapshot: data.managerModeSnapshot ?? null,
       managerOverrides: Array.isArray(data.managerOverrides)
         ? data.managerOverrides
         : [],
@@ -1307,1050 +938,9 @@ const resolveRefreshOriginalPremiumInfo = async ({
   };
 };
 
-type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
-
 const hasOwn = (obj: Record<string, unknown>, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(obj, key);
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  value != null && typeof value === "object" && !Array.isArray(value);
-
-const parseRequiredTrimmedText = (
-  value: unknown,
-  field: string,
-  maxLen: number
-): ParseResult<string> => {
-  if (typeof value !== "string") {
-    return { ok: false, error: `Pole ${field} musí být text.` };
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return { ok: false, error: `Pole ${field} nesmí být prázdné.` };
-  }
-  if (trimmed.length > maxLen) {
-    return { ok: false, error: `Pole ${field} je příliš dlouhé.` };
-  }
-  return { ok: true, value: trimmed };
-};
-
-const parseOptionalTrimmedText = (
-  value: unknown,
-  field: string,
-  maxLen: number
-): ParseResult<string | null> => {
-  if (value == null) return { ok: true, value: null };
-  if (typeof value !== "string") {
-    return { ok: false, error: `Pole ${field} musí být text nebo null.` };
-  }
-  const trimmed = value.trim();
-  if (!trimmed) return { ok: true, value: null };
-  if (trimmed.length > maxLen) {
-    return { ok: false, error: `Pole ${field} je příliš dlouhé.` };
-  }
-  return { ok: true, value: trimmed };
-};
-
-const parseOptionalFiniteNumber = (
-  value: unknown,
-  field: string,
-  {
-    min = 0,
-    max = 1_000_000_000,
-  }: { min?: number; max?: number } = {}
-): ParseResult<number | null> => {
-  if (value == null) return { ok: true, value: null };
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return { ok: false, error: `Pole ${field} musí být číslo nebo null.` };
-  }
-  if (value < min || value > max) {
-    return { ok: false, error: `Pole ${field} je mimo povolený rozsah.` };
-  }
-  return { ok: true, value };
-};
-
-const parseOptionalBoolean = (
-  value: unknown,
-  field: string
-): ParseResult<boolean | null> => {
-  if (value == null) return { ok: true, value: null };
-  if (typeof value !== "boolean") {
-    return { ok: false, error: `Pole ${field} musí být boolean nebo null.` };
-  }
-  return { ok: true, value };
-};
-
-const parseOptionalCommissionMode = (
-  value: unknown,
-  field: string
-): ParseResult<CommissionMode | null> => {
-  if (value == null) return { ok: true, value: null };
-  if (value !== "accelerated" && value !== "standard") {
-    return {
-      ok: false,
-      error: `Pole ${field} má nepodporovanou hodnotu.`,
-    };
-  }
-  return { ok: true, value };
-};
-
-const parseOptionalInteger = (
-  value: unknown,
-  field: string,
-  { min, max }: { min: number; max: number }
-): ParseResult<number | null> => {
-  if (value == null) return { ok: true, value: null };
-  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
-    return { ok: false, error: `Pole ${field} musí být celé číslo nebo null.` };
-  }
-  if (value < min || value > max) {
-    return { ok: false, error: `Pole ${field} je mimo povolený rozsah.` };
-  }
-  return { ok: true, value };
-};
-
-const parseEntryType = (
-  value: unknown
-): ParseResult<"contract" | "endorsement"> => {
-  if (typeof value !== "string") {
-    return { ok: false, error: "Pole entryType musí být text." };
-  }
-  const normalized = value.trim() as "contract" | "endorsement";
-  if (!SUPPORTED_ENTRY_TYPES.has(normalized)) {
-    return { ok: false, error: "Pole entryType má nepodporovanou hodnotu." };
-  }
-  return { ok: true, value: normalized };
-};
-
-const parseProductKey = (value: unknown): ParseResult<Product> => {
-  if (typeof value !== "string") {
-    return { ok: false, error: "Pole productKey musí být text." };
-  }
-  const normalized = value.trim() as Product;
-  if (!SUPPORTED_PRODUCTS.has(normalized)) {
-    return { ok: false, error: "Pole productKey má nepodporovanou hodnotu." };
-  }
-  return { ok: true, value: normalized };
-};
-
-const parseFrequencyField = (
-  value: unknown
-): ParseResult<PaymentFrequency> => {
-  if (typeof value !== "string") {
-    return { ok: false, error: "Pole frequencyRaw musí být text." };
-  }
-  const normalized = value.trim() as PaymentFrequency;
-  if (!SUPPORTED_PAYMENT_FREQUENCIES.has(normalized)) {
-    return { ok: false, error: "Pole frequencyRaw má nepodporovanou hodnotu." };
-  }
-  return { ok: true, value: normalized };
-};
-
-const parseOptionalMaxCizinKomplexVariant = (
-  value: unknown
-): ParseResult<MaxCizinKomplexVariant | null> => {
-  if (value == null) return { ok: true, value: null };
-  if (typeof value !== "string") {
-    return {
-      ok: false,
-      error: "Pole maxCizinKomplexVariant musí být text nebo null.",
-    };
-  }
-  const normalized = value.trim() as MaxCizinKomplexVariant;
-  if (!SUPPORTED_MAX_CIZIN_KOMPLEX_VARIANTS.has(normalized)) {
-    return {
-      ok: false,
-      error: "Pole maxCizinKomplexVariant má nepodporovanou hodnotu.",
-    };
-  }
-  return { ok: true, value: normalized };
-};
-
-type NormalizedManagerChainEntry = {
-  email: string | null;
-  position: Position | null;
-  commissionMode: CommissionMode | null;
-};
-
-type NormalizedManagerOverrideEntry = {
-  email: string | null;
-  position: Position | null;
-  commissionMode: CommissionMode | null;
-  items: CommissionResultItemDTO[];
-  total: number;
-};
-
-const parseRequiredDateField = (value: unknown, field: string): ParseResult<Date> => {
-  const parsed = toDate(value);
-  if (!parsed || !isReasonableContractDate(parsed)) {
-    return { ok: false, error: `Pole ${field} má neplatné datum.` };
-  }
-  return { ok: true, value: parsed };
-};
-
-const parseOptionalDateField = (
-  value: unknown,
-  field: string
-): ParseResult<Date | null> => {
-  if (value == null || value === "") return { ok: true, value: null };
-  return parseRequiredDateField(value, field);
-};
-
-type RefreshCommissionBasePayload = {
-  productKey: Product;
-  method: "cpp_neon_5y_storno";
-  calculationMethod: "storno_60_60" | "motivational_48_percent";
-  originalContractNumber: string | null;
-  originalStornoStartDateIso: string | null;
-  refreshPolicyStartDateIso: string | null;
-  stornoMonths: number;
-  elapsedMonths: number;
-  remainingMonths: number;
-  earnedRatio: number;
-  remainingRatio: number;
-  newMonthlyPremium: number;
-  newAnnualPremium: number;
-  originalMonthlyPremium: number;
-  originalAnnualPremium: number;
-  premiumIncreaseMonthly: number;
-  premiumIncreaseAnnual: number;
-  stornoBaseMonthlyPremium: number;
-  stornoBaseAnnualPremium: number;
-  stornedOriginalMonthlyPremium: number;
-  stornedOriginalAnnualPremium: number;
-  motivationalMonthlyPremium: number;
-  motivationalAnnualPremium: number;
-  calculationMonthlyPremium: number;
-  calculationAnnualPremium: number;
-};
-
-type NormalizedCreateEntryPayload = {
-  productKey: Product;
-  entryType: "contract" | "endorsement";
-  position: Position;
-  commissionMode: CommissionMode | null;
-  inputAmount: number;
-  effectiveInputAmount: number;
-  comfortPayment: number | null;
-  comfortGradual: boolean | null;
-  comfortTargetAmount: number | null;
-  frequencyRaw: PaymentFrequency;
-  items: CommissionResultItemDTO[];
-  total: number;
-  result: {
-    items: CommissionResultItemDTO[];
-    total: number;
-  };
-  clientName: string;
-  userId: string;
-  contractSignedDate: Date;
-  policyStartDate: Date;
-  policyEndDate: Date | null;
-  durationYears: number | null;
-  durationMonths: number | null;
-  maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
-  userEmail: string;
-  contractNumber: string;
-  duplicateLookupKey: string | null;
-  tipContractTipsterEmail: string | null;
-  tipContractTipsterName: string | null;
-  tipContractTipsterPercent: number | null;
-  tipContractImmediateFirstYearGross: number | null;
-  tipContractImmediateFirstYearNet: number | null;
-  tipContractTipsterAmountFirstYear: number | null;
-  tipContractSourceTipId: string | null;
-  tipContractSourceTipTitle: string | null;
-  tipContractSourceTipProductLabel: string | null;
-  tipContractSourceTipClientName: string | null;
-  tipContractSourceTipCreatedAtMs: number | null;
-  carMake: string | null;
-  carPlate: string | null;
-  carVin: string | null;
-  carTp: string | null;
-  carOrv: string | null;
-  carAnnualMileage: string | null;
-  carAllianzScope: string | null;
-  carLiabilityLimit: number | null;
-  carAssistancePlan: string | null;
-  carHullSumInsured: number | null;
-  carHullSumInsuredText: string | null;
-  carHullDeductible: number | null;
-  carHullDeductibleText: string | null;
-  carHullRiskAccident: boolean | null;
-  carHullRiskTheft: boolean | null;
-  carHullRiskNatural: boolean | null;
-  carHullRiskVandalism: boolean | null;
-  carHullRiskAnimalCollision: boolean | null;
-  carAddonEso: boolean | null;
-  carAddonNaturalRisks: boolean | null;
-  carAddonKlika: boolean | null;
-  carAddonGlass: boolean | null;
-  carAddonGlassLimit: number | null;
-  carAddonAnimalCollision: boolean | null;
-  carAddonAnimalCollisionLimit: number | null;
-  carAddonAnimalDamage: boolean | null;
-  carAddonAnimalDamageLimit: number | null;
-  carAddonVandalism: boolean | null;
-  carAddonTheft: boolean | null;
-  carAddonTheftLimit: number | null;
-  carAddonNatural: boolean | null;
-  carAddonNaturalLimit: number | null;
-  carAddonOwnDamage: boolean | null;
-  carAddonOwnDamageLimit: number | null;
-  carAddonGap: boolean | null;
-  carAddonGapLimit: number | null;
-  carAddonSmartGap: boolean | null;
-  carAddonServisPro: boolean | null;
-  carAddonReplacementCar: boolean | null;
-  carAddonLuggage: boolean | null;
-  carAddonTransportedGoods: boolean | null;
-  carAddonFireExplosion: boolean | null;
-  carAddonLegalAdvice: boolean | null;
-  carAddonPothole: boolean | null;
-  carAddonNonFaultAccident: boolean | null;
-  carAddonPassengerInjury: boolean | null;
-  carAddonKeyLossTheft: boolean | null;
-  neonDetail: Record<string, unknown> | null;
-  domexDetail: Record<string, unknown> | null;
-  maxdomovDetail: Record<string, unknown> | null;
-  paid: boolean;
-  managerEmailSnapshot: string | null;
-  managerPositionSnapshot: Position | null;
-  managerModeSnapshot: CommissionMode | null;
-  managerChain: NormalizedManagerChainEntry[];
-  managerOverrides: NormalizedManagerOverrideEntry[];
-  allowedEmails: string[];
-  createdAt: Date;
-  isRefresh: boolean | null;
-  refreshOriginalContractNumber: string | null;
-  refreshOriginalMissingInSystem: boolean | null;
-  requiresStatementRefresh: boolean | null;
-  commissionCalculationStatus: string | null;
-  commissionBaseSource: string | null;
-  refreshCommissionBase: RefreshCommissionBasePayload | null;
-  rootContractEntryId: string | null;
-  parentContractEntryId: string | null;
-  parentContractEntryPath: string | null;
-  calculationInputAmount: number | null;
-  previousInputAmount: number | null;
-  newInputAmount: number | null;
-  premiumDelta: number | null;
-  premiumIncreaseAmount: number | null;
-  premiumDecreaseAmount: number | null;
-  changeType: "increase" | "decrease" | "same" | null;
-};
-
-const normalizeCreateEntryPayload = ({
-  raw,
-  ownerEmail,
-  ownerUid,
-}: {
-  raw: unknown;
-  ownerEmail: string;
-  ownerUid: string;
-}): { ok: true; payload: NormalizedCreateEntryPayload } | { ok: false; error: string } => {
-  if (!isPlainObject(raw)) {
-    return { ok: false, error: "Payload musí být objekt." };
-  }
-
-  const unknownFields = Object.keys(raw).filter(
-    (field) => !CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS.has(field)
-  );
-  if (unknownFields.length > 0) {
-    return {
-      ok: false,
-      error: `Nepovolená pole v entry: ${unknownFields.join(", ")}.`,
-    };
-  }
-
-  const entryTypeParsed = parseEntryType(raw.entryType);
-  if (!entryTypeParsed.ok) return entryTypeParsed;
-  const productParsed = parseProductKey(raw.productKey);
-  if (!productParsed.ok) return productParsed;
-  const commissionModeParsed = parseOptionalCommissionMode(raw.commissionMode, "commissionMode");
-  if (!commissionModeParsed.ok) return commissionModeParsed;
-  const freqParsed = parseFrequencyField(raw.frequencyRaw);
-  if (!freqParsed.ok) return freqParsed;
-
-  const clientNameParsed = parseRequiredTrimmedText(raw.clientName, "clientName", 200);
-  if (!clientNameParsed.ok) return clientNameParsed;
-  const contractNumberParsed = parseRequiredTrimmedText(raw.contractNumber, "contractNumber", 120);
-  if (!contractNumberParsed.ok) return contractNumberParsed;
-  if (!isValidContractNumber(contractNumberParsed.value)) {
-    return { ok: false, error: "Pole contractNumber má neplatný formát." };
-  }
-  const tipContractTipsterEmailParsed = parseOptionalTrimmedText(
-    raw.tipContractTipsterEmail,
-    "tipContractTipsterEmail",
-    200
-  );
-  if (!tipContractTipsterEmailParsed.ok) return tipContractTipsterEmailParsed;
-  const tipContractTipsterPercentParsed = parseOptionalFiniteNumber(
-    raw.tipContractTipsterPercent,
-    "tipContractTipsterPercent",
-    { min: TIP_CONTRACT_PERCENT_MIN, max: TIP_CONTRACT_PERCENT_MAX }
-  );
-  if (!tipContractTipsterPercentParsed.ok) return tipContractTipsterPercentParsed;
-  const tipContractSourceTipIdParsed = parseOptionalTrimmedText(
-    raw.tipContractSourceTipId,
-    "tipContractSourceTipId",
-    240
-  );
-  if (!tipContractSourceTipIdParsed.ok) return tipContractSourceTipIdParsed;
-  const tipContractSourceTipTitleParsed = parseOptionalTrimmedText(
-    raw.tipContractSourceTipTitle,
-    "tipContractSourceTipTitle",
-    240
-  );
-  if (!tipContractSourceTipTitleParsed.ok) return tipContractSourceTipTitleParsed;
-  const tipContractSourceTipProductLabelParsed = parseOptionalTrimmedText(
-    raw.tipContractSourceTipProductLabel,
-    "tipContractSourceTipProductLabel",
-    120
-  );
-  if (!tipContractSourceTipProductLabelParsed.ok) return tipContractSourceTipProductLabelParsed;
-  const tipContractSourceTipClientNameParsed = parseOptionalTrimmedText(
-    raw.tipContractSourceTipClientName,
-    "tipContractSourceTipClientName",
-    200
-  );
-  if (!tipContractSourceTipClientNameParsed.ok) return tipContractSourceTipClientNameParsed;
-  const tipContractSourceTipCreatedAtMsParsed = parseOptionalFiniteNumber(
-    raw.tipContractSourceTipCreatedAtMs,
-    "tipContractSourceTipCreatedAtMs",
-    { min: 0, max: 4_102_444_800_000 }
-  );
-  if (!tipContractSourceTipCreatedAtMsParsed.ok) return tipContractSourceTipCreatedAtMsParsed;
-
-  const tipContractTipsterEmail = normalizeEmail(tipContractTipsterEmailParsed.value);
-  const tipContractSourceTipId = tipContractSourceTipIdParsed.value;
-  const rawTipContractPercent = tipContractTipsterPercentParsed.value;
-  let tipContractTipsterPercent: number | null = null;
-  if (rawTipContractPercent != null) {
-    const roundedTipContractPercent = Math.round(rawTipContractPercent);
-    if (
-      Math.abs(rawTipContractPercent - roundedTipContractPercent) > 0.000001 ||
-      roundedTipContractPercent % TIP_CONTRACT_PERCENT_STEP !== 0
-    ) {
-      return {
-        ok: false,
-        error: `Pole tipContractTipsterPercent musí být násobek ${TIP_CONTRACT_PERCENT_STEP}.`,
-      };
-    }
-    tipContractTipsterPercent = roundedTipContractPercent;
-  }
-  if (tipContractTipsterEmail && tipContractTipsterPercent == null) {
-    return {
-      ok: false,
-      error: "Pole tipContractTipsterPercent je povinné, pokud je vyplněné tipContractTipsterEmail.",
-    };
-  }
-  if (tipContractTipsterEmail && !EMAIL_RE.test(tipContractTipsterEmail)) {
-    return { ok: false, error: "Pole tipContractTipsterEmail má neplatný formát." };
-  }
-  if (tipContractTipsterEmail && tipContractTipsterEmail === ownerEmail) {
-    return { ok: false, error: "Tipař nemůže být stejný uživatel jako sjednatel." };
-  }
-  if (tipContractSourceTipId && tipContractSourceTipId.includes("/")) {
-    return { ok: false, error: "Pole tipContractSourceTipId má neplatný formát." };
-  }
-  if (tipContractSourceTipId && !tipContractTipsterEmail) {
-    return {
-      ok: false,
-      error: "Vybraný tip musí mít vyplněného tipaře.",
-    };
-  }
-
-  const carMakeParsed = parseOptionalTrimmedText(raw.carMake, "carMake", 120);
-  if (!carMakeParsed.ok) return carMakeParsed;
-  const carPlateParsed = parseOptionalTrimmedText(raw.carPlate, "carPlate", 40);
-  if (!carPlateParsed.ok) return carPlateParsed;
-  const carVinParsed = parseOptionalTrimmedText(raw.carVin, "carVin", 40);
-  if (!carVinParsed.ok) return carVinParsed;
-  const carTpParsed = parseOptionalTrimmedText(raw.carTp, "carTp", 40);
-  if (!carTpParsed.ok) return carTpParsed;
-  const carOrvParsed = parseOptionalTrimmedText(raw.carOrv, "carOrv", 40);
-  if (!carOrvParsed.ok) return carOrvParsed;
-  const carAnnualMileageParsed = parseOptionalTrimmedText(
-    raw.carAnnualMileage,
-    "carAnnualMileage",
-    120
-  );
-  if (!carAnnualMileageParsed.ok) return carAnnualMileageParsed;
-  const carAllianzScopeParsed = parseOptionalTrimmedText(
-    raw.carAllianzScope,
-    "carAllianzScope",
-    40
-  );
-  if (!carAllianzScopeParsed.ok) return carAllianzScopeParsed;
-  const carLiabilityLimitParsed = parseOptionalFiniteNumber(
-    raw.carLiabilityLimit,
-    "carLiabilityLimit"
-  );
-  if (!carLiabilityLimitParsed.ok) return carLiabilityLimitParsed;
-  const carAssistancePlanParsed = parseOptionalTrimmedText(
-    raw.carAssistancePlan,
-    "carAssistancePlan",
-    120
-  );
-  if (!carAssistancePlanParsed.ok) return carAssistancePlanParsed;
-  const carHullSumInsuredParsed = parseOptionalFiniteNumber(
-    raw.carHullSumInsured,
-    "carHullSumInsured"
-  );
-  if (!carHullSumInsuredParsed.ok) return carHullSumInsuredParsed;
-  const carHullSumInsuredTextParsed = parseOptionalTrimmedText(
-    raw.carHullSumInsuredText,
-    "carHullSumInsuredText",
-    200
-  );
-  if (!carHullSumInsuredTextParsed.ok) return carHullSumInsuredTextParsed;
-  const carHullDeductibleParsed = parseOptionalFiniteNumber(
-    raw.carHullDeductible,
-    "carHullDeductible"
-  );
-  if (!carHullDeductibleParsed.ok) return carHullDeductibleParsed;
-  const carHullDeductibleTextParsed = parseOptionalTrimmedText(
-    raw.carHullDeductibleText,
-    "carHullDeductibleText",
-    200
-  );
-  if (!carHullDeductibleTextParsed.ok) return carHullDeductibleTextParsed;
-  const carHullRiskAccidentParsed = parseOptionalBoolean(
-    raw.carHullRiskAccident,
-    "carHullRiskAccident"
-  );
-  if (!carHullRiskAccidentParsed.ok) return carHullRiskAccidentParsed;
-  const carHullRiskTheftParsed = parseOptionalBoolean(
-    raw.carHullRiskTheft,
-    "carHullRiskTheft"
-  );
-  if (!carHullRiskTheftParsed.ok) return carHullRiskTheftParsed;
-  const carHullRiskNaturalParsed = parseOptionalBoolean(
-    raw.carHullRiskNatural,
-    "carHullRiskNatural"
-  );
-  if (!carHullRiskNaturalParsed.ok) return carHullRiskNaturalParsed;
-  const carHullRiskVandalismParsed = parseOptionalBoolean(
-    raw.carHullRiskVandalism,
-    "carHullRiskVandalism"
-  );
-  if (!carHullRiskVandalismParsed.ok) return carHullRiskVandalismParsed;
-  const carHullRiskAnimalCollisionParsed = parseOptionalBoolean(
-    raw.carHullRiskAnimalCollision,
-    "carHullRiskAnimalCollision"
-  );
-  if (!carHullRiskAnimalCollisionParsed.ok) return carHullRiskAnimalCollisionParsed;
-  const carAddonEsoParsed = parseOptionalBoolean(raw.carAddonEso, "carAddonEso");
-  if (!carAddonEsoParsed.ok) return carAddonEsoParsed;
-  const carAddonNaturalRisksParsed = parseOptionalBoolean(
-    raw.carAddonNaturalRisks,
-    "carAddonNaturalRisks"
-  );
-  if (!carAddonNaturalRisksParsed.ok) return carAddonNaturalRisksParsed;
-  const carAddonKlikaParsed = parseOptionalBoolean(raw.carAddonKlika, "carAddonKlika");
-  if (!carAddonKlikaParsed.ok) return carAddonKlikaParsed;
-  const carAddonGlassParsed = parseOptionalBoolean(raw.carAddonGlass, "carAddonGlass");
-  if (!carAddonGlassParsed.ok) return carAddonGlassParsed;
-  const carAddonGlassLimitParsed = parseOptionalFiniteNumber(
-    raw.carAddonGlassLimit,
-    "carAddonGlassLimit"
-  );
-  if (!carAddonGlassLimitParsed.ok) return carAddonGlassLimitParsed;
-  const carAddonAnimalCollisionParsed = parseOptionalBoolean(
-    raw.carAddonAnimalCollision,
-    "carAddonAnimalCollision"
-  );
-  if (!carAddonAnimalCollisionParsed.ok) return carAddonAnimalCollisionParsed;
-  const carAddonAnimalCollisionLimitParsed = parseOptionalFiniteNumber(
-    raw.carAddonAnimalCollisionLimit,
-    "carAddonAnimalCollisionLimit"
-  );
-  if (!carAddonAnimalCollisionLimitParsed.ok) {
-    return carAddonAnimalCollisionLimitParsed;
-  }
-  const carAddonAnimalDamageParsed = parseOptionalBoolean(
-    raw.carAddonAnimalDamage,
-    "carAddonAnimalDamage"
-  );
-  if (!carAddonAnimalDamageParsed.ok) return carAddonAnimalDamageParsed;
-  const carAddonAnimalDamageLimitParsed = parseOptionalFiniteNumber(
-    raw.carAddonAnimalDamageLimit,
-    "carAddonAnimalDamageLimit"
-  );
-  if (!carAddonAnimalDamageLimitParsed.ok) return carAddonAnimalDamageLimitParsed;
-  const carAddonVandalismParsed = parseOptionalBoolean(
-    raw.carAddonVandalism,
-    "carAddonVandalism"
-  );
-  if (!carAddonVandalismParsed.ok) return carAddonVandalismParsed;
-  const carAddonTheftParsed = parseOptionalBoolean(raw.carAddonTheft, "carAddonTheft");
-  if (!carAddonTheftParsed.ok) return carAddonTheftParsed;
-  const carAddonTheftLimitParsed = parseOptionalFiniteNumber(
-    raw.carAddonTheftLimit,
-    "carAddonTheftLimit"
-  );
-  if (!carAddonTheftLimitParsed.ok) return carAddonTheftLimitParsed;
-  const carAddonNaturalParsed = parseOptionalBoolean(
-    raw.carAddonNatural,
-    "carAddonNatural"
-  );
-  if (!carAddonNaturalParsed.ok) return carAddonNaturalParsed;
-  const carAddonNaturalLimitParsed = parseOptionalFiniteNumber(
-    raw.carAddonNaturalLimit,
-    "carAddonNaturalLimit"
-  );
-  if (!carAddonNaturalLimitParsed.ok) return carAddonNaturalLimitParsed;
-  const carAddonOwnDamageParsed = parseOptionalBoolean(
-    raw.carAddonOwnDamage,
-    "carAddonOwnDamage"
-  );
-  if (!carAddonOwnDamageParsed.ok) return carAddonOwnDamageParsed;
-  const carAddonOwnDamageLimitParsed = parseOptionalFiniteNumber(
-    raw.carAddonOwnDamageLimit,
-    "carAddonOwnDamageLimit"
-  );
-  if (!carAddonOwnDamageLimitParsed.ok) return carAddonOwnDamageLimitParsed;
-  const carAddonGapParsed = parseOptionalBoolean(raw.carAddonGap, "carAddonGap");
-  if (!carAddonGapParsed.ok) return carAddonGapParsed;
-  const carAddonGapLimitParsed = parseOptionalFiniteNumber(
-    raw.carAddonGapLimit,
-    "carAddonGapLimit"
-  );
-  if (!carAddonGapLimitParsed.ok) return carAddonGapLimitParsed;
-  const carAddonSmartGapParsed = parseOptionalBoolean(
-    raw.carAddonSmartGap,
-    "carAddonSmartGap"
-  );
-  if (!carAddonSmartGapParsed.ok) return carAddonSmartGapParsed;
-  const carAddonServisProParsed = parseOptionalBoolean(
-    raw.carAddonServisPro,
-    "carAddonServisPro"
-  );
-  if (!carAddonServisProParsed.ok) return carAddonServisProParsed;
-  const carAddonReplacementCarParsed = parseOptionalBoolean(
-    raw.carAddonReplacementCar,
-    "carAddonReplacementCar"
-  );
-  if (!carAddonReplacementCarParsed.ok) return carAddonReplacementCarParsed;
-  const carAddonLuggageParsed = parseOptionalBoolean(
-    raw.carAddonLuggage,
-    "carAddonLuggage"
-  );
-  if (!carAddonLuggageParsed.ok) return carAddonLuggageParsed;
-  const carAddonTransportedGoodsParsed = parseOptionalBoolean(
-    raw.carAddonTransportedGoods,
-    "carAddonTransportedGoods"
-  );
-  if (!carAddonTransportedGoodsParsed.ok) return carAddonTransportedGoodsParsed;
-  const carAddonFireExplosionParsed = parseOptionalBoolean(
-    raw.carAddonFireExplosion,
-    "carAddonFireExplosion"
-  );
-  if (!carAddonFireExplosionParsed.ok) return carAddonFireExplosionParsed;
-  const carAddonLegalAdviceParsed = parseOptionalBoolean(
-    raw.carAddonLegalAdvice,
-    "carAddonLegalAdvice"
-  );
-  if (!carAddonLegalAdviceParsed.ok) return carAddonLegalAdviceParsed;
-  const carAddonPotholeParsed = parseOptionalBoolean(
-    raw.carAddonPothole,
-    "carAddonPothole"
-  );
-  if (!carAddonPotholeParsed.ok) return carAddonPotholeParsed;
-  const carAddonNonFaultAccidentParsed = parseOptionalBoolean(
-    raw.carAddonNonFaultAccident,
-    "carAddonNonFaultAccident"
-  );
-  if (!carAddonNonFaultAccidentParsed.ok) return carAddonNonFaultAccidentParsed;
-  const carAddonPassengerInjuryParsed = parseOptionalBoolean(
-    raw.carAddonPassengerInjury,
-    "carAddonPassengerInjury"
-  );
-  if (!carAddonPassengerInjuryParsed.ok) return carAddonPassengerInjuryParsed;
-  const carAddonKeyLossTheftParsed = parseOptionalBoolean(
-    raw.carAddonKeyLossTheft,
-    "carAddonKeyLossTheft"
-  );
-  if (!carAddonKeyLossTheftParsed.ok) return carAddonKeyLossTheftParsed;
-  const neonDetailParsed = sanitizeDetailObject(
-    raw.neonDetail,
-    "neonDetail",
-    NEON_DETAIL_ALLOWED_KEYS
-  );
-  if (!neonDetailParsed.ok) return neonDetailParsed;
-  const domexDetailParsed = sanitizeDetailObject(
-    raw.domexDetail,
-    "domexDetail",
-    DOMEX_DETAIL_ALLOWED_KEYS
-  );
-  if (!domexDetailParsed.ok) return domexDetailParsed;
-  const maxdomovDetailParsed = sanitizeDetailObject(
-    raw.maxdomovDetail,
-    "maxdomovDetail",
-    DOMEX_DETAIL_ALLOWED_KEYS
-  );
-  if (!maxdomovDetailParsed.ok) return maxdomovDetailParsed;
-
-  const signedDateParsed = parseRequiredDateField(raw.contractSignedDate, "contractSignedDate");
-  if (!signedDateParsed.ok) return signedDateParsed;
-  const policyStartParsed = parseRequiredDateField(raw.policyStartDate, "policyStartDate");
-  if (!policyStartParsed.ok) return policyStartParsed;
-  const policyEndParsed = parseOptionalDateField(raw.policyEndDate, "policyEndDate");
-  if (!policyEndParsed.ok) return policyEndParsed;
-  if (policyStartParsed.value.getTime() < signedDateParsed.value.getTime()) {
-    return {
-      ok: false,
-      error: "Pole policyStartDate nemůže být dřív než contractSignedDate.",
-    };
-  }
-  if (
-    policyEndParsed.value &&
-    policyEndParsed.value.getTime() < policyStartParsed.value.getTime()
-  ) {
-    return {
-      ok: false,
-      error: "Pole policyEndDate nemůže být dřív než policyStartDate.",
-    };
-  }
-
-  const inputAmountParsed = parseOptionalFiniteNumber(raw.inputAmount, "inputAmount");
-  if (!inputAmountParsed.ok) return inputAmountParsed;
-  const effectiveInputAmountParsed = parseOptionalFiniteNumber(
-    raw.effectiveInputAmount,
-    "effectiveInputAmount"
-  );
-  if (!effectiveInputAmountParsed.ok) return effectiveInputAmountParsed;
-  const comfortPaymentParsed = parseOptionalFiniteNumber(raw.comfortPayment, "comfortPayment");
-  if (!comfortPaymentParsed.ok) return comfortPaymentParsed;
-  const comfortGradualParsed = parseOptionalBoolean(raw.comfortGradual, "comfortGradual");
-  if (!comfortGradualParsed.ok) return comfortGradualParsed;
-  const comfortTargetAmountParsed = parseOptionalFiniteNumber(
-    raw.comfortTargetAmount,
-    "comfortTargetAmount"
-  );
-  if (!comfortTargetAmountParsed.ok) return comfortTargetAmountParsed;
-  const durationYearsParsed = parseOptionalInteger(raw.durationYears, "durationYears", {
-    min: 1,
-    max: 120,
-  });
-  if (!durationYearsParsed.ok) return durationYearsParsed;
-  const durationMonthsParsed = parseOptionalInteger(raw.durationMonths, "durationMonths", {
-    min: 1,
-    max: 240,
-  });
-  if (!durationMonthsParsed.ok) return durationMonthsParsed;
-  const maxCizinKomplexVariantParsed = parseOptionalMaxCizinKomplexVariant(
-    raw.maxCizinKomplexVariant
-  );
-  if (!maxCizinKomplexVariantParsed.ok) return maxCizinKomplexVariantParsed;
-
-  const isRefreshParsed = parseOptionalBoolean(raw.isRefresh, "isRefresh");
-  if (!isRefreshParsed.ok) return isRefreshParsed;
-  const refreshOriginalParsed = parseOptionalTrimmedText(
-    raw.refreshOriginalContractNumber,
-    "refreshOriginalContractNumber",
-    120
-  );
-  if (!refreshOriginalParsed.ok) return refreshOriginalParsed;
-  const refreshOriginalMissingParsed = parseOptionalBoolean(
-    raw.refreshOriginalMissingInSystem,
-    "refreshOriginalMissingInSystem"
-  );
-  if (!refreshOriginalMissingParsed.ok) return refreshOriginalMissingParsed;
-  const requiresStatementRefreshParsed = parseOptionalBoolean(
-    raw.requiresStatementRefresh,
-    "requiresStatementRefresh"
-  );
-  if (!requiresStatementRefreshParsed.ok) return requiresStatementRefreshParsed;
-  const commissionCalculationStatusParsed = parseOptionalTrimmedText(
-    raw.commissionCalculationStatus,
-    "commissionCalculationStatus",
-    80
-  );
-  if (!commissionCalculationStatusParsed.ok) return commissionCalculationStatusParsed;
-  const commissionBaseSourceParsed = parseOptionalTrimmedText(
-    raw.commissionBaseSource,
-    "commissionBaseSource",
-    80
-  );
-  if (!commissionBaseSourceParsed.ok) return commissionBaseSourceParsed;
-  const isRefresh = isRefreshParsed.value === true;
-  const refreshOriginalMissingInSystem = refreshOriginalMissingParsed.value === true;
-  const refreshOriginalContractNumber = refreshOriginalMissingInSystem
-    ? null
-    : refreshOriginalParsed.value;
-  const supportsOriginalReplacement =
-    productParsed.value === "neon" ||
-    productParsed.value === "domex" ||
-    productParsed.value === "cppAuto";
-  if (isRefresh && !supportsOriginalReplacement) {
-    return { ok: false, error: "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto." };
-  }
-  if (refreshOriginalMissingInSystem && productParsed.value !== "neon") {
-    return { ok: false, error: "Refresh bez původní smlouvy v systému je podporovaný jen pro ČPP ŽP NEON." };
-  }
-  if (refreshOriginalMissingInSystem && !isRefresh) {
-    return { ok: false, error: "Při refreshOriginalMissingInSystem musí být isRefresh true." };
-  }
-  if (requiresStatementRefreshParsed.value === true && !refreshOriginalMissingInSystem) {
-    return { ok: false, error: "requiresStatementRefresh je povolený jen pro Refresh bez původní smlouvy v systému." };
-  }
-  if (refreshOriginalParsed.value && !supportsOriginalReplacement) {
-    return { ok: false, error: "Pole refreshOriginalContractNumber je povolené jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto." };
-  }
-  if (refreshOriginalParsed.value && !isRefresh) {
-    return { ok: false, error: "Při vyplněném refreshOriginalContractNumber musí být isRefresh true." };
-  }
-  if (isRefresh && !refreshOriginalMissingInSystem && !refreshOriginalContractNumber) {
-    return { ok: false, error: "Pro Refresh/Náhradu je povinné číslo původní smlouvy." };
-  }
-  if (refreshOriginalContractNumber && !isValidContractNumber(refreshOriginalContractNumber)) {
-    return { ok: false, error: "Pole refreshOriginalContractNumber má neplatný formát." };
-  }
-  if (
-    refreshOriginalContractNumber &&
-    normalizeContractNumber(refreshOriginalContractNumber) ===
-      normalizeContractNumber(contractNumberParsed.value)
-  ) {
-    return {
-      ok: false,
-      error: "Číslo původní smlouvy musí být jiné než číslo nové smlouvy.",
-    };
-  }
-
-  const rootEntryIdParsed = parseOptionalTrimmedText(
-    raw.rootContractEntryId,
-    "rootContractEntryId",
-    120
-  );
-  if (!rootEntryIdParsed.ok) return rootEntryIdParsed;
-  const parentEntryIdParsed = parseOptionalTrimmedText(
-    raw.parentContractEntryId,
-    "parentContractEntryId",
-    120
-  );
-  if (!parentEntryIdParsed.ok) return parentEntryIdParsed;
-  const parentPathParsed = parseOptionalTrimmedText(
-    raw.parentContractEntryPath,
-    "parentContractEntryPath",
-    400
-  );
-  if (!parentPathParsed.ok) return parentPathParsed;
-
-  const calcInputParsed = parseOptionalFiniteNumber(
-    raw.calculationInputAmount,
-    "calculationInputAmount"
-  );
-  if (!calcInputParsed.ok) return calcInputParsed;
-  const previousInputParsed = parseOptionalFiniteNumber(
-    raw.previousInputAmount,
-    "previousInputAmount"
-  );
-  if (!previousInputParsed.ok) return previousInputParsed;
-  const newInputParsed = parseOptionalFiniteNumber(raw.newInputAmount, "newInputAmount");
-  if (!newInputParsed.ok) return newInputParsed;
-  const premiumDeltaParsed = parseOptionalFiniteNumber(raw.premiumDelta, "premiumDelta", {
-    min: -1_000_000_000,
-    max: 1_000_000_000,
-  });
-  if (!premiumDeltaParsed.ok) return premiumDeltaParsed;
-  const premiumIncreaseParsed = parseOptionalFiniteNumber(
-    raw.premiumIncreaseAmount,
-    "premiumIncreaseAmount"
-  );
-  if (!premiumIncreaseParsed.ok) return premiumIncreaseParsed;
-  const premiumDecreaseParsed = parseOptionalFiniteNumber(
-    raw.premiumDecreaseAmount,
-    "premiumDecreaseAmount"
-  );
-  if (!premiumDecreaseParsed.ok) return premiumDecreaseParsed;
-
-  let changeType: "increase" | "decrease" | "same" | null = null;
-  if (raw.changeType != null && raw.changeType !== "") {
-    if (typeof raw.changeType !== "string") {
-      return { ok: false, error: "Pole changeType musí být text nebo null." };
-    }
-    const normalized = raw.changeType.trim() as "increase" | "decrease" | "same";
-    if (!SUPPORTED_ENDORSEMENT_CHANGE_TYPES.has(normalized)) {
-      return { ok: false, error: "Pole changeType má nepodporovanou hodnotu." };
-    }
-    changeType = normalized;
-  }
-
-  if (entryTypeParsed.value === "endorsement") {
-    if (!rootEntryIdParsed.value || !parentEntryIdParsed.value) {
-      return {
-        ok: false,
-        error: "Dodatek musí obsahovat rootContractEntryId i parentContractEntryId.",
-      };
-    }
-  }
-
-  if (
-    productParsed.value === "maxcizinkomplex" &&
-    durationMonthsParsed.value == null
-  ) {
-    return {
-      ok: false,
-      error: "Pro produkt MAXIMA Cizinci je povinné pole durationMonths.",
-    };
-  }
-
-  return {
-    ok: true,
-    payload: {
-      productKey: productParsed.value,
-      entryType: entryTypeParsed.value,
-      position: "poradce1",
-      commissionMode: commissionModeParsed.value,
-      inputAmount: inputAmountParsed.value ?? 0,
-      effectiveInputAmount: effectiveInputAmountParsed.value ?? inputAmountParsed.value ?? 0,
-      comfortPayment: comfortPaymentParsed.value,
-      comfortGradual: comfortGradualParsed.value,
-      comfortTargetAmount: comfortTargetAmountParsed.value,
-      frequencyRaw: freqParsed.value,
-      items: [],
-      total: 0,
-      result: {
-        items: [],
-        total: 0,
-      },
-      clientName: clientNameParsed.value,
-      userId: ownerUid,
-      contractSignedDate: signedDateParsed.value,
-      policyStartDate: policyStartParsed.value,
-      policyEndDate: policyEndParsed.value,
-      durationYears: durationYearsParsed.value,
-      durationMonths:
-        productParsed.value === "maxcizinkomplex"
-          ? durationMonthsParsed.value
-          : null,
-      maxCizinKomplexVariant:
-        productParsed.value === "maxcizinkomplex"
-          ? maxCizinKomplexVariantParsed.value ?? "exclusiveStandard"
-          : null,
-      userEmail: ownerEmail,
-      contractNumber: contractNumberParsed.value,
-      duplicateLookupKey: null,
-      tipContractTipsterEmail: tipContractTipsterEmail || null,
-      tipContractTipsterName: null,
-      tipContractTipsterPercent,
-      tipContractImmediateFirstYearGross: null,
-      tipContractImmediateFirstYearNet: null,
-      tipContractTipsterAmountFirstYear: null,
-      tipContractSourceTipId: tipContractSourceTipId || null,
-      tipContractSourceTipTitle: tipContractSourceTipId
-        ? tipContractSourceTipTitleParsed.value || null
-        : null,
-      tipContractSourceTipProductLabel: tipContractSourceTipId
-        ? tipContractSourceTipProductLabelParsed.value || null
-        : null,
-      tipContractSourceTipClientName: tipContractSourceTipId
-        ? tipContractSourceTipClientNameParsed.value || null
-        : null,
-      tipContractSourceTipCreatedAtMs:
-        tipContractSourceTipId && tipContractSourceTipCreatedAtMsParsed.value != null
-          ? Math.round(tipContractSourceTipCreatedAtMsParsed.value)
-          : null,
-      carMake: carMakeParsed.value,
-      carPlate: carPlateParsed.value,
-      carVin: carVinParsed.value,
-      carTp: carTpParsed.value,
-      carOrv: carOrvParsed.value,
-      carAnnualMileage: carAnnualMileageParsed.value,
-      carAllianzScope: carAllianzScopeParsed.value,
-      carLiabilityLimit: carLiabilityLimitParsed.value,
-      carAssistancePlan: carAssistancePlanParsed.value,
-      carHullSumInsured: carHullSumInsuredParsed.value,
-      carHullSumInsuredText: carHullSumInsuredTextParsed.value,
-      carHullDeductible: carHullDeductibleParsed.value,
-      carHullDeductibleText: carHullDeductibleTextParsed.value,
-      carHullRiskAccident: carHullRiskAccidentParsed.value,
-      carHullRiskTheft: carHullRiskTheftParsed.value,
-      carHullRiskNatural: carHullRiskNaturalParsed.value,
-      carHullRiskVandalism: carHullRiskVandalismParsed.value,
-      carHullRiskAnimalCollision: carHullRiskAnimalCollisionParsed.value,
-      carAddonEso: carAddonEsoParsed.value,
-      carAddonNaturalRisks: carAddonNaturalRisksParsed.value,
-      carAddonKlika: carAddonKlikaParsed.value,
-      carAddonGlass: carAddonGlassParsed.value,
-      carAddonGlassLimit: carAddonGlassParsed.value ? carAddonGlassLimitParsed.value : null,
-      carAddonAnimalCollision: carAddonAnimalCollisionParsed.value,
-      carAddonAnimalCollisionLimit: carAddonAnimalCollisionParsed.value
-        ? carAddonAnimalCollisionLimitParsed.value
-        : null,
-      carAddonAnimalDamage: carAddonAnimalDamageParsed.value,
-      carAddonAnimalDamageLimit: carAddonAnimalDamageParsed.value
-        ? carAddonAnimalDamageLimitParsed.value
-        : null,
-      carAddonVandalism: carAddonVandalismParsed.value,
-      carAddonTheft: carAddonTheftParsed.value,
-      carAddonTheftLimit: carAddonTheftParsed.value
-        ? carAddonTheftLimitParsed.value
-        : null,
-      carAddonNatural: carAddonNaturalParsed.value,
-      carAddonNaturalLimit: carAddonNaturalParsed.value
-        ? carAddonNaturalLimitParsed.value
-        : null,
-      carAddonOwnDamage: carAddonOwnDamageParsed.value,
-      carAddonOwnDamageLimit: carAddonOwnDamageParsed.value
-        ? carAddonOwnDamageLimitParsed.value
-        : null,
-      carAddonGap: carAddonGapParsed.value,
-      carAddonGapLimit: carAddonGapParsed.value ? carAddonGapLimitParsed.value : null,
-      carAddonSmartGap: carAddonSmartGapParsed.value,
-      carAddonServisPro: carAddonServisProParsed.value,
-      carAddonReplacementCar: carAddonReplacementCarParsed.value,
-      carAddonLuggage: carAddonLuggageParsed.value,
-      carAddonTransportedGoods: carAddonTransportedGoodsParsed.value,
-      carAddonFireExplosion: carAddonFireExplosionParsed.value,
-      carAddonLegalAdvice: carAddonLegalAdviceParsed.value,
-      carAddonPothole: carAddonPotholeParsed.value,
-      carAddonNonFaultAccident: carAddonNonFaultAccidentParsed.value,
-      carAddonPassengerInjury: carAddonPassengerInjuryParsed.value,
-      carAddonKeyLossTheft: carAddonKeyLossTheftParsed.value,
-      neonDetail: productParsed.value === "neon" ? neonDetailParsed.value : null,
-      domexDetail: productParsed.value === "domex" ? domexDetailParsed.value : null,
-      maxdomovDetail:
-        productParsed.value === "maxdomov" ? maxdomovDetailParsed.value : null,
-      paid: false,
-      managerEmailSnapshot: null,
-      managerPositionSnapshot: null,
-      managerModeSnapshot: null,
-      managerChain: [],
-      managerOverrides: [],
-      allowedEmails: [ownerEmail],
-      createdAt: new Date(),
-      isRefresh: isRefreshParsed.value,
-      refreshOriginalContractNumber,
-      refreshOriginalMissingInSystem: refreshOriginalMissingInSystem || null,
-      requiresStatementRefresh: refreshOriginalMissingInSystem || null,
-      commissionCalculationStatus: refreshOriginalMissingInSystem
-        ? commissionCalculationStatusParsed.value || "provisional_refresh_missing_original"
-        : null,
-      commissionBaseSource: refreshOriginalMissingInSystem
-        ? commissionBaseSourceParsed.value || "calculator_provisional"
-        : null,
-      refreshCommissionBase: null,
-      rootContractEntryId:
-        entryTypeParsed.value === "endorsement" ? rootEntryIdParsed.value : null,
-      parentContractEntryId:
-        entryTypeParsed.value === "endorsement" ? parentEntryIdParsed.value : null,
-      parentContractEntryPath:
-        entryTypeParsed.value === "endorsement" ? parentPathParsed.value : null,
-      calculationInputAmount: calcInputParsed.value,
-      previousInputAmount:
-        entryTypeParsed.value === "endorsement" ? previousInputParsed.value : null,
-      newInputAmount: entryTypeParsed.value === "endorsement" ? newInputParsed.value : null,
-      premiumDelta: entryTypeParsed.value === "endorsement" ? premiumDeltaParsed.value : null,
-      premiumIncreaseAmount:
-        entryTypeParsed.value === "endorsement" ? premiumIncreaseParsed.value : null,
-      premiumDecreaseAmount:
-        entryTypeParsed.value === "endorsement" ? premiumDecreaseParsed.value : null,
-      changeType: entryTypeParsed.value === "endorsement" ? changeType : null,
-    },
-  };
-};
 
 const normalizePositionValue = (value: unknown): Position | null => {
   if (typeof value !== "string") return null;
@@ -4034,139 +2624,6 @@ const parseContractStatus = (value: unknown): ParseResult<"active" | "storno"> =
   return { ok: true, value: normalized as "active" | "storno" };
 };
 
-const sanitizeDetailObject = (
-  value: unknown,
-  field: "neonDetail" | "flexiDetail" | "domexDetail" | "maxdomovDetail",
-  allowedKeys: Set<string>
-): ParseResult<Record<string, string | number | boolean | null> | null> => {
-  if (value == null) return { ok: true, value: null };
-  if (!isPlainObject(value)) {
-    return { ok: false, error: `Pole ${field} musí být objekt nebo null.` };
-  }
-
-  const output: Record<string, string | number | boolean | null> = {};
-  const keys = Object.keys(value);
-  for (const key of keys) {
-    if (!allowedKeys.has(key)) {
-      return {
-        ok: false,
-        error: `Pole ${field}.${key} není povolené.`,
-      };
-    }
-  }
-
-  for (const key of keys) {
-    const raw = value[key];
-    if (raw == null) {
-      output[key] = null;
-      continue;
-    }
-    if (typeof raw === "string") {
-      const trimmed = raw.trim();
-      const maxLen = key === "note" ? 2_000 : 200;
-      if (trimmed.length > maxLen) {
-        return {
-          ok: false,
-          error: `Pole ${field}.${key} je příliš dlouhé.`,
-        };
-      }
-      output[key] = trimmed || null;
-      continue;
-    }
-    if (typeof raw === "number") {
-      if (!Number.isFinite(raw) || raw < 0 || raw > 1_000_000_000) {
-        return {
-          ok: false,
-          error: `Pole ${field}.${key} má neplatnou číselnou hodnotu.`,
-        };
-      }
-      output[key] = raw;
-      continue;
-    }
-    if (typeof raw === "boolean") {
-      output[key] = raw;
-      continue;
-    }
-    return {
-      ok: false,
-      error: `Pole ${field}.${key} má nepodporovaný datový typ.`,
-    };
-  }
-
-  return { ok: true, value: output };
-};
-
-const isReasonableContractDate = (value: Date): boolean =>
-  value >= MIN_REASONABLE_CONTRACT_DATE && value < MAX_REASONABLE_CONTRACT_DATE;
-
-const validateContractCoreInvariants = (
-  existing: ContractDoc,
-  patch: Record<string, unknown>
-): { ok: true } | { ok: false; error: string } => {
-  const shouldValidate = [...UPDATE_FIELDS_CONTRACT_CORE_KEYS].some((key) =>
-    hasOwn(patch, key)
-  );
-  if (!shouldValidate) return { ok: true };
-
-  const finalClientName = hasOwn(patch, "clientName")
-    ? patch.clientName
-    : existing.clientName;
-  if (typeof finalClientName !== "string" || !finalClientName.trim()) {
-    return { ok: false, error: "Pole clientName nesmí být prázdné." };
-  }
-
-  const finalContractNumber = hasOwn(patch, "contractNumber")
-    ? patch.contractNumber
-    : existing.contractNumber;
-  if (
-    typeof finalContractNumber !== "string" ||
-    !isValidContractNumber(finalContractNumber.trim())
-  ) {
-    return { ok: false, error: "Pole contractNumber má neplatný formát." };
-  }
-
-  const finalSignedDate = toDate(
-    hasOwn(patch, "contractSignedDate")
-      ? patch.contractSignedDate
-      : existing.contractSignedDate
-  );
-  const finalPolicyStartDate = toDate(
-    hasOwn(patch, "policyStartDate")
-      ? patch.policyStartDate
-      : existing.policyStartDate
-  );
-  const finalPolicyEndDate = toDate(
-    hasOwn(patch, "policyEndDate")
-      ? patch.policyEndDate
-      : existing.policyEndDate
-  );
-
-  if (!finalSignedDate || !isReasonableContractDate(finalSignedDate)) {
-    return { ok: false, error: "Pole contractSignedDate má neplatnou hodnotu." };
-  }
-  if (!finalPolicyStartDate || !isReasonableContractDate(finalPolicyStartDate)) {
-    return { ok: false, error: "Pole policyStartDate má neplatnou hodnotu." };
-  }
-  if (finalPolicyStartDate.getTime() < finalSignedDate.getTime()) {
-    return {
-      ok: false,
-      error: "Pole policyStartDate nemůže být dřív než contractSignedDate.",
-    };
-  }
-  if (
-    finalPolicyEndDate &&
-    (!isReasonableContractDate(finalPolicyEndDate) ||
-      finalPolicyEndDate.getTime() < finalPolicyStartDate.getTime())
-  ) {
-    return {
-      ok: false,
-      error: "Pole policyEndDate má neplatnou hodnotu.",
-    };
-  }
-
-  return { ok: true };
-};
-
 const toDateForUpdateField = (
   field: string,
   value: unknown
@@ -4333,12 +2790,6 @@ type CppStavSmlouvyItem = {
   endDate: string | null;
 };
 
-const normalizeContractNumber = (value: string | null | undefined): string =>
-  (value ?? "").replace(/\s+/g, "").trim();
-
-const normalizeContractNumberLoose = (value: string | null | undefined): string =>
-  normalizeContractNumber(value).replace(/^0+/, "");
-
 const normalizeComparableContractText = (value: unknown): string =>
   String(value ?? "")
     .normalize("NFD")
@@ -4446,93 +2897,6 @@ const parseIdempotencyKeyFromRequest = (req: NextRequest): string | null => {
   return normalized.slice(0, CONTRACTS_CREATE_IDEMPOTENCY_MAX_LEN);
 };
 
-const buildIdempotentEntryId = (ownerEmail: string, idempotencyKey: string): string => {
-  const hash = createHash("sha256")
-    .update(`${normalizeEmail(ownerEmail)}::${idempotencyKey}`)
-    .digest("hex")
-    .slice(0, 40);
-  return `idem_${hash}`;
-};
-
-const CREATE_REPLAY_IGNORED_FIELDS = new Set<string>([
-  "allowedEmails",
-  "createdAt",
-  "duplicateLookupKey",
-  "items",
-  "managerChain",
-  "managerEmailSnapshot",
-  "managerModeSnapshot",
-  "managerOverrides",
-  "managerPositionSnapshot",
-  "paid",
-  "position",
-  "result",
-  "total",
-  "commissionMode",
-  "refreshCommissionBase",
-  "tipContractTipsterName",
-  "tipContractImmediateFirstYearGross",
-  "tipContractImmediateFirstYearNet",
-  "tipContractTipsterAmountFirstYear",
-]);
-
-const isTimestampLike = (value: unknown): boolean =>
-  Boolean(
-    value &&
-      typeof value === "object" &&
-      (("toDate" in value && typeof (value as { toDate?: unknown }).toDate === "function") ||
-        ("seconds" in value && typeof (value as { seconds?: unknown }).seconds === "number"))
-  );
-
-const normalizeCreateReplayValue = (value: unknown): unknown => {
-  if (value === undefined || value === null) return null;
-  if (value instanceof Date || isTimestampLike(value)) {
-    const date = toDate(value);
-    return date ? toIsoDay(date) : null;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeCreateReplayValue(item));
-  }
-  if (isPlainObject(value)) {
-    const out: Record<string, unknown> = {};
-    Object.keys(value)
-      .sort()
-      .forEach((key) => {
-        out[key] = normalizeCreateReplayValue(value[key]);
-      });
-    return out;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? Math.round(value * 1_000_000) / 1_000_000 : null;
-  }
-  return value;
-};
-
-const createReplayComparableJson = (
-  source: Record<string, unknown>,
-  expected: NormalizedCreateEntryPayload
-): string => {
-  const expectedRow = expected as unknown as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  Object.keys(expectedRow)
-    .filter((key) => !CREATE_REPLAY_IGNORED_FIELDS.has(key))
-    .sort()
-    .forEach((key) => {
-      out[key] = normalizeCreateReplayValue(source[key]);
-    });
-  return JSON.stringify(out);
-};
-
-const idempotentReplayMatchesPayload = (
-  existing: Record<string, unknown>,
-  expected: NormalizedCreateEntryPayload
-): boolean =>
-  createReplayComparableJson(existing, expected) ===
-  createReplayComparableJson(
-    expected as unknown as Record<string, unknown>,
-    expected
-  );
-
 const idempotentReplayResponse = (
   snap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>,
   expectedPayload: NormalizedCreateEntryPayload
@@ -4557,22 +2921,6 @@ const idempotentReplayResponse = (
   });
 };
 
-const contractNumberClaimDocId = (value: string | null | undefined): string =>
-  encodeURIComponent(normalizeContractNumber(value).toLowerCase());
-
-const isFirestoreFailedPrecondition = (error: unknown): boolean => {
-  const code =
-    typeof (error as { code?: unknown })?.code === "number"
-      ? (error as { code?: number }).code
-      : null;
-  if (code === 9) return true;
-  const message =
-    typeof (error as { message?: unknown })?.message === "string"
-      ? (error as { message?: string }).message ?? ""
-      : "";
-  return /FAILED_PRECONDITION/i.test(message);
-};
-
 const isFirestoreAlreadyExists = (error: unknown): boolean => {
   const numericCode =
     typeof (error as { code?: unknown })?.code === "number"
@@ -4592,356 +2940,6 @@ const isFirestoreAlreadyExists = (error: unknown): boolean => {
       : "";
   return /already exists/i.test(message) || /ALREADY_EXISTS/i.test(message);
 };
-
-const normalizeContractEntryType = (
-  value: unknown
-): "contract" | "endorsement" | null => {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "contract" || normalized === "endorsement") {
-    return normalized;
-  }
-  return null;
-};
-
-const normalizeClientNameForDuplicate = (
-  value: string | null | undefined
-): string => (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-
-const isoDayFromUnknown = (value: unknown): string | null => {
-  const date = toDate(value);
-  if (!date) return null;
-  return date.toISOString().slice(0, 10);
-};
-
-const buildDuplicateLookupKey = ({
-  entryType,
-  productKey,
-  clientName,
-  contractSignedDate,
-}: {
-  entryType: unknown;
-  productKey: unknown;
-  clientName: unknown;
-  contractSignedDate: unknown;
-}): string | null => {
-  if (normalizeContractEntryType(entryType) !== "contract") return null;
-  if (typeof productKey !== "string" || !productKey.trim()) return null;
-  const client = normalizeClientNameForDuplicate(
-    typeof clientName === "string" ? clientName : null
-  );
-  if (!client) return null;
-  const signedDay = isoDayFromUnknown(contractSignedDate);
-  if (!signedDay) return null;
-  return `${productKey.trim()}___${client}___${signedDay}`;
-};
-
-type ExistingContractByNumber = {
-  entryPath: string;
-  ownerEmail: string | null;
-  entryId: string | null;
-};
-
-const createDuplicateContractError = (
-  entryPath: string | null | undefined
-): Error & { statusCode?: number; duplicatePath?: string } => {
-  const duplicateErr = new Error(
-    "Smlouva s tímto číslem už v systému existuje."
-  ) as Error & { statusCode?: number; duplicatePath?: string };
-  duplicateErr.statusCode = 409;
-  if (entryPath) duplicateErr.duplicatePath = entryPath;
-  return duplicateErr;
-};
-
-async function findExistingContractByNumber(
-  contractNumber: string,
-  options: { excludeEntryPath?: string | null } = {}
-): Promise<ExistingContractByNumber | null> {
-  if (!adminDb) {
-    throw new Error("Firebase Admin credentials are not configured.");
-  }
-
-  const db = adminDb;
-  const normalized = normalizeContractNumber(contractNumber);
-  const excludeEntryPath = (options.excludeEntryPath ?? "").trim();
-  if (!normalized) return null;
-
-  const claimRef = db
-    .collection(CONTRACT_NUMBER_CLAIMS_COLLECTION)
-    .doc(contractNumberClaimDocId(normalized));
-  const claimSnap = await claimRef.get();
-  if (claimSnap.exists) {
-    const claimData = (claimSnap.data() ?? {}) as {
-      entryPath?: string | null;
-      ownerEmail?: string | null;
-      entryId?: string | null;
-    };
-    const claimedEntryPath = (claimData.entryPath ?? "").trim();
-    if (claimedEntryPath && claimedEntryPath !== excludeEntryPath) {
-      const claimedEntrySnap = await db.doc(claimedEntryPath).get();
-      if (claimedEntrySnap.exists) {
-        const claimedEntry = (claimedEntrySnap.data() ?? {}) as ContractDoc;
-        if (
-          normalizeContractEntryType(claimedEntry.entryType ?? "contract") === "contract" &&
-          normalizeContractNumber(claimedEntry.contractNumber) === normalized
-        ) {
-          return {
-            entryPath: claimedEntryPath,
-            ownerEmail:
-              normalizeEmail(claimData.ownerEmail) ||
-              normalizeEmail(
-                (claimedEntry.userEmail as string | undefined) ??
-                  claimedEntrySnap.ref.path.split("/")[1]
-              ) ||
-              null,
-            entryId: (claimData.entryId ?? "").trim() || claimedEntrySnap.id,
-          };
-        }
-      }
-    }
-  }
-
-  const refs = await resolveEntryRefsByContractNumber(normalized);
-  const refsByPath = new Map<string, FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>>();
-  refs.forEach((ref) => refsByPath.set(ref.path, ref));
-  for (const ref of refsByPath.values()) {
-    if (excludeEntryPath && ref.path === excludeEntryPath) continue;
-    const snap = await ref.get();
-    if (!snap.exists) continue;
-
-    const data = (snap.data() ?? {}) as ContractDoc;
-    if (normalizeContractEntryType(data.entryType ?? "contract") !== "contract") continue;
-    if (normalizeContractNumber(data.contractNumber) !== normalized) continue;
-
-    const ownerFromPath = ref.path.split("/")[1] ?? "";
-    return {
-      entryPath: ref.path,
-      ownerEmail: normalizeEmail((data.userEmail as string | undefined) ?? ownerFromPath) || null,
-      entryId: ref.id,
-    };
-  }
-
-  return null;
-}
-
-async function collectContractDuplicateGuardRefs({
-  ownerEntriesRef,
-  contractNumber,
-  excludeEntryPath,
-}: {
-  ownerEntriesRef: FirebaseFirestore.CollectionReference<FirebaseFirestore.DocumentData>;
-  contractNumber: string;
-  excludeEntryPath?: string | null;
-}): Promise<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[]> {
-  const normalized = normalizeContractNumber(contractNumber);
-  if (!normalized) return [];
-
-  const excludedPath = (excludeEntryPath ?? "").trim();
-  const refsByPath = new Map<
-    string,
-    FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
-  >();
-  const addRef = (
-    ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
-  ) => {
-    if (excludedPath && ref.path === excludedPath) return;
-    refsByPath.set(ref.path, ref);
-  };
-
-  const indexedRefs = await resolveEntryRefsByContractNumber(normalized);
-  indexedRefs.forEach(addRef);
-
-  const possibleStoredNumbers = new Set<string>();
-  const raw = contractNumber.trim();
-  if (raw) possibleStoredNumbers.add(raw);
-  possibleStoredNumbers.add(normalized);
-  const loose = normalizeContractNumberLoose(contractNumber);
-  if (loose) possibleStoredNumbers.add(loose);
-
-  const ownerSnaps = await Promise.all(
-    [...possibleStoredNumbers].map((number) =>
-      ownerEntriesRef.where("contractNumber", "==", number).get()
-    )
-  );
-  for (const snap of ownerSnaps) {
-    for (const docSnap of snap.docs) {
-      addRef(docSnap.ref);
-    }
-  }
-
-  return [...refsByPath.values()];
-}
-
-const contractRefDocId = (ownerEmail: string, entryId: string): string =>
-  `${normalizeEmail(ownerEmail)}___${entryId.trim()}`;
-
-const entryRefPath = (ownerEmail: string, entryId: string): string =>
-  `users/${normalizeEmail(ownerEmail)}/entries/${entryId.trim()}`;
-
-const contractRefFromData = ({
-  ownerEmail,
-  entryId,
-  contractNumber,
-  productKey,
-}: {
-  ownerEmail: string;
-  entryId: string;
-  contractNumber: string | null | undefined;
-  productKey: Product | null | undefined;
-}) => {
-  const normalizedOwner = normalizeEmail(ownerEmail);
-  const trimmedEntryId = entryId.trim();
-  const contractNumberNormalized = normalizeContractNumber(contractNumber);
-  const contractNumberLoose = normalizeContractNumberLoose(contractNumber);
-
-  if (!normalizedOwner || !trimmedEntryId || !contractNumberNormalized) {
-    return null;
-  }
-
-  return {
-    ownerEmail: normalizedOwner,
-    entryId: trimmedEntryId,
-    entryPath: entryRefPath(normalizedOwner, trimmedEntryId),
-    contractNumberRaw:
-      typeof contractNumber === "string" ? contractNumber.trim() : "",
-    contractNumberNormalized,
-    contractNumberLoose,
-    productKey: productKey ?? null,
-    updatedAt: new Date(),
-  };
-};
-
-const applyContractRefToBatch = ({
-  batch,
-  ownerEmail,
-  entryId,
-  contractNumber,
-  productKey,
-}: {
-  batch: FirebaseFirestore.WriteBatch;
-  ownerEmail: string;
-  entryId: string;
-  contractNumber: string | null | undefined;
-  productKey: Product | null | undefined;
-}) => {
-  if (!adminDb) return;
-  const ref = adminDb
-    .collection(CONTRACT_REFS_COLLECTION)
-    .doc(contractRefDocId(ownerEmail, entryId));
-  const payload = contractRefFromData({
-    ownerEmail,
-    entryId,
-    contractNumber,
-    productKey,
-  });
-  if (!payload) {
-    batch.delete(ref);
-    return;
-  }
-  batch.set(ref, payload, { merge: true });
-};
-
-async function resolveEntryRefsByContractNumber(
-  contractNumber: string
-): Promise<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[]> {
-  if (!adminDb) {
-    throw new Error("Firebase Admin credentials are not configured.");
-  }
-
-  const db = adminDb;
-  const normalized = normalizeContractNumber(contractNumber);
-  if (!normalized) return [];
-  const loose = normalizeContractNumberLoose(contractNumber);
-
-  const refsByPath = new Map<
-    string,
-    FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
-  >();
-
-  const consumeContractRefSnap = (
-    snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>
-  ) => {
-    for (const docSnap of snap.docs) {
-      const data = docSnap.data() as {
-        ownerEmail?: string | null;
-        entryId?: string | null;
-        entryPath?: string | null;
-      };
-      const ownerEmail = normalizeEmail(data.ownerEmail);
-      const entryId = (data.entryId ?? "").trim();
-      const entryPathRaw = (data.entryPath ?? "").trim();
-      const entryPath =
-        entryPathRaw || (ownerEmail && entryId ? entryRefPath(ownerEmail, entryId) : "");
-      if (!entryPath) continue;
-      refsByPath.set(entryPath, db.doc(entryPath));
-    }
-  };
-
-  const consumeEntrySnap = (
-    snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>
-  ) => {
-    for (const docSnap of snap.docs) {
-      refsByPath.set(docSnap.ref.path, docSnap.ref);
-    }
-  };
-
-  const contractRefQueries: Promise<FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>>[] = [
-    db
-      .collection(CONTRACT_REFS_COLLECTION)
-      .where("contractNumberNormalized", "==", normalized)
-      .get(),
-  ];
-  if (loose && loose !== normalized) {
-    contractRefQueries.push(
-      db.collection(CONTRACT_REFS_COLLECTION).where("contractNumberLoose", "==", loose).get()
-    );
-  }
-
-  try {
-    const contractRefSnaps = await Promise.all(contractRefQueries);
-    contractRefSnaps.forEach(consumeContractRefSnap);
-  } catch (queryErr) {
-    if (isFirestoreFailedPrecondition(queryErr)) {
-      console.warn(
-        "resolveEntryRefsByContractNumber: contractRefs query failed with FAILED_PRECONDITION, skipping deep duplicate lookup.",
-        queryErr
-      );
-      return [...refsByPath.values()];
-    }
-    throw queryErr;
-  }
-
-  if (refsByPath.size === 0) {
-    const entryQueries: Promise<FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>>[] = [
-      db.collectionGroup("entries").where("contractNumber", "==", contractNumber).get(),
-    ];
-    if (normalized && normalized !== contractNumber) {
-      entryQueries.push(
-        db.collectionGroup("entries").where("contractNumber", "==", normalized).get()
-      );
-    }
-    if (loose && loose !== normalized && loose !== contractNumber) {
-      entryQueries.push(
-        db.collectionGroup("entries").where("contractNumber", "==", loose).get()
-      );
-    }
-    try {
-      const entrySnaps = await Promise.all(entryQueries);
-      entrySnaps.forEach(consumeEntrySnap);
-    } catch (queryErr) {
-      if (isFirestoreFailedPrecondition(queryErr)) {
-        console.warn(
-          "resolveEntryRefsByContractNumber: collectionGroup entries query failed with FAILED_PRECONDITION, returning refs from contractRefs only.",
-          queryErr
-        );
-        return [...refsByPath.values()];
-      }
-      throw queryErr;
-    }
-  }
-
-  return [...refsByPath.values()];
-}
 
 async function markTeamOverviewOwnersDirty(
   ownerEmails: Iterable<string>
@@ -5240,132 +3238,6 @@ const getCachedUserTree = async (): Promise<UserTreeResult> => {
 
   return cachedUserTreePromise;
 };
-
-function productMatchesListCategory(
-  product: Product | undefined,
-  categories: Set<ContractListProductCategory>
-): boolean {
-  if (!product) return false;
-  if (categories.size === 0) return true;
-  for (const category of categories) {
-    if (CONTRACT_LIST_PRODUCT_CATEGORY_MAP[category].includes(product)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function productMatchesListInstitution(
-  product: Product | undefined,
-  institutions: Set<ProductInstitutionId>
-): boolean {
-  if (!product) return false;
-  if (institutions.size === 0) return true;
-  const institution = productInstitutionId(product);
-  return institution != null && institutions.has(institution);
-}
-
-function nextAnniversaryDate(start: Date, now: Date): Date {
-  const candidate = new Date(
-    now.getFullYear(),
-    start.getMonth(),
-    start.getDate()
-  );
-  if (candidate.getTime() < now.getTime()) {
-    candidate.setFullYear(candidate.getFullYear() + 1);
-  }
-  return candidate;
-}
-
-function isAnniversarySoonForList(date: Date | null, nowRaw = new Date()): boolean {
-  if (!date) return false;
-  const now = new Date(nowRaw.getFullYear(), nowRaw.getMonth(), nowRaw.getDate());
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const next = nextAnniversaryDate(start, now);
-  const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  const anniversaryNumber = next.getFullYear() - start.getFullYear();
-  return (
-    anniversaryNumber >= 1 &&
-    diffDays >= 0 &&
-    diffDays <= ANNIVERSARY_WINDOW_DAYS
-  );
-}
-
-function contractMatchesListSearch(contract: ContractDoc, query: string): boolean {
-  const q = normalizeSearchValue(query);
-  if (!q) return true;
-  const qContract = normalizeContractNumberForSearch(query);
-  const client = normalizeSearchValue(contract.clientName);
-  const contractNumber = normalizeSearchValue(contract.contractNumber);
-  const compactContractNumber = normalizeContractNumberForSearch(contract.contractNumber);
-  return (
-    client.includes(q) ||
-    contractNumber.includes(q) ||
-    (qContract.length > 0 && compactContractNumber.includes(qContract))
-  );
-}
-
-function contractMatchesRefreshFilter(contract: ContractDoc): boolean {
-  if (contract.isRefresh === true) return true;
-  if (typeof contract.refreshOriginalContractNumber === "string") {
-    if (contract.refreshOriginalContractNumber.trim().length > 0) return true;
-  }
-  return Boolean(contract.refreshCommissionBase);
-}
-
-function contractMatchesListFilters(
-  contract: ContractDoc,
-  filters: ContractListFilters,
-  ownerEmail?: string | null
-): boolean {
-  const product = contract.productKey as Product | undefined;
-  if (filters.signedFrom) {
-    const signed = contractSortDate(contract);
-    if (!signed || signed < filters.signedFrom) return false;
-  }
-
-  if (!contractMatchesListSearch(contract, filters.query)) return false;
-
-  if (filters.refreshOnly && !contractMatchesRefreshFilter(contract)) {
-    return false;
-  }
-
-  if (
-    !productMatchesListCategory(product, filters.categories) ||
-    !productMatchesListInstitution(product, filters.institutions)
-  ) {
-    return false;
-  }
-
-  const lifecycleStatus = contractLifecycleStatus(contract);
-  if (filters.unpaidOnly) {
-    if (contract.paid === true || lifecycleStatus !== "active") return false;
-  }
-
-  if (
-    !contractMatchesCommissionAuditFilter(contract, {
-      mode: filters.commissionAuditMode,
-      codeFilter: filters.commissionAuditCodeFilter,
-      viewerEmail: ownerEmail ?? contract.userEmail ?? null,
-    })
-  ) {
-    return false;
-  }
-
-  if (filters.mode === "anniversary") {
-    if (
-      lifecycleStatus !== "active" ||
-      !product ||
-      TRAVEL_PRODUCTS.includes(product)
-    ) {
-      return false;
-    }
-    const startDate = toDate(contract.policyStartDate) ?? contractSortDate(contract);
-    if (!isAnniversarySoonForList(startDate)) return false;
-  }
-
-  return true;
-}
 
 async function fetchContractsForOwners(
   owners: string[],
@@ -5890,23 +3762,15 @@ async function getAuthContext(
   }
 
   const position = (me?.position as Position | null | undefined) ?? null;
-  const hasDirectSubs = (childrenByManager.get(email) ?? []).length > 0;
   const adminRole = resolveAdminRoleFromClaims(email, identity.claims);
   const canManageContractsAsAdmin = adminRoleAtLeast(adminRole, "admin");
-  const hierarchyTeamEmails =
-    isManagerPosition(position) || hasDirectSubs
-      ? collectSubordinateHierarchy(email, childrenByManager).subordinateEmails
-      : [];
-  const teamEmails = Array.from(new Set(hierarchyTeamEmails));
-  const adminContractAccessEmails = canManageContractsAsAdmin
-    ? users
-        .filter((user) => user.accountType === "advisor")
-        .map((user) => user.email)
-        .filter((userEmail) => userEmail && userEmail !== email)
-    : [];
-  const contractAccessEmails = Array.from(
-    new Set([...teamEmails, ...adminContractAccessEmails])
-  );
+  const { teamEmails, contractAccessEmails } = resolveContractTeamAccess({
+    viewerEmail: email,
+    position,
+    childrenByManager,
+    users,
+    canManageContractsAsAdmin,
+  });
 
   return {
     email,
@@ -6190,20 +4054,27 @@ export async function handleContractsGet(
     return withRateLimit(NextResponse.json(response));
   }
 
-  const scopeParam = search.get("scope") === "team" ? "team" : "my";
+  const scopeParam = resolveContractListScope(search.get("scope"));
   const includeTeam = search.get("includeTeam") === "1" || search.get("includeTeam") === "true";
   const shapeParam = search.get("shape");
   const responseShape: ContractListResponseShape =
-    shapeParam === "clientNames" ? "clientNames" : shapeParam === "home" ? "home" : "full";
+    shapeParam === "clientNames"
+      ? "clientNames"
+      : shapeParam === "home"
+      ? "home"
+      : shapeParam === "cashflow"
+      ? "cashflow"
+      : "full";
   const ownerNamesByEmail = new Map(
     users.map((item) => [item.email, normalizeOptionalDisplayName(item.name) ?? null] as const)
   );
   const cursor = parseCursor(search);
   const listFilters = parseContractListFilters(search);
   const limitParam = Number(search.get("limit"));
+  const pageSizeMax = responseShape === "cashflow" ? CASHFLOW_PAGE_SIZE_MAX : PAGE_SIZE_MAX;
   const pageSize =
     Number.isFinite(limitParam) && limitParam > 0
-      ? Math.min(Math.max(1, limitParam), PAGE_SIZE_MAX)
+      ? Math.min(Math.max(1, limitParam), pageSizeMax)
       : PAGE_SIZE_DEFAULT;
 
   if (scopeParam === "team" && teamEmails.length === 0) {
@@ -6213,20 +4084,20 @@ export async function handleContractsGet(
     );
   }
 
-  const selectedSubordinates = new Set(
-    (search.get("subordinates") ?? "")
-      .split(",")
-      .map((value) => normalizeEmail(value))
-      .filter(Boolean)
+  const selectedSubordinates = selectedSubordinateEmailsFromParam(
+    search.get("subordinates")
   );
-  const owners =
-    scopeParam === "team"
-      ? selectedSubordinates.size > 0
-        ? teamEmails.filter((teamEmail) => selectedSubordinates.has(teamEmail))
-        : teamEmails
-      : [email];
-  const shouldFetchTeamInParallel =
-    scopeParam === "my" && includeTeam && teamEmails.length > 0;
+  const owners = selectContractListOwners({
+    scope: scopeParam,
+    viewerEmail: email,
+    teamEmails,
+    selectedSubordinates,
+  });
+  const shouldFetchTeamInParallel = shouldFetchTeamContractsInParallel({
+    scope: scopeParam,
+    includeTeam,
+    teamEmails,
+  });
 
   let primaryRes: Awaited<ReturnType<typeof fetchContractsForOwners>>;
   let teamRes: Awaited<ReturnType<typeof fetchContractsForOwners>> | null = null;
@@ -6320,9 +4191,7 @@ export async function handleContractsFind(req: NextRequest) {
     );
   }
 
-  const scopeParam = search.get("scope");
-  const scope: "my" | "team" | "tip" =
-    scopeParam === "team" ? "team" : scopeParam === "tip" ? "tip" : "my";
+  const scope = resolveContractFindScope(search.get("scope"));
   if (scope === "team" && teamEmails.length === 0) {
     return NextResponse.json(
       { ok: false, error: "Nemáš práva pro zobrazení týmových smluv." } satisfies ErrorResponse,
@@ -6341,12 +4210,11 @@ export async function handleContractsFind(req: NextRequest) {
     return withRateLimit(NextResponse.json(emptyResponse));
   }
 
-  const allowedOwners =
-    scope === "team"
-      ? new Set(teamEmails.map((owner) => normalizeEmail(owner)))
-      : scope === "my"
-        ? new Set([normalizeEmail(email)])
-        : null;
+  const allowedOwners = buildFindAllowedOwnerSet({
+    scope,
+    viewerEmail: email,
+    teamEmails,
+  });
 
   let entryRefs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[];
   try {
@@ -7786,6 +5654,21 @@ export async function handleContractsPatch(
 
       let updated = 0;
       for (const ref of filteredTargetRefs.values()) {
+        const currentSnap = await ref.get();
+        const currentData = (currentSnap.data() ?? {}) as ContractDoc;
+        const lifecycleValidation = validateContractCoreInvariants(
+          currentData,
+          updatePayload
+        );
+        if (!lifecycleValidation.ok) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `ČPP stav nebyl uložen pro ${ref.id}: ${lifecycleValidation.error}`,
+            },
+            { status: 400 }
+          );
+        }
         await ref.set(updatePayload, { merge: true });
         updated += 1;
       }

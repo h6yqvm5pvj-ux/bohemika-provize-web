@@ -36,6 +36,7 @@ import { CashflowAccordion } from "./components/CashflowAccordion";
 import { CashflowFilters } from "./components/CashflowFilters";
 import { CashflowHeader } from "./components/CashflowHeader";
 import { CashflowMonthModal } from "./components/CashflowMonthModal";
+import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
 import introStyles from "./cashflowIntro.module.css";
 
 const cashflowFont = Space_Grotesk({
@@ -321,6 +322,14 @@ export default function CashflowPage() {
   }, [user]);
 
   const isTipsterMode = accountType === "tipster";
+  const canViewSubscriptionCashflow =
+    !isTipsterMode && isSubscriptionCashflowOwner(dataEmail);
+
+  useEffect(() => {
+    if (!canViewSubscriptionCashflow && productFilter === "subscription") {
+      setProductFilter("all");
+    }
+  }, [canViewSubscriptionCashflow, productFilter]);
 
   const { loading, cashflowItems, hasTeam } = useCashflowData({
     userEmail: dataEmail,
@@ -547,6 +556,7 @@ export default function CashflowPage() {
                 hasTeam={hasTeam}
                 scopeFilter={scopeFilter}
                 productFilter={productFilter}
+                showSubscriptionFilter={canViewSubscriptionCashflow}
                 contractNumberQuery={contractNumberQuery}
                 contractNumberSearchActive={contractNumberSearchActive}
                 contractNumberMatchCount={contractSearchStats.itemCount}

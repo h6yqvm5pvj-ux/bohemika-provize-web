@@ -478,7 +478,7 @@ export type ContractsPrecheckResponse = {
 export type ErrorResponse = { ok: false; error: string };
 
 export type ContractListFilterMode = "latest" | "anniversary";
-export type ContractListResponseShape = "full" | "home" | "clientNames";
+export type ContractListResponseShape = "full" | "home" | "clientNames" | "cashflow";
 export type ContractListProductCategory =
   | "life"
   | "auto"

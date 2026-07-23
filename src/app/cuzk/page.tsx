@@ -1181,7 +1181,7 @@ export default function CuzkPage() {
 
                   <div className="hidden shrink-0 lg:block">
                     <Image
-                      src="/icons/icon_domex.png"
+                      src="/icons/icon_domex.webp"
                       alt="Ilustrace nemovitosti"
                       width={140}
                       height={96}

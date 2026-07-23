@@ -1166,6 +1166,11 @@ export default function ContractDetailPage() {
   const stornoDateLabel = contract?.stornoDate
     ? formatDate(contract.stornoDate)
     : "—";
+  const stornoMinimumDate =
+    toDate(contract?.policyStartDate ?? null) ??
+    toDate(contract?.contractSignedDate ?? null) ??
+    toDate(contract?.createdAt ?? null);
+  const stornoMinimumDateInput = toDateInputValue(stornoMinimumDate);
   const maturityDate = contractMaturityDate(lifecycleInput);
   const maturityDateLabel = maturityDate ? formatDate(maturityDate) : "—";
   const contractLifecycleBadgeText = isStornoContract
@@ -4004,6 +4009,22 @@ export default function ContractDetailPage() {
       setStornoError("Zadej platné datum storna.");
       return;
     }
+    const minimumStornoDate =
+      toDate(contract?.policyStartDate ?? null) ??
+      toDate(contract?.contractSignedDate ?? null) ??
+      toDate(contract?.createdAt ?? null);
+    if (
+      minimumStornoDate &&
+      Math.floor(parsed.getTime() / 86_400_000) <
+        Math.floor(minimumStornoDate.getTime() / 86_400_000)
+    ) {
+      setStornoError(
+        `Datum storna nesmí být před datem počátku smlouvy (${formatDate(
+          minimumStornoDate
+        )}).`
+      );
+      return;
+    }
 
     setUpdatingStorno(true);
     setStornoError(null);
@@ -4053,8 +4074,12 @@ export default function ContractDetailPage() {
       pushToast("Smlouva byla označena jako storno.", "success");
     } catch (e) {
       console.error("Chyba při ukládání storna:", e);
-      setStornoError("Nepodařilo se uložit storno. Zkus to prosím znovu.");
-      pushToast("Nepodařilo se uložit storno. Zkus to prosím znovu.", "error");
+      const message =
+        e instanceof Error
+          ? e.message
+          : "Nepodařilo se uložit storno. Zkus to prosím znovu.";
+      setStornoError(message);
+      pushToast(message, "error");
     } finally {
       setUpdatingStorno(false);
     }
@@ -6041,10 +6066,16 @@ export default function ContractDetailPage() {
               <input
                 type="date"
                 value={stornoDateInput}
+                min={stornoMinimumDateInput ?? undefined}
                 onChange={(e) => setStornoDateInput(e.target.value)}
                 disabled={updatingStorno}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
               />
+              {stornoMinimumDateInput ? (
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  Nejdříve možné datum: {formatDate(stornoMinimumDate)}
+                </p>
+              ) : null}
             </div>
 
             {stornoError && (

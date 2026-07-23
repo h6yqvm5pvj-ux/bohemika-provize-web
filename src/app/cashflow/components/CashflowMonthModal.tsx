@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
-import { ChevronDown, FileText, Loader2, X } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, Loader2, X } from "lucide-react";
 
 import {
   isAutoProduct,
   isPropertyProduct,
 } from "@/app/lib/productCatalog";
 import type { Product } from "@/app/types/domain";
+import { subscriptionPlanLabel } from "../subscriptionCashflow";
 import {
   calculateNetCashflow,
   calculateStornoFund,
@@ -27,12 +27,6 @@ type CashflowMonthModalProps = {
   tipsterMode?: boolean;
 };
 
-type ContractDetailModalPayload = {
-  href: string;
-  title: string;
-  subtitle: string | null;
-};
-
 type CashflowDisplayGroup = {
   id: string;
   leadItem: CashflowItem;
@@ -48,7 +42,18 @@ function formatItemCount(count: number, singular: string, few: string, many: str
   return `${count} ${many}`;
 }
 
-function commissionMeaning(label: string | null, isTipIncome: boolean): { title: string; text: string } {
+function commissionMeaning(
+  label: string | null,
+  isTipIncome: boolean,
+  isSubscriptionIncome: boolean
+): { title: string; text: string } {
+  if (isSubscriptionIncome) {
+    return {
+      title: "Platba předplatného",
+      text: "Zapsaná nebo očekávaná platba uživatele za aktivní předplatné aplikace. V cashflow se drží odděleně od smluvních provizí a nevstupuje do STORNO fondu.",
+    };
+  }
+
   const normalized = (label ?? "").toLowerCase();
   if (normalized.includes("b0301")) {
     return {
@@ -134,6 +139,7 @@ function dateRangeLabel(items: CashflowItem[]): string {
 
 function cashflowGroupKey(item: CashflowItem): string {
   if (item.isTipPayout) return `tip:${item.id}`;
+  if (item.isSubscriptionPayment) return `subscription:${item.id}`;
   const contractNumber = normalizeGroupKeyPart(item.contractNumber);
   const clientName = normalizeGroupKeyPart(item.clientName);
   if (!contractNumber || !clientName) return `single:${item.id}`;
@@ -167,7 +173,10 @@ function buildCashflowDisplayGroups(items: CashflowItem[]): CashflowDisplayGroup
     const amount = groupItems.reduce((sum, item) => sum + item.amount, 0);
     const stornoFundAmount = groupItems.reduce(
       (sum, item) =>
-        sum + (item.productKey === STORNO_EXEMPT_PRODUCT ? 0 : item.amount * STORNO_FUND_RATE),
+        sum +
+        (item.isSubscriptionPayment || item.productKey === STORNO_EXEMPT_PRODUCT
+          ? 0
+          : item.amount * STORNO_FUND_RATE),
       0
     );
 
@@ -228,7 +237,10 @@ function estimatedPayoutDateForPolicyDate(date: Date): Date {
 }
 
 function nonLifeCommissionDetail(item: CashflowItem): NonLifeCommissionDetail | null {
-  const product = item.productKey === "unknown" ? null : item.productKey;
+  const product =
+    item.productKey === "unknown" || item.productKey === "subscription"
+      ? null
+      : item.productKey;
   if (!product || (!isAutoProduct(product) && !isPropertyProduct(product))) return null;
 
   const policyStart = item.policyStartDate ?? null;
@@ -280,63 +292,6 @@ function nonLifeCommissionDetail(item: CashflowItem): NonLifeCommissionDetail | 
   };
 }
 
-function CashflowContractDetailModal({
-  detail,
-  onClose,
-}: {
-  detail: ContractDetailModalPayload;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-[70] bg-slate-950/58 px-3 py-4 backdrop-blur-sm sm:px-6 sm:py-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={detail.title}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="mx-auto flex h-full max-h-[92vh] w-[min(1440px,96vw)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
-          <div className="min-w-0">
-            <div className="truncate text-base font-black text-slate-950">
-              {detail.title}
-            </div>
-            {detail.subtitle && (
-              <div className="mt-0.5 truncate text-sm font-semibold text-slate-500">
-                {detail.subtitle}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ui-focus inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-            aria-label="Zavřít detail smlouvy"
-          >
-            <X className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </button>
-        </div>
-        <iframe
-          title={detail.title}
-          src={detail.href}
-          className="min-h-0 flex-1 border-0 bg-white"
-        />
-      </div>
-    </div>
-  );
-}
-
 export function CashflowMonthModal({
   month,
   statements = [],
@@ -345,9 +300,6 @@ export function CashflowMonthModal({
   onOpenStatement,
   tipsterMode = false,
 }: CashflowMonthModalProps) {
-  const [contractDetailModal, setContractDetailModal] =
-    useState<ContractDetailModalPayload | null>(null);
-
   if (!month) return null;
 
   const sortedItems = sortCashflowItemsForDisplay(month.items);
@@ -355,6 +307,9 @@ export function CashflowMonthModal({
   const tipOnlyMonth =
     tipsterMode ||
     (month.items.length > 0 && month.items.every((item) => item.isTipPayout === true));
+  const subscriptionOnlyMonth =
+    month.items.length > 0 &&
+    month.items.every((item) => item.isSubscriptionPayment === true);
   const isPaidMonth = month.totalSource === "paid";
   const predictedTotal = month.predictedTotal ?? month.total;
   const payoutDifference = month.total - predictedTotal;
@@ -363,7 +318,14 @@ export function CashflowMonthModal({
   const stornoPercent = Math.round(STORNO_FUND_RATE * 100);
   const itemCountLabelBase = tipOnlyMonth
     ? formatItemCount(month.items.length, "tip", "tipy", "tipů")
+    : subscriptionOnlyMonth
+    ? formatItemCount(month.items.length, "platba", "platby", "plateb")
     : formatItemCount(month.items.length, "položka", "položky", "položek");
+  const grossTotalLabel = tipOnlyMonth
+    ? "TIP provize"
+    : subscriptionOnlyMonth
+    ? "Předplatné"
+    : "Předpoklad";
   const itemCountLabel =
     displayGroups.length === month.items.length
       ? itemCountLabelBase
@@ -480,7 +442,7 @@ export function CashflowMonthModal({
                       <>
                         <div className="min-w-[175px] rounded-[16px] border border-[#d7c3ed] bg-[#f4ecff] px-4 py-2.5 text-right">
                           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#71558f]">
-                            {tipOnlyMonth ? "TIP provize" : "Předpoklad"}
+                            {grossTotalLabel}
                           </div>
                           <div className="mt-1 whitespace-nowrap font-mono text-[1.7rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028]">
                             {formatMoney(month.total)}
@@ -549,13 +511,18 @@ export function CashflowMonthModal({
                     ? `${ownerEmail}___${baseEntryId}`
                     : null;
                 const isTipIncome = item.isTipPayout === true;
-                const href = !isTipIncome && contractSlug
+                const isSubscriptionIncome = item.isSubscriptionPayment === true;
+                const href = !isTipIncome && !isSubscriptionIncome && contractSlug
                   ? `/smlouvy/${encodeURIComponent(contractSlug)}`
                   : null;
                 const isTeamIncome =
-                  !isTipIncome && (item.source === "manager" || item.isManagerOverride);
+                  !isTipIncome &&
+                  !isSubscriptionIncome &&
+                  (item.source === "manager" || item.isManagerOverride);
                 const scopeBadgeClass = isTipIncome
                   ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
+                  : isSubscriptionIncome
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                   : isTeamIncome
                   ? "border-sky-200 bg-sky-50 text-sky-700"
                   : "border-slate-200 bg-slate-50 text-slate-700";
@@ -568,6 +535,8 @@ export function CashflowMonthModal({
                     : "mixed";
                 const payoutLabel =
                   payoutStatus === "mixed" ? "Smíšené" : payoutStatusLabel(payoutStatus);
+                const subscriptionPaymentStatusLabel =
+                  payoutStatus === "paid" ? "Zaplaceno" : "Očekáváno";
                 const payoutClass = payoutStatusClass(payoutStatus);
                 const commissionLabels = Array.from(
                   new Set(
@@ -590,12 +559,18 @@ export function CashflowMonthModal({
                       title: nonLifeDetail.commissionTypeLabel,
                       text: nonLifeDetail.commissionText,
                     }
-                  : commissionMeaning(commissionLabel, isTipIncome);
+                  : commissionMeaning(commissionLabel, isTipIncome, isSubscriptionIncome);
                 const sourceLabel = isTipIncome
                   ? "TIP provize"
+                  : isSubscriptionIncome
+                  ? "Předplatné"
                   : isTeamIncome
                   ? "Týmová provize"
                   : "Vlastní provize";
+                const subscriptionPeriodLabel =
+                  item.subscriptionPeriodFrom && item.subscriptionPeriodUntil
+                    ? `${item.subscriptionPeriodFrom} - ${item.subscriptionPeriodUntil}`
+                    : null;
                 const inputPremium =
                   item.inputAmount != null && Number.isFinite(item.inputAmount) && item.inputAmount > 0
                     ? formatMoney(item.inputAmount)
@@ -633,17 +608,30 @@ export function CashflowMonthModal({
                               +{hiddenCommissionLabelCount}
                             </span>
                           )}
-                          {!isTipIncome && (
+                          {!isTipIncome && !isSubscriptionIncome && (
                             <span
                               className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${payoutClass}`}
                             >
                               {payoutLabel}
                             </span>
                           )}
+                          {isSubscriptionIncome && (
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${payoutClass}`}
+                            >
+                              {subscriptionPaymentStatusLabel}
+                            </span>
+                          )}
                           <span
                             className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${scopeBadgeClass}`}
                           >
-                            {isTipIncome ? "TIP" : isTeamIncome ? "Týmová" : "Vlastní"}
+                            {isTipIncome
+                              ? "TIP"
+                              : isSubscriptionIncome
+                              ? "Předplatné"
+                              : isTeamIncome
+                              ? "Týmová"
+                              : "Vlastní"}
                           </span>
                         </div>
 
@@ -652,10 +640,26 @@ export function CashflowMonthModal({
                           {contractNo && <span>Smlouva {contractNo}</span>}
                           {!isGrouped && displayCommissionLabel && <span>{displayCommissionLabel}</span>}
                           <span>
-                            Klient:{" "}
+                            {isSubscriptionIncome ? "Uživatel" : "Klient"}:{" "}
                             <span className="font-semibold text-slate-950">{clientName ?? "—"}</span>
                           </span>
-                          {!isTipIncome && (
+                          {isSubscriptionIncome && (
+                            <span>
+                              Tarif:{" "}
+                              <span className="font-semibold text-slate-950">
+                                {subscriptionPlanLabel(item.subscriptionPlan)}
+                              </span>
+                            </span>
+                          )}
+                          {isSubscriptionIncome && subscriptionPeriodLabel && (
+                            <span>
+                              Období:{" "}
+                              <span className="font-semibold text-slate-950">
+                                {subscriptionPeriodLabel}
+                              </span>
+                            </span>
+                          )}
+                          {!isTipIncome && !isSubscriptionIncome && (
                             <span>
                               Frekvence:{" "}
                               <span className="font-semibold text-slate-950">
@@ -668,7 +672,7 @@ export function CashflowMonthModal({
 
                       <div className="text-left sm:text-right">
                         <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                          Výplata
+                          {isSubscriptionIncome ? "Částka" : "Výplata"}
                         </span>
                         <div className="mt-0.5 whitespace-nowrap font-mono text-[1.95rem] font-bold leading-none tracking-[-0.03em] text-slate-950">
                           {formatMoney(group.amount)}
@@ -698,6 +702,7 @@ export function CashflowMonthModal({
                                   const partLabel = commissionLabelForItem(part) ?? "Provize";
                                   const partStatus = part.payoutStatus ?? "predicted";
                                   const partStornoFund =
+                                    part.isSubscriptionPayment ||
                                     part.productKey === STORNO_EXEMPT_PRODUCT
                                       ? 0
                                       : part.amount * STORNO_FUND_RATE;
@@ -788,12 +793,34 @@ export function CashflowMonthModal({
 
                             <div className="rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2">
                               <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                Stav výpisu
+                                {isSubscriptionIncome ? "Stav platby" : "Stav výpisu"}
                               </span>
                               <span className="mt-1 block font-semibold text-slate-950">
-                                {payoutLabel}
+                                {isSubscriptionIncome ? subscriptionPaymentStatusLabel : payoutLabel}
                               </span>
                             </div>
+
+                            {isSubscriptionIncome && (
+                              <div className="rounded-[12px] border border-emerald-200 bg-emerald-50 px-3 py-2">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                                  Tarif
+                                </span>
+                                <span className="mt-1 block font-semibold text-emerald-950">
+                                  {subscriptionPlanLabel(item.subscriptionPlan)}
+                                </span>
+                              </div>
+                            )}
+
+                            {isSubscriptionIncome && (
+                              <div className="rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                  Období
+                                </span>
+                                <span className="mt-1 block font-semibold text-slate-950">
+                                  {subscriptionPeriodLabel ?? "—"}
+                                </span>
+                              </div>
+                            )}
 
                             <div className="rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2">
                               <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -804,21 +831,23 @@ export function CashflowMonthModal({
                               </span>
                             </div>
 
-                            <div className="rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2">
-                              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                Roční pojistné
-                              </span>
-                              <span className="mt-1 block font-semibold text-slate-950">
-                                {inputPremium ?? "—"}
-                              </span>
-                            </div>
+                            {!isSubscriptionIncome && (
+                              <div className="rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                  Roční pojistné
+                                </span>
+                                <span className="mt-1 block font-semibold text-slate-950">
+                                  {inputPremium ?? "—"}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
                           <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
                             <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              Hrubá provize
+                              {isSubscriptionIncome ? "Platba" : "Hrubá provize"}
                             </span>
                             <span className="mt-1 block whitespace-nowrap font-mono text-[1.2rem] font-bold text-slate-950">
                               {formatMoney(group.amount)}
@@ -836,7 +865,7 @@ export function CashflowMonthModal({
 
                           <div className="rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 shadow-[0_4px_12px_rgba(16,185,129,0.08)]">
                             <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
-                              Čistě po odpočtu
+                              {isSubscriptionIncome ? "Čistý příjem" : "Čistě po odpočtu"}
                             </span>
                             <span className="mt-1 block whitespace-nowrap font-mono text-[1.25rem] font-bold text-emerald-800">
                               {formatMoney(netAmount)}
@@ -847,20 +876,16 @@ export function CashflowMonthModal({
 
                       <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                         {href && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setContractDetailModal({
-                                href,
-                                title: contractNo ? `Smlouva ${contractNo}` : "Detail smlouvy",
-                                subtitle: clientName,
-                              })
-                            }
-                            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
-                          >
-                            Otevřít smlouvu
-                          </button>
-                        )}
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
+                            >
+                              <ExternalLink className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                              Otevřít smlouvu
+                            </a>
+                          )}
                       </div>
                     </div>
                   </details>
@@ -871,12 +896,6 @@ export function CashflowMonthModal({
         </div>
       </div>
       </div>
-      {contractDetailModal && (
-        <CashflowContractDetailModal
-          detail={contractDetailModal}
-          onClose={() => setContractDetailModal(null)}
-        />
-      )}
     </>
   );
 }

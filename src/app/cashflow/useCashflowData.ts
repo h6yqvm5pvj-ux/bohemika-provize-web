@@ -15,6 +15,17 @@ import {
   matchesProductFilter,
   stripTotalRows,
 } from "./helpers";
+import {
+  addSubscriptionMonths,
+  formatSubscriptionIsoDay,
+  isCashflowSubscriptionPlan,
+  isSubscriptionCashflowOwner,
+  parseSubscriptionIsoDay,
+  subscriptionIntervalMonths,
+  subscriptionPeriodUntilIso,
+  subscriptionPlanLabel,
+  type CashflowSubscriptionPlan,
+} from "./subscriptionCashflow";
 import type {
   CashflowItem,
   EntryDoc,
@@ -72,6 +83,26 @@ type TipPayoutsApiResponse = {
   nextCursor?: number | null;
 };
 
+type SubscriptionPaymentApiItem = {
+  id?: string;
+  userEmail?: string | null;
+  userName?: string | null;
+  plan?: CashflowSubscriptionPlan | string | null;
+  amountCzk?: number | null;
+  periodFrom?: string | null;
+  periodUntil?: string | null;
+  createdAtMs?: number | null;
+  paymentDateMs?: number | null;
+  note?: string | null;
+};
+
+type SubscriptionPaymentsApiResponse = {
+  ok: boolean;
+  error?: string;
+  payments?: SubscriptionPaymentApiItem[];
+  hasMore?: boolean;
+};
+
 type RawContractsSnapshot = {
   email: string;
   myPosition: Position | null;
@@ -79,14 +110,17 @@ type RawContractsSnapshot = {
   ownEntries: EntryDoc[];
   teamEntriesRaw: EntryDoc[];
   tipPayouts: TipPayoutApiItem[];
+  subscriptionPayments: SubscriptionPaymentApiItem[];
 };
 
-const CONTRACTS_PAGE_LIMIT = 50;
+const CONTRACTS_PAGE_LIMIT = 100;
 const CONTRACTS_MAX_PAGES = 400;
 const TIP_PAYOUTS_PAGE_LIMIT = 100;
 const TIP_PAYOUTS_MAX_PAGES = 200;
-const CONTRACTS_CACHE_TTL_MS = 2 * 60 * 1000;
-const CASHFLOW_MIN_LOADING_MS = 1800;
+const SUBSCRIPTION_PAYMENTS_PAGE_LIMIT = 5000;
+const SUBSCRIPTION_FORECAST_YEARS = 10;
+const CONTRACTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const CASHFLOW_MIN_LOADING_MS = 250;
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 type SnapshotMode = "standard" | "tipster";
 const contractsSnapshotCache: Record<
@@ -158,6 +192,84 @@ function stableHash(parts: string[]): string {
   return (hash >>> 0).toString(16);
 }
 
+type NormalizedSubscriptionPayment = {
+  sourceId: string;
+  plan: CashflowSubscriptionPlan;
+  amount: number;
+  paymentDate: Date;
+  anchorDate: Date;
+  userEmail: string | null;
+  userName: string;
+  periodFrom: string | null;
+  periodUntil: string | null;
+  note: string | null;
+};
+
+const subscriptionOccurrenceKey = (
+  userKey: string,
+  plan: CashflowSubscriptionPlan,
+  periodFrom: string
+): string => `${userKey}|${plan}|${periodFrom}`;
+
+const validTimestampDate = (value: unknown): Date | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const normalizeSubscriptionPaymentForCashflow = (
+  payment: SubscriptionPaymentApiItem,
+  index: number
+): NormalizedSubscriptionPayment | null => {
+  const plan = isCashflowSubscriptionPlan(payment.plan) ? payment.plan : null;
+  if (!plan) return null;
+
+  const amount =
+    typeof payment.amountCzk === "number" && Number.isFinite(payment.amountCzk)
+      ? payment.amountCzk
+      : 0;
+  if (!(amount > 0)) return null;
+
+  const periodFromDate = parseSubscriptionIsoDay(payment.periodFrom);
+  const paymentDate =
+    validTimestampDate(payment.paymentDateMs) ??
+    validTimestampDate(payment.createdAtMs) ??
+    periodFromDate;
+  if (!paymentDate) return null;
+
+  const anchorDate = periodFromDate ?? paymentDate;
+  const periodFrom = periodFromDate ? formatSubscriptionIsoDay(periodFromDate) : null;
+  const periodUntil =
+    typeof payment.periodUntil === "string" && payment.periodUntil.trim()
+      ? payment.periodUntil.trim()
+      : null;
+  const userEmail = normalizeEmail(payment.userEmail) || null;
+  const userName =
+    typeof payment.userName === "string" && payment.userName.trim()
+      ? payment.userName.trim()
+      : nameFromEmail(userEmail) ?? userEmail ?? "Uživatel";
+  const sourceId =
+    String(payment.id ?? "").trim() ||
+    `subscription-${userEmail ?? "user"}-${anchorDate.getTime()}-${index}`;
+  const note =
+    typeof payment.note === "string" && payment.note.trim()
+      ? payment.note.trim()
+      : null;
+
+  return {
+    sourceId,
+    plan,
+    amount,
+    paymentDate,
+    anchorDate,
+    userEmail,
+    userName,
+    periodFrom,
+    periodUntil,
+    note,
+  };
+};
+
 async function fetchContractsSnapshot(
   email: string,
   mode: SnapshotMode
@@ -174,6 +286,7 @@ async function fetchContractsSnapshot(
     const params = new URLSearchParams({
       scope,
       limit: String(CONTRACTS_PAGE_LIMIT),
+      shape: "cashflow",
     });
     if (cursor) {
       params.set("cursor", cursor);
@@ -235,6 +348,34 @@ async function fetchContractsSnapshot(
     return data;
   };
 
+  const requestSubscriptionPayments = async (): Promise<SubscriptionPaymentsApiResponse> => {
+    const params = new URLSearchParams({
+      limit: String(SUBSCRIPTION_PAYMENTS_PAGE_LIMIT),
+    });
+
+    const requestWithToken = async (token: string) =>
+      fetch(`/api/subscription-payments/list?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+    let res = await requestWithToken(bearerToken);
+    if (res.status === 401) {
+      bearerToken = await currentUser.getIdToken(true);
+      res = await requestWithToken(bearerToken);
+    }
+
+    const data = (await res.json()) as SubscriptionPaymentsApiResponse;
+    if (!res.ok || data.ok === false) {
+      const err = new Error(data.error || "Nepodařilo se načíst platby předplatného.") as Error & {
+        status?: number;
+      };
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  };
+
   const collectTipPayouts = async (): Promise<TipPayoutApiItem[]> => {
     const tipPayouts: TipPayoutApiItem[] = [];
     const seenTipPayoutIds = new Set<string>();
@@ -279,6 +420,12 @@ async function fetchContractsSnapshot(
     return tipPayouts;
   };
 
+  const collectSubscriptionPayments = async (): Promise<SubscriptionPaymentApiItem[]> => {
+    if (mode === "tipster" || !isSubscriptionCashflowOwner(email)) return [];
+    const response = await requestSubscriptionPayments();
+    return Array.isArray(response.payments) ? response.payments : [];
+  };
+
   type ScopeResult = {
     entries: EntryDoc[];
     positionHint: Position | null;
@@ -286,7 +433,15 @@ async function fetchContractsSnapshot(
     teamEmailsHint: string[];
   };
 
-  const collectScope = async (scope: "my" | "team"): Promise<ScopeResult> => {
+  type ScopeFirstPageHint = Pick<
+    ScopeResult,
+    "positionHint" | "hasTeamHint" | "teamEmailsHint"
+  >;
+
+  const collectScope = async (
+    scope: "my" | "team",
+    onFirstPage?: (hint: ScopeFirstPageHint) => void
+  ): Promise<ScopeResult> => {
     const entries: EntryDoc[] = [];
     const seen = new Set<string>();
     const seenCursorTokens = new Set<string>();
@@ -305,6 +460,11 @@ async function fetchContractsSnapshot(
         teamEmailsHint = Array.isArray(response.teamEmails)
           ? response.teamEmails.map((item) => normalizeEmail(item)).filter(Boolean)
           : [];
+        onFirstPage?.({
+          positionHint,
+          hasTeamHint,
+          teamEmailsHint,
+        });
       }
       pages += 1;
 
@@ -365,9 +525,25 @@ async function fetchContractsSnapshot(
     };
   };
 
+  let teamScopePromise: Promise<ScopeResult> | null = null;
+  const startTeamScopePromise = (): Promise<ScopeResult> => {
+    if (!teamScopePromise) {
+      teamScopePromise = collectScope("team");
+      teamScopePromise.catch(() => undefined);
+    }
+    return teamScopePromise;
+  };
+
   const tipPayoutsPromise = collectTipPayouts().catch((tipErr) => {
     console.warn("[cashflow] načtení TIP výplat selhalo, pokračuji bez nich.", tipErr);
     return [] as TipPayoutApiItem[];
+  });
+  const subscriptionPaymentsPromise = collectSubscriptionPayments().catch((subscriptionErr) => {
+    console.warn(
+      "[cashflow] načtení plateb předplatného selhalo, pokračuji bez nich.",
+      subscriptionErr
+    );
+    return [] as SubscriptionPaymentApiItem[];
   });
 
   if (mode === "tipster") {
@@ -379,10 +555,15 @@ async function fetchContractsSnapshot(
       ownEntries: [],
       teamEntriesRaw: [],
       tipPayouts,
+      subscriptionPayments: [],
     };
   }
 
-  const ownResult = await collectScope("my");
+  const ownResult = await collectScope("my", (hint) => {
+    if (hint.hasTeamHint || hint.teamEmailsHint.length > 0) {
+      void startTeamScopePromise();
+    }
+  });
   const myPosition = ownResult.positionHint ?? null;
   let teamEntriesRaw: EntryDoc[] = [];
   let hasAnyTeam =
@@ -390,7 +571,7 @@ async function fetchContractsSnapshot(
 
   if (hasAnyTeam) {
     try {
-      const teamResult = await collectScope("team");
+      const teamResult = await (teamScopePromise ?? startTeamScopePromise());
       teamEntriesRaw = teamResult.entries;
       hasAnyTeam = hasAnyTeam || teamEntriesRaw.length > 0;
     } catch (teamError) {
@@ -404,6 +585,7 @@ async function fetchContractsSnapshot(
   }
 
   const tipPayouts = await tipPayoutsPromise;
+  const subscriptionPayments = await subscriptionPaymentsPromise;
 
   return {
     email,
@@ -412,6 +594,7 @@ async function fetchContractsSnapshot(
     ownEntries: ownResult.entries,
     teamEntriesRaw,
     tipPayouts,
+    subscriptionPayments,
   };
 }
 
@@ -687,7 +870,131 @@ export function useCashflowData({
           return acc;
         }, [])
       : [];
-    const cashflow = [...generatedCashflow, ...tipCashflowItems].sort(
+    const includeSubscriptionPayments =
+      isSubscriptionCashflowOwner(email) &&
+      !tipsterMode &&
+      scopeFilter !== "team" &&
+      (productFilter === "all" || productFilter === "subscription");
+    const subscriptionCashflowItems: CashflowItem[] = includeSubscriptionPayments
+      ? (() => {
+          const normalizedPayments = snapshot.subscriptionPayments
+            .map((payment, index) =>
+              normalizeSubscriptionPaymentForCashflow(payment, index)
+            )
+            .filter((payment): payment is NormalizedSubscriptionPayment =>
+              Boolean(payment)
+            );
+
+          const actualOccurrenceKeys = new Set<string>();
+          const latestPaymentByUser = new Map<string, NormalizedSubscriptionPayment>();
+          const items: CashflowItem[] = [];
+
+          normalizedPayments.forEach((payment) => {
+            const userKey = payment.userEmail ?? payment.sourceId;
+            const actualPeriodFrom =
+              payment.periodFrom ?? formatSubscriptionIsoDay(payment.anchorDate);
+            actualOccurrenceKeys.add(
+              subscriptionOccurrenceKey(userKey, payment.plan, actualPeriodFrom)
+            );
+
+            const existingLatest = latestPaymentByUser.get(userKey);
+            if (
+              !existingLatest ||
+              payment.anchorDate.getTime() > existingLatest.anchorDate.getTime() ||
+              (
+                payment.anchorDate.getTime() === existingLatest.anchorDate.getTime() &&
+                payment.paymentDate.getTime() > existingLatest.paymentDate.getTime()
+              )
+            ) {
+              latestPaymentByUser.set(userKey, payment);
+            }
+
+            const periodLabel =
+              payment.periodFrom && payment.periodUntil
+                ? ` (${payment.periodFrom} - ${payment.periodUntil})`
+                : "";
+            const note =
+              payment.note ??
+              `${subscriptionPlanLabel(payment.plan)} předplatné${periodLabel}`;
+
+            items.push({
+              id: `subscription-${payment.sourceId}`,
+              date: payment.paymentDate,
+              amount: payment.amount,
+              productKey: "subscription",
+              note,
+              frequency: null,
+              source: "own",
+              contractNumber: null,
+              clientName: payment.userName,
+              ownerEmail: null,
+              entryId: null,
+              commissionLabel: "Platba předplatného",
+              isSubscriptionPayment: true,
+              subscriptionPlan: payment.plan,
+              subscriptionUserEmail: payment.userEmail,
+              subscriptionUserName: payment.userName,
+              subscriptionPeriodFrom: payment.periodFrom,
+              subscriptionPeriodUntil: payment.periodUntil,
+              payoutStatus: "paid",
+            });
+          });
+
+          const forecastHorizonEnd = new Date();
+          forecastHorizonEnd.setFullYear(
+            forecastHorizonEnd.getFullYear() + SUBSCRIPTION_FORECAST_YEARS
+          );
+
+          latestPaymentByUser.forEach((payment, userKey) => {
+            const intervalMonths = subscriptionIntervalMonths(payment.plan);
+            let occurrenceDate = addSubscriptionMonths(payment.anchorDate, intervalMonths);
+
+            for (let guard = 0; guard < SUBSCRIPTION_FORECAST_YEARS * 12; guard += 1) {
+              if (occurrenceDate > forecastHorizonEnd) break;
+
+              const periodFrom = formatSubscriptionIsoDay(occurrenceDate);
+              const occurrenceKey = subscriptionOccurrenceKey(
+                userKey,
+                payment.plan,
+                periodFrom
+              );
+              const periodUntil = subscriptionPeriodUntilIso(
+                occurrenceDate,
+                payment.plan
+              );
+
+              if (!actualOccurrenceKeys.has(occurrenceKey)) {
+                items.push({
+                  id: `subscription-${payment.sourceId}-forecast-${periodFrom}`,
+                  date: occurrenceDate,
+                  amount: payment.amount,
+                  productKey: "subscription",
+                  note: `${subscriptionPlanLabel(payment.plan)} předplatné (${periodFrom} - ${periodUntil})`,
+                  frequency: null,
+                  source: "own",
+                  contractNumber: null,
+                  clientName: payment.userName,
+                  ownerEmail: null,
+                  entryId: null,
+                  commissionLabel: "Platba předplatného",
+                  isSubscriptionPayment: true,
+                  subscriptionPlan: payment.plan,
+                  subscriptionUserEmail: payment.userEmail,
+                  subscriptionUserName: payment.userName,
+                  subscriptionPeriodFrom: periodFrom,
+                  subscriptionPeriodUntil: periodUntil,
+                  payoutStatus: "predicted",
+                });
+              }
+
+              occurrenceDate = addSubscriptionMonths(occurrenceDate, intervalMonths);
+            }
+          });
+
+          return items;
+        })()
+      : [];
+    const cashflow = [...generatedCashflow, ...tipCashflowItems, ...subscriptionCashflowItems].sort(
       (a, b) => a.date.getTime() - b.date.getTime()
     );
     if (process.env.NODE_ENV !== "production") {
@@ -715,6 +1022,8 @@ export function useCashflowData({
         entriesForCashflow: entriesForCashflow.length,
         tipPayouts: snapshot.tipPayouts.length,
         tipCashflowItems: tipCashflowItems.length,
+        subscriptionPayments: snapshot.subscriptionPayments.length,
+        subscriptionCashflowItems: subscriptionCashflowItems.length,
         cashflowItems: cashflow.length,
         total,
         entryFingerprint,

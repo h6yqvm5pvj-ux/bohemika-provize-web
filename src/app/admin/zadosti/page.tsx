@@ -200,6 +200,17 @@ const SUBSCRIPTION_PLAN_LABELS: Record<SubscriptionPlanValue, string> = {
   unlimited: "Neomezený",
 };
 
+const PAID_SUBSCRIPTION_PLAN_KEYS: PaidSubscriptionPlanValue[] = [
+  "monthly",
+  "semiannual",
+  "yearly",
+];
+
+const isPaidSubscriptionPlanValue = (
+  value: string | null | undefined
+): value is PaidSubscriptionPlanValue =>
+  value === "monthly" || value === "semiannual" || value === "yearly";
+
 const SUBSCRIPTION_DIRECTORY_FILTERS: Array<{
   id: AdminSubscriptionDirectoryFilter;
   label: string;
@@ -539,6 +550,7 @@ type AdminSection =
   | "security";
 
 type SubscriptionPlanValue = "monthly" | "semiannual" | "yearly" | "unlimited";
+type PaidSubscriptionPlanValue = Exclude<SubscriptionPlanValue, "unlimited">;
 
 type AdminSubscriptionPaymentRow = {
   id: string;
@@ -961,6 +973,18 @@ export default function AdminRequestsPage() {
     useState<SubscriptionPlanValue>("monthly");
   const [subscriptionFromDraft, setSubscriptionFromDraft] = useState("");
   const [subscriptionNoteDraft, setSubscriptionNoteDraft] = useState("");
+  const [subscriptionEditingPaymentId, setSubscriptionEditingPaymentId] =
+    useState<string | null>(null);
+  const [subscriptionSavingPaymentId, setSubscriptionSavingPaymentId] =
+    useState<string | null>(null);
+  const [subscriptionDeletingPaymentId, setSubscriptionDeletingPaymentId] =
+    useState<string | null>(null);
+  const [subscriptionEditPlan, setSubscriptionEditPlan] =
+    useState<PaidSubscriptionPlanValue>("monthly");
+  const [subscriptionEditPeriodFrom, setSubscriptionEditPeriodFrom] = useState("");
+  const [subscriptionEditPeriodUntil, setSubscriptionEditPeriodUntil] = useState("");
+  const [subscriptionEditAmount, setSubscriptionEditAmount] = useState("");
+  const [subscriptionEditNote, setSubscriptionEditNote] = useState("");
   const [subscriptionData, setSubscriptionData] = useState<AdminSubscriptionLookupResponse | null>(null);
   const [requestsNowMs, setRequestsNowMs] = useState(() => Date.now());
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
@@ -2008,6 +2032,9 @@ export default function AdminRequestsPage() {
         );
         setSubscriptionLookupEmail(email);
         setSubscriptionData(payload);
+        setSubscriptionEditingPaymentId(null);
+        setSubscriptionSavingPaymentId(null);
+        setSubscriptionDeletingPaymentId(null);
       } catch (error) {
         setSubscriptionData(null);
         setSubscriptionLookupError(
@@ -2068,16 +2095,17 @@ export default function AdminRequestsPage() {
           note: subscriptionNoteDraft || undefined,
         }),
       });
-      setSubscriptionLookupStatus({
-        type: "success",
-        message:
-          subscriptionPlanDraft === "unlimited"
-            ? "Tarif Neomezený byl nastavený a účet je aktivní bez časového omezení."
-            : "Platba byla zapsaná a předplatné aktivované.",
-      });
+      const successMessage =
+        subscriptionPlanDraft === "unlimited"
+          ? "Tarif Neomezený byl nastavený a účet je aktivní bez časového omezení."
+          : "Platba byla zapsaná a předplatné aktivované.";
       setSubscriptionNoteDraft("");
       await loadSubscriptionForEmail(email);
       await loadSubscriptionDirectory();
+      setSubscriptionLookupStatus({
+        type: "success",
+        message: successMessage,
+      });
     } catch (error) {
       setSubscriptionLookupError(
         error instanceof Error
@@ -2118,12 +2146,12 @@ export default function AdminRequestsPage() {
           note: subscriptionNoteDraft || undefined,
         }),
       });
+      await loadSubscriptionForEmail(email);
+      await loadSubscriptionDirectory();
       setSubscriptionLookupStatus({
         type: "info",
         message: "Účet byl označen jako nezaplacený.",
       });
-      await loadSubscriptionForEmail(email);
-      await loadSubscriptionDirectory();
     } catch (error) {
       setSubscriptionLookupError(
         error instanceof Error
@@ -2140,6 +2168,156 @@ export default function AdminRequestsPage() {
     subscriptionLookupEmail,
     subscriptionNoteDraft,
   ]);
+
+  const handleStartSubscriptionPaymentEdit = useCallback(
+    (payment: AdminSubscriptionPaymentRow) => {
+      const plan = isPaidSubscriptionPlanValue(payment.plan) ? payment.plan : "monthly";
+      setSubscriptionEditingPaymentId(payment.id);
+      setSubscriptionEditPlan(plan);
+      setSubscriptionEditPeriodFrom(payment.periodFrom || "");
+      setSubscriptionEditPeriodUntil(payment.periodUntil || "");
+      setSubscriptionEditAmount(payment.amountCzk ? String(payment.amountCzk) : "");
+      setSubscriptionEditNote(payment.note ?? "");
+      setSubscriptionLookupError(null);
+      setSubscriptionLookupStatus(null);
+    },
+    []
+  );
+
+  const handleCancelSubscriptionPaymentEdit = useCallback(() => {
+    setSubscriptionEditingPaymentId(null);
+    setSubscriptionEditPlan("monthly");
+    setSubscriptionEditPeriodFrom("");
+    setSubscriptionEditPeriodUntil("");
+    setSubscriptionEditAmount("");
+    setSubscriptionEditNote("");
+  }, []);
+
+  const handleUpdateSubscriptionPayment = useCallback(
+    async (paymentId: string) => {
+      const user = auth.currentUser;
+      if (!user || !isOwnerAdmin) return;
+      const email = normalizeEmail(subscriptionLookupEmail);
+      if (!email) {
+        setSubscriptionLookupError("Zadej e-mail uživatele.");
+        return;
+      }
+
+      const amountCzk = Number(
+        subscriptionEditAmount.trim().replace(/\s+/g, "").replace(",", ".")
+      );
+      if (!Number.isFinite(amountCzk) || amountCzk <= 0) {
+        setSubscriptionLookupError("Částka musí být kladné číslo v Kč.");
+        return;
+      }
+      if (!subscriptionEditPeriodFrom || !subscriptionEditPeriodUntil) {
+        setSubscriptionLookupError("Vyplň začátek i konec období platby.");
+        return;
+      }
+      if (subscriptionEditPeriodUntil < subscriptionEditPeriodFrom) {
+        setSubscriptionLookupError("Konec období nesmí být před začátkem.");
+        return;
+      }
+
+      setSubscriptionSavingPaymentId(paymentId);
+      setSubscriptionLookupError(null);
+      setSubscriptionLookupStatus(null);
+      try {
+        await fetchAuthedJsonOrThrow(user, "/api/admin/subscriptions", {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "updatePayment",
+            email,
+            paymentId,
+            plan: subscriptionEditPlan,
+            amountCzk: Math.round(amountCzk),
+            periodFrom: subscriptionEditPeriodFrom,
+            periodUntil: subscriptionEditPeriodUntil,
+            note: subscriptionEditNote || undefined,
+          }),
+        });
+        handleCancelSubscriptionPaymentEdit();
+        await loadSubscriptionForEmail(email);
+        await loadSubscriptionDirectory();
+        setSubscriptionLookupStatus({
+          type: "success",
+          message: "Platba byla upravena.",
+        });
+      } catch (error) {
+        setSubscriptionLookupError(
+          error instanceof Error ? error.message : "Platbu se nepodařilo upravit."
+        );
+      } finally {
+        setSubscriptionSavingPaymentId(null);
+      }
+    },
+    [
+      handleCancelSubscriptionPaymentEdit,
+      isOwnerAdmin,
+      loadSubscriptionDirectory,
+      loadSubscriptionForEmail,
+      subscriptionEditAmount,
+      subscriptionEditNote,
+      subscriptionEditPeriodFrom,
+      subscriptionEditPeriodUntil,
+      subscriptionEditPlan,
+      subscriptionLookupEmail,
+    ]
+  );
+
+  const handleDeleteSubscriptionPayment = useCallback(
+    async (payment: AdminSubscriptionPaymentRow) => {
+      const user = auth.currentUser;
+      if (!user || !isOwnerAdmin) return;
+      const email = normalizeEmail(subscriptionLookupEmail);
+      if (!email) {
+        setSubscriptionLookupError("Zadej e-mail uživatele.");
+        return;
+      }
+
+      const label = `${formatMoneyCzk(payment.amountCzk || 0)} za ${
+        formatIsoDay(payment.periodFrom)
+      } - ${formatIsoDay(payment.periodUntil)}`;
+      if (!window.confirm(`Opravdu smazat platbu ${label}?`)) return;
+
+      setSubscriptionDeletingPaymentId(payment.id);
+      setSubscriptionLookupError(null);
+      setSubscriptionLookupStatus(null);
+      try {
+        await fetchAuthedJsonOrThrow(user, "/api/admin/subscriptions", {
+          method: "PATCH",
+          body: JSON.stringify({
+            action: "deletePayment",
+            email,
+            paymentId: payment.id,
+          }),
+        });
+        if (subscriptionEditingPaymentId === payment.id) {
+          handleCancelSubscriptionPaymentEdit();
+        }
+        await loadSubscriptionForEmail(email);
+        await loadSubscriptionDirectory();
+        setSubscriptionLookupStatus({
+          type: "success",
+          message: "Platba byla smazána.",
+        });
+      } catch (error) {
+        setSubscriptionLookupError(
+          error instanceof Error ? error.message : "Platbu se nepodařilo smazat."
+        );
+      } finally {
+        setSubscriptionDeletingPaymentId(null);
+      }
+    },
+    [
+      handleCancelSubscriptionPaymentEdit,
+      isOwnerAdmin,
+      loadSubscriptionDirectory,
+      loadSubscriptionForEmail,
+      subscriptionEditingPaymentId,
+      subscriptionLookupEmail,
+    ]
+  );
 
   const handleStartAdminUserEdit = useCallback((row: AdminUsersRow) => {
     setAdminUsersEditingEmail(row.email);
@@ -2387,6 +2565,12 @@ export default function AdminRequestsPage() {
     "inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.07] px-4 py-2 text-sm font-semibold !text-violet-100 transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-60";
   const adminDarkPrimaryButtonClass =
     "inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60";
+  const subscriptionHistoryFieldClass =
+    "h-9 w-full min-w-[116px] rounded-xl border border-white/14 bg-white/[0.075] px-2 text-xs font-semibold !text-white outline-none transition placeholder:!text-violet-100/42 focus:border-violet-200/70 focus:bg-white/[0.11] focus:ring-2 focus:ring-violet-300/20 disabled:cursor-not-allowed disabled:opacity-60";
+  const subscriptionHistoryIconButtonClass =
+    "inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/14 bg-white/[0.075] !text-violet-100 transition hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-55";
+  const subscriptionHistoryDangerButtonClass =
+    "inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300/30 bg-rose-500/12 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-55";
   const selectedAdminUser = adminUsersEditingEmail
     ? adminUsersRows.find((row) => row.email === adminUsersEditingEmail) ?? null
     : null;
@@ -5473,29 +5657,206 @@ export default function AdminRequestsPage() {
                             <th className="px-2 py-2">Období</th>
                             <th className="px-2 py-2">Zapsal</th>
                             <th className="px-2 py-2">Poznámka</th>
+                            <th className="px-2 py-2 text-right">Akce</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(subscriptionData.payments ?? []).map((payment) => (
-                            <tr key={payment.id} className="border-b border-white/8 align-top">
-                              <td className="px-2 py-2 font-semibold !text-white">
-                                {payment.plan in SUBSCRIPTION_PLAN_LABELS
-                                  ? SUBSCRIPTION_PLAN_LABELS[payment.plan as SubscriptionPlanValue]
-                                  : payment.plan || "—"}
-                              </td>
-                              <td className="px-2 py-2">{formatMoneyCzk(payment.amountCzk || 0)}</td>
-                              <td className="px-2 py-2">
-                                {formatIsoDay(payment.periodFrom)} – {formatIsoDay(payment.periodUntil)}
-                              </td>
-                              <td className="px-2 py-2">
-                                <div>{payment.createdByEmail || "—"}</div>
-                                <div className="text-[10px] text-slate-500">
-                                  {formatDateTime(payment.createdAtMs)}
-                                </div>
-                              </td>
-                              <td className="px-2 py-2">{payment.note || "—"}</td>
-                            </tr>
-                          ))}
+                          {(subscriptionData.payments ?? []).map((payment) => {
+                            const isEditing = subscriptionEditingPaymentId === payment.id;
+                            const isSaving = subscriptionSavingPaymentId === payment.id;
+                            const isDeleting = subscriptionDeletingPaymentId === payment.id;
+                            const isPaymentBusy = isSaving || isDeleting;
+                            const paymentPlanLabel = isPaidSubscriptionPlanValue(payment.plan)
+                              ? SUBSCRIPTION_PLAN_LABELS[payment.plan]
+                              : payment.plan || "—";
+
+                            return (
+                              <tr key={payment.id} className="border-b border-white/8 align-top">
+                                <td className="px-2 py-2 font-semibold !text-white">
+                                  {isEditing ? (
+                                    <select
+                                      className={subscriptionHistoryFieldClass}
+                                      value={subscriptionEditPlan}
+                                      onChange={(event) =>
+                                        setSubscriptionEditPlan(
+                                          event.target.value as PaidSubscriptionPlanValue
+                                        )
+                                      }
+                                      disabled={isPaymentBusy}
+                                      aria-label="Tarif platby"
+                                    >
+                                      {PAID_SUBSCRIPTION_PLAN_KEYS.map((planKey) => (
+                                        <option key={planKey} value={planKey}>
+                                          {SUBSCRIPTION_PLAN_LABELS[planKey]}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    paymentPlanLabel
+                                  )}
+                                </td>
+                                <td className="px-2 py-2">
+                                  {isEditing ? (
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      step="1"
+                                      inputMode="numeric"
+                                      className={subscriptionHistoryFieldClass}
+                                      value={subscriptionEditAmount}
+                                      onChange={(event) =>
+                                        setSubscriptionEditAmount(event.target.value)
+                                      }
+                                      disabled={isPaymentBusy}
+                                      aria-label="Částka platby"
+                                    />
+                                  ) : (
+                                    formatMoneyCzk(payment.amountCzk || 0)
+                                  )}
+                                </td>
+                                <td className="px-2 py-2">
+                                  {isEditing ? (
+                                    <div className="grid min-w-[250px] gap-1 sm:grid-cols-2">
+                                      <input
+                                        type="date"
+                                        className={subscriptionHistoryFieldClass}
+                                        value={subscriptionEditPeriodFrom}
+                                        onChange={(event) =>
+                                          setSubscriptionEditPeriodFrom(event.target.value)
+                                        }
+                                        disabled={isPaymentBusy}
+                                        aria-label="Začátek období platby"
+                                      />
+                                      <input
+                                        type="date"
+                                        className={subscriptionHistoryFieldClass}
+                                        value={subscriptionEditPeriodUntil}
+                                        onChange={(event) =>
+                                          setSubscriptionEditPeriodUntil(event.target.value)
+                                        }
+                                        disabled={isPaymentBusy}
+                                        aria-label="Konec období platby"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {formatIsoDay(payment.periodFrom)} –{" "}
+                                      {formatIsoDay(payment.periodUntil)}
+                                    </>
+                                  )}
+                                </td>
+                                <td className="px-2 py-2">
+                                  <div>{payment.createdByEmail || "—"}</div>
+                                  <div className="text-[10px] text-slate-500">
+                                    {formatDateTime(payment.createdAtMs)}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      className={`${subscriptionHistoryFieldClass} min-w-[180px]`}
+                                      value={subscriptionEditNote}
+                                      onChange={(event) =>
+                                        setSubscriptionEditNote(event.target.value)
+                                      }
+                                      disabled={isPaymentBusy}
+                                      aria-label="Poznámka k platbě"
+                                    />
+                                  ) : (
+                                    payment.note || "—"
+                                  )}
+                                </td>
+                                <td className="px-2 py-2">
+                                  <div className="flex justify-end gap-1.5">
+                                    {isEditing ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          className={subscriptionHistoryIconButtonClass}
+                                          onClick={() =>
+                                            void handleUpdateSubscriptionPayment(payment.id)
+                                          }
+                                          disabled={isPaymentBusy || subscriptionLookupLoading}
+                                          aria-label="Uložit platbu"
+                                          title="Uložit platbu"
+                                        >
+                                          {isSaving ? (
+                                            <Loader2
+                                              size={14}
+                                              strokeWidth={2.2}
+                                              className="animate-spin"
+                                              aria-hidden="true"
+                                            />
+                                          ) : (
+                                            <Save size={14} strokeWidth={2.2} aria-hidden="true" />
+                                          )}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className={subscriptionHistoryIconButtonClass}
+                                          onClick={handleCancelSubscriptionPaymentEdit}
+                                          disabled={isPaymentBusy}
+                                          aria-label="Zrušit editaci"
+                                          title="Zrušit editaci"
+                                        >
+                                          <X size={14} strokeWidth={2.2} aria-hidden="true" />
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <button
+                                          type="button"
+                                          className={subscriptionHistoryIconButtonClass}
+                                          onClick={() =>
+                                            handleStartSubscriptionPaymentEdit(payment)
+                                          }
+                                          disabled={
+                                            subscriptionLookupLoading ||
+                                            Boolean(subscriptionSavingPaymentId) ||
+                                            Boolean(subscriptionDeletingPaymentId)
+                                          }
+                                          aria-label="Upravit platbu"
+                                          title="Upravit platbu"
+                                        >
+                                          <Pencil size={14} strokeWidth={2.2} aria-hidden="true" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className={subscriptionHistoryDangerButtonClass}
+                                          onClick={() =>
+                                            void handleDeleteSubscriptionPayment(payment)
+                                          }
+                                          disabled={
+                                            subscriptionLookupLoading ||
+                                            Boolean(subscriptionSavingPaymentId) ||
+                                            Boolean(subscriptionDeletingPaymentId)
+                                          }
+                                          aria-label="Smazat platbu"
+                                          title="Smazat platbu"
+                                        >
+                                          {isDeleting ? (
+                                            <Loader2
+                                              size={14}
+                                              strokeWidth={2.2}
+                                              className="animate-spin"
+                                              aria-hidden="true"
+                                            />
+                                          ) : (
+                                            <Trash2
+                                              size={14}
+                                              strokeWidth={2.2}
+                                              aria-hidden="true"
+                                            />
+                                          )}
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

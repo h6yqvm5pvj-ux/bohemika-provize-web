@@ -2064,7 +2064,7 @@ export default function TeamPage() {
                                 aria-hidden="true"
                               >
                                 <Image
-                                  src="/icons/klient.png"
+                                  src="/icons/klient.webp"
                                   alt=""
                                   fill
                                   sizes="28px"

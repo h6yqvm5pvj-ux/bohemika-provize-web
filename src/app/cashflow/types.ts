@@ -5,6 +5,7 @@ import type {
   Position,
   Product,
 } from "../types/domain";
+import type { CashflowSubscriptionPlan } from "./subscriptionCashflow";
 
 export type FirestoreTimestamp = {
   seconds: number;
@@ -78,11 +79,13 @@ export type EntryDoc = {
   source?: "own" | "manager";
 };
 
+export type CashflowProductKey = Product | "unknown" | "subscription";
+
 export type CashflowItem = {
   id: string;
   date: Date;
   amount: number;
-  productKey: Product | "unknown";
+  productKey: CashflowProductKey;
   note?: string | null;
   frequency?: PaymentFrequency | null;
   source?: "own" | "manager";
@@ -101,6 +104,12 @@ export type CashflowItem = {
   isTipPayout?: boolean;
   tipSourceAdviserEmail?: string | null;
   tipSourceAdviserName?: string | null;
+  isSubscriptionPayment?: boolean;
+  subscriptionPlan?: CashflowSubscriptionPlan | null;
+  subscriptionUserEmail?: string | null;
+  subscriptionUserName?: string | null;
+  subscriptionPeriodFrom?: string | null;
+  subscriptionPeriodUntil?: string | null;
   payoutStatus?: "predicted" | "paid" | "shifted";
   predictedAmount?: number | null;
   isStatementOnly?: boolean;
@@ -157,6 +166,7 @@ export type YearGroup = {
 export type ProductFilter =
   | "all"
   | "tip"
+  | "subscription"
   | "life"
   | "auto"
   | "property"

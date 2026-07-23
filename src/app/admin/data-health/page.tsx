@@ -236,6 +236,7 @@ const metaLabels: Record<string, string> = {
   errors: "Chyby",
   status: "Status",
   contractSignedDateMs: "Podpis",
+  policyStartDateMs: "Počátek",
   stornoDateMs: "Storno",
   position: "Pozice",
   modelVersion: "Model",

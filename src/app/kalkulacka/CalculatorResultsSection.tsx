@@ -372,7 +372,7 @@ export function CalculatorResultsSection({
                 <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-3">
                   <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
                     <span className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
-                      <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
+                      <Image src="/icons/penize2.webp" alt="" fill className="object-contain" />
                     </span>
                     <span>
                       {lifeTipBase
@@ -435,7 +435,7 @@ export function CalculatorResultsSection({
                   >
                     <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
                       <div className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
-                        <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
+                        <Image src="/icons/penize2.webp" alt="" fill className="object-contain" />
                       </div>
                       <span className="min-w-0">Okamžitá provize</span>
                       <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">

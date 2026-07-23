@@ -121,7 +121,7 @@ const displayNoteForCommissionItem = (item: CommissionResultItemDTO): string | u
 const sumCommissionItems = (commissionItems: CommissionResultItemDTO[]): number =>
   commissionItems.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
 
-type CommissionPayoutReadStatus = "pending" | "paid" | "partial" | "storno";
+export type CommissionPayoutReadStatus = "pending" | "paid" | "partial" | "storno";
 
 type CommissionInstallment = {
   key: string;
@@ -138,6 +138,20 @@ const normalizeEmail = (value: string | null | undefined): string =>
 
 const validPayoutAmount = (value: number | null | undefined): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+export const isStornoPayoutRecord = (
+  record: ContractCommissionPayout
+): boolean => {
+  const status = String(record.status ?? "").trim().toLowerCase();
+  const differenceReason = String(record.differenceReason ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    status === "storno" ||
+    differenceReason === "storno" ||
+    validPayoutAmount(record.amount) < 0
+  );
+};
 
 const isAnnualSummaryCommissionTitle = (title: string): boolean => {
   const normalized = cleanResultTitle(title).toLowerCase();
@@ -310,7 +324,7 @@ const payoutRecordsForCodes = (
 const payoutTargetsForInstallment = (installment: CommissionInstallment): string[] =>
   installment.code ? [installment.code, installment.key] : [installment.key];
 
-const payoutStatusForCodes = (
+export const payoutStatusForCodes = (
   payouts: ContractCommissionPayout[],
   codes: string[],
   expectedAmount: number
@@ -320,12 +334,12 @@ const payoutStatusForCodes = (
   records: ContractCommissionPayout[];
 } => {
   const records = payoutRecordsForCodes(payouts, codes);
-  const nonStornoRecords = records.filter((record) => record.status !== "storno");
+  const nonStornoRecords = records.filter((record) => !isStornoPayoutRecord(record));
   const paidAmount = nonStornoRecords.reduce(
     (sum, record) => sum + validPayoutAmount(record.amount),
     0
   );
-  const hasStorno = records.some((record) => record.status === "storno");
+  const hasStorno = records.some(isStornoPayoutRecord);
 
   if (paidAmount >= Math.max(0, expectedAmount - COMMISSION_PAYOUT_AMOUNT_TOLERANCE)) {
     return { status: "paid", paidAmount, records };
@@ -367,7 +381,18 @@ const payoutStatusClass = (status: CommissionPayoutReadStatus): string => {
 const formatSignedMoney = (value: number): string =>
   `${value >= 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
 
-const payoutDifferenceAmountFromRecords = ({
+export const stornoPayoutAmountFromRecords = (
+  records: ContractCommissionPayout[]
+): number | null => {
+  const stornoAmount = records.filter(isStornoPayoutRecord).reduce((sum, record) => {
+    const amount = validPayoutAmount(record.amount);
+    return sum + (amount < 0 ? amount : -Math.abs(amount));
+  }, 0);
+  if (Math.abs(stornoAmount) <= COMMISSION_PAYOUT_AMOUNT_TOLERANCE) return null;
+  return Math.round(stornoAmount * 100) / 100;
+};
+
+export const payoutDifferenceAmountFromRecords = ({
   expectedAmount,
   paidAmount,
   records,
@@ -378,13 +403,18 @@ const payoutDifferenceAmountFromRecords = ({
 }): number | null => {
   if (records.length === 0) return null;
 
+  const hasNonStornoRecord = records.some((record) => !isStornoPayoutRecord(record));
+  if (!hasNonStornoRecord) return null;
+
   const importantRecord = importantPayoutRecord(records);
-  const storedDifference = Number(importantRecord?.difference);
-  if (
-    Number.isFinite(storedDifference) &&
-    Math.abs(storedDifference) > COMMISSION_PAYOUT_AMOUNT_TOLERANCE
-  ) {
-    return Math.round(storedDifference * 100) / 100;
+  if (!importantRecord || !isStornoPayoutRecord(importantRecord)) {
+    const storedDifference = Number(importantRecord?.difference);
+    if (
+      Number.isFinite(storedDifference) &&
+      Math.abs(storedDifference) > COMMISSION_PAYOUT_AMOUNT_TOLERANCE
+    ) {
+      return Math.round(storedDifference * 100) / 100;
+    }
   }
 
   const calculatedDifference = paidAmount - expectedAmount;
@@ -409,8 +439,7 @@ const payoutRowClass = (status: CommissionPayoutReadStatus): string =>
         ? "border-rose-200 bg-rose-50/70"
         : "border-slate-200 bg-white";
 
-const latestPayoutRecordLabel = (records: ContractCommissionPayout[]): string | null => {
-  const record = records.find((item) => item.statementNumber || item.statementPeriod || item.statementDate);
+const payoutRecordLabel = (record: ContractCommissionPayout | null): string | null => {
   if (!record) return null;
   return [
     record.statementNumber ? `výpis ${record.statementNumber}` : null,
@@ -418,6 +447,13 @@ const latestPayoutRecordLabel = (records: ContractCommissionPayout[]): string | 
   ]
     .filter(Boolean)
     .join(" · ");
+};
+
+const latestPayoutRecordLabel = (records: ContractCommissionPayout[]): string | null => {
+  const record = [...records]
+    .sort((a, b) => payoutRecordSortValue(b) - payoutRecordSortValue(a))
+    .find((item) => item.statementNumber || item.statementPeriod || item.statementDate);
+  return payoutRecordLabel(record ?? null);
 };
 
 type PayoutDifferenceReason =
@@ -455,7 +491,7 @@ const payoutDifferenceReasonFromRecord = (
   ) {
     return "premium_base_mismatch";
   }
-  if (record.status === "storno") return "storno";
+  if (isStornoPayoutRecord(record)) return "storno";
   const difference = Number(record.difference);
   if (
     record.status === "difference" ||
@@ -499,7 +535,7 @@ const importantPayoutRecord = (
       const reason = payoutDifferenceReasonFromRecord(record);
       return reason != null && reason !== "storno";
     }) ??
-    sortedRecords.find((record) => Boolean(record.detail) && record.status === "storno") ??
+    sortedRecords.find((record) => Boolean(record.detail) && isStornoPayoutRecord(record)) ??
     null
   );
 };
@@ -559,12 +595,18 @@ export function ContractCommissionSection({
       paidAmount,
       records,
     });
+    const stornoAmount = stornoPayoutAmountFromRecords(records);
 
     return (
       <>
         <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutStatusClass(status)}`}>
           {payoutStatusLabel(status, paidAmount)}
         </span>
+        {stornoAmount !== null && (
+          <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-800">
+            Storno {formatSignedMoney(stornoAmount)}
+          </span>
+        )}
         {differenceAmount !== null && (
           <span
             className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutDifferenceAmountClass(differenceAmount)}`}
@@ -577,8 +619,8 @@ export function ContractCommissionSection({
   };
 
   const renderPayoutRecordHint = (records: ContractCommissionPayout[]) => {
-    const label = latestPayoutRecordLabel(records);
     const importantRecord = importantPayoutRecord(records);
+    const label = payoutRecordLabel(importantRecord) ?? latestPayoutRecordLabel(records);
     const reason = importantRecord ? payoutDifferenceReasonFromRecord(importantRecord) : null;
     const detail = String(importantRecord?.detail ?? "").trim();
     if (!label && !reason && !detail) return null;
@@ -618,7 +660,7 @@ export function ContractCommissionSection({
         >
           <span className="flex min-w-0 items-start gap-2.5 text-sm font-medium text-slate-900 sm:items-center sm:text-base">
             <span className="relative h-[22px] w-[22px] flex-shrink-0">
-              <Image src="/icons/penize2.png" alt="" fill className="object-contain" />
+              <Image src="/icons/penize2.webp" alt="" fill className="object-contain" />
             </span>
             <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
               <span>Okamžitá provize</span>

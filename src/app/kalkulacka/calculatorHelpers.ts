@@ -613,15 +613,15 @@ export function resultIconForTitle(title: string): string | null {
     t.startsWith("provize 50% z b3601") ||
     t.startsWith("provize 50% z b36")
   ) {
-    return "/icons/penize2.png";
+    return "/icons/penize2.webp";
   }
 
   if (t.includes("po 3 letech") || t.includes("po 4 letech")) {
-    return "/icons/kalendar.png";
+    return "/icons/kalendar.webp";
   }
 
   if (t.startsWith("následná provize") || t.startsWith("pečovatelská provize")) {
-    return "/icons/nasledna.png";
+    return "/icons/nasledna.webp";
   }
 
   return null;

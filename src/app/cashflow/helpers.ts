@@ -9,6 +9,7 @@ import {
 import type {
   CashflowCommissionStatementSummary,
   CashflowItem,
+  CashflowProductKey,
   MonthGroup,
   ProductFilter,
   YearGroup,
@@ -17,7 +18,7 @@ import { formatMoney, toDate } from "@/app/lib/formatters";
 export { formatMoney, toDate };
 
 export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
-  Exclude<ProductFilter, "all" | "tip">,
+  Exclude<ProductFilter, "all" | "tip" | "subscription">,
   readonly Product[]
 > = {
   life: ["neon", "flexi", "maximaMaxEfekt", "pillowInjury"],
@@ -87,7 +88,9 @@ export function frequencyText(f?: PaymentFrequency | null): string {
   }
 }
 
-export function productLabel(p?: Product | "unknown"): string {
+export function productLabel(p?: CashflowProductKey): string {
+  if (p === "subscription") return "Platba předplatného";
+  if (!p) return "Neznámý produkt";
   if (p === "unknown") return "Neznámý produkt";
   return productLabelFromCatalog(p, "Neznámý produkt");
 }
@@ -115,17 +118,22 @@ export function stripTotalRows(
 }
 
 export function matchesProductFilter(
-  product: Product | undefined,
+  product: Product | "subscription" | undefined,
   productFilter: ProductFilter
 ): boolean {
   if (productFilter === "tip") return false;
   if (!product) return false;
   if (productFilter === "all") return true;
+  if (productFilter === "subscription") return product === "subscription";
+  if (product === "subscription") return false;
   return CASHFLOW_PRODUCTS_BY_FILTER[productFilter].includes(product);
 }
 
 export function cashflowDisplayProductRank(item: CashflowItem): number {
-  const product = item.productKey === "unknown" ? undefined : item.productKey;
+  const product =
+    item.productKey === "unknown" || item.productKey === "subscription"
+      ? undefined
+      : item.productKey;
   if (!product) return 2;
   if (CASHFLOW_PRODUCTS_BY_FILTER.life.includes(product)) return 0;
   if (CASHFLOW_PRODUCTS_BY_FILTER.auto.includes(product)) return 1;
@@ -360,7 +368,7 @@ export function applyStatementMissingPayoutShifts({
   if (!enabled) return cashflowItems;
 
   return cashflowItems.flatMap((item): CashflowItem[] => {
-    if (item.isTipPayout) return [item];
+    if (item.isTipPayout || item.isSubscriptionPayment) return [item];
     if (item.payoutStatus === "paid") return [item];
 
     const normalizedContractNumber = normalizeContractNumberSearch(item.contractNumber);
@@ -593,6 +601,7 @@ export function groupMonthsByYear(monthGroups: MonthGroup[]): YearGroup[] {
 
 export function calculateStornoFund(items: CashflowItem[]): number {
   return items.reduce((sum, item) => {
+    if (item.isSubscriptionPayment) return sum;
     if (item.productKey === STORNO_EXEMPT_PRODUCT) return sum;
     const amount = Number(item.amount);
     if (!Number.isFinite(amount)) return sum;
