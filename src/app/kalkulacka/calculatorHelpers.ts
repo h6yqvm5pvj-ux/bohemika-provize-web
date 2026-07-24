@@ -5,7 +5,7 @@ import {
   type CommissionMode,
   type CommissionResultItemDTO,
 } from "../types/domain";
-import { toDate } from "@/app/lib/formatters";
+import { formatMoney, toDate } from "@/app/lib/formatters";
 import {
   isAnnualAutoPayoutProduct as isAnnualAutoPayoutProductFromCatalog,
   isAutoProduct as isAutoProductFromCatalog,
@@ -13,6 +13,7 @@ import {
   productInstitutionId as productInstitutionIdFromCatalog,
   productInstitutionLabel as productInstitutionLabelFromCatalog,
   productInstitutionLogo as productInstitutionLogoFromCatalog,
+  productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
 import {
   institutionLogoFrameClass,
@@ -38,6 +39,127 @@ export const POSITION_ORDER: Position[] = [
   "manazer9",
   "manazer10",
 ];
+
+const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["neon", "domex", "cppAuto"]);
+const POLICY_END_DATE_PRODUCTS = new Set<Product>([
+  "cppcestovko",
+  "axacestovko",
+  "koopcestovko",
+]);
+
+export function supportsOriginalContractReplacement(product: Product): boolean {
+  return ORIGINAL_REPLACEMENT_PRODUCTS.has(product);
+}
+
+export function supportsPolicyEndDate(product: Product): boolean {
+  return POLICY_END_DATE_PRODUCTS.has(product);
+}
+
+export function originalReplacementLabel(product: Product): string {
+  return product === "neon" ? "Refresh" : "Náhrada";
+}
+
+function stableSerializeForIdempotency(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerializeForIdempotency(item)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const row = value as Record<string, unknown>;
+    const keys = Object.keys(row).sort();
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${stableSerializeForIdempotency(row[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+function hashFnv1a32(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+export function buildContractsCreateIdempotencyKey(entry: Record<string, unknown>): string {
+  const stable = stableSerializeForIdempotency(entry);
+  const forward = hashFnv1a32(stable);
+  const backward = hashFnv1a32(stable.split("").reverse().join(""));
+  return `contracts-create:v1:${forward}${backward}`;
+}
+
+export function formatMoneyResult(value: number | undefined | null): string {
+  return formatMoney(value, {
+    minFractionDigits: 2,
+    maxFractionDigits: 2,
+  });
+}
+
+export const paymentsPerYear = (frequency: PaymentFrequency) =>
+  frequency === "monthly"
+    ? 12
+    : frequency === "quarterly"
+      ? 4
+      : frequency === "semiannual"
+        ? 2
+        : 1;
+
+export const frequencyLabel = (frequency: PaymentFrequency) => {
+  switch (frequency) {
+    case "monthly":
+      return "měsíční";
+    case "quarterly":
+      return "čtvrtletní";
+    case "semiannual":
+      return "pololetní";
+    case "annual":
+      return "roční";
+  }
+};
+
+export const productLabel = (product: Product | null) =>
+  productLabelFromCatalog(product, product ?? "—");
+
+export const normalizeEmailValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+export const normalizeSearchTextValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+export const simpleNameFromEmail = (email: string): string => {
+  const local = email.split("@")[0] ?? "";
+  const parts = local.split(/[.\-_]/).filter(Boolean);
+  if (parts.length === 0) return email;
+  return parts
+    .map((part) =>
+      part.length > 0
+        ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`
+        : part
+    )
+    .join(" ");
+};
+
+export const entryPathFromContractOwner = (
+  ownerEmail: unknown,
+  entryId: unknown
+): string => {
+  const owner = normalizeEmailValue(ownerEmail);
+  const id = typeof entryId === "string" ? entryId.trim() : "";
+  if (!owner || !id) return "";
+  return `users/${owner}/entries/${id}`;
+};
+
+export const currentIsoDay = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(now.getDate()).padStart(2, "0")}`;
+};
 
 export type PositionTimelineEntry = {
   id: string;
@@ -244,6 +366,18 @@ export function resolvePositionTimelineMatch(
 
   return candidates[0] ?? null;
 }
+
+export const resolveCurrentPositionTimelineRow = (
+  timeline: PositionTimelineEntry[]
+): PositionTimelineEntry | null => {
+  if (timeline.length === 0) return null;
+  return (
+    resolvePositionTimelineMatch(currentIsoDay(), timeline) ??
+    timeline.find((row) => !row.validTo) ??
+    timeline[timeline.length - 1] ??
+    null
+  );
+};
 
 export function ensureManagerChainWithDirectManager(
   chain: ManagerChainSnapshotEntry[],

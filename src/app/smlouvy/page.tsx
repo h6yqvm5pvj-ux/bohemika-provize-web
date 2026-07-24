@@ -30,8 +30,6 @@ import {
   type Product,
   type Position,
   type PaymentFrequency,
-  type MaxCizinKomplexVariant,
-  type CommissionResultItemDTO,
 } from "../types/domain";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -40,189 +38,71 @@ import {
   contractLifecycleStatus,
 } from "@/app/lib/contractLifecycle";
 import {
-  AUTO_PRODUCTS,
-  COMFORT_PRODUCTS,
-  INSTITUTION_CATALOG,
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
-  LIABILITY_PRODUCTS,
   PRODUCT_CATALOG,
-  PRODUCT_ORDER,
-  PROPERTY_PRODUCTS,
   TRAVEL_PRODUCTS,
-  productInstitutionId,
   productInstitutionLabel,
   productLabel as productLabelFromCatalog,
-  type ProductInstitutionId,
 } from "@/app/lib/productCatalog";
 import {
   commissionAuditSummaryForContract,
   isCommissionAuditFilterActive,
   parseCommissionAuditCodeFilter,
-  parseCommissionAuditMode,
-  type CommissionAuditCodeFilter,
-  type CommissionAuditItem,
-  type CommissionAuditMode,
-  type CommissionAuditSummary,
 } from "@/app/lib/commissionAudit";
 import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
-
-type FirestoreTimestamp = {
-  seconds: number;
-  nanoseconds: number;
-};
-
-type ContractDoc = {
-  id: string;
-  paid?: boolean | null;
-  status?: "active" | "storno" | string | null;
-  stornoDate?: FirestoreTimestamp | Date | string | null;
-  isRefresh?: boolean | null;
-  refreshOriginalContractNumber?: string | null;
-  refreshOriginalMissingInSystem?: boolean | null;
-  requiresStatementRefresh?: boolean | null;
-  commissionCalculationStatus?: string | null;
-  commissionBaseSource?: string | null;
-  refreshStatementResolvedAtMs?: number | null;
-  refreshStatementResolvedStatementId?: string | null;
-  refreshStatementResolvedStatementNumber?: string | null;
-  refreshStatementResolvedStatementPeriod?: string | null;
-  refreshCommissionBase?: unknown;
-  entryType?: "contract" | "endorsement" | string | null;
-  rootContractEntryId?: string | null;
-  groupedEntryCount?: number;
-  groupedEndorsementCount?: number;
-
-  productKey?: Product;
-  position?: Position;
-  inputAmount?: number;
-  previousInputAmount?: number | null;
-  newInputAmount?: number | null;
-  effectiveInputAmount?: number | null;
-  premiumDelta?: number | null;
-  changeType?: "increase" | "decrease" | "same" | string | null;
-  frequencyRaw?: PaymentFrequency | null;
-  total?: number;
-
-  userEmail?: string | null;
-  adviserName?: string | null;
-  clientName?: string | null;
-  clientEmail?: string | null;
-  clientPhone?: string | null;
-  clientAddress?: string | null;
-  contractNumber?: string | null;
-
-  createdAt?: FirestoreTimestamp | Date | string | null;
-  contractSignedDate?: FirestoreTimestamp | Date | string | null;
-  policyStartDate?: FirestoreTimestamp | Date | string | null;
-  policyEndDate?: FirestoreTimestamp | Date | string | null;
-  durationYears?: number | null;
-  durationMonths?: number | null;
-  maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
-  items?: CommissionResultItemDTO[] | null;
-  result?: {
-    items?: CommissionResultItemDTO[] | null;
-    total?: number | null;
-  } | null;
-  commissionPayouts?: {
-    key?: string | null;
-    code?: string | null;
-    title?: string | null;
-    amount?: number | null;
-    expectedAmount?: number | null;
-    difference?: number | null;
-    differenceReason?: string | null;
-    career?: string | null;
-    detail?: string | null;
-    status?: "paid" | "difference" | "storno" | string | null;
-    statementId?: string | null;
-    statementNumber?: string | null;
-    statementPeriod?: string | null;
-    statementDate?: string | null;
-    statementChronologyMs?: number | null;
-    payoutMonthKey?: string | null;
-    writtenAtMs?: number | null;
-    writtenBy?: string | null;
-  }[] | null;
-};
-
-type AppUser = {
-  id: string;
-  email: string | null;
-  fullName?: string | null;
-  name?: string | null;
-  position: Position | null;
-  managerEmail?: string | null;
-};
-
-type DisplayedContract = ContractDoc & {
-  adviserEmail?: string | null;
-  groupedEntryCount?: number;
-  groupedEndorsementCount?: number;
-  groupedHasRefresh?: boolean;
-  groupedLatestSortMs?: number;
-  groupedLatestCreatedMs?: number;
-  searchClientTokens?: string[];
-  searchContractTokens?: string[];
-  searchContractCompactTokens?: string[];
-};
-
-type FilterMode = "latest" | "anniversary";
-type ContractListViewMode = "cards" | "compact";
-type CommissionAuditFilterMode = CommissionAuditMode;
-type CommissionAuditFilterCode = CommissionAuditCodeFilter;
-type ProductCategory =
-  | "life"
-  | "auto"
-  | "property"
-  | "travel"
-  | "comfort"
-  | "liability";
-type Institution =
-  ProductInstitutionId;
-
-const CONTRACT_PROPERTY_PRODUCTS: Product[] = PROPERTY_PRODUCTS.filter(
-  (product) => product !== "zamex"
-);
-
-const PRODUCT_CATEGORY_MAP: Record<ProductCategory, Product[]> = {
-  life: LIFE_PRODUCTS_LIST,
-  auto: AUTO_PRODUCTS,
-  property: CONTRACT_PROPERTY_PRODUCTS,
-  travel: TRAVEL_PRODUCTS,
-  comfort: COMFORT_PRODUCTS,
-  liability: LIABILITY_PRODUCTS,
-};
-
-const CATEGORY_DEFS: { id: ProductCategory; label: string }[] = [
-  { id: "life", label: "Životní pojištění" },
-  { id: "auto", label: "Auto" },
-  { id: "property", label: "Majetek" },
-  { id: "travel", label: "Cestovko" },
-  { id: "comfort", label: "Comfort Commodity" },
-  { id: "liability", label: "Odpovědnost" },
-];
-
-const INSTITUTION_DEFS: { id: Institution; label: string }[] = Array.from(
-  new Map(
-    PRODUCT_ORDER.map((product) => {
-      const meta = PRODUCT_CATALOG[product];
-      return [meta.institutionId, meta.institutionLabel] as const;
-    })
-  ).entries()
-).map(([id, label]) => ({
-  id,
-  label,
-}));
-
-const INSTITUTION_LOGO_BY_ID: Partial<Record<Institution, string>> = Object.fromEntries(
-  INSTITUTION_DEFS.map((inst) => [
-    inst.id,
-    INSTITUTION_CATALOG[inst.id].logoPath,
-  ])
-) as Partial<Record<Institution, string>>;
+import {
+  CATEGORY_DEFS,
+  INSTITUTION_DEFS,
+  INSTITUTION_LOGO_BY_ID,
+  productMatchesFilters,
+} from "./contractsPageFilters";
+import {
+  commissionAuditCompactLabel,
+  commissionAuditStatusLabel,
+  commissionAuditSummaryLabel,
+  commissionAuditTimingLabel,
+  commissionAuditToneClasses,
+  formatCommissionAuditDate,
+} from "./contractsPageCommissionAudit";
+import {
+  CONTRACTS_UPDATED_KEY,
+  CONTRACTS_SILENT_REFRESH_COOLDOWN_MS,
+  CONTRACT_LIST_ESTIMATED_CARD_ROW_HEIGHT,
+  CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT,
+  CONTRACT_LIST_OVERSCAN_ROWS,
+  CONTRACT_LIST_WINDOWING_THRESHOLD,
+  DEFAULT_CONTRACT_LIST_VIEW_MODE,
+  cursorFromApi,
+  getErrorMessage,
+  normalizeContractNumberForSearch,
+  normalizeCursorToken,
+  normalizeEmail,
+  normalizeSearchValue,
+  readContractListViewMode,
+  readContractsApiResponseSafe,
+  readContractsCache,
+  readContractsViewState,
+  writeContractListViewMode,
+  writeContractsCache,
+  writeContractsViewState,
+} from "./contractsPageStorage";
+import type {
+  AppUser,
+  CommissionAuditFilterCode,
+  CommissionAuditFilterMode,
+  ContractDetailWindowState,
+  ContractDoc,
+  ContractListViewMode,
+  ContractsApiResponse,
+  ContractsListFilters,
+  DisplayedContract,
+  FilterMode,
+  Institution,
+  ProductCategory,
+} from "./contractsPageTypes";
 
 const COMMISSION_AUDIT_MODE_DEFS: {
   id: Exclude<CommissionAuditFilterMode, "off">;
@@ -587,187 +467,6 @@ function formatDaysLeft(days: number): string {
   return `${days} dnů`;
 }
 
-function formatCommissionAuditDate(ms: number | null): string {
-  if (ms == null) return "termín nezjištěn";
-  const date = toDate(ms);
-  return date ? date.toLocaleDateString("cs-CZ") : "termín nezjištěn";
-}
-
-function commissionAuditStatusLabel(item: CommissionAuditItem): string {
-  if (item.status === "career_mismatch") return "Jiný kariérní stupeň";
-  const label = commissionAuditTimingLabel(item);
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function startOfLocalDay(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function formatCzechMonthCount(months: number): string {
-  const normalized = Math.max(1, Math.round(months));
-  if (normalized === 1) return "1 měsíc";
-  if (normalized >= 2 && normalized <= 4) return `${normalized} měsíce`;
-  return `${normalized} měsíců`;
-}
-
-function commissionAuditMonthDistance(item: CommissionAuditItem): number | null {
-  if (item.daysUntilDue == null) return null;
-  if (item.daysUntilDue === 0) return 0;
-
-  if (item.expectedDateMs != null) {
-    const expectedDate = toDate(item.expectedDateMs);
-    if (expectedDate) {
-      const today = startOfLocalDay(new Date());
-      const expected = startOfLocalDay(expectedDate);
-      const months = Math.abs(
-        (today.getFullYear() - expected.getFullYear()) * 12 +
-          (today.getMonth() - expected.getMonth())
-      );
-      return Math.max(1, months);
-    }
-  }
-
-  return Math.max(1, Math.ceil(Math.abs(item.daysUntilDue) / 31));
-}
-
-function commissionAuditTimingLabel(item: CommissionAuditItem): string {
-  if (item.status === "career_mismatch") return "jiný kariérní stupeň";
-  if (item.status === "difference") return "rozdíl ve výpisu";
-  if (item.daysUntilDue === 0) return "výplata dnes";
-  const months = commissionAuditMonthDistance(item);
-  if (months == null) return item.status === "upcoming" ? "blíží se" : "po termínu";
-  const formatted = formatCzechMonthCount(months);
-  return item.status === "upcoming"
-    ? `za ${formatted}`
-    : `po termínu ${formatted}`;
-}
-
-function normalizedAuditCode(code: string | null | undefined): string {
-  return String(code ?? "").trim().toUpperCase().replace(/\s+/g, "");
-}
-
-function commissionAuditKindLabel(item: CommissionAuditItem): string {
-  const code = normalizedAuditCode(item.code);
-
-  if (code === "ATP") return "Provize z tipu";
-  if (code === "B0301" || code === "B301") {
-    return "Provize po 3 měsících (Karta klienta)";
-  }
-  if (code === "B36" || code === "B036" || code === "B3601") {
-    return "Provize po 36 měsících";
-  }
-  if (
-    code === "B36_HALF" ||
-    code === "B036_HALF" ||
-    code === "B3601_HALF"
-  ) {
-    return "Provize 50% z B36";
-  }
-  if (code === "B48" || code === "B048" || code === "B4801") {
-    return "Provize po 48 měsících";
-  }
-  if (code === "B101-B104" || /^B1\d+$/.test(code)) {
-    return "Následná provize";
-  }
-  if (code === "B201-B206" || /^B20[1-6]$/.test(code)) {
-    return "Pečovatelská provize";
-  }
-
-  const aMatch = code.match(/^A(\d+)$/);
-  if (aMatch) {
-    const numeric = Number(aMatch[1]);
-    const part = numeric >= 101 && numeric <= 112 ? numeric - 100 : 1;
-    return part <= 1 ? "Vzniková provize" : `Vzniková provize ${part}. část`;
-  }
-
-  if (!code) return String(item.label ?? "").trim() || "Provize";
-
-  const cleanedLabel = String(item.label ?? "")
-    .replace(new RegExp(`\\b${code}\\b`, "i"), "")
-    .replace(/^provize\s*/i, "")
-    .trim();
-  return cleanedLabel || "Provize";
-}
-
-function commissionAuditCompactLabel(item: CommissionAuditItem): string {
-  const code = normalizedAuditCode(item.code);
-  const kind = commissionAuditKindLabel(item);
-  return code ? `${code} ${kind}` : kind;
-}
-
-function commissionAuditSummaryLabel(summary: CommissionAuditSummary): string {
-  const parts = [
-    summary.overdueCount > 0 ? `${summary.overdueCount} nevypl.` : null,
-    summary.upcomingCount > 0 ? `${summary.upcomingCount} brzy` : null,
-    summary.careerMismatchCount > 0 ? `${summary.careerMismatchCount} stupeň` : null,
-    summary.differenceCount > 0 ? `${summary.differenceCount} rozdíl` : null,
-  ].filter(Boolean);
-  return parts.join(" · ");
-}
-
-function commissionAuditToneClasses(item: CommissionAuditItem): {
-  compact: string;
-  card: string;
-} {
-  if (item.status === "career_mismatch") {
-    return {
-      compact: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800",
-      card: "border-fuchsia-300/45 bg-fuchsia-300/12 text-fuchsia-100",
-    };
-  }
-  if (item.status === "difference") {
-    return {
-      compact: "border-amber-200 bg-amber-50 text-amber-800",
-      card: "border-amber-300/45 bg-amber-300/12 text-amber-100",
-    };
-  }
-  if (item.status === "upcoming") {
-    return {
-      compact: "border-sky-200 bg-sky-50 text-sky-800",
-      card: "border-sky-300/45 bg-sky-300/12 text-sky-100",
-    };
-  }
-  return {
-    compact: "border-rose-200 bg-rose-50 text-rose-800",
-    card: "border-rose-300/45 bg-rose-300/12 text-rose-100",
-  };
-}
-
-function productMatchesCategory(
-  product: Product | undefined,
-  categories: Set<ProductCategory>
-): boolean {
-  if (!product) return false;
-  if (categories.size === 0) return true;
-  for (const cat of categories) {
-    const list = PRODUCT_CATEGORY_MAP[cat];
-    if (list.includes(product)) return true;
-  }
-  return false;
-}
-
-function productMatchesInstitution(
-  product: Product | undefined,
-  institutions: Set<Institution>
-): boolean {
-  if (!product) return false;
-  if (institutions.size === 0) return true;
-  const inst = productInstitutionId(product);
-  if (!inst) return false;
-  return institutions.has(inst);
-}
-
-function productMatchesFilters(
-  product: Product | undefined,
-  categories: Set<ProductCategory>,
-  institutions: Set<Institution>
-): boolean {
-  return (
-    productMatchesCategory(product, categories) &&
-    productMatchesInstitution(product, institutions)
-  );
-}
-
 function contractOwnerEmail(
   contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })
 ): string {
@@ -811,262 +510,6 @@ function getOldestContractDate(contracts: ContractDoc[]): Date | null {
     }
   }
   return oldest;
-}
-
-type ContractsCache = {
-  userEmail: string;
-  position: Position | null;
-  myContracts: ContractDoc[];
-  teamContracts: (ContractDoc & { adviserEmail: string | null })[];
-  savedAt: number;
-  myHasMore?: boolean;
-  teamHasMore?: boolean;
-  myCursorDate?: string | number | null;
-  teamCursorDate?: string | number | null;
-  teamEmails?: string[];
-};
-
-type ContractsApiResponse = {
-  ok: boolean;
-  error?: string;
-  position?: Position | null;
-  teamEmails?: string[];
-  contracts?: (ContractDoc & { adviserEmail: string | null })[];
-  hasMore?: boolean;
-  nextCursorToken?: string | null;
-  nextCursor?: number | null;
-  teamContracts?: (ContractDoc & { adviserEmail: string | null })[];
-  teamHasMore?: boolean;
-  teamNextCursorToken?: string | null;
-  teamNextCursor?: number | null;
-};
-
-async function readContractsApiResponseSafe(
-  response: Response
-): Promise<ContractsApiResponse | null> {
-  try {
-    return (await response.json()) as ContractsApiResponse;
-  } catch {
-    return null;
-  }
-}
-
-type ContractsListFilters = {
-  query: string;
-  filterMode: FilterMode;
-  showUnpaidOnly: boolean;
-  showRefreshOnly: boolean;
-  commissionAuditMode: CommissionAuditFilterMode;
-  commissionAuditCodeFilter: CommissionAuditFilterCode;
-  selectedCategories: ProductCategory[];
-  selectedInstitutions: Institution[];
-  selectedSubordinates: string[];
-};
-
-const CONTRACTS_CACHE_KEY = "contracts_cache_v3";
-const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
-const CONTRACTS_VIEW_STATE_KEY = "contracts_view_state_v1";
-const CONTRACTS_LIST_VIEW_MODE_KEY = "contracts_list_view_mode_v1";
-const CONTRACTS_SILENT_REFRESH_COOLDOWN_MS = 60_000;
-const CONTRACT_LIST_WINDOWING_THRESHOLD = 90;
-const CONTRACT_LIST_ESTIMATED_CARD_ROW_HEIGHT = 340;
-const CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT = 92;
-const CONTRACT_LIST_OVERSCAN_ROWS = 3;
-const DEFAULT_CONTRACT_LIST_VIEW_MODE: ContractListViewMode = "compact";
-
-type ContractsViewState = {
-  userEmail: string;
-  showTeam: boolean;
-  listViewMode: ContractListViewMode;
-  filterMode: FilterMode;
-  searchText: string;
-  showUnpaidOnly: boolean;
-  showRefreshOnly: boolean;
-  commissionAuditMode: CommissionAuditFilterMode;
-  commissionAuditCodeFilter: CommissionAuditFilterCode;
-  selectedCategories: ProductCategory[];
-  selectedInstitutions: Institution[];
-  selectedSubordinates: string[];
-  scrollY: number;
-};
-
-type ContractDetailWindowState = {
-  href: string;
-  pageHref: string;
-  title: string;
-};
-
-const normalizeEmail = (email?: string | null) =>
-  (email ?? "").trim().toLowerCase();
-
-const stripDiacritics = (value: string): string =>
-  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-const normalizeSearchValue = (value?: string | null): string =>
-  stripDiacritics((value ?? "").trim().toLowerCase());
-
-const normalizeContractNumberForSearch = (value?: string | null): string =>
-  normalizeSearchValue(value).replace(/[^a-z0-9]/g, "");
-
-const normalizeCursorToken = (value: unknown): string | null => {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : null;
-  }
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-  return null;
-};
-
-const cursorFromApi = (
-  token: string | null | undefined,
-  legacyMillis: number | null | undefined
-): string | null => normalizeCursorToken(token ?? legacyMillis ?? null);
-
-function readContractsCache(email: string | null | undefined): ContractsCache | null {
-  if (!email || typeof window === "undefined") return null;
-  const normalized = email.toLowerCase();
-  try {
-    const raw = sessionStorage.getItem(CONTRACTS_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as ContractsCache;
-    if (parsed.userEmail !== normalized) return null;
-    const updatedRaw = localStorage.getItem(CONTRACTS_UPDATED_KEY);
-    const updatedAt = Number(updatedRaw);
-    if (Number.isFinite(updatedAt) && (parsed.savedAt ?? 0) < updatedAt) {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function writeContractsCache(cache: ContractsCache) {
-  if (typeof window === "undefined") return;
-  try {
-    sessionStorage.setItem(CONTRACTS_CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // best-effort cache
-  }
-}
-
-function readContractsViewState(userEmail: string | null | undefined): ContractsViewState | null {
-  if (typeof window === "undefined") return null;
-  const normalized = normalizeEmail(userEmail);
-  if (!normalized) return null;
-  try {
-    const key = `${CONTRACTS_VIEW_STATE_KEY}:${normalized}`;
-    const raw = sessionStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ContractsViewState>;
-    return {
-      userEmail: normalized,
-      showTeam: Boolean(parsed.showTeam),
-      listViewMode:
-        parsed.listViewMode === "cards"
-          ? "cards"
-          : DEFAULT_CONTRACT_LIST_VIEW_MODE,
-      filterMode: parsed.filterMode === "anniversary" ? "anniversary" : "latest",
-      searchText: typeof parsed.searchText === "string" ? parsed.searchText : "",
-      showUnpaidOnly: Boolean(parsed.showUnpaidOnly),
-      showRefreshOnly: Boolean(parsed.showRefreshOnly),
-      commissionAuditMode: parseCommissionAuditMode(
-        typeof parsed.commissionAuditMode === "string"
-          ? parsed.commissionAuditMode
-          : null
-      ),
-      commissionAuditCodeFilter: parseCommissionAuditCodeFilter(
-        typeof parsed.commissionAuditCodeFilter === "string"
-          ? parsed.commissionAuditCodeFilter
-          : null
-      ),
-      selectedCategories: Array.isArray(parsed.selectedCategories)
-        ? parsed.selectedCategories.filter((v): v is ProductCategory =>
-            CATEGORY_DEFS.some((d) => d.id === v)
-          )
-        : [],
-      selectedInstitutions: Array.isArray(parsed.selectedInstitutions)
-        ? parsed.selectedInstitutions.filter((v): v is Institution =>
-            INSTITUTION_DEFS.some((d) => d.id === v)
-          )
-        : [],
-      selectedSubordinates: Array.isArray(parsed.selectedSubordinates)
-        ? Array.from(
-            new Set(
-              parsed.selectedSubordinates
-                .map((v) => (typeof v === "string" ? normalizeEmail(v) : ""))
-                .filter(Boolean)
-            )
-          )
-        : [],
-      scrollY:
-        typeof parsed.scrollY === "number" && Number.isFinite(parsed.scrollY)
-          ? Math.max(0, parsed.scrollY)
-          : 0,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function readContractListViewMode(
-  userEmail: string | null | undefined
-): ContractListViewMode | null {
-  if (typeof window === "undefined") return null;
-  const normalized = normalizeEmail(userEmail);
-  if (!normalized) return null;
-  try {
-    const raw = localStorage.getItem(`${CONTRACTS_LIST_VIEW_MODE_KEY}:${normalized}`);
-    return raw === "compact" || raw === "cards" ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeContractListViewMode(
-  userEmail: string | null | undefined,
-  mode: ContractListViewMode
-) {
-  if (typeof window === "undefined") return;
-  const normalized = normalizeEmail(userEmail);
-  if (!normalized) return;
-  try {
-    localStorage.setItem(`${CONTRACTS_LIST_VIEW_MODE_KEY}:${normalized}`, mode);
-  } catch {
-    // best-effort preference
-  }
-}
-
-function writeContractsViewState(
-  userEmail: string | null | undefined,
-  state: Omit<ContractsViewState, "userEmail">
-) {
-  if (typeof window === "undefined") return;
-  const normalized = normalizeEmail(userEmail);
-  if (!normalized) return;
-  try {
-    const key = `${CONTRACTS_VIEW_STATE_KEY}:${normalized}`;
-    sessionStorage.setItem(
-      key,
-      JSON.stringify({
-        ...state,
-        userEmail: normalized,
-      } satisfies ContractsViewState)
-    );
-    sessionStorage.removeItem(CONTRACTS_VIEW_STATE_KEY);
-  } catch {
-    // best effort
-  }
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error) {
-    const msg = error.message?.trim();
-    if (msg) return msg;
-  }
-  return fallback;
 }
 
 function ContractsPageContent() {

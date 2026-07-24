@@ -2,6 +2,7 @@ import {
   ADMIN_IMPERSONATION_HEADER,
   normalizeImpersonationEmail,
 } from "@/lib/adminImpersonationShared";
+import { clearPersistedHomeCache } from "@/app/home/homeCacheStorage";
 
 export type AdminImpersonationState = {
   email: string;
@@ -62,12 +63,7 @@ export function clearImpersonationCaches() {
     window.sessionStorage.removeItem("contracts_cache_v3");
     window.sessionStorage.removeItem("contracts_view_state_v1");
     window.localStorage.setItem("contracts_last_updated", String(Date.now()));
-    const homeKeys: string[] = [];
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i);
-      if (key?.startsWith("home.cache:")) homeKeys.push(key);
-    }
-    homeKeys.forEach((key) => window.localStorage.removeItem(key));
+    clearPersistedHomeCache();
   } catch {
     // Best effort cache invalidation.
   }

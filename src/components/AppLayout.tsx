@@ -39,6 +39,7 @@ import {
   resolveAdminRoleFromClaims,
   type AdminRole,
 } from "@/lib/adminAccess";
+import { clearServerSession } from "@/app/lib/authSession";
 import { useAccountSetupFlow } from "@/components/account-setup/useAccountSetupFlow";
 import { AppNavigation, type ActivePage } from "@/components/navigation/AppNavigation";
 import { useUserProfileAccess } from "@/components/profile/useUserProfileAccess";
@@ -271,6 +272,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
       setUser(u);
       if (!u) {
         clearAdminImpersonationState();
+        void clearServerSession();
         setAdminRole(null);
         setCanCreateUsers(false);
       }
@@ -448,6 +450,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
   const handleLogout = async () => {
     try {
       clearAdminImpersonationState();
+      await clearServerSession();
       await signOut(auth);
       window.location.href = "/login";
     } catch (e) {
@@ -472,7 +475,8 @@ export function AppLayout({ children, active }: AppLayoutProps) {
 
       timeoutId = window.setTimeout(() => {
         clearAdminImpersonationState();
-        void signOut(auth)
+        void clearServerSession()
+          .then(() => signOut(auth))
           .catch((error) => {
             console.error("Automatické odhlášení se nepodařilo dokončit:", error);
           })

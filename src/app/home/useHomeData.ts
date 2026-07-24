@@ -12,6 +12,11 @@ import {
 import {
   entrySignedDate,
 } from "./homeUtils";
+import {
+  clearPersistedHomeCache,
+  readPersistedHomeCache,
+  writePersistedHomeCache,
+} from "./homeCacheStorage";
 
 export type EntryDoc = {
   id: string;
@@ -135,7 +140,6 @@ type UserProfileApiResponse = {
 };
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
-const HOME_CACHE_STORAGE_PREFIX = "home.cache:";
 const HOME_CACHE_VERSION = "v2-team-scope";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 
@@ -149,46 +153,7 @@ export const invalidateHomeCache = (email?: string | null) => {
     }
   });
 
-  if (typeof window !== "undefined") {
-    const toDelete: string[] = [];
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const k = window.localStorage.key(i);
-      if (k && k.startsWith(HOME_CACHE_STORAGE_PREFIX)) {
-        const val = k.slice(HOME_CACHE_STORAGE_PREFIX.length);
-        if (val.includes(keyPart)) {
-          toDelete.push(k);
-        }
-      }
-    }
-    toDelete.forEach((k) => window.localStorage.removeItem(k));
-  }
-};
-
-const readPersistedHomeCache = (
-  cacheKey: string
-): { ts: number; payload: HomeCachePayload } | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(`${HOME_CACHE_STORAGE_PREFIX}${cacheKey}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { ts?: number; payload?: HomeCachePayload };
-    if (typeof parsed.ts !== "number" || !parsed.payload) return null;
-    return { ts: parsed.ts, payload: parsed.payload };
-  } catch {
-    return null;
-  }
-};
-
-const writePersistedHomeCache = (cacheKey: string, payload: HomeCachePayload) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      `${HOME_CACHE_STORAGE_PREFIX}${cacheKey}`,
-      JSON.stringify({ ts: Date.now(), payload })
-    );
-  } catch {
-    // ignore storage errors
-  }
+  clearPersistedHomeCache(normalizedEmail);
 };
 
 const normalizeCursorToken = (
@@ -712,7 +677,7 @@ export function useHomeData({
           applyCachedHomeState(cached.payload);
         }
 
-        const persisted = readPersistedHomeCache(cacheKey);
+        const persisted = readPersistedHomeCache<HomeCachePayload>(cacheKey);
         if (persisted?.payload) {
           fallbackPayload = persisted.payload;
         }

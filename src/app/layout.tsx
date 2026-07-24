@@ -47,7 +47,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="cs" className={inter.variable}>
       <body className="antialiased">
         <PwaBootstrap />
         {children}

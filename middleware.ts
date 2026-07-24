@@ -1,5 +1,9 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import {
+  APP_SESSION_COOKIE_NAME,
+  verifyAppSessionCookieValue,
+} from "@/lib/appSession";
 
 const CONNECT_SRC = [
   "'self'",
@@ -117,6 +121,25 @@ function isPrivateWorkspacePath(pathname: string): boolean {
   return pathname === "/provizni-vypisy" || pathname.startsWith("/klienti");
 }
 
+function isServerProtectedPagePath(pathname: string): boolean {
+  if (pathname === "/") return true;
+  return (
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/cashflow") ||
+    pathname.startsWith("/cuzk") ||
+    pathname.startsWith("/intranet") ||
+    pathname.startsWith("/kalkulacka") ||
+    pathname.startsWith("/klienti") ||
+    pathname.startsWith("/muj-tym") ||
+    pathname.startsWith("/nastaveni") ||
+    pathname.startsWith("/pomucky") ||
+    pathname.startsWith("/posta") ||
+    pathname.startsWith("/provizni-vypisy") ||
+    pathname.startsWith("/smlouvy") ||
+    pathname.startsWith("/tipy")
+  );
+}
+
 function isClientCardsPath(pathname: string): boolean {
   return pathname === "/klienti" || pathname.startsWith("/klienti/");
 }
@@ -144,7 +167,46 @@ function privateNotFoundResponse(): NextResponse {
   });
 }
 
-export function middleware(req: NextRequest) {
+function clearAppSessionCookie(response: NextResponse): void {
+  response.cookies.set({
+    name: APP_SESSION_COOKIE_NAME,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+}
+
+async function buildAuthRedirectResponse(
+  req: NextRequest,
+  pathname: string
+): Promise<NextResponse | null> {
+  if (!isServerProtectedPagePath(pathname)) return null;
+
+  const verification = await verifyAppSessionCookieValue(
+    req.cookies.get(APP_SESSION_COOKIE_NAME)?.value
+  );
+  if (verification.ok) return null;
+
+  const loginUrl = req.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.search = "";
+
+  const nextPath = `${req.nextUrl.pathname}${req.nextUrl.search}`;
+  if (nextPath && nextPath !== "/" && !nextPath.startsWith("/login")) {
+    loginUrl.searchParams.set("next", nextPath);
+  }
+
+  const response = NextResponse.redirect(loginUrl);
+  if (verification.reason !== "missing") {
+    clearAppSessionCookie(response);
+  }
+  return response;
+}
+
+export async function middleware(req: NextRequest) {
   const nonce = createNonce();
   const pathname = req.nextUrl.pathname.toLowerCase();
   if (isClientCardsPath(pathname) && !isClientCardsEnabled()) {
@@ -176,11 +238,14 @@ export function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-csp-nonce", nonce);
 
-  const res = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  const authRedirect = await buildAuthRedirectResponse(req, pathname);
+  const res =
+    authRedirect ??
+    NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
 
   const strictCsp = buildStrictNonceCsp(nonce, frameAncestors);
   if (isMeetingEmbed) {
@@ -200,7 +265,7 @@ export function middleware(req: NextRequest) {
     res.headers.set("Content-Security-Policy-Report-Only", strictCsp);
   }
 
-  if (isPrivateWorkspacePath(pathname)) {
+  if (isServerProtectedPagePath(pathname) || isPrivateWorkspacePath(pathname)) {
     res.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
     res.headers.set("Pragma", "no-cache");
     res.headers.set("Expires", "0");

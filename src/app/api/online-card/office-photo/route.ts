@@ -4,29 +4,19 @@ import { getStorage } from "firebase-admin/storage";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAdvisorAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
+import {
+  prepareOnlineCardOfficePhotoFile,
+  type PreparedOnlineCardOfficePhoto,
+} from "@/lib/server/onlineCardOfficePhoto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const UPLOAD_RATE_LIMIT = 30;
 const UPLOAD_RATE_WINDOW_MS = 60_000;
-const MAX_FILE_SIZE_BYTES = 6 * 1024 * 1024;
-const FILE_NAME_MAX_LEN = 120;
-const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 type ApiSuccess = { ok: true; url: string };
 type ApiError = { ok: false; error: string };
-
-const normalizeText = (value: unknown): string =>
-  typeof value === "string" ? value.trim() : "";
-
-const sanitizeFileName = (value: string): string =>
-  value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w.\-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, FILE_NAME_MAX_LEN) || "office-photo";
 
 function buildStorageDownloadUrl(bucketName: string, objectPath: string, token: string): string {
   return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(
@@ -84,31 +74,28 @@ function isBucketMissingError(error: unknown): boolean {
 
 async function uploadPhotoToBucket({
   bucketName,
-  file,
+  photo,
   uploaderUid,
   uploaderEmail,
 }: {
   bucketName: string;
-  file: File;
+  photo: PreparedOnlineCardOfficePhoto;
   uploaderUid: string;
   uploaderEmail: string;
 }): Promise<string> {
   const storage = getStorage();
   const bucket = storage.bucket(bucketName);
-  const originalName = normalizeText(file.name) || "office-photo";
-  const contentType = normalizeText(file.type) || "application/octet-stream";
-  const fileName = sanitizeFileName(originalName);
-  const objectPath = `online-card/offices/${uploaderUid}/${Date.now()}-${randomUUID()}-${fileName}`;
+  const objectPath = `online-card/offices/${uploaderUid}/${Date.now()}-${randomUUID()}-${photo.safeFileName}`;
   const downloadToken = randomUUID();
-  const bytes = Buffer.from(await file.arrayBuffer());
 
-  await bucket.file(objectPath).save(bytes, {
+  await bucket.file(objectPath).save(photo.bytes, {
     resumable: false,
-    contentType,
+    contentType: photo.contentType,
     metadata: {
       metadata: {
         firebaseStorageDownloadTokens: downloadToken,
-        originalName,
+        originalName: photo.originalName,
+        detectedContentType: photo.contentType,
         uploadedBy: uploaderEmail,
       },
     },
@@ -150,32 +137,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const contentType = normalizeText(fileRaw.type).toLowerCase();
-  const fileName = normalizeText(fileRaw.name) || "soubor";
-  if (!contentType || !ALLOWED_IMAGE_TYPES.has(contentType)) {
+  const prepared = await prepareOnlineCardOfficePhotoFile(fileRaw);
+  if (!prepared.ok) {
     return withRateLimitHeaders(
       NextResponse.json(
-        { ok: false, error: "Podporované formáty jsou JPG, PNG a WEBP." } satisfies ApiError,
-        { status: 400 }
-      ),
-      ctx
-    );
-  }
-
-  if (fileRaw.size <= 0) {
-    return withRateLimitHeaders(
-      NextResponse.json(
-        { ok: false, error: `Soubor ${fileName} je prázdný.` } satisfies ApiError,
-        { status: 400 }
-      ),
-      ctx
-    );
-  }
-
-  if (fileRaw.size > MAX_FILE_SIZE_BYTES) {
-    return withRateLimitHeaders(
-      NextResponse.json(
-        { ok: false, error: "Fotka kanceláře je příliš velká (max 6 MB)." } satisfies ApiError,
+        { ok: false, error: prepared.error } satisfies ApiError,
         { status: 400 }
       ),
       ctx
@@ -198,7 +164,7 @@ export async function POST(req: NextRequest) {
     try {
       const url = await uploadPhotoToBucket({
         bucketName,
-        file: fileRaw,
+        photo: prepared.photo,
         uploaderUid: ctx.uid,
         uploaderEmail: ctx.email,
       });

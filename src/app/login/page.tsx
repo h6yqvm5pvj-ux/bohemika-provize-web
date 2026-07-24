@@ -16,6 +16,11 @@ import {
 } from "firebase/auth";
 import { auth } from "../firebase";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
+import {
+  clearServerSession,
+  createServerSessionFromToken,
+  resolveSafeLoginNextPath,
+} from "@/app/lib/authSession";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
 import {
   getPasskeyAvailability,
@@ -246,6 +251,7 @@ export default function LoginPage() {
 
   const safeSignOut = async () => {
     try {
+      await clearServerSession();
       await withTimeout(signOut(auth), 6000, "Odhlášení trvá příliš dlouho.");
     } catch (err) {
       logAuthIssue("safeSignOut", err);
@@ -272,6 +278,11 @@ export default function LoginPage() {
           10000,
           "Ověření přihlášení trvá příliš dlouho."
         );
+        const finishLogin = async () => {
+          await createServerSessionFromToken(loginToken);
+          clearMfaState();
+          router.replace(resolveSafeLoginNextPath("/"));
+        };
         const loginAttemptState = await postLoginAttempt("success", rawEmail, loginToken);
         if (!loginAttemptState.ok || loginAttemptState.locked) {
           await safeSignOut();
@@ -285,8 +296,7 @@ export default function LoginPage() {
           "Ověření účtu trvá příliš dlouho."
         );
         if (response?.hasProfile !== true) {
-          clearMfaState();
-          router.replace("/");
+          await finishLogin();
           return;
         }
         const data = response?.profile ?? {};
@@ -298,8 +308,7 @@ export default function LoginPage() {
 
         if (hasActive) {
           // OK → pustíme na hlavní stránku
-          clearMfaState();
-          router.replace("/");
+          await finishLogin();
         } else {
           // žádné / expirované předplatné → odhlásit a ukázat hlášku
           await safeSignOut();
@@ -310,10 +319,10 @@ export default function LoginPage() {
           );
         }
       } catch (e) {
-        console.error("Chyba při ověřování předplatného:", e);
+        console.error("Chyba při ověřování přihlášení/předplatného:", e);
         await safeSignOut();
         setError(
-          "Nepodařilo se ověřit předplatné. Zkus to prosím znovu nebo kontaktuj podporu."
+          "Nepodařilo se bezpečně dokončit přihlášení. Zkus to prosím znovu nebo kontaktuj podporu."
         );
       } finally {
         setLoading(false);
