@@ -464,18 +464,18 @@ export default function ToolsPage() {
 
   return (
     <AppLayout active="tools">
-      <div className={`${toolsFont.className} pomucky-tools-root relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
-        <div className="relative z-10 mx-auto max-w-7xl space-y-5 px-1 sm:px-2 lg:px-3">
-          <section className="py-1 sm:py-2">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-              <div className="space-y-4">
-                <span className="pomucky-hub-badge inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
+      <div className={`${toolsFont.className} pomucky-tools-root relative w-full overflow-visible px-0 pb-8 pt-1 sm:px-3 sm:pb-10 sm:pt-2`}>
+        <div className="relative z-10 mx-auto max-w-7xl space-y-4 px-0 sm:space-y-5 sm:px-2 lg:px-3">
+          <section className="py-0 sm:py-2">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div className="space-y-2 sm:space-y-4">
+                <span className="pomucky-hub-badge inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-800 sm:gap-2 sm:px-3 sm:text-xs sm:tracking-[0.18em]">
                   <Sparkles className="h-3.5 w-3.5" />
                   Nástrojový Hub
                 </span>
 
                 <div>
-                  <h1 className="text-4xl font-bold tracking-[-0.025em] text-slate-900 sm:text-5xl">
+                  <h1 className="text-3xl font-bold tracking-[-0.015em] text-slate-900 sm:text-5xl">
                     Pomůcky
                   </h1>
                 </div>
@@ -485,15 +485,15 @@ export default function ToolsPage() {
                 <label htmlFor="tools-search" className="sr-only">
                   Hledat pomůcky
                 </label>
-                <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_16px_38px_rgba(15,23,42,0.12)]">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+                <div className="relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:rounded-2xl sm:shadow-[0_16px_38px_rgba(15,23,42,0.12)]">
+                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-500 sm:left-4 sm:h-5 sm:w-5" />
                   <input
                     id="tools-search"
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Název, kategorie nebo klíčové slovo..."
-                    className="h-14 w-full bg-transparent py-3 pl-12 pr-4 text-base text-slate-900 outline-none placeholder:text-slate-500"
+                    className="h-11 w-full bg-transparent py-2.5 pl-10 pr-3 text-base text-slate-900 outline-none placeholder:text-slate-500 sm:h-14 sm:py-3 sm:pl-12 sm:pr-4"
                   />
                 </div>
               </div>
@@ -501,7 +501,7 @@ export default function ToolsPage() {
           </section>
 
           <nav
-            className="sticky top-2 z-30 rounded-[24px] border border-white/75 bg-white/86 p-2 shadow-[0_18px_44px_rgba(88,28,135,0.14)] backdrop-blur-xl"
+            className="sticky top-1 z-30 rounded-[18px] border border-white/75 bg-white/90 p-1.5 shadow-[0_12px_30px_rgba(88,28,135,0.12)] backdrop-blur-xl sm:top-2 sm:rounded-[24px] sm:p-2 sm:shadow-[0_18px_44px_rgba(88,28,135,0.14)]"
             aria-label="Sekce pomůcek"
           >
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -555,7 +555,7 @@ export default function ToolsPage() {
               </p>
             </div>
           ) : (
-            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <section className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredTools.map((tool, index) => {
                 if (tool.render) {
                   return <div key={tool.key}>{tool.render()}</div>;
@@ -570,11 +570,11 @@ export default function ToolsPage() {
                       key={tool.key}
                       type="button"
                       onClick={tool.onClick}
-                      className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[236px] w-full overflow-hidden rounded-[30px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-[18px] text-left shadow-[0_28px_72px_rgba(11,6,30,0.52)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_36px_86px_rgba(10,5,30,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80`}
+                      className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[188px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 text-left shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_36px_86px_rgba(10,5,30,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[236px] sm:rounded-[30px] sm:p-[18px] sm:shadow-[0_28px_72px_rgba(11,6,30,0.52)]`}
                       style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
                     >
-                      <span className="pointer-events-none absolute -left-12 -top-16 h-44 w-44 rounded-full bg-violet-300/24 blur-3xl" aria-hidden="true" />
-                      <span className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl" aria-hidden="true" />
+                      <span className="pointer-events-none absolute -left-12 -top-16 hidden h-44 w-44 rounded-full bg-violet-300/24 blur-3xl sm:block" aria-hidden="true" />
+                      <span className="pointer-events-none absolute -right-16 bottom-4 hidden h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl sm:block" aria-hidden="true" />
                       <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]" aria-hidden="true" />
                       <ToolIcon
                         className={`pointer-events-none absolute right-4 top-5 z-[1] h-[5.5rem] w-[5.5rem] opacity-[0.24] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.32] sm:right-5 sm:top-6 sm:h-[6.5rem] sm:w-[6.5rem] ${style.icon}`}
@@ -584,23 +584,23 @@ export default function ToolsPage() {
 
                       <div className="relative z-10 flex w-full flex-col gap-3">
                         <div className="flex items-start">
-                          <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3.5 py-1.5 text-[0.72rem] font-extrabold uppercase tracking-[0.2em] text-[#1d1138] shadow-[0_10px_26px_rgba(168,85,247,0.5)]">
+                          <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:py-1.5 sm:text-[0.72rem] sm:tracking-[0.2em] sm:shadow-[0_10px_26px_rgba(168,85,247,0.5)]">
                             {categoryBadgeLabel}
                           </span>
                         </div>
 
                         <div className="min-w-0">
-                          <h2 className="text-[1.55rem] font-bold leading-[1.1] tracking-[-0.02em] text-[#f8fafc]">
+                          <h2 className="text-[1.28rem] font-bold leading-[1.1] tracking-[-0.01em] text-[#f8fafc] sm:text-[1.55rem] sm:tracking-[-0.02em]">
                             {tool.title}
                           </h2>
-                          <p className="mt-2 text-[0.98rem] leading-relaxed text-violet-100/75">
+                          <p className="mt-1.5 text-[0.86rem] leading-6 text-violet-100/75 sm:mt-2 sm:text-[0.98rem] sm:leading-relaxed">
                             {tool.description}
                           </p>
                         </div>
 
                         <div className="mt-auto">
-                          <span className="inline-flex items-center justify-between rounded-2xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_22px_rgba(82,25,147,0.32)]">
-                            <span className="text-[0.9rem] font-bold tracking-normal text-[#1b1036]">
+                          <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:rounded-2xl sm:px-3 sm:py-2 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_22px_rgba(82,25,147,0.32)]">
+                            <span className="text-[0.82rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.9rem]">
                               Otevřít pomůcku
                             </span>
                             <ArrowUpRight className="h-3.5 w-3.5 text-[#1b1036]" />
@@ -623,11 +623,11 @@ export default function ToolsPage() {
                   <CardWrapper
                     key={tool.key}
                     {...wrapperProps}
-                    className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[236px] w-full overflow-hidden rounded-[30px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-[18px] shadow-[0_28px_72px_rgba(11,6,30,0.52)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_36px_86px_rgba(10,5,30,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80`}
+                    className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[188px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_36px_86px_rgba(10,5,30,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[236px] sm:rounded-[30px] sm:p-[18px] sm:shadow-[0_28px_72px_rgba(11,6,30,0.52)]`}
                     style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
                   >
-                    <span className="pointer-events-none absolute -left-12 -top-16 h-44 w-44 rounded-full bg-violet-300/24 blur-3xl" aria-hidden="true" />
-                    <span className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl" aria-hidden="true" />
+                    <span className="pointer-events-none absolute -left-12 -top-16 hidden h-44 w-44 rounded-full bg-violet-300/24 blur-3xl sm:block" aria-hidden="true" />
+                    <span className="pointer-events-none absolute -right-16 bottom-4 hidden h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl sm:block" aria-hidden="true" />
                     <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]" aria-hidden="true" />
                     <ToolIcon
                       className={`pointer-events-none absolute right-4 top-5 z-[1] h-[5.5rem] w-[5.5rem] opacity-[0.24] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.32] sm:right-5 sm:top-6 sm:h-[6.5rem] sm:w-[6.5rem] ${style.icon}`}
@@ -637,23 +637,23 @@ export default function ToolsPage() {
 
                     <div className="relative z-10 flex w-full flex-col gap-3">
                       <div className="flex items-start">
-                        <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3.5 py-1.5 text-[0.72rem] font-extrabold uppercase tracking-[0.2em] text-[#1d1138] shadow-[0_10px_26px_rgba(168,85,247,0.5)]">
+                        <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:py-1.5 sm:text-[0.72rem] sm:tracking-[0.2em] sm:shadow-[0_10px_26px_rgba(168,85,247,0.5)]">
                           {categoryBadgeLabel}
                         </span>
                       </div>
 
                       <div className="min-w-0">
-                        <h2 className="text-[1.55rem] font-bold leading-[1.1] tracking-[-0.02em] text-[#f8fafc]">
+                        <h2 className="text-[1.28rem] font-bold leading-[1.1] tracking-[-0.01em] text-[#f8fafc] sm:text-[1.55rem] sm:tracking-[-0.02em]">
                           {tool.title}
                         </h2>
-                        <p className="mt-2 text-[0.98rem] leading-relaxed text-violet-100/75">
+                        <p className="mt-1.5 text-[0.86rem] leading-6 text-violet-100/75 sm:mt-2 sm:text-[0.98rem] sm:leading-relaxed">
                           {tool.description}
                         </p>
                       </div>
 
                       <div className="mt-auto">
-                        <span className="inline-flex items-center justify-between rounded-2xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_22px_rgba(82,25,147,0.32)]">
-                          <span className="text-[0.9rem] font-bold tracking-normal text-[#1b1036]">
+                        <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:rounded-2xl sm:px-3 sm:py-2 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_22px_rgba(82,25,147,0.32)]">
+                          <span className="text-[0.82rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.9rem]">
                             Otevřít pomůcku
                           </span>
                           <ArrowUpRight className="h-3.5 w-3.5 text-[#1b1036]" />

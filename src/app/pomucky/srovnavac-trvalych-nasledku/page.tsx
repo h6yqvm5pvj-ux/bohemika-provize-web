@@ -2128,27 +2128,27 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="relative w-full max-w-[1500px] space-y-4 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-2 pb-8 sm:px-3">
-        <header className="flex flex-col gap-4 px-2 pt-2">
+      <div className="relative w-full max-w-[1500px] space-y-3 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-0 pb-8 sm:space-y-4 sm:px-3">
+        <header className="flex flex-col gap-3 px-0 pt-0 sm:gap-4 sm:px-2 sm:pt-2">
           <Link
             href="/pomucky"
-            className="inline-flex w-fit items-center gap-2 rounded-full border border-violet-100 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(76,29,149,0.08)] transition hover:border-violet-300 hover:bg-violet-50"
+            className="inline-flex w-fit items-center gap-1.5 rounded-full border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_18px_rgba(76,29,149,0.07)] transition hover:border-violet-300 hover:bg-violet-50 sm:gap-2 sm:py-2 sm:shadow-[0_10px_24px_rgba(76,29,149,0.08)]"
           >
             <ChevronLeft className="h-4 w-4" />
             Zpět na pomůcky
           </Link>
 
           <div className="flex flex-col gap-4 min-[560px]:flex-row min-[560px]:items-end min-[560px]:justify-between">
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-white/92 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-700 shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
+            <div className="space-y-2 sm:space-y-3">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200 bg-white/92 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 shadow-[0_8px_18px_rgba(217,70,239,0.08)] sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.18em] sm:shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
                 <ChartNoAxesColumn className="h-3.5 w-3.5" />
                 Srovnávač plnění
               </div>
               <div>
-                <h1 className="text-4xl font-black leading-none tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+                <h1 className="text-[2.3rem] font-black leading-[0.98] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
                   Trvalé následky
                 </h1>
-                <p className="mt-3 max-w-2xl text-sm font-semibold leading-relaxed text-slate-500">
+                <p className="mt-2 max-w-2xl text-xs font-semibold leading-6 text-slate-500 sm:mt-3 sm:text-sm sm:leading-relaxed">
                   Porovnej plnění podle pojistné částky a rozsahu poškození. Export používá stejná data i aktivní filtry.
                 </p>
               </div>
@@ -2167,8 +2167,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
           </div>
         </header>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(330px,430px)_1fr]">
-          <section className="relative w-full space-y-4 overflow-hidden rounded-[28px] border border-violet-100 bg-white p-4 shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
+        <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(330px,430px)_1fr]">
+          <section className="relative w-full space-y-3 overflow-hidden rounded-[22px] border border-violet-100 bg-white p-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:space-y-4 sm:rounded-[28px] sm:p-4 sm:shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
             <span
               aria-hidden="true"
               className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
@@ -2180,8 +2180,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </h2>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="rounded-2xl border border-violet-100 bg-white/85 p-3.5 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10">
+            <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
+              <label className="rounded-[18px] border border-violet-100 bg-white/85 p-3 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10 sm:rounded-2xl sm:p-3.5">
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] text-fuchsia-700">
@@ -2205,12 +2205,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                         setSumInsuredInput(formatKcInput(parsed));
                       }
                     }}
-                    className="mt-3 w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-lg font-semibold leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0"
+                    className="mt-2.5 w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-base font-semibold leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0 sm:mt-3 sm:text-lg"
                   />
                 </div>
               </label>
 
-              <label className="rounded-2xl border border-violet-100 bg-white/85 p-3.5 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10">
+              <label className="rounded-[18px] border border-violet-100 bg-white/85 p-3 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10 sm:rounded-2xl sm:p-3.5">
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] text-fuchsia-700">
@@ -2231,7 +2231,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       const limited = Math.min(100, Math.max(0, parsed));
                       setRangePercentInput(formatKcInput(limited));
                     }}
-                    className="mt-3 w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-lg font-semibold leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0"
+                    className="mt-2.5 w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-base font-semibold leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0 sm:mt-3 sm:text-lg"
                   />
                   {Number.isFinite(rangePercentRaw) && rangePercentRaw > 100 && (
                     <p className="mt-2 text-[11px] font-semibold text-fuchsia-700">
@@ -2243,7 +2243,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
             </div>
           </section>
 
-          <section className="relative w-full space-y-4 overflow-hidden rounded-[28px] border border-violet-100 bg-white p-4 shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
+          <section className="relative w-full space-y-3 overflow-hidden rounded-[22px] border border-violet-100 bg-white p-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:space-y-4 sm:rounded-[28px] sm:p-4 sm:shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
             <span
               aria-hidden="true"
               className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
@@ -2253,12 +2253,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 <span>Filtry</span>
               </h2>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => void handleExportCurrentPdf()}
                   disabled={currentExporting || scenarioExporting}
-                  className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-[0_8px_18px_rgba(76,29,149,0.08)] transition hover:border-violet-400 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-[0_6px_14px_rgba(76,29,149,0.07)] transition hover:border-violet-400 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2 sm:shadow-[0_8px_18px_rgba(76,29,149,0.08)]"
                 >
                   {currentExporting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2271,7 +2271,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   type="button"
                   onClick={openScenarioExportModal}
                   disabled={currentExporting || scenarioExporting}
-                  className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-4 py-2 text-xs font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-3 py-1.5 text-xs font-semibold text-zinc-50 shadow-[0_8px_20px_rgba(76,29,149,0.22)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2 sm:shadow-[0_12px_30px_rgba(76,29,149,0.25)]"
                 >
                   {scenarioExporting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2283,7 +2283,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-white/85 px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-violet-100 bg-white/85 px-3 py-2.5 shadow-sm sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3">
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                 <span className="font-semibold text-slate-700">
                   {activeFilterCount === 0

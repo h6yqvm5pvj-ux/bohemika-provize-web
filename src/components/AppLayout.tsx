@@ -660,6 +660,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           <div
             className={[
               `app-content relative flex min-w-0 w-full flex-1 items-start ${contentOverflowClass} ${shellFontClass}`,
+              active === "tools" ? "tools-content" : "",
               isFullBleedPage
                 ? "justify-start px-0 py-6 sm:py-8 lg:px-0"
                 : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",

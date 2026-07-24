@@ -3032,18 +3032,18 @@ export default function ExportProductionPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="relative w-full overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-2 pb-8 sm:px-3">
-        <div className="mx-auto w-full max-w-[1500px] space-y-4">
-          <header className="flex flex-col gap-4 px-2 pt-2 sm:px-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex flex-col gap-4 min-[560px]:flex-row min-[560px]:items-end min-[560px]:justify-between lg:min-w-0 lg:flex-1">
-              <div className="space-y-3">
-                <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-white/92 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-700 shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
+      <div className="relative w-full overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-0 pb-8 sm:px-3">
+        <div className="mx-auto w-full max-w-[1500px] space-y-3 sm:space-y-4">
+          <header className="flex flex-col gap-3 px-0 pt-0 sm:gap-4 sm:px-3 sm:pt-2 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex flex-col gap-3 min-[560px]:flex-row min-[560px]:items-end min-[560px]:justify-between sm:gap-4 lg:min-w-0 lg:flex-1">
+              <div className="space-y-2 sm:space-y-3">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200 bg-white/92 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 shadow-[0_8px_18px_rgba(217,70,239,0.08)] sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.18em] sm:shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
                   <Sparkles className="h-3.5 w-3.5" />
                   Export produkce
                 </div>
                 <SplitTitle
                   text="Statistika"
-                  className="text-5xl sm:text-6xl lg:text-7xl"
+                  className="text-[2.55rem] sm:text-6xl lg:text-7xl"
                 />
               </div>
 
@@ -3060,21 +3060,21 @@ export default function ExportProductionPage() {
             </div>
           </header>
 
-          <div className="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)] lg:items-start xl:grid-cols-[320px_minmax(0,1fr)]">
-            <aside className="space-y-3 lg:sticky lg:top-4">
-              <section className="relative overflow-hidden space-y-4 rounded-[28px] border border-violet-100 bg-white p-4 shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-[290px_minmax(0,1fr)] lg:items-start xl:grid-cols-[320px_minmax(0,1fr)]">
+            <aside className="space-y-2.5 sm:space-y-3 lg:sticky lg:top-4">
+              <section className="relative space-y-3 overflow-hidden rounded-[22px] border border-violet-100 bg-white p-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:space-y-4 sm:rounded-[28px] sm:p-4 sm:shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
                 <span
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
                 />
                 <div className="flex items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.16em]">
                     <SlidersHorizontal className="h-3.5 w-3.5" />
                     Nastavení exportu
                   </div>
                 </div>
 
-                <div className="space-y-2.5 rounded-2xl border border-violet-100 bg-white/82 p-3.5 shadow-sm">
+                <div className="space-y-2 rounded-[18px] border border-violet-100 bg-white/82 p-3 shadow-sm sm:space-y-2.5 sm:rounded-2xl sm:p-3.5">
                   <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700">
                     <UsersRound
                       size={12}

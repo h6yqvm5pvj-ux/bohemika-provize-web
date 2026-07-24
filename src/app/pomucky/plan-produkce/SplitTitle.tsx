@@ -23,7 +23,7 @@ export default function SplitTitle({
     <div
       className={`relative inline-flex ${
         wrap ? "flex-wrap" : "flex-nowrap whitespace-nowrap"
-      } gap-x-[0.22em] gap-y-[0.08em] text-5xl sm:text-6xl font-extrabold tracking-tight text-slate-900 ${className}`}
+      } gap-x-[0.18em] gap-y-[0.06em] text-[2.35rem] leading-[1.02] sm:gap-x-[0.22em] sm:gap-y-[0.08em] sm:text-6xl font-extrabold tracking-tight text-slate-900 ${className}`}
     >
       <span className="sr-only">{text}</span>
       {words.map((word, wordIndex) => (

@@ -1239,4 +1239,159 @@ body {
     color: #f8fafc !important;
     border-color: rgba(255, 255, 255, 0.18) !important;
   }
+
+  @media (max-width: 639px) {
+    .tools-content {
+      align-items: stretch;
+      padding: 0.75rem 0.5rem 2rem !important;
+      overflow-x: clip;
+    }
+
+    .tools-content > * {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .tools-content h1 {
+      max-width: 100%;
+      font-size: clamp(2rem, 11vw, 3.1rem) !important;
+      line-height: 1.02 !important;
+      letter-spacing: 0 !important;
+      overflow-wrap: anywhere;
+    }
+
+    .tools-content h2 {
+      max-width: 100%;
+      font-size: clamp(1.35rem, 7vw, 2rem) !important;
+      line-height: 1.08 !important;
+      letter-spacing: 0 !important;
+      overflow-wrap: anywhere;
+    }
+
+    .tools-content h3 {
+      max-width: 100%;
+      font-size: clamp(1.08rem, 5.6vw, 1.55rem) !important;
+      line-height: 1.12 !important;
+      overflow-wrap: anywhere;
+    }
+
+    .tools-content input,
+    .tools-content select,
+    .tools-content textarea {
+      font-size: 16px !important;
+    }
+
+    .tools-content :where(section, article, header, aside, details) {
+      max-width: 100%;
+    }
+
+    .tools-content .pomucky-tool-card {
+      min-height: 176px !important;
+      border-radius: 22px !important;
+      padding: 0.875rem !important;
+      box-shadow: 0 18px 42px rgba(11, 6, 30, 0.36) !important;
+    }
+
+    .tools-content .pomucky-tool-card > svg {
+      height: 4.5rem !important;
+      width: 4.5rem !important;
+      right: 0.75rem !important;
+      top: 0.75rem !important;
+      opacity: 0.18 !important;
+    }
+
+    .tools-content .pomucky-filter-chip {
+      gap: 0.4rem !important;
+      border-radius: 14px !important;
+      padding: 0.55rem 0.75rem !important;
+      font-size: 0.78rem !important;
+      box-shadow: none !important;
+    }
+
+    .tools-content .pomucky-filter-chip svg {
+      height: 0.9rem !important;
+      width: 0.9rem !important;
+    }
+
+    .tools-content .pomucky-modal-panel {
+      max-height: calc(100dvh - 1rem) !important;
+      border-radius: 22px !important;
+      padding: 1rem !important;
+    }
+
+    .tools-content .pomucky-portal-card {
+      min-height: 116px !important;
+      border-radius: 18px !important;
+      padding: 0.875rem !important;
+    }
+
+    .tools-content .pomucky-portal-card h3 {
+      font-size: 1.2rem !important;
+      line-height: 1.08 !important;
+    }
+
+    .tools-content .pomucky-portal-arrow {
+      height: 2rem !important;
+      width: 2rem !important;
+    }
+
+    .tools-content [class*="h-[640px]"] {
+      height: min(70dvh, 520px) !important;
+    }
+
+    .tools-content [class*="h-[570px]"] {
+      height: min(64dvh, 430px) !important;
+    }
+
+    .tools-content [class*="h-[330px]"] {
+      height: 240px !important;
+    }
+
+    .tools-content [class*="h-[360px]"] {
+      height: 260px !important;
+    }
+
+    .tools-content [class*="h-[calc(94vh-205px)]"] {
+      height: 58dvh !important;
+    }
+
+    .tools-content [class*="min-h-[760px]"] {
+      min-height: min(72dvh, 560px) !important;
+    }
+
+    .tools-content [class*="min-h-[560px]"] {
+      min-height: min(58dvh, 380px) !important;
+    }
+
+    .tools-content [class*="min-h-[398px]"] {
+      min-height: 280px !important;
+    }
+
+    .tools-content [class*="min-h-[390px]"] {
+      min-height: 260px !important;
+    }
+
+    .tools-content [class*="min-h-[320px]"] {
+      min-height: 220px !important;
+    }
+
+    .tools-content [class*="min-h-[270px]"],
+    .tools-content [class*="min-h-[260px]"],
+    .tools-content [class*="min-h-[240px]"] {
+      min-height: 190px !important;
+    }
+
+    .tools-content [class*="min-h-[230px]"],
+    .tools-content [class*="min-h-[222px]"],
+    .tools-content [class*="min-h-[190px]"] {
+      min-height: 160px !important;
+    }
+
+    .tools-content [class*="shadow-[0_28px"],
+    .tools-content [class*="shadow-[0_32px"],
+    .tools-content [class*="shadow-[0_34px"],
+    .tools-content [class*="shadow-[0_36px"] {
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16) !important;
+    }
+  }
 }
