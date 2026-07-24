@@ -1,25 +1,9 @@
-import { type AppLanguage } from "@/lib/appLanguage";
-
 type Props = {
-  language: AppLanguage;
   title: string;
   stage: string;
   progress: number;
   accentLabel: string;
   visual?: "progress" | "money" | "payout" | "production";
-};
-
-const LOADING_PROGRESS_COPY: Record<
-  AppLanguage,
-  {
-    phases: string[];
-    ready: string;
-  }
-> = {
-  cs: {
-    phases: ["Sběr dat", "Výpočty", "Finalizace"],
-    ready: "připraveno",
-  },
 };
 
 function PayoutVisual() {
@@ -37,15 +21,18 @@ function PayoutVisual() {
   );
 
   return (
-    <div className="home-loader-visual" aria-hidden="true">
+    <div className="home-loader-visual payout" aria-hidden="true">
       {renderBanknote("bill-a", "500")}
       {renderBanknote("bill-b", "1000")}
       {renderBanknote("bill-c", "200")}
       {renderBanknote("bill-d", "500")}
       <div className="home-loader-wallet">
-        <span className="wallet-line" />
-        <span className="wallet-line short" />
-        <span className="wallet-dot" />
+        <span className="wallet-note wallet-note-a" />
+        <span className="wallet-note wallet-note-b" />
+        <span className="wallet-fold" />
+        <span className="wallet-pocket" />
+        <span className="wallet-flap" />
+        <span className="wallet-snap" />
       </div>
       <div className="home-loader-stack">
         {[0, 1, 2, 3].map((index) => (
@@ -81,21 +68,17 @@ function ProductionVisual() {
 }
 
 export function LoadingProgressPanel({
-  language,
   title,
   stage,
   progress,
   accentLabel,
   visual = "progress",
 }: Props) {
-  const copy = LOADING_PROGRESS_COPY[language];
   const safeProgress = Math.max(8, Math.min(97, progress));
-  const activePhaseIndex =
-    safeProgress < 35 ? 0 : safeProgress < 72 ? 1 : 2;
   const visualType = visual === "money" ? "payout" : visual;
 
   return (
-    <div className="home-loader-panel relative h-full min-h-[168px] w-full overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,#ffffff_0%,#fbfbfb_54%,#fdf2f8_100%)] px-4 py-4 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_20px_44px_rgba(10,5,35,0.22)] sm:px-5">
+    <div className="home-loader-panel relative h-full min-h-[144px] w-full overflow-hidden rounded-[24px] bg-[linear-gradient(145deg,#ffffff_0%,#fbfbfb_54%,#fdf2f8_100%)] px-4 py-4 text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_20px_44px_rgba(10,5,35,0.22)] sm:px-5">
       <style jsx global>{`
         .home-loader-panel::before {
           content: "";
@@ -141,6 +124,12 @@ export function LoadingProgressPanel({
             rgba(255, 255, 255, 0.66);
         }
 
+        .home-loader-visual.payout {
+          overflow: visible;
+          border-radius: 0;
+          background: transparent;
+        }
+
         .home-loader-visual::after {
           content: "";
           position: absolute;
@@ -151,6 +140,14 @@ export function LoadingProgressPanel({
           border-radius: 9999px;
           background: rgba(2, 6, 23, 0.16);
           filter: blur(13px);
+        }
+
+        .home-loader-visual.payout::after {
+          left: 18%;
+          right: 12%;
+          bottom: 14px;
+          height: 14px;
+          background: rgba(2, 6, 23, 0.14);
         }
 
         .home-loader-banknote {
@@ -340,56 +337,172 @@ export function LoadingProgressPanel({
 
         .home-loader-wallet {
           position: absolute;
-          right: 10%;
-          bottom: 32px;
+          right: 8%;
+          bottom: 24px;
           z-index: 3;
-          height: 72px;
-          width: 140px;
-          border-radius: 22px;
+          height: 86px;
+          width: 156px;
+          overflow: visible;
+          border-radius: 16px 28px 24px 18px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
           background:
-            linear-gradient(145deg, #020617 0%, #111827 58%, #a21caf 100%);
+            linear-gradient(155deg, #020617 0%, #111827 48%, #33115f 72%, #a21caf 100%);
           box-shadow:
-            0 22px 38px rgba(15, 23, 42, 0.2),
-            0 0 0 8px rgba(217, 70, 239, 0.08);
+            0 22px 40px rgba(15, 23, 42, 0.24),
+            0 0 0 9px rgba(217, 70, 239, 0.09);
+          transform: rotate(-2deg) skewX(-3deg);
         }
 
         .home-loader-wallet::before {
           content: "";
           position: absolute;
-          inset: 12px 14px auto;
-          height: 25px;
-          border-radius: 9999px;
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          background: rgba(255, 255, 255, 0.08);
+          inset: 9px 11px;
+          z-index: 3;
+          border-radius: 12px 23px 19px 14px;
+          border: 1px dashed rgba(255, 255, 255, 0.28);
+          pointer-events: none;
         }
 
-        .wallet-line,
-        .wallet-line.short,
-        .wallet-dot {
+        .home-loader-wallet::after {
+          content: "";
           position: absolute;
-          left: 18px;
+          left: 20px;
+          right: 20px;
+          top: 12px;
+          z-index: 2;
+          height: 13px;
           border-radius: 9999px;
-          background: rgba(255, 255, 255, 0.72);
+          background: rgba(255, 255, 255, 0.14);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.18),
+            0 7px 14px rgba(2, 6, 23, 0.2);
         }
 
-        .wallet-line {
-          bottom: 22px;
-          height: 6px;
-          width: 66px;
+        .wallet-note {
+          position: absolute;
+          z-index: 1;
+          height: 38px;
+          width: 92px;
+          border-radius: 8px;
+          border: 1px solid rgba(2, 6, 23, 0.14);
+          background:
+            linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(252, 231, 243, 0.86), rgba(255, 255, 255, 0.96)),
+            repeating-linear-gradient(90deg, rgba(2, 6, 23, 0.045) 0 1px, transparent 1px 7px);
+          box-shadow: 0 8px 14px rgba(15, 23, 42, 0.12);
         }
 
-        .wallet-line.short {
-          bottom: 36px;
-          width: 42px;
+        .wallet-note::before {
+          content: "500";
+          position: absolute;
+          left: 8px;
+          top: 8px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+          font-size: 10px;
+          font-weight: 900;
+          line-height: 1;
+          color: #a21caf;
         }
 
-        .wallet-dot {
-          right: 18px;
-          bottom: 23px;
-          left: auto;
-          height: 16px;
-          width: 16px;
-          background: #d946ef;
+        .wallet-note::after {
+          content: "";
+          position: absolute;
+          right: 13px;
+          top: 10px;
+          height: 18px;
+          width: 18px;
+          border-radius: 9999px;
+          border: 1px solid rgba(217, 70, 239, 0.36);
+          background: rgba(255, 255, 255, 0.5);
+        }
+
+        .wallet-note-a {
+          left: 22px;
+          top: -18px;
+          transform: rotate(-5deg);
+        }
+
+        .wallet-note-b {
+          right: 10px;
+          top: -14px;
+          transform: rotate(7deg);
+        }
+
+        .wallet-fold {
+          position: absolute;
+          left: 11px;
+          top: 12px;
+          bottom: 12px;
+          z-index: 4;
+          width: 11px;
+          border-radius: 9999px;
+          border-left: 1px solid rgba(255, 255, 255, 0.26);
+          border-right: 1px solid rgba(2, 6, 23, 0.34);
+          background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(2, 6, 23, 0.18));
+        }
+
+        .wallet-pocket {
+          position: absolute;
+          left: 28px;
+          right: 32px;
+          bottom: 12px;
+          z-index: 4;
+          height: 42px;
+          border-radius: 13px 17px 14px 13px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          background:
+            linear-gradient(150deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03)),
+            rgba(2, 6, 23, 0.1);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        }
+
+        .wallet-pocket::before,
+        .wallet-pocket::after {
+          content: "";
+          position: absolute;
+          left: 12px;
+          height: 4px;
+          border-radius: 9999px;
+          background: rgba(255, 255, 255, 0.45);
+        }
+
+        .wallet-pocket::before {
+          top: 13px;
+          width: 56px;
+        }
+
+        .wallet-pocket::after {
+          top: 24px;
+          width: 38px;
+          opacity: 0.7;
+        }
+
+        .wallet-flap {
+          position: absolute;
+          right: -11px;
+          top: 31px;
+          z-index: 5;
+          height: 34px;
+          width: 62px;
+          border-radius: 9999px 15px 15px 9999px;
+          border: 1px solid rgba(255, 255, 255, 0.24);
+          background: linear-gradient(135deg, #160934 0%, #2b124e 58%, #a21caf 100%);
+          box-shadow:
+            -8px 8px 16px rgba(2, 6, 23, 0.22),
+            inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        }
+
+        .wallet-snap {
+          position: absolute;
+          right: 21px;
+          top: 41px;
+          z-index: 6;
+          height: 14px;
+          width: 14px;
+          border-radius: 9999px;
+          border: 2px solid rgba(255, 255, 255, 0.9);
+          background:
+            radial-gradient(circle at 36% 34%, rgba(255, 255, 255, 0.95) 0 18%, rgba(217, 70, 239, 0.6) 19% 52%, rgba(2, 6, 23, 0.78) 53%);
+          box-shadow: 0 2px 6px rgba(2, 6, 23, 0.28);
         }
 
         .home-loader-stack {
@@ -580,9 +693,9 @@ export function LoadingProgressPanel({
 
           .home-loader-wallet {
             right: 10%;
-            bottom: 34px;
-            height: 74px;
-            width: 132px;
+            bottom: 27px;
+            height: 80px;
+            width: 140px;
           }
 
           .home-loader-stack {
@@ -610,7 +723,7 @@ export function LoadingProgressPanel({
         }
       `}</style>
 
-      <div className="relative z-10 grid h-full min-h-[136px] grid-cols-1 gap-4 md:grid-cols-[minmax(0,0.82fr)_minmax(230px,1fr)] md:items-center">
+      <div className="relative z-10 grid h-full min-h-[116px] grid-cols-1 gap-4 md:grid-cols-[minmax(0,0.82fr)_minmax(230px,1fr)] md:items-center">
         <div className="min-w-0">
           <div className="inline-flex items-center rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-xs font-bold uppercase text-fuchsia-700">
             {accentLabel}
@@ -635,32 +748,6 @@ export function LoadingProgressPanel({
             >
               <span className="absolute inset-y-0 right-0 w-10 bg-gradient-to-r from-transparent via-white/55 to-transparent opacity-90" />
             </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {copy.phases.map((phase, index) => {
-              const state =
-                index < activePhaseIndex
-                  ? "done"
-                  : index === activePhaseIndex
-                    ? "active"
-                    : "idle";
-
-              return (
-                <span
-                  key={phase}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${
-                    state === "done"
-                      ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
-                      : state === "active"
-                        ? "border-black bg-black text-white"
-                        : "border-black/10 bg-white/72 text-black/48"
-                  }`}
-                >
-                  {phase}
-                </span>
-              );
-            })}
           </div>
         </div>
 

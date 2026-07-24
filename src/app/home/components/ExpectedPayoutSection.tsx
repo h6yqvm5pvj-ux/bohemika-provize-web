@@ -120,7 +120,6 @@ export function ExpectedPayoutSection({
           </div>
 
           <LoadingProgressPanel
-            language={language}
             title={copy.loadingTitle}
             stage={loadingStage}
             progress={clampedLoadingProgress}

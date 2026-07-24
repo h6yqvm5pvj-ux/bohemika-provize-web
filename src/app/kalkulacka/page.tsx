@@ -6877,7 +6877,11 @@ export default function CalculatorPage() {
 
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
-        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <header
+          className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${
+            !hasSelectedProduct ? "mx-auto w-full max-w-4xl" : ""
+          }`}
+        >
           <SplitTitle text={headerTitle} className="!text-slate-900" />
           {!tipsterModeEnabled && (
             <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">

@@ -95,23 +95,21 @@ export function CalculatorProductAndPdfSection({
 
   if (large) {
     return (
-      <section className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-4 shadow-[0_28px_80px_rgba(15,23,42,0.12)] sm:p-5">
+      <section className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_34px_110px_rgba(15,23,42,0.12)]">
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#2563eb_48%,#14b8a6_100%)]"
+          className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-1 bg-[linear-gradient(90deg,#020617_0%,#d946ef_58%,#ec4899_100%)]"
           aria-hidden="true"
         />
 
         <div
-          className={`grid gap-4 ${
-            canImportFromPdf ? "lg:grid-cols-[1.02fr_0.98fr]" : "lg:grid-cols-1"
+          className={`grid ${
+            canImportFromPdf ? "lg:grid-cols-[1.1fr_0.9fr]" : "lg:grid-cols-1"
           }`}
         >
           {canImportFromPdf && (
             <div
-              className={`relative flex min-h-[15rem] w-full flex-col justify-between rounded-[1.55rem] border-2 border-dashed p-5 transition sm:p-6 ${
-                pdfDropActive
-                  ? "border-slate-900 bg-slate-100 shadow-[0_22px_46px_rgba(15,23,42,0.14)]"
-                  : "border-slate-300 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] hover:border-slate-400"
+              className={`relative flex min-h-[19rem] w-full flex-col justify-between p-6 transition sm:p-7 ${
+                pdfDropActive ? "bg-fuchsia-50/55" : "bg-white hover:bg-slate-50/70"
               }`}
               onDragEnter={onDragEnter}
               onDragOver={onDragOver}
@@ -119,32 +117,33 @@ export function CalculatorProductAndPdfSection({
               onDrop={onDrop}
             >
               <div className="flex items-start justify-between gap-4">
-                <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm">
-                  <UploadCloud size={24} strokeWidth={2.2} aria-hidden="true" />
+                <span
+                  className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border bg-white text-slate-950 shadow-[0_12px_26px_rgba(15,23,42,0.09)] ${
+                    pdfDropActive ? "border-fuchsia-300" : "border-slate-200"
+                  }`}
+                >
+                  <UploadCloud size={27} strokeWidth={2.2} aria-hidden="true" />
                 </span>
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 shadow-sm">
+                <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-xs font-bold uppercase text-fuchsia-700 shadow-sm">
                   PDF import
                 </span>
               </div>
 
               <div>
-                <h3 className="text-3xl font-black leading-none tracking-normal text-slate-950 sm:text-4xl">
-                  Nahrát smlouvu
-                </h3>
-                <p className="mt-3 max-w-md text-sm font-semibold leading-6 text-slate-600">
-                  Přetáhni PDF sem, nebo ho vyber ze souborů.
+                <p className="max-w-md text-4xl font-black leading-none text-slate-950 sm:text-5xl">
+                  Přetáhni smlouvu sem
+                </p>
+                <p className="mt-4 max-w-md text-sm font-semibold leading-6 text-slate-600">
+                  nebo vyber PDF soubor ze zařízení.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-xs font-semibold text-slate-500">
-                  Soubor zůstane připravený k přiložení.
-                </span>
+              <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={onOpenFileDialog}
                   disabled={pdfImporting}
-                  className="ui-btn-primary ui-focus inline-flex shrink-0 items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-[0_18px_34px_rgba(15,23,42,0.2)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
                 >
                   <UploadCloud size={18} strokeWidth={2.2} className="shrink-0" aria-hidden="true" />
                   {pdfImporting ? "Načítám…" : "Nahrát PDF"}
@@ -163,14 +162,18 @@ export function CalculatorProductAndPdfSection({
           <button
             type="button"
             onClick={onToggleProductPicker}
-            className="group relative isolate flex min-h-[15rem] w-full flex-col justify-between overflow-hidden rounded-[1.55rem] border border-slate-900 bg-slate-950 p-5 text-left text-white shadow-[0_22px_46px_rgba(15,23,42,0.22)] outline-none transition hover:-translate-y-0.5 hover:shadow-[0_28px_56px_rgba(15,23,42,0.26)] focus:ring-2 focus:ring-slate-900 sm:p-6"
+            className="group relative isolate flex min-h-[19rem] w-full flex-col justify-between overflow-hidden bg-slate-950 p-6 text-left text-white outline-none transition hover:bg-slate-900 focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 sm:p-7"
           >
             <span
-              className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,#111827_0%,#0f172a_48%,#172554_100%)]"
+              className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,#020617_0%,#0f172a_52%,#160934_100%)]"
               aria-hidden="true"
             />
             <span
-              className="pointer-events-none absolute inset-0 opacity-[0.18] [background-image:linear-gradient(rgba(255,255,255,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.2)_1px,transparent_1px)] [background-size:28px_28px]"
+              className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.18)_1px,transparent_1px)] [background-size:28px_28px]"
+              aria-hidden="true"
+            />
+            <span
+              className="pointer-events-none absolute inset-y-0 right-0 w-px bg-white/12"
               aria-hidden="true"
             />
             {hasProductLogo && productLogoSrc && (
@@ -189,36 +192,36 @@ export function CalculatorProductAndPdfSection({
             )}
 
             <span className="relative z-[1] flex items-start justify-between gap-4">
-              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+              <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
                 {hasProductLogo && productLogoSrc ? (
-                  <span className="relative h-8 w-8 overflow-hidden rounded-lg bg-white">
+                  <span className="relative h-9 w-9 overflow-hidden rounded-xl bg-white">
                     <Image src={productLogoSrc} alt="" fill className={selectedLogoImageClass} />
                   </span>
                 ) : (
-                  <Package size={24} strokeWidth={2.2} aria-hidden="true" />
+                  <Package size={27} strokeWidth={2.2} aria-hidden="true" />
                 )}
               </span>
-              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-sky-100 shadow-sm">
+              <span className="rounded-full border border-fuchsia-300/35 bg-fuchsia-400/14 px-3 py-1 text-xs font-bold uppercase text-fuchsia-100">
                 Produkt
               </span>
             </span>
 
             <span className="relative z-[1] block">
-              <span className="block text-3xl font-black leading-none tracking-normal text-white sm:text-4xl">
+              <span className="block max-w-sm text-4xl font-black leading-none text-white sm:text-5xl">
                 {productSelected ? currentProductLabel : "Vybrat produkt"}
               </span>
-              <span className="mt-3 block max-w-md text-sm font-semibold leading-6 text-sky-100/85">
+              <span className="mt-4 block max-w-md text-sm font-semibold leading-6 text-white/70">
                 Zvol produkt ze seznamu a odemkni kalkulačku.
               </span>
             </span>
 
             <span className="relative z-[1] flex items-center justify-between gap-3">
-              <span className="text-xs font-semibold text-sky-100/70">
-                {labelText}
+              <span className="text-xs font-semibold text-white/58">
+                {productSelected ? "Vybraný produkt" : "Produkt není vybraný"}
               </span>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white shadow-sm transition group-hover:bg-white group-hover:text-slate-950">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white shadow-sm transition group-hover:bg-white group-hover:text-slate-950">
                 <ChevronDown
-                  size={21}
+                  size={22}
                   strokeWidth={2.3}
                   className={`transition ${productOpen ? "rotate-180" : ""}`}
                   aria-hidden="true"
@@ -229,7 +232,7 @@ export function CalculatorProductAndPdfSection({
         </div>
 
         {(pdfImporting || pdfImportStatus || pdfImportError) && (
-          <div className="mt-4 space-y-2">
+          <div className="space-y-2 border-t border-slate-200 bg-white px-6 py-4 sm:px-7">
             {pdfImporting ? (
               <PdfImportProgressBar large />
             ) : pdfImportStatus ? (

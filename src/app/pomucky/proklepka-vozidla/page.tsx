@@ -41,9 +41,10 @@ const headingFont = Space_Grotesk({
 });
 
 const VEHICLE_LOADING_PHASES = [
-  "Napojení na registry vozidel a kontrola VIN",
-  "Prověřuji historii STK, nájezdu a vlastníků",
-  "Sestavuji finální přehled a odhad ceny",
+  "Načítám data z STK",
+  "Načítám vlastníky a provozovatele",
+  "Skládám technická data vozidla",
+  "Počítám tržní cenu",
 ] as const;
 
 type VehicleData = Record<string, unknown>;
@@ -1726,73 +1727,154 @@ function TechnicalSection({ section }: { section: SpecSection }) {
   );
 }
 
-function VehicleAuditLoadingState({ phaseIndex }: { phaseIndex: number }) {
+function VehicleAuditLoadingState({
+  phaseIndex,
+  progress,
+}: {
+  phaseIndex: number;
+  progress: number;
+}) {
   const safePhaseIndex = clamp(phaseIndex, 0, VEHICLE_LOADING_PHASES.length - 1);
-  const progressPct = ((safePhaseIndex + 1) / VEHICLE_LOADING_PHASES.length) * 100;
+  const progressPct = clamp(Math.round(progress), 0, 99);
+  const phase = VEHICLE_LOADING_PHASES[safePhaseIndex];
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 via-white to-sky-50/60 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-      <div className="pointer-events-none absolute -left-20 top-8 h-36 w-36 rounded-full bg-emerald-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -right-20 bottom-0 h-36 w-36 rounded-full bg-sky-200/40 blur-3xl" />
+    <section className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)]">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_36%,#fff1ff_36%,#fff8ff_56%,#ffffff_56%,#ffffff_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#bd00c9_56%,#ff79f2_100%)]" />
 
-      <div className="relative">
-        <div className="flex items-start gap-4">
-          <div className="relative mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-white shadow-sm">
-            <span className="absolute inset-0 rounded-2xl border border-emerald-300/70 motion-safe:animate-ping" />
-            <CarFront className="h-5 w-5 text-emerald-700 motion-safe:animate-bounce" />
+      <div className="relative grid min-h-[390px] gap-8 px-7 py-8 sm:px-10 sm:py-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
+        <div className="min-w-0">
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-700 shadow-[0_10px_24px_rgba(189,0,201,0.1)]">
+            <CarFront className="h-3.5 w-3.5" />
+            Proklepka vozidla
           </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
-              <Loader2 className="h-4 w-4 text-emerald-700 motion-safe:animate-spin" />
-              Načítám data o vozidle
-            </div>
-            <p className="mt-1 text-sm text-slate-600">{VEHICLE_LOADING_PHASES[safePhaseIndex]}</p>
+          <div className="mt-8 flex items-end gap-2">
+            <span className="text-[92px] font-black leading-[0.82] tracking-tight text-black sm:text-[122px]">
+              {progressPct}
+            </span>
+            <span className="pb-2 text-4xl font-black leading-none text-[#bd00c9] sm:text-5xl">
+              %
+            </span>
+          </div>
 
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-emerald-100/90">
+          <div className="mt-7 space-y-2">
+            <h2 className="text-3xl font-black leading-tight tracking-tight text-black sm:text-4xl">
+              Prověřuji vozidlo
+            </h2>
+            <p className="min-h-[28px] text-base font-bold text-slate-500 sm:text-lg">
+              {phase}
+            </p>
+          </div>
+
+          <div className="mt-8 max-w-md">
+            <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100 shadow-inner">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-sky-500 transition-[width] duration-500 ease-out"
+                className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#bd00c9_62%,#ff79f2_100%)] transition-[width] duration-300 ease-out"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
+            <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(189,0,201,0.34),rgba(2,6,23,0))]" />
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
-          {VEHICLE_LOADING_PHASES.map((phase, idx) => {
-            const isActive = idx === safePhaseIndex;
-            const isDone = idx < safePhaseIndex;
-            return (
-              <div
-                key={phase}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
-                  isActive
-                    ? "border-emerald-300 bg-white text-emerald-900 shadow-sm"
-                    : isDone
-                      ? "border-emerald-200 bg-emerald-50/80 text-emerald-800"
-                      : "border-slate-200 bg-white/80 text-slate-500"
-                }`}
-              >
-                <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isActive || isDone ? "bg-emerald-500" : "bg-slate-300"}`}>
-                  {isActive && <span className="absolute inset-0 rounded-full bg-emerald-400 motion-safe:animate-ping" />}
-                </span>
-                <span className="truncate font-medium">{phase}</span>
-              </div>
-            );
-          })}
-        </div>
+        <div className="relative flex min-h-[270px] items-center justify-center overflow-hidden px-5 py-8">
+          <div className="absolute inset-0 opacity-[0.34] [background-image:linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:34px_34px]" />
+          <div className="absolute inset-x-8 bottom-10 h-3 rounded-full bg-slate-950/10 blur-md" />
 
-        <div className="mt-5 space-y-3">
-          <div className="h-7 w-2/5 rounded-xl bg-slate-200/90 motion-safe:animate-pulse" />
-          <div className="h-5 w-3/5 rounded-xl bg-slate-200/90 motion-safe:animate-pulse" />
-          <div className="grid gap-3 md:grid-cols-5">
-            {Array.from({ length: 5 }).map((_, idx) => (
-              <div
-                key={`vehicle-loading-tile-${idx}`}
-                className="h-24 rounded-2xl border border-white/80 bg-white/70 shadow-sm motion-safe:animate-pulse"
-                style={{ animationDelay: `${idx * 120}ms` }}
-              />
-            ))}
+          <div className="relative h-[230px] w-full max-w-[560px]">
+            <svg
+              viewBox="0 0 560 240"
+              className="absolute inset-0 h-full w-full overflow-visible"
+              aria-hidden="true"
+            >
+              <defs>
+                <linearGradient id="vehicle-loader-body" x1="86" y1="64" x2="484" y2="178" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stopColor="#020617" />
+                  <stop offset="0.52" stopColor="#111827" />
+                  <stop offset="1" stopColor="#020617" />
+                </linearGradient>
+                <linearGradient id="vehicle-loader-window" x1="200" y1="64" x2="378" y2="120" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.96" />
+                  <stop offset="1" stopColor="#e5e7eb" stopOpacity="0.86" />
+                </linearGradient>
+                <linearGradient id="vehicle-loader-fuchsia" x1="108" y1="139" x2="164" y2="139" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stopColor="#ff79f2" />
+                  <stop offset="1" stopColor="#bd00c9" />
+                </linearGradient>
+                <filter id="vehicle-loader-shadow" x="-8%" y="-24%" width="116%" height="156%">
+                  <feDropShadow dx="0" dy="20" stdDeviation="18" floodColor="#020617" floodOpacity="0.22" />
+                </filter>
+                <filter id="vehicle-loader-glow" x="-80%" y="-80%" width="260%" height="260%">
+                  <feGaussianBlur stdDeviation="6" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+
+              <ellipse cx="282" cy="204" rx="218" ry="16" fill="#020617" opacity="0.1" />
+              <g filter="url(#vehicle-loader-shadow)">
+                <path
+                  d="M83 148c3-31 20-45 54-45h33l44-49c13-14 31-21 54-21h91c24 0 41 9 53 27l26 40h24c27 0 45 13 52 38l7 29c4 17-8 34-25 34H72c-15 0-26-13-23-27l4-18c3-6 13-8 30-8Z"
+                  fill="url(#vehicle-loader-body)"
+                />
+                <path
+                  d="M195 101l35-38c8-8 19-13 33-13h32v51H195Z"
+                  fill="url(#vehicle-loader-window)"
+                />
+                <path
+                  d="M314 50h42c14 0 25 6 33 18l22 33h-97V50Z"
+                  fill="url(#vehicle-loader-window)"
+                />
+                <path
+                  d="M306 50v51"
+                  stroke="#020617"
+                  strokeOpacity="0.35"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M228 59c9-8 20-12 34-12h94c14 0 26 7 35 19"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeOpacity="0.22"
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                />
+                <rect x="107" y="133" width="56" height="15" rx="7.5" fill="url(#vehicle-loader-fuchsia)" filter="url(#vehicle-loader-glow)" />
+                <rect x="456" y="132" width="44" height="15" rx="7.5" fill="#f8fafc" opacity="0.96" />
+                <path
+                  d="M178 129h45"
+                  stroke="#ffffff"
+                  strokeOpacity="0.13"
+                  strokeWidth="7"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M349 128h36"
+                  stroke="#ffffff"
+                  strokeOpacity="0.13"
+                  strokeWidth="7"
+                  strokeLinecap="round"
+                />
+                <circle cx="160" cy="190" r="43" fill="#020617" />
+                <circle cx="160" cy="190" r="26" fill="#ffffff" />
+                <circle cx="160" cy="190" r="12" fill="#cbd5e1" />
+                <circle cx="426" cy="190" r="43" fill="#020617" />
+                <circle cx="426" cy="190" r="26" fill="#ffffff" />
+                <circle cx="426" cy="190" r="12" fill="#cbd5e1" />
+              </g>
+            </svg>
+
+            <div className="vehicle-scan-lens absolute top-1/2 z-10 flex h-28 w-28 items-center justify-center rounded-full border border-fuchsia-300/80 bg-white/65 shadow-[0_22px_50px_rgba(189,0,201,0.2)] backdrop-blur-md">
+              <Search className="h-11 w-11 text-[#bd00c9]" strokeWidth={2.6} />
+              <span className="absolute -bottom-8 right-2 h-12 w-4 rotate-[-38deg] rounded-full bg-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.24)]" />
+            </div>
+
+            <div className="vehicle-scan-beam absolute top-[12%] z-[9] h-[76%] w-[2px] rounded-full bg-[#bd00c9] shadow-[0_0_18px_rgba(189,0,201,0.72),0_0_42px_rgba(255,121,242,0.45)]" />
           </div>
         </div>
       </div>
@@ -1817,6 +1899,7 @@ export default function VehicleAuditPage() {
   const [stkExpanded, setStkExpanded] = useState(false);
   const [ownersExpanded, setOwnersExpanded] = useState(false);
   const [loadingPhaseIndex, setLoadingPhaseIndex] = useState(0);
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
   const autoLookupVinRef = useRef<string | null>(null);
   const compactVinInputRef = useRef<HTMLInputElement | null>(null);
@@ -1844,12 +1927,33 @@ export default function VehicleAuditPage() {
   }, [vinFromQuery]);
 
   useEffect(() => {
-    if (!loading) return;
+    if (!loading) {
+      const resetFrame = window.requestAnimationFrame(() => {
+        setLoadingPhaseIndex(0);
+        setLoadingProgress(0);
+      });
+      return () => window.cancelAnimationFrame(resetFrame);
+    }
+
     setLoadingPhaseIndex(0);
-    const interval = window.setInterval(() => {
+    setLoadingProgress(7);
+
+    const phaseInterval = window.setInterval(() => {
       setLoadingPhaseIndex((current) => (current + 1) % VEHICLE_LOADING_PHASES.length);
-    }, 900);
-    return () => window.clearInterval(interval);
+    }, 1200);
+    const progressInterval = window.setInterval(() => {
+      setLoadingProgress((current) => {
+        if (current < 34) return Math.min(current + 5, 34);
+        if (current < 68) return Math.min(current + 3, 68);
+        if (current < 92) return Math.min(current + 2, 92);
+        return Math.min(current + 1, 97);
+      });
+    }, 170);
+
+    return () => {
+      window.clearInterval(phaseInterval);
+      window.clearInterval(progressInterval);
+    };
   }, [loading]);
 
   const data = (result?.payload?.Data ?? null) as VehicleData | null;
@@ -2849,7 +2953,10 @@ export default function VehicleAuditPage() {
 
         {searchActivated && loading && (
           <div className="vehicle-reveal" style={revealStyle(60)}>
-            <VehicleAuditLoadingState phaseIndex={loadingPhaseIndex} />
+            <VehicleAuditLoadingState
+              phaseIndex={loadingPhaseIndex}
+              progress={loadingProgress}
+            />
           </div>
         )}
 
@@ -3197,6 +3304,44 @@ export default function VehicleAuditPage() {
           }
         }
 
+        @keyframes vehicle-scan-lens-move {
+          0% {
+            left: 9%;
+            transform: translate3d(0, -50%, 0) rotate(-9deg) scale(0.98);
+          }
+          42% {
+            left: 49%;
+            transform: translate3d(-50%, -50%, 0) rotate(2deg) scale(1.03);
+          }
+          74% {
+            left: 76%;
+            transform: translate3d(-50%, -50%, 0) rotate(-4deg) scale(1);
+          }
+          100% {
+            left: 9%;
+            transform: translate3d(0, -50%, 0) rotate(-9deg) scale(0.98);
+          }
+        }
+
+        @keyframes vehicle-scan-beam-move {
+          0% {
+            left: 12%;
+            opacity: 0.3;
+          }
+          42% {
+            left: 49%;
+            opacity: 0.95;
+          }
+          74% {
+            left: 78%;
+            opacity: 0.65;
+          }
+          100% {
+            left: 12%;
+            opacity: 0.3;
+          }
+        }
+
         .vehicle-audit-shell {
           position: relative;
           isolation: isolate;
@@ -3251,6 +3396,17 @@ export default function VehicleAuditPage() {
           animation: none;
         }
 
+        .vehicle-scan-lens {
+          left: 49%;
+          transform: translate3d(-50%, -50%, 0);
+          animation: vehicle-scan-lens-move 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        }
+
+        .vehicle-scan-beam {
+          left: 49%;
+          animation: vehicle-scan-beam-move 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        }
+
         :root[data-motion="off"] .vehicle-audit-shell::before,
         :root[data-motion="off"] .vehicle-reveal,
         :root[data-motion="off"] .vehicle-float,
@@ -3259,6 +3415,21 @@ export default function VehicleAuditPage() {
           animation: none !important;
           opacity: 1 !important;
           transform: none !important;
+          filter: none !important;
+        }
+
+        :root[data-motion="off"] .vehicle-scan-lens {
+          left: 49% !important;
+          animation: none !important;
+          opacity: 1 !important;
+          transform: translate3d(-50%, -50%, 0) !important;
+          filter: none !important;
+        }
+
+        :root[data-motion="off"] .vehicle-scan-beam {
+          left: 49% !important;
+          animation: none !important;
+          opacity: 0.8 !important;
           filter: none !important;
         }
 
@@ -3271,6 +3442,21 @@ export default function VehicleAuditPage() {
             animation: none !important;
             opacity: 1 !important;
             transform: none !important;
+            filter: none !important;
+          }
+
+          .vehicle-scan-lens {
+            left: 49% !important;
+            animation: none !important;
+            opacity: 1 !important;
+            transform: translate3d(-50%, -50%, 0) !important;
+            filter: none !important;
+          }
+
+          .vehicle-scan-beam {
+            left: 49% !important;
+            animation: none !important;
+            opacity: 0.8 !important;
             filter: none !important;
           }
         }

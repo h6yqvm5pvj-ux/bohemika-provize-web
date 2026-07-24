@@ -81,6 +81,10 @@ const CACHE_TTL_SEARCH_MS = 120_000;
 const CACHE_TTL_DETAIL_MS = 180_000;
 const CACHE_TTL_SUGGEST_MS = 45_000;
 const CACHE_MAX_ITEMS = 500;
+const SMART_SEARCH_TIMEOUT_MS = 24_000;
+const ADDRESS_LOOKUP_TIMEOUT_MS = 7_000;
+const DETAIL_LOOKUP_TIMEOUT_MS = 8_000;
+const SUGGEST_LOOKUP_TIMEOUT_MS = 5_000;
 
 const CUZK_CACHE = Symbol.for("bohemika.cuzk.cache");
 type CacheEntry = {
@@ -205,6 +209,21 @@ function ensureConfiguredEndpoint(url: string, name: string): string {
     );
   }
   return url;
+}
+
+function buildCuzkTimeoutError(): Error & { status?: number } {
+  return Object.assign(
+    new Error(
+      "ČÚZK odpovídá příliš dlouho. Zkus dotaz znovu, případně vyber přesnou adresu z našeptávače."
+    ),
+    { status: 504 }
+  );
+}
+
+function remainingTimeoutMs(deadlineAt: number, maxMs: number): number {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw buildCuzkTimeoutError();
+  return Math.max(1_000, Math.min(maxMs, remaining));
 }
 
 function appendIfPresent(
@@ -649,19 +668,28 @@ function readErrorMessage(
     (payload &&
       (payload.message || payload.error || payload.detail || payload.reason)) ??
     fallback;
-  return String(message);
+  const normalized = String(message).trim();
+  if (normalized.toUpperCase() === "CUZK_CALL_FAILED") {
+    return "ČÚZK teď nevrátil data pro zadanou adresu. Zkus vybrat konkrétní adresu z našeptávače, případně dotaz za chvíli zopakuj.";
+  }
+  return normalized;
 }
 
 async function lookupByAdresniMisto(
   kod: number,
   includeUnits: boolean,
-  token: string
+  token: string,
+  timeoutMs = 18_000
 ): Promise<unknown> {
   const baseUrl = ensureConfiguredEndpoint(CUZK_DETAIL_URL, "CUZK_FN_URL");
   const url = new URL(baseUrl);
   url.searchParams.set("kod", String(kod));
   url.searchParams.set("includeUnits", includeUnits ? "1" : "0");
-  const { ok, status, body } = await fetchJsonWithAuth(url.toString(), token, 18_000);
+  const { ok, status, body } = await fetchJsonWithAuth(
+    url.toString(),
+    token,
+    timeoutMs
+  );
   if (!ok) {
     throw Object.assign(
       new Error(readErrorMessage(body, `Chyba při volání ČÚZK (${status})`)),
@@ -674,7 +702,8 @@ async function lookupByAdresniMisto(
 async function lookupByAddress(
   query: string | CuzkAddressLookupQuery,
   includeUnits: boolean,
-  token: string
+  token: string,
+  timeoutMs = 18_000
 ): Promise<any> {
   const baseUrl = ensureConfiguredEndpoint(
     CUZK_ADDRESS_URL,
@@ -715,7 +744,11 @@ async function lookupByAddress(
     if (pickFirst !== undefined) appendIfPresent(url.searchParams, "pickFirst", pickFirst);
   }
 
-  const { ok, status, body } = await fetchJsonWithAuth(url.toString(), token, 18_000);
+  const { ok, status, body } = await fetchJsonWithAuth(
+    url.toString(),
+    token,
+    timeoutMs
+  );
   if (!ok) {
     throw Object.assign(
       new Error(readErrorMessage(body, `Chyba při hledání adresy (${status})`)),
@@ -727,7 +760,8 @@ async function lookupByAddress(
 
 async function suggestAddress(
   query: string,
-  token: string
+  token: string,
+  timeoutMs = 7_000
 ): Promise<any> {
   const q = String(query ?? "").trim();
   if (q.length < 2) return { ok: true, suggestions: [] };
@@ -737,7 +771,11 @@ async function suggestAddress(
   );
   const url = new URL(baseUrl);
   url.searchParams.set("q", q);
-  const { ok, status, body } = await fetchJsonWithAuth(url.toString(), token, 7_000);
+  const { ok, status, body } = await fetchJsonWithAuth(
+    url.toString(),
+    token,
+    timeoutMs
+  );
   if (!ok) {
     throw Object.assign(
       new Error(readErrorMessage(body, `Chyba při našeptávání (${status})`)),
@@ -797,68 +835,52 @@ async function runSmartAddressSearch(
   }
 
   const hints = extractAddressSearchHints(rawQuery);
-  const structuredCandidates = parseStructuredAddressCandidates(rawQuery);
+  const structuredCandidates = parseStructuredAddressCandidates(rawQuery).slice(0, 3);
   const seenAddressKod = new Set<number>();
+  const deadlineAt = Date.now() + SMART_SEARCH_TIMEOUT_MS;
   let lastError: unknown = null;
+
+  const resolveLookupPayload = async (
+    data: any,
+    fallbackAddress: string
+  ): Promise<{ data: unknown; resolvedAddress?: string }> => {
+    if (data?.ok && data?.mode === "MULTI_MATCH" && Array.isArray(data?.matches)) {
+      const list = (data.matches as RuianMatch[]).slice().sort((a, b) => {
+        return scoreMatchForAddressHints(b, hints) - scoreMatchForAddressHints(a, hints);
+      });
+      const best = list.find((item) => {
+        const kod = Number(item?.kod ?? 0);
+        return Number.isFinite(kod) && kod > 0;
+      });
+      if (best) {
+        const detail = await lookupByAdresniMisto(
+          Number(best.kod),
+          includeUnits,
+          token,
+          remainingTimeoutMs(deadlineAt, DETAIL_LOOKUP_TIMEOUT_MS)
+        );
+        return { data: detail, resolvedAddress: best.adresa || fallbackAddress };
+      }
+    }
+
+    return {
+      data,
+      resolvedAddress: String(data?.match?.adresa ?? fallbackAddress),
+    };
+  };
 
   for (const structured of structuredCandidates) {
     try {
-      const data: any = await lookupByAddress(structured, includeUnits, token);
-      if (data?.ok && data?.mode === "MULTI_MATCH" && Array.isArray(data?.matches)) {
-        const list = (data.matches as RuianMatch[]).slice().sort((a, b) => {
-          return scoreMatchForAddressHints(b, hints) - scoreMatchForAddressHints(a, hints);
-        });
-        const best = list.find((item) => {
-          const kod = Number(item?.kod ?? 0);
-          return Number.isFinite(kod) && kod > 0;
-        });
-        if (best) {
-          const detail = await lookupByAdresniMisto(
-            Number(best.kod),
-            includeUnits,
-            token
-          );
-          return {
-            data: detail,
-            resolvedAddress:
-              best.adresa || String(structured.q ?? structured.obec ?? rawQuery),
-          };
-        }
-      } else {
-        return {
-          data,
-          resolvedAddress: String(
-            data?.match?.adresa ?? structured.q ?? structured.obec ?? rawQuery
-          ),
-        };
-      }
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  for (const candidate of candidates) {
-    try {
-      const data: any = await lookupByAddress(candidate, includeUnits, token);
-      if (data?.ok && data?.mode === "MULTI_MATCH" && Array.isArray(data?.matches)) {
-        const list = (data.matches as RuianMatch[]).slice().sort((a, b) => {
-          return scoreMatchForAddressHints(b, hints) - scoreMatchForAddressHints(a, hints);
-        });
-        const best = list.find((item) => {
-          const kod = Number(item?.kod ?? 0);
-          return Number.isFinite(kod) && kod > 0;
-        });
-        if (best) {
-          const detail = await lookupByAdresniMisto(
-            Number(best.kod),
-            includeUnits,
-            token
-          );
-          return { data: detail, resolvedAddress: best.adresa || candidate };
-        }
-      } else {
-        return { data, resolvedAddress: String(data?.match?.adresa ?? candidate) };
-      }
+      const data: any = await lookupByAddress(
+        structured,
+        includeUnits,
+        token,
+        remainingTimeoutMs(deadlineAt, ADDRESS_LOOKUP_TIMEOUT_MS)
+      );
+      return await resolveLookupPayload(
+        data,
+        String(structured.q ?? structured.obec ?? rawQuery)
+      );
     } catch (err) {
       lastError = err;
     }
@@ -867,29 +889,52 @@ async function runSmartAddressSearch(
   const suggestQueries = Array.from(
     new Set(
       candidates
-        .slice(0, 5)
+        .slice(0, 4)
         .flatMap((candidate) => normalizeSuggestQueryVariants(candidate))
     )
-  ).slice(0, 10);
+  ).slice(0, 6);
 
   for (const suggestQuery of suggestQueries) {
     try {
-      const suggestData = await suggestAddress(suggestQuery, token);
+      const suggestData = await suggestAddress(
+        suggestQuery,
+        token,
+        remainingTimeoutMs(deadlineAt, SUGGEST_LOOKUP_TIMEOUT_MS)
+      );
       const suggestMatches = normalizeSuggestPayload(suggestData).sort((a, b) => {
         return scoreMatchForAddressHints(b, hints) - scoreMatchForAddressHints(a, hints);
       });
 
-      for (const match of suggestMatches) {
+      for (const match of suggestMatches.slice(0, 3)) {
         const kod = Number(match.kod ?? 0);
         if (!Number.isFinite(kod) || kod <= 0 || seenAddressKod.has(kod)) continue;
         seenAddressKod.add(kod);
         try {
-          const detail = await lookupByAdresniMisto(kod, includeUnits, token);
+          const detail = await lookupByAdresniMisto(
+            kod,
+            includeUnits,
+            token,
+            remainingTimeoutMs(deadlineAt, DETAIL_LOOKUP_TIMEOUT_MS)
+          );
           return { data: detail, resolvedAddress: match.adresa || suggestQuery };
         } catch (err) {
           lastError = err;
         }
       }
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  for (const candidate of candidates.slice(0, 3)) {
+    try {
+      const data: any = await lookupByAddress(
+        candidate,
+        includeUnits,
+        token,
+        remainingTimeoutMs(deadlineAt, ADDRESS_LOOKUP_TIMEOUT_MS)
+      );
+      return await resolveLookupPayload(data, candidate);
     } catch (err) {
       lastError = err;
     }

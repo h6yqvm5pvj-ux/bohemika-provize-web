@@ -56,6 +56,8 @@ type CuzkSearchApiError = {
   error?: string;
 };
 
+const CUZK_CLIENT_TIMEOUT_MS = 30_000;
+
 function normalizeSpaces(value: string): string {
   return String(value ?? "")
     .replace(/\s+/g, " ")
@@ -75,10 +77,29 @@ async function callCuzkSearchApi(
   params: Record<string, string>
 ): Promise<CuzkSearchApiSuccess> {
   const searchParams = new URLSearchParams(params);
-  const payload = await fetchAuthedJsonOrThrow<CuzkSearchApiSuccess | CuzkSearchApiError>(
-    user,
-    `/api/cuzk/search?${searchParams.toString()}`
+  const controller = new AbortController();
+  const timer = window.setTimeout(
+    () => controller.abort(),
+    CUZK_CLIENT_TIMEOUT_MS
   );
+
+  let payload: CuzkSearchApiSuccess | CuzkSearchApiError;
+  try {
+    payload = await fetchAuthedJsonOrThrow<
+      CuzkSearchApiSuccess | CuzkSearchApiError
+    >(user, `/api/cuzk/search?${searchParams.toString()}`, {
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      throw new Error(
+        "ČÚZK odpovídá příliš dlouho. Zkus dotaz znovu, případně vyber přesnou adresu z našeptávače."
+      );
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timer);
+  }
 
   if (payload && typeof payload === "object" && (payload as CuzkSearchApiSuccess).ok) {
     return payload as CuzkSearchApiSuccess;
@@ -364,78 +385,243 @@ function SummaryPill({
 }
 
 const CUZK_LOADING_PHASES = [
-  "Připojuji se na služby ČÚZK a RÚIAN",
-  "Ověřuji adresu a páruji stavební objekt",
-  "Stahuji detail stavby, parcel a jednotek",
+  "Načítám adresu z RÚIAN",
+  "Ověřuji stavební objekt",
+  "Stahuji parcely a jednotky",
+  "Skládám přehled nemovitosti",
 ] as const;
 
 function CuzkLookupLoadingState({
   phaseIndex,
+  progress,
   query,
 }: {
   phaseIndex: number;
+  progress: number;
   query: string;
 }) {
   const safePhaseIndex = Math.max(0, Math.min(phaseIndex, CUZK_LOADING_PHASES.length - 1));
-  const progressPct = ((safePhaseIndex + 1) / CUZK_LOADING_PHASES.length) * 100;
+  const progressPct = Math.max(0, Math.min(99, Math.round(progress)));
+  const phase = CUZK_LOADING_PHASES[safePhaseIndex];
   const queryLabel = query.trim() ? query.trim() : "vybranou adresu";
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-sky-200/80 bg-gradient-to-br from-sky-50/70 via-white to-emerald-50/60 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-      <div className="pointer-events-none absolute -left-20 top-8 h-36 w-36 rounded-full bg-sky-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -right-20 bottom-0 h-36 w-36 rounded-full bg-emerald-200/40 blur-3xl" />
+    <>
+      <section className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)]">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_36%,#f0f9ff_36%,#f8fdff_56%,#ffffff_56%,#ffffff_100%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#0284c7_52%,#22d3ee_100%)]" />
 
-      <div className="relative">
-        <div className="flex items-start gap-4">
-          <div className="relative mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-200 bg-white shadow-sm">
-            <span className="absolute inset-0 rounded-2xl border border-sky-300/70 motion-safe:animate-ping" />
-            <Building2 className="h-5 w-5 text-sky-700 motion-safe:animate-pulse" />
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
-              <Loader2 className="h-4 w-4 text-sky-700 motion-safe:animate-spin" />
-              Načítám data z katastru
+        <div className="relative grid min-h-[390px] gap-8 px-7 py-8 sm:px-10 sm:py-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
+          <div className="min-w-0">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-sky-700 shadow-[0_10px_24px_rgba(2,132,199,0.1)]">
+              <Home className="h-3.5 w-3.5" />
+              Katastr
             </div>
-            <p className="mt-1 text-sm text-slate-600">{CUZK_LOADING_PHASES[safePhaseIndex]}</p>
-            <p className="mt-1 text-[12px] text-slate-500">
-              Dotaz: <span className="font-medium text-slate-700">{queryLabel}</span>
-            </p>
 
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-sky-100/90">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-sky-600 via-sky-500 to-emerald-500 transition-[width] duration-500 ease-out"
-                style={{ width: `${progressPct}%` }}
-              />
+            <div className="mt-8 flex items-end gap-2">
+              <span className="text-[92px] font-black leading-[0.82] tracking-tight text-black sm:text-[122px]">
+                {progressPct}
+              </span>
+              <span className="pb-2 text-4xl font-black leading-none text-sky-600 sm:text-5xl">
+                %
+              </span>
             </div>
-          </div>
-        </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
-          {CUZK_LOADING_PHASES.map((phase, idx) => {
-            const isActive = idx === safePhaseIndex;
-            const isDone = idx < safePhaseIndex;
-            return (
-              <div
-                key={phase}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
-                  isActive
-                    ? "border-sky-300 bg-white text-sky-900 shadow-sm"
-                    : isDone
-                      ? "border-emerald-200 bg-emerald-50/80 text-emerald-800"
-                      : "border-slate-200 bg-white/80 text-slate-500"
-                }`}
-              >
-                <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isActive || isDone ? "bg-sky-500" : "bg-slate-300"}`}>
-                  {isActive ? <span className="absolute inset-0 rounded-full bg-sky-400 motion-safe:animate-ping" /> : null}
-                </span>
-                <span className="truncate font-medium">{phase}</span>
+            <div className="mt-7 space-y-2">
+              <h2 className="text-3xl font-black leading-tight tracking-tight text-black sm:text-4xl">
+                Prověřuji nemovitost
+              </h2>
+              <p className="min-h-[28px] text-base font-bold text-slate-500 sm:text-lg">
+                {phase}
+              </p>
+              <p className="text-sm font-semibold text-slate-400">
+                Dotaz: <span className="text-slate-600">{queryLabel}</span>
+              </p>
+            </div>
+
+            <div className="mt-8 max-w-md">
+              <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100 shadow-inner">
+                <div
+                  className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#0284c7_62%,#22d3ee_100%)] transition-[width] duration-300 ease-out"
+                  style={{ width: `${progressPct}%` }}
+                />
               </div>
-            );
-          })}
+              <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(2,132,199,0.34),rgba(2,6,23,0))]" />
+            </div>
+          </div>
+
+          <div className="relative flex min-h-[270px] items-center justify-center overflow-hidden px-5 py-8">
+            <div className="absolute inset-0 opacity-[0.32] [background-image:linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:34px_34px]" />
+            <div className="absolute inset-x-10 bottom-10 h-4 rounded-full bg-slate-950/10 blur-md" />
+
+            <div className="relative h-[245px] w-full max-w-[540px]">
+              <svg
+                viewBox="0 0 540 260"
+                className="absolute inset-0 h-full w-full overflow-visible"
+                aria-hidden="true"
+              >
+                <defs>
+                  <linearGradient id="cuzk-loader-roof" x1="102" y1="84" x2="432" y2="84" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#020617" />
+                    <stop offset="0.58" stopColor="#111827" />
+                    <stop offset="1" stopColor="#020617" />
+                  </linearGradient>
+                  <linearGradient id="cuzk-loader-wall" x1="118" y1="122" x2="422" y2="224" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#ffffff" />
+                    <stop offset="1" stopColor="#eef2f7" />
+                  </linearGradient>
+                  <linearGradient id="cuzk-loader-window" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stopColor="#e0f2fe" />
+                    <stop offset="1" stopColor="#ffffff" />
+                  </linearGradient>
+                  <filter id="cuzk-loader-house-shadow" x="-8%" y="-20%" width="116%" height="150%">
+                    <feDropShadow dx="0" dy="20" stdDeviation="18" floodColor="#020617" floodOpacity="0.18" />
+                  </filter>
+                  <filter id="cuzk-loader-sky-glow" x="-80%" y="-80%" width="260%" height="260%">
+                    <feGaussianBlur stdDeviation="6" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+
+                <ellipse cx="270" cy="231" rx="202" ry="16" fill="#020617" opacity="0.1" />
+                <g filter="url(#cuzk-loader-house-shadow)">
+                  <path
+                    d="M92 121 270 34l178 87H92Z"
+                    fill="url(#cuzk-loader-roof)"
+                  />
+                  <path
+                    d="M123 116h294v101c0 12-10 22-22 22H145c-12 0-22-10-22-22V116Z"
+                    fill="url(#cuzk-loader-wall)"
+                    stroke="#cbd5e1"
+                    strokeWidth="3"
+                  />
+                  <path
+                    d="M270 34 92 121h356L270 34Z"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeOpacity="0.22"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <rect x="163" y="143" width="62" height="52" rx="12" fill="url(#cuzk-loader-window)" stroke="#cbd5e1" strokeWidth="3" />
+                  <rect x="315" y="143" width="62" height="52" rx="12" fill="url(#cuzk-loader-window)" stroke="#cbd5e1" strokeWidth="3" />
+                  <path d="M194 143v52M163 169h62M346 143v52M315 169h62" stroke="#bae6fd" strokeWidth="3" strokeLinecap="round" />
+                  <path
+                    d="M243 239v-69c0-9 7-16 16-16h22c9 0 16 7 16 16v69h-54Z"
+                    fill="#020617"
+                  />
+                  <circle cx="284" cy="198" r="4" fill="#22d3ee" filter="url(#cuzk-loader-sky-glow)" />
+                  <rect x="129" y="116" width="282" height="9" rx="4.5" fill="#0284c7" opacity="0.88" filter="url(#cuzk-loader-sky-glow)" />
+                  <path
+                    d="M110 122 270 43l160 79"
+                    fill="none"
+                    stroke="#020617"
+                    strokeOpacity="0.18"
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              </svg>
+
+              <div className="cuzk-house-lens absolute top-1/2 z-10 flex h-28 w-28 items-center justify-center rounded-full border border-sky-300/80 bg-white/68 shadow-[0_22px_50px_rgba(2,132,199,0.2)] backdrop-blur-md">
+                <Search className="h-11 w-11 text-sky-600" strokeWidth={2.6} />
+                <span className="absolute -bottom-8 right-2 h-12 w-4 rotate-[-38deg] rounded-full bg-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.24)]" />
+              </div>
+
+              <div className="cuzk-house-beam absolute top-[8%] z-[9] h-[80%] w-[2px] rounded-full bg-sky-500 shadow-[0_0_18px_rgba(2,132,199,0.72),0_0_42px_rgba(34,211,238,0.45)]" />
+            </div>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <style jsx global>{`
+        @keyframes cuzk-house-lens-move {
+          0% {
+            left: 11%;
+            transform: translate3d(0, -50%, 0) rotate(-8deg) scale(0.98);
+          }
+          42% {
+            left: 50%;
+            transform: translate3d(-50%, -50%, 0) rotate(2deg) scale(1.03);
+          }
+          74% {
+            left: 76%;
+            transform: translate3d(-50%, -50%, 0) rotate(-4deg) scale(1);
+          }
+          100% {
+            left: 11%;
+            transform: translate3d(0, -50%, 0) rotate(-8deg) scale(0.98);
+          }
+        }
+
+        @keyframes cuzk-house-beam-move {
+          0% {
+            left: 14%;
+            opacity: 0.3;
+          }
+          42% {
+            left: 50%;
+            opacity: 0.95;
+          }
+          74% {
+            left: 78%;
+            opacity: 0.65;
+          }
+          100% {
+            left: 14%;
+            opacity: 0.3;
+          }
+        }
+
+        .cuzk-house-lens {
+          left: 50%;
+          transform: translate3d(-50%, -50%, 0);
+          animation: cuzk-house-lens-move 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        }
+
+        .cuzk-house-beam {
+          left: 50%;
+          animation: cuzk-house-beam-move 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        }
+
+        :root[data-motion="off"] .cuzk-house-lens {
+          left: 50% !important;
+          animation: none !important;
+          opacity: 1 !important;
+          transform: translate3d(-50%, -50%, 0) !important;
+          filter: none !important;
+        }
+
+        :root[data-motion="off"] .cuzk-house-beam {
+          left: 50% !important;
+          animation: none !important;
+          opacity: 0.8 !important;
+          filter: none !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .cuzk-house-lens {
+            left: 50% !important;
+            animation: none !important;
+            opacity: 1 !important;
+            transform: translate3d(-50%, -50%, 0) !important;
+            filter: none !important;
+          }
+
+          .cuzk-house-beam {
+            left: 50% !important;
+            animation: none !important;
+            opacity: 0.8 !important;
+            filter: none !important;
+          }
+        }
+      `}</style>
+    </>
   );
 }
 
@@ -452,6 +638,7 @@ export default function CuzkPage() {
   const [result, setResult] = useState<unknown>(null);
   const [searchActivated, setSearchActivated] = useState(false);
   const [loadingPhaseIndex, setLoadingPhaseIndex] = useState(0);
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
   // našeptávač
   const [suggestions, setSuggestions] = useState<RuianMatch[]>([]);
@@ -486,12 +673,33 @@ export default function CuzkPage() {
   }, [addressFromQuery]);
 
   useEffect(() => {
-    if (!loading) return;
+    if (!loading) {
+      const resetFrame = window.requestAnimationFrame(() => {
+        setLoadingPhaseIndex(0);
+        setLoadingProgress(0);
+      });
+      return () => window.cancelAnimationFrame(resetFrame);
+    }
+
     setLoadingPhaseIndex(0);
-    const interval = window.setInterval(() => {
+    setLoadingProgress(7);
+
+    const phaseInterval = window.setInterval(() => {
       setLoadingPhaseIndex((current) => (current + 1) % CUZK_LOADING_PHASES.length);
-    }, 900);
-    return () => window.clearInterval(interval);
+    }, 1200);
+    const progressInterval = window.setInterval(() => {
+      setLoadingProgress((current) => {
+        if (current < 34) return Math.min(current + 5, 34);
+        if (current < 68) return Math.min(current + 3, 68);
+        if (current < 92) return Math.min(current + 2, 92);
+        return Math.min(current + 1, 97);
+      });
+    }, 170);
+
+    return () => {
+      window.clearInterval(phaseInterval);
+      window.clearInterval(progressInterval);
+    };
   }, [loading]);
 
   useEffect(() => {
@@ -1126,11 +1334,15 @@ export default function CuzkPage() {
 
         {searchActivated && loading && (
           <div className="cuzk-reveal" style={{ animationDelay: "120ms" }}>
-            <CuzkLookupLoadingState phaseIndex={loadingPhaseIndex} query={addressQuery} />
+            <CuzkLookupLoadingState
+              phaseIndex={loadingPhaseIndex}
+              progress={loadingProgress}
+              query={addressQuery}
+            />
           </div>
         )}
 
-        {searchActivated && (
+        {searchActivated && !loading && !error && (
           <>
             {/* Výsledek */}
             <section className="cuzk-reveal relative z-0 overflow-visible rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-6" style={{ animationDelay: "180ms" }}>
@@ -1155,11 +1367,7 @@ export default function CuzkPage() {
                 </div>
               </div>
 
-              {searchActivated && loading ? (
-                <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                  Výsledky se právě připravují…
-                </div>
-              ) : !hasAnyResult ? (
+              {!hasAnyResult ? (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   Zatím nic nezobrazuji. Zadej adresu a klikni na „Vyhledat“.
                 </div>

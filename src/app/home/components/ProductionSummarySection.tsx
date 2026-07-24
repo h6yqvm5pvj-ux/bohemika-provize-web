@@ -454,7 +454,6 @@ export function ProductionSummarySection({
       <section className={containerShellClass} data-fixed-box-theme="slate">
         <div className="relative z-10 flex h-full items-center">
           <LoadingProgressPanel
-            language={language}
             title={copy.loadingTitle}
             stage={loadingStage}
             progress={clampedLoadingProgress}

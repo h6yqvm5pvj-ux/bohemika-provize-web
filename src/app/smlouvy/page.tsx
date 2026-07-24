@@ -3857,8 +3857,13 @@ function ContractsPageContent() {
             }
           }}
         >
-          <div className="flex h-[min(960px,94vh)] w-[min(1520px,96vw)] flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_36px_92px_rgba(2,6,23,0.42)]">
-            <div className="flex shrink-0 items-center justify-end gap-2 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4">
+          <div className="flex h-[min(900px,92vh)] w-[min(1120px,92vw)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_36px_92px_rgba(2,6,23,0.42)]">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2 sm:px-4">
+              <div className="min-w-0 px-1">
+                <p className="truncate text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                  Detail smlouvy
+                </p>
+              </div>
               <div className="flex shrink-0 items-center gap-2">
                 <a
                   href={contractDetailWindow.pageHref}
