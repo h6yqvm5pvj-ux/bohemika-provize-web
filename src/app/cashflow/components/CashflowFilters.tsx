@@ -172,10 +172,10 @@ export function CashflowFilters({
   onContractNumberChange,
 }: CashflowFiltersProps) {
   const baseChip =
-    "ui-focus relative inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition duration-200";
+    "ui-focus relative inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition duration-200 sm:px-3.5 sm:py-2 sm:text-sm";
   const inactiveChip =
     "border-slate-200 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)] hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50";
-  const iconClass = "h-4 w-4";
+  const iconClass = "h-3.5 w-3.5 sm:h-4 sm:w-4";
   const foundPrefix = contractNumberMatchCount === 1 ? "Nalezena" : "Nalezeno";
   const searchResultLabel =
     contractNumberMatchCount === 0
@@ -197,14 +197,14 @@ export function CashflowFilters({
     : PRODUCT_FILTER_OPTIONS.filter((option) => option.value !== "subscription");
 
   return (
-    <section className="relative overflow-visible px-1 py-1">
-      <div className={`grid grid-cols-1 gap-4 ${hasTeam ? "xl:grid-cols-[0.95fr_1.2fr]" : ""}`}>
+    <section className="relative overflow-visible px-0 py-0 sm:px-1 sm:py-1">
+      <div className={`grid grid-cols-1 gap-3 sm:gap-4 ${hasTeam ? "xl:grid-cols-[0.95fr_1.2fr]" : ""}`}>
         {hasTeam ? (
           <div className="overflow-visible">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 sm:text-[11px] sm:tracking-[0.16em]">
               Filtrování smluv
             </p>
-            <div className="mt-2.5 flex flex-wrap gap-x-2 gap-y-3 pb-3 pt-1">
+            <div className="mt-2 -mx-2 flex flex-nowrap gap-2 overflow-x-auto px-2 pb-2 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-3">
               <button
                 type="button"
                 onClick={() => onScopeChange("combined")}
@@ -255,11 +255,11 @@ export function CashflowFilters({
         ) : null}
 
         <div className="overflow-visible">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 sm:text-[11px] sm:tracking-[0.16em]">
             Filtrování produktů
           </p>
-          <div className="mt-2.5 -mx-1 px-1">
-            <div className="flex flex-nowrap gap-2 overflow-x-auto pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible md:pb-3 md:pt-1">
+          <div className="mt-2 -mx-2 px-2 sm:-mx-1 sm:px-1">
+            <div className="flex flex-nowrap gap-2 overflow-x-auto pb-2 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible md:pb-3 md:pt-1">
               {productFilterOptions.map((option) => {
                 const Icon = PRODUCT_FILTER_ICONS[option.value];
                 const isActive = productFilter === option.value;
@@ -291,12 +291,12 @@ export function CashflowFilters({
         </div>
       </div>
 
-      <div className="mt-1 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(280px,390px)_minmax(0,1fr)] lg:items-end">
+      <div className="mt-0 grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-[minmax(280px,390px)_minmax(0,1fr)] lg:items-end">
         <label className="block min-w-0">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 sm:text-[11px] sm:tracking-[0.16em]">
             Číslo smlouvy
           </span>
-          <span className="relative mt-2.5 flex h-12 items-center">
+          <span className="relative mt-2 flex h-10 items-center sm:mt-2.5 sm:h-12">
             <Search
               className="pointer-events-none absolute left-3.5 h-4.5 w-4.5 text-slate-400"
               strokeWidth={2}
@@ -309,7 +309,7 @@ export function CashflowFilters({
               value={contractNumberQuery}
               onChange={(event) => onContractNumberChange(event.target.value)}
               placeholder="Zadej číslo smlouvy"
-              className="ui-focus h-full w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-11 font-mono text-[1.05rem] font-semibold text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.07)] outline-none transition placeholder:font-sans placeholder:text-sm placeholder:font-medium placeholder:text-slate-400 hover:border-slate-300 focus:border-[#a65af2] focus:ring-4 focus:ring-[#c084fc]/18"
+              className="ui-focus h-full w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-11 font-mono text-[0.95rem] font-semibold text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.06)] outline-none transition placeholder:font-sans placeholder:text-sm placeholder:font-medium placeholder:text-slate-400 hover:border-slate-300 focus:border-[#a65af2] focus:ring-4 focus:ring-[#c084fc]/18 sm:text-[1.05rem] sm:shadow-[0_10px_24px_rgba(15,23,42,0.07)]"
             />
             {contractNumberQuery.trim() ? (
               <button

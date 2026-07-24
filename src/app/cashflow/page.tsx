@@ -592,8 +592,8 @@ export default function CashflowPage() {
 
   return (
     <AppLayout active="cashflow">
-      <div className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
-        <div className="relative z-10 mx-auto w-full max-w-7xl space-y-5 px-3 sm:px-4 lg:px-6">
+      <div className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-1 pb-8 pt-1 sm:px-3 sm:pb-10 sm:pt-2`}>
+        <div className="relative z-10 mx-auto w-full max-w-7xl space-y-3 px-2 sm:space-y-5 sm:px-4 lg:px-6">
           {showInitialLoader ? (
             <CashflowInitialLoader
               completing={initialLoaderCompleting}
@@ -661,7 +661,7 @@ export default function CashflowPage() {
                 )}
               </div>
 
-              <aside className="rounded-[24px] border border-amber-200/80 bg-amber-50/90 px-5 py-4 text-sm leading-relaxed text-amber-950 shadow-[0_16px_38px_rgba(146,64,14,0.08)] backdrop-blur-lg">
+              <aside className="rounded-[20px] border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-xs leading-relaxed text-amber-950 shadow-[0_12px_28px_rgba(146,64,14,0.08)] backdrop-blur-lg sm:rounded-[24px] sm:px-5 sm:py-4 sm:text-sm sm:shadow-[0_16px_38px_rgba(146,64,14,0.08)]">
                 <p className="font-semibold">Upozornění k predikci cashflow</p>
                 <p className="mt-1">
                   Jedná se pouze o predikci na základě data sjednání, počátku a frekvencí

@@ -64,6 +64,15 @@
   user-select: none;
 }
 
+@media (max-width: 639px) {
+  .yearGhostCard::after {
+    left: -0.2rem;
+    top: -0.35rem;
+    font-size: clamp(4rem, 25vw, 6.2rem);
+    opacity: 0.82;
+  }
+}
+
 .monthCard {
   opacity: 0;
   transform: translate3d(0, 20px, 0) scale(0.992);
