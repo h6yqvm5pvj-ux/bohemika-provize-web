@@ -9,6 +9,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import { AdditionalRequirementSection } from "./AdditionalRequirementSection";
+
 const LIABILITY_REQUIREMENT_VARIANTS = [
   "Klientka požaduje i pojištění čisté finanční újmy, klientka si přeje územní platnost EU u odpovědnosti, dále si přeje roční platbu.",
   "Klientka si přeje spol. 5.000,-Kč, územní platnost: ČR + sousedící státy; čistá finanční újma 1.000 000,-Kč, roční platba, produkt SIMPLEX od ČPP ve variantě MAXI.",
@@ -143,6 +145,8 @@ function VariantList({ items }: { items: string[] }) {
 export function BusinessRecordForm() {
   return (
     <div className="space-y-4">
+      <AdditionalRequirementSection />
+
       <section className="overflow-hidden rounded-[28px] border border-amber-200 bg-[linear-gradient(180deg,#ffffff_0%,#fffbeb_100%)] shadow-[0_18px_44px_rgba(146,64,14,0.10)]">
         <div className="border-b border-amber-100 px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">
@@ -166,7 +170,7 @@ export function BusinessRecordForm() {
 
       <SectionShell
         eyebrow="Požadavky klienta"
-        title="Další požadavky, potřeby a cíle zákazníka"
+        title="Specifické varianty požadavků podle oblasti"
         description="Například výluky, čekací doby, klesající nebo neklesající pojistná částka, realokace investiční části a další specifika."
       >
         <div className="grid gap-3 lg:grid-cols-2">

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../firebase";
 import {
+  type CommissionMode,
   type PaymentFrequency,
   type Position,
   type Product,
@@ -12,6 +13,7 @@ import { totalWithMultipliers } from "../lib/commissionTotals";
 import { computeLegacyFrequencyOverrideTotal } from "../lib/managerOverrideTotals";
 import { generateCashflow } from "./generator";
 import {
+  CASHFLOW_FORECAST_YEARS,
   matchesProductFilter,
   stripTotalRows,
 } from "./helpers";
@@ -53,6 +55,7 @@ type ContractsApiResponse = {
   ok: boolean;
   error?: string;
   position?: Position | null;
+  commissionMode?: CommissionMode | null;
   hasTeam?: boolean;
   teamEmails?: string[];
   contracts?: (EntryDoc & { adviserEmail?: string | null })[];
@@ -107,6 +110,7 @@ type SubscriptionPaymentsApiResponse = {
 type RawContractsSnapshot = {
   email: string;
   myPosition: Position | null;
+  myCommissionMode: CommissionMode | null;
   hasAnyTeam: boolean;
   ownEntries: EntryDoc[];
   teamEntriesRaw: EntryDoc[];
@@ -430,13 +434,14 @@ async function fetchContractsSnapshot(
   type ScopeResult = {
     entries: EntryDoc[];
     positionHint: Position | null;
+    commissionModeHint: CommissionMode | null;
     hasTeamHint: boolean;
     teamEmailsHint: string[];
   };
 
   type ScopeFirstPageHint = Pick<
     ScopeResult,
-    "positionHint" | "hasTeamHint" | "teamEmailsHint"
+    "positionHint" | "commissionModeHint" | "hasTeamHint" | "teamEmailsHint"
   >;
 
   const collectScope = async (
@@ -450,6 +455,7 @@ async function fetchContractsSnapshot(
     let hasMore = true;
     let pages = 0;
     let positionHint: Position | null = null;
+    let commissionModeHint: CommissionMode | null = null;
     let hasTeamHint = false;
     let teamEmailsHint: string[] = [];
 
@@ -457,12 +463,15 @@ async function fetchContractsSnapshot(
       const response = await requestContracts(scope, cursor);
       if (pages === 0) {
         positionHint = (response.position as Position | null | undefined) ?? null;
+        commissionModeHint =
+          (response.commissionMode as CommissionMode | null | undefined) ?? null;
         hasTeamHint = Boolean(response.hasTeam);
         teamEmailsHint = Array.isArray(response.teamEmails)
           ? response.teamEmails.map((item) => normalizeEmail(item)).filter(Boolean)
           : [];
         onFirstPage?.({
           positionHint,
+          commissionModeHint,
           hasTeamHint,
           teamEmailsHint,
         });
@@ -521,6 +530,7 @@ async function fetchContractsSnapshot(
     return {
       entries,
       positionHint,
+      commissionModeHint,
       hasTeamHint,
       teamEmailsHint,
     };
@@ -552,6 +562,7 @@ async function fetchContractsSnapshot(
     return {
       email,
       myPosition: null,
+      myCommissionMode: null,
       hasAnyTeam: false,
       ownEntries: [],
       teamEntriesRaw: [],
@@ -566,6 +577,7 @@ async function fetchContractsSnapshot(
     }
   });
   const myPosition = ownResult.positionHint ?? null;
+  const myCommissionMode = ownResult.commissionModeHint ?? null;
   let teamEntriesRaw: EntryDoc[] = [];
   let hasAnyTeam =
     ownResult.hasTeamHint || (ownResult.teamEmailsHint?.length ?? 0) > 0;
@@ -591,6 +603,7 @@ async function fetchContractsSnapshot(
   return {
     email,
     myPosition,
+    myCommissionMode,
     hasAnyTeam,
     ownEntries: ownResult.entries,
     teamEntriesRaw,
@@ -742,6 +755,22 @@ export function useCashflowData({
     if (!enabled || !snapshot || !snapshotMatchesCurrentUser) return [];
 
     const email = snapshot.email;
+    const predictionModeForEntry = (
+      entry: EntryDoc,
+      source: "own" | "manager"
+    ): CommissionMode =>
+      source === "manager" && matchesProductFilter(entry.productKey, "life")
+        ? "standard"
+        : snapshot.myCommissionMode ??
+          (entry.commissionMode as CommissionMode | null | undefined) ??
+          (entry.mode as CommissionMode | null | undefined) ??
+          "standard";
+    const currentOwnerPosition = (entry: EntryDoc): Position | null =>
+      (entry.ownerCurrentPosition as Position | null | undefined) ??
+      (entry.effectivePosition as Position | null | undefined) ??
+      (entry.timelinePosition as Position | null | undefined) ??
+      (entry.position as Position | null | undefined) ??
+      null;
     const allEntriesByKey = new Map<string, EntryDoc>();
     const pushEntry = (entry: EntryDoc) => {
       const ownerEmail = normalizeEmail(entry.userEmail);
@@ -762,7 +791,18 @@ export function useCashflowData({
     const allEntries = Array.from(allEntriesByKey.values());
     const ownEntries = allEntries
       .filter((entry) => (entry.userEmail ?? "").toLowerCase() === email)
-      .map((entry) => ({ ...entry, source: "own" as const }));
+      .map((entry) => ({
+        ...entry,
+        source: "own" as const,
+        predictionPosition:
+          snapshot.myPosition ??
+          (entry.effectivePosition as Position | null | undefined) ??
+          (entry.timelinePosition as Position | null | undefined) ??
+          (entry.position as Position | null | undefined) ??
+          null,
+        predictionBaselinePosition: null,
+        predictionCommissionMode: predictionModeForEntry(entry, "own"),
+      }));
     const teamRaw = snapshot.teamEntriesRaw;
 
     const overrides: EntryDoc[] = [];
@@ -797,6 +837,9 @@ export function useCashflowData({
           total: storedOverrideTotal,
           source: "manager",
           position: storedOverridePosition ?? null,
+          predictionPosition: snapshot.myPosition ?? storedOverridePosition ?? null,
+          predictionBaselinePosition: currentOwnerPosition(entry),
+          predictionCommissionMode: predictionModeForEntry(entry, "manager"),
           managerPositionSnapshot: storedOverridePosition ?? null,
           managerModeSnapshot:
             (storedOverride.commissionMode as EntryDoc["managerModeSnapshot"]) ??
@@ -824,7 +867,11 @@ export function useCashflowData({
       });
     }
 
-    const generatedCashflow = generateCashflow(entriesForCashflow, 10, email);
+    const generatedCashflow = generateCashflow(
+      entriesForCashflow,
+      CASHFLOW_FORECAST_YEARS,
+      email
+    );
     const includeTipPayouts =
       tipsterMode ||
       productFilter === "tip" ||

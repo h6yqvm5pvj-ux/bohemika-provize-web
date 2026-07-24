@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { AlertTriangle, Check, ClipboardCopy, Plane } from "lucide-react";
 
+import { AdditionalRequirementSection } from "./AdditionalRequirementSection";
+
 const TRAVEL_RECORD_PHRASE =
   "Klient byl seznámen s rozsahem krytí léčebných výloh, asistenčních služeb, pojištění odpovědnosti, úrazu, a dalších sjednaných připojištění, s limity pojistného plnění, územní platností, dobou pojištění, hlavními výlukami, povinnostmi pojištěného při vzniku pojistné události a postupem při jejím hlášení. Současně byl upozorněn na rizika spojená s nesjednáním vyšších limitů nebo dalších připojištění odpovídajících účelu cesty.";
 
@@ -66,6 +68,8 @@ export function TravelRecordForm() {
 
   return (
     <div className="space-y-4">
+      <AdditionalRequirementSection />
+
       <section className="overflow-hidden rounded-[28px] border border-amber-200 bg-[linear-gradient(180deg,#ffffff_0%,#fffbeb_100%)] shadow-[0_18px_44px_rgba(146,64,14,0.10)]">
         <div className="border-b border-amber-100 px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">

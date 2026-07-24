@@ -87,7 +87,7 @@ export function CashflowAccordion({
             >
               <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-3">
-                  <span className="inline-flex w-fit items-center rounded-[7px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[13px] font-black uppercase leading-none tracking-[0.07em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.4)]">
+                  <span className="inline-flex w-fit items-center rounded-[7px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[13px] font-black uppercase leading-none tracking-[0.07em] !text-white shadow-[0_10px_20px_rgba(159,72,237,0.4)]">
                     {tipsterMode ? "TIPY" : "CASHFLOW"}
                   </span>
                   <div>
@@ -164,7 +164,7 @@ export function CashflowAccordion({
                         <div className="relative z-[1] flex h-full flex-col">
                           <div className="flex items-start justify-between gap-3">
                             <div
-                              className={`inline-flex w-fit items-center rounded-[9px] px-3 py-1.5 text-[11px] font-black uppercase leading-none tracking-[0.07em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.36)] ${
+                              className={`inline-flex w-fit items-center rounded-[9px] px-3 py-1.5 text-[11px] font-black uppercase leading-none tracking-[0.07em] !text-white shadow-[0_10px_20px_rgba(159,72,237,0.36)] ${
                                 isPaidMonth
                                   ? "bg-[linear-gradient(135deg,#34d399_0%,#16a34a_100%)]"
                                   : "bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)]"

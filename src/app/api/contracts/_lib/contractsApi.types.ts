@@ -416,6 +416,7 @@ export type ContractResponseItem = ContractDoc & {
   adviserName?: string | null;
   effectivePosition?: Position | null;
   timelinePosition?: Position | null;
+  ownerCurrentPosition?: Position | null;
   lifePremiumChanges?: ContractLifePremiumChange[] | null;
 };
 
@@ -442,6 +443,7 @@ export type ContractsResponse = {
   ok: true;
   scope: "my" | "team";
   position: Position | null;
+  commissionMode: CommissionMode | null;
   hasTeam: boolean;
   teamEmails: string[];
   contracts: ContractResponseItem[];
@@ -504,6 +506,7 @@ export type UserNode = {
   name: string | null;
   managerEmail: string | null;
   position: Position | null;
+  commissionMode: CommissionMode | null;
   positionTimeline?: unknown;
   accountType: "advisor" | "tipster";
 };

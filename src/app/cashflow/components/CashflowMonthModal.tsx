@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink, FileText, Loader2, X } from "lucide-react";
+import { BrainCircuit, ChevronDown, ExternalLink, FileText, Loader2, X } from "lucide-react";
 
 import {
   isAutoProduct,
@@ -575,6 +575,27 @@ export function CashflowMonthModal({
                   item.inputAmount != null && Number.isFinite(item.inputAmount) && item.inputAmount > 0
                     ? formatMoney(item.inputAmount)
                     : null;
+                const predictionAdjustments = groupItems
+                  .map((groupItem) => groupItem.predictionAdjustment)
+                  .filter(
+                    (
+                      adjustment
+                    ): adjustment is NonNullable<CashflowItem["predictionAdjustment"]> =>
+                      Boolean(adjustment)
+                  );
+                const hasPredictionAdjustment = predictionAdjustments.length > 0;
+                const predictionLabels = Array.from(
+                  new Set(predictionAdjustments.map((adjustment) => adjustment.label))
+                );
+                const predictionLabel =
+                  predictionLabels.length === 1
+                    ? predictionLabels[0]
+                    : "Inteligentní predikce";
+                const groupBaseAmount = groupItems.reduce(
+                  (sum, groupItem) =>
+                    sum + (groupItem.predictionAdjustment?.baseAmount ?? groupItem.amount),
+                  0
+                );
 
                 return (
                   <details
@@ -620,6 +641,12 @@ export function CashflowMonthModal({
                               className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${payoutClass}`}
                             >
                               {subscriptionPaymentStatusLabel}
+                            </span>
+                          )}
+                          {hasPredictionAdjustment && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[#d8b4fe] bg-[#fbf7ff] px-2.5 py-1 text-xs font-semibold text-[#7e22ce]">
+                              <BrainCircuit className="h-3.5 w-3.5" strokeWidth={2.1} aria-hidden="true" />
+                              Predikce
                             </span>
                           )}
                           <span
@@ -831,6 +858,21 @@ export function CashflowMonthModal({
                               </span>
                             </div>
 
+                            {hasPredictionAdjustment && (
+                              <div className="rounded-[12px] border border-[#d8b4fe] bg-[#fbf7ff] px-3 py-2">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7e22ce]">
+                                  Inteligentní predikce
+                                </span>
+                                <span className="mt-1 block font-semibold text-slate-950">
+                                  {predictionLabel}
+                                </span>
+                                <span className="mt-1 block text-xs font-medium text-slate-500">
+                                  Základ {formatMoney(groupBaseAmount)} →{" "}
+                                  {formatMoney(group.amount)}
+                                </span>
+                              </div>
+                            )}
+
                             {!isSubscriptionIncome && (
                               <div className="rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2">
                                 <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -876,16 +918,16 @@ export function CashflowMonthModal({
 
                       <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                         {href && (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
-                            >
-                              <ExternalLink className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                              Otevřít smlouvu
-                            </a>
-                          )}
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
+                          >
+                            <ExternalLink className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                            Otevřít smlouvu
+                          </a>
+                        )}
                       </div>
                     </div>
                   </details>

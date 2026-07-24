@@ -28,6 +28,7 @@ const user = (
   name: null,
   managerEmail,
   position: null,
+  commissionMode: null,
   positionTimeline: null,
   accountType,
 });

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Check, ClipboardCopy, Home } from "lucide-react";
 
+import { AdditionalRequirementSection } from "./AdditionalRequirementSection";
+
 const DOMEX_BONUS_PHRASE =
   "Klient byl seznámen s podmínkami vstupního bonusu 30 % za bezeškodní průběh a byl upozorněn, že v případě pojistné události může dojít ke snížení bonusu a následnému navýšení pojistného při výročí smlouvy v souladu s podmínkami pojišťovny.";
 
@@ -91,6 +93,8 @@ export function PropertyRecordForm() {
 
   return (
     <div className="space-y-4">
+      <AdditionalRequirementSection />
+
       <section className="overflow-hidden rounded-[28px] border border-amber-200 bg-[linear-gradient(180deg,#ffffff_0%,#fffbeb_100%)] shadow-[0_18px_44px_rgba(146,64,14,0.10)]">
         <div className="border-b border-amber-100 px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">

@@ -481,6 +481,32 @@ export function generateCashflow(
       policyEndPayoutDate ?? (status === "dozita" ? now : horizonEnd)
     );
     const product = entry.productKey;
+    const currentMonthlyPremiumRaw =
+      entry.effectiveInputAmount ??
+      entry.newInputAmount ??
+      entry.inputAmount ??
+      null;
+    const currentMonthlyPremium =
+      typeof currentMonthlyPremiumRaw === "number" &&
+      Number.isFinite(currentMonthlyPremiumRaw)
+        ? currentMonthlyPremiumRaw
+        : null;
+    const storedRefreshBaseMonthlyRaw =
+      entry.refreshCommissionBase?.calculationMonthlyPremium ??
+      (typeof entry.refreshCommissionBase?.calculationAnnualPremium === "number"
+        ? entry.refreshCommissionBase.calculationAnnualPremium / 12
+        : null);
+    const lifeStornoBaseMonthlyPremium =
+      typeof storedRefreshBaseMonthlyRaw === "number" &&
+      Number.isFinite(storedRefreshBaseMonthlyRaw) &&
+      storedRefreshBaseMonthlyRaw > 0
+        ? storedRefreshBaseMonthlyRaw
+        : currentMonthlyPremium;
+    const lifeRevisionBaseDate =
+      toDate(entry.contractSignedDate) ??
+      toDate(entry.policyStartDate) ??
+      toDate(entry.createdAt) ??
+      start;
 
     const items = (entry.items ?? []).map((it) => ({
       title: (it.title ?? "").toLowerCase(),
@@ -605,12 +631,23 @@ export function generateCashflow(
         contractNumber: entry.contractNumber ?? null,
         clientName: entry.clientName ?? null,
         inputAmount: Number.isFinite(Number(entry.inputAmount)) ? Number(entry.inputAmount) : null,
+        currentMonthlyPremium,
+        lifeStornoBaseMonthlyPremium,
         policyStartDate: start,
+        contractSignedDate: toDate(entry.contractSignedDate),
+        lifeRevisionBaseDate,
         contractStatus: status,
         stornoDate: stornoCutoffDate,
         ownerEmail: normalizedOwnerEmail,
         entryId: baseEntryId ?? null,
+        entryType: entry.entryType ?? null,
+        rootContractEntryId: entry.rootContractEntryId ?? null,
+        parentContractEntryId: entry.parentContractEntryId ?? null,
         isManagerOverride: entry.source === "manager",
+        predictionPosition: entry.predictionPosition ?? null,
+        predictionBaselinePosition: entry.predictionBaselinePosition ?? null,
+        predictionCommissionMode: entry.predictionCommissionMode ?? null,
+        durationYears: entry.durationYears ?? null,
         payoutStatus: settledPayout ? "paid" : undefined,
         predictedAmount: settledPayout ? amount : null,
         originalDate:
@@ -651,12 +688,23 @@ export function generateCashflow(
           contractNumber: entry.contractNumber ?? null,
           clientName: entry.clientName ?? null,
           inputAmount: Number.isFinite(Number(entry.inputAmount)) ? Number(entry.inputAmount) : null,
+          currentMonthlyPremium,
+          lifeStornoBaseMonthlyPremium,
           policyStartDate: start,
+          contractSignedDate: toDate(entry.contractSignedDate),
+          lifeRevisionBaseDate,
           contractStatus: status,
           stornoDate: stornoCutoffDate,
           ownerEmail: normalizedOwnerEmail,
           entryId: baseEntryId ?? null,
+          entryType: entry.entryType ?? null,
+          rootContractEntryId: entry.rootContractEntryId ?? null,
+          parentContractEntryId: entry.parentContractEntryId ?? null,
           isManagerOverride: entry.source === "manager",
+          predictionPosition: entry.predictionPosition ?? null,
+          predictionBaselinePosition: entry.predictionBaselinePosition ?? null,
+          predictionCommissionMode: entry.predictionCommissionMode ?? null,
+          durationYears: entry.durationYears ?? null,
           commissionCode: code || null,
           commissionCodeAliases: aliases,
           commissionLabel,

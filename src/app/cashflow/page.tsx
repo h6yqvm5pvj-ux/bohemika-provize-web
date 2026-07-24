@@ -15,6 +15,8 @@ import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
   applyStatementMissingPayoutShifts,
   applyStatementPayoutTotalsToMonths,
+  applyIntelligentCashflowPrediction,
+  CASHFLOW_FORECAST_YEARS,
   filterItemsByContractNumber,
   filterPastItems,
   filterPastStatementMonths,
@@ -37,6 +39,7 @@ import { CashflowFilters } from "./components/CashflowFilters";
 import { CashflowHeader } from "./components/CashflowHeader";
 import { CashflowInitialLoader } from "./components/CashflowInitialLoader";
 import { CashflowMonthModal } from "./components/CashflowMonthModal";
+import { IntelligentPredictionModal } from "./components/IntelligentPredictionModal";
 import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
 import introStyles from "./cashflowIntro.module.css";
 
@@ -201,6 +204,8 @@ export default function CashflowPage() {
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [dataEmail, setDataEmail] = useState<string | null>(null);
   const [showPastYears, setShowPastYears] = useState(false);
+  const [intelligentPredictionEnabled, setIntelligentPredictionEnabled] = useState(false);
+  const [predictionInfoOpen, setPredictionInfoOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<MonthGroup | null>(null);
   const [commissionStatements, setCommissionStatements] = useState<CashflowCommissionStatementSummary[]>([]);
   const [statementPreview, setStatementPreview] = useState<CashflowCommissionStatementDetail | null>(null);
@@ -469,12 +474,21 @@ export default function CashflowPage() {
     [filteredCashflowItems, statementsByMonthKey, useStatementPayoutTotals]
   );
 
+  const predictionCashflowItems = useMemo(
+    () =>
+      applyIntelligentCashflowPrediction({
+        cashflowItems: reconciledCashflowItems,
+        enabled: intelligentPredictionEnabled && !isTipsterMode,
+      }),
+    [intelligentPredictionEnabled, isTipsterMode, reconciledCashflowItems]
+  );
+
   const periodCashflowItems = useMemo(
     () =>
       contractNumberSearchActive
-        ? reconciledCashflowItems
-        : filterPastItems(reconciledCashflowItems, showPastYears),
-    [contractNumberSearchActive, reconciledCashflowItems, showPastYears]
+        ? predictionCashflowItems
+        : filterPastItems(predictionCashflowItems, showPastYears),
+    [contractNumberSearchActive, predictionCashflowItems, showPastYears]
   );
 
   const predictedMonthGroups = useMemo(
@@ -591,8 +605,11 @@ export default function CashflowPage() {
                 <CashflowHeader
                   totalCashflow={totalCashflow}
                   hasPaidMonthTotals={hasPaidMonthTotals}
+                  forecastYears={CASHFLOW_FORECAST_YEARS}
+                  intelligentPredictionEnabled={intelligentPredictionEnabled}
                   showPastYears={showPastYears}
                   onTogglePastYears={() => setShowPastYears((value) => !value)}
+                  onOpenPredictionInfo={() => setPredictionInfoOpen(true)}
                   tipsterMode={isTipsterMode}
                 />
               </div>
@@ -669,6 +686,16 @@ export default function CashflowPage() {
         <CommissionStatementPreviewModal
           statement={statementPreview}
           onClose={() => setStatementPreview(null)}
+        />
+
+        <IntelligentPredictionModal
+          open={predictionInfoOpen}
+          enabled={intelligentPredictionEnabled}
+          onClose={() => setPredictionInfoOpen(false)}
+          onToggle={() => {
+            setIntelligentPredictionEnabled((value) => !value);
+            setPredictionInfoOpen(false);
+          }}
         />
 
         {statementPreviewError && (

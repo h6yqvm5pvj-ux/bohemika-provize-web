@@ -692,10 +692,37 @@ const toContractListResponseItem = ({
       stornoDate: toMillis((data as any).stornoDate),
       productKey: data.productKey,
       frequencyRaw: data.frequencyRaw ?? null,
+      entryType: data.entryType ?? null,
+      rootContractEntryId: data.rootContractEntryId ?? null,
+      parentContractEntryId: data.parentContractEntryId ?? null,
       inputAmount:
         typeof data.inputAmount === "number" && Number.isFinite(data.inputAmount)
           ? data.inputAmount
           : undefined,
+      calculationInputAmount:
+        typeof data.calculationInputAmount === "number" &&
+        Number.isFinite(data.calculationInputAmount)
+          ? data.calculationInputAmount
+          : undefined,
+      effectiveInputAmount:
+        typeof data.effectiveInputAmount === "number" &&
+        Number.isFinite(data.effectiveInputAmount)
+          ? data.effectiveInputAmount
+          : undefined,
+      previousInputAmount:
+        typeof data.previousInputAmount === "number" &&
+        Number.isFinite(data.previousInputAmount)
+          ? data.previousInputAmount
+          : undefined,
+      newInputAmount:
+        typeof data.newInputAmount === "number" && Number.isFinite(data.newInputAmount)
+          ? data.newInputAmount
+          : undefined,
+      premiumDelta:
+        typeof data.premiumDelta === "number" && Number.isFinite(data.premiumDelta)
+          ? data.premiumDelta
+          : undefined,
+      refreshCommissionBase: data.refreshCommissionBase ?? null,
       items: Array.isArray(data.items) ? data.items : [],
       commissionPayouts: Array.isArray(data.commissionPayouts)
         ? data.commissionPayouts
@@ -716,6 +743,7 @@ const toContractListResponseItem = ({
       clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
       position: data.position ?? null,
       commissionMode: data.commissionMode ?? null,
+      ownerCurrentPosition: ownerContext?.position ?? null,
       managerEmailSnapshot: data.managerEmailSnapshot ?? null,
       managerPositionSnapshot: data.managerPositionSnapshot ?? null,
       managerModeSnapshot: data.managerModeSnapshot ?? null,
@@ -1050,6 +1078,7 @@ const resolveTimelinePositionForSignedDate = (
 type ContractOwnerPositionContext = {
   name?: string | null;
   position?: Position | null;
+  commissionMode?: CommissionMode | null;
   positionTimeline?: unknown;
 };
 
@@ -3167,6 +3196,7 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
         null,
       managerEmail: managerEmail || null,
       position,
+      commissionMode: normalizeCommissionModeValue(data.commissionMode),
       positionTimeline: data.positionTimeline ?? null,
       accountType: resolveAccountType(data),
     };
@@ -3205,6 +3235,7 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
       name: user.name,
       managerEmail,
       position: user.position,
+      commissionMode: user.commissionMode,
       positionTimeline: user.positionTimeline ?? null,
       accountType: user.accountType,
     };
@@ -3762,6 +3793,7 @@ async function getAuthContext(
   }
 
   const position = (me?.position as Position | null | undefined) ?? null;
+  const commissionMode = normalizeCommissionModeValue(me?.commissionMode) ?? null;
   const adminRole = resolveAdminRoleFromClaims(email, identity.claims);
   const canManageContractsAsAdmin = adminRoleAtLeast(adminRole, "admin");
   const { teamEmails, contractAccessEmails } = resolveContractTeamAccess({
@@ -3779,6 +3811,7 @@ async function getAuthContext(
     adminRole,
     canManageContractsAsAdmin,
     position,
+    commissionMode,
     teamEmails,
     contractAccessEmails,
     users,
@@ -4156,6 +4189,7 @@ export async function handleContractsGet(
     ok: true,
     scope: scopeParam,
     position,
+    commissionMode: ctx.commissionMode,
     hasTeam: teamEmails.length > 0,
     teamEmails,
     contracts: list,

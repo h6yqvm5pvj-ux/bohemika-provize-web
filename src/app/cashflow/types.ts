@@ -46,8 +46,22 @@ export type EntryDoc = {
   userEmail?: string | null;
   contractSignedDate?: unknown;
   position?: Position | null;
+  effectivePosition?: Position | null;
+  timelinePosition?: Position | null;
   mode?: CommissionMode | null;
   commissionMode?: CommissionMode | null;
+  entryType?: "contract" | "endorsement" | string | null;
+  rootContractEntryId?: string | null;
+  parentContractEntryId?: string | null;
+  calculationInputAmount?: number | null;
+  effectiveInputAmount?: number | null;
+  previousInputAmount?: number | null;
+  newInputAmount?: number | null;
+  premiumDelta?: number | null;
+  refreshCommissionBase?: {
+    calculationMonthlyPremium?: number | null;
+    calculationAnnualPremium?: number | null;
+  } | null;
   managerEmailSnapshot?: string | null;
   managerPositionSnapshot?: Position | null;
   managerModeSnapshot?: CommissionMode | null;
@@ -77,9 +91,29 @@ export type EntryDoc = {
   durationMonths?: number | null;
   maxCizinKomplexVariant?: "exclusiveStandard" | "premium" | null;
   source?: "own" | "manager";
+  ownerCurrentPosition?: Position | null;
+  predictionPosition?: Position | null;
+  predictionBaselinePosition?: Position | null;
+  predictionCommissionMode?: CommissionMode | null;
 };
 
 export type CashflowProductKey = Product | "unknown" | "subscription";
+
+export type CashflowPredictionAdjustment = {
+  kind: "autoPremiumGrowth" | "propertyRevaluation" | "lifePremiumReview";
+  baseAmount: number;
+  adjustedAmount: number;
+  multiplier: number;
+  steps: number;
+  label: string;
+  reason: string;
+  premiumDeltaMonthly?: number;
+  calculationMonthlyPremium?: number;
+  grossPotentialAmount?: number;
+  acceptanceProbability?: number;
+  reviewDate?: string;
+  position?: Position | null;
+};
 
 export type CashflowItem = {
   id: string;
@@ -92,12 +126,23 @@ export type CashflowItem = {
   contractNumber?: string | null;
   clientName?: string | null;
   inputAmount?: number | null;
+  currentMonthlyPremium?: number | null;
+  lifeStornoBaseMonthlyPremium?: number | null;
   policyStartDate?: Date | null;
+  contractSignedDate?: Date | null;
+  lifeRevisionBaseDate?: Date | null;
   contractStatus?: "active" | "storno" | "dozita" | string | null;
   stornoDate?: Date | null;
   ownerEmail: string | null;
   entryId: string | null;
+  entryType?: "contract" | "endorsement" | string | null;
+  rootContractEntryId?: string | null;
+  parentContractEntryId?: string | null;
   isManagerOverride?: boolean;
+  predictionPosition?: Position | null;
+  predictionBaselinePosition?: Position | null;
+  predictionCommissionMode?: CommissionMode | null;
+  durationYears?: number | null;
   commissionCode?: string | null;
   commissionCodeAliases?: string[];
   commissionLabel?: string | null;
@@ -118,6 +163,7 @@ export type CashflowItem = {
   commissionStatementPeriod?: string | null;
   originalDate?: Date | null;
   missedStatementPeriods?: string[];
+  predictionAdjustment?: CashflowPredictionAdjustment | null;
 };
 
 export type MonthGroup = {

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Check, ClipboardCopy, ShieldCheck } from "lucide-react";
 
+import { AdditionalRequirementSection } from "./AdditionalRequirementSection";
+
 const UNIVERSAL_LIABILITY_PHRASES = [
   "Klient byl seznámen s rozsahem pojistného krytí, hlavními výlukami z pojištění, limity pojistného plnění a sjednanou spoluúčastí.",
   "Klient byl seznámen s pojistnými podmínkami, jejich obsahem a měl možnost klást doplňující dotazy, které mu byly zodpovězeny.",
@@ -90,6 +92,8 @@ export function LiabilityRecordForm() {
 
   return (
     <div className="space-y-4">
+      <AdditionalRequirementSection />
+
       <section className="overflow-hidden rounded-[28px] border border-amber-200 bg-[linear-gradient(180deg,#ffffff_0%,#fffbeb_100%)] shadow-[0_18px_44px_rgba(146,64,14,0.10)]">
         <div className="border-b border-amber-100 px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">
