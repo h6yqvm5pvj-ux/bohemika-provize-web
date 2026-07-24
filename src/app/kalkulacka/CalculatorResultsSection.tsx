@@ -225,11 +225,12 @@ export function CalculatorResultsSection({
   return (
     <div className="self-start space-y-3 lg:sticky lg:top-6">
       {topTools}
-      <section className="relative space-y-4 overflow-hidden rounded-[1.35rem] border border-slate-300 bg-white/95 px-4 py-4 text-slate-900 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-5">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#94a3b8_58%,#e2e8f0_100%)]" aria-hidden="true" />
+      <section className="relative space-y-4 overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/80 px-4 py-4 text-slate-900 shadow-[0_22px_58px_rgba(15,23,42,0.09)] backdrop-blur-xl sm:px-5 sm:py-5">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#4c1d95_100%)]" aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(245,243,255,0.58)_50%,rgba(255,255,255,0.82)_100%)]" aria-hidden="true" />
         <div className="relative flex items-center justify-between gap-3">
           <h2 className="inline-flex items-center gap-2 text-lg font-bold text-slate-950">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-200 bg-white/80 text-slate-950 shadow-sm">
               <BarChart3 size={19} strokeWidth={2.2} aria-hidden="true" />
             </span>
             <span>Výsledky</span>
@@ -240,7 +241,7 @@ export function CalculatorResultsSection({
               type="button"
               onClick={onOpenCoefModal}
               disabled={unsupported}
-              className={`ui-btn-secondary ui-focus inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm ${
+              className={`ui-focus inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/80 px-3 py-2 text-xs font-bold text-slate-800 shadow-sm backdrop-blur transition hover:border-violet-300 hover:bg-white sm:text-sm ${
                 unsupported ? "opacity-60 cursor-not-allowed" : ""
               }`}
             >
@@ -252,7 +253,7 @@ export function CalculatorResultsSection({
               <button
                 type="button"
                 onClick={onToggleTipsterPercentPanel}
-                className="ui-btn-secondary ui-focus inline-flex items-center rounded-full px-3 py-2 text-sm"
+                className="ui-focus inline-flex items-center rounded-full border border-violet-200 bg-white/80 px-3 py-2 text-sm font-bold text-slate-800 shadow-sm backdrop-blur transition hover:border-violet-300 hover:bg-white"
                 aria-pressed={tipsterPercentPanelOpen}
                 aria-label="Nastavit procenta pro tipaře"
               >
@@ -263,7 +264,7 @@ export function CalculatorResultsSection({
         </div>
 
         {tipsterModeEnabled && tipsterPercentPanelOpen && (
-          <div className="relative space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+          <div className="relative z-10 space-y-3 rounded-2xl border border-violet-200/75 bg-white/80 px-3 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.06)] backdrop-blur">
             <div className="flex items-center justify-between gap-3">
               <label className="block text-xs uppercase tracking-wide text-slate-500">
                 Zobrazované procento provize
@@ -296,7 +297,7 @@ export function CalculatorResultsSection({
                     void onPersistTipsterPercent(Number((event.currentTarget as HTMLInputElement).value) || 0);
                   }
                 }}
-                className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-slate-900"
+                className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-violet-100 accent-violet-700"
                 aria-label="Nastavit procento tipařské provize"
               />
 
@@ -346,23 +347,27 @@ export function CalculatorResultsSection({
           </div>
         )}
 
-        {saveMessage && <p className="text-xs text-slate-500">{saveMessage}</p>}
+        {saveMessage && (
+          <p className="relative z-10 rounded-2xl border border-violet-100 bg-white/60 px-3 py-2 text-xs font-semibold text-slate-600 backdrop-blur">
+            {saveMessage}
+          </p>
+        )}
 
         {tipContractConfig && !tipsterModeEnabled && (
-          <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+          <p className="relative z-10 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800">
             Aktivní Smlouva z TIPU: {tipContractConfig.tipsterPercent} % z {tipContractShareLabel} pro{" "}
             {tipContractConfig.tipsterName ?? tipContractConfig.tipsterEmail ?? "neoznačeného tipaře"}.
           </p>
         )}
 
         {unsupported && (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p className="relative z-10 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
             {supportedLabel}
           </p>
         )}
 
         {!unsupported && items.length === 0 && (
-          <p className="text-sm text-slate-500">Zadej částku a produkt, hned vypočítáme jednotlivé provize.</p>
+          <p className="relative z-10 text-sm font-medium text-slate-500">Zadej částku a produkt, hned vypočítáme jednotlivé provize.</p>
         )}
 
         {items.length > 0 && !unsupported && (() => {
@@ -686,21 +691,21 @@ export function CalculatorResultsSection({
             onClick={onSaveContract}
             disabled={!canSaveContract || saving}
             aria-busy={saving}
-            className="ui-btn-primary ui-focus inline-flex min-w-[168px] items-center justify-center gap-2 rounded-full px-7 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            className="ui-focus inline-flex min-w-[208px] items-center justify-center gap-2 rounded-full border border-violet-700 bg-violet-700 px-7 py-3 text-sm font-black !text-white shadow-[0_16px_34px_rgba(109,40,217,0.20)] transition hover:-translate-y-0.5 hover:bg-violet-800 hover:shadow-[0_20px_44px_rgba(109,40,217,0.24)] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:border-slate-400 disabled:opacity-50 disabled:shadow-none disabled:hover:translate-y-0"
           >
-            <span className="inline-flex h-5 w-5 items-center justify-center" aria-hidden="true">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/15" aria-hidden="true">
               {saving ? (
-                <Loader2 size={14} strokeWidth={2.2} className="shrink-0 animate-spin" />
+                <Loader2 size={15} strokeWidth={2.4} className="shrink-0 animate-spin" />
               ) : (
-                <CheckCircle2 size={14} strokeWidth={2.2} className="shrink-0" />
+                <CheckCircle2 size={15} strokeWidth={2.4} className="shrink-0" />
               )}
             </span>
-            {saving ? "Ukládám…" : "Sepsáno"}
+            {saving ? "Ukládám smlouvu…" : "Uložit jako sepsáno"}
           </button>
           {lastSavedContractHref && (
             <Link
               href={lastSavedContractHref}
-              className="ui-btn-primary ui-focus inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm"
+              className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-900 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
             >
               <FileText size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               Zobrazit smlouvu

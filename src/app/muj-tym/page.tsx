@@ -458,7 +458,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Jméno A-Z" },
 ];
 
-const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 100;
+const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 64;
 const MEMBER_LIST_OVERSCAN = 6;
 const AGENCY_NUMBER_MAX_LEN = 80;
 
@@ -1821,7 +1821,7 @@ export default function TeamPage() {
                             key={m.email}
                             onClick={() => setSelectedEmail(m.email)}
 	                            className={[
-	                              "team-member-card relative w-full min-h-[96px] overflow-hidden rounded-xl border px-3 py-2 text-left transition",
+	                              "team-member-card relative w-full min-h-[54px] overflow-hidden rounded-xl border px-2.5 py-2 text-left transition",
 	                              isSelected
 	                                ? "border-violet-300 bg-violet-50/70 text-slate-900 shadow-[0_12px_28px_rgba(76,29,149,0.12)]"
 	                                : "border-violet-100 bg-white text-slate-900 hover:border-violet-200 hover:bg-violet-50/40",
@@ -1830,10 +1830,10 @@ export default function TeamPage() {
                             {isSelected ? (
 	                              <span className="absolute inset-y-0 left-0 w-1 bg-violet-500" />
                             ) : null}
-                            <div className="flex w-full items-start gap-2">
+                            <div className="flex w-full items-center gap-2">
                               <div
                                 className={[
-                                  "relative h-7 w-7 shrink-0 overflow-hidden rounded-full border bg-white",
+                                  "relative h-8 w-8 shrink-0 overflow-hidden rounded-full border bg-white",
                                   isSelected
 	                                    ? "border-violet-300 shadow-[0_0_0_1px_rgba(109,40,217,0.20)]"
 	                                    : "border-violet-100",
@@ -1844,48 +1844,24 @@ export default function TeamPage() {
                                   src="/icons/klient.webp"
                                   alt=""
                                   fill
-                                  sizes="28px"
+                                  sizes="32px"
                                   className="object-cover"
                                 />
                               </div>
 
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="truncate text-[13px] font-semibold leading-tight">
+                                <div className="flex min-w-0 items-center justify-between gap-2">
+                                  <div className="min-w-0 truncate text-[13px] font-semibold leading-tight">
                                     {m.name}
                                   </div>
-                                </div>
-
-                                <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                                  {m.accountType === "tipster" ? (
-	                                    <span className="inline-flex items-center justify-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
-                                      Tipař
-                                    </span>
-                                  ) : null}
                                   <span
-                                    className={`text-[10px] inline-flex items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 ${last.className}`}
+                                    className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] ${last.className}`}
                                     aria-label={last.title}
+                                    title={last.title}
                                   >
                                     <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
                                     {last.statusLabel}
                                   </span>
-                                  {m.agencyNumber ? (
-	                                    <span className="inline-flex max-w-full items-center justify-center rounded-full border border-violet-100 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
-                                      <span className="max-w-[150px] truncate">{m.agencyNumber}</span>
-                                    </span>
-                                  ) : null}
-                                  {m.phoneNumber ? (
-	                                    <span className="inline-flex max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                                      <span className="mr-1 text-slate-400">Tel.</span>
-                                      <span className="max-w-[150px] truncate">{m.phoneNumber}</span>
-                                    </span>
-                                  ) : null}
-                                  {m.ico ? (
-	                                    <span className="inline-flex max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                                      <span className="mr-1 text-slate-400">IČO</span>
-                                      <span className="max-w-[100px] truncate">{m.ico}</span>
-                                    </span>
-                                  ) : null}
                                 </div>
                               </div>
                             </div>

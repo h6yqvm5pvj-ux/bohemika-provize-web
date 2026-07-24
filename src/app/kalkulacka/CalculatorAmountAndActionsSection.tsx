@@ -81,12 +81,12 @@ export function CalculatorAmountAndActionsSection({
   const showManualEntryButton = !tipsterModeEnabled && showManualEntryOption;
   const showHeading = showAmountInput || showComfortControls;
   const contractActionButtonBaseClass =
-    "ui-focus inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-bold !text-white shadow-[0_10px_20px_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0";
-  const tipContractActionButtonClass = `${contractActionButtonBaseClass} border-fuchsia-500/65 bg-[linear-gradient(135deg,#e879f9_0%,#a21caf_100%)] shadow-[0_12px_24px_rgba(162,28,175,0.28)]`;
-  const activeTipContractActionButtonClass = `${tipContractActionButtonClass} ring-2 ring-fuchsia-200`;
-  const refreshContractActionButtonClass = `${contractActionButtonBaseClass} border-sky-500/70 bg-[linear-gradient(135deg,#38bdf8_0%,#2563eb_100%)] shadow-[0_12px_24px_rgba(37,99,235,0.24)]`;
-  const activeRefreshContractActionButtonClass = `${refreshContractActionButtonClass} ring-2 ring-sky-200`;
-  const changeContractActionButtonClass = `${contractActionButtonBaseClass} border-emerald-500/70 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] shadow-[0_12px_24px_rgba(5,150,105,0.24)]`;
+    "ui-focus inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-bold shadow-[0_10px_20px_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0";
+  const tipContractActionButtonClass = `${contractActionButtonBaseClass} border-violet-700 bg-violet-700 !text-white shadow-[0_12px_24px_rgba(109,40,217,0.18)] hover:bg-violet-800`;
+  const activeTipContractActionButtonClass = `${tipContractActionButtonClass} ring-2 ring-violet-200`;
+  const refreshContractActionButtonClass = `${contractActionButtonBaseClass} border-violet-700 bg-violet-700 !text-white shadow-[0_12px_24px_rgba(109,40,217,0.18)] hover:bg-violet-800`;
+  const activeRefreshContractActionButtonClass = `${refreshContractActionButtonClass} ring-2 ring-violet-200`;
+  const changeContractActionButtonClass = `${contractActionButtonBaseClass} border-violet-200 bg-white text-slate-950 shadow-[0_10px_22px_rgba(15,23,42,0.08)] hover:border-violet-300 hover:bg-violet-50`;
   const canUseOriginalReplacement = product === "neon" || product === "domex" || product === "cppAuto";
   const canSaveUnlinkedOriginalReplacement = product === "domex" || product === "cppAuto";
   const originalReplacementButtonLabel =
@@ -109,7 +109,7 @@ export function CalculatorAmountAndActionsSection({
       {showHeading && (
         <div className="mb-2 flex items-center justify-between gap-3">
           <h2 className="text-sm font-bold text-slate-900">Výpočet provize</h2>
-          <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+          <span className="h-px flex-1 bg-violet-100" aria-hidden="true" />
         </div>
       )}
       <div className="space-y-3">
@@ -151,8 +151,8 @@ export function CalculatorAmountAndActionsSection({
             </label>
             <input
               type="number"
-              className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_18px_rgba(15,23,42,0.06)] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
-                missingFields.includes("částku") ? "border-rose-400/70" : "border-slate-300"
+              className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_18px_rgba(15,23,42,0.06)] outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
+                missingFields.includes("částku") ? "border-rose-400/70" : "border-violet-200"
               }`}
               value={amountText}
               onChange={(event) => onAmountTextChange(event.target.value)}
@@ -167,7 +167,7 @@ export function CalculatorAmountAndActionsSection({
               <label className="block text-sm font-semibold text-slate-800">Pravidelná platba</label>
               <input
                 type="number"
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+                className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
                 value={comfortPaymentText}
                 onChange={(event) => onComfortPaymentTextChange(event.target.value)}
                 placeholder="Zadejte pravidelnou platbu"
@@ -179,7 +179,7 @@ export function CalculatorAmountAndActionsSection({
                 <label className="block text-sm font-semibold text-slate-800">Cílová částka (volitelné)</label>
                 <input
                   type="number"
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+                  className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
                   value={comfortTargetAmountText}
                   onChange={(event) => onComfortTargetAmountTextChange(event.target.value)}
                   placeholder="Např. 200000"
@@ -195,7 +195,7 @@ export function CalculatorAmountAndActionsSection({
         )}
 
         {showContractActionButtons && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+          <div className="rounded-xl border border-violet-200/75 bg-white/80 px-3 py-2.5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] backdrop-blur">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -231,12 +231,12 @@ export function CalculatorAmountAndActionsSection({
             {canUseOriginalReplacement && refreshOriginalOpen && (
               <div className="mt-3 space-y-1.5">
                 {product === "neon" && (
-                  <label className="flex items-start gap-2 rounded-xl border border-sky-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-800">
+                  <label className="flex items-start gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-800">
                     <input
                       type="checkbox"
                       checked={refreshOriginalMissingInSystem}
                       onChange={(event) => onRefreshOriginalMissingInSystemChange(event.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      className="mt-0.5 h-4 w-4 rounded border-violet-200 text-violet-700 focus:ring-violet-500"
                     />
                     <span>
                       Původní smlouva není v systému
@@ -258,10 +258,10 @@ export function CalculatorAmountAndActionsSection({
                       value={refreshOriginalContractNumber}
                       onChange={(event) => onRefreshOriginalContractNumberChange(event.target.value)}
                       placeholder="Např. 1234567890"
-                      className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+                      className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
                         missingFields.includes("číslo původní smlouvy")
                           ? "border-rose-400/70"
-                          : "border-slate-300"
+                          : "border-violet-200"
                       }`}
                     />
                     <p className="text-[11px] text-slate-600">
@@ -290,7 +290,7 @@ export function CalculatorAmountAndActionsSection({
                       aria-valuenow={refreshOriginalLookupProgress}
                     >
                       <div
-                        className="h-full rounded-full bg-[linear-gradient(90deg,#38bdf8_0%,#2563eb_100%)] transition-[width] duration-200"
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#4c1d95_100%)] transition-[width] duration-200"
                         style={{ width: `${refreshOriginalLookupProgress}%` }}
                       />
                     </div>
@@ -302,7 +302,7 @@ export function CalculatorAmountAndActionsSection({
                   </p>
                 )}
                 {!refreshOriginalMissingInSystem && refreshOriginalInfoText && (
-                  <p className="text-[11px] font-semibold text-sky-800">
+                  <p className="text-[11px] font-semibold text-violet-800">
                     {refreshOriginalInfoText}
                   </p>
                 )}
@@ -335,7 +335,7 @@ export function CalculatorAmountAndActionsSection({
         )}
 
         {showManualEntryButton && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+          <div className="rounded-xl border border-violet-100 bg-white/70 px-3 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-slate-600">
                 Pro uložení smlouvy přepni na režim Přidat smlouvu.
@@ -359,7 +359,7 @@ export function CalculatorAmountAndActionsSection({
   }
 
   return (
-    <section className="rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+    <section className="rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
       {content}
     </section>
   );

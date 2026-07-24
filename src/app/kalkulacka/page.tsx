@@ -190,6 +190,7 @@ import {
 } from "./CalculatorNeonPdfDetailEditor";
 import { CalculatorResultsSection } from "./CalculatorResultsSection";
 import { ContractSaveSuccessOverlay } from "./ContractSaveSuccessOverlay";
+import { CalculatorSaveLoader } from "./CalculatorSaveLoader";
 import {
   CalculatorCoefficientModal,
   type NeonCoefficientView,
@@ -6670,7 +6671,8 @@ export default function CalculatorPage() {
         visible={Boolean(saveSuccessFlash)}
         celebrationKey={contractSaveCelebrationKey}
       />
-      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+      {saving ? <CalculatorSaveLoader message={saveMessage} /> : null}
+      <div className="w-full bg-[linear-gradient(180deg,#ffffff_0%,#fbfaff_48%,#ffffff_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
       <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">
       <ValidationErrorModal
         message={validationError}
@@ -6773,14 +6775,14 @@ export default function CalculatorPage() {
         >
           <SplitTitle text={headerTitle} className="!text-slate-900" />
           {!tipsterModeEnabled && (
-            <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1 shadow-sm">
+            <div className="inline-flex items-center rounded-full border border-violet-200 bg-white/85 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur-xl">
               <button
                 type="button"
                 onClick={() => setCalculatorViewMode("addContract")}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:text-sm ${
+                className={`rounded-full px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:text-sm ${
                   isAddContractMode
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
+                    ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.18)]"
+                    : "text-slate-600 hover:bg-violet-50 hover:text-violet-800"
                 }`}
               >
                 Přidat smlouvu
@@ -6788,10 +6790,10 @@ export default function CalculatorPage() {
               <button
                 type="button"
                 onClick={() => setCalculatorViewMode("commissionOnly")}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:text-sm ${
+                className={`rounded-full px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:text-sm ${
                   isCommissionOnlyMode
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
+                    ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.18)]"
+                    : "text-slate-600 hover:bg-violet-50 hover:text-violet-800"
                 }`}
               >
                 Kalkulačka provizí
@@ -6801,8 +6803,8 @@ export default function CalculatorPage() {
         </header>
         {(isCommissionOnlyMode || tipsterModeEnabled) && (
           <div className="flex justify-start sm:justify-end">
-            <div className="inline-flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-3 py-2 shadow-sm">
-              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700">
+            <div className="inline-flex items-center gap-3 rounded-2xl border border-violet-200 bg-white/85 px-3 py-2 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
                 Režim tipařské spolupráce
               </span>
               <button
@@ -6811,15 +6813,15 @@ export default function CalculatorPage() {
                 disabled={tipsterModeSaving}
                 className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
                   tipsterModeEnabled
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    ? "border-violet-700 bg-violet-700 !text-white shadow-[0_10px_22px_rgba(109,40,217,0.18)]"
+                    : "border-violet-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50"
                 }`}
                 aria-pressed={tipsterModeEnabled}
                 aria-label="Přepnout režim tipařské spolupráce"
               >
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
-                    tipsterModeEnabled ? "bg-white" : "bg-slate-400"
+                    tipsterModeEnabled ? "bg-white" : "bg-violet-300"
                   }`}
                   aria-hidden="true"
                 />
@@ -6841,7 +6843,7 @@ export default function CalculatorPage() {
             {/* Produkt + PDF import */}
             {renderProductAndPdfSection(false)}
 
-            <section className="rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] space-y-3">
+            <section className="space-y-3 rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
               {/* Doba trvání + platba */}
               <CalculatorDurationAndFrequencySection
                 embedded
@@ -7003,7 +7005,8 @@ export default function CalculatorPage() {
           <CalculatorResultsSection
             topTools={
               canOverrideOwnerOnSave && isAddContractMode ? (
-                <div className="rounded-[1.35rem] border border-slate-300 bg-white/95 px-3 py-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+                <div className="relative overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/80 px-3 py-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#4c1d95_100%)]" aria-hidden="true" />
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -7021,7 +7024,7 @@ export default function CalculatorPage() {
                     <button
                       type="button"
                       onClick={() => setSubordinatePickerOpen(true)}
-                      className="ui-btn-primary ui-focus inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs"
+                      className="ui-focus inline-flex shrink-0 items-center gap-2 rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-black !text-white shadow-[0_12px_26px_rgba(109,40,217,0.18)] transition hover:-translate-y-0.5 hover:bg-violet-800"
                     >
                       <Users size={14} aria-hidden="true" />
                       Vybrat poradce

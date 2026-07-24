@@ -468,45 +468,50 @@ export default function TeamMessagePage() {
 
   return (
     <AppLayout active="tools">
-      <div className="mx-auto w-full max-w-4xl">
-        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <span className="mb-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-wide text-sky-800">
-              Týmová komunikace
-            </span>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Zpráva týmu
-            </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Napiš krátkou zprávu a odešli ji všem nebo jen vybraným větvím svého týmu.
-            </p>
+      <div className="mx-auto w-full max-w-5xl">
+        <header className="mb-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="relative overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(135deg,#020617_0%,#14071f_48%,#5b21b6_100%)] px-5 py-5 shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
+            <div className="relative z-10">
+              <span className="mb-3 inline-flex rounded-full border border-fuchsia-200/35 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-fuchsia-100 backdrop-blur">
+                Týmová komunikace
+              </span>
+              <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                Zpráva týmu
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm font-medium text-white/68">
+                Napiš krátkou zprávu a odešli ji všem nebo jen vybraným větvím svého týmu.
+              </p>
+            </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[linear-gradient(90deg,rgba(255,255,255,0),rgba(236,72,153,0.85),rgba(168,85,247,0.75),rgba(255,255,255,0))]" />
           </div>
-          <div className="min-w-0 sm:min-w-[170px] rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+          <div className="relative overflow-hidden rounded-[24px] border border-violet-200/70 bg-white/72 px-4 py-4 shadow-[0_18px_46px_rgba(76,29,149,0.14)] backdrop-blur-xl">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
               Pod tebou celkem
             </div>
-            <div className="mt-1 text-2xl font-bold text-slate-900">{subordinateCount}</div>
+            <div className="mt-2 text-3xl font-black tracking-tight text-slate-950">{subordinateCount}</div>
+            <div className="mt-3 h-1 rounded-full bg-[linear-gradient(90deg,#020617_0%,#7c3aed_52%,#ec4899_100%)]" />
           </div>
         </header>
 
-        <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-white p-5 shadow-[0_20px_46px_rgba(15,23,42,0.09)] sm:p-6">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-300 via-sky-400 to-indigo-500" />
+        <section className="relative overflow-hidden rounded-[28px] border border-white/80 bg-white/68 p-5 shadow-[0_28px_86px_rgba(76,29,149,0.16)] backdrop-blur-xl sm:p-6">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.85)_0%,rgba(250,245,255,0.58)_42%,rgba(244,244,245,0.76)_100%)]" />
 
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="relative z-10 mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold text-slate-900">Komu poslat</div>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <div className="text-sm font-bold text-slate-950">Komu poslat</div>
+              <p className="mt-0.5 text-xs font-medium text-slate-500">
                 Ve výběru se vždy odešle i celý podstrom pod vybraným člověkem.
               </p>
             </div>
-            <div className="inline-flex rounded-full border border-slate-300 bg-white p-1">
+            <div className="inline-flex rounded-full border border-violet-200/80 bg-white/72 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur">
               <button
                 type="button"
                 onClick={() => setTargetMode("all")}
-                className={`ui-focus rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                className={`ui-focus rounded-full px-3 py-1.5 text-sm font-bold transition ${
                   targetMode === "all"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:text-slate-900"
+                    ? "bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.22)]"
+                    : "text-slate-600 hover:bg-white hover:text-slate-950"
                 }`}
               >
                 Všem
@@ -517,10 +522,10 @@ export default function TeamMessagePage() {
                   setTargetMode("selected");
                   setSubordinatesModalOpen(true);
                 }}
-                className={`ui-focus inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                className={`ui-focus inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold transition ${
                   targetMode === "selected"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:text-slate-900"
+                    ? "bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.22)]"
+                    : "text-slate-600 hover:bg-white hover:text-slate-950"
                 }`}
               >
                 <Users size={14} strokeWidth={2.2} aria-hidden="true" />
@@ -530,30 +535,30 @@ export default function TeamMessagePage() {
           </div>
 
           {targetMode === "selected" ? (
-            <div className="mb-5 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+            <div className="relative z-10 mb-5 rounded-2xl border border-violet-200/75 bg-white/72 p-3 shadow-[0_16px_42px_rgba(76,29,149,0.10)] backdrop-blur">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => setSubordinatesModalOpen(true)}
                   disabled={loadingSubs || subordinateCount === 0}
-                  className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/80 px-3 py-1.5 text-sm font-bold text-slate-800 shadow-sm transition hover:border-violet-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Users size={14} strokeWidth={2} aria-hidden="true" />
                   Vybrat podřízené
                 </button>
 
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                  <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 font-bold text-slate-700">
                     Vybrané větve: {selectedEmails.length}
                   </span>
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                  <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 font-bold text-fuchsia-700">
                     Celkem příjemců: {selectedResolvedCount}
                   </span>
                   {selectedEmails.length > 0 ? (
                     <button
                       type="button"
                       onClick={() => setSelectedEmails([])}
-                      className="ui-focus rounded-full border border-slate-300 px-2 py-1 font-medium text-slate-700 transition hover:bg-slate-50"
+                      className="ui-focus rounded-full border border-slate-300 bg-white/70 px-2 py-1 font-bold text-slate-700 transition hover:bg-white"
                     >
                       Vyčistit
                     </button>
@@ -566,7 +571,7 @@ export default function TeamMessagePage() {
                   {selectedPreview.map((sub) => (
                     <span
                       key={sub.email}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700"
+                      className="inline-flex items-center gap-1 rounded-full border border-violet-100 bg-white/82 px-2.5 py-1 text-xs font-bold text-slate-700"
                     >
                       {sub.name}
                       {sub.subtreeSize > 1 ? (
@@ -581,20 +586,20 @@ export default function TeamMessagePage() {
                   ) : null}
                 </div>
               ) : (
-                <p className="mt-2 text-xs text-slate-500">
+                <p className="mt-2 text-xs font-medium text-slate-500">
                   Vyber kořenové podřízené, pod kterými se mají zahrnout celé větve.
                 </p>
               )}
             </div>
           ) : null}
 
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-slate-900">Text zprávy</div>
+          <div className="relative z-10 mb-3 flex items-center justify-between gap-3">
+            <div className="text-sm font-bold text-slate-950">Text zprávy</div>
             <span
-              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+              className={`rounded-full border px-2.5 py-1 text-xs font-bold ${
                 messageText.length > MAX_MESSAGE_LENGTH
-                  ? "bg-rose-50 text-rose-600"
-                  : "bg-slate-100 text-slate-600"
+                  ? "border-rose-200 bg-rose-50 text-rose-600"
+                  : "border-violet-100 bg-white/80 text-slate-600"
               }`}
             >
               {messageText.length}/{MAX_MESSAGE_LENGTH}
@@ -611,15 +616,15 @@ export default function TeamMessagePage() {
             }}
             maxLength={MAX_MESSAGE_LENGTH}
             placeholder="Napiš zprávu pro tým…"
-            className="min-h-[220px] w-full resize-y rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base leading-relaxed text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 focus:ring-sky-500/15"
+            className="relative z-10 min-h-[240px] w-full resize-y rounded-2xl border border-violet-200/90 bg-white/76 px-4 py-3 text-base leading-relaxed text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_34px_rgba(15,23,42,0.05)] outline-none backdrop-blur transition placeholder:text-slate-400 focus:border-fuchsia-400 focus:bg-white focus:ring-4 focus:ring-fuchsia-500/15"
           />
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-3">
             <div ref={emojiPickerRef} className="relative">
               <button
                 type="button"
                 onClick={() => setEmojiPickerOpen((open) => !open)}
-                className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/78 px-3 py-2 text-sm font-bold text-slate-800 shadow-sm backdrop-blur transition hover:border-violet-300 hover:bg-white"
                 aria-label="Vložit emoji"
               >
                 <Smile size={16} strokeWidth={2} aria-hidden="true" />
@@ -627,14 +632,14 @@ export default function TeamMessagePage() {
               </button>
 
               {emojiPickerOpen ? (
-                <div className="absolute bottom-[calc(100%+10px)] left-0 z-20 w-[280px] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.15)]">
+                <div className="absolute bottom-[calc(100%+10px)] left-0 z-20 w-[280px] rounded-2xl border border-violet-200/80 bg-white/88 p-3 shadow-[0_18px_44px_rgba(76,29,149,0.20)] backdrop-blur-xl">
                   <div className="grid grid-cols-8 gap-1">
                     {QUICK_EMOJIS.map((emoji) => (
                       <button
                         key={emoji}
                         type="button"
                         onClick={() => insertEmoji(emoji)}
-                        className="ui-focus inline-flex h-8 w-8 items-center justify-center rounded-lg text-lg transition hover:bg-slate-100"
+                        className="ui-focus inline-flex h-8 w-8 items-center justify-center rounded-lg text-lg transition hover:bg-fuchsia-50"
                         aria-label={`Vložit ${emoji}`}
                       >
                         {emoji}
@@ -649,7 +654,7 @@ export default function TeamMessagePage() {
               type="button"
               onClick={handleSend}
               disabled={!canSend}
-              className="ui-focus inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
+              className="ui-focus inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#020617_0%,#4c1d95_52%,#ec4899_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_16px_34px_rgba(76,29,149,0.26)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(76,29,149,0.32)] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:bg-none disabled:opacity-45 disabled:shadow-none disabled:hover:translate-y-0"
             >
               {sending ? (
                 <Loader2
@@ -664,15 +669,15 @@ export default function TeamMessagePage() {
             </button>
           </div>
 
-          <div className="mt-3 min-h-[20px] text-sm">
+          <div className="relative z-10 mt-3 min-h-[20px] rounded-2xl border border-white/70 bg-white/48 px-3 py-2 text-sm backdrop-blur">
             {errorText ? (
               <p className="font-medium text-rose-600">{errorText}</p>
             ) : sendSuccess ? (
-              <p className="font-medium text-emerald-700">
+              <p className="font-bold text-fuchsia-700">
                 Notifikace byla úspěšně odeslána.
               </p>
             ) : (
-              <p className="text-slate-600">{statusText}</p>
+              <p className="font-medium text-slate-600">{statusText}</p>
             )}
           </div>
         </section>
@@ -680,24 +685,25 @@ export default function TeamMessagePage() {
 
       {subordinatesModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md"
           onClick={() => setSubordinatesModalOpen(false)}
         >
           <div
-            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_24px_48px_rgba(15,23,42,0.28)] sm:p-5"
+            className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/75 bg-white/88 p-4 shadow-[0_30px_80px_rgba(15,23,42,0.34)] backdrop-blur-xl sm:p-5"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]" />
+            <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Vyber podřízené</h2>
-                <p className="text-xs text-slate-500">
+                <h2 className="text-lg font-bold text-slate-950">Vyber podřízené</h2>
+                <p className="text-xs font-medium text-slate-500">
                   Když vybereš člověka, přidají se i všichni pod ním.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSubordinatesModalOpen(false)}
-                className="ui-focus inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:bg-slate-50"
+                className="ui-focus inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:bg-black"
                 aria-label="Zavřít"
               >
                 <X size={16} strokeWidth={2} aria-hidden="true" />
@@ -714,17 +720,17 @@ export default function TeamMessagePage() {
                 value={subordinateSearch}
                 onChange={(e) => setSubordinateSearch(e.target.value)}
                 placeholder="Hledat podřízeného (jméno nebo e-mail)"
-                className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 focus:ring-sky-500/15"
+                className="w-full rounded-xl border border-violet-200 bg-white/80 py-2 pl-9 pr-3 text-sm font-medium text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-fuchsia-400 focus:bg-white focus:ring-4 focus:ring-fuchsia-500/15"
               />
             </div>
 
             <div className="mt-3 max-h-[380px] space-y-2 overflow-auto pr-1">
               {loadingSubs ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                <div className="rounded-xl border border-violet-100 bg-white/70 px-3 py-2 text-sm font-medium text-slate-600">
                   Načítám podřízené…
                 </div>
               ) : filteredSubordinates.length === 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                <div className="rounded-xl border border-violet-100 bg-white/70 px-3 py-2 text-sm font-medium text-slate-600">
                   Pro tento filtr nebyli nalezeni podřízení.
                 </div>
               ) : (
@@ -735,10 +741,10 @@ export default function TeamMessagePage() {
                       key={sub.email}
                       type="button"
                       onClick={() => toggleSelectedEmail(sub.email)}
-                      className={`ui-focus flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition ${
+                      className={`ui-focus flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left shadow-sm transition ${
                         selected
-                          ? "border-slate-900 bg-slate-100"
-                          : "border-slate-200 bg-white hover:bg-slate-50"
+                          ? "border-violet-300 bg-violet-50/90"
+                          : "border-violet-100 bg-white/76 hover:border-violet-200 hover:bg-white"
                       }`}
                     >
                       <div className="min-w-0 flex-1" style={{ paddingLeft: `${sub.depth * 18}px` }}>
@@ -755,7 +761,7 @@ export default function TeamMessagePage() {
                             {sub.name}
                           </div>
                           {sub.subtreeSize > 1 ? (
-                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                            <span className="rounded-full border border-fuchsia-100 bg-fuchsia-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-700">
                               +{sub.subtreeSize - 1} pod ním
                             </span>
                           ) : null}
@@ -765,7 +771,7 @@ export default function TeamMessagePage() {
                       <span
                         className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
                           selected
-                            ? "border-slate-900 bg-slate-900 text-white"
+                            ? "border-slate-950 bg-slate-950 text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
                             : "border-slate-300 bg-white text-transparent"
                         }`}
                       >
@@ -778,13 +784,13 @@ export default function TeamMessagePage() {
             </div>
 
             <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-sm text-slate-600">
+              <p className="text-sm font-medium text-slate-600">
                 Vybrané větve: {selectedEmails.length} | Celkem příjemců: {selectedResolvedCount}
               </p>
               <button
                 type="button"
                 onClick={() => setSubordinatesModalOpen(false)}
-                className="ui-focus rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="ui-focus rounded-full bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-4 py-2 text-sm font-bold text-white shadow-[0_14px_30px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5"
               >
                 Hotovo
               </button>

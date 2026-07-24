@@ -843,6 +843,7 @@ export default function ContractDetailPage() {
   const [contractPdfPages, setContractPdfPages] = useState<ContractPdfPreviewPage[]>([]);
   const [contractPdfLoading, setContractPdfLoading] = useState(false);
   const [contractPdfError, setContractPdfError] = useState<string | null>(null);
+  const [openContractPdfExternally, setOpenContractPdfExternally] = useState(false);
   const contractPdfObjectUrlRef = useRef<string | null>(null);
   const contractPdfCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
   const [neonImmediateBreakdown, setNeonImmediateBreakdown] =
@@ -916,6 +917,18 @@ export default function ContractDetailPage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(max-width: 767px), (hover: none) and (pointer: coarse)");
+    const sync = () => setOpenContractPdfExternally(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => {
+      media.removeEventListener("change", sync);
+    };
   }, []);
 
   const requestContractsApi = useCallback(
@@ -1610,11 +1623,108 @@ export default function ContractDetailPage() {
   }, [contract, contractTimeline, ownerEmail]);
   const hasAnyContractPdfAttachment = contractPdfOptions.length > 0;
   const selectedContractPdfFileName = selectedContractPdf?.fileName ?? contractPdfFileName;
+  const downloadContractPdfBlob = useCallback(
+    async (option: ContractPdfOption): Promise<Blob> => {
+      if (!user) {
+        throw new Error("Nejsi přihlášený.");
+      }
+
+      const params = new URLSearchParams({
+        ownerEmail: option.ownerEmail,
+        entryId: option.entryId,
+      });
+      const response = await fetchAuthedBlob(
+        user,
+        `/api/contracts/attachment?${params.toString()}`,
+        { method: "GET" }
+      );
+      if (!response.ok) {
+        let message = "PDF smlouvy se nepodařilo načíst.";
+        try {
+          const payload = (await response.json()) as unknown;
+          if (
+            payload &&
+            typeof payload === "object" &&
+            typeof (payload as Record<string, unknown>).error === "string"
+          ) {
+            message = (payload as Record<string, string>).error;
+          }
+        } catch {
+          // Binary endpoint may fail before JSON is available.
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      return blob.type === "application/pdf"
+        ? blob
+        : new Blob([blob], { type: "application/pdf" });
+    },
+    [user]
+  );
+  const openContractPdfOptionInNewTab = useCallback(
+    async (option: ContractPdfOption) => {
+      setShowContractPdfOptions(false);
+      setContractPdfError(null);
+
+      const popup = window.open("", "_blank");
+      if (popup) {
+        popup.document.title = option.fileName;
+        popup.document.body.style.margin = "0";
+        popup.document.body.style.fontFamily = "system-ui, -apple-system, sans-serif";
+        popup.document.body.style.display = "grid";
+        popup.document.body.style.placeItems = "center";
+        popup.document.body.style.minHeight = "100vh";
+        popup.document.body.style.background = "#f8fafc";
+        popup.document.body.style.color = "#0f172a";
+        popup.document.body.textContent = "Načítám PDF smlouvy...";
+      }
+
+      setContractPdfLoading(true);
+      try {
+        const pdfBlob = await downloadContractPdfBlob(option);
+        const objectUrl = URL.createObjectURL(pdfBlob);
+        window.setTimeout(() => {
+          URL.revokeObjectURL(objectUrl);
+        }, 10 * 60 * 1000);
+
+        if (popup) {
+          popup.opener = null;
+          popup.location.href = objectUrl;
+          return;
+        }
+
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } catch (err) {
+        const message =
+          err instanceof Error && err.message.trim()
+            ? err.message.trim()
+            : "PDF smlouvy se nepodařilo otevřít.";
+        if (popup) {
+          popup.document.body.textContent = message;
+        }
+        pushToast(message, "error");
+      } finally {
+        setContractPdfLoading(false);
+      }
+    },
+    [downloadContractPdfBlob, pushToast]
+  );
   const openContractPdfOption = useCallback((option: ContractPdfOption) => {
+    if (openContractPdfExternally) {
+      void openContractPdfOptionInNewTab(option);
+      return;
+    }
     setSelectedContractPdf(option);
     setShowContractPdfOptions(false);
     setShowContractPdfModal(true);
-  }, []);
+  }, [openContractPdfExternally, openContractPdfOptionInNewTab]);
   const handleContractPdfButtonClick = useCallback(() => {
     if (contractPdfOptions.length === 1 && contractPdfOptions[0]) {
       openContractPdfOption(contractPdfOptions[0]);
@@ -1800,38 +1910,8 @@ export default function ContractDetailPage() {
       clearContractPdfPreview();
 
       try {
-        const params = new URLSearchParams({
-          ownerEmail: selectedContractPdf.ownerEmail,
-          entryId: selectedContractPdf.entryId,
-        });
-        const response = await fetchAuthedBlob(
-          user,
-          `/api/contracts/attachment?${params.toString()}`,
-          { method: "GET" }
-        );
-        if (!response.ok) {
-          let message = "PDF smlouvy se nepodařilo načíst.";
-          try {
-            const payload = (await response.json()) as unknown;
-            if (
-              payload &&
-              typeof payload === "object" &&
-              typeof (payload as Record<string, unknown>).error === "string"
-            ) {
-              message = (payload as Record<string, string>).error;
-            }
-          } catch {
-            // Binary endpoint may fail before JSON is available.
-          }
-          throw new Error(message);
-        }
-
-        const blob = await response.blob();
+        const pdfBlob = await downloadContractPdfBlob(selectedContractPdf);
         if (cancelled) return;
-        const pdfBlob =
-          blob.type === "application/pdf"
-            ? blob
-            : new Blob([blob], { type: "application/pdf" });
         const objectUrl = URL.createObjectURL(pdfBlob);
         contractPdfObjectUrlRef.current = objectUrl;
         setContractPdfBlobUrl(objectUrl);
@@ -1901,6 +1981,7 @@ export default function ContractDetailPage() {
     };
   }, [
     clearContractPdfPreview,
+    downloadContractPdfBlob,
     selectedContractPdf,
     showContractPdfModal,
     user,
@@ -5032,13 +5113,16 @@ export default function ContractDetailPage() {
                     <button
                       type="button"
                       onClick={handleContractPdfButtonClick}
+                      disabled={contractPdfLoading}
                       aria-expanded={
                         contractPdfOptions.length > 1 ? showContractPdfOptions : undefined
                       }
-                      className={headerActionButtonClass}
+                      className={`${headerActionButtonClass} ${contractPdfLoading ? "opacity-60" : ""}`}
                     >
                       <Eye size={14} strokeWidth={2} aria-hidden="true" />
-                      <span>Zobrazit smlouvu</span>
+                      <span>
+                        {openContractPdfExternally ? "Otevřít smlouvu" : "Zobrazit smlouvu"}
+                      </span>
                       {contractPdfOptions.length > 1 && (
                         <ChevronDown
                           size={15}

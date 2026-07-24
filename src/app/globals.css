@@ -210,6 +210,28 @@ body {
   }
 }
 
+@keyframes calculator-save-stage {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0.75rem, 0);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
+  }
+}
+
+@keyframes calculator-save-stripes {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(1.1rem);
+  }
+}
+
 @keyframes vizitka-ambient-float {
   0% {
     transform: translate3d(-2%, -1%, 0) scale(1);

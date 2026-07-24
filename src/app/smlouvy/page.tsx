@@ -2525,19 +2525,19 @@ function ContractsPageContent() {
 
                   const CompactContent = (
                     <article
-                      className={`relative isolate overflow-hidden rounded-2xl border px-3 py-3 text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.09)] ${
+                      className={`relative isolate overflow-hidden rounded-[18px] border px-3 py-2.5 text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.09)] sm:rounded-2xl sm:py-3 ${
                         compactRowToneClass
                       } ${isSelected ? "ring-2 ring-slate-900/20" : ""}`}
                       style={{
                         contentVisibility: "auto",
-                        containIntrinsicSize: "92px",
+                        containIntrinsicSize: "84px",
                       }}
                     >
-                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center">
-                        <div className="flex min-w-0 items-start gap-3">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center lg:gap-3">
+                        <div className="order-1 flex min-w-0 items-start gap-2 lg:order-none lg:gap-3">
                           {selectMode ? (
                             <span
-                              className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-black ${
+                              className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-black lg:h-6 lg:w-6 lg:text-xs ${
                                 isSelected
                                   ? "border-slate-900 bg-slate-900 text-white"
                                   : "border-slate-300 bg-white text-slate-400"
@@ -2547,40 +2547,40 @@ function ContractsPageContent() {
                               ✓
                             </span>
                           ) : null}
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-1.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-1.5 lg:flex-wrap">
                               {institutionLabel ? (
-                                <span className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-700">
+                                <span className="inline-flex shrink-0 items-center rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-slate-700 lg:rounded-lg lg:px-2 lg:text-[10px]">
                                   {institutionLabel}
                                 </span>
                               ) : null}
-                              <span className="min-w-0 text-base font-bold leading-tight text-slate-950">
+                              <span className="min-w-0 truncate text-[15px] font-bold leading-tight text-slate-950 lg:text-base">
                                 {displayProductName}
                               </span>
                               {isEndorsement ? (
-                                <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                                <span className="hidden shrink-0 items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 sm:inline-flex">
                                   Dodatek
                                 </span>
                               ) : null}
                               {hasOriginalReplacement ? (
-                                <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+                                <span className="hidden shrink-0 items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 sm:inline-flex">
                                   {originalReplacementBadgeLabel}
                                 </span>
                               ) : null}
                               {groupedEndorsementCount > 0 ? (
-                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                <span className="hidden shrink-0 items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 sm:inline-flex">
                                   {groupedEndorsementCount}× změna
                                 </span>
                               ) : null}
                             </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-                              <span className="font-semibold text-slate-800">
+                            <div className="mt-0.5 flex min-w-0 items-center gap-x-2 overflow-hidden text-[12px] leading-tight text-slate-600 lg:mt-1 lg:flex-wrap lg:gap-x-3 lg:gap-y-1 lg:text-xs">
+                              <span className="min-w-0 truncate font-semibold text-slate-800">
                                 {c.clientName || "Klient neuveden"}
                               </span>
-                              <span>č. {c.contractNumber ?? "—"}</span>
-                              {adviserName ? <span>{adviserName}</span> : null}
+                              <span className="max-w-[42vw] shrink-0 truncate whitespace-nowrap lg:max-w-none">č. {c.contractNumber ?? "—"}</span>
+                              {adviserName ? <span className="hidden sm:inline">{adviserName}</span> : null}
                               {anniversaryInfo.soon ? (
-                                <span className="font-semibold text-rose-700">
+                                <span className="hidden font-semibold text-rose-700 sm:inline">
                                   {anniversaryInfo.daysLeft != null
                                     ? `${
                                         anniversaryInfo.anniversaryNumber
@@ -2594,26 +2594,29 @@ function ContractsPageContent() {
                           </div>
                         </div>
 
-                        <div>
-                          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 lg:hidden">
+                        <div className="order-3 col-start-1 row-start-2 min-w-0 self-end lg:order-none lg:col-auto lg:row-auto">
+                          <div className="hidden text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 lg:block">
                             Datum
                           </div>
-                          <div className="text-sm font-semibold text-slate-800">{signedStr}</div>
+                          <div className="inline-flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500 lg:block lg:text-sm lg:text-slate-800">
+                            <CalendarDays size={12} strokeWidth={2.2} className="shrink-0 lg:hidden" aria-hidden="true" />
+                            <span className="truncate">{signedStr}</span>
+                          </div>
                         </div>
 
-                        <div>
-                          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 lg:hidden">
+                        <div className="order-2 col-start-2 row-start-1 text-right lg:order-none lg:col-auto lg:row-auto lg:text-left">
+                          <div className="hidden text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 lg:block">
                             Pojistné
                           </div>
-                          <div className="whitespace-nowrap text-base font-black text-slate-950">
+                          <div className="whitespace-nowrap text-[15px] font-black leading-none text-slate-950 lg:text-base lg:leading-normal">
                             {formatMoney(premiumDisplay.amount)}
                           </div>
-                          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                          <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500 lg:mt-0 lg:text-[10px]">
                             {premiumDisplay.cadenceLabel ?? "Částka"}
                           </div>
                           {isEndorsement && premiumDelta != null ? (
                             <div
-                              className={`text-[11px] font-semibold ${
+                              className={`text-[10px] font-semibold lg:text-[11px] ${
                                 premiumDelta >= 0 ? "text-emerald-700" : "text-rose-700"
                               }`}
                             >
@@ -2623,19 +2626,19 @@ function ContractsPageContent() {
                           ) : null}
                         </div>
 
-                        <div>
+                        <div className="order-4 col-start-2 row-start-2 justify-self-end lg:order-none lg:col-auto lg:row-auto lg:justify-self-auto">
                           <span
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${statusBadge.compactClass}`}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold leading-5 lg:gap-1.5 lg:px-2.5 lg:py-1 lg:text-xs ${statusBadge.compactClass}`}
                           >
                             <span
-                              className={`h-2 w-2 rounded-full ${statusBadge.compactDotClass}`}
+                              className={`h-1.5 w-1.5 rounded-full lg:h-2 lg:w-2 ${statusBadge.compactDotClass}`}
                               aria-hidden="true"
                             />
                             {statusBadge.label}
                           </span>
                           {primaryCommissionAuditItem && commissionAuditTone ? (
                             <div
-                              className={`mt-1.5 flex w-full max-w-full items-start gap-1.5 rounded-2xl border px-2.5 py-1 text-[11px] font-bold leading-snug ${commissionAuditTone.compact}`}
+                              className={`mt-1.5 hidden w-full max-w-full items-start gap-1.5 rounded-2xl border px-2.5 py-1 text-[11px] font-bold leading-snug lg:flex ${commissionAuditTone.compact}`}
                               title={`${commissionAuditCompactLabel(primaryCommissionAuditItem)} · ${commissionAuditTimingLabel(primaryCommissionAuditItem)} · ${formatCommissionAuditDate(
                                 primaryCommissionAuditItem.expectedDateMs
                               )}`}
@@ -2657,7 +2660,30 @@ function ContractsPageContent() {
                           ) : null}
                         </div>
 
-                        <div className="flex justify-start lg:justify-end">
+                        {primaryCommissionAuditItem && commissionAuditTone ? (
+                          <div
+                            className={`order-5 col-span-2 mt-0.5 flex max-w-full items-start gap-1.5 rounded-xl border px-2 py-1 text-[10px] font-bold leading-snug lg:hidden ${commissionAuditTone.compact}`}
+                            title={`${commissionAuditCompactLabel(primaryCommissionAuditItem)} · ${commissionAuditTimingLabel(primaryCommissionAuditItem)} · ${formatCommissionAuditDate(
+                              primaryCommissionAuditItem.expectedDateMs
+                            )}`}
+                          >
+                            <Clock size={11} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden="true" />
+                            <span className="min-w-0 flex-1 truncate">
+                              <span>{commissionAuditCompactLabel(primaryCommissionAuditItem)}</span>
+                              <span className="mx-1">·</span>
+                              <span>{commissionAuditTimingLabel(primaryCommissionAuditItem)}</span>
+                              {commissionAuditSummary &&
+                              commissionAuditSummary.items.length > 1 ? (
+                                <span>
+                                  {" "}
+                                  · +{commissionAuditSummary.items.length - 1}
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
+                        ) : null}
+
+                        <div className="order-6 hidden justify-start lg:order-none lg:flex lg:justify-end">
                           {!selectMode ? (
                             <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition group-hover:border-slate-400 group-hover:text-slate-950">
                               Detail ↗

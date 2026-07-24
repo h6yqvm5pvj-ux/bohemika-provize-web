@@ -93,7 +93,7 @@ export function CalculatorDurationAndFrequencySection({
             <button
               type="button"
               onClick={onToggleDurationHelp}
-              className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-900 transition hover:bg-slate-100"
+              className="inline-flex items-center justify-center rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-900 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
               aria-expanded={durationHelpOpen}
               aria-label="Zobrazit nápovědu k době trvání smlouvy"
             >
@@ -103,16 +103,16 @@ export function CalculatorDurationAndFrequencySection({
         </span>
       </label>
       {durationHelp && durationHelpOpen && (
-        <p className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
+        <p className="rounded-xl border border-violet-200 bg-white/80 px-3 py-2 text-xs leading-relaxed text-slate-700">
           {durationHelp}
         </p>
       )}
       <input
         type="number"
-        className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+        className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
           missingFields.includes("dobu trvání smlouvy")
             ? "border-rose-400/70"
-            : "border-slate-300"
+            : "border-violet-200"
         }`}
         value={durationYears ?? ""}
         onChange={(event) => {
@@ -137,7 +137,7 @@ export function CalculatorDurationAndFrequencySection({
     <>
       <div className="mb-2 flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold text-slate-900">Parametry smlouvy</h2>
-        <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+        <span className="h-px flex-1 bg-violet-100" aria-hidden="true" />
       </div>
       <div className="space-y-3">
         {hasContractParameterFields && (
@@ -149,7 +149,7 @@ export function CalculatorDurationAndFrequencySection({
               <div className="space-y-1">
                 <label className="block text-sm font-semibold text-slate-800">Varianta produktu</label>
                 <select
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+                  className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
                   value={maxCizinKomplexVariant}
                   onChange={(event) => onMaxCizinVariantChange(event.target.value as MaxCizinKomplexVariant)}
                 >
@@ -169,10 +169,10 @@ export function CalculatorDurationAndFrequencySection({
                   type="number"
                   min={durationMonthsRange(product)[0]}
                   max={durationMonthsRange(product)[1]}
-                  className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+                  className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
                     missingFields.includes("dobu trvání v měsících")
                       ? "border-rose-400/70"
-                      : "border-slate-300"
+                      : "border-violet-200"
                   }`}
                   value={durationMonths ?? ""}
                   onChange={(event) => {
@@ -198,7 +198,7 @@ export function CalculatorDurationAndFrequencySection({
         <div className="space-y-1.5">
           <label className="block text-sm font-semibold text-slate-800">
             <span className="inline-flex items-center gap-1.5">
-              <SlidersHorizontal size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+              <SlidersHorizontal size={14} strokeWidth={2} className="text-violet-700" aria-hidden="true" />
               <span>Parametry platby</span>
             </span>
           </label>
@@ -211,8 +211,8 @@ export function CalculatorDurationAndFrequencySection({
               <label className="block text-xs font-semibold text-slate-700">{amountLabel}</label>
               <input
                 type="number"
-                className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
-                  missingFields.includes("částku") ? "border-rose-400/70" : "border-slate-300"
+                className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
+                  missingFields.includes("částku") ? "border-rose-400/70" : "border-violet-200"
                 }`}
                 value={amountText}
                 onChange={(event) => onAmountTextChange(event.target.value)}
@@ -227,7 +227,7 @@ export function CalculatorDurationAndFrequencySection({
                     <label className="block text-xs font-semibold text-slate-700">Frekvence platby</label>
                     {hasFrequencyPicker ? (
                       <select
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900"
+                        className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
                         value={frequency}
                         onChange={(event) => onFrequencyChange(event.target.value as PaymentFrequency)}
                       >
@@ -238,7 +238,7 @@ export function CalculatorDurationAndFrequencySection({
                         ))}
                       </select>
                     ) : (
-                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      <p className="rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-sm text-slate-700">
                         {defaultFrequencyText(product)}
                       </p>
                     )}
@@ -255,7 +255,7 @@ export function CalculatorDurationAndFrequencySection({
   }
 
   return (
-    <section className="rounded-[1.1rem] border border-slate-300 bg-white/95 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+    <section className="rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
       {content}
     </section>
   );

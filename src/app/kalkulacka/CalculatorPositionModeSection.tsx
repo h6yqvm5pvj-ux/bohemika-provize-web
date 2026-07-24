@@ -33,14 +33,14 @@ export function CalculatorPositionModeSection({
   if (!isVisible) return null;
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
+    <section className="rounded-2xl border border-white/80 bg-white/80 px-3 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.06)] backdrop-blur-xl">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
             Pozice
           </label>
           <select
-            className={`h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900 ${
+            className={`h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
               positionDisabled ? "cursor-not-allowed bg-slate-50 text-slate-600" : ""
             }`}
             value={position}
@@ -61,7 +61,7 @@ export function CalculatorPositionModeSection({
               Režim provize
             </label>
             <div
-              className="grid h-10 grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-0.5 shadow-sm"
+              className="grid h-10 grid-cols-2 gap-1 rounded-xl border border-violet-200 bg-white/80 p-0.5 shadow-sm"
               role="radiogroup"
               aria-label="Režim provize"
             >
@@ -76,7 +76,7 @@ export function CalculatorPositionModeSection({
                   value: "accelerated",
                   label: "Zrychlená",
                   icon: Zap,
-                  iconClass: "text-amber-500",
+                  iconClass: "text-violet-600",
                 },
               ] satisfies {
                 value: CommissionMode;
@@ -94,8 +94,8 @@ export function CalculatorPositionModeSection({
                     onClick={() => onModeChange(option.value)}
                     className={`inline-flex h-9 items-center justify-center gap-2 rounded-[0.65rem] border px-3 text-sm font-semibold transition ${
                       active
-                        ? "border-slate-900 bg-white text-slate-950 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
-                        : "border-transparent text-slate-600 hover:bg-white/70 hover:text-slate-900"
+                        ? "border-violet-200 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.08)]"
+                        : "border-transparent text-slate-600 hover:bg-violet-50 hover:text-slate-900"
                     }`}
                     role="radio"
                     aria-checked={active}
@@ -119,7 +119,7 @@ export function CalculatorPositionModeSection({
             <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               Režim provize
             </label>
-            <div className="flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-500">
+            <div className="flex h-10 items-center rounded-xl border border-violet-100 bg-white/80 px-3 text-xs font-semibold text-slate-500">
               Historický NEON bez režimu
             </div>
           </div>
