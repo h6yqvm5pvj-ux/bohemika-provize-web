@@ -334,11 +334,11 @@ export function CashflowMonthModal({
   return (
     <>
       <div
-        className="fixed inset-0 z-30 flex items-center justify-center bg-[#08030f]/78 px-3 py-4 backdrop-blur-[7px]"
+        className="fixed inset-0 z-30 flex items-end justify-center bg-[#08030f]/78 px-2 py-2 backdrop-blur-[7px] sm:items-center sm:px-3 sm:py-4"
         onClick={onClose}
       >
       <div
-        className="relative flex max-h-[95vh] w-[min(1520px,96vw)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-[#fbfdff] p-3 text-slate-900 shadow-[0_34px_82px_rgba(2,6,23,0.36)] sm:p-4"
+        className="relative flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-[#fbfdff] p-2 text-slate-900 shadow-[0_34px_82px_rgba(2,6,23,0.36)] sm:max-h-[95vh] sm:w-[min(1520px,96vw)] sm:rounded-[28px] sm:p-4"
         onClick={(event) => event.stopPropagation()}
       >
         <span
@@ -348,19 +348,28 @@ export function CashflowMonthModal({
         <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(244,239,252,0.96)_0%,rgba(250,248,255,0.98)_44%,rgba(252,251,255,1)_100%)]" />
         <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(146deg,rgba(197,105,255,0.08)_0%,rgba(197,105,255,0)_38%,rgba(166,86,246,0.06)_100%)]" />
         <span className="pointer-events-none absolute -top-20 left-28 h-[21rem] w-px rotate-[35deg] bg-[#9a5dcb]/10" />
-        <span className="pointer-events-none absolute -right-16 top-10 h-40 w-40 rounded-full bg-[#ae62ff]/12 blur-3xl" />
+        <span className="pointer-events-none absolute -right-16 top-10 hidden h-40 w-40 rounded-full bg-[#ae62ff]/12 blur-3xl sm:block" />
 
-        <div className="relative z-[1] flex min-h-0 flex-1 flex-col gap-3">
-          <div className="px-1 pt-1">
+        <button
+          type="button"
+          onClick={onClose}
+          className="ui-focus absolute right-3 top-3 z-[2] inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900 sm:h-12 sm:w-12"
+          aria-label="Zavřít přehled měsíce"
+        >
+          <X className="h-4 w-4 sm:h-5 sm:w-5" />
+        </button>
+
+        <div className="relative z-[1] flex min-h-0 flex-1 flex-col gap-2 sm:gap-3">
+          <div className="px-1 pt-1 pr-10 sm:pr-14">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 sm:text-[11px] sm:tracking-[0.2em]">
                   Přehled měsíce
                 </p>
-                <h3 className="text-[1.95rem] font-bold leading-tight text-slate-900 sm:text-[2.45rem]">
+                <h3 className="text-[1.45rem] font-bold leading-tight text-slate-900 sm:text-[2.45rem]">
                   {month.label}
                 </h3>
-                <p className="text-sm text-slate-600">{itemCountLabel}</p>
+                <p className="text-xs text-slate-600 sm:text-sm">{itemCountLabel}</p>
               </div>
 
               <div className="flex flex-col items-stretch gap-3 xl:items-end">
@@ -378,7 +387,7 @@ export function CashflowMonthModal({
                           type="button"
                           onClick={() => onOpenStatement(statement)}
                           disabled={isLoading}
-                          className="ui-focus inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-800 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-500 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-70"
+                          className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-500 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-70 sm:gap-2 sm:px-3.5 sm:text-sm"
                         >
                           {isLoading ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.2} aria-hidden="true" />
@@ -392,44 +401,44 @@ export function CashflowMonthModal({
                   </div>
                 )}
 
-                <div className="flex items-start gap-3">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="block">
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-3 md:grid-cols-3">
                     {isPaidMonth ? (
                       <>
-                        <div className="min-w-[175px] rounded-[16px] border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-right">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                        <div className="min-w-0 rounded-[13px] border border-emerald-300 bg-emerald-50 px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
+                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-emerald-700 sm:text-[10px] sm:tracking-[0.16em]">
                             Vyplaceno
                           </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[1.7rem] font-bold leading-none tracking-[-0.02em] text-emerald-700">
+                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-emerald-700 sm:text-[1.7rem]">
                             {formatMoney(month.total)}
                           </div>
                         </div>
 
-                        <div className="min-w-[175px] rounded-[16px] border border-[#d7c3ed] bg-[#f4ecff] px-4 py-2.5 text-right">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#71558f]">
+                        <div className="min-w-0 rounded-[13px] border border-[#d7c3ed] bg-[#f4ecff] px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
+                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-[#71558f] sm:text-[10px] sm:tracking-[0.16em]">
                             Předpoklad systému
                           </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[1.7rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028]">
+                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028] sm:text-[1.7rem]">
                             {formatMoney(predictedTotal)}
                           </div>
                         </div>
 
                         <div
-                          className={`min-w-[175px] rounded-[16px] border px-4 py-2.5 text-right ${
+                          className={`min-w-0 rounded-[13px] border px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right ${
                             payoutDifference >= 0
                               ? "border-emerald-300 bg-emerald-50"
                               : "border-rose-200 bg-rose-50"
                           }`}
                         >
                           <div
-                            className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                            className={`text-[8px] font-semibold uppercase tracking-[0.1em] sm:text-[10px] sm:tracking-[0.16em] ${
                               payoutDifference >= 0 ? "text-emerald-700" : "text-rose-700"
                             }`}
                           >
                             Rozdíl
                           </div>
                           <div
-                            className={`mt-1 whitespace-nowrap font-mono text-[1.7rem] font-bold leading-none tracking-[-0.02em] ${
+                            className={`mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] sm:text-[1.7rem] ${
                               payoutDifference >= 0 ? "text-emerald-700" : "text-rose-700"
                             }`}
                           >
@@ -440,51 +449,42 @@ export function CashflowMonthModal({
                       </>
                     ) : (
                       <>
-                        <div className="min-w-[175px] rounded-[16px] border border-[#d7c3ed] bg-[#f4ecff] px-4 py-2.5 text-right">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#71558f]">
+                        <div className="min-w-0 rounded-[13px] border border-[#d7c3ed] bg-[#f4ecff] px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
+                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-[#71558f] sm:text-[10px] sm:tracking-[0.16em]">
                             {grossTotalLabel}
                           </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[1.7rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028]">
+                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028] sm:text-[1.7rem]">
                             {formatMoney(month.total)}
                           </div>
                         </div>
 
-                        <div className="min-w-[175px] rounded-[16px] border border-rose-200 bg-rose-50 px-4 py-2.5 text-right">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-700">
+                        <div className="min-w-0 rounded-[13px] border border-rose-200 bg-rose-50 px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
+                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-rose-700 sm:text-[10px] sm:tracking-[0.16em]">
                             STORNO fond ({stornoPercent} %)
                           </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[1.7rem] font-bold leading-none tracking-[-0.02em] text-rose-700">
+                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-rose-700 sm:text-[1.7rem]">
                             - {formatMoney(stornoFund)}
                           </div>
                         </div>
 
-                        <div className="min-w-[175px] rounded-[16px] border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-right">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                        <div className="min-w-0 rounded-[13px] border border-emerald-300 bg-emerald-50 px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
+                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-emerald-700 sm:text-[10px] sm:tracking-[0.16em]">
                             Čisté cashflow
                           </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[1.7rem] font-bold leading-none tracking-[-0.02em] text-emerald-700">
+                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-emerald-700 sm:text-[1.7rem]">
                             {formatMoney(netTotal)}
                           </div>
                         </div>
                       </>
                     )}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="ui-focus inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900"
-                    aria-label="Zavřít přehled měsíce"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-[22px] border border-slate-200 bg-[#f7f8fd] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] sm:p-3">
-            <div className="grid grid-cols-1 gap-2.5">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-[16px] border border-slate-200 bg-[#f7f8fd] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] sm:rounded-[22px] sm:p-3">
+            <div className="grid grid-cols-1 gap-1.5 sm:gap-2.5">
               {displayGroups.map((group) => {
                 const item = group.leadItem;
                 const groupItems = group.items;
@@ -600,57 +600,57 @@ export function CashflowMonthModal({
                 return (
                   <details
                     key={group.id}
-                    className="group relative isolate overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.08)] ring-1 ring-white transition hover:border-slate-300 hover:shadow-[0_16px_34px_rgba(15,23,42,0.12)] open:border-[#c9b4e8]"
+                    className="group relative isolate overflow-hidden rounded-[15px] border border-slate-200 bg-white shadow-[0_8px_18px_rgba(15,23,42,0.06)] ring-1 ring-white transition hover:border-slate-300 hover:shadow-[0_16px_34px_rgba(15,23,42,0.12)] open:border-[#c9b4e8] sm:rounded-[18px]"
                   >
                     <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[linear-gradient(180deg,#a855f7_0%,#60a5fa_52%,#34d399_100%)]" />
                     <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(148,163,184,0.08)_0%,rgba(255,255,255,0)_28%)]" />
 
-                    <summary className="relative z-[1] grid cursor-pointer list-none grid-cols-1 gap-4 px-5 py-4 transition hover:bg-slate-50/80 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center [&::-webkit-details-marker]:hidden">
+                    <summary className="relative z-[1] grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-2 px-3 py-3 transition hover:bg-slate-50/80 sm:gap-4 sm:px-5 sm:py-4 [&::-webkit-details-marker]:hidden">
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-[1.22rem] font-bold leading-tight tracking-[-0.01em] text-slate-950">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                          <h4 className="min-w-0 text-[1rem] font-bold leading-tight tracking-[-0.01em] text-slate-950 sm:text-[1.22rem]">
                             {productLabel(item.productKey)}
                           </h4>
                           {isGrouped && (
-                            <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                            <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 sm:px-2.5 sm:py-1 sm:text-xs">
                               {formatItemCount(groupItems.length, "provize", "provize", "provizí")}
                             </span>
                           )}
                           {visibleCommissionLabels.map((label) => (
                             <span
                               key={label}
-                              className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"
+                              className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 sm:px-2.5 sm:py-1 sm:text-xs"
                             >
                               {label}
                             </span>
                           ))}
                           {hiddenCommissionLabelCount > 0 && (
-                            <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                            <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 sm:px-2.5 sm:py-1 sm:text-xs">
                               +{hiddenCommissionLabelCount}
                             </span>
                           )}
                           {!isTipIncome && !isSubscriptionIncome && (
                             <span
-                              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${payoutClass}`}
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:px-2.5 sm:py-1 sm:text-xs ${payoutClass}`}
                             >
                               {payoutLabel}
                             </span>
                           )}
                           {isSubscriptionIncome && (
                             <span
-                              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${payoutClass}`}
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:px-2.5 sm:py-1 sm:text-xs ${payoutClass}`}
                             >
                               {subscriptionPaymentStatusLabel}
                             </span>
                           )}
                           {hasPredictionAdjustment && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-[#d8b4fe] bg-[#fbf7ff] px-2.5 py-1 text-xs font-semibold text-[#7e22ce]">
-                              <BrainCircuit className="h-3.5 w-3.5" strokeWidth={2.1} aria-hidden="true" />
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[#d8b4fe] bg-[#fbf7ff] px-2 py-0.5 text-[10px] font-semibold text-[#7e22ce] sm:px-2.5 sm:py-1 sm:text-xs">
+                              <BrainCircuit className="h-3 w-3 sm:h-3.5 sm:w-3.5" strokeWidth={2.1} aria-hidden="true" />
                               Predikce
                             </span>
                           )}
                           <span
-                            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${scopeBadgeClass}`}
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:px-2.5 sm:py-1 sm:text-xs ${scopeBadgeClass}`}
                           >
                             {isTipIncome
                               ? "TIP"
@@ -662,7 +662,7 @@ export function CashflowMonthModal({
                           </span>
                         </div>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-slate-600">
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 sm:mt-2 sm:gap-x-4 sm:gap-y-1.5 sm:text-sm">
                           <span>{dateLabel}</span>
                           {contractNo && <span>Smlouva {contractNo}</span>}
                           {!isGrouped && displayCommissionLabel && <span>{displayCommissionLabel}</span>}
@@ -697,34 +697,34 @@ export function CashflowMonthModal({
                         </div>
                       </div>
 
-                      <div className="text-left sm:text-right">
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div className="text-right">
+                        <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-500 sm:text-[10px] sm:tracking-[0.16em]">
                           {isSubscriptionIncome ? "Částka" : "Výplata"}
                         </span>
-                        <div className="mt-0.5 whitespace-nowrap font-mono text-[1.95rem] font-bold leading-none tracking-[-0.03em] text-slate-950">
+                        <div className="mt-0.5 whitespace-nowrap font-mono text-[1.18rem] font-bold leading-none tracking-[-0.03em] text-slate-950 sm:text-[1.95rem]">
                           {formatMoney(group.amount)}
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2 sm:justify-end">
-                        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      <div className="flex items-start justify-end">
+                        <span className="hidden text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 sm:inline">
                           Detail
                         </span>
-                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.08)] transition group-open:rotate-180 group-open:border-violet-300 group-open:text-violet-700">
-                          <ChevronDown className="h-4 w-4" strokeWidth={2.2} />
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-[0_6px_16px_rgba(15,23,42,0.08)] transition group-open:rotate-180 group-open:border-violet-300 group-open:text-violet-700 sm:h-10 sm:w-10">
+                          <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.2} />
                         </span>
                       </div>
                     </summary>
 
-                    <div className="relative z-[1] border-t border-slate-200 bg-slate-50/80 px-5 pb-5 pt-4">
-                      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_520px] xl:items-start">
-                        <div className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+                    <div className="relative z-[1] border-t border-slate-200 bg-slate-50/80 px-3 pb-3 pt-3 sm:px-5 sm:pb-5 sm:pt-4">
+                      <div className="grid gap-2 sm:gap-3 xl:grid-cols-[minmax(0,1fr)_520px] xl:items-start">
+                        <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-2.5 shadow-[0_4px_12px_rgba(15,23,42,0.04)] sm:rounded-[16px] sm:px-4 sm:py-3">
                           {isGrouped ? (
                             <>
                               <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                 Rozpad provizí
                               </span>
-                              <div className="mt-3 grid gap-2">
+                              <div className="mt-2 grid gap-1.5 sm:mt-3 sm:gap-2">
                                 {groupItems.map((part) => {
                                   const partLabel = commissionLabelForItem(part) ?? "Provize";
                                   const partStatus = part.payoutStatus ?? "predicted";
@@ -738,7 +738,7 @@ export function CashflowMonthModal({
                                   return (
                                     <div
                                       key={part.id}
-                                      className="grid gap-2 rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
+                                      className="grid gap-1.5 rounded-[12px] border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-2 sm:px-3 sm:text-sm"
                                     >
                                       <div className="min-w-0">
                                         <div className="font-bold text-slate-950">
@@ -753,7 +753,7 @@ export function CashflowMonthModal({
                                         <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                                           Hrubá
                                         </span>
-                                        <span className="block font-mono text-base font-bold text-slate-950">
+                                        <span className="block font-mono text-sm font-bold text-slate-950 sm:text-base">
                                           {formatMoney(part.amount)}
                                         </span>
                                       </div>
@@ -775,16 +775,16 @@ export function CashflowMonthModal({
                               <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                 Význam pro kontrolu
                               </span>
-                              <div className="mt-1 text-base font-bold text-slate-950">
+                              <div className="mt-1 text-sm font-bold text-slate-950 sm:text-base">
                                 {detailMeaning.title}
                               </div>
-                              <p className="mt-1 max-w-4xl text-sm leading-relaxed text-slate-600">
+                              <p className="mt-1 max-w-4xl text-xs leading-relaxed text-slate-600 sm:text-sm">
                                 {detailMeaning.text}
                               </p>
                             </>
                           )}
 
-                          <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                          <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs sm:mt-3 sm:grid-cols-2 sm:gap-2 sm:text-sm lg:grid-cols-3">
                             {nonLifeDetail && (
                               <div className="rounded-[12px] border border-violet-200 bg-violet-50 px-3 py-2">
                                 <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-700">
@@ -886,43 +886,43 @@ export function CashflowMonthModal({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
-                          <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2 xl:grid-cols-1">
+                          <div className="rounded-[12px] border border-slate-200 bg-white px-2.5 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.04)] sm:rounded-[14px] sm:px-3">
                             <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                               {isSubscriptionIncome ? "Platba" : "Hrubá provize"}
                             </span>
-                            <span className="mt-1 block whitespace-nowrap font-mono text-[1.2rem] font-bold text-slate-950">
+                            <span className="mt-1 block whitespace-nowrap font-mono text-base font-bold text-slate-950 sm:text-[1.2rem]">
                               {formatMoney(group.amount)}
                             </span>
                           </div>
 
-                          <div className="rounded-[14px] border border-rose-200 bg-rose-50 px-3 py-2 shadow-[0_4px_12px_rgba(244,63,94,0.06)]">
+                          <div className="rounded-[12px] border border-rose-200 bg-rose-50 px-2.5 py-2 shadow-[0_4px_12px_rgba(244,63,94,0.06)] sm:rounded-[14px] sm:px-3">
                             <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-700">
                               StornoFond {Math.round(STORNO_FUND_RATE * 100)} %
                             </span>
-                            <span className="mt-1 block whitespace-nowrap font-mono text-[1.2rem] font-bold text-rose-700">
+                            <span className="mt-1 block whitespace-nowrap font-mono text-base font-bold text-rose-700 sm:text-[1.2rem]">
                               {stornoFundAmount > 0 ? `- ${formatMoney(stornoFundAmount)}` : "Bez odpočtu"}
                             </span>
                           </div>
 
-                          <div className="rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 shadow-[0_4px_12px_rgba(16,185,129,0.08)]">
+                          <div className="rounded-[12px] border border-emerald-200 bg-emerald-50 px-2.5 py-2 shadow-[0_4px_12px_rgba(16,185,129,0.08)] sm:rounded-[14px] sm:px-3">
                             <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
                               {isSubscriptionIncome ? "Čistý příjem" : "Čistě po odpočtu"}
                             </span>
-                            <span className="mt-1 block whitespace-nowrap font-mono text-[1.25rem] font-bold text-emerald-800">
+                            <span className="mt-1 block whitespace-nowrap font-mono text-base font-bold text-emerald-800 sm:text-[1.25rem]">
                               {formatMoney(netAmount)}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 sm:mt-3">
                         {href && (
                           <a
                             href={href}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50 sm:px-3.5 sm:text-sm"
                           >
                             <ExternalLink className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                             Otevřít smlouvu
