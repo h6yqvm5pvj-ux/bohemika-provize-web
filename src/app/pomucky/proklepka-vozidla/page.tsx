@@ -1220,16 +1220,16 @@ function mergeOwnerHistory(primary: OwnerRecord[], fallback: OwnerRecord[]): Own
 function confidenceToneClass(value: string): string {
   const normalized = normalizeText(value);
   if (normalized.includes("velmi") || normalized.includes("vysoka")) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
   }
-  if (normalized.includes("stred")) return "border-sky-200 bg-sky-50 text-sky-700";
+  if (normalized.includes("stred")) return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "green" | "amber" | "rose" }) {
   const styles: Record<typeof tone, string> = {
     neutral: "border-slate-200 bg-slate-100 text-slate-700",
-    green: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    green: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
     amber: "border-amber-200 bg-amber-50 text-amber-700",
     rose: "border-rose-200 bg-rose-50 text-rose-700",
   };
@@ -1240,14 +1240,14 @@ function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neu
 function Tile({ title, value, subtitle, icon, tone = "neutral" }: { title: string; value: string; subtitle?: string; icon: ReactNode; tone?: "neutral" | "green" | "rose" | "amber" }) {
   const borderTone = {
     neutral: "border-slate-200",
-    green: "border-emerald-200",
+    green: "border-fuchsia-200",
     rose: "border-rose-200",
     amber: "border-amber-200",
   }[tone];
 
   const valueTone = {
     neutral: "text-slate-900",
-    green: "text-emerald-700",
+    green: "text-fuchsia-700",
     rose: "text-rose-700",
     amber: "text-amber-700",
   }[tone];
@@ -1308,9 +1308,9 @@ function PriceBand({
   const zone = estimatePos < underPct ? "PODHODNOCENÉ PÁSMO" : estimatePos <= fairEnd ? "FÉROVÉ PÁSMO" : "PŘEDRAŽENÉ PÁSMO";
   const zoneClass =
     estimatePos < underPct
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
       : estimatePos <= fairEnd
-        ? "border-blue-200 bg-blue-50 text-blue-700"
+        ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
         : "border-rose-200 bg-rose-50 text-rose-700";
 
   return (
@@ -1325,11 +1325,11 @@ function PriceBand({
       <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4 sm:px-4">
         <div className="relative pb-8 pt-2">
           <div className="relative h-4 overflow-hidden rounded-full bg-slate-200">
-            <div className="absolute inset-y-0 left-0 bg-emerald-500" style={{ width: `${underPct}%` }} />
-            <div className="absolute inset-y-0 bg-blue-500" style={{ left: `${underPct}%`, width: `${fairPct}%` }} />
+            <div className="absolute inset-y-0 left-0 bg-fuchsia-500" style={{ width: `${underPct}%` }} />
+            <div className="absolute inset-y-0 bg-pink-400" style={{ left: `${underPct}%`, width: `${fairPct}%` }} />
             <div className="absolute inset-y-0 bg-rose-500" style={{ left: `${overLeft}%`, width: `${overPct}%` }} />
             <div
-              className="absolute inset-y-0 rounded-full border border-blue-600/45 bg-blue-700/15"
+              className="absolute inset-y-0 rounded-full border border-fuchsia-700/45 bg-fuchsia-700/15"
               style={{ left: `${fairRangeStart}%`, width: `${fairRangeWidth}%` }}
             />
           </div>
@@ -1354,11 +1354,11 @@ function PriceBand({
       </div>
 
       <div className="flex flex-wrap gap-3 text-xs font-semibold">
-        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
+        <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-fuchsia-700">
           <Dot className="h-4 w-4" />
           PODHODNOCENÉ {underShare} %
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-blue-700">
+        <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-fuchsia-700">
           <Dot className="h-4 w-4" />
           FÉROVÉ {fairShare} %
         </span>
@@ -1396,16 +1396,16 @@ function MileagePriceBars({
               : computedWidth;
           return (
             <div key={`${row.km}-${row.price}-${idx}`} className="grid grid-cols-[92px_1fr_124px] items-center gap-3">
-              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-emerald-700" : "text-slate-500"}`}>
+              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-fuchsia-700" : "text-slate-500"}`}>
                 {formatNumber(row.km)} km
               </div>
               <div className="h-10 overflow-hidden rounded-xl bg-slate-100">
                 <div
-                  className={`h-full rounded-xl ${row.highlighted ? "bg-emerald-600" : "bg-emerald-300"}`}
+                  className={`h-full rounded-xl ${row.highlighted ? "bg-fuchsia-600" : "bg-fuchsia-300"}`}
                   style={{ width: `${width}%` }}
                 />
               </div>
-              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-emerald-700" : "text-slate-800"}`}>
+              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-fuchsia-700" : "text-slate-800"}`}>
                 {formatCurrency(row.price)}
               </div>
             </div>
@@ -1590,7 +1590,7 @@ function MileageChart({ points }: { points: MileagePoint[] }) {
 
 function StkCard({ check }: { check: StkCheck }) {
   return (
-    <article className="rounded-3xl border border-emerald-200 bg-white p-4">
+    <article className="rounded-3xl border border-fuchsia-200 bg-white p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="text-xl font-semibold text-slate-900">{check.dateLabel}</div>
@@ -1619,7 +1619,7 @@ function StkCard({ check }: { check: StkCheck }) {
 
 function OwnerCard({ owner }: { owner: OwnerRecord }) {
   return (
-    <article className={`rounded-3xl border bg-white p-4 ${owner.isCurrent ? "border-emerald-300" : "border-slate-200"}`}>
+    <article className={`rounded-3xl border bg-white p-4 ${owner.isCurrent ? "border-fuchsia-300" : "border-slate-200"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-2xl font-semibold text-slate-900">{owner.name}</div>
@@ -1667,13 +1667,13 @@ function CollapsibleSectionHeader({
   onToggle: () => void;
 }) {
   const surfaceClass = expanded
-    ? "border-emerald-300 bg-emerald-50/70 shadow-sm shadow-emerald-100/80"
+    ? "border-fuchsia-300 bg-fuchsia-50/70 shadow-sm shadow-fuchsia-100/80"
     : "border-slate-200 bg-slate-50";
   const countClass = expanded
-    ? "border-emerald-200 bg-white text-emerald-700"
+    ? "border-fuchsia-200 bg-white text-fuchsia-700"
     : "border-slate-200 bg-white text-slate-600";
   const arrowClass = expanded
-    ? "border-emerald-200 bg-white text-emerald-600"
+    ? "border-fuchsia-200 bg-white text-fuchsia-600"
     : "border-slate-200 bg-white text-slate-500";
 
   return (
@@ -1741,11 +1741,11 @@ function VehicleAuditLoadingState({
   return (
     <section className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)]">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_36%,#fff1ff_36%,#fff8ff_56%,#ffffff_56%,#ffffff_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#bd00c9_56%,#ff79f2_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#c026d3_56%,#f472b6_100%)]" />
 
       <div className="relative grid min-h-[390px] gap-8 px-7 py-8 sm:px-10 sm:py-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
         <div className="min-w-0">
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-700 shadow-[0_10px_24px_rgba(189,0,201,0.1)]">
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-700 shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
             <CarFront className="h-3.5 w-3.5" />
             Proklepka vozidla
           </div>
@@ -1754,7 +1754,7 @@ function VehicleAuditLoadingState({
             <span className="text-[92px] font-black leading-[0.82] tracking-tight text-black sm:text-[122px]">
               {progressPct}
             </span>
-            <span className="pb-2 text-4xl font-black leading-none text-[#bd00c9] sm:text-5xl">
+            <span className="pb-2 text-4xl font-black leading-none text-fuchsia-700 sm:text-5xl">
               %
             </span>
           </div>
@@ -1771,11 +1771,11 @@ function VehicleAuditLoadingState({
           <div className="mt-8 max-w-md">
             <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100 shadow-inner">
               <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#bd00c9_62%,#ff79f2_100%)] transition-[width] duration-300 ease-out"
+                className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#c026d3_62%,#f472b6_100%)] transition-[width] duration-300 ease-out"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
-            <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(189,0,201,0.34),rgba(2,6,23,0))]" />
+            <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(192,38,211,0.34),rgba(2,6,23,0))]" />
           </div>
         </div>
 
@@ -1800,8 +1800,8 @@ function VehicleAuditLoadingState({
                   <stop offset="1" stopColor="#e5e7eb" stopOpacity="0.86" />
                 </linearGradient>
                 <linearGradient id="vehicle-loader-fuchsia" x1="108" y1="139" x2="164" y2="139" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stopColor="#ff79f2" />
-                  <stop offset="1" stopColor="#bd00c9" />
+                  <stop offset="0" stopColor="#f472b6" />
+                  <stop offset="1" stopColor="#d946ef" />
                 </linearGradient>
                 <filter id="vehicle-loader-shadow" x="-8%" y="-24%" width="116%" height="156%">
                   <feDropShadow dx="0" dy="20" stdDeviation="18" floodColor="#020617" floodOpacity="0.22" />
@@ -1869,12 +1869,12 @@ function VehicleAuditLoadingState({
               </g>
             </svg>
 
-            <div className="vehicle-scan-lens absolute top-1/2 z-10 flex h-28 w-28 items-center justify-center rounded-full border border-fuchsia-300/80 bg-white/65 shadow-[0_22px_50px_rgba(189,0,201,0.2)] backdrop-blur-md">
-              <Search className="h-11 w-11 text-[#bd00c9]" strokeWidth={2.6} />
+            <div className="vehicle-scan-lens absolute top-1/2 z-10 flex h-28 w-28 items-center justify-center rounded-full border border-fuchsia-300/80 bg-white/65 shadow-[0_22px_50px_rgba(217,70,239,0.2)] backdrop-blur-md">
+              <Search className="h-11 w-11 text-fuchsia-700" strokeWidth={2.6} />
               <span className="absolute -bottom-8 right-2 h-12 w-4 rotate-[-38deg] rounded-full bg-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.24)]" />
             </div>
 
-            <div className="vehicle-scan-beam absolute top-[12%] z-[9] h-[76%] w-[2px] rounded-full bg-[#bd00c9] shadow-[0_0_18px_rgba(189,0,201,0.72),0_0_42px_rgba(255,121,242,0.45)]" />
+            <div className="vehicle-scan-beam absolute top-[12%] z-[9] h-[76%] w-[2px] rounded-full bg-fuchsia-600 shadow-[0_0_18px_rgba(217,70,239,0.72),0_0_42px_rgba(244,114,182,0.45)]" />
           </div>
         </div>
       </div>
@@ -2873,13 +2873,13 @@ export default function VehicleAuditPage() {
         <section className="vehicle-reveal px-2 py-10 sm:px-4 sm:py-14" style={revealStyle(20)}>
           <div className="mx-auto max-w-4xl">
             <div className="text-center">
-              <div className="vehicle-float inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700">
+              <div className="vehicle-float inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-fuchsia-700">
                 <ShieldCheck className="h-4 w-4" />
                 Oficiální data z registru ČR
               </div>
               <h1 className={`${headingFont.className} vehicle-hero-title mx-auto mt-5 max-w-4xl text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 sm:text-6xl md:text-7xl`}>
                 Prověř historii vozu
-                <span className="block text-sky-600">během vteřiny</span>
+                <span className="block text-fuchsia-700">během vteřiny</span>
               </h1>
             </div>
 
@@ -2903,7 +2903,7 @@ export default function VehicleAuditPage() {
                   type="button"
                   onClick={() => void handleSearch()}
                   disabled={loading || !canSearch}
-                  className="vehicle-cta group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-emerald-900/30 bg-[linear-gradient(135deg,#0f766e_0%,#059669_48%,#22c55e_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(5,150,105,0.34),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 sm:text-2xl disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="vehicle-cta group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-fuchsia-900/20 bg-[linear-gradient(135deg,#020617_0%,#a21caf_48%,#d946ef_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-fuchsia-200 sm:text-2xl disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   {loading ? "Načítám..." : "Proklepnout"}
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
@@ -2929,7 +2929,7 @@ export default function VehicleAuditPage() {
                     inputMode="numeric"
                     value={refineMileage}
                     onChange={(event) => setRefineMileage(event.target.value)}
-                    className="mx-auto h-12 w-full max-w-xs rounded-xl border border-slate-200 px-3 text-base font-medium text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                    className="mx-auto h-12 w-full max-w-xs rounded-xl border border-slate-200 px-3 text-base font-medium text-slate-900 outline-none transition focus:border-fuchsia-400 focus:ring-2 focus:ring-fuchsia-100"
                     placeholder="Nájezd (km)"
                   />
                 </div>
@@ -2972,12 +2972,12 @@ export default function VehicleAuditPage() {
                 {summary.brand} <span className="text-slate-700">{summary.model}</span>
               </h2>
 
-              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              <div className="mt-4 rounded-2xl border border-fuchsia-200 bg-fuchsia-50 px-4 py-3 text-sm text-fuchsia-800">
                 <div className="inline-flex items-center gap-2 font-semibold">
                   <ShieldCheck className="h-4 w-4" />
                   Neevidováno jako odcizené
                 </div>
-                <div className="mt-1 text-emerald-700">Zdroj: Policie ČR (interní ověření přes registr)</div>
+                <div className="mt-1 text-fuchsia-700">Zdroj: Policie ČR (interní ověření přes registr)</div>
               </div>
 
               <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
@@ -3093,7 +3093,7 @@ export default function VehicleAuditPage() {
 
               <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
                 <div>
-                  <div className="text-6xl font-semibold leading-none tracking-tight text-emerald-600">{formatCurrency(valuationRecommended)}</div>
+                  <div className="text-6xl font-semibold leading-none tracking-tight text-fuchsia-700">{formatCurrency(valuationRecommended)}</div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                     <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${confidenceToneClass(valuationConfidenceLabel)}`}>
                       {valuationConfidenceLabel}
@@ -3116,7 +3116,7 @@ export default function VehicleAuditPage() {
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   <div className="inline-flex items-center gap-2 font-semibold text-slate-700">
-                    <AlertTriangle className="h-4 w-4 text-sky-600" />
+                    <AlertTriangle className="h-4 w-4 text-fuchsia-700" />
                     {valuationInfoTitle !== "—" ? valuationInfoTitle : "Odhad na základě registru"}
                   </div>
                   <div className="mt-1">
@@ -3197,8 +3197,8 @@ export default function VehicleAuditPage() {
                 onToggle={() => setOwnersExpanded((value) => !value)}
               />
 
-              <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700">
-                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Aktuální stav</div>
+              <div className="rounded-3xl border border-fuchsia-200 bg-fuchsia-50 p-4 text-sm text-slate-700">
+                <div className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Aktuální stav</div>
                 <div className="mt-2 space-y-1">
                   <div><span className="font-semibold">Vlastník:</span> {currentOwner?.name ?? "Neuvedený subjekt"} ({currentOwner?.fromLabel ?? "—"})</div>
                   <div><span className="font-semibold">Provozovatel:</span> {currentOperator?.name ?? "Neuvedený subjekt"} ({currentOperator?.fromLabel ?? "—"})</div>
@@ -3229,7 +3229,7 @@ export default function VehicleAuditPage() {
             <section className="vehicle-reveal rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3" style={revealStyle(500)}>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  <ShieldCheck className="h-4 w-4 text-fuchsia-700" />
                   <span>VIN: {displayedVin}</span>
                 </div>
                 <span>Uživatel: {safeStr(result?.forUser)}</span>
@@ -3287,10 +3287,10 @@ export default function VehicleAuditPage() {
         @keyframes vehicle-glow-pulse {
           0%,
           100% {
-            box-shadow: 0 12px 28px rgba(2, 132, 199, 0.08), 0 0 0 1px rgba(16, 185, 129, 0.08);
+            box-shadow: 0 12px 28px rgba(192, 38, 211, 0.08), 0 0 0 1px rgba(217, 70, 239, 0.08);
           }
           50% {
-            box-shadow: 0 16px 34px rgba(2, 132, 199, 0.16), 0 0 0 1px rgba(16, 185, 129, 0.18);
+            box-shadow: 0 16px 34px rgba(192, 38, 211, 0.16), 0 0 0 1px rgba(217, 70, 239, 0.18);
           }
         }
 
@@ -3354,8 +3354,8 @@ export default function VehicleAuditPage() {
           height: 300px;
           z-index: -1;
           border-radius: 44px;
-          background: radial-gradient(50% 60% at 18% 44%, rgba(16, 185, 129, 0.16), transparent 74%),
-            radial-gradient(58% 62% at 82% 36%, rgba(14, 165, 233, 0.18), transparent 78%);
+          background: radial-gradient(50% 60% at 18% 44%, rgba(217, 70, 239, 0.14), transparent 74%),
+            radial-gradient(58% 62% at 82% 36%, rgba(244, 114, 182, 0.16), transparent 78%);
           filter: blur(18px);
           animation: vehicle-bg-pan 14s ease-in-out infinite alternate;
         }

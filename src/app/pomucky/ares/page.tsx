@@ -28,10 +28,12 @@ const headingFont = Space_Grotesk({
 });
 
 const ARES_LOADING_PHASES = [
-  "Validuji zadané parametry dotazu",
-  "Napojení na veřejné registry ARES",
-  "Sestavuji přehled nalezených subjektů",
+  "Validuji zadané údaje",
+  "Hledám subjekt v registru ARES",
+  "Kontroluji registry a stav subjektu",
+  "Skládám přehled firmy",
 ] as const;
+const ARES_LOADING_EXTRA_DELAY_MS = 2_000;
 
 const DETAIL_SOURCE_KEYS = ["core", "ros", "rzp", "vr", "res", "ceu", "nrpzs", "rcns", "rpsh", "rs", "szr"] as const;
 type DetailSourceKey = (typeof DETAIL_SOURCE_KEYS)[number];
@@ -187,6 +189,10 @@ function clamp(value: number, min: number, max: number): number {
 
 function revealStyle(delayMs: number): CSSProperties {
   return { animationDelay: `${delayMs}ms` };
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function readObject(value: unknown): Record<string, unknown> | null {
@@ -411,7 +417,7 @@ function Pill({
 }) {
   const toneClass =
     tone === "green"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
       : tone === "amber"
         ? "border-amber-200 bg-amber-50 text-amber-700"
         : tone === "rose"
@@ -426,60 +432,179 @@ function Pill({
   );
 }
 
-function AresLoadingState({ phaseIndex }: { phaseIndex: number }) {
+function AresRegistryCard() {
+  return (
+    <svg viewBox="0 0 540 300" className="h-full w-full overflow-visible" aria-hidden="true">
+      <defs>
+        <linearGradient id="ares-card-dark" x1="58" y1="36" x2="210" y2="256" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#020617" />
+          <stop offset="0.62" stopColor="#0f172a" />
+          <stop offset="1" stopColor="#111827" />
+        </linearGradient>
+        <linearGradient id="ares-card-surface" x1="160" y1="42" x2="482" y2="256" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#f8fafc" />
+        </linearGradient>
+        <linearGradient id="ares-card-accent" x1="72" y1="44" x2="468" y2="250" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#020617" />
+          <stop offset="0.55" stopColor="#c026d3" />
+          <stop offset="1" stopColor="#f472b6" />
+        </linearGradient>
+        <filter id="ares-card-shadow" x="-12%" y="-20%" width="124%" height="150%">
+          <feDropShadow dx="0" dy="22" stdDeviation="20" floodColor="#020617" floodOpacity="0.18" />
+        </filter>
+      </defs>
+
+      <ellipse cx="270" cy="270" rx="204" ry="17" fill="#020617" opacity="0.1" />
+
+      <g opacity="0.55">
+        <rect x="86" y="68" width="92" height="64" rx="18" fill="#ffffff" stroke="#e2e8f0" strokeWidth="2" />
+        <path d="M108 92h48M108 112h34" stroke="#cbd5e1" strokeWidth="7" strokeLinecap="round" />
+        <path d="M108 74h32" stroke="#d946ef" strokeWidth="7" strokeLinecap="round" />
+
+        <rect x="382" y="56" width="92" height="66" rx="18" fill="#ffffff" stroke="#e2e8f0" strokeWidth="2" />
+        <path d="M404 82h45M404 102h29" stroke="#cbd5e1" strokeWidth="7" strokeLinecap="round" />
+        <path d="M404 62h31" stroke="#d946ef" strokeWidth="7" strokeLinecap="round" />
+      </g>
+
+      <g filter="url(#ares-card-shadow)">
+        <rect x="58" y="38" width="424" height="218" rx="30" fill="white" opacity="0.82" />
+        <rect x="58" y="38" width="424" height="218" rx="30" fill="none" stroke="#cbd5e1" strokeWidth="2" />
+        <path
+          d="M58 68c0-17 13-30 30-30h112v218H88c-17 0-30-13-30-30V68Z"
+          fill="url(#ares-card-dark)"
+        />
+        <path d="M58 68c0-17 13-30 30-30h394v20H58V68Z" fill="url(#ares-card-accent)" opacity="0.96" />
+
+        <g opacity="0.16">
+          <path d="M84 38v218M116 38v218M148 38v218M180 38v218" stroke="#ffffff" strokeWidth="1" />
+          <path d="M58 70h142M58 102h142M58 134h142M58 166h142M58 198h142M58 230h142" stroke="#ffffff" strokeWidth="1" />
+        </g>
+
+        <rect x="84" y="78" width="76" height="30" rx="15" fill="#ffffff" fillOpacity="0.1" stroke="#f472b6" strokeOpacity="0.42" />
+        <text x="122" y="98" textAnchor="middle" fill="#ffffff" fontSize="18" fontWeight="900" letterSpacing="4">
+          ARES
+        </text>
+        <rect x="84" y="138" width="88" height="74" rx="18" fill="#ffffff" fillOpacity="0.08" stroke="#ffffff" strokeOpacity="0.14" />
+        <path d="M105 178h46M105 194h30" stroke="#ffffff" strokeOpacity="0.7" strokeWidth="7" strokeLinecap="round" />
+        <path d="M104 157h50" stroke="#d946ef" strokeWidth="8" strokeLinecap="round" />
+
+        <rect x="200" y="38" width="282" height="218" rx="30" fill="url(#ares-card-surface)" />
+        <path d="M222 85h116" stroke="#020617" strokeWidth="13" strokeLinecap="round" />
+        <path d="M222 111h174" stroke="#cbd5e1" strokeWidth="10" strokeLinecap="round" />
+        <path d="M222 133h130" stroke="#e2e8f0" strokeWidth="10" strokeLinecap="round" />
+
+        <rect x="222" y="158" width="90" height="46" rx="16" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="2" />
+        <path d="M241 178h37M241 192h24" stroke="#64748b" strokeWidth="7" strokeLinecap="round" />
+        <path d="M241 164h26" stroke="#d946ef" strokeWidth="7" strokeLinecap="round" />
+
+        <rect x="326" y="158" width="122" height="46" rx="16" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="2" />
+        <path d="M345 178h57M345 192h36" stroke="#64748b" strokeWidth="7" strokeLinecap="round" />
+        <path d="M345 164h34" stroke="#d946ef" strokeWidth="7" strokeLinecap="round" />
+
+        <rect x="222" y="216" width="226" height="14" rx="7" fill="#020617" opacity="0.08" />
+        <path
+          d="M222 223h146"
+          stroke="url(#ares-card-accent)"
+          strokeWidth="14"
+          strokeLinecap="round"
+        />
+
+        <g transform="translate(410 76)">
+          <rect x="0" y="0" width="34" height="34" rx="8" fill="#020617" opacity="0.08" />
+          <rect x="8" y="8" width="7" height="7" rx="2" fill="#020617" opacity="0.7" />
+          <rect x="21" y="8" width="5" height="7" rx="2" fill="#020617" opacity="0.36" />
+          <rect x="8" y="21" width="6" height="5" rx="2" fill="#020617" opacity="0.34" />
+          <rect x="20" y="20" width="7" height="7" rx="2" fill="#020617" opacity="0.7" />
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+function AresLoadingState({
+  phaseIndex,
+  progress,
+  query,
+}: {
+  phaseIndex: number;
+  progress: number;
+  query: string;
+}) {
   const safePhaseIndex = clamp(phaseIndex, 0, ARES_LOADING_PHASES.length - 1);
-  const progressPct = ((safePhaseIndex + 1) / ARES_LOADING_PHASES.length) * 100;
+  const progressPct = clamp(Math.round(progress), 0, 99);
+  const scanTopPct = 100 - progressPct;
+  const phase = ARES_LOADING_PHASES[safePhaseIndex];
+  const queryLabel = query.trim() ? query.trim() : "zadaný subjekt";
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 via-white to-sky-50/60 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-      <div className="pointer-events-none absolute -left-20 top-8 h-36 w-36 rounded-full bg-emerald-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -right-20 bottom-0 h-36 w-36 rounded-full bg-sky-200/40 blur-3xl" />
+    <section className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)]">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_36%,#fdf4ff_36%,#fff7fb_57%,#ffffff_57%,#ffffff_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#c026d3_56%,#f472b6_100%)]" />
 
-      <div className="relative">
-        <div className="flex items-start gap-4">
-          <div className="relative mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-white shadow-sm">
-            <span className="absolute inset-0 rounded-2xl border border-emerald-300/70 motion-safe:animate-ping" />
-            <Building2 className="h-5 w-5 text-emerald-700 motion-safe:animate-bounce" />
+      <div className="relative grid min-h-[390px] gap-8 px-7 py-8 sm:px-10 sm:py-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
+        <div className="min-w-0">
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-700 shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            ARES
           </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
-              <Loader2 className="h-4 w-4 text-emerald-700 motion-safe:animate-spin" />
-              Vyhledávám data v ARES
-            </div>
-            <p className="mt-1 text-sm text-slate-600">{ARES_LOADING_PHASES[safePhaseIndex]}</p>
+          <div className="mt-8 flex items-end gap-2">
+            <span className="text-[92px] font-black leading-[0.82] tracking-tight text-black sm:text-[122px]">
+              {progressPct}
+            </span>
+            <span className="pb-2 text-4xl font-black leading-none text-fuchsia-700 sm:text-5xl">
+              %
+            </span>
+          </div>
 
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-emerald-100/90">
+          <div className="mt-7 space-y-2">
+            <h2 className="text-3xl font-black leading-tight tracking-tight text-black sm:text-4xl">
+              Prověřuji firmu
+            </h2>
+            <p className="min-h-[28px] text-base font-bold text-slate-500 sm:text-lg">
+              {phase}
+            </p>
+            <p className="text-sm font-semibold text-slate-400">
+              Dotaz: <span className="text-slate-600">{queryLabel}</span>
+            </p>
+          </div>
+
+          <div className="mt-8 max-w-md">
+            <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100 shadow-inner">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-sky-500 transition-[width] duration-500 ease-out"
+                className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#c026d3_62%,#f472b6_100%)] transition-[width] duration-300 ease-out"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
+            <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(192,38,211,0.34),rgba(2,6,23,0))]" />
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
-          {ARES_LOADING_PHASES.map((phase, idx) => {
-            const isActive = idx === safePhaseIndex;
-            const isDone = idx < safePhaseIndex;
-            return (
-              <div
-                key={phase}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
-                  isActive
-                    ? "border-emerald-300 bg-white text-emerald-900 shadow-sm"
-                    : isDone
-                      ? "border-emerald-200 bg-emerald-50/80 text-emerald-800"
-                      : "border-slate-200 bg-white/80 text-slate-500"
-                }`}
-              >
-                <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isActive || isDone ? "bg-emerald-500" : "bg-slate-300"}`}>
-                  {isActive && <span className="absolute inset-0 rounded-full bg-emerald-400 motion-safe:animate-ping" />}
-                </span>
-                <span className="truncate font-medium">{phase}</span>
-              </div>
-            );
-          })}
+        <div className="relative flex min-h-[270px] items-center justify-center overflow-hidden px-4 py-8">
+          <div className="absolute inset-0 opacity-[0.3] [background-image:linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:34px_34px]" />
+          <div className="absolute inset-x-12 bottom-10 h-4 rounded-full bg-slate-950/10 blur-md" />
+
+          <div className="relative h-[260px] w-full max-w-[560px]">
+            <div className="absolute inset-0 scale-[1.012] opacity-45 blur-[7px]">
+              <AresRegistryCard />
+            </div>
+            <div
+              className="absolute inset-0 overflow-hidden transition-[clip-path] duration-300 ease-out"
+              style={{ clipPath: `inset(${scanTopPct}% 0 0 0)` }}
+            >
+              <AresRegistryCard />
+            </div>
+
+            <div
+              className="ares-identity-scan-line absolute left-[6%] right-[6%] z-10 h-[3px] rounded-full bg-[linear-gradient(90deg,transparent,#020617_10%,#d946ef_52%,#f472b6_90%,transparent)] shadow-[0_0_24px_rgba(217,70,239,0.72),0_0_46px_rgba(244,114,182,0.48)] transition-[top] duration-300 ease-out"
+              style={{ top: `${scanTopPct}%` }}
+            />
+            <div
+              className="absolute left-[8%] right-[8%] z-[9] h-20 -translate-y-full bg-[linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,0.82))] transition-[top] duration-300 ease-out"
+              style={{ top: `${scanTopPct}%` }}
+            />
+          </div>
         </div>
       </div>
     </section>
@@ -495,6 +620,7 @@ export default function AresToolPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchActivated, setSearchActivated] = useState(false);
   const [loadingPhaseIndex, setLoadingPhaseIndex] = useState(0);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [entities, setEntities] = useState<AresEntity[]>([]);
   const [pocetCelkem, setPocetCelkem] = useState(0);
   const [detailByIco, setDetailByIco] = useState<Record<string, AresDetail>>({});
@@ -536,12 +662,33 @@ export default function AresToolPage() {
   }, []);
 
   useEffect(() => {
-    if (!loading) return;
+    if (!loading) {
+      const resetFrame = window.requestAnimationFrame(() => {
+        setLoadingPhaseIndex(0);
+        setLoadingProgress(0);
+      });
+      return () => window.cancelAnimationFrame(resetFrame);
+    }
+
     setLoadingPhaseIndex(0);
-    const interval = window.setInterval(() => {
+    setLoadingProgress(8);
+
+    const phaseInterval = window.setInterval(() => {
       setLoadingPhaseIndex((current) => (current + 1) % ARES_LOADING_PHASES.length);
-    }, 900);
-    return () => window.clearInterval(interval);
+    }, 1150);
+    const progressInterval = window.setInterval(() => {
+      setLoadingProgress((current) => {
+        if (current < 32) return Math.min(current + 5, 32);
+        if (current < 66) return Math.min(current + 3, 66);
+        if (current < 92) return Math.min(current + 2, 92);
+        return Math.min(current + 1, 97);
+      });
+    }, 170);
+
+    return () => {
+      window.clearInterval(phaseInterval);
+      window.clearInterval(progressInterval);
+    };
   }, [loading]);
 
   useEffect(() => {
@@ -612,6 +759,7 @@ export default function AresToolPage() {
       setPocetCelkem(0);
       setError(err instanceof Error ? err.message : "Nepodařilo se načíst data z ARES.");
     } finally {
+      await wait(ARES_LOADING_EXTRA_DELAY_MS);
       setLoading(false);
     }
   }, [canSearch, ico, obec, obchodniJmeno, user]);
@@ -719,6 +867,13 @@ export default function AresToolPage() {
     return { current, historical };
   }, [activeDetail, statutarniReferenceDate]);
   const currentStatutarniCount = currentStatutarniRos.length + statutarniVrByValidity.current.length;
+  const loadingQueryLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (ico.trim()) parts.push(`IČO ${ico.trim()}`);
+    if (obchodniJmeno.trim()) parts.push(obchodniJmeno.trim());
+    if (obec.trim()) parts.push(obec.trim());
+    return parts.join(" · ");
+  }, [ico, obec, obchodniJmeno]);
 
   const pageContent = (
     <>
@@ -733,13 +888,13 @@ export default function AresToolPage() {
         >
           <div className="mx-auto max-w-4xl">
             <div className="text-center">
-              <div className="ares-float inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-700">
+              <div className="ares-float inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-fuchsia-700">
                 <ShieldCheck className="h-4 w-4" />
                 Oficiální data ARES
               </div>
               <h1 className={`${headingFont.className} ares-hero-title mx-auto mt-5 max-w-4xl text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 sm:text-6xl md:text-7xl`}>
                 Vyhledej firmu v ARES
-                <span className="block text-sky-600">podle IČO nebo názvu</span>
+                <span className="block text-fuchsia-700">podle IČO nebo názvu</span>
               </h1>
             </div>
 
@@ -793,7 +948,7 @@ export default function AresToolPage() {
                   type="button"
                   onClick={() => void handleSearch()}
                   disabled={loading || !canSearch}
-                  className="ares-cta group inline-flex h-14 items-center justify-center gap-3 rounded-[20px] border border-emerald-900/30 bg-[linear-gradient(135deg,#0f766e_0%,#059669_48%,#22c55e_100%)] px-7 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(5,150,105,0.34),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="ares-cta group inline-flex h-14 items-center justify-center gap-3 rounded-[20px] border border-fuchsia-900/20 bg-[linear-gradient(135deg,#020617_0%,#a21caf_48%,#d946ef_100%)] px-7 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-fuchsia-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   {loading ? "Hledám..." : "Vyhledat"}
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
@@ -822,7 +977,11 @@ export default function AresToolPage() {
 
         {searchActivated && loading && (
           <div className="ares-reveal" style={revealStyle(60)}>
-            <AresLoadingState phaseIndex={loadingPhaseIndex} />
+            <AresLoadingState
+              phaseIndex={loadingPhaseIndex}
+              progress={loadingProgress}
+              query={loadingQueryLabel}
+            />
           </div>
         )}
 
@@ -860,20 +1019,20 @@ export default function AresToolPage() {
                     type="button"
                     disabled={!canLoadDetail}
                     onClick={() => void handleOpenDetail(entity)}
-                    className={`group relative overflow-hidden rounded-[26px] p-[1px] text-left transition duration-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 ${
+                    className={`group relative overflow-hidden rounded-[26px] p-[1px] text-left transition duration-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-fuchsia-200 ${
                       isSelected ? "shadow-[0_24px_52px_rgba(15,23,42,0.15)]" : "hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(15,23,42,0.12)]"
                     } disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0`}
                   >
                     <div
                       aria-hidden
-                      className={`pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,rgba(148,163,184,0.38),rgba(148,163,184,0.14)_42%,rgba(52,211,153,0.36))] transition-opacity ${
+                      className={`pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,rgba(148,163,184,0.34),rgba(148,163,184,0.12)_42%,rgba(217,70,239,0.32))] transition-opacity ${
                         isSelected ? "opacity-100" : "opacity-75 group-hover:opacity-100"
                       }`}
                     />
 
                     <div
                       className={`relative rounded-[25px] px-5 py-4 ${
-                        isSelected ? "bg-emerald-50/80" : "bg-white/95"
+                        isSelected ? "bg-fuchsia-50/70" : "bg-white/95"
                       }`}
                     >
                       <div
@@ -894,7 +1053,7 @@ export default function AresToolPage() {
                         </div>
                         <span
                           className={`inline-flex shrink-0 rounded-full border px-3 py-1 text-xs font-semibold tracking-wide ${
-                            isActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"
+                            isActive ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700" : "border-rose-200 bg-rose-50 text-rose-700"
                           }`}
                         >
                           {isActive ? "AKTIVNÍ" : "ZANIKLÝ"}
@@ -997,7 +1156,7 @@ export default function AresToolPage() {
               <div className="max-h-[78vh] overflow-y-auto p-5 sm:p-6">
                 {activeDetailLoading && (
                   <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                    <Loader2 className="h-4 w-4 animate-spin text-fuchsia-700" />
                     Načítám detail ze všech registrů ARES
                   </div>
                 )}
@@ -1256,10 +1415,10 @@ export default function AresToolPage() {
         @keyframes ares-glow-pulse {
           0%,
           100% {
-            box-shadow: 0 12px 28px rgba(2, 132, 199, 0.08), 0 0 0 1px rgba(16, 185, 129, 0.08);
+            box-shadow: 0 12px 28px rgba(192, 38, 211, 0.08), 0 0 0 1px rgba(217, 70, 239, 0.08);
           }
           50% {
-            box-shadow: 0 16px 34px rgba(2, 132, 199, 0.16), 0 0 0 1px rgba(16, 185, 129, 0.18);
+            box-shadow: 0 16px 34px rgba(192, 38, 211, 0.16), 0 0 0 1px rgba(217, 70, 239, 0.18);
           }
         }
 
@@ -1270,6 +1429,18 @@ export default function AresToolPage() {
           50%,
           100% {
             transform: translateX(130%);
+          }
+        }
+
+        @keyframes ares-scan-line-pulse {
+          0%,
+          100% {
+            opacity: 0.82;
+            filter: saturate(1);
+          }
+          50% {
+            opacity: 1;
+            filter: saturate(1.3);
           }
         }
 
@@ -1285,8 +1456,8 @@ export default function AresToolPage() {
           height: 300px;
           z-index: -1;
           border-radius: 44px;
-          background: radial-gradient(50% 60% at 18% 44%, rgba(16, 185, 129, 0.16), transparent 74%),
-            radial-gradient(58% 62% at 82% 36%, rgba(14, 165, 233, 0.18), transparent 78%);
+          background: radial-gradient(50% 60% at 18% 44%, rgba(217, 70, 239, 0.14), transparent 74%),
+            radial-gradient(58% 62% at 82% 36%, rgba(244, 114, 182, 0.16), transparent 78%);
           filter: blur(18px);
           animation: ares-bg-pan 14s ease-in-out infinite alternate;
         }
@@ -1327,11 +1498,16 @@ export default function AresToolPage() {
           animation: none;
         }
 
+        .ares-identity-scan-line {
+          animation: ares-scan-line-pulse 1.8s ease-in-out infinite;
+        }
+
         :root[data-motion="off"] .ares-tool-shell::before,
         :root[data-motion="off"] .ares-reveal,
         :root[data-motion="off"] .ares-float,
         :root[data-motion="off"] .ares-glow,
-        :root[data-motion="off"] .ares-cta::after {
+        :root[data-motion="off"] .ares-cta::after,
+        :root[data-motion="off"] .ares-identity-scan-line {
           animation: none !important;
           opacity: 1 !important;
           transform: none !important;
@@ -1343,7 +1519,8 @@ export default function AresToolPage() {
           .ares-reveal,
           .ares-float,
           .ares-glow,
-          .ares-cta::after {
+          .ares-cta::after,
+          .ares-identity-scan-line {
             animation: none !important;
             opacity: 1 !important;
             transform: none !important;

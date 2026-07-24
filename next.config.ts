@@ -40,6 +40,7 @@ const staticImageCacheHeaders = [
 const nextConfig: NextConfig = {
   images: {
     minimumCacheTTL: 60 * 60 * 24 * 7,
+    qualities: [70, 75, 100],
   },
   outputFileTracingIncludes: {
     "/api/documents/file": ["./private/dokumenty/**/*"],

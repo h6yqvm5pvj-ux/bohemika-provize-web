@@ -197,7 +197,7 @@ type DateInsight = {
 function dateInsightToneClass(tone: DateInsightTone): string {
   switch (tone) {
     case "fresh":
-      return "border-emerald-200 bg-emerald-50/70";
+      return "border-fuchsia-200 bg-fuchsia-50/70";
     case "warning":
       return "border-amber-200 bg-amber-50/70";
     default:
@@ -408,12 +408,12 @@ function CuzkLookupLoadingState({
   return (
     <>
       <section className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)]">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_36%,#f0f9ff_36%,#f8fdff_56%,#ffffff_56%,#ffffff_100%)]" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#0284c7_52%,#22d3ee_100%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_36%,#fdf4ff_36%,#fff7fb_56%,#ffffff_56%,#ffffff_100%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#c026d3_56%,#f472b6_100%)]" />
 
         <div className="relative grid min-h-[390px] gap-8 px-7 py-8 sm:px-10 sm:py-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
           <div className="min-w-0">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-sky-700 shadow-[0_10px_24px_rgba(2,132,199,0.1)]">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-700 shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
               <Home className="h-3.5 w-3.5" />
               Katastr
             </div>
@@ -422,7 +422,7 @@ function CuzkLookupLoadingState({
               <span className="text-[92px] font-black leading-[0.82] tracking-tight text-black sm:text-[122px]">
                 {progressPct}
               </span>
-              <span className="pb-2 text-4xl font-black leading-none text-sky-600 sm:text-5xl">
+              <span className="pb-2 text-4xl font-black leading-none text-fuchsia-700 sm:text-5xl">
                 %
               </span>
             </div>
@@ -442,11 +442,11 @@ function CuzkLookupLoadingState({
             <div className="mt-8 max-w-md">
               <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100 shadow-inner">
                 <div
-                  className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#0284c7_62%,#22d3ee_100%)] transition-[width] duration-300 ease-out"
+                  className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#c026d3_62%,#f472b6_100%)] transition-[width] duration-300 ease-out"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
-              <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(2,132,199,0.34),rgba(2,6,23,0))]" />
+              <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(192,38,211,0.34),rgba(2,6,23,0))]" />
             </div>
           </div>
 
@@ -471,13 +471,13 @@ function CuzkLookupLoadingState({
                     <stop offset="1" stopColor="#eef2f7" />
                   </linearGradient>
                   <linearGradient id="cuzk-loader-window" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stopColor="#e0f2fe" />
+                    <stop offset="0" stopColor="#fae8ff" />
                     <stop offset="1" stopColor="#ffffff" />
                   </linearGradient>
                   <filter id="cuzk-loader-house-shadow" x="-8%" y="-20%" width="116%" height="150%">
                     <feDropShadow dx="0" dy="20" stdDeviation="18" floodColor="#020617" floodOpacity="0.18" />
                   </filter>
-                  <filter id="cuzk-loader-sky-glow" x="-80%" y="-80%" width="260%" height="260%">
+                  <filter id="cuzk-loader-fuchsia-glow" x="-80%" y="-80%" width="260%" height="260%">
                     <feGaussianBlur stdDeviation="6" result="blur" />
                     <feMerge>
                       <feMergeNode in="blur" />
@@ -509,13 +509,13 @@ function CuzkLookupLoadingState({
                   />
                   <rect x="163" y="143" width="62" height="52" rx="12" fill="url(#cuzk-loader-window)" stroke="#cbd5e1" strokeWidth="3" />
                   <rect x="315" y="143" width="62" height="52" rx="12" fill="url(#cuzk-loader-window)" stroke="#cbd5e1" strokeWidth="3" />
-                  <path d="M194 143v52M163 169h62M346 143v52M315 169h62" stroke="#bae6fd" strokeWidth="3" strokeLinecap="round" />
+                  <path d="M194 143v52M163 169h62M346 143v52M315 169h62" stroke="#f5d0fe" strokeWidth="3" strokeLinecap="round" />
                   <path
                     d="M243 239v-69c0-9 7-16 16-16h22c9 0 16 7 16 16v69h-54Z"
                     fill="#020617"
                   />
-                  <circle cx="284" cy="198" r="4" fill="#22d3ee" filter="url(#cuzk-loader-sky-glow)" />
-                  <rect x="129" y="116" width="282" height="9" rx="4.5" fill="#0284c7" opacity="0.88" filter="url(#cuzk-loader-sky-glow)" />
+                  <circle cx="284" cy="198" r="4" fill="#d946ef" filter="url(#cuzk-loader-fuchsia-glow)" />
+                  <rect x="129" y="116" width="282" height="9" rx="4.5" fill="#d946ef" opacity="0.88" filter="url(#cuzk-loader-fuchsia-glow)" />
                   <path
                     d="M110 122 270 43l160 79"
                     fill="none"
@@ -528,12 +528,12 @@ function CuzkLookupLoadingState({
                 </g>
               </svg>
 
-              <div className="cuzk-house-lens absolute top-1/2 z-10 flex h-28 w-28 items-center justify-center rounded-full border border-sky-300/80 bg-white/68 shadow-[0_22px_50px_rgba(2,132,199,0.2)] backdrop-blur-md">
-                <Search className="h-11 w-11 text-sky-600" strokeWidth={2.6} />
+              <div className="cuzk-house-lens absolute top-1/2 z-10 flex h-28 w-28 items-center justify-center rounded-full border border-fuchsia-300/80 bg-white/68 shadow-[0_22px_50px_rgba(217,70,239,0.2)] backdrop-blur-md">
+                <Search className="h-11 w-11 text-fuchsia-700" strokeWidth={2.6} />
                 <span className="absolute -bottom-8 right-2 h-12 w-4 rotate-[-38deg] rounded-full bg-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.24)]" />
               </div>
 
-              <div className="cuzk-house-beam absolute top-[8%] z-[9] h-[80%] w-[2px] rounded-full bg-sky-500 shadow-[0_0_18px_rgba(2,132,199,0.72),0_0_42px_rgba(34,211,238,0.45)]" />
+              <div className="cuzk-house-beam absolute top-[8%] z-[9] h-[80%] w-[2px] rounded-full bg-fuchsia-600 shadow-[0_0_18px_rgba(217,70,239,0.72),0_0_42px_rgba(244,114,182,0.45)]" />
             </div>
           </div>
         </div>
@@ -1050,13 +1050,13 @@ export default function CuzkPage() {
       <div className="cuzk-shell mx-auto w-full max-w-6xl space-y-6 pb-10">
         <header className="cuzk-reveal px-1 pt-5 sm:pt-8">
           <div className="mx-auto max-w-4xl text-center">
-            <div className="cuzk-float inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-5 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-sky-700">
+            <div className="cuzk-float inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-5 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-fuchsia-700">
               <Sparkles className="h-4 w-4" />
               Oficiální data z registru ČÚZK
             </div>
             <h1 className="mt-5 text-5xl font-bold leading-[0.98] tracking-tight text-slate-900 sm:text-6xl md:text-7xl">
               Katastr nemovitostí
-              <span className="block text-sky-600">během vteřiny</span>
+              <span className="block text-fuchsia-700">během vteřiny</span>
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-500 sm:text-base">
               Vyhledej adresu, načti detail stavby, parcel a jednotek a pokračuj rovnou s klientem.
@@ -1154,7 +1154,7 @@ export default function CuzkPage() {
                   type="button"
                   onClick={() => void handleSearchAddress()}
                   disabled={loading || !canSearch}
-                  className="group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-sky-900/30 bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_52%,#22c55e_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(30,64,175,0.34),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-fuchsia-900/20 bg-[linear-gradient(135deg,#020617_0%,#a21caf_48%,#d946ef_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-fuchsia-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   {loading ? "Načítám..." : "Vyhledat"}
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
@@ -1168,7 +1168,7 @@ export default function CuzkPage() {
           <div className="cuzk-reveal mx-auto w-full max-w-3xl" style={{ animationDelay: "90ms" }}>
             {/* Levý box: dotaz */}
             <section className="cuzk-glow relative z-30 isolate overflow-visible rounded-[30px] border border-slate-200 bg-white px-5 py-5 space-y-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
-              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
+              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-fuchsia-500 to-pink-400" />
               <div className="relative" ref={suggestWrapRef}>
                 <input
                   type="text"
@@ -1205,7 +1205,7 @@ export default function CuzkPage() {
                       setActiveIdx(-1);
                     }
                   }}
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-lg font-medium text-slate-900 outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-lg font-medium text-slate-900 outline-none transition focus:border-fuchsia-400 focus:ring-4 focus:ring-fuchsia-400/20"
                   placeholder='např. "Tyršova 133, Kadaň"'
                 />
 
@@ -1252,7 +1252,7 @@ export default function CuzkPage() {
                   type="button"
                   onClick={handleSearchAddress}
                   disabled={loading || !canSearch}
-                  className="group w-full inline-flex h-14 items-center justify-center gap-3 rounded-[18px] border border-sky-900/30 bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_52%,#22c55e_100%)] px-5 text-lg font-semibold text-white shadow-[0_14px_30px_rgba(30,64,175,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="group w-full inline-flex h-14 items-center justify-center gap-3 rounded-[18px] border border-fuchsia-900/20 bg-[linear-gradient(135deg,#020617_0%,#a21caf_48%,#d946ef_100%)] px-5 text-lg font-semibold text-white shadow-[0_14px_30px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   {loading ? "Načítám..." : "Vyhledat"}
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
@@ -1318,7 +1318,7 @@ export default function CuzkPage() {
                       type="button"
                       onClick={handleLoadSelected}
                       disabled={loading || !user}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-600 bg-emerald-100 px-6 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100 hover:border-emerald-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-2 rounded-full border border-fuchsia-300 bg-fuchsia-50 px-6 py-2 text-sm font-semibold text-fuchsia-800 hover:border-fuchsia-400 hover:bg-fuchsia-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {loading ? "Načítám…" : "Načíst vybranou adresu"}
                     </button>
@@ -1346,7 +1346,7 @@ export default function CuzkPage() {
           <>
             {/* Výsledek */}
             <section className="cuzk-reveal relative z-0 overflow-visible rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-6" style={{ animationDelay: "180ms" }}>
-              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-sky-400 to-emerald-400" />
+              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-fuchsia-500 to-pink-400" />
               <div className="flex items-center justify-between gap-3">
                 <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50">
@@ -1414,7 +1414,7 @@ export default function CuzkPage() {
                     window.open(gmapsUrl, "_blank", "noopener,noreferrer");
                   }}
                   disabled={!gmapsUrl}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#0ea5e9_0%,#10b981_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(14,165,233,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#020617_0%,#a21caf_52%,#d946ef_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(192,38,211,0.26)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                 >
                   <MapPin className="h-4 w-4" />
                   Google Mapy
@@ -1454,7 +1454,7 @@ export default function CuzkPage() {
                 <div className="space-y-3 border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <CalendarClock className="h-4 w-4 text-sky-700" />
+                      <CalendarClock className="h-4 w-4 text-fuchsia-700" />
                       Časová osa dat
                     </div>
                     <div className="text-[11px] font-semibold text-slate-500">
@@ -1497,7 +1497,7 @@ export default function CuzkPage() {
                 <div className="space-y-3 border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <Map className="h-4 w-4 text-sky-700" />
+                      <Map className="h-4 w-4 text-fuchsia-700" />
                       Náhled mapy
                     </div>
                     <div className="text-[11px] font-semibold text-slate-500">
@@ -1586,7 +1586,7 @@ export default function CuzkPage() {
                 <div className="space-y-3 border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <Landmark className="h-4 w-4 text-emerald-700" />
+                      <Landmark className="h-4 w-4 text-fuchsia-700" />
                       Stavební objekt (RÚIAN) – technicko‑ekonomické atributy
                     </div>
                     <div className="text-[11px] font-semibold text-slate-500">
@@ -1724,7 +1724,7 @@ export default function CuzkPage() {
               <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <MapPin className="h-4 w-4 text-sky-700" />
+                    <MapPin className="h-4 w-4 text-fuchsia-700" />
                     Adresní místa
                   </div>
                   <div className="text-[11px] font-semibold text-slate-500">
@@ -1819,8 +1819,8 @@ export default function CuzkPage() {
             }
             50% {
               box-shadow:
-                0 18px 42px rgba(30, 64, 175, 0.2),
-                0 0 0 1px rgba(56, 189, 248, 0.15);
+                0 18px 42px rgba(192, 38, 211, 0.18),
+                0 0 0 1px rgba(217, 70, 239, 0.15);
             }
           }
 
@@ -1846,8 +1846,8 @@ export default function CuzkPage() {
             inset: 60px -72px auto 0;
             height: 240px;
             background:
-              radial-gradient(48% 70% at 18% 40%, rgba(56, 189, 248, 0.12) 0%, rgba(56, 189, 248, 0) 100%),
-              radial-gradient(42% 64% at 78% 36%, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0) 100%);
+              radial-gradient(48% 70% at 18% 40%, rgba(217, 70, 239, 0.12) 0%, rgba(217, 70, 239, 0) 100%),
+              radial-gradient(42% 64% at 78% 36%, rgba(244, 114, 182, 0.1) 0%, rgba(244, 114, 182, 0) 100%);
             z-index: -1;
             pointer-events: none;
           }

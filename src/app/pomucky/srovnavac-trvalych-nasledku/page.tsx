@@ -2,6 +2,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 import {
   Calculator,
@@ -11,6 +12,7 @@ import {
   ChevronRight,
   FileDown,
   Files,
+  Loader2,
   SlidersHorizontal,
   X,
 } from "lucide-react";
@@ -22,7 +24,6 @@ import {
   institutionLogoImageClass,
   institutionLogoKeyFromInsurerName,
 } from "@/app/lib/institutionLogoDisplay";
-import SplitTitle from "../plan-produkce/SplitTitle";
 
 let html2pdfPromise: Promise<any> | null = null;
 
@@ -36,6 +37,13 @@ async function getHtml2Pdf() {
   }
   return html2pdfPromise;
 }
+
+const TN_ACTIVE_DARK_CLASS =
+  "border-slate-950 bg-[linear-gradient(135deg,#111827_0%,#211442_54%,#090d1c_100%)] text-[#f8fafc] shadow-[0_12px_26px_rgba(18,12,43,0.24)]";
+const TN_ACTIVE_VIOLET_CLASS =
+  "border-violet-500 bg-[linear-gradient(135deg,#7c3aed_0%,#a855f7_56%,#c084fc_100%)] text-[#f8fafc] shadow-[0_12px_26px_rgba(124,58,237,0.28)]";
+const TN_INACTIVE_CHIP_CLASS =
+  "border-violet-100 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50/80";
 
 type ComparisonCard = {
   key: string;
@@ -1381,6 +1389,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [scenarioAInput, setScenarioAInput] = useState("25");
   const [scenarioBInput, setScenarioBInput] = useState("50");
   const [scenarioCInput, setScenarioCInput] = useState("75");
+  const [currentExporting, setCurrentExporting] = useState(false);
   const [scenarioExporting, setScenarioExporting] = useState(false);
   const [scenarioExportError, setScenarioExportError] = useState<string | null>(null);
   const cards = buildCardsForPercent(rangePercentValue);
@@ -1411,83 +1420,75 @@ export default function SrovnavacTrvalychNasledkuPage() {
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
 
-  const buildScenarioPdfExportHtml = (generatedAt: string): string => {
-      const scenariosHtml = scenarioValues
+  const buildScenarioPdfExportHtml = (
+    generatedAt: string,
+    exportScenarios = scenarioValues
+  ): string => {
+      const isMultiScenario = exportScenarios.length > 1;
+      const scenariosHtml = exportScenarios
         .map((scenario, scenarioIndex) => {
           const scenarioCards = [...applyCardFilters(buildCardsForPercent(scenario.percent))]
             .sort((a, b) => b.payout - a.payout);
           const scenarioToneClass =
-            scenarioIndex === 0
-              ? "scenario--low"
-              : scenarioIndex === 1
-                ? "scenario--mid"
-                : "scenario--high";
-          const scenarioToneLabel =
-            scenarioIndex === 0
-              ? "Scénář A"
-              : scenarioIndex === 1
-                ? "Scénář B"
-                : "Scénář C";
+            scenarioIndex % 3 === 0
+              ? "scenario--a"
+              : scenarioIndex % 3 === 1
+                ? "scenario--b"
+                : "scenario--c";
+          const scenarioLetter = ["A", "B", "C"][scenarioIndex] ?? `${scenarioIndex + 1}`;
+          const scenarioToneLabel = isMultiScenario
+            ? `Scénář ${scenarioLetter}`
+            : "Aktuální výpočet";
           const rowsHtml = scenarioCards
-            .map(
-              (card, idx) => {
-                const logoPath = getInsurerLogoPath(card.insurer);
-                const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
-                const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
-                const logoClass =
-                  logoKey === "cpp" || logoKey === "kooperativa"
-                    ? " insurer-logo--wide"
-                    : logoKey === "allianz" || logoKey === "axa"
-                      ? " insurer-logo--medium"
-                      : logoKey === "slavia"
-                        ? " insurer-logo--square"
-                        : "";
-                const rankBadgeClass =
-                  idx === 0
-                    ? "rank-badge rank-badge--top"
-                    : idx === 1
-                      ? "rank-badge rank-badge--second"
-                      : idx === 2
-                        ? "rank-badge rank-badge--third"
-                        : "rank-badge";
-                const variantText = card.badges.join(", ");
-                const insurerCell = logoPath
-                  ? `<div class="insurer-cell"><span class="insurer-logo-wrap"><img class="insurer-logo${logoClass}" src="${escapeHtml(
-                      logoPath
-                    )}" alt="" /></span><span class="insurer-copy"><span class="insurer-name">${escapeHtml(
-                      insurerName
-                    )}</span><span class="insurer-product">${escapeHtml(
-                      productName
-                    )}</span></span></div>`
-                  : `<div class="insurer-cell insurer-cell--text"><span class="insurer-copy"><span class="insurer-name">${escapeHtml(
-                      insurerName
-                    )}</span><span class="insurer-product">${escapeHtml(
-                      productName
-                    )}</span></span></div>`;
-                return `
+            .map((card, idx) => {
+              const logoPath = getInsurerLogoPath(card.insurer);
+              const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
+              const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+              const logoClass =
+                logoKey === "cpp" || logoKey === "kooperativa"
+                  ? " insurer-logo--wide"
+                  : logoKey === "allianz" || logoKey === "axa"
+                    ? " insurer-logo--medium"
+                    : logoKey === "slavia"
+                      ? " insurer-logo--square"
+                      : "";
+              const rankBadgeClass =
+                idx === 0
+                  ? "rank-badge rank-badge--top"
+                  : idx === 1
+                    ? "rank-badge rank-badge--second"
+                    : idx === 2
+                      ? "rank-badge rank-badge--third"
+                      : "rank-badge";
+              const variantText = card.badges.join(", ") || "Bez varianty";
+              const insurerCell = logoPath
+                ? `<div class="insurer-cell"><span class="insurer-logo-wrap"><img class="insurer-logo${logoClass}" src="${escapeHtml(
+                    logoPath
+                  )}" alt="" /></span><span class="insurer-copy"><span class="insurer-name">${escapeHtml(
+                    insurerName
+                  )}</span><span class="insurer-product">${escapeHtml(
+                    productName
+                  )}</span></span></div>`
+                : `<div class="insurer-cell insurer-cell--text"><span class="insurer-copy"><span class="insurer-name">${escapeHtml(
+                    insurerName
+                  )}</span><span class="insurer-product">${escapeHtml(
+                    productName
+                  )}</span></span></div>`;
+              return `
                 <tr>
                   <td class="rank-cell"><span class="${rankBadgeClass}">${idx + 1}</span></td>
                   <td class="insurer-col">${insurerCell}</td>
-                  <td class="variant-col"><span class="variant-chip">${escapeHtml(
-                    variantText
-                  )}</span></td>
+                  <td class="variant-col"><span class="variant-chip">${escapeHtml(variantText)}</span></td>
                   <td class="amount-col">${escapeHtml(formatMoney(card.payout))}</td>
                 </tr>
               `;
-              }
-            )
+            })
             .join("");
           const leadersHtml = scenarioCards
             .slice(0, 3)
             .map((card, idx) => {
               const logoPath = getInsurerLogoPath(card.insurer);
               const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
-              const leaderRankClass =
-                idx === 0
-                  ? "leader-rank leader-rank--top"
-                  : idx === 1
-                    ? "leader-rank leader-rank--second"
-                    : "leader-rank leader-rank--third";
               const logoMarkup = logoPath
                 ? `<span class="leader-logo-wrap"><img class="leader-logo" src="${escapeHtml(
                     logoPath
@@ -1498,13 +1499,16 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
               return `
                 <div class="leader-card">
-                  <div class="leader-head">
-                    <span class="${leaderRankClass}">${idx + 1}</span>
+                  <span class="leader-rank">${idx + 1}</span>
+                  <div class="leader-identity">
                     ${logoMarkup}
+                    <span class="leader-copy">
+                      <span class="leader-name">${escapeHtml(insurerName)}</span>
+                      <span class="leader-product">${escapeHtml(productName)}</span>
+                    </span>
                   </div>
-                  <div class="leader-name">${escapeHtml(insurerName)}</div>
-                  <div class="leader-product">${escapeHtml(productName)}</div>
-                  <div class="leader-payout">${escapeHtml(formatMoney(card.payout))}</div>
+                  <span class="leader-variant">${escapeHtml(card.badges.join(", ") || "Varianta")}</span>
+                  <strong class="leader-payout">${escapeHtml(formatMoney(card.payout))}</strong>
                 </div>
               `;
             })
@@ -1512,72 +1516,65 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
           return `
             <section class="report-page ${scenarioToneClass}">
-              <div class="page-topbar">
-                <span class="topbar-pill">Bohemika.App interní report</span>
-                <span class="topbar-meta">Vygenerováno ${escapeHtml(generatedAt)}</span>
-              </div>
-
               <header class="page-header">
-                <div class="brand-head">
-                  <img class="brand-logo" src="/icons/bohemika_logo.png" alt="Bohemika" />
-                  <div class="title-block">
-                    <h1>
-                      <span class="title-line">Porovnání plnění</span>
-                      <span class="title-line">trvalých následků úrazu</span>
-                    </h1>
-                    <div class="title-tags">
-                      <span class="title-tag">3 scénáře</span>
-                      <span class="title-tag title-tag-accent">PDF pro klienta</span>
-                    </div>
-                  </div>
+                <div class="hero-main">
+                  <span class="hero-badge">${isMultiScenario ? "Export 3 scénáře" : "Export PDF"}</span>
+                  <h1>Trvalé následky</h1>
+                  <p>Porovnání plnění podle zadané pojistné částky a rozsahu poškození.</p>
+                </div>
+                <div class="hero-side">
+                  <span>${escapeHtml(scenarioToneLabel)}</span>
+                  <strong>${escapeHtml(formatPercent(scenario.percent))}</strong>
+                  <small>${escapeHtml(scenario.label)}</small>
+                </div>
+                <div class="hero-date">
+                  <span>Vygenerováno</span>
+                  <strong>${escapeHtml(generatedAt)}</strong>
                 </div>
               </header>
 
-              <section class="scenario-block">
-                <div class="scenario-top">
-                  <div>
-                    <div class="scenario-kicker">${scenarioToneLabel}</div>
-                    <div class="scenario-title">${escapeHtml(scenario.label)}</div>
+              <section class="info-card">
+                <div class="info-grid">
+                  <div class="info-item">
+                    <span class="info-label">Pojistná částka</span>
+                    <strong class="info-value">${escapeHtml(formatMoney(sumInsuredValue))}</strong>
                   </div>
-                <div class="scenario-range-card">
-                  <span>Rozsah poškození</span>
-                  <strong>${escapeHtml(formatPercent(scenario.percent))}</strong>
+                  <div class="info-item">
+                    <span class="info-label">Rozsah</span>
+                    <strong class="info-value">${escapeHtml(formatPercent(scenario.percent))}</strong>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Počet variant</span>
+                    <strong class="info-value">${scenarioCards.length}</strong>
+                  </div>
                 </div>
-              </div>
-              <div class="meta-row">
-                <div class="meta-chip">
-                  <span class="meta-label">Pojistná částka</span>
-                  <strong class="meta-value">${escapeHtml(
-                    formatMoney(sumInsuredValue)
-                  )}</strong>
-                </div>
-                <div class="meta-chip">
-                  <span class="meta-label">Rozsah</span>
-                  <strong class="meta-value">${escapeHtml(
-                    formatPercent(scenario.percent)
-                  )}</strong>
-                </div>
-                <div class="meta-chip">
-                  <span class="meta-label">Počet variant</span>
-                  <strong class="meta-value">${scenarioCards.length}</strong>
-                </div>
-              </div>
-              ${leadersHtml ? `<div class="leader-grid">${leadersHtml}</div>` : ""}
               </section>
 
-              <table class="scenario-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Pojišťovna</th>
-                    <th>Varianta</th>
-                    <th>Plnění</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${rowsHtml || `<tr><td colspan="4" class="empty-cell">Bez výsledků pro tento scénář.</td></tr>`}
-                </tbody>
-              </table>
+              ${
+                leadersHtml
+                  ? `<section class="section-block">
+                      <div class="section-title">Nejvyšší plnění</div>
+                      <div class="leader-list">${leadersHtml}</div>
+                    </section>`
+                  : ""
+              }
+
+              <section class="section-block section-block--table">
+                <div class="section-title">Přehled variant</div>
+                <table class="scenario-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Pojišťovna</th>
+                      <th>Varianta</th>
+                      <th>Plnění</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rowsHtml || `<tr><td colspan="4" class="empty-cell">Bez výsledků pro tento scénář.</td></tr>`}
+                  </tbody>
+                </table>
+              </section>
             </section>
           `;
         })
@@ -1591,486 +1588,16 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
       const styleBlock = `
         <style>
-          @page {
-            size: A4 portrait;
-            margin: 0;
-          }
+          @page { size: A4 portrait; margin: 0; }
           * { box-sizing: border-box; }
-          .pdf-root {
-            font-family: Arial, Helvetica, sans-serif;
-            background: #eef3fb;
-            color: #13233f;
-            padding: 8px;
-          }
-          .pdf-page {
-            width: 100%;
-            padding: 12px;
-            border-radius: 24px;
-            border: 1px solid #d9e3f1;
-            background: #f8fbff;
-            box-shadow:
-              0 18px 42px rgba(15, 23, 42, 0.14),
-              0 1px 0 rgba(255,255,255,0.9) inset;
-            position: relative;
-            overflow: hidden;
-          }
-          .pdf-page::before {
-            content: "";
-            position: absolute;
-            right: -90px;
-            top: -130px;
-            width: 280px;
-            height: 280px;
-            border-radius: 999px;
-            background: radial-gradient(circle at center, rgba(139,92,246,0.18) 0%, rgba(139,92,246,0) 72%);
-            pointer-events: none;
-          }
-          .page-topbar {
-            position: relative;
-            z-index: 1;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-          }
-          .topbar-pill {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            border: 1px solid #cbd5e1;
-            background: #ffffff;
-            color: #334155;
-            padding: 5px 10px;
-            font-size: 9px;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            font-weight: 700;
-          }
-          .topbar-meta {
-            font-size: 9px;
-            color: #64748b;
-            font-weight: 600;
-          }
-          .scenarios-stack {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            position: relative;
-            z-index: 1;
-          }
-          .page-header {
-            position: relative;
-            margin-bottom: 10px;
-            overflow: hidden;
-            border-radius: 20px;
-            background: linear-gradient(135deg, #101827 0%, #1d2750 58%, #31205a 100%);
-            padding: 16px 18px;
-            color: #ffffff;
-            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
-          }
-          .page-header::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at 88% 0%, rgba(168,85,247,0.34), transparent 34%);
-            pointer-events: none;
-          }
-          .brand-head {
-            position: relative;
-            z-index: 1;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-          }
-          .brand-logo {
-            width: auto;
-            height: 56px;
-            max-width: 52px;
-            display: block;
-          }
-          .title-block h1 {
-            margin: 0;
-            font-size: 30px;
-            line-height: 1.04;
-            letter-spacing: 0;
-            font-weight: 800;
-            color: #ffffff;
-          }
-          .title-line {
-            display: block;
-          }
-          .title-tags {
-            margin-top: 7px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-          }
-          .title-tag {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            padding: 5px 9px;
-            border: 1px solid rgba(255,255,255,0.18);
-            background: rgba(255,255,255,0.10);
-            color: #dbeafe;
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-          }
-          .title-tag-accent {
-            background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
-            border-color: rgba(255,255,255,0.20);
-            color: #ffffff;
-          }
-          .scenario-block {
-            --tone: #3b82f6;
-            --tone-soft: #eff6ff;
-            border: 1px solid #d9e3f0;
-            border-radius: 18px;
-            padding: 12px;
-            display: block;
-            background: #ffffff;
-            box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
-            break-inside: avoid;
-            page-break-inside: avoid;
-            position: relative;
-            overflow: hidden;
-          }
-          .scenario-block::before {
-            content: "";
-            position: absolute;
-            inset: 0 0 auto 0;
-            height: 4px;
-            background: var(--tone);
-          }
-          .scenario--low { --tone: #2563eb; --tone-soft: #eff6ff; }
-          .scenario--mid { --tone: #7c3aed; --tone-soft: #f5f3ff; }
-          .scenario--high { --tone: #059669; --tone-soft: #ecfdf5; }
-          .scenario-top {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 8px;
-          }
-          .scenario-kicker {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            background: var(--tone-soft);
-            border: 1px solid rgba(15, 23, 42, 0.08);
-            color: var(--tone);
-            font-size: 9px;
-            font-weight: 800;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            padding: 4px 8px;
-          }
-          .scenario-range-card {
-            min-width: 128px;
-            border-radius: 13px;
-            border: 1px solid #dbe4f0;
-            background: #f8fafc;
-            padding: 8px 10px;
-            text-align: right;
-          }
-          .scenario-range-card span {
-            display: block;
-            font-size: 8px;
-            font-weight: 700;
-            color: #64748b;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-          }
-          .scenario-range-card strong {
-            display: block;
-            margin-top: 2px;
-            color: #0f172a;
-            font-size: 17px;
-            font-weight: 800;
-          }
-          .scenario-title {
-            margin-top: 4px;
-            font-size: 20px;
-            font-weight: 800;
-            color: #0f172a;
-            letter-spacing: 0;
-          }
-          .meta-row {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 7px;
-            margin-bottom: 9px;
-          }
-          .meta-chip {
-            border-radius: 13px;
-            border: 1px solid #e2e8f0;
-            background: #f8fafc;
-            padding: 8px 9px;
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 2px;
-          }
-          .meta-label {
-            font-size: 9px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: #64748b;
-            font-weight: 700;
-          }
-          .meta-value {
-            font-size: 14px;
-            color: #0f172a;
-            font-weight: 800;
-          }
-          .leader-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 8px;
-            margin: 0 0 10px;
-          }
-          .leader-card {
-            min-height: 104px;
-            border-radius: 16px;
-            border: 1px solid #dbe4f0;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-            padding: 10px;
-            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
-          }
-          .leader-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-          }
-          .leader-rank {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 28px;
-            height: 28px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 800;
-            border: 1px solid #dbe4f0;
-            color: #334155;
-            background: #f1f5f9;
-          }
-          .leader-rank--top {
-            border-color: #f4c76a;
-            background: #fff7df;
-            color: #9a5e00;
-          }
-          .leader-rank--second {
-            border-color: #bfdbfe;
-            background: #eff6ff;
-            color: #1d4ed8;
-          }
-          .leader-rank--third {
-            border-color: #ddd6fe;
-            background: #f5f3ff;
-            color: #6d28d9;
-          }
-          .leader-logo-wrap {
-            width: 52px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-          .leader-logo {
-            max-width: 52px;
-            max-height: 28px;
-            object-fit: contain;
-            display: block;
-          }
-          .leader-logo-fallback {
-            border-radius: 10px;
-            background: #e2e8f0;
-            color: #334155;
-            font-size: 11px;
-            font-weight: 800;
-          }
-          .leader-name {
-            margin-top: 9px;
-            color: #0f172a;
-            font-size: 15px;
-            font-weight: 800;
-            line-height: 1.12;
-          }
-          .leader-product {
-            margin-top: 2px;
-            color: #64748b;
-            font-size: 10px;
-            font-weight: 600;
-          }
-          .leader-payout {
-            margin-top: 10px;
-            color: #047857;
-            font-size: 19px;
-            font-weight: 800;
-            line-height: 1;
-          }
-          .scenario-table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            border: 1px solid #dbe4f0;
-            border-radius: 14px;
-            overflow: hidden;
-            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          .scenario-table thead th {
-            background: #111827;
-            color: #f8fafc;
-            text-align: left;
-            font-size: 9px;
-            padding: 8px 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            border-bottom: 1px solid rgba(255,255,255,0.18);
-          }
-          .scenario-table tbody td {
-            border-top: 1px solid #e5edf6;
-            padding: 8px 10px;
-            font-size: 11px;
-            line-height: 1.25;
-            page-break-inside: avoid;
-          }
-          .scenario-table tbody tr:nth-child(odd) td { background: #ffffff; }
-          .scenario-table tbody tr:nth-child(even) td { background: #f8fafc; }
-          .rank-cell {
-            width: 50px;
-            text-align: center;
-          }
-          .rank-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 24px;
-            height: 24px;
-            border-radius: 999px;
-            border: 1px solid #c7d6eb;
-            background: #eff4fb;
-            color: #1a355d;
-            font-size: 11px;
-            font-weight: 800;
-          }
-          .rank-badge--top {
-            border-color: #f2c777;
-            background: #fff4d9;
-            color: #9a5e00;
-          }
-          .rank-badge--second {
-            border-color: #b8cbef;
-            background: #edf4ff;
-            color: #2555a2;
-          }
-          .rank-badge--third {
-            border-color: #d2ccf5;
-            background: #f2efff;
-            color: #5b45be;
-          }
-          .insurer-col {
-            width: 42%;
-          }
-          .insurer-cell {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-          }
-          .insurer-logo-wrap {
-            width: 46px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex: 0 0 46px;
-            border-radius: 10px;
-            border: 1px solid #e2e8f0;
-            background: #ffffff;
-          }
-          .insurer-logo {
-            width: auto;
-            height: auto;
-            max-width: 43px;
-            max-height: 26px;
-            object-fit: contain;
-            display: block;
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: high-quality;
-          }
-          .insurer-logo--wide {
-            max-width: 50px;
-            max-height: 30px;
-          }
-          .insurer-logo--medium {
-            max-width: 46px;
-            max-height: 28px;
-          }
-          .insurer-logo--square {
-            max-width: 40px;
-            max-height: 26px;
-          }
-          .insurer-copy {
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-          }
-          .insurer-name {
-            color: #0f172a;
-            line-height: 1.2;
-            font-weight: 800;
-            font-size: 13px;
-          }
-          .insurer-product {
-            margin-top: 1px;
-            font-size: 10px;
-            color: #64748b;
-          }
-          .variant-col {
-            width: 24%;
-          }
-          .variant-chip {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            border: 1px solid #ddd6fe;
-            background: #f5f3ff;
-            color: #5b21b6;
-            font-size: 10px;
-            font-weight: 800;
-            padding: 4px 8px;
-            line-height: 1.2;
-          }
-          .amount-col {
-            width: 23%;
-            text-align: right;
-            white-space: nowrap;
-            color: #047857;
-            font-weight: 800;
-            font-size: 15px;
-          }
-          .empty-cell {
-            padding: 14px 10px;
-            font-size: 11px;
-            color: #4e637f;
-            text-align: center;
-            background: #f5f9ff;
-            border-top: 1px dashed #c7d5ea;
-          }
-
-          /* Print-first overrides: stable A4 layout, simple CSS, normal fonts. */
           .pdf-root {
             width: 794px;
             margin: 0 auto;
             padding: 0;
-            background: #eef2f7;
-            font-family: Arial, Helvetica, sans-serif;
-            color: #111827;
+            background: #ffffff;
+            font-family: Inter, "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            color: #0b1020;
+            -webkit-font-smoothing: antialiased;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
@@ -2079,436 +1606,380 @@ export default function SrovnavacTrvalychNasledkuPage() {
             margin: 0 auto;
           }
           .report-page {
-            --tone: #2563eb;
-            --tone-soft: #eff6ff;
-            --tone-ink: #1d4ed8;
+            --accent: #7c3aed;
+            --accent-soft: #f8f5ff;
             position: relative;
             width: 794px;
             height: 1123px;
             min-height: 1123px;
-            padding: 30px 36px 32px;
+            padding: 30px 34px 32px;
             background: #ffffff;
-            border: 0;
+            color: #0b1020;
             break-after: page;
             page-break-after: always;
             overflow: hidden;
-          }
-          .report-page.scenario--mid {
-            --tone: #7c3aed;
-            --tone-soft: #f5f3ff;
-            --tone-ink: #6d28d9;
-          }
-          .report-page.scenario--high {
-            --tone: #059669;
-            --tone-soft: #ecfdf5;
-            --tone-ink: #047857;
-          }
-          .report-page::before {
-            content: "";
-            position: absolute;
-            inset: 0 0 auto 0;
-            height: 8px;
-            background: var(--tone);
           }
           .report-page:last-child {
             break-after: auto;
             page-break-after: auto;
           }
-          .report-page .page-topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 13px;
+          .report-page::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 6px;
+            background: linear-gradient(90deg, #020617 0%, #7c3aed 54%, #ec4899 100%);
           }
-          .report-page .topbar-pill {
+          .scenario--b { --accent: #4c1d95; --accent-soft: #f7f2ff; }
+          .scenario--c { --accent: #a21caf; --accent-soft: #fff1fb; }
+          .page-header {
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 18px;
+            min-height: 116px;
+            margin: 0;
+            padding: 20px 22px;
+            border-radius: 20px 20px 0 0;
+            background: linear-gradient(135deg, #12091f 0%, #4c1d95 58%, #7c3aed 100%);
+            color: #ffffff;
+            overflow: hidden;
+          }
+          .hero-main {
+            position: relative;
+            z-index: 1;
+            min-width: 0;
+          }
+          .hero-badge {
             display: inline-flex;
+            width: fit-content;
             align-items: center;
-            border: 1px solid #d7dee9;
             border-radius: 999px;
-            background: #f8fafc;
-            color: #334155;
-            padding: 5px 10px;
+            padding: 6px 11px;
+            border: 1px solid rgba(255,255,255,0.35);
+            background: #ffffff;
+            color: #2e1065;
             font-size: 9px;
             font-weight: 700;
-            letter-spacing: 0;
+            letter-spacing: 0.1em;
             text-transform: uppercase;
           }
-          .report-page .topbar-meta {
-            color: #64748b;
-            font-size: 9px;
+          .hero-main h1 {
+            margin: 10px 0 0;
+            color: #ffffff;
+            font-size: 36px;
+            line-height: 1;
+            font-weight: 700;
+            letter-spacing: 0;
+          }
+          .hero-main p {
+            max-width: 390px;
+            margin: 8px 0 0;
+            color: rgba(255,255,255,0.76);
+            font-size: 10px;
+            line-height: 1.45;
             font-weight: 600;
           }
-          .report-page .page-header {
-            display: block;
-            margin: 0 0 14px;
-            padding: 16px 18px;
-            border: 1px solid #dce4ef;
-            border-left: 6px solid var(--tone);
+          .hero-side {
+            position: relative;
+            z-index: 1;
+            min-width: 145px;
+            border: 1px solid rgba(255,255,255,0.24);
             border-radius: 16px;
-            background: #f8fafc;
-            color: #111827;
-            box-shadow: none;
-          }
-          .report-page .page-header::after {
-            display: none;
-          }
-          .report-page .brand-head {
-            display: flex;
-            align-items: center;
-            gap: 13px;
-          }
-          .report-page .brand-logo {
-            width: 40px;
-            height: auto;
-            max-height: 48px;
-          }
-          .report-page .title-block h1 {
-            margin: 0;
-            color: #111827;
-            font-size: 26px;
-            line-height: 1.06;
-            font-weight: 800;
-            letter-spacing: 0;
-          }
-          .report-page .title-tags {
-            display: flex;
-            gap: 6px;
-            margin-top: 8px;
-          }
-          .report-page .title-tag {
-            display: inline-flex;
-            align-items: center;
-            border: 1px solid #dbe4f0;
-            border-radius: 999px;
-            background: #ffffff;
-            color: #334155;
-            padding: 4px 9px;
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0;
-            text-transform: uppercase;
-          }
-          .report-page .title-tag-accent {
-            border-color: var(--tone);
-            background: var(--tone);
-            color: #ffffff;
-          }
-          .report-page .scenario-block {
-            border: 1px solid #dce4ef;
-            border-radius: 16px;
-            background: #ffffff;
-            padding: 12px;
-            margin: 0 0 12px;
-            box-shadow: none;
-            overflow: hidden;
-          }
-          .report-page .scenario-block::before {
-            display: none;
-          }
-          .report-page .scenario-top {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 9px;
-          }
-          .report-page .scenario-kicker {
-            display: inline-flex;
-            align-items: center;
-            border: 1px solid #dbe4f0;
-            border-radius: 999px;
-            background: var(--tone-soft);
-            color: var(--tone-ink);
-            padding: 4px 8px;
-            font-size: 9px;
-            font-weight: 800;
-            letter-spacing: 0;
-            text-transform: uppercase;
-          }
-          .report-page .scenario-title {
-            margin: 5px 0 0;
-            color: #111827;
-            font-size: 21px;
-            line-height: 1.05;
-            font-weight: 800;
-            letter-spacing: 0;
-          }
-          .report-page .scenario-range-card {
-            min-width: 126px;
-            border: 1px solid #dbe4f0;
-            border-radius: 13px;
-            background: #f8fafc;
-            padding: 8px 10px;
+            background: rgba(255,255,255,0.11);
+            padding: 11px 12px;
             text-align: right;
           }
-          .report-page .scenario-range-card span,
-          .report-page .meta-label {
-            color: #64748b;
+          .hero-side span,
+          .hero-side small,
+          .hero-date span {
+            display: block;
+            color: rgba(255,255,255,0.68);
             font-size: 8px;
-            font-weight: 800;
-            letter-spacing: 0;
+            line-height: 1.2;
+            font-weight: 700;
+            letter-spacing: 0.11em;
             text-transform: uppercase;
           }
-          .report-page .scenario-range-card strong {
+          .hero-side strong {
             display: block;
-            margin-top: 2px;
-            color: #111827;
-            font-size: 19px;
+            margin-top: 5px;
+            color: #ffffff;
+            font-size: 24px;
             line-height: 1;
-            font-weight: 800;
+            font-weight: 700;
           }
-          .report-page .meta-row {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 8px;
-            margin: 0 0 9px;
+          .hero-side small {
+            margin-top: 5px;
+            color: rgba(255,255,255,0.82);
+            letter-spacing: 0;
+            text-transform: none;
           }
-          .report-page .meta-chip {
-            border: 1px solid #dbe4f0;
-            border-radius: 12px;
-            background: #f8fafc;
-            padding: 7px 9px;
+          .hero-date {
+            position: absolute;
+            right: 22px;
+            bottom: 18px;
+            z-index: 1;
+            text-align: right;
           }
-          .report-page .meta-value {
+          .hero-date strong {
             display: block;
             margin-top: 3px;
-            color: #111827;
-            font-size: 13px;
-            line-height: 1;
-            font-weight: 800;
+            color: #ffffff;
+            font-size: 10px;
+            line-height: 1.2;
+            font-weight: 600;
           }
-          .report-page .leader-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 8px;
-            margin: 0;
-          }
-          .report-page .leader-card {
-            height: 86px;
-            border: 1px solid #dbe4f0;
-            border-radius: 14px;
-            background: #f8fafc;
-            padding: 8px 9px;
-            box-shadow: none;
+          .info-card {
+            margin: 0 0 24px;
+            border: 1px solid #eadff8;
+            border-top: 0;
+            border-radius: 0 0 18px 18px;
+            background: #ffffff;
             overflow: hidden;
           }
-          .report-page .leader-head {
+          .info-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .info-item {
+            min-height: 58px;
+            padding: 13px 15px 12px;
+            border-left: 1px solid #eadff8;
+          }
+          .info-item:first-child {
+            border-left: 0;
+          }
+          .info-label {
+            display: block;
+            margin-bottom: 4px;
+            color: #6d28d9;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+          }
+          .info-value {
+            display: block;
+            color: #0b1020;
+            font-size: 13px;
+            line-height: 1.2;
+            font-weight: 650;
+          }
+          .section-block {
+            margin-top: 22px;
+          }
+          .section-title {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 8px;
+            gap: 9px;
+            margin-bottom: 11px;
+            color: #0b1020;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
           }
-          .report-page .leader-rank {
+          .section-title::before {
+            content: "";
+            width: 20px;
+            height: 3px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #020617, var(--accent));
+          }
+          .leader-list {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #eee7f6;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #ffffff;
+          }
+          .leader-card {
+            display: grid;
+            grid-template-columns: 32px minmax(0, 1fr) 120px 128px;
+            align-items: center;
+            gap: 12px;
+            min-height: 54px;
+            padding: 9px 12px;
+            border-top: 1px solid #f0e7f7;
+          }
+          .leader-card:first-child {
+            border-top: 0;
+          }
+          .leader-card::before {
+            content: "";
+            position: absolute;
+          }
+          .leader-rank,
+          .rank-badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 24px;
-            height: 24px;
             border-radius: 999px;
-            border: 1px solid #dbe4f0;
-            background: #ffffff;
-            color: #334155;
+            border: 1px solid #ddd6fe;
+            background: #f8f5ff;
+            color: #5b21b6;
+            font-weight: 700;
+          }
+          .leader-rank {
+            width: 24px;
+            height: 24px;
             font-size: 10px;
-            font-weight: 800;
           }
-          .report-page .leader-rank--top {
-            border-color: #f4c76a;
-            background: #fff7df;
-            color: #9a5e00;
+          .rank-badge {
+            min-width: 22px;
+            height: 22px;
+            font-size: 10px;
           }
-          .report-page .leader-rank--second {
-            border-color: #bfdbfe;
-            background: #eff6ff;
-            color: #1d4ed8;
-          }
-          .report-page .leader-rank--third {
-            border-color: #ddd6fe;
+          .rank-badge--top {
+            border-color: #a78bfa;
             background: #f5f3ff;
-            color: #6d28d9;
+            color: #4c1d95;
           }
-          .report-page .leader-logo-wrap {
+          .rank-badge--second,
+          .rank-badge--third {
+            border-color: #eadff8;
+            background: #ffffff;
+            color: #0b1020;
+          }
+          .leader-identity,
+          .insurer-cell {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            min-width: 0;
+          }
+          .leader-logo-wrap,
+          .insurer-logo-wrap {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 56px;
-            height: 24px;
+            width: 46px;
+            height: 28px;
+            flex: 0 0 46px;
+            border: 1px solid #eee7f6;
+            border-radius: 10px;
+            background: #ffffff;
           }
-          .report-page .leader-logo {
+          .leader-logo,
+          .insurer-logo {
             width: auto;
             height: auto;
-            max-width: 56px;
+            max-width: 42px;
             max-height: 23px;
             object-fit: contain;
             display: block;
           }
-          .report-page .leader-logo-fallback {
-            border-radius: 8px;
-            background: #e2e8f0;
-            color: #334155;
-            font-size: 10px;
-            font-weight: 800;
-          }
-          .report-page .leader-name {
-            margin-top: 6px;
-            color: #111827;
-            font-size: 13px;
-            line-height: 1.1;
-            font-weight: 800;
-          }
-          .report-page .leader-product {
-            margin-top: 1px;
-            color: #64748b;
-            font-size: 9px;
-            line-height: 1.1;
-            font-weight: 600;
-          }
-          .report-page .leader-payout {
-            margin-top: 5px;
-            color: #047857;
-            font-size: 15px;
-            line-height: 1;
-            font-weight: 800;
-          }
-          .report-page .scenario-table {
-            width: 100%;
-            table-layout: fixed;
-            border-collapse: separate;
-            border-spacing: 0;
-            border: 1px solid #dbe4f0;
-            border-radius: 13px;
-            box-shadow: none;
-            overflow: hidden;
-          }
-          .report-page .scenario-table thead th {
-            background: #111827;
-            color: #ffffff;
-            padding: 7px 9px;
-            font-size: 9px;
-            font-weight: 800;
-            letter-spacing: 0;
-            text-align: left;
-            text-transform: uppercase;
-          }
-          .report-page .scenario-table tbody td {
-            padding: 5px 9px;
-            border-top: 1px solid #e5edf6;
-            font-size: 10px;
-            line-height: 1.15;
-          }
-          .report-page .scenario-table tbody tr:nth-child(odd) td {
-            background: #ffffff;
-          }
-          .report-page .scenario-table tbody tr:nth-child(even) td {
-            background: #f8fafc;
-          }
-          .report-page .rank-cell {
-            width: 46px;
-            text-align: center;
-          }
-          .report-page .rank-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 21px;
-            height: 21px;
-            border-radius: 999px;
-            border: 1px solid #cbd5e1;
-            background: #f1f5f9;
-            color: #334155;
-            font-size: 10px;
-            font-weight: 800;
-          }
-          .report-page .rank-badge--top {
-            border-color: #f4c76a;
-            background: #fff7df;
-            color: #9a5e00;
-          }
-          .report-page .rank-badge--second {
-            border-color: #bfdbfe;
-            background: #eff6ff;
-            color: #1d4ed8;
-          }
-          .report-page .rank-badge--third {
-            border-color: #ddd6fe;
-            background: #f5f3ff;
+          .insurer-logo--wide { max-width: 50px; }
+          .insurer-logo--medium { max-width: 46px; }
+          .insurer-logo--square { max-width: 34px; }
+          .leader-logo-fallback {
             color: #6d28d9;
+            font-size: 10px;
+            font-weight: 700;
           }
-          .report-page .insurer-col {
-            width: 42%;
-          }
-          .report-page .insurer-cell {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-          }
-          .report-page .insurer-logo-wrap {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 44px;
-            height: 25px;
-            flex: 0 0 44px;
-            border: 0;
-            border-radius: 0;
-            background: transparent;
-            box-shadow: none;
-          }
-          .report-page .insurer-logo {
-            width: auto;
-            height: auto;
-            max-width: 44px;
-            max-height: 24px;
-            object-fit: contain;
-            display: block;
-          }
-          .report-page .insurer-logo--wide {
-            max-width: 50px;
-            max-height: 24px;
-          }
-          .report-page .insurer-logo--medium {
-            max-width: 46px;
-            max-height: 24px;
-          }
-          .report-page .insurer-logo--square {
-            max-width: 36px;
-            max-height: 24px;
-          }
-          .report-page .insurer-copy {
+          .leader-copy,
+          .insurer-copy {
             display: flex;
             flex-direction: column;
             min-width: 0;
           }
-          .report-page .insurer-name {
-            color: #111827;
-            font-size: 11px;
-            line-height: 1.1;
-            font-weight: 800;
+          .leader-name,
+          .insurer-name {
+            color: #0b1020;
+            font-size: 12px;
+            line-height: 1.15;
+            font-weight: 700;
+            overflow-wrap: anywhere;
           }
-          .report-page .insurer-product {
-            color: #64748b;
+          .leader-product,
+          .insurer-product {
+            margin-top: 2px;
+            color: #667085;
             font-size: 9px;
-            line-height: 1.1;
+            line-height: 1.15;
+            font-weight: 600;
+            overflow-wrap: anywhere;
           }
-          .report-page .variant-col {
-            width: 25%;
-          }
-          .report-page .variant-chip {
-            border: 1px solid #ddd6fe;
+          .leader-variant,
+          .variant-chip {
+            display: inline-flex;
+            width: fit-content;
+            max-width: 100%;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #eadff8;
             border-radius: 999px;
-            background: #f5f3ff;
+            background: #fbf7ff;
             color: #5b21b6;
-            padding: 3px 7px;
+            padding: 4px 8px;
             font-size: 9px;
-            font-weight: 800;
-            white-space: nowrap;
+            line-height: 1.1;
+            font-weight: 700;
+            text-align: center;
           }
-          .report-page .amount-col {
-            width: 23%;
+          .leader-payout,
+          .amount-col {
+            color: #0b1020;
+            font-size: 13px;
+            line-height: 1.1;
+            font-weight: 700;
             text-align: right;
             white-space: nowrap;
-            color: #047857;
-            font-size: 12px;
-            font-weight: 800;
+          }
+          .section-block--table {
+            margin-top: 24px;
+          }
+          .scenario-table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 1px solid #eee7f6;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #ffffff;
+          }
+          .scenario-table thead th {
+            background: #070b18;
+            color: #ffffff;
+            padding: 8px 11px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-align: left;
+            text-transform: uppercase;
+          }
+          .scenario-table tbody td {
+            padding: 6px 11px;
+            border-top: 1px solid #f0e7f7;
+            color: #0b1020;
+            font-size: 10px;
+            line-height: 1.15;
+          }
+          .scenario-table tbody tr:nth-child(even) td {
+            background: #fcfaff;
+          }
+          .rank-cell {
+            width: 44px;
+            text-align: center;
+          }
+          .insurer-col {
+            width: 43%;
+          }
+          .variant-col {
+            width: 25%;
+          }
+          .amount-col {
+            width: 24%;
+          }
+          .empty-cell {
+            padding: 16px 12px;
+            text-align: center;
+            color: #667085;
+            background: #fbf7ff;
           }
         </style>
       `;
@@ -2554,6 +2025,65 @@ export default function SrovnavacTrvalychNasledkuPage() {
     setScenarioStep(1);
   };
 
+  const createPdfExportOptions = (filename: string): any => ({
+    margin: [0, 0, 0, 0],
+    filename,
+    image: { type: "png", quality: 1 },
+    html2canvas: {
+      scale: 2.6,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      windowWidth: 794,
+      scrollX: 0,
+      scrollY: 0,
+      onclone: (doc: Document) => {
+        // html2canvas neumí CSS color funkce lab()/oklch()
+        // z některých globálních stylů, proto je při exportu odfiltrujeme.
+        doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
+        doc.querySelectorAll("style").forEach((n) => {
+          const text = n.textContent ?? "";
+          if (/(oklch|lab)\(/i.test(text)) n.remove();
+        });
+      },
+    },
+    jsPDF: { unit: "pt", format: "a4", orientation: "portrait", compress: true },
+    pagebreak: {
+      mode: ["css", "legacy"],
+      before: ".report-page:not(:first-child)",
+      avoid: [".leader-card", ".info-card", ".scenario-table tbody tr"],
+    },
+  });
+
+  const handleExportCurrentPdf = async () => {
+    if (sumInsuredValue <= 0) {
+      setScenarioExportError("Zadej nejdřív pojistnou částku.");
+      return;
+    }
+
+    setScenarioExportError(null);
+    setCurrentExporting(true);
+    try {
+      const html2pdf = await getHtml2Pdf();
+      const generatedAt = new Date().toLocaleString("cs-CZ");
+      const fileStamp = new Date().toISOString().slice(0, 10);
+      const exportHtml = buildScenarioPdfExportHtml(generatedAt, [
+        { label: "Aktuální rozsah", percent: rangePercentValue },
+      ]);
+
+      await (html2pdf() as any)
+        .set(createPdfExportOptions(`srovnani_trvalych_nasledku_${fileStamp}.pdf`))
+        .from(exportHtml)
+        .save();
+    } catch (error) {
+      console.error("Nepodařilo se vygenerovat PDF srovnání trvalých následků", error);
+      const detail =
+        error instanceof Error && error.message ? ` (${error.message})` : "";
+      setScenarioExportError(`Generování PDF selhalo${detail}. Zkus to prosím znovu.`);
+    } finally {
+      setCurrentExporting(false);
+    }
+  };
+
   const handleExportThreeScenarioPdf = async () => {
     if (!validateScenarioExportInputs()) return;
 
@@ -2563,37 +2093,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
       const html2pdf = await getHtml2Pdf();
       const generatedAt = new Date().toLocaleString("cs-CZ");
       const fileStamp = new Date().toISOString().slice(0, 10);
-      const opt: any = {
-        margin: [0, 0, 0, 0],
-        filename: `srovnani_trvalych_nasledku_scenare_${fileStamp}.pdf`,
-        image: { type: "png", quality: 1 },
-        html2canvas: {
-          scale: 2.6,
-          backgroundColor: "#eef2f7",
-          useCORS: true,
-          windowWidth: 794,
-          scrollX: 0,
-          scrollY: 0,
-          onclone: (doc: Document) => {
-            // html2canvas neumí CSS color funkce lab()/oklch()
-            // z některých globálních stylů, proto je při exportu odfiltrujeme.
-            doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
-            doc.querySelectorAll("style").forEach((n) => {
-              const text = n.textContent ?? "";
-              if (/(oklch|lab)\(/i.test(text)) n.remove();
-            });
-          },
-        },
-        jsPDF: { unit: "pt", format: "a4", orientation: "portrait", compress: true },
-        pagebreak: {
-          mode: ["css", "legacy"],
-          before: ".report-page:not(:first-child)",
-          avoid: [".leader-card", ".meta-chip"],
-        },
-      };
       const exportHtml = buildScenarioPdfExportHtml(generatedAt);
 
-      await (html2pdf() as any).set(opt).from(exportHtml).save();
+      await (html2pdf() as any)
+        .set(createPdfExportOptions(`srovnani_trvalych_nasledku_scenare_${fileStamp}.pdf`))
+        .from(exportHtml)
+        .save();
     } catch (error) {
       console.error("Nepodařilo se vygenerovat 3 scénáře PDF", error);
       const detail =
@@ -2616,45 +2121,73 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const scenarioStepperSteps = ["Scénáře", "Náhled PDF"];
   const scenarioPreviewSrcDoc =
     scenarioModalOpen && scenarioStep === 1
-      ? `<!doctype html><html lang="cs"><head><meta charset="utf-8" /><style>html,body{margin:0;background:#edf3fb;min-height:100%;}body{display:flex;justify-content:center;padding:16px;}.preview-scale{zoom:.94;}@supports not (zoom:1){.preview-scale{width:106.383%;transform:scale(.94);transform-origin:top center;}}</style></head><body><div class="preview-scale">${buildScenarioPdfExportHtml(
+      ? `<!doctype html><html lang="cs"><head><meta charset="utf-8" /><style>html,body{margin:0;background:#ffffff;min-height:100%;}body{display:flex;justify-content:center;padding:16px;}.preview-scale{zoom:.94;}@supports not (zoom:1){.preview-scale{width:106.383%;transform:scale(.94);transform-origin:top center;}}</style></head><body><div class="preview-scale">${buildScenarioPdfExportHtml(
           new Date().toLocaleString("cs-CZ")
         )}</div></body></html>`
       : "";
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6">
-        <header className="space-y-3">
-          <div className="space-y-1 leading-[1.05]">
-            <SplitTitle text="Srovnavač" className="leading-[1.05]" />
-            <SplitTitle text="Trvalých následků" className="leading-[1.05]" />
+      <div className="relative w-full max-w-[1500px] space-y-4 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-2 pb-8 sm:px-3">
+        <header className="flex flex-col gap-4 px-2 pt-2">
+          <Link
+            href="/pomucky"
+            className="inline-flex w-fit items-center gap-2 rounded-full border border-violet-100 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(76,29,149,0.08)] transition hover:border-violet-300 hover:bg-violet-50"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Zpět na pomůcky
+          </Link>
+
+          <div className="flex flex-col gap-4 min-[560px]:flex-row min-[560px]:items-end min-[560px]:justify-between">
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-white/92 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-700 shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
+                <ChartNoAxesColumn className="h-3.5 w-3.5" />
+                Srovnávač plnění
+              </div>
+              <div>
+                <h1 className="text-4xl font-black leading-none tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+                  Trvalé následky
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm font-semibold leading-relaxed text-slate-500">
+                  Porovnej plnění podle pojistné částky a rozsahu poškození. Export používá stejná data i aktivní filtry.
+                </p>
+              </div>
+            </div>
+
+            <div className="hidden shrink-0 min-[560px]:block">
+              <Image
+                src="/icons/nasledna.webp"
+                alt="Trvalé následky"
+                width={260}
+                height={260}
+                className="h-28 w-auto object-contain grayscale opacity-90 sm:h-36"
+                priority
+              />
+            </div>
           </div>
         </header>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(360px,430px)_1fr]">
-          <section className="w-full space-y-4 px-5 py-1">
+        <div className="grid gap-4 lg:grid-cols-[minmax(330px,430px)_1fr]">
+          <section className="relative w-full space-y-4 overflow-hidden rounded-[28px] border border-violet-100 bg-white p-4 shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
+            />
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <Calculator className="h-4 w-4 text-slate-600" />
+              <h2 className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
+                <Calculator className="h-3.5 w-3.5" />
                 <span>Vstupní parametry</span>
               </h2>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="group relative isolate overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-3 py-3 font-mono shadow-[0_18px_34px_rgba(20,8,32,0.32)] ring-1 ring-[#7a35a7]/22 transition-[transform,border-color,box-shadow] duration-200 focus-within:border-[#9756d1] focus-within:shadow-[0_24px_44px_rgba(20,8,34,0.44)] hover:-translate-y-0.5 hover:border-[#9756d1]">
-                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
-                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
-                <div className="pointer-events-none absolute -right-10 top-4 h-28 w-28 rounded-full bg-[#ab66ff]/20 blur-3xl" />
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
-                />
-                <div className="relative z-[1]">
+              <label className="rounded-2xl border border-violet-100 bg-white/85 p-3.5 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10">
+                <div>
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-[10px] font-black uppercase leading-tight tracking-[0.11em] text-[#c8aee4]">
+                    <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] text-fuchsia-700">
                       Pojistná částka
                     </span>
-                    <span className="rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#fbf7ff] shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
+                    <span className="rounded-lg border border-violet-100 bg-violet-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-violet-700">
                       Kč
                     </span>
                   </div>
@@ -2672,25 +2205,18 @@ export default function SrovnavacTrvalychNasledkuPage() {
                         setSumInsuredInput(formatKcInput(parsed));
                       }
                     }}
-                    className="mt-3 w-full border-0 border-b-2 border-[#a855f7]/55 bg-transparent px-0 pb-2 text-xl font-black leading-none text-[#fbf7ff] outline-none transition placeholder:text-[#d8bcf3]/45 focus:border-[#d8b4fe] focus:ring-0"
+                    className="mt-3 w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-lg font-semibold leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0"
                   />
                 </div>
               </label>
 
-              <label className="group relative isolate overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-3 py-3 font-mono shadow-[0_18px_34px_rgba(20,8,32,0.32)] ring-1 ring-[#7a35a7]/22 transition-[transform,border-color,box-shadow] duration-200 focus-within:border-[#9756d1] focus-within:shadow-[0_24px_44px_rgba(20,8,34,0.44)] hover:-translate-y-0.5 hover:border-[#9756d1]">
-                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
-                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
-                <div className="pointer-events-none absolute -right-10 top-4 h-28 w-28 rounded-full bg-[#ab66ff]/20 blur-3xl" />
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
-                />
-                <div className="relative z-[1]">
+              <label className="rounded-2xl border border-violet-100 bg-white/85 p-3.5 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10">
+                <div>
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-[10px] font-black uppercase leading-tight tracking-[0.11em] text-[#c8aee4]">
+                    <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] text-fuchsia-700">
                       Rozsah trvalých následků
                     </span>
-                    <span className="rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#fbf7ff] shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
+                    <span className="rounded-lg border border-violet-100 bg-violet-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-violet-700">
                       %
                     </span>
                   </div>
@@ -2705,10 +2231,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       const limited = Math.min(100, Math.max(0, parsed));
                       setRangePercentInput(formatKcInput(limited));
                     }}
-                    className="mt-3 w-full border-0 border-b-2 border-[#a855f7]/55 bg-transparent px-0 pb-2 text-xl font-black leading-none text-[#fbf7ff] outline-none transition placeholder:text-[#d8bcf3]/45 focus:border-[#d8b4fe] focus:ring-0"
+                    className="mt-3 w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-lg font-semibold leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0"
                   />
                   {Number.isFinite(rangePercentRaw) && rangePercentRaw > 100 && (
-                    <p className="mt-2 text-[11px] font-semibold text-amber-200">
+                    <p className="mt-2 text-[11px] font-semibold text-fuchsia-700">
                       Max 100 %. Počítám s {rangePercentValue}%.
                     </p>
                   )}
@@ -2717,34 +2243,47 @@ export default function SrovnavacTrvalychNasledkuPage() {
             </div>
           </section>
 
-          <section className="w-full space-y-4 px-5 py-1">
+          <section className="relative w-full space-y-4 overflow-hidden rounded-[28px] border border-violet-100 bg-white p-4 shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
+            />
             <div className="flex flex-wrap items-center gap-3 justify-between">
-              <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <SlidersHorizontal className="h-4 w-4 text-slate-600" />
+              <h2 className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
                 <span>Filtry</span>
               </h2>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.06)] transition hover:border-slate-900"
+                  onClick={() => void handleExportCurrentPdf()}
+                  disabled={currentExporting || scenarioExporting}
+                  className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-[0_8px_18px_rgba(76,29,149,0.08)] transition hover:border-violet-400 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <FileDown className="h-3.5 w-3.5" />
-                  <span>Export PDF</span>
+                  {currentExporting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileDown className="h-3.5 w-3.5" />
+                  )}
+                  <span>{currentExporting ? "Generuji…" : "Export PDF"}</span>
                 </button>
                 <button
                   type="button"
                   onClick={openScenarioExportModal}
-                  disabled={scenarioExporting}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={currentExporting || scenarioExporting}
+                  className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-4 py-2 text-xs font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Files className="h-3.5 w-3.5" />
-                  <span>Export 3 scénáře PDF</span>
+                  {scenarioExporting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Files className="h-3.5 w-3.5" />
+                  )}
+                  <span>{scenarioExporting ? "Generuji…" : "Export 3 scénáře PDF"}</span>
                 </button>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-white/85 px-4 py-3 shadow-sm">
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                 <span className="font-semibold text-slate-700">
                   {activeFilterCount === 0
@@ -2752,25 +2291,25 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     : `Aktivní filtry: ${activeFilterCount}`}
                 </span>
                 {showOnly10x && (
-                  <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5">
+                  <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
                     10× progrese
                   </span>
                 )}
                 {selectedInsurers.length > 0 && (
-                  <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5">
+                  <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
                     Pojišťovny: {selectedInsurers.length}
                   </span>
                 )}
                 {compactList && (
-                  <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5">
-                    Kompaktní
+                  <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
+                    Hustší řádky
                   </span>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => setFiltersOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-950 bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 <span>Filtry</span>
@@ -2781,19 +2320,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
         {scenarioModalOpen && (
           <div
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/65 px-4 py-6 backdrop-blur-sm"
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
             onClick={() => setScenarioModalOpen(false)}
           >
             <section
-              className={`relative max-h-[94vh] w-full overflow-y-auto rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-5 ${
+              className={`relative max-h-[94vh] w-full overflow-y-auto rounded-[28px] border border-violet-100 bg-white p-4 text-slate-950 shadow-[0_34px_90px_rgba(15,23,42,0.28)] sm:p-5 ${
                 scenarioStep === 1 ? "max-w-7xl" : "max-w-5xl"
               }`}
               onClick={(e) => e.stopPropagation()}
             >
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
+              />
               <button
                 type="button"
                 onClick={() => setScenarioModalOpen(false)}
-                className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/18 bg-white/[0.05] text-violet-100 transition hover:bg-white/[0.12]"
+                className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100 bg-white text-slate-700 transition hover:border-fuchsia-200 hover:bg-fuchsia-50"
                 aria-label="Zavřít export scénářů"
               >
                 <X className="h-4 w-4" />
@@ -2801,10 +2344,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
               <div className="flex flex-col gap-3 pr-12 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-700">
                     Klientský PDF výstup
                   </p>
-                  <h3 className="mt-1 text-lg font-bold tracking-[-0.02em] text-[#f8fafc] sm:text-xl">
+                  <h3 className="mt-1 text-lg font-black tracking-tight text-slate-950 sm:text-xl">
                     Export 3 scénářů
                   </h3>
                 </div>
@@ -2813,15 +2356,19 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     type="button"
                     onClick={handleExportThreeScenarioPdf}
                     disabled={scenarioExporting}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-5 py-2.5 text-sm font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <FileDown className="h-4 w-4" />
+                    {scenarioExporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4" />
+                    )}
                     {scenarioExporting ? "Generuji…" : "Stáhnout PDF"}
                   </button>
                 ) : null}
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/14 bg-white/[0.04] px-3 py-2.5">
+              <div className="mt-4 rounded-2xl border border-violet-100 bg-white/85 px-3 py-2.5 shadow-sm">
                 <div
                   className="grid gap-2"
                   style={{
@@ -2837,17 +2384,17 @@ export default function SrovnavacTrvalychNasledkuPage() {
                         <span
                           className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition ${
                             stepDone
-                              ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
+                              ? "border-violet-500 bg-violet-600 text-white"
                               : stepActive
-                                ? "border-violet-200/70 bg-violet-400/30 text-[#f8fafc]"
-                                : "border-white/20 bg-white/[0.03] text-violet-200/70"
+                                ? "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-700"
+                                : "border-violet-100 bg-white text-slate-400"
                           }`}
                         >
                           {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
                         </span>
                         <span
                           className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                            stepActive || stepDone ? "text-[#f4f0ff]" : "text-violet-200/60"
+                            stepActive || stepDone ? "text-slate-950" : "text-slate-400"
                           }`}
                         >
                           {stepLabel}
@@ -2856,9 +2403,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     );
                   })}
                 </div>
-                <div className="mt-2.5 h-1.5 rounded-full bg-white/10">
+                <div className="mt-2.5 h-1.5 rounded-full bg-violet-50">
                   <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,#8b5cf6_0%,#a855f7_55%,#c084fc_100%)] transition-[width] duration-300"
+                    className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#7c3aed_55%,#ec4899_100%)] transition-[width] duration-300"
                     style={{
                       width: `${((scenarioStep + 1) / scenarioStepperSteps.length) * 100}%`,
                     }}
@@ -2869,7 +2416,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
               <div className="mt-4">
                 {scenarioStep === 0 ? (
                   <div className="space-y-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-fuchsia-700">
                       Rozsahy trvalých následků
                     </p>
                     <div className="grid gap-3 sm:grid-cols-3">
@@ -2895,12 +2442,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       ].map((item) => (
                         <label
                           key={item.label}
-                          className="rounded-2xl border border-white/14 bg-white/[0.04] px-4 py-3 transition focus-within:border-violet-300/60 focus-within:bg-white/[0.07]"
+                          className="rounded-2xl border border-violet-100 bg-white/85 px-4 py-3 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10"
                         >
-                          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-200/80">
+                          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700">
                             {item.label}
                           </span>
-                          <span className="mt-1 block text-sm font-semibold text-[#f8fafc]">
+                          <span className="mt-1 block text-sm font-semibold text-slate-950">
                             {item.helper}
                           </span>
                           <div className="mt-3 flex items-end gap-2">
@@ -2911,22 +2458,22 @@ export default function SrovnavacTrvalychNasledkuPage() {
                               step={0.1}
                               value={item.value}
                               onChange={(e) => item.onChange(e.target.value)}
-                              className="w-full border-0 border-b border-white/18 bg-transparent px-0 pb-2 text-3xl font-black leading-none text-[#f8fafc] outline-none transition placeholder:text-violet-100/35 focus:border-violet-300 focus:ring-0"
+                              className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-2xl font-black leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0"
                             />
-                            <span className="mb-2 rounded-full border border-violet-200/25 bg-violet-300/15 px-2 py-1 text-xs font-semibold text-violet-100">
+                            <span className="mb-2 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
                               %
                             </span>
                           </div>
                         </label>
                       ))}
                     </div>
-                    <p className="rounded-2xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-violet-100/70">
+                    <p className="rounded-2xl border border-violet-100 bg-violet-50/70 px-3 py-2 text-xs font-semibold leading-relaxed text-slate-600">
                       Export použije aktuální pojistnou částku a aktivní filtry. Náhled v dalším kroku ukazuje stejný obsah, který se stáhne do PDF.
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="overflow-hidden rounded-2xl border border-white/14 bg-white shadow-[0_22px_56px_rgba(0,0,0,0.28)]">
+                    <div className="overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-[0_22px_56px_rgba(76,29,149,0.14)]">
                       <iframe
                         title="Náhled klientského PDF výstupu"
                         srcDoc={scenarioPreviewSrcDoc}
@@ -2938,13 +2485,13 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </div>
 
               {scenarioExportError ? (
-                <p className="mt-4 rounded-2xl border border-rose-300/45 bg-rose-400/15 px-3 py-2 text-xs text-rose-100">
+                <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
                   {scenarioExportError}
                 </p>
               ) : null}
 
               <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-violet-100/70">
+                <p className="text-xs font-semibold text-slate-500">
                   Krok {scenarioStep + 1} / {scenarioStepperSteps.length}
                 </p>
                 <div className="ml-auto flex items-center gap-2">
@@ -2955,7 +2502,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                         setScenarioExportError(null);
                         setScenarioStep(0);
                       }}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/22 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-white/[0.1]"
+                      className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
                     >
                       <ChevronLeft className="h-4 w-4" />
                       Zpět
@@ -2966,7 +2513,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     <button
                       type="button"
                       onClick={goToScenarioPreview}
-                      className="inline-flex items-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110"
+                      className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-5 py-2.5 text-sm font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5 hover:brightness-110"
                     >
                       Pokračovat
                       <ChevronRight className="h-4 w-4" />
@@ -2980,22 +2527,26 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
         {filtersOpen && (
           <div
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/45 px-4 py-6"
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
             onClick={() => setFiltersOpen(false)}
           >
             <div
-              className="w-full max-w-3xl rounded-3xl border border-slate-900 bg-white px-5 py-5 shadow-[0_25px_70px_rgba(2,6,23,0.35)]"
+              className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-violet-100 bg-white px-5 py-5 shadow-[0_34px_90px_rgba(15,23,42,0.28)]"
               onClick={(e) => e.stopPropagation()}
             >
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
+              />
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-                  <SlidersHorizontal className="h-4 w-4 text-slate-600" />
+                <h3 className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
                   <span>Filtry a zobrazení</span>
                 </h3>
                 <button
                   type="button"
                   onClick={() => setFiltersOpen(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-sm text-white hover:bg-black"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-950 bg-slate-950 text-sm text-white hover:bg-black"
                   aria-label="Zavřít filtry"
                 >
                   ×
@@ -3004,14 +2555,14 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <div className="text-[11px] text-slate-500">Filtr:</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Filtr</div>
                   <button
                     type="button"
                     onClick={() => setShowOnly10x((v) => !v)}
-                    className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
                       showOnly10x
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
+                        ? TN_ACTIVE_DARK_CLASS
+                        : TN_INACTIVE_CHIP_CLASS
                     }`}
                   >
                     Pouze 10× progrese
@@ -3019,30 +2570,30 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-[11px] text-slate-500">Zobrazení:</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Zobrazení</div>
                   <button
                     type="button"
                     onClick={() => setCompactList((v) => !v)}
-                    className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
                       compactList
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
+                        ? TN_ACTIVE_VIOLET_CLASS
+                        : TN_INACTIVE_CHIP_CLASS
                     }`}
                   >
-                    {compactList ? "Kompaktní (1/řádek)" : "Karty (3/řádek)"}
+                    {compactList ? "Hustší řádky" : "Standardní řádky"}
                   </button>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-[11px] text-slate-500">Pojišťovny:</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Pojišťovny</div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setSelectedInsurers([])}
-                      className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                      className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
                         selectedInsurers.length === 0
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
+                          ? TN_ACTIVE_DARK_CLASS
+                          : TN_INACTIVE_CHIP_CLASS
                       }`}
                     >
                       Všechny
@@ -3061,10 +2612,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                 : [...current, insurer]
                             )
                           }
-                          className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                          className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
                             active
-                              ? "border-slate-900 bg-slate-900 text-white"
-                              : "border-slate-900 bg-white text-slate-900 hover:bg-slate-900 hover:text-white"
+                              ? TN_ACTIVE_VIOLET_CLASS
+                              : TN_INACTIVE_CHIP_CLASS
                           }`}
                           aria-pressed={active}
                         >
@@ -3079,7 +2630,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   <button
                     type="button"
                     onClick={() => setFiltersOpen(false)}
-                    className="inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
+                    className="inline-flex items-center rounded-xl border border-slate-950 bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
                   >
                     Zavřít
                   </button>
@@ -3089,105 +2640,71 @@ export default function SrovnavacTrvalychNasledkuPage() {
           </div>
         )}
 
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <ChartNoAxesColumn className="h-4 w-4 text-slate-600" />
-              <span>Srovnání plnění</span>
-            </h2>
-            <span className="text-[11px] text-slate-500">Výsledek podle zadaných parametrů.</span>
+        <section className="relative overflow-visible rounded-[28px] border border-violet-100 bg-white p-4 shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
+          />
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
+                <ChartNoAxesColumn className="h-3.5 w-3.5" />
+                Srovnání plnění
+              </h2>
+              <p className="mt-2 text-xs font-semibold text-slate-500">
+                Výsledek podle zadaných parametrů.
+              </p>
+            </div>
+            <div className="text-right text-xs font-semibold text-slate-500">
+              {sortedCards.length} variant
+            </div>
           </div>
 
-          <div
-            className={
-              compactList
-                ? "grid gap-3 grid-cols-1"
-                : "grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3"
-            }
-          >
-            {sortedCards.map((card, idx) => {
-              const podium = podiumStyles[idx];
-              const accentClass =
-                idx === 0
-                  ? "bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(251,191,36,0.92),rgba(217,180,254,0.9),rgba(168,85,247,0))]"
-                  : idx === 1
-                    ? "bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(56,189,248,0.88),rgba(217,180,254,0.9),rgba(168,85,247,0))]"
-                    : idx === 2
-                      ? "bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(148,163,184,0.82),rgba(217,180,254,0.9),rgba(168,85,247,0))]"
-                      : "bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(168,85,247,0))]";
-              const borderClass =
-                idx === 0
-                  ? "border-[#b89145] ring-[#fbbf24]/20"
-                  : idx === 1
-                    ? "border-[#4f9eca] ring-[#38bdf8]/18"
-                    : idx === 2
-                      ? "border-[#6b647d] ring-slate-300/16"
-                      : "border-[#653493] ring-[#7a35a7]/22";
-              const badgeClass =
-                idx === 0
-                  ? "border-amber-400/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(217,119,6,0.34)]"
-                  : idx === 1
-                    ? "border-sky-400/80 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(3,105,161,0.34)]"
-                    : idx === 2
-                      ? "border-slate-400/80 bg-[linear-gradient(135deg,#cbd5e1_0%,#64748b_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(71,85,105,0.32)]"
-                      : "border-[#9a67d0]/80 bg-[#2e1c43]/92 text-[#d8bcf3]";
-              const logoPath = getInsurerLogoPath(card.insurer);
-              const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
-              const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+          {scenarioExportError && !scenarioModalOpen ? (
+            <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+              {scenarioExportError}
+            </p>
+          ) : null}
 
-              return (
-                <div
-                  key={card.key}
-                  className={`group relative isolate overflow-visible print-card rounded-[26px] border bg-[#150e1f] font-mono text-[#fbf7ff] shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#9756d1] hover:shadow-[0_24px_44px_rgba(20,8,34,0.5)] ${compactList ? "px-4 py-4" : "px-4 py-4"} ${borderClass} ${
-                    compactList ? "md:flex md:items-center md:gap-4" : ""
-                  }`}
-                >
+          <div className="mt-4 overflow-visible rounded-2xl border border-violet-100 bg-white">
+            {sortedCards.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
+                Žádná varianta neodpovídá aktivním filtrům.
+              </div>
+            ) : (
+              sortedCards.map((card, idx) => {
+                const podium = podiumStyles[idx];
+                const logoPath = getInsurerLogoPath(card.insurer);
+                const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
+                const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+
+                return (
                   <div
-                    className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]"
-                    aria-hidden="true"
+                    key={card.key}
+                    className={`group relative grid gap-3 border-t border-violet-100 px-4 first:border-t-0 hover:bg-violet-50/40 sm:grid-cols-[44px_minmax(0,1fr)_minmax(120px,0.42fr)_minmax(132px,auto)_36px] sm:items-center ${
+                      compactList ? "py-2" : "py-3"
+                    }`}
                   >
-                    <div className="absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
-                    <div className="absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
-                    <div className="absolute -top-16 left-12 h-56 w-px rotate-[34deg] bg-[#9d61ca]/16" />
-                    <div className="absolute -right-14 top-8 h-36 w-36 rounded-full bg-[#ab66ff]/22 blur-3xl" />
-                    <div className={`absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full ${accentClass}`} />
-                    <div className="absolute inset-x-10 top-[2px] z-[1] h-px rounded-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(250,245,255,0.62),rgba(168,85,247,0))]" />
-                  </div>
-
-                  {podium && (
-                    <div className={`absolute left-5 top-0 z-20 -translate-y-1/2 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.08em] ${badgeClass}`}>
-                      {podium.badgeText}
-                    </div>
-                  )}
-
-                  {card.badges.length > 0 && (
-                    <div className="absolute right-4 top-4 z-20 flex max-w-[45%] flex-wrap justify-end gap-2">
-                      {card.badges.map((badge) => (
-                        <div
-                          key={badge}
-                          className="rounded-full border border-[#9a67d0]/70 bg-[#2e1c43]/90 px-3 py-1 text-[11px] font-semibold text-[#d8bcf3] shadow-[0_10px_20px_rgba(20,8,34,0.26)]"
-                        >
-                          {badge}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
-                    className="absolute bottom-4 right-4 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#9a67d0]/80 bg-[#2e1c43]/92 text-xs font-semibold text-[#d8bcf3] shadow-[0_10px_20px_rgba(20,8,34,0.3)] transition hover:border-[#d8b4fe] hover:text-[#fbf7ff]"
-                    aria-label={`Zobrazit výpočet pro ${card.insurer}`}
-                    aria-expanded={infoOpen === card.key}
-                    title="Výpočet"
-                  >
-                    i
-                  </button>
-
-                  <div className={`relative z-[1] min-w-0 pr-32 ${compactList ? "md:flex-1" : ""}`}>
-                    <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex items-center gap-2 sm:block">
                       <span
-                        className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/95 shadow-[0_10px_20px_rgba(20,8,34,0.2)] ${institutionLogoFrameClass(
+                        className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full border px-2 text-xs font-black ${
+                          idx === 0
+                            ? "border-violet-500 bg-[linear-gradient(135deg,#111827_0%,#4c1d95_58%,#7c3aed_100%)] text-white"
+                            : "border-violet-100 bg-white text-slate-700"
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      {podium ? (
+                        <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-700 sm:hidden">
+                          {podium.badgeText}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span
+                        className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm ${institutionLogoFrameClass(
                           logoKey,
                           "compact"
                         )}`}
@@ -3204,88 +2721,80 @@ export default function SrovnavacTrvalychNasledkuPage() {
                           <span className="text-[10px] font-semibold text-slate-400">LOGO</span>
                         )}
                       </span>
-                      <div className="min-w-0 flex-1 space-y-0.5">
-                        <div className="break-words text-[1.35rem] font-semibold leading-tight text-[#fbf7ff]">
-                          {insurerName}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="break-words text-base font-black leading-tight text-slate-950">
+                            {insurerName}
+                          </div>
+                          {podium ? (
+                            <span className="hidden rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-700 sm:inline-flex">
+                              {podium.badgeText}
+                            </span>
+                          ) : null}
                         </div>
-                        <div className="break-words text-sm leading-snug text-[#c8aee4]">
+                        <div className="break-words text-xs font-semibold leading-snug text-slate-500">
                           {productName}
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div
-                    className={`relative z-[1] mt-5 border-t-2 border-[#a855f7]/75 pt-4 pr-12 ${compactList ? "md:mt-0 md:w-64 md:border-l-2 md:border-t-0 md:pl-5 md:pt-0" : ""}`}
-                  >
-                    <div className="text-[11px] font-black uppercase tracking-[0.14em] text-[#f3e8ff] drop-shadow-[0_2px_8px_rgba(243,232,255,0.18)]">
-                      Plnění
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {card.badges.map((badge) => (
+                        <span
+                          key={badge}
+                          className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700"
+                        >
+                          {badge}
+                        </span>
+                      ))}
                     </div>
-                    <div
-                      className={`mt-1 whitespace-nowrap font-black leading-none tracking-tight text-[#fbf7ff] drop-shadow-[0_8px_18px_rgba(168,85,247,0.2)] ${
-                        compactList ? "text-2xl" : "text-3xl"
-                      }`}
+
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 sm:text-right">
+                        Plnění
+                      </div>
+                      <div className="mt-0.5 whitespace-nowrap text-base font-black leading-none text-slate-950 sm:text-right">
+                        {formatMoney(card.payout)}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-white text-xs font-black text-violet-700 transition hover:border-fuchsia-300 hover:bg-fuchsia-50"
+                      aria-label={`Zobrazit výpočet pro ${card.insurer}`}
+                      aria-expanded={infoOpen === card.key}
+                      title="Výpočet"
                     >
-                      {formatMoney(card.payout)}
-                    </div>
-                  </div>
+                      i
+                    </button>
 
-                {infoOpen === card.key && (
-                  <div
-                    className="absolute right-4 top-14 z-20 w-56 rounded-2xl border border-[#653493] bg-[#fbf7ff] px-3 py-2 text-slate-900 shadow-[0_18px_40px_rgba(2,6,23,0.34)]"
-                    style={compactList ? { top: "100%", marginTop: "8px" } : {}}
-                  >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[11px] uppercase text-slate-500">
-                        Výpočet
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setInfoOpen(null)}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-[11px] text-white hover:bg-black"
-                        aria-label="Zavřít detail výpočtu"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <p className="text-[12px] leading-snug text-slate-800">{card.info}</p>
+                    {infoOpen === card.key && (
+                      <div className="absolute right-3 top-[calc(100%-4px)] z-20 w-72 rounded-2xl border border-violet-200 bg-white px-3 py-2 text-slate-900 shadow-[0_18px_40px_rgba(76,29,149,0.22)]">
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
+                            Výpočet
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setInfoOpen(null)}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-950 bg-slate-950 text-[11px] text-white hover:bg-black"
+                            aria-label="Zavřít detail výpočtu"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <p className="text-[12px] leading-snug text-slate-700">{card.info}</p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </section>
       </div>
 
-      <style jsx global>{`
-        @media print {
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          html,
-          body {
-            background: #ffffff !important;
-            color: #111827 !important;
-          }
-          .print-card {
-            background: #ffffff !important;
-            border-color: #0f172a !important;
-            box-shadow: none !important;
-            color: #111827 !important;
-          }
-          .print-card * {
-            color: #111827 !important;
-          }
-          .print-card .text-emerald-800 {
-            color: #065f46 !important;
-          }
-          .print-card .border {
-            border-color: #0f172a !important;
-          }
-        }
-      `}</style>
     </AppLayout>
   );
 }
