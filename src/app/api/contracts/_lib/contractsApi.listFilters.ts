@@ -28,16 +28,38 @@ import type {
 const CONTRACT_LIST_PROPERTY_PRODUCTS = PROPERTY_PRODUCTS.filter(
   (product) => product !== "zamex"
 );
+const uniqueProducts = (products: Product[]): Product[] =>
+  Array.from(new Set(products));
+
+const CONTRACT_LIST_BUSINESS_PRODUCTS: Product[] = [
+  "kooppmop",
+  "cppPPRs",
+  "cppPPRbez",
+];
+const CONTRACT_LIST_FOREIGNER_PRODUCTS: Product[] = ["maxcizinkomplex"];
+const CONTRACT_LIST_TRAVEL_PRODUCTS = TRAVEL_PRODUCTS.filter(
+  (product) => !CONTRACT_LIST_FOREIGNER_PRODUCTS.includes(product)
+);
+const CONTRACT_LIST_PROPERTY_LIABILITY_PRODUCTS = uniqueProducts([
+  ...CONTRACT_LIST_PROPERTY_PRODUCTS,
+  ...LIABILITY_PRODUCTS,
+]).filter(
+  (product) =>
+    product !== "zamex" &&
+    !CONTRACT_LIST_BUSINESS_PRODUCTS.includes(product) &&
+    !CONTRACT_LIST_FOREIGNER_PRODUCTS.includes(product)
+);
 const CONTRACT_LIST_PRODUCT_CATEGORY_MAP: Record<
   ContractListProductCategory,
   Product[]
 > = {
   life: LIFE_PRODUCTS,
   auto: AUTO_PRODUCTS,
-  property: CONTRACT_LIST_PROPERTY_PRODUCTS,
-  travel: TRAVEL_PRODUCTS,
+  property: CONTRACT_LIST_PROPERTY_LIABILITY_PRODUCTS,
+  travel: CONTRACT_LIST_TRAVEL_PRODUCTS,
   comfort: COMFORT_PRODUCTS,
-  liability: LIABILITY_PRODUCTS,
+  business: CONTRACT_LIST_BUSINESS_PRODUCTS,
+  foreigners: CONTRACT_LIST_FOREIGNER_PRODUCTS,
 };
 const CONTRACT_LIST_PRODUCT_CATEGORY_SET = new Set<ContractListProductCategory>([
   "life",
@@ -45,7 +67,8 @@ const CONTRACT_LIST_PRODUCT_CATEGORY_SET = new Set<ContractListProductCategory>(
   "property",
   "travel",
   "comfort",
-  "liability",
+  "business",
+  "foreigners",
 ]);
 const CONTRACT_LIST_INSTITUTION_SET = new Set<ProductInstitutionId>(
   Object.keys(INSTITUTION_CATALOG) as ProductInstitutionId[]
@@ -109,6 +132,12 @@ export const parseContractListFilters = (
     refreshOnly:
       search.get("refreshOnly") === "1" ||
       search.get("refreshOnly") === "true",
+    stornoOnly:
+      search.get("stornoOnly") === "1" ||
+      search.get("stornoOnly") === "true",
+    maturedOnly:
+      search.get("maturedOnly") === "1" ||
+      search.get("maturedOnly") === "true",
     commissionAuditMode: parseCommissionAuditMode(search.get("commissionAudit")),
     commissionAuditCodeFilter: parseCommissionAuditCodeFilter(
       search.get("commissionCode")
@@ -132,6 +161,8 @@ export const hasContractListClientFilters = (
   filters.mode === "anniversary" ||
   filters.unpaidOnly ||
   filters.refreshOnly ||
+  filters.stornoOnly ||
+  filters.maturedOnly ||
   isCommissionAuditFilterActive({
     mode: filters.commissionAuditMode,
     codeFilter: filters.commissionAuditCodeFilter,
@@ -250,6 +281,17 @@ export function contractMatchesListFilters(
   }
 
   const lifecycleStatus = contractLifecycleStatus(contract);
+  if (filters.stornoOnly || filters.maturedOnly) {
+    if (
+      !(
+        (filters.stornoOnly && lifecycleStatus === "storno") ||
+        (filters.maturedOnly && lifecycleStatus === "dozita")
+      )
+    ) {
+      return false;
+    }
+  }
+
   if (filters.unpaidOnly) {
     if (contract.paid === true || lifecycleStatus !== "active") return false;
   }

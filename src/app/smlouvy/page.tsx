@@ -7,18 +7,34 @@ import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   ArrowDownUp,
+  BadgeCheck,
+  Banknote,
+  BriefcaseBusiness,
+  Building2,
   CalendarDays,
+  Car,
+  Check,
+  ChevronDown,
   Clock,
+  CircleDollarSign,
   ExternalLink,
+  HeartPulse,
+  Home,
   LayoutGrid,
+  ListFilter,
   List,
+  Plane,
   RefreshCw,
+  ReceiptText,
   Search,
   SlidersHorizontal,
   UserRound,
+  UserSearch,
   UsersRound,
+  WalletCards,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { auth } from "../firebase";
 import {
@@ -108,31 +124,43 @@ const COMMISSION_AUDIT_MODE_DEFS: {
   id: Exclude<CommissionAuditFilterMode, "off">;
   label: string;
   description: string;
+  icon: LucideIcon;
+  tone: string;
 }[] = [
   {
     id: "overdue",
     label: "Nevyplacené",
     description: "Provize po termínu za posledních 180 dní bez zapsané platby.",
+    icon: AlertCircle,
+    tone: "border-rose-200 bg-rose-50 text-rose-700",
   },
   {
     id: "upcoming",
     label: "Blíží se",
     description: "Provize s očekávanou výplatou do 90 dní.",
+    icon: Clock,
+    tone: "border-sky-200 bg-sky-50 text-sky-700",
   },
   {
     id: "difference",
     label: "Rozdíl",
     description: "Vyplacená částka se liší od očekávané.",
+    icon: CircleDollarSign,
+    tone: "border-amber-200 bg-amber-50 text-amber-700",
   },
   {
     id: "career_mismatch",
     label: "Jiný kariérní stupeň",
     description: "Vyplaceno na jiném stupni bez pozdější opravy přes storno a správnou platbu.",
+    icon: BriefcaseBusiness,
+    tone: "border-violet-200 bg-violet-50 text-violet-700",
   },
   {
     id: "all",
     label: "Vše k provizím",
     description: "Nevyplacené, blížící se, rozdílové i kariérní položky.",
+    icon: WalletCards,
+    tone: "border-slate-200 bg-slate-100 text-slate-700",
   },
 ];
 
@@ -184,6 +212,26 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   comfortcc: "Comfort Commodity",
   cppPPRs: "Majetek a odpovědnost podnikatelů – ÚPIS",
   cppPPRbez: "Majetek a odpovědnost podnikatelů",
+};
+
+const CATEGORY_ICON_BY_ID: Record<ProductCategory, LucideIcon> = {
+  life: HeartPulse,
+  auto: Car,
+  property: Home,
+  travel: Plane,
+  comfort: CircleDollarSign,
+  business: BriefcaseBusiness,
+  foreigners: UsersRound,
+};
+
+const CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
+  life: "border-rose-200 bg-rose-50 text-rose-700",
+  auto: "border-sky-200 bg-sky-50 text-sky-700",
+  property: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  travel: "border-cyan-200 bg-cyan-50 text-cyan-700",
+  comfort: "border-amber-200 bg-amber-50 text-amber-700",
+  business: "border-violet-200 bg-violet-50 text-violet-700",
+  foreigners: "border-teal-200 bg-teal-50 text-teal-700",
 };
 
 function paymentsPerYear(freq?: PaymentFrequency | null): number {
@@ -541,6 +589,8 @@ function ContractsPageContent() {
   const [searchText, setSearchText] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
   const [showRefreshOnly, setShowRefreshOnly] = useState(false);
+  const [showStornoOnly, setShowStornoOnly] = useState(false);
+  const [showMaturedOnly, setShowMaturedOnly] = useState(false);
   const [commissionAuditMode, setCommissionAuditMode] =
     useState<CommissionAuditFilterMode>("off");
   const [commissionAuditCodeFilter, setCommissionAuditCodeFilter] =
@@ -605,6 +655,8 @@ function ContractsPageContent() {
     anniversaryModeActive ||
     showUnpaidOnly ||
     showRefreshOnly ||
+    showStornoOnly ||
+    showMaturedOnly ||
     commissionAuditActive ||
     selectedCategoryList.length > 0 ||
     selectedInstitutionList.length > 0 ||
@@ -615,6 +667,8 @@ function ContractsPageContent() {
       filterMode: anniversaryModeActive ? "anniversary" : "latest",
       showUnpaidOnly,
       showRefreshOnly,
+      showStornoOnly,
+      showMaturedOnly,
       commissionAuditMode,
       commissionAuditCodeFilter,
       selectedCategories: selectedCategoryList,
@@ -626,6 +680,8 @@ function ContractsPageContent() {
       anniversaryModeActive,
       showUnpaidOnly,
       showRefreshOnly,
+      showStornoOnly,
+      showMaturedOnly,
       commissionAuditMode,
       commissionAuditCodeFilter,
       selectedCategoryList,
@@ -673,6 +729,12 @@ function ContractsPageContent() {
         }
         if (filters.showRefreshOnly) {
           params.set("refreshOnly", "1");
+        }
+        if (filters.showStornoOnly) {
+          params.set("stornoOnly", "1");
+        }
+        if (filters.showMaturedOnly) {
+          params.set("maturedOnly", "1");
         }
         if (filters.commissionAuditMode !== "off") {
           params.set("commissionAudit", filters.commissionAuditMode);
@@ -1148,16 +1210,25 @@ function ContractsPageContent() {
 
   const searchableSubordinateOptions = useMemo(() => {
     if (!canShowTeamToggle) return [] as { email: string; label: string }[];
-    if (!subordinateSearchQuery) return [] as { email: string; label: string }[];
+    if (!subordinateSearchQuery) return subordinateFilterOptions;
 
     return subordinateFilterOptions
       .filter((member) => {
         const name = normalizeSearchValue(member.label);
         const email = normalizeSearchValue(member.email);
         return name.includes(subordinateSearchQuery) || email.includes(subordinateSearchQuery);
-      })
-      .slice(0, 8);
+      });
   }, [canShowTeamToggle, subordinateFilterOptions, subordinateSearchQuery]);
+  const showSubordinateBulkToggle = subordinateFilterOptions.length > 8;
+  const selectedSearchableSubordinateCount = searchableSubordinateOptions.filter((member) =>
+    selectedSubordinates.has(member.email)
+  ).length;
+  const allSearchableSubordinatesSelected =
+    searchableSubordinateOptions.length > 0 &&
+    selectedSearchableSubordinateCount === searchableSubordinateOptions.length;
+  const subordinateBulkScopeLabel = subordinateSearchQuery
+    ? `${searchableSubordinateOptions.length} nalezených`
+    : `${subordinateFilterOptions.length} podřízených`;
 
   const displayedContracts = useMemo(() => {
     const base = (
@@ -1366,6 +1437,16 @@ function ContractsPageContent() {
       base = base.filter((c) => isRefreshContract(c));
     }
 
+    if (showStornoOnly || showMaturedOnly) {
+      base = base.filter((c) => {
+        const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
+        return (
+          (showStornoOnly && lifecycleStatus === "storno") ||
+          (showMaturedOnly && lifecycleStatus === "dozita")
+        );
+      });
+    }
+
     if (commissionAuditActive) {
       const now = new Date();
       base = base.filter(
@@ -1428,6 +1509,8 @@ function ContractsPageContent() {
     deferredSearchText,
     showUnpaidOnly,
     showRefreshOnly,
+    showStornoOnly,
+    showMaturedOnly,
     commissionAuditActive,
     commissionAuditMode,
     commissionAuditCodeFilter,
@@ -1501,6 +1584,8 @@ function ContractsPageContent() {
         mode: filterMode,
         unpaidOnly: showUnpaidOnly,
         refreshOnly: showRefreshOnly,
+        stornoOnly: showStornoOnly,
+        maturedOnly: showMaturedOnly,
         commissionAuditMode,
         commissionAuditCodeFilter,
         categories: Array.from(selectedCategories).sort(),
@@ -1514,6 +1599,8 @@ function ContractsPageContent() {
       filterMode,
       showUnpaidOnly,
       showRefreshOnly,
+      showStornoOnly,
+      showMaturedOnly,
       commissionAuditMode,
       commissionAuditCodeFilter,
       selectedCategories,
@@ -1726,6 +1813,8 @@ function ContractsPageContent() {
       searchText,
       showUnpaidOnly,
       showRefreshOnly,
+      showStornoOnly,
+      showMaturedOnly,
       commissionAuditMode,
       commissionAuditCodeFilter,
       selectedCategories: Array.from(selectedCategories),
@@ -1741,6 +1830,8 @@ function ContractsPageContent() {
     searchText,
     showUnpaidOnly,
     showRefreshOnly,
+    showStornoOnly,
+    showMaturedOnly,
     commissionAuditMode,
     commissionAuditCodeFilter,
     selectedCategories,
@@ -1794,12 +1885,6 @@ function ContractsPageContent() {
     [startFilterTransition]
   );
 
-  const toggleCommissionAuditQuickFilter = useCallback(() => {
-    applyCommissionAuditMode(
-      commissionAuditMode === "overdue" ? "off" : "overdue"
-    );
-  }, [applyCommissionAuditMode, commissionAuditMode]);
-
   const changeCommissionAuditCodeFilter = useCallback(
     (value: string) => {
       if (commissionAuditMode !== "off") {
@@ -1841,6 +1926,8 @@ function ContractsPageContent() {
     setSearchText(saved.searchText);
     setShowUnpaidOnly(saved.showUnpaidOnly);
     setShowRefreshOnly(saved.showRefreshOnly);
+    setShowStornoOnly(saved.showStornoOnly);
+    setShowMaturedOnly(saved.showMaturedOnly);
     setCommissionAuditMode(saved.commissionAuditMode);
     setCommissionAuditCodeFilter(saved.commissionAuditCodeFilter);
     setSelectedCategories(new Set(saved.selectedCategories));
@@ -1881,6 +1968,8 @@ function ContractsPageContent() {
     showTeam,
     showUnpaidOnly,
     showRefreshOnly,
+    showStornoOnly,
+    showMaturedOnly,
     commissionAuditMode,
     commissionAuditCodeFilter,
     selectedCategoryList,
@@ -1898,6 +1987,8 @@ function ContractsPageContent() {
     selectedCategoryList.length +
     selectedInstitutionList.length +
     (showTeam && canShowTeamToggle ? selectedSubordinateList.length : 0) +
+    (showStornoOnly ? 1 : 0) +
+    (showMaturedOnly ? 1 : 0) +
     (commissionAuditActive ? 1 : 0);
 
   const toggleSelect = (key: string) => {
@@ -2033,209 +2124,160 @@ function ContractsPageContent() {
     }
   };
 
+  const quickFilterActiveCount =
+    (filterMode === "anniversary" ? 1 : 0) +
+    (showUnpaidOnly ? 1 : 0) +
+    (showRefreshOnly ? 1 : 0) +
+    (showStornoOnly ? 1 : 0) +
+    (showMaturedOnly ? 1 : 0);
+  const commissionFilterCount = commissionAuditActive
+    ? 1 + (commissionAuditCodeFilter !== "all" ? 1 : 0)
+    : 0;
+  const modalActiveFilterCount =
+    quickFilterActiveCount +
+    commissionFilterCount +
+    selectedCategoryList.length +
+    selectedInstitutionList.length +
+    (showTeam && canShowTeamToggle ? selectedSubordinateList.length : 0);
+  const commissionAuditSelectedLabel =
+    commissionAuditMode === "off"
+      ? "Vypnuto"
+      : COMMISSION_AUDIT_MODE_DEFS.find((item) => item.id === commissionAuditMode)?.label ??
+        "Zapnuto";
+  const filterCardBaseClass =
+    "group relative flex min-h-[52px] w-full items-center gap-2.5 rounded-[16px] border px-3 py-2 text-left transition hover:-translate-y-0.5 hover:shadow-[0_10px_18px_rgba(15,23,42,0.07)]";
+  const inactiveFilterCardClass =
+    "border-slate-200 bg-white text-slate-700 hover:border-slate-300";
+  const activeFilterCardClass =
+    "border-violet-700 bg-white text-slate-950 ring-2 ring-violet-200 shadow-[0_16px_30px_rgba(109,40,217,0.12)]";
+  const activeFilterIconClass =
+    "border-violet-700 bg-violet-700 text-white shadow-[0_8px_18px_rgba(109,40,217,0.24)] [&_*]:!text-white";
+  const activePurpleButtonClass =
+    "border-transparent bg-violet-700 text-white shadow-[0_8px_18px_rgba(109,40,217,0.24)] [&_*]:!text-white";
+
   return (
     <AppLayout active="contracts">
       <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
           {/* SEARCH BAR + FILTER + BULK ACTIONS */}
           <div className="sticky top-16 z-40 space-y-2 rounded-[22px] border border-slate-200/85 bg-white/96 p-3 shadow-[0_14px_30px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/90 lg:top-2">
-            <div className="grid gap-3">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0 flex-1 lg:max-w-[520px]">
-                  <div className="flex h-11 w-full items-center gap-2 rounded-[16px] border border-slate-200 bg-slate-50/85 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900/8">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:gap-3">
+              <div className="min-w-0 xl:w-[340px] 2xl:w-[360px]">
+                <div className="flex h-10 w-full items-center gap-2 rounded-[16px] border border-slate-200 bg-slate-50/85 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900/8">
                     <Search size={17} strokeWidth={2.2} className="shrink-0 text-slate-400" aria-hidden="true" />
                     <input
                       type="text"
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
-                      placeholder="Hledat klienta nebo číslo smlouvy"
+                    placeholder="Hledat klienta nebo smlouvu"
                       className="min-w-0 flex-1 border-none bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
                     />
+                </div>
+              </div>
+
+              <div className="-mx-1 min-w-0 overflow-x-auto px-1 pb-0.5 xl:mx-0 xl:flex-1 xl:overflow-visible xl:px-0 xl:pb-0">
+                <div className="flex min-w-max items-center gap-2 xl:min-w-0 xl:justify-between">
+                  <div className="flex items-center gap-2">
+                    {canShowTeamToggle && (
+                      <div
+                        className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
+                        aria-label="Rozsah smluv"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setShowTeam(false)}
+                          className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                            !showTeam
+                              ? activePurpleButtonClass
+                              : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                          }`}
+                        >
+                          <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                          <span>Vlastní</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowTeam(true)}
+                          className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                            showTeam
+                              ? activePurpleButtonClass
+                              : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                          }`}
+                        >
+                          <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                          <span>Tým</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div
+                      className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
+                      aria-label="Zobrazení seznamu smluv"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setListViewMode("cards")}
+                        aria-pressed={listViewMode === "cards"}
+                        className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                          listViewMode === "cards"
+                            ? activePurpleButtonClass
+                            : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                        }`}
+                      >
+                        <LayoutGrid size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                        <span>Karty</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setListViewMode("compact")}
+                        aria-pressed={listViewMode === "compact"}
+                        className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
+                          listViewMode === "compact"
+                            ? activePurpleButtonClass
+                            : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                        }`}
+                      >
+                        <List size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                        <span>Kompakt</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFilterModalOpen(true)}
+                      className="ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
+                    >
+                      <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                      <span>Filtr</span>
+                      {advancedFilterCount > 0 ? (
+                        <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-violet-700 px-1.5 text-[10px] font-black leading-5 text-white">
+                          {advancedFilterCount}
+                        </span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectMode) {
+                          clearSelection();
+                        } else {
+                          setSelectMode(true);
+                        }
+                      }}
+                        className={`ui-focus inline-flex h-10 items-center rounded-[16px] border px-3 text-xs font-bold transition ${
+                          selectMode
+                          ? "border-violet-700 bg-violet-700 text-white shadow-[0_10px_22px_rgba(109,40,217,0.22)] hover:bg-violet-800 [&_*]:!text-white"
+                          : "border-emerald-700 bg-emerald-600 !text-white shadow-[0_10px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-700"
+                      }`}
+                    >
+                      {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
+                    </button>
                   </div>
                 </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setFilterModalOpen(true)}
-                  className="ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
-                >
-                  <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  <span>Filtr</span>
-                  {advancedFilterCount > 0 ? (
-                    <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-slate-950 px-1.5 text-[10px] font-black leading-5 text-white">
-                      {advancedFilterCount}
-                    </span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (selectMode) {
-                      clearSelection();
-                    } else {
-                      setSelectMode(true);
-                    }
-                  }}
-                  className={`ui-focus inline-flex h-10 items-center rounded-[16px] border px-3 text-xs font-bold transition ${
-                    selectMode
-                      ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                      : "border-emerald-700 bg-emerald-600 !text-white shadow-[0_10px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-700"
-                  }`}
-                >
-                  {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
-                </button>
               </div>
             </div>
-
-            <div className="-mx-1 overflow-x-auto px-1 pb-0.5">
-              <div className="flex min-w-max items-center gap-2">
-              {canShowTeamToggle && (
-                <div
-                  className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
-                  aria-label="Rozsah smluv"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setShowTeam(false)}
-                    className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                      !showTeam
-                        ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
-                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                    }`}
-                  >
-                    <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                    <span>Moje</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowTeam(true)}
-                    className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                      showTeam
-                        ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
-                        : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                    }`}
-                  >
-                    <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                    <span>Tým</span>
-                  </button>
-                </div>
-              )}
-
-              <div
-                className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
-                aria-label="Řazení smluv"
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    startFilterTransition(() => setFilterMode("latest"))
-                  }
-                  className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                    filterMode === "latest"
-                      ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
-                      : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                  }`}
-                >
-                  <ArrowDownUp size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  <span>Nejnovější</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    startFilterTransition(() => setFilterMode("anniversary"))
-                  }
-                  className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                    filterMode === "anniversary"
-                      ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
-                      : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                  }`}
-                >
-                  <CalendarDays size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  <span>Výročí</span>
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowUnpaidOnly((prev) => !prev)}
-                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border px-3 text-xs font-bold transition ${
-                  showUnpaidOnly
-                    ? "border-rose-600 bg-rose-600 text-white shadow-[0_8px_18px_rgba(225,29,72,0.18)]"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
-                }`}
-              >
-                <AlertCircle size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Nezaplacené</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleCommissionAuditQuickFilter}
-                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border px-3 text-xs font-bold transition ${
-                  commissionAuditActive
-                    ? "border-amber-600 bg-amber-500 text-white shadow-[0_8px_18px_rgba(217,119,6,0.2)]"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
-                }`}
-                aria-busy={isCommissionAuditFilterLoading}
-              >
-                {isCommissionAuditFilterLoading ? (
-                  <span
-                    className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Clock size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                )}
-                <span>{isCommissionAuditFilterLoading ? "Načítám…" : "Provize"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowRefreshOnly((prev) => !prev)}
-                className={`ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border px-3 text-xs font-bold transition ${
-                  showRefreshOnly
-                    ? "border-sky-700 bg-sky-600 text-white shadow-[0_8px_18px_rgba(2,132,199,0.2)]"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-950"
-                }`}
-              >
-                <RefreshCw size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                <span>Refresh/Náhrada</span>
-              </button>
-
-              <div
-                className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
-                aria-label="Zobrazení seznamu smluv"
-              >
-                <button
-                  type="button"
-                  onClick={() => setListViewMode("cards")}
-                  aria-pressed={listViewMode === "cards"}
-                  className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                    listViewMode === "cards"
-                      ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
-                      : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                  }`}
-                >
-                  <LayoutGrid size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  <span>Karty</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setListViewMode("compact")}
-                  aria-pressed={listViewMode === "compact"}
-                  className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                    listViewMode === "compact"
-                      ? "border-transparent bg-slate-950 !text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
-                      : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                  }`}
-                >
-                  <List size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  <span>Kompakt</span>
-                </button>
-              </div>
-            </div>
-            </div>
-          </div>
 
           {searchProgressVisible && hasImmediateSearchQuery && (
             <div
@@ -2365,6 +2407,17 @@ function ContractsPageContent() {
                   <p className="font-medium">Žádné navazující smlouvy</p>
                   <p className="text-xs text-slate-500">
                     V aktuálním výběru nejsou žádné smlouvy označené jako Refresh nebo Náhrada.
+                  </p>
+                </>
+              ) : showStornoOnly || showMaturedOnly ? (
+                <>
+                  <p className="font-medium">Žádné smlouvy v tomto stavu</p>
+                  <p className="text-xs text-slate-500">
+                    {showStornoOnly && showMaturedOnly
+                      ? "V aktuálním výběru nejsou žádné dožité ani stornované smlouvy."
+                      : showStornoOnly
+                        ? "V aktuálním výběru nejsou žádné stornované smlouvy."
+                        : "V aktuálním výběru nejsou žádné dožité smlouvy."}
                   </p>
                 </>
               ) : commissionAuditActive ? (
@@ -2527,7 +2580,7 @@ function ContractsPageContent() {
                     <article
                       className={`relative isolate overflow-hidden rounded-[18px] border px-3 py-2.5 text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.09)] sm:rounded-2xl sm:py-3 ${
                         compactRowToneClass
-                      } ${isSelected ? "ring-2 ring-slate-900/20" : ""}`}
+                      } ${isSelected ? "ring-2 ring-violet-200" : ""}`}
                       style={{
                         contentVisibility: "auto",
                         containIntrinsicSize: "84px",
@@ -2539,7 +2592,7 @@ function ContractsPageContent() {
                             <span
                               className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-black lg:h-6 lg:w-6 lg:text-xs ${
                                 isSelected
-                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  ? "border-violet-700 bg-violet-700 text-white [&_*]:!text-white"
                                   : "border-slate-300 bg-white text-slate-400"
                               }`}
                               aria-hidden="true"
@@ -2972,110 +3025,433 @@ function ContractsPageContent() {
       </div>
 
       {filterModalOpen && (
-        <div className="fixed inset-0 z-[80] flex items-start justify-center px-4 py-4 sm:items-center sm:py-0">
+        <div className="fixed inset-0 z-[80] flex items-start justify-center px-3 py-4 sm:items-center sm:px-5 sm:py-6">
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
             onClick={() => setFilterModalOpen(false)}
           />
-          <div className="relative w-full max-w-6xl rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_24px_80px_rgba(15,23,42,0.18)] sm:p-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Filtry</h3>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Filtry smluv"
+            className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-slate-50 shadow-[0_38px_110px_rgba(2,6,23,0.38)]"
+          >
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-slate-200 bg-slate-950 text-white shadow-[0_12px_26px_rgba(15,23,42,0.2)]">
+                  <SlidersHorizontal size={19} strokeWidth={2.2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-xl font-black tracking-tight text-slate-950">
+                      Filtry smluv
+                    </h3>
+                    <span className="inline-flex h-6 items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-[11px] font-black uppercase tracking-[0.1em] text-slate-600">
+                      {modalActiveFilterCount === 0
+                        ? "Bez filtrů"
+                        : `${modalActiveFilterCount} aktivní`}
+                    </span>
+                  </div>
+                  <p className="mt-1 max-w-2xl text-sm font-medium leading-snug text-slate-500">
+                    Přesné zúžení smluv podle režimu, provizní kontroly, produktu,
+                    instituce a podřízených.
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(false)}
-                className="text-sm text-slate-600 hover:text-slate-900"
+                className="ui-focus inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[16px] border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                aria-label="Zavřít filtry"
               >
-                ✕
+                <X size={16} strokeWidth={2.2} aria-hidden="true" />
               </button>
             </div>
 
-            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-              <div className="space-y-4 xl:max-h-[68vh] xl:overflow-y-auto xl:pr-2">
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-slate-900">Kontrola provizí</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div
+              className={`grid min-h-0 flex-1 grid-cols-1 ${
+                canShowTeamToggle
+                  ? "lg:grid-cols-[minmax(0,1fr)_340px]"
+                  : "lg:grid-cols-1"
+              }`}
+            >
+              <div className="contracts-filter-scrollbar min-h-0 overflow-y-scroll px-3 py-3 sm:px-4 sm:py-4">
+                <div className="space-y-3">
+                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                    <div className="mb-2.5 flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-slate-200 bg-slate-100 text-slate-700">
+                          <ListFilter size={15} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-black text-slate-950">
+                            Režim a stav smluv
+                          </h4>
+                          <p className="text-xs font-medium text-slate-500">
+                            Nejčastější zúžení seznamu smluv.
+                          </p>
+                        </div>
+                      </div>
+                      {quickFilterActiveCount > 0 && (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
+                          {quickFilterActiveCount} aktivní
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startFilterTransition(() => setFilterMode("latest"))
+                        }
+                        className={`${filterCardBaseClass} ${
+                          filterMode === "latest"
+                            ? activeFilterCardClass
+                            : inactiveFilterCardClass
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                            filterMode === "latest"
+                              ? activeFilterIconClass
+                              : "border-slate-200 bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          <ArrowDownUp size={16} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black">Nejnovější</span>
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                              filterMode === "latest" ? "text-slate-600" : "text-slate-500"
+                            }`}
+                          >
+                            Standardní řazení podle posledních smluv.
+                          </span>
+                        </span>
+                        {filterMode === "latest" && (
+                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startFilterTransition(() => setFilterMode("anniversary"))
+                        }
+                        className={`${filterCardBaseClass} ${
+                          filterMode === "anniversary"
+                            ? activeFilterCardClass
+                            : inactiveFilterCardClass
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                            filterMode === "anniversary"
+                              ? activeFilterIconClass
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          <CalendarDays size={16} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black">Výročí</span>
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                              filterMode === "anniversary" ? "text-slate-600" : "text-slate-500"
+                            }`}
+                          >
+                            Smlouvy s blížícím se výročím.
+                          </span>
+                        </span>
+                        {filterMode === "anniversary" && (
+                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowUnpaidOnly((prev) => !prev)}
+                        className={`${filterCardBaseClass} ${
+                          showUnpaidOnly
+                            ? activeFilterCardClass
+                            : inactiveFilterCardClass
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                            showUnpaidOnly
+                              ? activeFilterIconClass
+                              : "border-rose-200 bg-rose-50 text-rose-700"
+                          }`}
+                        >
+                          <AlertCircle size={16} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black">Nezaplacené</span>
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                              showUnpaidOnly ? "text-slate-600" : "text-slate-500"
+                            }`}
+                          >
+                            Jen smlouvy bez označené úhrady.
+                          </span>
+                        </span>
+                        {showUnpaidOnly && (
+                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowRefreshOnly((prev) => !prev)}
+                        className={`${filterCardBaseClass} ${
+                          showRefreshOnly
+                            ? activeFilterCardClass
+                            : inactiveFilterCardClass
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                            showRefreshOnly
+                              ? activeFilterIconClass
+                              : "border-sky-200 bg-sky-50 text-sky-700"
+                          }`}
+                        >
+                          <RefreshCw size={16} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black">Refresh/Náhrada</span>
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                              showRefreshOnly ? "text-slate-600" : "text-slate-500"
+                            }`}
+                          >
+                            Jen náhrady a refresh smlouvy.
+                          </span>
+                        </span>
+                        {showRefreshOnly && (
+                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowMaturedOnly((prev) => !prev)}
+                        className={`${filterCardBaseClass} ${
+                          showMaturedOnly
+                            ? activeFilterCardClass
+                            : inactiveFilterCardClass
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                            showMaturedOnly
+                              ? activeFilterIconClass
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          <BadgeCheck size={16} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black">Dožité</span>
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                              showMaturedOnly ? "text-slate-600" : "text-slate-500"
+                            }`}
+                          >
+                            Smlouvy po dni pojištění do.
+                          </span>
+                        </span>
+                        {showMaturedOnly && (
+                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowStornoOnly((prev) => !prev)}
+                        className={`${filterCardBaseClass} ${
+                          showStornoOnly
+                            ? activeFilterCardClass
+                            : inactiveFilterCardClass
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                            showStornoOnly
+                              ? activeFilterIconClass
+                              : "border-rose-200 bg-rose-50 text-rose-700"
+                          }`}
+                        >
+                          <X size={16} strokeWidth={2.3} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black">Stornované</span>
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                              showStornoOnly ? "text-slate-600" : "text-slate-500"
+                            }`}
+                          >
+                            Smlouvy označené jako storno.
+                          </span>
+                        </span>
+                        {showStornoOnly && (
+                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                    <div className="mb-2.5 flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-amber-200 bg-amber-50 text-amber-700">
+                          <Banknote size={15} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-black text-slate-950">
+                            Kontrola provizí
+                          </h4>
+                          <p className="text-xs font-medium text-slate-500">
+                            Aktuálně: {commissionAuditSelectedLabel}
+                          </p>
+                        </div>
+                      </div>
+                      {commissionFilterCount > 0 && (
+                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-700">
+                          {commissionFilterCount} aktivní
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => applyCommissionAuditMode("off")}
-                      className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
+                        className={`${filterCardBaseClass} ${
                         commissionAuditMode === "off"
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                            ? activeFilterCardClass
+                            : inactiveFilterCardClass
                       }`}
                     >
-                      <span className="text-sm font-medium">Vypnuto</span>
-                      <span
-                        className={`h-5 w-5 rounded-full border text-center text-xs leading-[18px] ${
-                          commissionAuditMode === "off"
-                            ? "border-slate-900 bg-white text-slate-900"
-                            : "border-slate-300 text-transparent"
-                        }`}
-                      >
-                        ✓
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                            commissionAuditMode === "off"
+                              ? activeFilterIconClass
+                              : "border-slate-200 bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          <BadgeCheck size={16} strokeWidth={2.1} aria-hidden="true" />
                       </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black">Vypnuto</span>
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                              commissionAuditMode === "off" ? "text-slate-600" : "text-slate-500"
+                            }`}
+                          >
+                            Bez provizní kontroly.
+                          </span>
+                        </span>
+                        {commissionAuditMode === "off" && (
+                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                        )}
                     </button>
                     {COMMISSION_AUDIT_MODE_DEFS.map((item) => {
                       const active = commissionAuditMode === item.id;
+                        const Icon = item.icon;
                       return (
                         <button
                           key={item.id}
                           type="button"
                           onClick={() => applyCommissionAuditMode(item.id)}
-                          className={`flex items-start justify-between gap-3 rounded-2xl border px-3 py-3 text-left transition ${
+                            className={`${filterCardBaseClass} ${
                             active
-                              ? "border-slate-900 bg-slate-900 text-white"
-                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                ? activeFilterCardClass
+                                : inactiveFilterCardClass
                           }`}
                         >
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium">
+                            <span
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                                active
+                                  ? activeFilterIconClass
+                                  : item.tone
+                              }`}
+                            >
+                              <Icon size={16} strokeWidth={2.1} aria-hidden="true" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-black">
                               {item.label}
                             </span>
                             <span
-                              className={`mt-1 block text-xs ${
-                                active ? "text-slate-200" : "text-slate-500"
+                                className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                                active ? "text-slate-600" : "text-slate-500"
                               }`}
                             >
                               {item.description}
                             </span>
                           </span>
-                          <span
-                            className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border text-center text-xs leading-[18px] ${
-                              active
-                                ? "border-slate-900 bg-white text-slate-900"
-                                : "border-slate-300 text-transparent"
-                            }`}
-                          >
-                            ✓
-                          </span>
+                            {active && (
+                              <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                            )}
                         </button>
                       );
                     })}
                   </div>
 
-                  <label className="mt-3 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                    Kód provize
-                  </label>
-                  <select
-                    value={commissionAuditCodeFilter}
-                    onChange={(event) =>
-                      changeCommissionAuditCodeFilter(event.target.value)
-                    }
-                    className="h-11 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
-                  >
-                    {COMMISSION_AUDIT_CODE_DEFS.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <label className="mt-3 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                      Kód provize
+                    </label>
+                    <div className="relative mt-2">
+                      <select
+                        value={commissionAuditCodeFilter}
+                        onChange={(event) =>
+                          changeCommissionAuditCodeFilter(event.target.value)
+                        }
+                        className="h-10 w-full appearance-none rounded-[16px] border border-slate-200 bg-slate-50 px-3.5 pr-10 text-sm font-black text-slate-950 outline-none transition focus:border-slate-950 focus:bg-white focus:ring-2 focus:ring-slate-950/10"
+                      >
+                        {COMMISSION_AUDIT_CODE_DEFS.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        size={15}
+                        strokeWidth={2.2}
+                        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </section>
 
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-slate-900">Produkty</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                    <div className="mb-2.5 flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-slate-200 bg-slate-100 text-slate-700">
+                          <ReceiptText size={15} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-black text-slate-950">Produkty</h4>
+                          <p className="text-xs font-medium text-slate-500">
+                            Kategorie produktů napříč institucemi.
+                          </p>
+                        </div>
+                      </div>
+                      {selectedCategoryList.length > 0 && (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
+                          {selectedCategoryList.length} vybráno
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {CATEGORY_DEFS.map((cat) => {
                       const active = selectedCategories.has(cat.id);
+                        const Icon = CATEGORY_ICON_BY_ID[cat.id];
                       return (
                         <button
                           key={cat.id}
@@ -3091,31 +3467,54 @@ function ContractsPageContent() {
                               return next;
                             })
                           }
-                          className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
+                            className={`${filterCardBaseClass} items-center ${
                             active
-                              ? "border-slate-900 bg-slate-900 text-white"
-                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                ? activeFilterCardClass
+                                : inactiveFilterCardClass
                           }`}
                         >
-                          <span className="text-sm font-medium">{cat.label}</span>
                           <span
-                            className={`h-5 w-5 rounded-full border ${
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
                               active
-                                ? "border-slate-900 bg-white text-slate-900"
-                                : "border-slate-300"
+                                  ? activeFilterIconClass
+                                  : CATEGORY_TONE_BY_ID[cat.id]
                             }`}
                           >
-                            {active ? "✓" : ""}
+                              <Icon size={16} strokeWidth={2.1} aria-hidden="true" />
                           </span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-black">
+                              {cat.label}
+                          </span>
+                            {active && (
+                              <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                            )}
                         </button>
                       );
                     })}
                   </div>
-                </div>
+                  </section>
 
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-slate-900">Instituce</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                    <div className="mb-2.5 flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-slate-200 bg-slate-100 text-slate-700">
+                          <Building2 size={15} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-black text-slate-950">Instituce</h4>
+                          <p className="text-xs font-medium text-slate-500">
+                            Pojišťovny a produktoví partneři.
+                          </p>
+                        </div>
+                      </div>
+                      {selectedInstitutionList.length > 0 && (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
+                          {selectedInstitutionList.length} vybráno
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {INSTITUTION_DEFS.map((inst) => {
                       const active = selectedInstitutions.has(inst.id);
                       const logoSrc = INSTITUTION_LOGO_BY_ID[inst.id];
@@ -3123,6 +3522,7 @@ function ContractsPageContent() {
                         <button
                           key={inst.id}
                           type="button"
+                          aria-pressed={active}
                           onClick={() =>
                             setSelectedInstitutions((prev) => {
                               const next = new Set(prev);
@@ -3134,69 +3534,91 @@ function ContractsPageContent() {
                               return next;
                             })
                           }
-                          className={`flex items-center justify-between rounded-2xl border px-3 py-3 text-left transition ${
+                          className={`ui-focus group flex min-h-[56px] items-center justify-between gap-3 rounded-[16px] border px-3 py-2 text-left transition hover:-translate-y-0.5 hover:shadow-[0_10px_18px_rgba(15,23,42,0.07)] ${
                             active
-                              ? "border-slate-900 bg-slate-900 text-white"
-                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                              ? activeFilterCardClass
+                              : "border-slate-200 bg-white text-slate-900 hover:border-slate-300"
                           }`}
                         >
-                          <span className="flex min-w-0 items-center gap-2.5">
-                            <span
-                              className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white ${institutionLogoFrameClass(
-                                inst.id,
-                                "chip"
-                              )}`}
-                            >
-                              {logoSrc ? (
-                                <Image
-                                  src={logoSrc}
-                                  alt={`${inst.label} logo`}
-                                  width={36}
-                                  height={28}
-                                  className={`${institutionLogoImageClass(inst.id)} h-full w-full`}
-                                />
-                              ) : (
-                                <span className="text-[10px] font-semibold tracking-wide text-slate-600">
-                                  {institutionMonogram(inst.label)}
+                          <span className="flex min-w-0 items-center gap-3">
+                              <span
+                              className={`flex h-10 w-[92px] shrink-0 items-center justify-center rounded-[14px] border bg-white px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] ${
+                                  active
+                                    ? "border-violet-700 bg-violet-50 text-violet-900"
+                                    : "border-slate-200 bg-white text-slate-700"
+                                }`}
+                              >
+                                <span
+                                  className={`relative flex shrink-0 items-center justify-center overflow-hidden ${institutionLogoFrameClass(
+                                    inst.id,
+                                  "compact"
+                                  )}`}
+                                >
+                                  {logoSrc ? (
+                                    <Image
+                                      src={logoSrc}
+                                      alt={`${inst.label} logo`}
+                                    width={64}
+                                    height={36}
+                                      className={`${institutionLogoImageClass(inst.id)} h-full w-full`}
+                                    />
+                                  ) : (
+                                    <span className="text-sm font-black tracking-wide text-slate-700">
+                                      {institutionMonogram(inst.label)}
+                                    </span>
+                                  )}
                                 </span>
-                              )}
+                              </span>
+
+                            <span className="truncate text-sm font-black leading-tight">
+                                {inst.label}
+                              </span>
+                          </span>
+
+                          {active ? (
+                            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${activeFilterIconClass}`}>
+                              <Check size={15} strokeWidth={2.6} aria-hidden="true" />
                             </span>
-                            <span className="truncate text-sm font-medium">{inst.label}</span>
-                          </span>
-                          <span
-                            className={`h-5 w-5 rounded-full border ${
-                              active
-                                ? "border-slate-900 bg-white text-slate-900"
-                                : "border-slate-300"
-                            }`}
-                          >
-                            {active ? "✓" : ""}
-                          </span>
+                          ) : (
+                            <span className="h-5 w-5 shrink-0 rounded-full border border-slate-200 bg-white transition group-hover:border-slate-300" />
+                          )}
                         </button>
                       );
                     })}
                   </div>
-                </div>
+                  </section>
+              </div>
               </div>
 
               {canShowTeamToggle && (
-                <div className="space-y-2 border-t border-slate-200 pt-3 xl:max-h-[68vh] xl:overflow-y-auto xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
-                  <p className="text-sm font-semibold text-slate-900">Podřízení</p>
+                <aside className="contracts-filter-scrollbar min-h-0 overflow-y-scroll border-t border-slate-200 bg-white px-4 py-4 sm:px-5 lg:border-l lg:border-t-0">
+                  <div className="mb-3 flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-slate-200 bg-slate-100 text-slate-700">
+                      <UserSearch size={15} strokeWidth={2.1} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-black text-slate-950">Podřízení</h4>
+                      <p className="text-xs font-medium leading-snug text-slate-500">
+                        Filtrování týmových smluv podle poradce.
+                      </p>
+                    </div>
+                  </div>
+
                   {subordinateFilterOptions.length === 0 ? (
-                    <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <p className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
                       Zatím nejsou dostupní žádní podřízení pro filtrování.
                     </p>
                   ) : (
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-2.5 py-2">
-                        <Search size={13} className="text-slate-400" aria-hidden="true" />
+                    <div className="space-y-3">
+                      <label className="flex h-11 items-center gap-2 rounded-[17px] border border-slate-200 bg-slate-50 px-3 transition focus-within:border-slate-950 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-950/10">
+                        <Search size={15} strokeWidth={2.1} className="text-slate-400" aria-hidden="true" />
                         <input
                           type="text"
                           value={subordinateSearchText}
                           onChange={(event) => setSubordinateSearchText(event.target.value)}
                           aria-label="Hledat podřízeného"
                           placeholder="Hledat podřízeného (jméno nebo e-mail)"
-                          className="w-full bg-transparent text-xs text-slate-900 placeholder:text-slate-400 outline-none"
+                          className="w-full bg-transparent text-xs font-semibold text-slate-900 placeholder:text-slate-400 outline-none"
                         />
                       </label>
 
@@ -3213,25 +3635,52 @@ function ContractsPageContent() {
                                   return next;
                                 })
                               }
-                              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs text-white"
+                              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-bold text-white shadow-[0_8px_18px_rgba(109,40,217,0.18)] [&_*]:!text-white"
                             >
                               <span className="truncate">{member.label}</span>
-                              <span className="text-[11px]">✕</span>
+                              <X size={12} strokeWidth={2.4} aria-hidden="true" />
                             </button>
                           ))}
                         </div>
                       )}
 
-                      {!subordinateSearchQuery ? (
-                        <p className="text-xs text-slate-500">
-                          Začni psát jméno nebo e-mail podřízeného.
-                        </p>
-                      ) : searchableSubordinateOptions.length === 0 ? (
-                        <p className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      {showSubordinateBulkToggle && searchableSubordinateOptions.length > 0 && (
+                        <label className="flex min-h-10 items-center justify-between gap-3 rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-white">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={allSearchableSubordinatesSelected}
+                              onChange={() =>
+                                setSelectedSubordinates((prev) => {
+                                  const next = new Set(prev);
+                                  for (const member of searchableSubordinateOptions) {
+                                    if (allSearchableSubordinatesSelected) {
+                                      next.delete(member.email);
+                                    } else {
+                                      next.add(member.email);
+                                    }
+                                  }
+                                  return next;
+                                })
+                              }
+                              className="h-4 w-4 shrink-0 accent-violet-700"
+                            />
+                            <span className="truncate">
+                              {allSearchableSubordinatesSelected ? "Zrušit vše" : "Vybrat vše"}
+                            </span>
+                          </span>
+                          <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-black text-slate-500">
+                            {selectedSearchableSubordinateCount}/{subordinateBulkScopeLabel}
+                          </span>
+                        </label>
+                      )}
+
+                      {searchableSubordinateOptions.length === 0 ? (
+                        <p className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-600">
                           Pro zadaný výraz jsme nikoho nenašli.
                         </p>
                       ) : (
-                        <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                        <div className="contracts-filter-scrollbar max-h-[52vh] space-y-2 overflow-y-scroll pr-1">
                           {searchableSubordinateOptions.map((member) => {
                             const active = selectedSubordinates.has(member.email);
                             return (
@@ -3249,33 +3698,27 @@ function ContractsPageContent() {
                                     return next;
                                   })
                                 }
-                                className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition ${
+                                className={`flex w-full items-center justify-between gap-3 rounded-[18px] border px-3 py-2.5 text-left transition ${
                                   active
-                                    ? "border-slate-900 bg-slate-900 text-white"
-                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                      ? "border-violet-700 bg-white text-slate-950 ring-2 ring-violet-200"
+                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
                                 }`}
                               >
                                 <span className="min-w-0">
-                                  <span className="block truncate text-sm font-medium">
+                                  <span className="block truncate text-sm font-black">
                                     {member.label}
                                   </span>
                                   <span
-                                    className={`block truncate text-[11px] ${
-                                      active ? "text-slate-200" : "text-slate-500"
+                                    className={`block truncate text-[11px] font-semibold ${
+                                      active ? "text-slate-600" : "text-slate-500"
                                     }`}
                                   >
                                     {member.email}
                                   </span>
                                 </span>
-                                <span
-                                  className={`h-5 w-5 rounded-full border text-center text-xs leading-[18px] ${
-                                    active
-                                      ? "border-slate-900 bg-white text-slate-900"
-                                      : "border-slate-300 text-transparent"
-                                  }`}
-                                >
-                                  ✓
-                                </span>
+                                {active && (
+                                  <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                                )}
                               </button>
                             );
                           })}
@@ -3283,31 +3726,38 @@ function ContractsPageContent() {
                       )}
                     </div>
                   )}
-                </div>
+                </aside>
               )}
             </div>
 
-            <div className="mt-4 flex justify-between border-t border-slate-200 pt-3 text-sm">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm sm:px-6">
               <button
                 type="button"
                 onClick={() => {
-                  setShowUnpaidOnly(false);
-                  setShowRefreshOnly(false);
-                  setCommissionAuditMode("off");
-                  setCommissionAuditCodeFilter("all");
-                  setSelectedCategories(new Set());
-                  setSelectedInstitutions(new Set());
-                  setSelectedSubordinates(new Set());
+                  startFilterTransition(() => {
+                    setFilterMode("latest");
+                    setShowUnpaidOnly(false);
+                    setShowRefreshOnly(false);
+                    setShowStornoOnly(false);
+                    setShowMaturedOnly(false);
+                    setCommissionAuditMode("off");
+                    setCommissionAuditCodeFilter("all");
+                    setSelectedCategories(new Set());
+                    setSelectedInstitutions(new Set());
+                    setSelectedSubordinates(new Set());
+                  });
                 }}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-slate-900 hover:bg-slate-50"
+                className="ui-focus inline-flex h-11 items-center gap-2 rounded-[17px] border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
               >
+                <X size={15} strokeWidth={2.3} aria-hidden="true" />
                 Vymazat filtry
               </button>
               <button
                 type="button"
                 onClick={() => setFilterModalOpen(false)}
-                className="rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-black"
+                className="ui-focus inline-flex h-11 items-center gap-2 rounded-[17px] border border-violet-700 bg-violet-700 px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(109,40,217,0.24)] transition hover:bg-violet-800 [&_*]:!text-white"
               >
+                <Check size={16} strokeWidth={2.5} aria-hidden="true" />
                 Použít
               </button>
             </div>

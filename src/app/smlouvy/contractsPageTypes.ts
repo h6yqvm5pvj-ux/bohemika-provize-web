@@ -121,7 +121,8 @@ export type ProductCategory =
   | "property"
   | "travel"
   | "comfort"
-  | "liability";
+  | "business"
+  | "foreigners";
 export type Institution = ProductInstitutionId;
 
 export type ContractsCache = {
@@ -157,6 +158,8 @@ export type ContractsListFilters = {
   filterMode: FilterMode;
   showUnpaidOnly: boolean;
   showRefreshOnly: boolean;
+  showStornoOnly: boolean;
+  showMaturedOnly: boolean;
   commissionAuditMode: CommissionAuditFilterMode;
   commissionAuditCodeFilter: CommissionAuditFilterCode;
   selectedCategories: ProductCategory[];
@@ -172,6 +175,8 @@ export type ContractsViewState = {
   searchText: string;
   showUnpaidOnly: boolean;
   showRefreshOnly: boolean;
+  showStornoOnly: boolean;
+  showMaturedOnly: boolean;
   commissionAuditMode: CommissionAuditFilterMode;
   commissionAuditCodeFilter: CommissionAuditFilterCode;
   selectedCategories: ProductCategory[];

@@ -44,6 +44,8 @@ describe("contracts API list filters", () => {
         mode: "anniversary",
         unpaidOnly: "true",
         refreshOnly: "1",
+        stornoOnly: "true",
+        maturedOnly: "1",
         commissionAudit: "difference",
         commissionCode: "b36",
         categories: "life,unknown,auto",
@@ -56,6 +58,8 @@ describe("contracts API list filters", () => {
     expect(filters.mode).toBe("anniversary");
     expect(filters.unpaidOnly).toBe(true);
     expect(filters.refreshOnly).toBe(true);
+    expect(filters.stornoOnly).toBe(true);
+    expect(filters.maturedOnly).toBe(true);
     expect(filters.commissionAuditMode).toBe("difference");
     expect(filters.commissionAuditCodeFilter).toBe("b36");
     expect([...filters.categories].sort()).toEqual(["auto", "life"]);
@@ -88,9 +92,24 @@ describe("contracts API list filters", () => {
     expect(productMatchesListCategory("domex", new Set(["property"]))).toBe(
       true
     );
+    expect(productMatchesListCategory("koopodzam", new Set(["property"]))).toBe(
+      true
+    );
     expect(productMatchesListCategory("zamex", new Set(["property"]))).toBe(
       false
     );
+    expect(productMatchesListCategory("kooppmop", new Set(["property"]))).toBe(
+      false
+    );
+    expect(productMatchesListCategory("kooppmop", new Set(["business"]))).toBe(
+      true
+    );
+    expect(
+      productMatchesListCategory("maxcizinkomplex", new Set(["travel"]))
+    ).toBe(false);
+    expect(
+      productMatchesListCategory("maxcizinkomplex", new Set(["foreigners"]))
+    ).toBe(true);
   });
 
   it("matches full list filters for unpaid, refresh and product category", () => {
@@ -143,6 +162,34 @@ describe("contracts API list filters", () => {
     expect(contractMatchesRefreshFilter(contract({ isRefresh: false }))).toBe(
       false
     );
+  });
+
+  it("matches storno and matured lifecycle filters", () => {
+    const stornoFilters = parseContractListFilters(
+      new URLSearchParams({ stornoOnly: "1" })
+    );
+    const maturedFilters = parseContractListFilters(
+      new URLSearchParams({ maturedOnly: "1" })
+    );
+    const bothFilters = parseContractListFilters(
+      new URLSearchParams({ stornoOnly: "1", maturedOnly: "1" })
+    );
+
+    expect(
+      contractMatchesListFilters(contract({ status: "storno" }), stornoFilters)
+    ).toBe(true);
+    expect(
+      contractMatchesListFilters(contract({ status: "active" }), stornoFilters)
+    ).toBe(false);
+    expect(
+      contractMatchesListFilters(contract({ status: "dozita" }), maturedFilters)
+    ).toBe(true);
+    expect(
+      contractMatchesListFilters(contract({ status: "storno" }), bothFilters)
+    ).toBe(true);
+    expect(
+      contractMatchesListFilters(contract({ status: "dozita" }), bothFilters)
+    ).toBe(true);
   });
 
   it("uses signed date before createdAt for list sorting", () => {

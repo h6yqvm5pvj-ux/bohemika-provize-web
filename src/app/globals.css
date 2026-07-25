@@ -155,6 +155,32 @@ body {
   margin: 0;
 }
 
+.contracts-filter-scrollbar {
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(100, 116, 139, 0.85) rgba(226, 232, 240, 0.75);
+  scrollbar-width: thin;
+}
+
+.contracts-filter-scrollbar::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.contracts-filter-scrollbar::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.75);
+  border-radius: 999px;
+}
+
+.contracts-filter-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.85);
+  border: 3px solid rgba(248, 250, 252, 0.95);
+  border-radius: 999px;
+}
+
+.contracts-filter-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(51, 65, 85, 0.92);
+}
+
 /* Vypnutí animací pro uživatele (toggle nebo prefers-reduced-motion) */
 :root[data-motion="off"] {
   scroll-behavior: auto !important;

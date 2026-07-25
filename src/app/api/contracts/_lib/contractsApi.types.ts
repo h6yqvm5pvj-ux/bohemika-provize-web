@@ -487,13 +487,16 @@ export type ContractListProductCategory =
   | "property"
   | "travel"
   | "comfort"
-  | "liability";
+  | "business"
+  | "foreigners";
 
 export type ContractListFilters = {
   query: string;
   mode: ContractListFilterMode;
   unpaidOnly: boolean;
   refreshOnly: boolean;
+  stornoOnly: boolean;
+  maturedOnly: boolean;
   commissionAuditMode: CommissionAuditMode;
   commissionAuditCodeFilter: CommissionAuditCodeFilter;
   categories: Set<ContractListProductCategory>;

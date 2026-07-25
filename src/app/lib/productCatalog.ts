@@ -53,7 +53,7 @@ const INSTITUTIONS: Record<ProductInstitutionId, ProductInstitutionMeta> = {
   allianz: { id: "allianz", label: "Allianz", logoPath: "/icons/allianz.png" },
   slavia: { id: "slavia", label: "SLAVIA", logoPath: "/icons/slavialogo.png" },
   uniqa: { id: "uniqa", label: "UNIQA", logoPath: "/icons/uniqa.png" },
-  csob: { id: "csob", label: "ČSOB", logoPath: "/icons/csob.png" },
+  csob: { id: "csob", label: "ČSOB", logoPath: "/icons/csb.png" },
   pillow: { id: "pillow", label: "Pillow", logoPath: "/icons/pillow.png" },
   axa: { id: "axa", label: "AXA", logoPath: "/icons/axalogo.png" },
   comfort: { id: "comfort", label: "Comfort Commodity", logoPath: "/icons/cclogo.png" },
