@@ -13,7 +13,6 @@ import {
   Bike,
   Bot,
   Building2,
-  Calculator,
   CarFront,
   Clock3,
   Files,
@@ -304,14 +303,6 @@ export default function ToolsPage() {
         description: "Editor pro tvou vlastní online vizitku.",
         icon: WalletCards,
         href: "/nastaveni?tab=onlineCard",
-      },
-      {
-        key: "investicni-kalkulacka",
-        category: "Investice",
-        title: "Investiční kalkulačka",
-        description: "Spočítej konečnou hodnotu investice při pravidelných vkladech.",
-        icon: Calculator,
-        href: "/pomucky/investicni-kalkulacka",
       },
       {
         key: "hypoteka-vlastni-zdroje",

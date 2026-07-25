@@ -72,7 +72,6 @@ const QUICK_ACTION_SET = new Set([
   "dokumenty",
   "zaznam",
   "tvorba",
-  "investicni-kalkulacka",
   "hypoteka-vlastni-zdroje",
   "statistika",
   "export-produkce",

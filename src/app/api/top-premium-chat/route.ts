@@ -162,13 +162,6 @@ const WEBSITE_FEATURES: WebsiteFeature[] = [
     keywords: ["zlato", "investicni zlato", "spot", "unce", "gold"],
   },
   {
-    id: "investicni-kalkulacka",
-    title: "Investiční kalkulačka",
-    path: "/pomucky/investicni-kalkulacka",
-    summary: "Výpočet hodnoty investice při pravidelných vkladech.",
-    keywords: ["investicni kalkulacka", "vklady", "zhodnoceni", "investice"],
-  },
-  {
     id: "hypoteka-vlastni-zdroje",
     title: "Hypotéka: vlastní zdroje",
     path: "/pomucky/hypoteka-vlastni-zdroje",

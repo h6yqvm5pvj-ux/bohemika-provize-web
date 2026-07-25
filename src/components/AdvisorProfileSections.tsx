@@ -1,18 +1,18 @@
 "use client";
 
 import {
-  Banknote,
-  BrickWall,
   Building2,
   CarFront,
-  HeartPulse,
+  ChartNoAxesCombined,
+  Gem,
   Handshake,
-  House,
+  HeartHandshake,
+  HousePlus,
+  Landmark,
+  Languages,
   PlaneTakeoff,
   ShieldCheck,
   Sparkles,
-  TrendingUp,
-  UserRound,
 } from "lucide-react";
 import Image from "next/image";
 import { LogoLoop, type LogoLoopItem } from "@/components/LogoLoop";
@@ -73,51 +73,51 @@ const PARTNER_LOGO_ITEMS: LogoLoopItem[] = PARTNER_INSURERS.map((insurer) => {
 const ADVISOR_SERVICES = [
   {
     label: "Životní pojištění a zajištění příjmu",
-    icon: HeartPulse,
+    icon: HeartHandshake,
     iconClass: "text-fuchsia-200",
-    iconWrapClass: "border-fuchsia-300/35 bg-fuchsia-500/18",
+    accentClass: "bg-fuchsia-300/80",
   },
   {
     label: "Pojištění majetku a odpovědnosti",
-    icon: House,
+    icon: HousePlus,
     iconClass: "text-emerald-200",
-    iconWrapClass: "border-emerald-300/35 bg-emerald-500/18",
+    accentClass: "bg-emerald-300/80",
   },
   {
     label: "Pojištění vozidel a flotil",
     icon: CarFront,
     iconClass: "text-sky-200",
-    iconWrapClass: "border-sky-300/35 bg-sky-500/18",
+    accentClass: "bg-sky-300/80",
   },
   {
     label: "Cestovní pojištění a péče o smlouvy",
     icon: PlaneTakeoff,
     iconClass: "text-indigo-200",
-    iconWrapClass: "border-indigo-300/35 bg-indigo-500/18",
+    accentClass: "bg-indigo-300/80",
   },
   {
     label: "Pojištění cizinců",
-    icon: UserRound,
+    icon: Languages,
     iconClass: "text-rose-200",
-    iconWrapClass: "border-rose-300/35 bg-rose-500/18",
+    accentClass: "bg-rose-300/80",
   },
   {
     label: "Investice",
-    icon: TrendingUp,
+    icon: ChartNoAxesCombined,
     iconClass: "text-cyan-200",
-    iconWrapClass: "border-cyan-300/35 bg-cyan-500/18",
+    accentClass: "bg-cyan-300/80",
   },
   {
     label: "Úvěry a hypotéky",
-    icon: Banknote,
+    icon: Landmark,
     iconClass: "text-lime-200",
-    iconWrapClass: "border-lime-300/35 bg-lime-500/18",
+    accentClass: "bg-lime-300/80",
   },
   {
     label: "Investiční drahé kovy",
-    icon: BrickWall,
+    icon: Gem,
     iconClass: "text-amber-200",
-    iconWrapClass: "border-amber-300/35 bg-amber-500/18",
+    accentClass: "bg-amber-300/80",
   },
 ];
 
@@ -134,30 +134,30 @@ const COMPANY_PILLARS = [
   {
     title: "Klient na prvním místě",
     detail: "Jednáme v zájmu klienta a nasloucháme připomínkám.",
-    icon: Handshake,
+    icon: HeartHandshake,
     iconClass: "text-fuchsia-100",
-    iconWrapClass: "border-fuchsia-300/35 bg-fuchsia-500/18",
+    accentClass: "bg-fuchsia-300/80",
   },
   {
     title: "Profesionální standard",
     detail: "Dbáme na kvalitu, legislativu a transparentní postup.",
     icon: ShieldCheck,
     iconClass: "text-emerald-100",
-    iconWrapClass: "border-emerald-300/35 bg-emerald-500/18",
+    accentClass: "bg-emerald-300/80",
   },
   {
     title: "Odborný růst",
     detail: "Průběžně zvyšujeme kvalifikaci našich poradců.",
-    icon: TrendingUp,
+    icon: ChartNoAxesCombined,
     iconClass: "text-cyan-100",
-    iconWrapClass: "border-cyan-300/35 bg-cyan-500/18",
+    accentClass: "bg-cyan-300/80",
   },
   {
     title: "Srozumitelné řešení",
     detail: "Vysvětlujeme varianty jasně a bez zbytečných složitostí.",
     icon: Sparkles,
     iconClass: "text-violet-100",
-    iconWrapClass: "border-violet-300/35 bg-violet-500/18",
+    accentClass: "bg-violet-300/80",
   },
 ];
 
@@ -166,12 +166,13 @@ export function AdvisorProfileSections({
   className,
 }: AdvisorProfileSectionsProps) {
   return (
-    <div className={`relative mx-auto w-full max-w-6xl space-y-8 sm:space-y-10 ${className ?? ""}`}>
-      <div className="pointer-events-none absolute left-[-120px] top-[-40px] -z-10 h-64 w-64 rounded-full bg-violet-500/24 blur-[95px] vizitka-ambient-float" />
-      <div className="pointer-events-none absolute right-[-90px] top-[34%] -z-10 h-72 w-72 rounded-full bg-indigo-500/18 blur-[110px] vizitka-ambient-float [animation-delay:-5.4s]" />
+    <div
+      className={`relative isolate mx-auto w-full max-w-[1160px] overflow-hidden bg-[linear-gradient(180deg,rgba(16,10,32,0.98)_0%,rgba(13,10,29,0.99)_50%,rgba(8,7,18,0.99)_100%)] text-white ${className ?? ""}`}
+    >
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(196,181,253,0.38),transparent)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_8%,rgba(124,58,237,0.18),transparent_30%),radial-gradient(circle_at_12%_52%,rgba(59,130,246,0.1),transparent_36%)]" />
 
-      <section className="relative overflow-hidden rounded-[34px] border border-violet-400/25 bg-[radial-gradient(circle_at_88%_14%,rgba(167,139,250,0.28),transparent_36%),linear-gradient(155deg,#140a24_0%,#100b22_48%,#0b0a1b_100%)] p-6 shadow-[0_30px_80px_rgba(6,4,23,0.6),inset_0_1px_0_rgba(196,181,253,0.22)] sm:p-10 vizitka-anim-up [animation-delay:220ms]">
-        <div className="pointer-events-none absolute inset-[1px] rounded-[33px] border border-white/8" />
+      <section className="relative overflow-hidden px-6 py-12 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:220ms]">
         <div className="relative z-10 space-y-7 text-center sm:space-y-8">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-white/[0.06] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
             <ShieldCheck className="h-3.5 w-3.5" />
@@ -198,13 +199,18 @@ export function AdvisorProfileSections({
             {ADVISOR_SERVICES.map((service, index) => (
               <div
                 key={service.label}
-                className="inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-violet-50 sm:text-[15px] vizitka-anim-up"
+                className="group inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-violet-50 sm:text-[15px] vizitka-anim-up"
                 style={{ animationDelay: `${300 + index * 75}ms` }}
               >
-                <span
-                  className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${service.iconWrapClass}`}
-                >
-                  <service.icon className={`h-5 w-5 ${service.iconClass}`} />
+                <span className="relative inline-flex h-10 w-9 shrink-0 items-center justify-center">
+                  <service.icon
+                    className={`h-6 w-6 ${service.iconClass} drop-shadow-[0_8px_18px_rgba(196,181,253,0.20)] transition duration-300 group-hover:-translate-y-0.5 group-hover:scale-110`}
+                    strokeWidth={1.85}
+                  />
+                  <span
+                    className={`absolute bottom-0 left-1 right-1 h-0.5 rounded-full ${service.accentClass} opacity-70 shadow-[0_0_14px_currentColor] transition duration-300 group-hover:left-0 group-hover:right-0 group-hover:opacity-100`}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span>{service.label}</span>
               </div>
@@ -226,9 +232,8 @@ export function AdvisorProfileSections({
         </div>
       </section>
 
-      <section className="relative overflow-hidden rounded-[30px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(20,14,39,0.95)_0%,rgba(14,10,31,0.96)_100%)] p-6 shadow-[0_24px_70px_rgba(6,4,23,0.48)] sm:p-8 vizitka-anim-up [animation-delay:430ms]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_0%,rgba(139,92,246,0.22),transparent_36%)]" />
-        <div className="pointer-events-none absolute right-[-34px] top-[25%] h-44 w-44 rounded-full bg-cyan-500/10 blur-3xl" />
+      <section className="relative overflow-hidden border-t border-violet-300/12 px-6 py-12 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:430ms]">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgba(124,58,237,0.12),transparent_46%)]" />
         <div className="relative z-10 space-y-6">
           <div className="text-center">
             <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-sky-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-100">
@@ -256,17 +261,22 @@ export function AdvisorProfileSections({
               </div>
             </div>
 
-            <aside className="space-y-4 rounded-2xl border border-violet-300/18 bg-white/[0.03] p-5">
+            <aside className="space-y-5 lg:border-l lg:border-violet-300/16 lg:pl-7">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-200/90">
                 Na čem stavíme spolupráci
               </p>
               <div className="space-y-3">
                 {COMPANY_PILLARS.map((pillar) => (
-                  <div key={pillar.title} className="flex items-start gap-3">
-                    <span
-                      className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${pillar.iconWrapClass}`}
-                    >
-                      <pillar.icon className={`h-4 w-4 ${pillar.iconClass}`} />
+                  <div key={pillar.title} className="group flex items-start gap-3">
+                    <span className="relative mt-0.5 inline-flex h-9 w-8 shrink-0 items-center justify-center">
+                      <pillar.icon
+                        className={`h-5 w-5 ${pillar.iconClass} drop-shadow-[0_8px_18px_rgba(196,181,253,0.22)] transition duration-300 group-hover:-translate-y-0.5 group-hover:scale-110`}
+                        strokeWidth={1.9}
+                      />
+                      <span
+                        className={`absolute bottom-0 left-1 right-1 h-0.5 rounded-full ${pillar.accentClass} opacity-70 shadow-[0_0_14px_currentColor] transition duration-300 group-hover:left-0 group-hover:right-0 group-hover:opacity-100`}
+                        aria-hidden="true"
+                      />
                     </span>
                     <div>
                       <p className="text-sm font-semibold text-white sm:text-[15px]">{pillar.title}</p>
@@ -278,7 +288,7 @@ export function AdvisorProfileSections({
                 ))}
               </div>
 
-              <div className="rounded-xl border border-cyan-300/28 bg-cyan-500/10 px-4 py-3">
+              <div className="border-l border-cyan-300/45 pl-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/90">
                   Vienna Insurance Group
                 </p>
@@ -292,9 +302,7 @@ export function AdvisorProfileSections({
         </div>
       </section>
 
-      <section className="relative overflow-hidden rounded-[30px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(17,13,34,0.96)_0%,rgba(9,8,22,0.98)_100%)] p-6 shadow-[0_24px_70px_rgba(6,4,23,0.48)] sm:p-8 vizitka-anim-up [animation-delay:560ms]">
-        <div className="pointer-events-none absolute right-[-40px] top-[-30px] h-40 w-40 rounded-full bg-violet-500/20 blur-3xl" />
-
+      <section className="relative overflow-hidden border-t border-violet-300/12 px-6 py-12 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:560ms]">
         <div className="relative z-10 space-y-5 text-center">
           <div>
             <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">

@@ -80,8 +80,8 @@ export function OnlineCardSettingsPanel({
                 <span>Online Vizitka Studio</span>
               </h2>
               <p className="mt-1 text-xs text-slate-500">
-                Klikni přímo do náhledu a upravuj obsah naživo. Pod hlavní vizitkou níže najdeš i
-                sekce profi stránky poradce.
+                Klikni přímo do náhledu a upravuj obsah naživo. Pod hlavní vizitkou níže navazuje
+                obsah profi stránky poradce.
               </p>
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">

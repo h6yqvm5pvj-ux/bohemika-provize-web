@@ -3,7 +3,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from "lucide-react";
+import {
+  ChartCandlestick,
+  ChevronLeft,
+  ChevronRight,
+  Coins,
+  Gem,
+  HandCoins,
+  Minus,
+  Package,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  TrendingUp,
+} from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 
@@ -699,9 +712,9 @@ function GoldChart({ points }: { points: Point[] }) {
     candleDelta == null
       ? "border border-slate-300 bg-slate-100 text-slate-700"
       : candleDelta > 0
-        ? "border border-emerald-300 bg-emerald-50 text-emerald-700"
+        ? "border border-emerald-300/80 bg-emerald-50/80 text-emerald-800 shadow-[0_8px_20px_rgba(16,185,129,0.12)] backdrop-blur"
         : candleDelta < 0
-          ? "border border-rose-300 bg-rose-50 text-rose-700"
+          ? "border border-rose-300/80 bg-rose-50/80 text-rose-800 shadow-[0_8px_20px_rgba(244,63,94,0.12)] backdrop-blur"
           : "border border-slate-300 bg-slate-100 text-slate-700";
   const candleTrendSign = candleDelta != null && candleDelta > 0 ? "+" : "";
   const canZoomOut = visibleCount < prepared.totalCandles;
@@ -714,36 +727,41 @@ function GoldChart({ points }: { points: Point[] }) {
     prepared.totalChangePct == null
       ? "border-slate-200 bg-slate-50 text-slate-700"
       : prepared.totalChangePct >= 0
-        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-        : "border-rose-300 bg-rose-50 text-rose-700";
+        ? "border-emerald-300/80 bg-emerald-50/80 text-emerald-800 shadow-[0_10px_24px_rgba(16,185,129,0.12)] backdrop-blur"
+        : "border-rose-300/80 bg-rose-50/80 text-rose-800 shadow-[0_10px_24px_rgba(244,63,94,0.12)] backdrop-blur";
   const zoomButtonClass =
     "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35";
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_58%,#eef2f7_100%)] p-3 shadow-[0_20px_48px_rgba(15,23,42,0.10),inset_0_1px_0_rgba(255,255,255,0.70)]">
-      <div className="absolute left-0 top-0 h-1 w-full bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_45%,#64748b_100%)]" />
+    <div className="relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_58%,#f4efff_100%)] p-3 shadow-[0_22px_54px_rgba(88,28,135,0.13),inset_0_1px_0_rgba(255,255,255,0.80)]">
+      <div className="absolute left-0 top-0 h-1 w-full bg-[linear-gradient(90deg,#020617_0%,#6d28d9_54%,#c084fc_100%)]" />
 
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="grid gap-2 sm:grid-cols-4 lg:flex lg:flex-wrap">
+        <div className="grid gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Bodů</div>
-            <div className="mt-0.5 text-sm font-semibold text-slate-950">{prepared.pts.length}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Minimum</div>
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <ChartCandlestick className="h-3.5 w-3.5 text-violet-600" aria-hidden="true" />
+              Minimum
+            </div>
             <div className="mt-0.5 text-sm font-semibold text-slate-950">{formatCzk(prepared.minPoint.v)}</div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Maximum</div>
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <ChartCandlestick className="h-3.5 w-3.5 text-violet-600" aria-hidden="true" />
+              Maximum
+            </div>
             <div className="mt-0.5 text-sm font-semibold text-slate-950">{formatCzk(prepared.maxPoint.v)}</div>
           </div>
           <div className={["rounded-xl border px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]", totalChangeClass].join(" ")}>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] opacity-75">Změna</div>
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-75">
+              <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+              Změna
+            </div>
             <div className="mt-0.5 text-sm font-semibold">{totalChangeText}</div>
           </div>
         </div>
 
-        <div className="flex w-fit items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100/80 p-1">
+        <div className="flex w-fit items-center gap-1.5 rounded-xl border border-violet-200 bg-white p-1 shadow-[0_10px_24px_rgba(88,28,135,0.08)]">
           <button
             type="button"
             onClick={() => zoomTo(0.8)}
@@ -780,7 +798,7 @@ function GoldChart({ points }: { points: Point[] }) {
         </div>
       </div>
 
-      <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.90)]">
+      <div className="mt-3 overflow-hidden rounded-2xl border border-violet-100 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
         <svg
           viewBox={`0 0 ${w} ${h}`}
           className={`h-[330px] w-full select-none ${isPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
@@ -792,9 +810,9 @@ function GoldChart({ points }: { points: Point[] }) {
           onMouseLeave={onLeave}
           onWheel={onWheel}
         >
-          <rect x={pad.l} y={pad.t} width={w - pad.l - pad.r} height={h - pad.t - pad.b} fill="#f8fafc" rx="8" />
+          <rect x={pad.l} y={pad.t} width={w - pad.l - pad.r} height={h - pad.t - pad.b} fill="#faf7ff" rx="8" />
 
-          <g stroke="rgba(100,116,139,0.24)" strokeWidth="1">
+          <g stroke="rgba(109,40,217,0.15)" strokeWidth="1">
             {prepared.yTicks.map((t, i) => (
               <line key={`gy-${i}`} x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} strokeDasharray="3 3" />
             ))}
@@ -822,7 +840,7 @@ function GoldChart({ points }: { points: Point[] }) {
             ))}
           </g>
 
-          <g stroke="rgba(100,116,139,0.24)" strokeDasharray="4 4" strokeWidth="1">
+          <g stroke="rgba(15,23,42,0.18)" strokeDasharray="4 4" strokeWidth="1">
             <line x1={pad.l} y1={prepared.minPoint.y} x2={w - pad.r} y2={prepared.minPoint.y} />
             <line x1={pad.l} y1={prepared.maxPoint.y} x2={w - pad.r} y2={prepared.maxPoint.y} />
           </g>
@@ -831,8 +849,8 @@ function GoldChart({ points }: { points: Point[] }) {
             {prepared.candles.map((c, i) => {
               const bodyTop = Math.min(c.yOpen, c.yClose);
               const bodyHeight = Math.max(1.5, Math.abs(c.yClose - c.yOpen));
-              const color = c.up ? "#34d399" : "#f87171";
-              const stroke = c.up ? "#10b981" : "#ef4444";
+              const color = c.up ? "rgba(16,185,129,0.72)" : "rgba(244,63,94,0.72)";
+              const stroke = c.up ? "#059669" : "#e11d48";
               return (
                 <g key={`c-${i}-${c.t}`}>
                   <line x1={c.x} y1={c.yHigh} x2={c.x} y2={c.yLow} stroke={stroke} strokeWidth={1.2} />
@@ -853,10 +871,10 @@ function GoldChart({ points }: { points: Point[] }) {
 
           {safeHover ? (
             <g>
-              <line x1={safeHover.x} y1={pad.t} x2={safeHover.x} y2={h - pad.b} stroke="rgba(15,23,42,0.26)" strokeWidth="1" />
-              <line x1={pad.l} y1={safeHover.y} x2={w - pad.r} y2={safeHover.y} stroke="rgba(15,23,42,0.18)" strokeWidth="1" />
+              <line x1={safeHover.x} y1={pad.t} x2={safeHover.x} y2={h - pad.b} stroke="rgba(109,40,217,0.38)" strokeWidth="1" />
+              <line x1={pad.l} y1={safeHover.y} x2={w - pad.r} y2={safeHover.y} stroke="rgba(109,40,217,0.22)" strokeWidth="1" />
               {hp ? (
-                <circle cx={hp.x} cy={hp.y} r={4} fill="#0f172a" stroke="rgba(255,255,255,0.9)" />
+                <circle cx={hp.x} cy={hp.y} r={4} fill="#6d28d9" stroke="rgba(255,255,255,0.95)" />
               ) : null}
               {hoveredCandle ? (
                 <rect
@@ -865,7 +883,7 @@ function GoldChart({ points }: { points: Point[] }) {
                   width={prepared.candleWidth + 2}
                   height={Math.max(2, Math.abs(hoveredCandle.yClose - hoveredCandle.yOpen) + 2)}
                   fill="none"
-                  stroke="rgba(15,23,42,0.72)"
+                  stroke="rgba(109,40,217,0.82)"
                   strokeWidth="1"
                   rx={1}
                 />
@@ -908,14 +926,14 @@ function ChangeChip({ label, value }: { label: string; value: number | null | un
 
   const badgeCls =
     dir === "up"
-      ? "bg-emerald-600 text-white"
+      ? "border border-emerald-300/80 bg-emerald-50/80 text-emerald-800 shadow-[0_8px_18px_rgba(16,185,129,0.12)] backdrop-blur"
       : dir === "down"
-        ? "bg-rose-600 text-white"
-        : "bg-slate-700 text-white";
+        ? "border border-rose-300/80 bg-rose-50/80 text-rose-800 shadow-[0_8px_18px_rgba(244,63,94,0.12)] backdrop-blur"
+        : "border border-slate-300 bg-slate-100 text-slate-700";
   const sign = dir === "up" ? "▲" : dir === "down" ? "▼" : "•";
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-2 last:border-b-0">
+    <div className="group flex items-center justify-between gap-3 rounded-2xl border border-transparent px-2.5 py-2.5 transition duration-300 hover:border-violet-200 hover:bg-white/90 hover:shadow-[0_10px_26px_rgba(88,28,135,0.10)]">
       <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">{label}</span>
       <span className={["inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold leading-none", badgeCls].join(" ")}>
         <span>{sign}</span>
@@ -1288,7 +1306,7 @@ export default function GoldToolPage() {
   const dataBadge = isWeekendPause
     ? {
         label: "Market closed (víkend)",
-        className: "border-rose-700 bg-rose-600 text-white",
+        className: "border-slate-950 bg-slate-950 text-white",
       }
     : isStale
       ? {
@@ -1297,23 +1315,23 @@ export default function GoldToolPage() {
         }
       : {
           label: "Live data",
-          className: "border-emerald-700 bg-emerald-600 text-white",
+          className: "border-violet-700 bg-violet-700 !text-white",
         };
   const comfortSyncBadge =
     comfortSyncState === "live"
       ? {
           label: "Comfort sync: LIVE",
-          className: "border-emerald-300 bg-emerald-50 text-emerald-800",
+          className: "border-violet-300 bg-violet-50 text-violet-800",
         }
       : comfortSyncState === "fallback"
         ? {
             label: "Comfort sync: CACHE",
-            className: "border-amber-300 bg-amber-50 text-amber-800",
+            className: "border-slate-300 bg-white text-slate-700",
           }
         : comfortSyncState === "error"
           ? {
               label: "Comfort sync: ERROR",
-              className: "border-rose-300 bg-rose-50 text-rose-800",
+              className: "border-slate-950 bg-slate-950 text-white",
             }
           : {
               label: "Comfort sync: INIT",
@@ -1323,27 +1341,29 @@ export default function GoldToolPage() {
   return (
     <AppLayout active="tools">
       <div className="w-full bg-white px-3 py-4 sm:px-4 sm:py-6 lg:px-8">
-        <div className="mx-auto w-full max-w-5xl space-y-4 font-mono text-slate-900">
+        <div className="mx-auto w-full max-w-5xl space-y-4 text-slate-900">
           <section className="space-y-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-300 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.1)]">
+              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-violet-200 bg-white p-1 shadow-[0_14px_32px_rgba(88,28,135,0.12)]">
                 {[
-                  { key: "movement", label: "POHYB CENY" },
-                  { key: "comfort", label: "COMFORT COMMODITY" },
+                  { key: "movement", label: "POHYB CENY", icon: ChartCandlestick },
+                  { key: "comfort", label: "COMFORT COMMODITY", icon: Package },
                 ].map((item) => {
                   const active = view === item.key;
+                  const Icon = item.icon;
                   return (
                     <button
                       key={item.key}
                       type="button"
                       onClick={() => setView(item.key as GoldView)}
                       className={[
-                        "whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition sm:text-sm",
+                        "inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition sm:text-sm",
                         active
-                          ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                          ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.34)] [&_*]:!text-white"
+                          : "text-slate-600 hover:bg-violet-50 hover:text-violet-800",
                       ].join(" ")}
                     >
+                      <Icon className="h-4 w-4" aria-hidden="true" />
                       {item.label}
                     </button>
                   );
@@ -1352,7 +1372,7 @@ export default function GoldToolPage() {
 
               {view === "movement" ? (
                 <div className="lg:justify-end">
-                  <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-300 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.1)]">
+                  <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-violet-200 bg-white p-1 shadow-[0_14px_32px_rgba(88,28,135,0.12)]">
                     {(Object.keys(UNITS) as UnitKey[]).map((k) => {
                       const active = unit === k;
                       return (
@@ -1363,8 +1383,8 @@ export default function GoldToolPage() {
                           className={[
                             "whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition",
                             active
-                              ? "bg-[linear-gradient(135deg,#0f766e_0%,#16a34a_100%)] !text-white shadow-[0_8px_18px_rgba(5,150,105,0.34)]"
-                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                              ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.34)] [&_*]:!text-white"
+                              : "text-slate-600 hover:bg-violet-50 hover:text-violet-800",
                           ].join(" ")}
                         >
                           {UNITS[k].label}
@@ -1383,15 +1403,22 @@ export default function GoldToolPage() {
             ) : null}
 
             {view === "movement" ? (
-              <div className="relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)] px-4 py-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
+              <div className="relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#faf7ff_52%,#f3edff_100%)] px-4 py-4 shadow-[0_22px_58px_rgba(88,28,135,0.12)]">
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-                  <section className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
-                    <div className="h-1 bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_45%,#94a3b8_100%)]" />
+                  <section className="gold-prism-card group relative overflow-hidden rounded-[30px] border border-violet-200/80 shadow-[0_28px_78px_rgba(88,28,135,0.16),inset_0_1px_0_rgba(255,255,255,0.96)] hover:border-violet-300">
+                    <div className="gold-prism-accent h-1 bg-[linear-gradient(90deg,#020617_0%,#6d28d9_38%,#ffffff_50%,#8b5cf6_62%,#020617_100%)]" />
+                    <div className="gold-prism-lines" aria-hidden="true" />
                     <div className="relative flex min-h-[236px] items-center justify-center overflow-hidden px-5 py-6">
-                      <div className="absolute inset-y-0 right-0 w-48 bg-[linear-gradient(130deg,rgba(248,250,252,0)_0%,rgba(203,213,225,0.42)_100%)]" />
+                      <div className="absolute inset-y-0 right-0 w-48 bg-[linear-gradient(130deg,rgba(248,250,252,0)_0%,rgba(221,214,254,0.56)_100%)]" />
+                      <div className="absolute inset-x-10 bottom-0 h-px bg-[linear-gradient(90deg,transparent_0%,rgba(109,40,217,0.34)_50%,transparent_100%)]" aria-hidden="true" />
                       <div className="relative flex w-full max-w-[720px] flex-col items-center text-center">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-500">Cena ({selected.label})</div>
-                        <div className="mt-3 text-5xl font-semibold leading-none tracking-tight text-slate-950 sm:text-6xl lg:text-[4.15rem]">
+                        <div className="inline-flex items-center gap-3 rounded-full border border-slate-950 bg-slate-950 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.28em] !text-white shadow-[0_14px_34px_rgba(15,23,42,0.20)] backdrop-blur [&_*]:!text-white">
+                          <span className="gold-orbit-icon inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-700 text-white shadow-[0_10px_24px_rgba(109,40,217,0.28)]">
+                            <Coins className="h-4 w-4" aria-hidden="true" />
+                          </span>
+                          <span>Cena ({selected.label})</span>
+                        </div>
+                        <div className="gold-value-pop mt-4 text-5xl font-semibold leading-none tracking-tight text-slate-950 sm:text-6xl lg:text-[4.35rem]">
                           {loading ? "Načítám…" : formatCzk(displayPrice ?? czkForSelectedUnit)}
                         </div>
                         <div className="mt-4 text-xs text-slate-500">
@@ -1407,7 +1434,7 @@ export default function GoldToolPage() {
                           >
                             {dataBadge.label}
                           </span>
-                          <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
+                          <span className="inline-flex items-center rounded-full border border-violet-200 bg-white/70 px-2.5 py-1 text-[11px] text-slate-600 shadow-[0_8px_20px_rgba(88,28,135,0.08)] backdrop-blur">
                             {isWeekendPause ? "Auto-refresh pozastaven (víkend)" : `Další auto-refresh za ${secondsToRefresh}s`}
                           </span>
                         </div>
@@ -1415,25 +1442,31 @@ export default function GoldToolPage() {
                     </div>
                   </section>
 
-                  <section className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
-                    <div className="h-1 bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_45%,#94a3b8_100%)]" />
+                  <section className="gold-prism-card group relative overflow-hidden rounded-[30px] border border-violet-200/80 shadow-[0_28px_78px_rgba(88,28,135,0.16),inset_0_1px_0_rgba(255,255,255,0.96)] hover:border-violet-300">
+                    <div className="gold-prism-accent h-1 bg-[linear-gradient(90deg,#020617_0%,#6d28d9_38%,#ffffff_50%,#8b5cf6_62%,#020617_100%)]" />
+                    <div className="gold-prism-lines" aria-hidden="true" />
                     <div className="px-4 py-4">
                       <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
                         <div>
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Nárůst / pokles</div>
+                          <div className="inline-flex items-center gap-3 rounded-full border border-slate-950 bg-slate-950 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] !text-white shadow-[0_14px_34px_rgba(15,23,42,0.20)] backdrop-blur [&_*]:!text-white">
+                            <span className="gold-orbit-icon inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-700 text-white shadow-[0_10px_24px_rgba(109,40,217,0.28)]">
+                              <TrendingUp className="h-4 w-4" aria-hidden="true" />
+                            </span>
+                            <span>Nárůst / pokles</span>
+                          </div>
                           <div className="mt-1 text-sm font-semibold text-slate-950">CZK / unce</div>
                         </div>
                         <div className="inline-flex items-center gap-1.5 text-[10px]">
-                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800">
+                          <span className="rounded-full border border-emerald-300/80 bg-emerald-50/80 px-2 py-0.5 font-semibold text-emerald-800 shadow-[0_8px_18px_rgba(16,185,129,0.12)] backdrop-blur">
                             ▲ {positiveChanges}
                           </span>
-                          <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 font-semibold text-rose-800">
+                          <span className="rounded-full border border-rose-300/80 bg-rose-50/80 px-2 py-0.5 font-semibold text-rose-800 shadow-[0_8px_18px_rgba(244,63,94,0.12)] backdrop-blur">
                             ▼ {negativeChanges}
                           </span>
                         </div>
                       </div>
 
-                      <div className="mt-2 grid grid-cols-1 gap-x-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                      <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                         {changeRows.map((row) => (
                           <ChangeChip key={row.label} label={row.label} value={row.value} />
                         ))}
@@ -1442,10 +1475,11 @@ export default function GoldToolPage() {
                   </section>
                 </div>
 
-                <section className="mt-4 rounded-2xl border border-slate-300 bg-white px-4 py-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
+                <section className="mt-4 rounded-2xl border border-violet-200 bg-white px-4 py-4 shadow-[0_18px_46px_rgba(88,28,135,0.10)]">
                   <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        <ChartCandlestick className="h-4 w-4 text-violet-700" aria-hidden="true" />
                         Graf ({RANGES[range].label})
                         {loadingRange ? <span className="ml-2 text-slate-500">• načítám…</span> : null}
                       </div>
@@ -1460,7 +1494,9 @@ export default function GoldToolPage() {
                           onClick={() => setRange(k)}
                           className={[
                             "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                            range === k ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                            range === k
+                              ? "border-violet-700 bg-violet-700 !text-white shadow-[0_8px_18px_rgba(109,40,217,0.24)] [&_*]:!text-white"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800",
                           ].join(" ")}
                         >
                           {RANGES[k].label}
@@ -1494,8 +1530,8 @@ export default function GoldToolPage() {
                 </div>
               </div>
             ) : (
-              <div className="relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)] px-4 py-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
-                <div className="flex flex-col gap-4 border-b border-slate-300 pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#faf7ff_52%,#f3edff_100%)] px-4 py-4 shadow-[0_22px_58px_rgba(88,28,135,0.12)]">
+                <div className="flex flex-col gap-4 border-b border-violet-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex shrink-0">
                     <Image
                       src="/icons/cclogo1.png"
@@ -1507,7 +1543,7 @@ export default function GoldToolPage() {
                     />
                   </div>
 
-                  <div className="flex w-fit items-center gap-1 self-start rounded-full border border-slate-900 bg-slate-950 p-1 sm:self-auto">
+                  <div className="flex w-fit items-center gap-1 self-start rounded-full border border-violet-200 bg-white p-1 shadow-[0_14px_32px_rgba(88,28,135,0.12)] sm:self-auto">
                     {(["argor", "pamp"] as ComfortBrand[]).map((brand) => {
                       const active = comfortBrand === brand;
                       return (
@@ -1516,10 +1552,13 @@ export default function GoldToolPage() {
                           type="button"
                           onClick={() => setComfortBrand(brand)}
                           className={[
-                            "whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition",
-                            active ? "bg-white text-slate-900" : "text-white hover:bg-white/10",
+                            "inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition",
+                            active
+                              ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.34)] [&_*]:!text-white"
+                              : "text-slate-600 hover:bg-violet-50 hover:text-violet-800",
                           ].join(" ")}
                         >
+                          <Package className="h-4 w-4" aria-hidden="true" />
                           {COMFORT_BRAND_REFERENCES[brand].label}
                         </button>
                       );
@@ -1527,7 +1566,7 @@ export default function GoldToolPage() {
                   </div>
                 </div>
 
-                <div className="relative mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white/35 px-2 py-6 sm:px-6">
+                <div className="relative mt-5 overflow-hidden rounded-2xl border border-violet-100 bg-white/70 px-2 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:px-6">
                   <button
                     type="button"
                     onClick={() => moveComfortCarousel(-1)}
@@ -1560,7 +1599,7 @@ export default function GoldToolPage() {
                           className={[
                             "group absolute left-1/2 top-0 w-[min(78vw,320px)] overflow-hidden rounded-2xl border bg-white transition-all duration-500 ease-out",
                             isActive
-                              ? "border-slate-300 shadow-[0_28px_70px_rgba(15,23,42,0.18)]"
+                              ? "border-violet-300 shadow-[0_28px_70px_rgba(88,28,135,0.20)]"
                               : "cursor-pointer border-slate-200 shadow-[0_18px_44px_rgba(15,23,42,0.10)]",
                           ].join(" ")}
                           style={{
@@ -1571,29 +1610,31 @@ export default function GoldToolPage() {
                           }}
                           aria-hidden={!isActive}
                         >
-                          <div className="h-1 bg-[linear-gradient(90deg,#c89d2e_0%,#f6d36b_45%,#94a3b8_100%)]" />
-                          <div className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_48%,#e8edf4_100%)] px-5 pb-5 pt-5">
+                          <div className="h-1 bg-[linear-gradient(90deg,#020617_0%,#6d28d9_54%,#c084fc_100%)]" />
+                          <div className="relative overflow-hidden border-b border-violet-100 bg-[linear-gradient(160deg,#ffffff_0%,#fbf7ff_48%,#ede9fe_100%)] px-5 pb-5 pt-5">
                             <div className="relative z-10 flex items-start justify-between gap-3">
                               <div>
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                  <Package className="h-4 w-4 text-violet-700" aria-hidden="true" />
                                   {comfortReference.cardLabel}
                                 </div>
                                 <div className="text-2xl font-semibold tracking-tight text-slate-950">{row.displayWeight}</div>
                               </div>
-                              <div className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                              <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-800 shadow-[0_8px_18px_rgba(88,28,135,0.08)]">
+                                <Gem className="h-3.5 w-3.5" aria-hidden="true" />
                                 {comfortReference.purity}
                               </div>
                             </div>
 
-                        <div className="relative mt-4 flex h-[220px] items-center justify-center">
-                              <div className="absolute bottom-4 h-5 w-44 rounded-[999px] bg-slate-900/10 blur-md transition duration-300 group-hover:w-52 group-hover:bg-slate-900/14" />
+                            <div className="relative mt-4 flex h-[220px] items-center justify-center">
+                              <div className="absolute bottom-4 h-5 w-44 rounded-[999px] bg-violet-950/12 blur-md transition duration-300 group-hover:w-52 group-hover:bg-violet-950/18" />
                               {row.imageSrc ? (
                                 <Image
                                   src={row.imageSrc}
                                   alt={row.label}
                                   width={1200}
                                   height={1200}
-                                  className="relative z-10 h-[206px] w-full object-contain drop-shadow-[0_18px_26px_rgba(15,23,42,0.24)] transition-transform duration-300 group-hover:scale-[1.04]"
+                                  className="relative z-10 h-[206px] w-full object-contain drop-shadow-[0_18px_26px_rgba(88,28,135,0.22)] transition-transform duration-300 group-hover:scale-[1.04]"
                                   sizes="(min-width: 768px) 32vw, 86vw"
                                 />
                               ) : (
@@ -1608,8 +1649,11 @@ export default function GoldToolPage() {
                             <div className="divide-y divide-slate-200">
                               <div className="flex items-end justify-between gap-3 py-3">
                                 <div>
-                                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Prodej</div>
-                                  <div className="mt-1 h-1 w-10 rounded-full bg-emerald-400" />
+                                  <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-700">
+                                    <Coins className="h-4 w-4" aria-hidden="true" />
+                                    Prodej
+                                  </div>
+                                  <div className="mt-1 h-1 w-10 rounded-full bg-violet-600" />
                                 </div>
                                 <div className="text-right text-3xl font-semibold tracking-tight text-slate-950">
                                   {formatCzk(row.sell)}
@@ -1618,7 +1662,10 @@ export default function GoldToolPage() {
 
                               <div className="flex items-end justify-between gap-3 py-3">
                                 <div>
-                                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Výkup</div>
+                                  <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    <HandCoins className="h-4 w-4" aria-hidden="true" />
+                                    Výkup
+                                  </div>
                                   <div className="mt-1 h-1 w-10 rounded-full bg-slate-300" />
                                 </div>
                                 <div className="text-right text-3xl font-semibold tracking-tight text-slate-950">
@@ -1685,8 +1732,9 @@ export default function GoldToolPage() {
                     type="button"
                     onClick={manualRefresh}
                     disabled={loading || loadingRange || refreshingNow}
-                    className="w-fit rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex w-fit items-center gap-2 rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-semibold !text-white shadow-[0_8px_20px_rgba(109,40,217,0.22)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60 [&_*]:!text-white"
                   >
+                    <RefreshCw className={["h-3.5 w-3.5", refreshingNow ? "animate-spin" : ""].join(" ")} aria-hidden="true" />
                     {refreshingNow ? "Obnovuji…" : "Obnovit ceny"}
                   </button>
                 </div>

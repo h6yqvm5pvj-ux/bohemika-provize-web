@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import {
   Apple,
@@ -17,6 +17,7 @@ import {
 
 import type { PasskeyCredentialSummary } from "@/app/lib/passkeys";
 import { formatDateTime } from "../subscriptionSettings";
+import { getPasswordPolicyChecks } from "../passwordPolicy";
 
 const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
   "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
@@ -32,6 +33,7 @@ type AccountSecurityPanelProps = {
   className: string;
   fieldClass: string;
   userEmail: string;
+  userFullName: string;
   mfaEnabled: boolean;
   securityScoreLabel: string;
   securityScorePercent: number;
@@ -83,7 +85,7 @@ type AccountSecurityPanelProps = {
 };
 
 const statusClass = (status: InlineStatus): string => {
-  if (status.type === "success") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status.type === "success") return "border-violet-200 bg-violet-50 text-violet-800";
   if (status.type === "info") return "border-slate-200 bg-white text-slate-700";
   return "border-rose-200 bg-rose-50 text-rose-700";
 };
@@ -92,6 +94,7 @@ export function AccountSecurityPanel({
   className,
   fieldClass,
   userEmail,
+  userFullName,
   mfaEnabled,
   securityScoreLabel,
   securityScorePercent,
@@ -142,10 +145,24 @@ export function AccountSecurityPanel({
   onDisableMfa,
 }: AccountSecurityPanelProps) {
   const [passkeyHelpOpen, setPasskeyHelpOpen] = useState(false);
+  const passwordPolicyChecks = useMemo(
+    () =>
+      getPasswordPolicyChecks({
+        password: newPassword,
+        confirmPassword,
+        userFullName,
+        userEmail,
+      }),
+    [confirmPassword, newPassword, userEmail, userFullName]
+  );
+  const passwordInputTouched = newPassword.length > 0 || confirmPassword.length > 0;
+  const passwordPolicyPassed = passwordPolicyChecks.every((check) => check.passed);
+  const passwordSubmitDisabled =
+    changingPassword || currentPassword.length === 0 || !passwordPolicyPassed;
 
   return (
     <section className={`space-y-4 sm:space-y-5 ${className}`}>
-      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#164e63_52%,#10b981_100%)]" />
+      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b0717_0%,#7c3aed_56%,#c084fc_100%)]" />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
@@ -159,12 +176,12 @@ export function AccountSecurityPanel({
         <span
           className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] ${
             mfaEnabled
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-amber-200 bg-amber-50 text-amber-700"
+              ? "border-violet-200 bg-violet-50 text-violet-800"
+              : "border-slate-200 bg-slate-50 text-slate-700"
           }`}
         >
           <span
-            className={`h-2 w-2 rounded-full ${mfaEnabled ? "bg-emerald-500" : "bg-amber-500"}`}
+            className={`h-2 w-2 rounded-full ${mfaEnabled ? "bg-violet-700" : "bg-slate-500"}`}
             aria-hidden="true"
           />
           2FA {mfaEnabled ? "zapnuto" : "vypnuto"}
@@ -186,7 +203,7 @@ export function AccountSecurityPanel({
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#10b981_100%)]"
+              className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#7c3aed_100%)]"
               style={{ width: `${securityScorePercent}%` }}
             />
           </div>
@@ -206,7 +223,7 @@ export function AccountSecurityPanel({
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             Dvoufaktor
           </p>
-          <p className={`mt-2 text-lg font-black sm:text-xl ${mfaEnabled ? "text-emerald-700" : "text-amber-700"}`}>
+          <p className={`mt-2 text-lg font-black sm:text-xl ${mfaEnabled ? "text-violet-800" : "text-slate-700"}`}>
             {mfaEnabled ? "Zapnuto" : "Vypnuto"}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
@@ -218,7 +235,7 @@ export function AccountSecurityPanel({
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             Přístupový klíč
           </p>
-          <p className={`mt-2 text-lg font-black sm:text-xl ${passkeyCredentials.length > 0 ? "text-emerald-700" : "text-slate-950"}`}>
+          <p className={`mt-2 text-lg font-black sm:text-xl ${passkeyCredentials.length > 0 ? "text-violet-800" : "text-slate-950"}`}>
             {passkeySummary}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
@@ -256,71 +273,22 @@ export function AccountSecurityPanel({
                 )}
               </div>
 
-              {!showPasswordForm && (
-                <button
-                  type="button"
-                  onClick={onShowPasswordForm}
-                  className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,23,42,0.16)] transition hover:bg-black sm:min-h-[48px] sm:rounded-2xl sm:py-3 sm:shadow-[0_12px_24px_rgba(15,23,42,0.18)]"
-                >
-                  <KeyRound size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                  Změnit heslo
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={onShowPasswordForm}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,23,42,0.16)] transition hover:bg-black sm:min-h-[48px] sm:rounded-2xl sm:py-3 sm:shadow-[0_12px_24px_rgba(15,23,42,0.18)]"
+              >
+                <KeyRound size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                Změnit heslo
+              </button>
 
-              {showPasswordForm && (
-                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl">
-                  <input
-                    type="password"
-                    autoComplete="current-password"
-                    className={fieldClass}
-                    placeholder="Původní heslo"
-                    value={currentPassword}
-                    onChange={(event) => onCurrentPasswordChange(event.target.value)}
-                  />
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    className={fieldClass}
-                    placeholder="Nové heslo (min. 6 znaků)"
-                    value={newPassword}
-                    onChange={(event) => onNewPasswordChange(event.target.value)}
-                  />
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    className={fieldClass}
-                    placeholder="Potvrď nové heslo"
-                    value={confirmPassword}
-                    onChange={(event) => onConfirmPasswordChange(event.target.value)}
-                  />
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <button
-                      type="button"
-                      onClick={() => void onChangePassword()}
-                      disabled={changingPassword}
-                      className="inline-flex w-full items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:rounded-2xl"
-                    >
-                      {changingPassword ? "Měním heslo…" : "Potvrdit změnu"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onCancelPasswordChange}
-                      className="text-xs text-slate-500 hover:text-slate-900"
-                    >
-                      Zrušit
-                    </button>
-                  </div>
-                  {passwordStatus && (
-                    <div
-                      className={`text-xs ${
-                        passwordStatus.type === "success" ? "text-emerald-700" : "text-rose-700"
-                      }`}
-                    >
-                      {passwordStatus.message}
-                    </div>
-                  )}
+              {passwordStatus && !showPasswordForm ? (
+                <div
+                  className={`mt-2 rounded-2xl border px-3 py-2 text-xs font-semibold ${statusClass(passwordStatus)}`}
+                >
+                  {passwordStatus.message}
                 </div>
-              )}
+              ) : null}
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
@@ -342,13 +310,13 @@ export function AccountSecurityPanel({
                 <span
                   className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
                     passkeyCredentials.length > 0
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      ? "border-violet-200 bg-violet-50 text-violet-800"
                       : "border-slate-200 bg-slate-50 text-slate-500"
                   }`}
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
-                      passkeyCredentials.length > 0 ? "bg-emerald-500" : "bg-slate-400"
+                      passkeyCredentials.length > 0 ? "bg-violet-700" : "bg-slate-400"
                     }`}
                     aria-hidden="true"
                   />
@@ -378,7 +346,7 @@ export function AccountSecurityPanel({
                     </button>
                   </>
                 ) : (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <div className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800">
                     Tento prohlížeč přístupové klíče nepodporuje.
                   </div>
                 )}
@@ -434,7 +402,7 @@ export function AccountSecurityPanel({
         </div>
 
         <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[24px] sm:shadow-[0_18px_36px_rgba(15,23,42,0.08)] xl:order-1">
-          <div className="mfa-security-hero bg-[linear-gradient(135deg,#0f172a_0%,#164e63_58%,#047857_100%)] px-3.5 py-4 text-white sm:px-5 sm:py-5">
+          <div className="mfa-security-hero bg-[linear-gradient(135deg,#0b0717_0%,#1d1238_52%,#5b21b6_100%)] px-3.5 py-4 text-white sm:px-5 sm:py-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.22)] sm:h-11 sm:w-11 sm:rounded-2xl">
@@ -455,12 +423,12 @@ export function AccountSecurityPanel({
               <span
                 className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
                   mfaEnabled
-                    ? "border-emerald-200/70 bg-emerald-300/20 text-emerald-50"
+                    ? "border-violet-200/70 bg-violet-300/20 text-violet-50"
                     : "border-white/25 bg-white/10 text-white"
                 }`}
               >
                 <span
-                  className={`h-2 w-2 rounded-full ${mfaEnabled ? "bg-emerald-300" : "bg-slate-300"}`}
+                  className={`h-2 w-2 rounded-full ${mfaEnabled ? "bg-violet-200" : "bg-slate-300"}`}
                   aria-hidden="true"
                 />
                 {mfaEnabled ? "Zapnuto" : "Vypnuto"}
@@ -499,7 +467,7 @@ export function AccountSecurityPanel({
                 aria-label="Otevřít Microsoft Authenticator v Google Play"
                 className="group flex min-h-[58px] items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-left transition hover:border-white/40 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#22c55e_0%,#38bdf8_54%,#818cf8_100%)] text-white">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-700 text-white">
                   <Play size={17} strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -541,18 +509,18 @@ export function AccountSecurityPanel({
             )}
 
             {mfaEnrollmentSecretKey && (
-              <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 sm:rounded-2xl">
+              <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/70 p-3 sm:rounded-2xl">
                 <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
                   <QrCodeIcon
                     size={16}
                     strokeWidth={2}
-                    className="mt-0.5 shrink-0 text-emerald-700"
+                    className="mt-0.5 shrink-0 text-violet-800"
                     aria-hidden="true"
                   />
                   <span>V Microsoft Authenticator zvol Přidat účet a naskenuj QR kód.</span>
                 </div>
 
-                <div className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-3">
+                <div className="flex flex-col items-center gap-2 rounded-2xl border border-violet-200 bg-white px-3 py-3">
                   {mfaQrCodeLoading && (
                     <p className="text-xs text-slate-500">Generuji QR kód…</p>
                   )}
@@ -572,7 +540,7 @@ export function AccountSecurityPanel({
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2">
+                <div className="rounded-2xl border border-violet-200 bg-white px-3 py-2">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Setup key
                   </div>
@@ -581,7 +549,7 @@ export function AccountSecurityPanel({
                   </div>
                 </div>
 
-                <details className="rounded-2xl border border-emerald-200 bg-white px-3 py-2">
+                <details className="rounded-2xl border border-violet-200 bg-white px-3 py-2">
                   <summary className="cursor-pointer text-[11px] font-semibold text-slate-700">
                     Zobrazit QR URI (pokročilé)
                   </summary>
@@ -605,7 +573,7 @@ export function AccountSecurityPanel({
                     type="button"
                     onClick={() => void onConfirmMfaEnrollment()}
                     disabled={mfaBusy}
-                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:rounded-2xl"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-violet-700 bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:rounded-2xl"
                   >
                     {mfaBusy ? "Potvrzuji…" : "Potvrdit a zapnout"}
                   </button>
@@ -691,12 +659,160 @@ export function AccountSecurityPanel({
           </div>
         </div>
       </div>
+      {showPasswordForm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+            aria-label="Zavřít změnu hesla"
+            onClick={changingPassword ? undefined : onCancelPasswordChange}
+          />
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="change-password-title"
+            className="relative z-10 max-h-[calc(100dvh-1rem)] w-full max-w-xl overflow-y-auto rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(2,6,23,0.42)] sm:rounded-[30px]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!passwordSubmitDisabled) void onChangePassword();
+            }}
+          >
+            <div className="settings-password-modal-hero relative overflow-hidden bg-[#0b0717] px-4 py-4 text-white sm:px-5">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b0717_0%,#7c3aed_56%,#c084fc_100%)]" />
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(124,58,237,0.22)_0%,rgba(11,7,23,0)_46%,rgba(168,85,247,0.16)_100%)]" />
+              <div className="relative z-10 flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white text-slate-950">
+                    <KeyRound size={18} strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-violet-100/70">
+                      Změna hesla
+                    </p>
+                    <h3 id="change-password-title" className="mt-1 text-xl font-black text-white">
+                      Nastavit nové heslo
+                    </h3>
+                    <p className="mt-1 text-xs font-semibold leading-relaxed text-violet-100/75">
+                      Změnu potvrdíš původním heslem. Nové heslo musí splnit bezpečnostní zásady.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onCancelPasswordChange}
+                  disabled={changingPassword}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Zavřít změnu hesla"
+                >
+                  <X size={16} strokeWidth={2.2} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
+              <div className="space-y-3">
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  className={fieldClass}
+                  placeholder="Původní heslo"
+                  value={currentPassword}
+                  onChange={(event) => onCurrentPasswordChange(event.target.value)}
+                  disabled={changingPassword}
+                />
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  className={fieldClass}
+                  placeholder="Nové heslo"
+                  value={newPassword}
+                  onChange={(event) => onNewPasswordChange(event.target.value)}
+                  disabled={changingPassword}
+                />
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  className={fieldClass}
+                  placeholder="Potvrď nové heslo"
+                  value={confirmPassword}
+                  onChange={(event) => onConfirmPasswordChange(event.target.value)}
+                  disabled={changingPassword}
+                />
+              </div>
+
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-3">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Zásady bezpečného hesla
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {passwordPolicyChecks.map((check) => {
+                    const failed = passwordInputTouched && !check.passed;
+                    return (
+                      <div
+                        key={check.id}
+                        className={`flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold ${
+                          check.passed
+                            ? "border-violet-200 bg-violet-50 text-violet-800"
+                            : failed
+                              ? "border-rose-200 bg-rose-50 text-rose-700"
+                              : "border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
+                            check.passed
+                              ? "bg-violet-700 text-white"
+                              : failed
+                                ? "bg-rose-100 text-rose-700"
+                                : "bg-slate-100 text-slate-400"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {check.passed ? "✓" : "•"}
+                        </span>
+                        <span>{check.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {passwordStatus ? (
+                <div
+                  className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${statusClass(passwordStatus)}`}
+                >
+                  {passwordStatus.message}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
+              <button
+                type="button"
+                onClick={onCancelPasswordChange}
+                disabled={changingPassword}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Zrušit
+              </button>
+              <button
+                type="submit"
+                disabled={passwordSubmitDisabled}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-violet-700 bg-violet-700 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(109,40,217,0.24)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <KeyRound size={15} strokeWidth={2.2} aria-hidden="true" />
+                {changingPassword ? "Měním heslo..." : "Potvrdit změnu"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {passkeyHelpOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-3 py-4">
           <div className="max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto rounded-[22px] border border-slate-200 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.32)] sm:rounded-[28px] sm:shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:gap-4 sm:px-5">
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 sm:h-10 sm:w-10 sm:rounded-2xl">
+                <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-800 sm:h-10 sm:w-10 sm:rounded-2xl">
                   <Fingerprint size={18} strokeWidth={2.2} aria-hidden="true" />
                 </span>
                 <div>

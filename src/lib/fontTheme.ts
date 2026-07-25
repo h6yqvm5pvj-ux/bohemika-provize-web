@@ -1,4 +1,4 @@
-export type FontTheme = "inter" | "system";
+export type FontTheme = "system";
 
 export type FontThemeOption = {
   id: FontTheme;
@@ -13,14 +13,6 @@ export const FONT_THEME_LOCAL_STORAGE_KEY = "settings.fontTheme";
 export const FONT_THEME_EVENT = "settings:updateFontTheme";
 
 const FONT_THEME_OPTIONS_MAP: Record<FontTheme, FontThemeOption> = {
-  inter: {
-    id: "inter",
-    label: "Inter",
-    description: "Výchozí moderní styl",
-    previewFamily:
-      'var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    previewText: "Rychlá liška 123",
-  },
   system: {
     id: "system",
     label: "Systémové UI",

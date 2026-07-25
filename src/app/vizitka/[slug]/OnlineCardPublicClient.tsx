@@ -228,7 +228,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
               </div>
 
               <div className="flex items-start">
-                <div className="w-full max-w-[580px] space-y-4 rounded-2xl border border-white/14 bg-[linear-gradient(160deg,rgba(30,27,60,0.45)_0%,rgba(15,23,42,0.35)_100%)] p-5 sm:p-6">
+                <div className="w-full max-w-[580px] space-y-4 border-l border-violet-300/18 pl-5 sm:pl-6">
                   <p className="inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
                     <Building2 className="h-3.5 w-3.5" />
                     Kancelář
@@ -258,8 +258,8 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             </div>
           </section>
         ) : null}
-        <section className="relative overflow-hidden rounded-[30px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-6 shadow-[0_24px_70px_rgba(6,4,23,0.48)] sm:p-8 vizitka-anim-up [animation-delay:720ms]">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.2),transparent_34%)]" />
+        <section className="relative mx-auto max-w-[1160px] overflow-hidden border-t border-violet-300/12 bg-[linear-gradient(180deg,rgba(13,10,29,0.99)_0%,rgba(8,7,18,0.99)_100%)] px-6 py-12 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:720ms]">
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(124,58,237,0.1),transparent_44%)]" />
           <div className="relative z-10 space-y-5">
             <div className="text-center">
               <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
@@ -306,8 +306,15 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
               ].map((item) => (
                 <div key={item.key} className="group space-y-2">
                   <div className="inline-flex items-center gap-2.5 text-violet-200/75">
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/14 bg-white/[0.07] text-violet-100 transition-colors group-hover:border-violet-300/60 group-hover:text-white">
-                      <item.icon className="h-4 w-4" />
+                    <span className="relative inline-flex h-8 w-7 items-center justify-center text-violet-100">
+                      <item.icon
+                        className="h-[18px] w-[18px] drop-shadow-[0_8px_18px_rgba(196,181,253,0.2)] transition duration-300 group-hover:-translate-y-0.5 group-hover:scale-110 group-hover:text-white"
+                        strokeWidth={1.9}
+                      />
+                      <span
+                        className="absolute bottom-0 left-1 right-1 h-0.5 rounded-full bg-violet-300/75 opacity-70 shadow-[0_0_14px_rgba(196,181,253,0.5)] transition duration-300 group-hover:left-0 group-hover:right-0 group-hover:opacity-100"
+                        aria-hidden="true"
+                      />
                     </span>
                     <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/75">
                       {item.label}

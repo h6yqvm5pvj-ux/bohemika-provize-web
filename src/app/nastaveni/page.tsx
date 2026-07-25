@@ -55,19 +55,10 @@ import {
   getPushPermission,
   isPushSupportedInBrowser,
 } from "@/app/lib/pushNotifications";
-import {
-  DEFAULT_FONT_THEME,
-  FONT_THEME_EVENT,
-  FONT_THEME_LOCAL_STORAGE_KEY,
-  applyFontThemeToRoot,
-  resolveFontTheme,
-  type FontTheme,
-} from "@/lib/fontTheme";
 import type { Position, CommissionMode } from "../types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import { AccountSecurityPanel } from "./components/AccountSecurityPanel";
 import { CareerTimelinePanel } from "./components/CareerTimelinePanel";
-import { DesignSettingsPanel } from "./components/DesignSettingsPanel";
 import { NotificationsSettingsPanel } from "./components/NotificationsSettingsPanel";
 import { OnlineCardSettingsPanel } from "./components/OnlineCardSettingsPanel";
 import { ProfileSettingsPanel } from "./components/ProfileSettingsPanel";
@@ -80,6 +71,7 @@ import {
   type IntranetSectionKey,
   type NotificationSettings,
 } from "./notificationSettings";
+import { getPasswordPolicyFailure } from "./passwordPolicy";
 import {
   type SubscriptionEffectiveState,
   type SubscriptionMeResponse,
@@ -202,7 +194,6 @@ const parsePositionTimeline = (value: unknown): PositionTimelineItem[] => {
 const SETTINGS_KEYS = {
   mode: "settings.mode",
   monthlyGoal: "settings.monthlyGoal",
-  fontTheme: FONT_THEME_LOCAL_STORAGE_KEY,
   reduceMotion: "settings.reduceMotion",
 };
 
@@ -213,7 +204,6 @@ type SettingsTab =
   | "career"
   | "notifications"
   | "onlineCard"
-  | "design"
   | "requests";
 
 const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
@@ -222,8 +212,8 @@ const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: "subscription", label: "Předplatné" },
   { id: "career", label: "Kariéra" },
   { id: "notifications", label: "Notifikace" },
+  { id: "onlineCard", label: "Online Vizitka" },
   { id: "requests", label: "Žádosti" },
-  { id: "design", label: "Design" },
 ];
 
 const normalizeEmail = (email?: string | null) =>
@@ -699,7 +689,6 @@ export default function SettingsPage() {
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
-  const [fontTheme, setFontTheme] = useState<FontTheme>(DEFAULT_FONT_THEME);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [onlineCardDraft, setOnlineCardDraft] =
     useState<OnlineCardDraft>(EMPTY_ONLINE_CARD_DRAFT);
@@ -756,16 +745,6 @@ export default function SettingsPage() {
     } else {
       root.removeAttribute("data-motion");
     }
-  };
-
-  const applyFontThemePreference = (value: unknown) => {
-    const next = resolveFontTheme(value);
-    setFontTheme(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SETTINGS_KEYS.fontTheme, next);
-      applyFontThemeToRoot(next);
-    }
-    return next;
   };
 
   // auth
@@ -1061,16 +1040,6 @@ export default function SettingsPage() {
             if (Number.isFinite(n)) setMonthlyGoal(n);
           }
 
-          if (typeof data.fontTheme === "string") {
-            applyFontThemePreference(data.fontTheme);
-          } else if (typeof window !== "undefined") {
-            applyFontThemePreference(
-              window.localStorage.getItem(SETTINGS_KEYS.fontTheme)
-            );
-          } else {
-            setFontTheme(DEFAULT_FONT_THEME);
-          }
-
           if (typeof data.reduceMotion === "boolean") {
             setReduceMotion(data.reduceMotion);
             applyMotionPreference(data.reduceMotion);
@@ -1127,14 +1096,9 @@ export default function SettingsPage() {
             const storedGoal = window.localStorage.getItem(
               SETTINGS_KEYS.monthlyGoal
             );
-            const storedFontTheme = window.localStorage.getItem(
-              SETTINGS_KEYS.fontTheme
-            );
-
             if (storedMode) setMode(storedMode);
             const n = storedGoal ? Number(storedGoal) : 0;
             if (Number.isFinite(n)) setMonthlyGoal(n);
-            applyFontThemePreference(storedFontTheme);
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
             );
@@ -1236,6 +1200,13 @@ export default function SettingsPage() {
       setActiveTab("career");
     }
   }, [timelineSetupRequired, activeTab]);
+
+  useEffect(() => {
+    const currentTabExists = SETTINGS_TABS.some((tab) => tab.id === activeTab);
+    if (!currentTabExists) {
+      setActiveTab("profile");
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (onlineCardQueryAppliedRef.current) return;
@@ -2274,29 +2245,6 @@ export default function SettingsPage() {
     void loadUserRequests();
   }, [user, loadUserRequests, resetUserRequestForm]);
 
-  const handleFontThemeChange = async (nextTheme: FontTheme) => {
-    const resolved = applyFontThemePreference(nextTheme);
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent(FONT_THEME_EVENT, {
-          detail: { fontTheme: resolved },
-        })
-      );
-    }
-    await saveUserFields({ fontTheme: resolved });
-  };
-
-  const handleReduceMotionChange = async (value: boolean) => {
-    setReduceMotion(value);
-    applyMotionPreference(value);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SETTINGS_KEYS.reduceMotion, value ? "1" : "0");
-    }
-
-    await saveUserFields({ reduceMotion: value });
-  };
-
   const handleChangePassword = async () => {
     if (!user || !user.email) {
       setPasswordStatus({
@@ -2306,26 +2254,24 @@ export default function SettingsPage() {
       return;
     }
 
-    if (!currentPassword || !newPassword) {
+    if (!currentPassword || !newPassword || !confirmPassword) {
       setPasswordStatus({
         type: "error",
-        message: "Vyplň původní i nové heslo.",
+        message: "Vyplň původní heslo, nové heslo i potvrzení.",
       });
       return;
     }
 
-    if (newPassword.length < 6) {
+    const passwordPolicyFailure = getPasswordPolicyFailure({
+      password: newPassword,
+      confirmPassword,
+      userFullName: fullName || profileDisplayName,
+      userEmail: user.email,
+    });
+    if (passwordPolicyFailure) {
       setPasswordStatus({
         type: "error",
-        message: "Nové heslo musí mít alespoň 6 znaků.",
-      });
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordStatus({
-        type: "error",
-        message: "Nové heslo a potvrzení se neshodují.",
+        message: passwordPolicyFailure,
       });
       return;
     }
@@ -2349,13 +2295,14 @@ export default function SettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      setShowPasswordForm(false);
     } catch (error: unknown) {
       const err = error as { code?: string };
       let message = "Změna hesla se nepovedla. Zkus to prosím znovu.";
       if (err?.code === "auth/wrong-password") {
         message = "Původní heslo není správné.";
       } else if (err?.code === "auth/weak-password") {
-        message = "Nové heslo je příliš slabé (min. 6 znaků).";
+        message = "Nové heslo je příliš slabé.";
       } else if (err?.code === "auth/too-many-requests") {
         message = "Příliš mnoho pokusů. Zkus to prosím později.";
       }
@@ -2710,8 +2657,6 @@ export default function SettingsPage() {
   const enabledNotificationTypes = Object.values(notificationSettings.types).filter(Boolean).length;
   const panelClass =
     "relative overflow-hidden rounded-[20px] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-3.5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:rounded-2xl sm:px-8 sm:py-6 sm:shadow-[0_18px_46px_rgba(15,23,42,0.08)]";
-  const compactPanelClass =
-    "relative overflow-hidden rounded-[20px] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-3.5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:rounded-2xl sm:px-6 sm:py-5 sm:shadow-[0_18px_46px_rgba(15,23,42,0.08)]";
   const fieldClass =
     "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 shadow-[0_6px_14px_rgba(15,23,42,0.04)] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:rounded-2xl sm:text-sm sm:shadow-[0_8px_18px_rgba(15,23,42,0.04)]";
   const toggleOffClass =
@@ -3257,7 +3202,7 @@ export default function SettingsPage() {
         {timelineSaveFlashVisible && (
           <div aria-live="polite" className="pointer-events-none fixed inset-x-3 bottom-4 z-50 sm:inset-x-auto sm:bottom-6 sm:right-6">
             <div className="relative flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-700 text-white shadow-[0_10px_22px_rgba(109,40,217,0.22)]">
                 <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
                   <path
                     fill="currentColor"
@@ -3284,7 +3229,7 @@ export default function SettingsPage() {
         ) : (
           <>
             {timelineSetupRequired ? (
-              <div className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-slate-900">
                 Před prvním použitím aplikace nejdřív nastav a ulož Historii kariéry. Ostatní
                 části Nastavení se zpřístupní po uložení timeline.
               </div>
@@ -3572,21 +3517,6 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {activeTab === "design" && !timelineSetupRequired && (
-              <DesignSettingsPanel
-                className={compactPanelClass}
-                fontTheme={fontTheme}
-                reduceMotion={reduceMotion}
-                toggleOffClass={toggleOffClass}
-                onFontThemeChange={(theme) => {
-                  void handleFontThemeChange(theme);
-                }}
-                onReduceMotionChange={(value) => {
-                  void handleReduceMotionChange(value);
-                }}
-              />
-            )}
-
             {activeTab === "subscription" && !timelineSetupRequired && (
               <SubscriptionSettingsPanel
                 className={panelClass}
@@ -3603,6 +3533,7 @@ export default function SettingsPage() {
                 className={panelClass}
                 fieldClass={fieldClass}
                 userEmail={userEmail}
+                userFullName={fullName || profileDisplayName}
                 mfaEnabled={mfaEnabled}
                 securityScoreLabel={securityScoreLabel}
                 securityScorePercent={securityScorePercent}
@@ -3633,7 +3564,10 @@ export default function SettingsPage() {
                 mfaTotpLabel={mfaTotpLabel}
                 mfaReauthCode={mfaReauthCode}
                 mfaStatus={mfaStatus}
-                onShowPasswordForm={() => setShowPasswordForm(true)}
+                onShowPasswordForm={() => {
+                  setShowPasswordForm(true);
+                  setPasswordStatus(null);
+                }}
                 onCancelPasswordChange={() => {
                   setShowPasswordForm(false);
                   setCurrentPassword("");
