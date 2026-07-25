@@ -19,6 +19,10 @@ const MAX_TOKENS_PER_USER = 30;
 const MAX_TOKENS_PER_MULTICAST = 500;
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
 const WEEKLY_REPORT_DEEP_LINK = "/muj-tym?source=weekly-report";
+const INVALID_TOKEN_CODES = new Set([
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-registration-token",
+]);
 
 type UserProfile = {
   email: string;
@@ -194,65 +198,71 @@ async function collectAllEntriesFromQuery(
 }
 
 async function loadWeeklyOwnerTotals(
+  ownerEmails: string[],
   sinceMs: number,
   untilMs: number
 ): Promise<Map<string, OwnerWeeklyTotals>> {
   if (!adminDb) return new Map<string, OwnerWeeklyTotals>();
+  const db = adminDb;
 
   const sinceDate = new Date(sinceMs);
-  const [bySigned, byCreated] = await Promise.all([
-    collectAllEntriesFromQuery(
-      adminDb
-        .collectionGroup("entries")
-        .where("contractSignedDate", ">=", sinceDate)
-        .orderBy("contractSignedDate", "desc")
-    ),
-    collectAllEntriesFromQuery(
-      adminDb.collectionGroup("entries").where("createdAt", ">=", sinceDate).orderBy("createdAt", "desc")
-    ),
-  ]);
-
-  const docsByPath = new Map<string, FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>>();
-  bySigned.forEach((docSnap) => docsByPath.set(docSnap.ref.path, docSnap));
-  byCreated.forEach((docSnap) => docsByPath.set(docSnap.ref.path, docSnap));
+  const uniqueOwnerEmails = [...new Set(ownerEmails.map(normalizeEmail).filter(Boolean))];
 
   const totalsByOwner = new Map<string, OwnerWeeklyTotals>();
 
-  docsByPath.forEach((docSnap) => {
-    const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-    const effectiveDate = toDate(data.contractSignedDate ?? data.createdAt);
-    const effectiveMs = effectiveDate?.getTime() ?? null;
-    if (effectiveMs == null || effectiveMs < sinceMs || effectiveMs > untilMs) {
-      return;
-    }
+  await Promise.all(
+    uniqueOwnerEmails.map(async (ownerEmail) => {
+      const entriesRef = db.collection("users").doc(ownerEmail).collection("entries");
+      const [bySigned, byCreated] = await Promise.all([
+        collectAllEntriesFromQuery(
+          entriesRef
+            .where("contractSignedDate", ">=", sinceDate)
+            .orderBy("contractSignedDate", "desc")
+        ),
+        collectAllEntriesFromQuery(
+          entriesRef.where("createdAt", ">=", sinceDate).orderBy("createdAt", "desc")
+        ),
+      ]);
 
-    const ownerEmail = normalizeEmail(
-      typeof data.userEmail === "string" ? data.userEmail : docSnap.ref.parent.parent?.id
-    );
-    if (!ownerEmail) return;
+      const docsByPath = new Map<
+        string,
+        FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+      >();
+      bySigned.forEach((docSnap) => docsByPath.set(docSnap.ref.path, docSnap));
+      byCreated.forEach((docSnap) => docsByPath.set(docSnap.ref.path, docSnap));
 
-    const product =
-      typeof data.productKey === "string" ? (data.productKey as Product) : null;
-    const annualPremium = annualPremiumFromEntry(data, product);
-    const isLife = isLifeProduct(product);
+      docsByPath.forEach((docSnap) => {
+        const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+        const effectiveDate = toDate(data.contractSignedDate ?? data.createdAt);
+        const effectiveMs = effectiveDate?.getTime() ?? null;
+        if (effectiveMs == null || effectiveMs < sinceMs || effectiveMs > untilMs) {
+          return;
+        }
 
-    const current = totalsByOwner.get(ownerEmail) ?? {
-      lifeContracts: 0,
-      lifeMonthlyPremium: 0,
-      nonLifeContracts: 0,
-      nonLifeAnnualPremium: 0,
-    };
+        const product =
+          typeof data.productKey === "string" ? (data.productKey as Product) : null;
+        const annualPremium = annualPremiumFromEntry(data, product);
+        const isLife = isLifeProduct(product);
 
-    if (isLife) {
-      current.lifeContracts += 1;
-      current.lifeMonthlyPremium += annualPremium / 12;
-    } else {
-      current.nonLifeContracts += 1;
-      current.nonLifeAnnualPremium += annualPremium;
-    }
+        const current = totalsByOwner.get(ownerEmail) ?? {
+          lifeContracts: 0,
+          lifeMonthlyPremium: 0,
+          nonLifeContracts: 0,
+          nonLifeAnnualPremium: 0,
+        };
 
-    totalsByOwner.set(ownerEmail, current);
-  });
+        if (isLife) {
+          current.lifeContracts += 1;
+          current.lifeMonthlyPremium += annualPremium / 12;
+        } else {
+          current.nonLifeContracts += 1;
+          current.nonLifeAnnualPremium += annualPremium;
+        }
+
+        totalsByOwner.set(ownerEmail, current);
+      });
+    })
+  );
 
   return totalsByOwner;
 }
@@ -308,14 +318,17 @@ async function runWeeklyTeamReport(req: NextRequest) {
   const untilMs = now.getTime();
   const sinceMs = untilMs - WEEKLY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
 
-  const [users, ownerTotals] = await Promise.all([
-    loadUsersWithMergedProfiles(),
-    loadWeeklyOwnerTotals(sinceMs, untilMs),
-  ]);
+  const users = await loadUsersWithMergedProfiles();
 
   if (users.length === 0) {
     return NextResponse.json({ ok: true, sent: 0, managersEvaluated: 0 });
   }
+
+  const ownerTotals = await loadWeeklyOwnerTotals(
+    users.map((user) => user.email),
+    sinceMs,
+    untilMs
+  );
 
   const childrenByManager = buildChildrenByManager(
     users.map((user) => ({ email: user.email, managerEmail: user.managerEmail }))
@@ -328,12 +341,18 @@ async function runWeeklyTeamReport(req: NextRequest) {
   let managersEvaluated = 0;
   let sentManagers = 0;
   let sentNotifications = 0;
+  let failedNotifications = 0;
+  let skippedPushDisabled = 0;
+  let skippedNoToken = 0;
 
   for (const manager of users) {
     if (!childrenByManager.has(manager.email)) continue;
     managersEvaluated += 1;
 
-    if (!isWeeklyTeamReportPushEnabled(manager.merged)) continue;
+    if (!isWeeklyTeamReportPushEnabled(manager.merged)) {
+      skippedPushDisabled += 1;
+      continue;
+    }
 
     const hierarchy = collectSubordinateHierarchy(manager.email, childrenByManager);
     if (hierarchy.subordinateEmails.length === 0) continue;
@@ -383,40 +402,61 @@ async function runWeeklyTeamReport(req: NextRequest) {
     if (!adminMessaging) continue;
 
     const tokens = collectPushTokens(manager.merged).slice(0, MAX_TOKENS_PER_USER);
-    if (tokens.length === 0) continue;
+    if (tokens.length === 0) {
+      skippedNoToken += 1;
+      continue;
+    }
 
     for (let i = 0; i < tokens.length; i += MAX_TOKENS_PER_MULTICAST) {
       const chunk = tokens.slice(i, i + MAX_TOKENS_PER_MULTICAST);
-      const multicast = await adminMessaging.sendEachForMulticast({
-        tokens: chunk,
-        notification: {
-          title: "Týdenní report produkce",
-          body,
-        },
-        data: {
-          type: "weekly_team_report",
-          deepLink: WEEKLY_REPORT_DEEP_LINK,
-          periodStart: new Date(sinceMs).toISOString(),
-          periodEnd: new Date(untilMs).toISOString(),
-          lifeContracts: String(lifeContracts),
-          lifeMonthlyPremium: String(Math.round(lifeMonthlyPremium)),
-          nonLifeContracts: String(nonLifeContracts),
-          nonLifeAnnualPremium: String(Math.round(nonLifeAnnualPremium)),
-        },
-        webpush: {
-          fcmOptions: {
-            link: webPushLink,
-          },
+      try {
+        const multicast = await adminMessaging.sendEachForMulticast({
+          tokens: chunk,
           notification: {
-            icon: "/pwa/icon-192.png",
-            badge: "/pwa/icon-192.png",
-            tag: reportTag,
-            requireInteraction: false,
+            title: "Týdenní report produkce",
+            body,
           },
-        },
-      });
+          data: {
+            type: "weekly_team_report",
+            deepLink: WEEKLY_REPORT_DEEP_LINK,
+            periodStart: new Date(sinceMs).toISOString(),
+            periodEnd: new Date(untilMs).toISOString(),
+            lifeContracts: String(lifeContracts),
+            lifeMonthlyPremium: String(Math.round(lifeMonthlyPremium)),
+            nonLifeContracts: String(nonLifeContracts),
+            nonLifeAnnualPremium: String(Math.round(nonLifeAnnualPremium)),
+          },
+          webpush: {
+            fcmOptions: {
+              link: webPushLink,
+            },
+            notification: {
+              icon: "/pwa/icon-192.png",
+              badge: "/pwa/icon-192.png",
+              tag: reportTag,
+              requireInteraction: false,
+            },
+          },
+        });
 
-      sentNotifications += multicast.successCount;
+        sentNotifications += multicast.successCount;
+        failedNotifications += multicast.failureCount;
+
+        multicast.responses.forEach((row) => {
+          if (row.success) return;
+          const code = row.error?.code ?? "";
+          if (!INVALID_TOKEN_CODES.has(code)) return;
+          console.warn(
+            `Weekly team report push token is invalid (${manager.email}): ${code}`
+          );
+        });
+      } catch (error) {
+        failedNotifications += chunk.length;
+        console.error(
+          `Sending weekly report push failed (${manager.email}):`,
+          error
+        );
+      }
     }
   }
 
@@ -425,6 +465,9 @@ async function runWeeklyTeamReport(req: NextRequest) {
     managersEvaluated,
     sentManagers,
     sentNotifications,
+    failedNotifications,
+    skippedPushDisabled,
+    skippedNoToken,
     since: new Date(sinceMs).toISOString(),
     until: new Date(untilMs).toISOString(),
   });
