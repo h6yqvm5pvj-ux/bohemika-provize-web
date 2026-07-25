@@ -65,6 +65,7 @@ export type NeonPdfResult = {
   refreshOriginalContractNumber?: string | null;
   clientName?: string | null;
   policyStartDate?: string | null;
+  policyEndDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
   durationYears?: number | null;
@@ -975,6 +976,12 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   const startIso = endorsementStartIso ?? toDateInput(startMatch);
   if (startIso) {
     result.policyStartDate = startIso;
+  }
+
+  // Konec pojištění je v modelaci NEON Life/Risk obvykle na samostatném řádku.
+  const endIso = pickDateAfterLabel(lines, asciiLines, /konec\s+pojisteni:?/i, 4);
+  if (endIso) {
+    result.policyEndDate = endIso;
   }
 
   // Datum uzavření

@@ -38,6 +38,8 @@ describe("parseNeonPdf", () => {
         "Číslo pojistné smlouvy: 1234567890",
         "Jméno a příjmení, titul Jan Novák",
         "Počátek pojištění 1.7.2024",
+        "Konec pojištění",
+        "1.7.2044",
         "DATUM UZAVŘENÍ 15.6.2024",
         "Doba trvání smlouvy 15",
         "Měsíční pojistné včetně slev a přirážek celkem v Kč 1 234",
@@ -50,6 +52,7 @@ describe("parseNeonPdf", () => {
       contractNumber: "1234567890",
       clientName: "Jan Novák",
       policyStartDate: "2024-07-01",
+      policyEndDate: "2044-07-01",
       contractSignedDate: "2024-06-15",
       durationYears: 15,
       amount: 1234,
@@ -101,6 +104,8 @@ describe("parseNeonPdf", () => {
         "Číslo pojistné smlouvy: 7503378964",
         "Jméno a příjmení, titul František Rauscher",
         "Počátek pojištění 26.7.2026",
+        "Konec pojištění",
+        "26.7.2046",
         "DATUM UZAVŘENÍ 25.7.2026",
         "Měsíční pojistné včetně slev a přirážek celkem v Kč 1 083",
         "ZÁKLADNÍ POJIŠTĚNÍ",
@@ -119,6 +124,7 @@ describe("parseNeonPdf", () => {
       version: "neon_risk",
       deathAccidentAmount: "30000",
     });
+    expect(parsed.policyEndDate).toBe("2046-07-26");
     expect(parsed.riskFields?.deathAmount).toBeUndefined();
     expect(parsed.riskFields?.waiverInvalidity).toBe(false);
   });
