@@ -131,9 +131,9 @@ export function UserRequestsPanel({
   onDeleteRequest,
 }: UserRequestsPanelProps) {
   return (
-    <section className={`h-full space-y-4 lg:col-span-2 ${className}`}>
+    <section className={`h-full space-y-3 sm:space-y-4 lg:col-span-2 ${className}`}>
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_52%,#c084fc_100%)]" />
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2">
         {([
           {
             id: "create",
@@ -157,7 +157,7 @@ export function UserRequestsPanel({
               onClick={() => {
                 void onViewChange(item.id);
               }}
-              className={`group relative overflow-hidden rounded-[26px] border px-4 py-4 text-left transition ${
+              className={`group relative overflow-hidden rounded-[18px] border px-3 py-3 text-left transition sm:rounded-[26px] sm:px-4 sm:py-4 ${
                 active
                   ? "border-violet-300 bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_54%,#a855f7_100%)] text-white shadow-[0_22px_46px_rgba(124,58,237,0.34)]"
                   : "border-violet-200 bg-[linear-gradient(135deg,#faf5ff_0%,#f5f3ff_100%)] text-slate-900 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_18px_34px_rgba(124,58,237,0.16)]"
@@ -165,7 +165,7 @@ export function UserRequestsPanel({
             >
               <span className="relative z-10 flex items-center gap-3">
                 <span
-                  className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
+                  className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border sm:h-11 sm:w-11 sm:rounded-2xl ${
                     active
                       ? "border-white/25 bg-white/14 text-white"
                       : "border-violet-200 bg-white text-violet-700"
@@ -174,7 +174,7 @@ export function UserRequestsPanel({
                   <Icon size={20} strokeWidth={2.2} aria-hidden="true" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-base font-bold leading-tight">
+                  <span className="block text-sm font-bold leading-tight sm:text-base">
                     {item.title}
                   </span>
                   <span
@@ -211,7 +211,7 @@ export function UserRequestsPanel({
       ) : null}
 
       {view === "create" ? (
-        <div className="space-y-4 rounded-[26px] border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_100%)] px-4 py-4 shadow-[0_18px_42px_rgba(88,28,135,0.10)] sm:px-5 sm:py-5">
+        <div className="space-y-3 rounded-[20px] border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_100%)] px-3 py-3 shadow-[0_12px_30px_rgba(88,28,135,0.08)] sm:space-y-4 sm:rounded-[26px] sm:px-5 sm:py-5 sm:shadow-[0_18px_42px_rgba(88,28,135,0.10)]">
           <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
             <ShieldCheck
               size={14}
@@ -234,7 +234,7 @@ export function UserRequestsPanel({
             </div>
           ) : null}
 
-          <div className="rounded-[22px] border border-violet-200 bg-slate-950 px-3 py-3 shadow-[0_16px_36px_rgba(15,23,42,0.18)]">
+          <div className="rounded-[18px] border border-violet-200 bg-slate-950 px-2.5 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.16)] sm:rounded-[22px] sm:px-3 sm:shadow-[0_16px_36px_rgba(15,23,42,0.18)]">
             <div
               className="grid gap-2"
               style={{
@@ -250,7 +250,7 @@ export function UserRequestsPanel({
                     className="flex flex-col items-center gap-1 text-center"
                   >
                     <span
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition ${
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold transition sm:h-8 sm:w-8 sm:text-xs ${
                         stepDone
                           ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
                           : stepActive
@@ -261,7 +261,7 @@ export function UserRequestsPanel({
                       {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
                     </span>
                     <span
-                      className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                      className={`text-[9px] font-semibold uppercase tracking-[0.1em] sm:text-[10px] sm:tracking-[0.14em] ${
                         stepActive || stepDone ? "text-white" : "text-violet-200/60"
                       }`}
                     >
@@ -300,7 +300,7 @@ export function UserRequestsPanel({
                   Předmět
                 </div>
                 <div
-                  className="grid grid-cols-1 gap-3 md:grid-cols-2"
+                  className="grid grid-cols-1 gap-2.5 sm:gap-3 md:grid-cols-2"
                   role="radiogroup"
                   aria-label="Předmět žádosti"
                 >
@@ -327,14 +327,14 @@ export function UserRequestsPanel({
                         onClick={() => onSubjectChange(option.id)}
                         role="radio"
                         aria-checked={selected}
-                        className={`group flex min-h-[118px] items-start gap-3 rounded-[22px] border px-4 py-4 text-left transition ${
+                        className={`group flex min-h-[96px] items-start gap-3 rounded-[18px] border px-3 py-3 text-left transition sm:min-h-[118px] sm:rounded-[22px] sm:px-4 sm:py-4 ${
                           selected
                             ? "border-violet-400 bg-[linear-gradient(135deg,#ede9fe_0%,#f5f3ff_100%)] text-slate-950 shadow-[0_16px_34px_rgba(124,58,237,0.18)]"
                             : "border-slate-200 bg-white text-slate-800 hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/50 hover:shadow-[0_12px_24px_rgba(88,28,135,0.10)]"
                         }`}
                       >
                         <span
-                          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${
+                          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border sm:h-11 sm:w-11 sm:rounded-2xl ${
                             selected
                               ? "border-violet-300 bg-violet-600 text-white"
                               : "border-slate-200 bg-slate-50 text-violet-700 group-hover:border-violet-200 group-hover:bg-white"
@@ -343,7 +343,7 @@ export function UserRequestsPanel({
                           <Icon size={20} strokeWidth={2.2} aria-hidden="true" />
                         </span>
                         <span className="min-w-0">
-                          <span className="flex items-center gap-2 text-base font-bold leading-tight">
+                          <span className="flex items-center gap-2 text-sm font-bold leading-tight sm:text-base">
                             {option.label}
                             {selected ? (
                               <CheckCircle2
@@ -354,7 +354,7 @@ export function UserRequestsPanel({
                               />
                             ) : null}
                           </span>
-                          <span className="mt-1 block text-sm leading-relaxed text-slate-500">
+                          <span className="mt-1 block text-xs leading-relaxed text-slate-500 sm:text-sm">
                             {option.description}
                           </span>
                         </span>
@@ -367,7 +367,7 @@ export function UserRequestsPanel({
           ) : null}
 
           {currentStepId === "details" && subject === "userCreation" ? (
-            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+            <div className="space-y-3 rounded-[18px] border border-slate-200 bg-white px-3 py-3 sm:rounded-2xl">
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
                   Firemní e-mail
@@ -430,7 +430,7 @@ export function UserRequestsPanel({
                   Režim provizí
                 </label>
                 <div
-                  className="inline-flex w-full rounded-2xl border border-slate-300 bg-slate-100 p-1"
+                  className="inline-flex w-full rounded-xl border border-slate-300 bg-slate-100 p-1 sm:rounded-2xl"
                   role="radiogroup"
                   aria-label="Režim provizí žádosti"
                 >
@@ -479,12 +479,12 @@ export function UserRequestsPanel({
           ) : null}
 
           {currentStepId === "details" && subject !== "userCreation" ? (
-            <div className="space-y-2 rounded-2xl border border-violet-100 bg-white px-3 py-3">
+            <div className="space-y-2 rounded-[18px] border border-violet-100 bg-white px-3 py-3 sm:rounded-2xl">
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
                 Text žádosti
               </label>
               <textarea
-                className={`${fieldClass} min-h-[160px] resize-y`}
+                className={`${fieldClass} min-h-[130px] resize-y sm:min-h-[160px]`}
                 value={message}
                 onChange={(e) => onMessageChange(e.target.value)}
                 placeholder="Napiš, co potřebuješ vyřešit."
@@ -530,7 +530,7 @@ export function UserRequestsPanel({
                 Popis žádosti
               </label>
               <textarea
-                className={`${fieldClass} min-h-[120px] resize-y`}
+                className={`${fieldClass} min-h-[110px] resize-y sm:min-h-[120px]`}
                 value={message}
                 onChange={(e) => onMessageChange(e.target.value)}
                 placeholder="Napiš prosím detaily žádosti."
@@ -544,11 +544,11 @@ export function UserRequestsPanel({
           ) : null}
 
           {currentStepId === "message" && subject !== "userCreation" ? (
-            <div className="space-y-2 rounded-2xl border border-violet-100 bg-white px-3 py-3">
+            <div className="space-y-2 rounded-[18px] border border-violet-100 bg-white px-3 py-3 sm:rounded-2xl">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                 Kontrola textu
               </div>
-              <p className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-relaxed text-slate-700">
+              <p className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-relaxed text-slate-700 sm:rounded-2xl">
                 {message.trim()}
               </p>
             </div>
@@ -590,12 +590,12 @@ export function UserRequestsPanel({
             <p className="text-xs font-semibold text-violet-700">
               Krok {currentStep + 1} / {USER_REQUEST_STEPS.length}
             </p>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
               {currentStep > 0 ? (
                 <button
                   type="button"
                   onClick={onPreviousStep}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white px-4 py-2 text-sm font-semibold text-violet-800 transition hover:bg-violet-50"
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-violet-200 bg-white px-4 py-2 text-sm font-semibold text-violet-800 transition hover:bg-violet-50 sm:flex-none"
                 >
                   <ChevronLeft size={15} strokeWidth={2.2} aria-hidden="true" />
                   Zpět
@@ -606,7 +606,7 @@ export function UserRequestsPanel({
                   type="button"
                   onClick={onNextStep}
                   disabled={!requestCurrentStepCanContinue}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55 sm:flex-none"
                 >
                   Pokračovat
                   <ChevronRight size={15} strokeWidth={2.2} aria-hidden="true" />
@@ -618,7 +618,7 @@ export function UserRequestsPanel({
       ) : null}
 
       {view === "history" ? (
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+        <div className="space-y-3 rounded-[18px] border border-slate-200 bg-white px-3 py-3 sm:rounded-2xl sm:px-4 sm:py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
               Podané žádosti
@@ -645,7 +645,7 @@ export function UserRequestsPanel({
             </div>
           ) : null}
 
-          <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1 sm:max-h-[420px]">
             {requests.map((request) => {
               const slaInfo = buildUserRequestSlaInfo(request, userRequestsNowMs);
               const cancellableByRequester =

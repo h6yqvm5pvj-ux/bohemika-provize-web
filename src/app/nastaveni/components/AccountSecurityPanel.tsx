@@ -144,7 +144,7 @@ export function AccountSecurityPanel({
   const [passkeyHelpOpen, setPasskeyHelpOpen] = useState(false);
 
   return (
-    <section className={`space-y-5 ${className}`}>
+    <section className={`space-y-4 sm:space-y-5 ${className}`}>
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#164e63_52%,#10b981_100%)]" />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -171,16 +171,16 @@ export function AccountSecurityPanel({
         </span>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+      <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-[18px] border border-slate-200 bg-white px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)] sm:rounded-[22px] sm:px-4 sm:py-4 sm:shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                 Stav ochrany
               </p>
-              <p className="mt-1 text-2xl font-black text-slate-950">{securityScoreLabel}</p>
+              <p className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">{securityScoreLabel}</p>
             </div>
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-white sm:h-11 sm:w-11 sm:rounded-2xl">
               <ShieldCheck size={21} strokeWidth={2.2} aria-hidden="true" />
             </span>
           </div>
@@ -192,21 +192,21 @@ export function AccountSecurityPanel({
           </div>
         </article>
 
-        <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+        <article className="rounded-[18px] border border-slate-200 bg-white px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)] sm:rounded-[22px] sm:px-4 sm:py-4 sm:shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             Automatické odhlášení
           </p>
-          <p className="mt-2 text-xl font-black text-slate-950">120 minut</p>
+          <p className="mt-2 text-lg font-black text-slate-950 sm:text-xl">120 minut</p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
             Neaktivní relace se sama ukončí.
           </p>
         </article>
 
-        <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+        <article className="rounded-[18px] border border-slate-200 bg-white px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)] sm:rounded-[22px] sm:px-4 sm:py-4 sm:shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             Dvoufaktor
           </p>
-          <p className={`mt-2 text-xl font-black ${mfaEnabled ? "text-emerald-700" : "text-amber-700"}`}>
+          <p className={`mt-2 text-lg font-black sm:text-xl ${mfaEnabled ? "text-emerald-700" : "text-amber-700"}`}>
             {mfaEnabled ? "Zapnuto" : "Vypnuto"}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
@@ -214,11 +214,11 @@ export function AccountSecurityPanel({
           </p>
         </article>
 
-        <article className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+        <article className="rounded-[18px] border border-slate-200 bg-white px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)] sm:rounded-[22px] sm:px-4 sm:py-4 sm:shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             Přístupový klíč
           </p>
-          <p className={`mt-2 text-xl font-black ${passkeyCredentials.length > 0 ? "text-emerald-700" : "text-slate-950"}`}>
+          <p className={`mt-2 text-lg font-black sm:text-xl ${passkeyCredentials.length > 0 ? "text-emerald-700" : "text-slate-950"}`}>
             {passkeySummary}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
@@ -227,11 +227,11 @@ export function AccountSecurityPanel({
         </article>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(430px,1.12fr)_minmax(320px,0.88fr)] xl:items-start">
+      <div className="grid gap-3 sm:gap-4 xl:grid-cols-[minmax(430px,1.12fr)_minmax(320px,0.88fr)] xl:items-start">
         <div className="xl:order-2">
-          <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
+          <div className="rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[24px] sm:p-4 sm:shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
             <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 sm:h-11 sm:w-11 sm:rounded-2xl">
                 <AtSign size={20} strokeWidth={2} aria-hidden="true" />
               </span>
               <div className="min-w-0">
@@ -260,7 +260,7 @@ export function AccountSecurityPanel({
                 <button
                   type="button"
                   onClick={onShowPasswordForm}
-                  className="inline-flex min-h-[48px] w-full items-center justify-center gap-1.5 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)] transition hover:bg-black"
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,23,42,0.16)] transition hover:bg-black sm:min-h-[48px] sm:rounded-2xl sm:py-3 sm:shadow-[0_12px_24px_rgba(15,23,42,0.18)]"
                 >
                   <KeyRound size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                   Změnit heslo
@@ -268,7 +268,7 @@ export function AccountSecurityPanel({
               )}
 
               {showPasswordForm && (
-                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl">
                   <input
                     type="password"
                     autoComplete="current-password"
@@ -298,7 +298,7 @@ export function AccountSecurityPanel({
                       type="button"
                       onClick={() => void onChangePassword()}
                       disabled={changingPassword}
-                      className="inline-flex items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex w-full items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:rounded-2xl"
                     >
                       {changingPassword ? "Měním heslo…" : "Potvrdit změnu"}
                     </button>
@@ -356,7 +356,7 @@ export function AccountSecurityPanel({
                 </span>
               </div>
 
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl">
                 {passkeySupported ? (
                   <>
                     <input
@@ -371,7 +371,7 @@ export function AccountSecurityPanel({
                       type="button"
                       onClick={() => void onCreatePasskey()}
                       disabled={passkeyBusy}
-                      className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
                     >
                       <Fingerprint size={16} strokeWidth={2} aria-hidden="true" />
                       {passkeyBusy ? "Otevírám ověření…" : "Zapnout přístupový klíč"}
@@ -398,7 +398,7 @@ export function AccountSecurityPanel({
                   {passkeyCredentials.map((credential) => (
                     <div
                       key={credential.credentialId}
-                      className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:rounded-2xl"
                     >
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold text-slate-900">
@@ -433,11 +433,11 @@ export function AccountSecurityPanel({
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)] xl:order-1">
-          <div className="mfa-security-hero bg-[linear-gradient(135deg,#0f172a_0%,#164e63_58%,#047857_100%)] px-4 py-4 text-white sm:px-5 sm:py-5">
+        <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[24px] sm:shadow-[0_18px_36px_rgba(15,23,42,0.08)] xl:order-1">
+          <div className="mfa-security-hero bg-[linear-gradient(135deg,#0f172a_0%,#164e63_58%,#047857_100%)] px-3.5 py-4 text-white sm:px-5 sm:py-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.22)]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.22)] sm:h-11 sm:w-11 sm:rounded-2xl">
                   <ShieldCheck size={22} strokeWidth={2} aria-hidden="true" />
                 </span>
                 <div>
@@ -518,7 +518,7 @@ export function AccountSecurityPanel({
             </div>
           </div>
 
-          <div className="space-y-3 px-4 py-4 sm:px-5 sm:py-5">
+          <div className="space-y-3 px-3.5 py-4 sm:px-5 sm:py-5">
             {!mfaEnabled && !mfaEnrollmentSecretKey && (
               <>
                 <input
@@ -533,7 +533,7 @@ export function AccountSecurityPanel({
                   type="button"
                   onClick={() => void onStartMfaEnrollment()}
                   disabled={mfaBusy}
-                  className="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-slate-950 bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-950 bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:min-h-[48px] sm:rounded-2xl sm:shadow-[0_12px_24px_rgba(15,23,42,0.22)]"
                 >
                   {mfaBusy ? "Spouštím 2FA…" : "Zapnout 2FA"}
                 </button>
@@ -541,7 +541,7 @@ export function AccountSecurityPanel({
             )}
 
             {mfaEnrollmentSecretKey && (
-              <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
+              <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 sm:rounded-2xl">
                 <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
                   <QrCodeIcon
                     size={16}
@@ -605,7 +605,7 @@ export function AccountSecurityPanel({
                     type="button"
                     onClick={() => void onConfirmMfaEnrollment()}
                     disabled={mfaBusy}
-                    className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:rounded-2xl"
                   >
                     {mfaBusy ? "Potvrzuji…" : "Potvrdit a zapnout"}
                   </button>
@@ -621,18 +621,18 @@ export function AccountSecurityPanel({
             )}
 
             {mfaEnabled && !mfaEnrollmentSecretKey && (
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 sm:rounded-2xl">
                 {!mfaDisableConfirmOpen ? (
                   <button
                     type="button"
                     onClick={onOpenDisableMfa}
                     disabled={mfaBusy}
-                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
                   >
                     Vypnout 2FA
                   </button>
                 ) : (
-                  <div className="space-y-3 rounded-2xl border border-rose-200 bg-white px-3 py-3">
+                  <div className="space-y-3 rounded-xl border border-rose-200 bg-white px-3 py-3 sm:rounded-2xl">
                     <p className="text-[11px] text-slate-500">
                       {mfaTotpLabel
                         ? `Aktivní faktor: ${mfaTotpLabel}`
@@ -665,7 +665,7 @@ export function AccountSecurityPanel({
                         type="button"
                         onClick={() => void onDisableMfa()}
                         disabled={mfaBusy}
-                        className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
                       >
                         {mfaBusy ? "Vypínám 2FA…" : "Potvrdit vypnutí"}
                       </button>
@@ -692,11 +692,11 @@ export function AccountSecurityPanel({
         </div>
       </div>
       {passkeyHelpOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6">
-          <div className="w-full max-w-lg overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-3 py-4">
+          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto rounded-[22px] border border-slate-200 bg-white shadow-[0_24px_64px_rgba(15,23,42,0.32)] sm:rounded-[28px] sm:shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:gap-4 sm:px-5">
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+                <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 sm:h-10 sm:w-10 sm:rounded-2xl">
                   <Fingerprint size={18} strokeWidth={2.2} aria-hidden="true" />
                 </span>
                 <div>
@@ -717,7 +717,7 @@ export function AccountSecurityPanel({
                 <X size={16} strokeWidth={2} aria-hidden="true" />
               </button>
             </div>
-            <div className="space-y-3 px-5 py-5 text-sm leading-relaxed text-slate-600">
+            <div className="space-y-3 px-4 py-4 text-sm leading-relaxed text-slate-600 sm:px-5 sm:py-5">
               <p>
                 Přístupový klíč je bezpečné přihlášení uložené v konkrétním
                 zařízení nebo ve správci hesel. Při přihlášení se ověříš přes

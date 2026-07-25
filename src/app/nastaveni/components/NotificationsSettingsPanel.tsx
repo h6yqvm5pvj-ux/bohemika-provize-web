@@ -49,10 +49,10 @@ export function NotificationsSettingsPanel({
   onToggleIntranetSection,
 }: NotificationsSettingsPanelProps) {
   return (
-    <section className={`h-full space-y-5 lg:col-span-2 ${className}`}>
+    <section className={`h-full space-y-4 sm:space-y-5 lg:col-span-2 ${className}`}>
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#06b6d4_0%,#3b82f6_45%,#6366f1_100%)]" />
 
-      <div className="relative z-10 space-y-5">
+      <div className="relative z-10 space-y-4 sm:space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
@@ -79,9 +79,9 @@ export function NotificationsSettingsPanel({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)]">
-          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white/95 shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
-            <div className="flex flex-col gap-2 border-b border-slate-200/80 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)]">
+          <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white/95 shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[28px] sm:shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
+            <div className="flex flex-col gap-2 border-b border-slate-200/80 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-4 sm:py-4">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Push
@@ -103,7 +103,7 @@ export function NotificationsSettingsPanel({
             </div>
 
             <div className="divide-y divide-slate-200/80">
-              <div className="grid gap-4 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-4 sm:py-4">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">
                     Push pro toto zařízení
@@ -138,7 +138,7 @@ export function NotificationsSettingsPanel({
                 )}
               </div>
 
-              <div className="px-4 py-4">
+              <div className="px-3 py-3 sm:px-4 sm:py-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-slate-900">
@@ -196,7 +196,7 @@ export function NotificationsSettingsPanel({
                 </div>
               </div>
 
-              <div className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-4 sm:py-4">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Testovací push</div>
                   <p className="mt-1 text-xs text-slate-500">
@@ -217,8 +217,8 @@ export function NotificationsSettingsPanel({
             </div>
           </div>
 
-          <aside className="overflow-hidden rounded-[28px] border border-slate-200 bg-white/95 shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
-            <div className="border-b border-slate-200/80 px-4 py-4">
+          <aside className="overflow-hidden rounded-[20px] border border-slate-200 bg-white/95 shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[28px] sm:shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
+            <div className="border-b border-slate-200/80 px-3 py-3 sm:px-4 sm:py-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                 Intranet
               </div>
@@ -231,7 +231,7 @@ export function NotificationsSettingsPanel({
             </div>
 
             <div className="divide-y divide-slate-200/80">
-              <div className="px-4 py-4">
+              <div className="px-3 py-3 sm:px-4 sm:py-4">
                 <div className="inline-flex w-full rounded-xl border border-slate-200 bg-slate-100/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                   <button
                     type="button"
@@ -259,7 +259,7 @@ export function NotificationsSettingsPanel({
               </div>
 
               {settings.intranet.mode === "selected" ? (
-                <div className="px-4 py-2">
+                <div className="px-3 py-2 sm:px-4">
                   {INTRANET_SECTIONS.map((section) => {
                     const active = settings.intranet.sections.includes(section.key);
                     const Icon = INTRANET_SECTION_ICON_BY_KEY[section.key];
@@ -306,7 +306,7 @@ export function NotificationsSettingsPanel({
                   ) : null}
                 </div>
               ) : (
-                <div className="px-4 py-4 text-sm leading-relaxed text-slate-600">
+                <div className="px-3 py-3 text-sm leading-relaxed text-slate-600 sm:px-4 sm:py-4">
                   Push notifikace budou chodit ze všech intranetových sekcí.
                 </div>
               )}

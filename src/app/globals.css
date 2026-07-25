@@ -1393,5 +1393,80 @@ body {
     .tools-content [class*="shadow-[0_36px"] {
       box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16) !important;
     }
+
+    .settings-page {
+      overflow-x: clip;
+    }
+
+    .settings-page > * {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .settings-page h1 {
+      max-width: 100%;
+      font-size: clamp(2rem, 11vw, 3rem) !important;
+      line-height: 1.02 !important;
+      letter-spacing: 0 !important;
+      overflow-wrap: anywhere;
+    }
+
+    .settings-page h2 {
+      max-width: 100%;
+      font-size: clamp(1.05rem, 5.7vw, 1.55rem) !important;
+      line-height: 1.12 !important;
+      letter-spacing: 0 !important;
+      overflow-wrap: anywhere;
+    }
+
+    .settings-page h3 {
+      max-width: 100%;
+      font-size: clamp(1rem, 5vw, 1.35rem) !important;
+      line-height: 1.15 !important;
+      overflow-wrap: anywhere;
+    }
+
+    .settings-page input,
+    .settings-page select,
+    .settings-page textarea {
+      font-size: 16px !important;
+    }
+
+    .settings-page :where(section, article, header, aside, form, details) {
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    .settings-tabs {
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .settings-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .settings-page [class*="min-h-[460px]"] {
+      min-height: 0 !important;
+    }
+
+    .settings-page [class*="min-h-[244px]"] {
+      min-height: 190px !important;
+    }
+
+    .settings-page [class*="min-h-[198px]"] {
+      min-height: 160px !important;
+    }
+
+    .settings-page [class*="min-h-[160px]"] {
+      min-height: 130px !important;
+    }
+
+    .settings-page [class*="shadow-[0_26px"],
+    .settings-page [class*="shadow-[0_28px"],
+    .settings-page [class*="shadow-[0_30px"],
+    .settings-page [class*="shadow-[0_32px"] {
+      box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14) !important;
+    }
   }
 }

@@ -29,15 +29,15 @@ export function SubscriptionSettingsPanel({
   payments,
 }: SubscriptionSettingsPanelProps) {
   return (
-    <section className={`space-y-4 ${className}`}>
+    <section className={`space-y-3 sm:space-y-4 ${className}`}>
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
       <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
         <Landmark size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
         <span>Předplatné</span>
       </h2>
 
-      <div className="space-y-4">
-        <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {loading ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               Načítám údaje o předplatném…
@@ -48,8 +48,8 @@ export function SubscriptionSettingsPanel({
             </div>
           ) : snapshot ? (
             <>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <article className="relative isolate min-h-[102px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-4 py-2.5 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
+              <div className="grid grid-cols-1 gap-2.5 sm:gap-3 md:grid-cols-3">
+                <article className="relative isolate min-h-[92px] overflow-hidden rounded-[20px] border border-[#6b34a0] bg-[#140b23] px-3.5 py-2.5 shadow-[0_16px_32px_rgba(25,8,42,0.38)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_38px_rgba(25,8,42,0.46)] sm:min-h-[102px] sm:rounded-[28px] sm:px-4 sm:shadow-[0_22px_40px_rgba(25,8,42,0.48)] sm:hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
@@ -84,7 +84,7 @@ export function SubscriptionSettingsPanel({
                   </div>
                 </article>
 
-                <article className="relative isolate min-h-[102px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-4 py-2.5 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
+                <article className="relative isolate min-h-[92px] overflow-hidden rounded-[20px] border border-[#6b34a0] bg-[#140b23] px-3.5 py-2.5 shadow-[0_16px_32px_rgba(25,8,42,0.38)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_38px_rgba(25,8,42,0.46)] sm:min-h-[102px] sm:rounded-[28px] sm:px-4 sm:shadow-[0_22px_40px_rgba(25,8,42,0.48)] sm:hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
@@ -99,13 +99,13 @@ export function SubscriptionSettingsPanel({
                     <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#cfb2ea]">
                       Tarif
                     </div>
-                    <div className="mt-1.5 text-[27px] font-black leading-[0.95] tracking-[-0.02em] text-[#fbf7ff] [text-shadow:0_3px_18px_rgba(191,127,255,0.24)] xl:text-[24px]">
+                    <div className="mt-1.5 text-[22px] font-black leading-[0.95] tracking-[-0.02em] text-[#fbf7ff] [text-shadow:0_3px_18px_rgba(191,127,255,0.24)] sm:text-[27px] xl:text-[24px]">
                       {snapshot.plan ? SUBSCRIPTION_PLAN_LABELS[snapshot.plan] : "—"}
                     </div>
                   </div>
                 </article>
 
-                <article className="relative isolate min-h-[102px] overflow-hidden rounded-[28px] border border-[#6b34a0] bg-[#140b23] px-4 py-2.5 shadow-[0_22px_40px_rgba(25,8,42,0.48)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
+                <article className="relative isolate min-h-[92px] overflow-hidden rounded-[20px] border border-[#6b34a0] bg-[#140b23] px-3.5 py-2.5 shadow-[0_16px_32px_rgba(25,8,42,0.38)] ring-1 ring-[#8a4bc6]/35 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_38px_rgba(25,8,42,0.46)] sm:min-h-[102px] sm:rounded-[28px] sm:px-4 sm:shadow-[0_22px_40px_rgba(25,8,42,0.48)] sm:hover:shadow-[0_26px_46px_rgba(25,8,42,0.56)]">
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(183,96,255,0.28)_0%,rgba(183,96,255,0)_38%),radial-gradient(circle_at_92%_88%,rgba(128,88,245,0.2)_0%,rgba(128,88,245,0)_42%)]" />
@@ -152,7 +152,7 @@ export function SubscriptionSettingsPanel({
                 </div>
               ) : null}
 
-              <div className="rounded-2xl border border-white/90 bg-white/90 p-3 shadow-[0_12px_24px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/80">
+              <div className="rounded-[18px] border border-white/90 bg-white/90 p-3 shadow-[0_10px_20px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/80 sm:rounded-2xl sm:shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
                 <h3 className="mb-2 text-sm font-semibold text-slate-900">
                   Historie plateb
                 </h3>
@@ -212,7 +212,7 @@ export function SubscriptionSettingsPanel({
           )}
         </div>
 
-        <aside className="rounded-[28px] border border-[#3a1d56] bg-[#100b17] p-4 text-[#f6edff] shadow-[0_22px_48px_rgba(16,7,28,0.42)]">
+        <aside className="rounded-[20px] border border-[#3a1d56] bg-[#100b17] p-3.5 text-[#f6edff] shadow-[0_16px_36px_rgba(16,7,28,0.34)] sm:rounded-[28px] sm:p-4 sm:shadow-[0_22px_48px_rgba(16,7,28,0.42)]">
           <div className="inline-flex w-fit items-center rounded-full border border-[#6f3d95]/70 bg-[#1e122c] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#caa7eb]">
             Ceník
           </div>
@@ -223,29 +223,29 @@ export function SubscriptionSettingsPanel({
             Přehled aktuálních tarifů včetně délky období.
           </p>
 
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 xl:grid-cols-3">
             {SUBSCRIPTION_PRICE_CARDS.map((priceCard) => (
               <article
                 key={priceCard.id}
-                className="relative isolate min-h-[244px] overflow-hidden rounded-[28px] border border-[#5a2878] bg-[#150e1f] px-5 py-5 shadow-[0_26px_48px_rgba(25,8,42,0.55)] ring-1 ring-[#7a35a7]/35"
+                className="relative isolate min-h-[190px] overflow-hidden rounded-[20px] border border-[#5a2878] bg-[#150e1f] px-4 py-4 shadow-[0_18px_36px_rgba(25,8,42,0.44)] ring-1 ring-[#7a35a7]/35 sm:min-h-[244px] sm:rounded-[28px] sm:px-5 sm:py-5 sm:shadow-[0_26px_48px_rgba(25,8,42,0.55)]"
               >
                 <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
                 <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
                 <div className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
 
-                <div className="relative z-[1] flex min-h-[198px] flex-col">
-                  <div className="inline-flex w-fit items-center rounded-[7px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[16px] font-black uppercase leading-none tracking-[0.08em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.4)]">
+                <div className="relative z-[1] flex min-h-[160px] flex-col sm:min-h-[198px]">
+                  <div className="inline-flex w-fit items-center rounded-[7px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-3 py-1.5 text-[14px] font-black uppercase leading-none tracking-[0.08em] text-white shadow-[0_10px_20px_rgba(159,72,237,0.4)] sm:text-[16px]">
                     PRO
                   </div>
 
-                  <h4 className="mt-4 text-[24px] font-black leading-tight text-[#fbf7ff]">
+                  <h4 className="mt-3 text-[20px] font-black leading-tight text-[#fbf7ff] sm:mt-4 sm:text-[24px]">
                     {priceCard.title}
                   </h4>
-                  <p className="mt-3 text-[15px] font-medium leading-[1.42] text-[#c9a7e7]">
+                  <p className="mt-2 text-[14px] font-medium leading-[1.42] text-[#c9a7e7] sm:mt-3 sm:text-[15px]">
                     {priceCard.description}
                   </p>
 
-                  <div className="mt-5 flex min-h-[56px] flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-[16px] bg-[linear-gradient(135deg,#ad55f3_0%,#a84ff0_100%)] px-4 text-center text-2xl font-black text-white shadow-[0_18px_34px_rgba(168,79,240,0.34)]">
+                  <div className="mt-4 flex min-h-12 flex-wrap items-center justify-center gap-x-2.5 gap-y-1 rounded-[14px] bg-[linear-gradient(135deg,#ad55f3_0%,#a84ff0_100%)] px-3 text-center text-xl font-black text-white shadow-[0_14px_28px_rgba(168,79,240,0.28)] sm:mt-5 sm:min-h-[56px] sm:rounded-[16px] sm:px-4 sm:text-2xl sm:shadow-[0_18px_34px_rgba(168,79,240,0.34)]">
                     <span>{priceCard.priceLabel}</span>
                     <span className="text-base font-bold text-white/85">
                       {priceCard.cadenceLabel}
@@ -253,8 +253,8 @@ export function SubscriptionSettingsPanel({
                     <ArrowRight size={24} strokeWidth={2.4} aria-hidden="true" />
                   </div>
 
-                  <div className="mt-auto pt-5">
-                    <div className="flex min-h-[56px] flex-wrap items-center justify-center gap-2 rounded-[15px] border-2 border-[#a96bdf] bg-[#27183a]/92 px-3.5 py-2.5 text-center text-[14px] font-medium text-[#bfa3da] shadow-[0_0_18px_rgba(169,107,223,0.18)]">
+                  <div className="mt-auto pt-4 sm:pt-5">
+                    <div className="flex min-h-11 flex-wrap items-center justify-center gap-2 rounded-[14px] border-2 border-[#a96bdf] bg-[#27183a]/92 px-3 py-2 text-center text-[13px] font-medium text-[#bfa3da] shadow-[0_0_18px_rgba(169,107,223,0.18)] sm:min-h-[56px] sm:rounded-[15px] sm:px-3.5 sm:py-2.5 sm:text-[14px]">
                       <span>{priceCard.footerLabel}</span>
                       <span className="rounded-[7px] bg-[#624174] px-2.5 py-1 text-base font-black leading-none text-[#fbf7ff]">
                         {priceCard.footerEmphasis}

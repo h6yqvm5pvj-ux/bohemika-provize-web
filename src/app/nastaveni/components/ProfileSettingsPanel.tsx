@@ -82,32 +82,32 @@ export function ProfileSettingsPanel({
   onSaveProfile,
 }: ProfileSettingsPanelProps) {
   return (
-    <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.10)] lg:col-span-2">
-      <div className="grid min-h-[460px] lg:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="relative overflow-hidden bg-[#07111f] p-5 text-white sm:p-6">
+    <section className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:shadow-[0_26px_70px_rgba(15,23,42,0.10)] lg:col-span-2">
+      <div className="grid min-h-0 lg:min-h-[460px] lg:grid-cols-[300px_minmax(0,1fr)]">
+        <aside className="relative overflow-hidden bg-[#07111f] p-4 text-white sm:p-6">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#38bdf8_0%,#34d399_52%,#a3e635_100%)]" />
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(14,165,233,0.16)_0%,rgba(7,17,31,0)_38%,rgba(52,211,153,0.13)_100%)]" />
 
-          <div className="relative z-10 flex h-full flex-col justify-between gap-8">
-            <div className="space-y-5">
+          <div className="relative z-10 flex h-full flex-col justify-between gap-5 sm:gap-8">
+            <div className="space-y-4 sm:space-y-5">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-emerald-100">
                 <UserRound size={14} strokeWidth={2} aria-hidden="true" />
                 Profil poradce
               </div>
 
-              <div className="space-y-4">
-                <div className="flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-[20px] border border-white/20 bg-white text-2xl font-bold text-slate-950 shadow-[0_18px_36px_rgba(0,0,0,0.28)]">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white text-lg font-bold text-slate-950 shadow-[0_14px_28px_rgba(0,0,0,0.24)] sm:h-[68px] sm:w-[68px] sm:rounded-[20px] sm:text-2xl sm:shadow-[0_18px_36px_rgba(0,0,0,0.28)]">
                   {profileInitial}
                 </div>
-                <h2 className="break-words text-[1.85rem] font-bold leading-tight text-white">
+                <h2 className="break-words text-[1.35rem] font-bold leading-tight text-white sm:text-[1.85rem]">
                   {profileDisplayName}
                 </h2>
               </div>
             </div>
 
-            <div className="rounded-[22px] border border-white/12 bg-white/[0.07] p-4">
+            <div className="rounded-[18px] border border-white/12 bg-white/[0.07] p-3 sm:rounded-[22px] sm:p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-950">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-950 sm:h-10 sm:w-10 sm:rounded-2xl">
                   <ShieldCheck size={17} strokeWidth={2} aria-hidden="true" />
                 </div>
                 <div>
@@ -130,7 +130,7 @@ export function ProfileSettingsPanel({
             void onSaveProfile();
           }}
         >
-          <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
+          <div className="border-b border-slate-200 px-4 py-4 sm:px-7 sm:py-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
@@ -142,7 +142,7 @@ export function ProfileSettingsPanel({
                   />
                   Údaje účtu
                 </div>
-                <h3 className="mt-3 text-2xl font-bold leading-tight text-slate-950">
+                <h3 className="mt-3 text-xl font-bold leading-tight text-slate-950 sm:text-2xl">
                   Kontaktní profil
                 </h3>
               </div>
@@ -155,19 +155,19 @@ export function ProfileSettingsPanel({
             </div>
           </div>
 
-          <div className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
+          <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-7 sm:py-5">
             <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+              <div className="rounded-[16px] border border-emerald-200 bg-emerald-50 px-3 py-3 sm:rounded-[20px] sm:px-4 sm:py-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
                       Úplnost profilu
                     </p>
-                    <p className="mt-1 text-2xl font-black text-emerald-950">
+                    <p className="mt-1 text-xl font-black text-emerald-950 sm:text-2xl">
                       {completionPercent} %
                     </p>
                   </div>
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-[0_10px_20px_rgba(16,185,129,0.16)]">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-[0_10px_20px_rgba(16,185,129,0.16)] sm:h-11 sm:w-11 sm:rounded-2xl">
                     <CheckCircle2 size={21} strokeWidth={2.2} aria-hidden="true" />
                   </span>
                 </div>
@@ -179,7 +179,7 @@ export function ProfileSettingsPanel({
                 </div>
               </div>
 
-              <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+              <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3 sm:rounded-[20px] sm:px-4 sm:py-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Pozice a režim
                 </p>
@@ -189,7 +189,7 @@ export function ProfileSettingsPanel({
                 </p>
               </div>
 
-              <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+              <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3 sm:rounded-[20px] sm:px-4 sm:py-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Přímý manažer
                 </p>
@@ -201,8 +201,8 @@ export function ProfileSettingsPanel({
             </div>
           </div>
 
-          <div className="flex-1 space-y-6 px-5 py-5 sm:px-7 sm:py-6">
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="flex-1 space-y-4 px-4 py-4 sm:space-y-6 sm:px-7 sm:py-6">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2">
               <div className="xl:col-span-2">
                 <label className="mb-2 block text-xs font-semibold text-slate-600">
                   Jméno a příjmení
@@ -216,7 +216,7 @@ export function ProfileSettingsPanel({
                   />
                   <input
                     type="text"
-                    className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
+                    className={`${fieldClass} min-h-12 rounded-[16px] border-slate-200 pl-11 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:min-h-[54px] sm:rounded-[18px]`}
                     value={fullName}
                     onChange={(event) =>
                       onFullNameChange(event.target.value.slice(0, fullNameMaxLength))
@@ -236,7 +236,7 @@ export function ProfileSettingsPanel({
                 <label className="mb-2 block text-xs font-semibold text-slate-600">
                   E-mail
                 </label>
-                <div className="flex min-h-[54px] items-center gap-3 rounded-[18px] border border-slate-200 bg-slate-100/80 px-4 py-3 text-sm font-semibold text-slate-700">
+                <div className="flex min-h-12 items-center gap-3 rounded-[16px] border border-slate-200 bg-slate-100/80 px-3 py-2.5 text-sm font-semibold text-slate-700 sm:min-h-[54px] sm:rounded-[18px] sm:px-4 sm:py-3">
                   <Mail size={17} strokeWidth={2} className="shrink-0 text-slate-500" aria-hidden="true" />
                   <span className="min-w-0 break-all">{userEmail}</span>
                 </div>
@@ -256,7 +256,7 @@ export function ProfileSettingsPanel({
                   <input
                     type="text"
                     inputMode="text"
-                    className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
+                    className={`${fieldClass} min-h-12 rounded-[16px] border-slate-200 pl-11 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:min-h-[54px] sm:rounded-[18px]`}
                     value={agencyNumber}
                     onChange={(event) => onAgencyNumberChange(event.target.value)}
                     placeholder="Doplň agenturní číslo"
@@ -278,7 +278,7 @@ export function ProfileSettingsPanel({
                   <input
                     type="text"
                     inputMode="numeric"
-                    className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 pr-4 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
+                    className={`${fieldClass} min-h-12 rounded-[16px] border-slate-200 pl-11 pr-4 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:min-h-[54px] sm:rounded-[18px]`}
                     value={ico}
                     onChange={(event) =>
                       onIcoChange(event.target.value.replace(/\D+/g, "").slice(0, icoMaxLength))
@@ -304,7 +304,7 @@ export function ProfileSettingsPanel({
                   <input
                     type="tel"
                     inputMode="tel"
-                    className={`${fieldClass} min-h-[54px] rounded-[18px] border-slate-200 pl-11 pr-4 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10`}
+                    className={`${fieldClass} min-h-12 rounded-[16px] border-slate-200 pl-11 pr-4 text-base shadow-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:min-h-[54px] sm:rounded-[18px]`}
                     value={phoneNumber}
                     onChange={(event) => onPhoneNumberChange(event.target.value)}
                     placeholder="777 123 456"
@@ -314,7 +314,7 @@ export function ProfileSettingsPanel({
                 </div>
               </div>
 
-              <div className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+              <div className="rounded-[16px] border border-slate-200 bg-white p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)] sm:rounded-[18px] sm:p-4 sm:shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
                     <Wrench size={17} strokeWidth={2} aria-hidden="true" />
@@ -344,7 +344,7 @@ export function ProfileSettingsPanel({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-7">
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-7 sm:py-4">
             <button
               type="submit"
               disabled={profileSaving}

@@ -2709,11 +2709,11 @@ export default function SettingsPage() {
     : "";
   const enabledNotificationTypes = Object.values(notificationSettings.types).filter(Boolean).length;
   const panelClass =
-    "relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-6 py-5 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:px-8 sm:py-6";
+    "relative overflow-hidden rounded-[20px] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-3.5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:rounded-2xl sm:px-8 sm:py-6 sm:shadow-[0_18px_46px_rgba(15,23,42,0.08)]";
   const compactPanelClass =
-    "relative overflow-hidden rounded-2xl border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-4 py-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:px-6 sm:py-5";
+    "relative overflow-hidden rounded-[20px] border border-slate-300 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-3.5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:rounded-2xl sm:px-6 sm:py-5 sm:shadow-[0_18px_46px_rgba(15,23,42,0.08)]";
   const fieldClass =
-    "w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10";
+    "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 shadow-[0_6px_14px_rgba(15,23,42,0.04)] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 sm:rounded-2xl sm:text-sm sm:shadow-[0_8px_18px_rgba(15,23,42,0.04)]";
   const toggleOffClass =
     "border-slate-300 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] hover:bg-slate-50";
   const notificationToggleOnClass =
@@ -2875,7 +2875,7 @@ export default function SettingsPage() {
     document.body.removeChild(link);
   };
   const onlineCardStudioOfficeSection = (
-    <section className="relative overflow-hidden rounded-[30px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-6 shadow-[0_24px_70px_rgba(6,4,23,0.48)] sm:p-8">
+    <section className="relative overflow-hidden rounded-[20px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-4 shadow-[0_16px_42px_rgba(6,4,23,0.38)] sm:rounded-[30px] sm:p-8 sm:shadow-[0_24px_70px_rgba(6,4,23,0.48)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.2),transparent_34%)]" />
       <div className="relative z-10 space-y-4">
         <div className="text-center">
@@ -2946,7 +2946,7 @@ export default function SettingsPage() {
                   height={560}
                   sizes="(min-width: 640px) 640px, 100vw"
                   unoptimized
-                  className="h-[210px] w-full object-cover sm:h-[280px]"
+                  className="h-[170px] w-full object-cover sm:h-[280px]"
                 />
                 {onlineCardOfficePhotoCount > 1 ? (
                   <>
@@ -3016,9 +3016,9 @@ export default function SettingsPage() {
     </section>
   );
   const onlineCardStudioContactSection = (
-    <section className="relative overflow-hidden rounded-[30px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-6 shadow-[0_24px_70px_rgba(6,4,23,0.48)] sm:p-8">
+    <section className="relative overflow-hidden rounded-[20px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-4 shadow-[0_16px_42px_rgba(6,4,23,0.38)] sm:rounded-[30px] sm:p-8 sm:shadow-[0_24px_70px_rgba(6,4,23,0.48)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.2),transparent_34%)]" />
-      <div className="relative z-10 space-y-5">
+      <div className="relative z-10 space-y-4 sm:space-y-5">
         <div className="text-center">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
             <Mail className="h-3.5 w-3.5" />
@@ -3026,7 +3026,7 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 sm:gap-y-6">
           {[
             {
               key: "phone",
@@ -3091,7 +3091,7 @@ export default function SettingsPage() {
                   </span>
                 </div>
 
-                <div className="pl-[42px]">
+                <div className="pl-0 sm:pl-[42px]">
                   <div className="rounded-xl border border-dashed border-violet-300/45 bg-white/[0.03] px-3 py-2 transition-colors hover:border-violet-200/65 focus-within:border-violet-200/80 focus-within:bg-white/[0.05]">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200/78">
                       Kontakt
@@ -3103,7 +3103,7 @@ export default function SettingsPage() {
                       placeholder={item.placeholder}
                       maxLength={item.maxLength}
                       inputMode={item.inputMode}
-                      className="mt-1 w-full bg-transparent text-[18px] font-semibold leading-tight !text-white/92 placeholder:!text-white/40 outline-none sm:text-[22px]"
+                      className="mt-1 w-full bg-transparent text-base font-semibold leading-tight !text-white/92 placeholder:!text-white/40 outline-none sm:text-[22px]"
                     />
                   </div>
                 </div>
@@ -3115,7 +3115,7 @@ export default function SettingsPage() {
     </section>
   );
   const onlineCardStudioPublishPanel = (
-    <aside className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-[radial-gradient(circle_at_8%_0%,rgba(196,181,253,0.24),transparent_30%),linear-gradient(135deg,#140b2f_0%,#24104f_46%,#5b21b6_100%)] p-4 text-white shadow-[0_26px_70px_rgba(60,18,122,0.34)] sm:p-5">
+    <aside className="relative overflow-hidden rounded-[20px] border border-violet-300/25 bg-[radial-gradient(circle_at_8%_0%,rgba(196,181,253,0.24),transparent_30%),linear-gradient(135deg,#140b2f_0%,#24104f_46%,#5b21b6_100%)] p-3.5 text-white shadow-[0_16px_42px_rgba(60,18,122,0.26)] sm:rounded-[30px] sm:p-5 sm:shadow-[0_26px_70px_rgba(60,18,122,0.34)]">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0%,transparent_45%,rgba(255,255,255,0.1)_100%)]" />
       <div className="relative z-10 space-y-4">
         <div className="min-w-0 space-y-4">
@@ -3125,7 +3125,7 @@ export default function SettingsPage() {
                 <Globe className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
                 Veřejná online vizitka
               </p>
-              <h2 className="mt-3 text-2xl font-extrabold tracking-tight !text-white sm:text-3xl">
+              <h2 className="mt-3 text-xl font-extrabold tracking-tight !text-white sm:text-3xl">
                 Publikace a sdílení vizitky
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 !text-violet-100/80">
@@ -3140,7 +3140,7 @@ export default function SettingsPage() {
                   enabled: !onlineCardDraft.enabled,
                 })
               }
-              className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                 onlineCardDraft.enabled
                   ? "border-emerald-200/45 bg-emerald-300/18 !text-emerald-50 shadow-[0_14px_30px_rgba(16,185,129,0.18)]"
                   : "border-white/18 bg-white/[0.08] !text-violet-100 hover:bg-white/[0.12]"
@@ -3158,7 +3158,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-            <div className="min-w-0 rounded-2xl border border-white/14 bg-white/[0.08] px-4 py-3">
+            <div className="min-w-0 rounded-[18px] border border-white/14 bg-white/[0.08] px-3 py-3 sm:rounded-2xl sm:px-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] !text-violet-100/72">
                 Veřejná URL
               </p>
@@ -3207,7 +3207,7 @@ export default function SettingsPage() {
                   href={onlineCardPublicUrl}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-white/24 bg-white px-4 py-2 text-sm font-semibold text-violet-950 transition hover:bg-violet-50"
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-white/24 bg-white px-4 py-2 text-sm font-semibold text-violet-950 transition hover:bg-violet-50 sm:flex-none"
                 >
                   Otevřít vizitku
                   <ExternalLink size={14} strokeWidth={2.2} aria-hidden="true" />
@@ -3216,7 +3216,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={handleOpenOnlineCardQr}
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.1] px-4 py-2 text-sm font-semibold !text-white transition hover:bg-white/[0.16]"
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-white/20 bg-white/[0.1] px-4 py-2 text-sm font-semibold !text-white transition hover:bg-white/[0.16] sm:flex-none"
               >
                 QR kód
                 <QrCodeIcon size={14} strokeWidth={2.2} aria-hidden="true" />
@@ -3225,7 +3225,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={() => void handleSaveOnlineCard()}
                 disabled={onlineCardSaving || !onlineCardPublishReady}
-                className="inline-flex items-center justify-center rounded-full border border-white/25 bg-white px-4 py-2 text-sm font-bold text-violet-950 shadow-[0_16px_36px_rgba(255,255,255,0.13)] transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex flex-1 items-center justify-center rounded-full border border-white/25 bg-white px-4 py-2 text-sm font-bold text-violet-950 shadow-[0_16px_36px_rgba(255,255,255,0.13)] transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
               >
                 {onlineCardSaving ? "Ukládám..." : "Uložit vizitku"}
               </button>
@@ -3252,10 +3252,10 @@ export default function SettingsPage() {
 
   return (
     <AppLayout active="settings">
-      <div className="w-full bg-white px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
-        <div className="mx-auto w-full max-w-6xl space-y-6 px-1 py-1 font-mono text-slate-900 sm:px-2 sm:py-2">
+      <div className="settings-page w-full bg-white px-2 py-3 sm:px-4 sm:py-8 lg:px-8">
+        <div className="mx-auto w-full max-w-6xl space-y-4 px-0 py-0 font-mono text-slate-900 sm:space-y-6 sm:px-2 sm:py-2">
         {timelineSaveFlashVisible && (
-          <div aria-live="polite" className="fixed bottom-6 right-6 z-50 pointer-events-none">
+          <div aria-live="polite" className="pointer-events-none fixed inset-x-3 bottom-4 z-50 sm:inset-x-auto sm:bottom-6 sm:right-6">
             <div className="relative flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white">
                 <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
@@ -3273,8 +3273,8 @@ export default function SettingsPage() {
           </div>
         )}
         {/* HEADER */}
-        <header className="mb-2">
-          <SplitTitle text="Nastavení" className="font-mono !text-slate-900" />
+        <header className="mb-1 sm:mb-2">
+          <SplitTitle text="Nastavení" className="font-mono !text-[2.45rem] !text-slate-900 sm:!text-6xl" />
         </header>
 
         {loadingMeta ? (
@@ -3290,7 +3290,7 @@ export default function SettingsPage() {
               </div>
             ) : null}
 
-            <div className="flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-slate-900 bg-slate-950 p-1 shadow-[0_16px_34px_rgba(15,23,42,0.16)]">
+            <div className="settings-tabs -mx-1 flex max-w-full gap-1 overflow-x-auto rounded-[18px] border border-slate-900 bg-slate-950 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.14)] sm:mx-0 sm:w-fit sm:flex-wrap sm:rounded-full sm:shadow-[0_16px_34px_rgba(15,23,42,0.16)]">
               {SETTINGS_TABS.map((tab) => {
                 const active = activeTab === tab.id;
                 const tabDisabled = timelineSetupRequired && tab.id !== "career";
@@ -3303,7 +3303,7 @@ export default function SettingsPage() {
                       setActiveTab(tab.id);
                     }}
                     disabled={tabDisabled}
-                    className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm ${
                       active
                         ? "bg-white text-slate-950"
                         : tabDisabled
@@ -3317,7 +3317,7 @@ export default function SettingsPage() {
               })}
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+            <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-stretch">
               {activeTab === "career" && !timelineSetupRequired && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
                 <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
