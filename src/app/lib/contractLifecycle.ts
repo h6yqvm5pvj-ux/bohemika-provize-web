@@ -1,4 +1,4 @@
-import { toDate } from "@/app/lib/formatters";
+import { toDate } from "./formatters";
 import { type Product } from "@/app/types/domain";
 
 export type ContractLifecycleStatus = "active" | "storno" | "dozita";
