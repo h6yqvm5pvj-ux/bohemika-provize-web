@@ -330,6 +330,17 @@ const DETECTION_RULES: DetectionRule[] = [
   },
   {
     product: "neon",
+    page: 1,
+    allOf: [
+      normalizeText("RIZIKOVÉ POJIŠTĚNÍ NEON RISK"),
+      normalizeText("Česká podnikatelská pojišťovna"),
+    ],
+    confidence: "high",
+    reason:
+      "Na 1. stránce jsou texty „RIZIKOVÉ POJIŠTĚNÍ NEON RISK“ a „Česká podnikatelská pojišťovna“.",
+  },
+  {
+    product: "neon",
     mustContain: [
       { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },
       { page: "any", text: normalizeText("NEON"), wholeWord: true },

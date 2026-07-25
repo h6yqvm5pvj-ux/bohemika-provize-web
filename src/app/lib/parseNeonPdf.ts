@@ -214,6 +214,8 @@ const pickMostFrequentContractNumber = (
   return sorted[0]?.[0] ?? null;
 };
 
+const DEATH_ACCIDENT_LABEL_REGEX = /(?:zakladni\s+pojisteni\s+pro\s+pripad\s+)?smrt(?:i)?\s+urazem/i;
+
 export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   const buffer = await file.arrayBuffer();
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -699,6 +701,47 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
     return groupedEntries.slice(0, 2);
   };
 
+  const findWaiverCoverage = (): { invalidity: boolean; unemployment: boolean } => {
+    let invalidity = false;
+    let unemployment = false;
+    const tableStartRegex =
+      /sjednana\s+(?:pri\/pojisteni|pripojisteni|pojisteni)/;
+    const tableEndRegex =
+      /^(slevy z celkove|placeni pojistneho|bankovni spojeni|obmyslene osoby|zdravotni dotaznik|dalsi smluvni ujednani|prohlaseni pojistnika|t\.c\.)/;
+    const waiverStartRegex =
+      /^(?:zprosteni\s+od\s+placeni(?:\s+pojistneho)?|pripojisteni\s+zprosteni)/;
+
+    for (let idx = 0; idx < asciiLines.length; idx += 1) {
+      if (!tableStartRegex.test(asciiLines[idx])) continue;
+
+      let end = Math.min(asciiLines.length, idx + 140);
+      for (let nextIdx = idx + 1; nextIdx < end; nextIdx += 1) {
+        if (tableEndRegex.test(asciiLines[nextIdx])) {
+          end = nextIdx;
+          break;
+        }
+      }
+
+      for (let lineIdx = idx + 1; lineIdx < end; lineIdx += 1) {
+        const text = asciiLines
+          .slice(lineIdx, Math.min(end, lineIdx + 5))
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!waiverStartRegex.test(text)) continue;
+
+        if (/invalidn|invalidniho\s+duchodu/.test(text)) {
+          invalidity = true;
+        }
+        if (/ztrat[yu]\s+zamestnani/.test(text)) {
+          unemployment = true;
+        }
+      }
+    }
+
+    return { invalidity, unemployment };
+  };
+
   const addRiskRow = (title: string | null | undefined, variant?: string | null, amount?: number | null) => {
     const t = title?.trim();
     if (!t) return;
@@ -729,6 +772,7 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
     "operace ditete s vrozenou vadou",
     "zavazne nasledky ockovani",
     "cukrovka a jeji komplikace",
+    "zakladni pojisteni pro pripad smrti urazem",
     "smrt urazem",
     "trvale nasledky urazu",
     "denni odskodne za dobu leceni urazu",
@@ -866,6 +910,11 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
     // Denní odškodné za dobu léčení úrazu – denní částka
     if (norm.includes("denni odskodne za dobu leceni urazu") && r.amount != null) {
       riskFields.accidentDailyBenefit = String(r.amount);
+    }
+
+    // NEON Risk má základní pojištění pro případ smrti úrazem.
+    if (DEATH_ACCIDENT_LABEL_REGEX.test(norm) && r.amount != null) {
+      riskFields.deathAccidentAmount = String(r.amount);
     }
 
     // Základní pojištění pro případ smrti s konstantní PČ
@@ -1054,7 +1103,7 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
   if (diabetes != null) riskFields.diabetesAmount = String(diabetes);
 
   // Úrazová část
-  const deathAcc = findAmountAfter(/smrt urazem/i);
+  const deathAcc = findAmountAfter(DEATH_ACCIDENT_LABEL_REGEX);
   if (deathAcc != null) riskFields.deathAccidentAmount = String(deathAcc);
 
   const injuryPermanentEntries = findInjuryPermanentEntries();
@@ -1145,20 +1194,10 @@ export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
     }
   }
 
-  // Zproštění od placení – invalidita
-  let waiverInvalidityFound = false;
-  let waiverUnemploymentFound = false;
-  if (
-    asciiLines.some((l) => /zprosteni.*invalidn/i.test(l)) ||
-    asciiText.includes("zprosteni z duvodu priznani invalidniho duchodu")
-  ) {
-    waiverInvalidityFound = true;
-  }
-  if (asciiLines.some((l) => /zprosteni.*ztrat[yu] zamestnani/i.test(l))) {
-    waiverUnemploymentFound = true;
-  }
-  riskFields.waiverInvalidity = waiverInvalidityFound;
-  riskFields.waiverUnemployment = waiverUnemploymentFound;
+  // Zproštění od placení bereme jen ze sjednaných rizik, ne z právních ujednání.
+  const waiverCoverage = findWaiverCoverage();
+  riskFields.waiverInvalidity = waiverCoverage.invalidity;
+  riskFields.waiverUnemployment = waiverCoverage.unemployment;
 
   // Péče a další připojištění
   const careDependency = findAmountAfter(/zavislost na peci/i);

@@ -44,6 +44,21 @@ describe("detectProductFromPdf", () => {
     });
   });
 
+  it("detects NEON RISK as the NEON product", async () => {
+    pdfState.pages = [
+      [
+        "POJISTNÁ SMLOUVA",
+        "RIZIKOVÉ POJIŠTĚNÍ NEON RISK",
+        "Česká podnikatelská pojišťovna, a.s.",
+      ],
+    ];
+
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({
+      product: "neon",
+      confidence: "high",
+    });
+  });
+
   it("supports last-page requirements for Slavia auto", async () => {
     pdfState.pages = [
       ["Povinné ručení"],

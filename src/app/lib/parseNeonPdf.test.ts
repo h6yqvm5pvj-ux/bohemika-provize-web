@@ -92,4 +92,54 @@ describe("parseNeonPdf", () => {
       frequency: "monthly",
     });
   });
+
+  it("parses NEON Risk basic accident death amount separately from regular death", async () => {
+    pdfState.pages = [
+      [
+        "RIZIKOVÉ POJIŠTĚNÍ NEON RISK",
+        "Česká podnikatelská pojišťovna",
+        "Číslo pojistné smlouvy: 7503378964",
+        "Jméno a příjmení, titul František Rauscher",
+        "Počátek pojištění 26.7.2026",
+        "DATUM UZAVŘENÍ 25.7.2026",
+        "Měsíční pojistné včetně slev a přirážek celkem v Kč 1 083",
+        "ZÁKLADNÍ POJIŠTĚNÍ",
+        "Základní pojištění pro případ smrti úrazem",
+        "standardní plnění / úraz PLUS",
+        "20",
+        "30 000",
+        "3",
+        "Pro stanovení pojistného plnění z připojištění invalidity a zproštění od placení pojistného z důvodu přiznání invalidního důchodu se ujednává:",
+      ],
+    ];
+
+    const parsed = await parseNeonPdf(makePdfFile());
+
+    expect(parsed.riskFields).toMatchObject({
+      version: "neon_risk",
+      deathAccidentAmount: "30000",
+    });
+    expect(parsed.riskFields?.deathAmount).toBeUndefined();
+    expect(parsed.riskFields?.waiverInvalidity).toBe(false);
+  });
+
+  it("parses waiver only when it appears in the insured risks table", async () => {
+    pdfState.pages = [
+      [
+        "RIZIKOVÉ POJIŠTĚNÍ NEON RISK",
+        "Česká podnikatelská pojišťovna",
+        "1. POJIŠTĚNÝ | SJEDNANÁ PŘI/POJIŠTĚNÍ",
+        "ZPROŠTĚNÍ OD PLACENÍ",
+        "Zproštění od placení pojistného z důvodu přiznání invalidního důchodu",
+        "SLEVY Z CELKOVÉ VÝŠE POJISTNÉHO",
+      ],
+    ];
+
+    await expect(parseNeonPdf(makePdfFile())).resolves.toMatchObject({
+      riskFields: {
+        waiverInvalidity: true,
+        waiverUnemployment: false,
+      },
+    });
+  });
 });
