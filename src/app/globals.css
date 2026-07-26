@@ -626,7 +626,7 @@ body {
 .online-card-theme-light .premium-online-card-preview--full [class*="text-violet-"],
 .online-card-theme-light .online-card-flow-surface [class*="text-violet-"],
 .online-card-theme-light .online-card-public-section [class*="text-violet-"] {
-  color: #64748b !important;
+  color: #475569 !important;
 }
 
 .online-card-theme-light .premium-online-card-preview--full h1,
@@ -651,6 +651,56 @@ body {
 
 .online-card-theme-light .online-card-public-section a:not([class*="bg-"]) {
   color: #4c1d95 !important;
+}
+
+.online-card-theme-light .online-card-flow-surface,
+.online-card-theme-light .online-card-public-section {
+  box-shadow: inset 0 1px 0 rgba(124, 58, 237, 0.08);
+}
+
+.online-card-theme-light .online-card-flow-surface p[class*="rounded-full"],
+.online-card-theme-light .online-card-public-section p[class*="rounded-full"] {
+  border-color: rgba(124, 58, 237, 0.18) !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: #5b21b6 !important;
+  box-shadow: 0 12px 34px rgba(124, 58, 237, 0.1);
+}
+
+.online-card-theme-light .online-card-flow-surface p:not([class*="rounded-full"]),
+.online-card-theme-light .online-card-public-section p:not([class*="rounded-full"]) {
+  color: #475569 !important;
+}
+
+.online-card-theme-light .online-card-flow-surface svg[class*="text-fuchsia"] {
+  color: #c026d3 !important;
+}
+
+.online-card-theme-light .online-card-flow-surface svg[class*="text-emerald"] {
+  color: #059669 !important;
+}
+
+.online-card-theme-light .online-card-flow-surface svg[class*="text-sky"] {
+  color: #0284c7 !important;
+}
+
+.online-card-theme-light .online-card-flow-surface svg[class*="text-indigo"] {
+  color: #4f46e5 !important;
+}
+
+.online-card-theme-light .online-card-flow-surface svg[class*="text-rose"] {
+  color: #e11d48 !important;
+}
+
+.online-card-theme-light .online-card-flow-surface svg[class*="text-cyan"] {
+  color: #0891b2 !important;
+}
+
+.online-card-theme-light .online-card-flow-surface svg[class*="text-lime"] {
+  color: #65a30d !important;
+}
+
+.online-card-theme-light .online-card-flow-surface svg[class*="text-amber"] {
+  color: #d97706 !important;
 }
 
 .online-card-public-shell .online-card-scroll-reveal {

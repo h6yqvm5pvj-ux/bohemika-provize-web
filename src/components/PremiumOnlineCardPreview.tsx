@@ -510,7 +510,7 @@ export function PremiumOnlineCardPreview({
               ? `overflow-hidden bg-transparent px-4 py-3 ${
                   lightFullWidth ? "text-slate-950" : "text-white"
                 } sm:px-5 sm:py-4 lg:px-7 lg:py-5`
-              : `overflow-hidden bg-transparent px-4 py-4 ${
+              : `overflow-hidden bg-transparent px-4 py-2 ${
                   lightFullWidth ? "text-slate-950" : "text-white"
                 } sm:px-8 sm:py-6 lg:px-12 lg:py-8`
             : compact
@@ -593,13 +593,13 @@ export function PremiumOnlineCardPreview({
 		        ) : null}
 
         {fullWidthLayout ? (
-          <header className={`${compact ? "pb-2 pt-0 sm:pb-3" : "pb-6 pt-1 sm:pb-7"} vizitka-anim-up [animation-delay:80ms]`}>
-            <div className={compact ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)] lg:items-center" : "grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"}>
-              <div className={`order-2 text-left lg:order-1 ${compact ? "space-y-4 lg:pt-0" : "space-y-6 lg:pt-2"}`}>
+          <header className={`${compact ? "pb-2 pt-0 sm:pb-3" : "pb-3 pt-0 sm:pb-7 sm:pt-1"} vizitka-anim-up [animation-delay:80ms]`}>
+            <div className={compact ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)] lg:items-center" : "grid gap-4 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"}>
+              <div className={`order-2 text-left lg:order-1 ${compact ? "space-y-4 lg:pt-0" : "space-y-4 sm:space-y-6 lg:pt-2"}`}>
                 {identityBlock}
                 {bioSection}
               </div>
-              <div className={`order-1 ml-auto flex flex-col items-center text-center lg:order-2 vizitka-anim-right [animation-delay:260ms] ${compact ? "w-full max-w-[520px] gap-3 lg:mt-1" : "gap-4 lg:-mt-20 xl:-mt-24"}`}>
+              <div className={`order-1 ml-auto flex w-full flex-col items-center text-center lg:order-2 vizitka-anim-right [animation-delay:260ms] ${compact ? "max-w-[520px] gap-3 lg:mt-1" : "gap-2 sm:gap-4 lg:-mt-20 xl:-mt-24"}`}>
                 <div className="relative">
                   <Image
                     src={lightFullWidth ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"}
@@ -607,7 +607,7 @@ export function PremiumOnlineCardPreview({
                     width={420}
                     height={96}
                     className={`premium-online-card-logo ${
-                      compact ? "h-auto w-full max-w-[500px]" : "h-[180px] w-auto sm:h-[320px] lg:h-[430px]"
+                      compact ? "h-auto w-full max-w-[500px]" : "h-[132px] w-auto sm:h-[320px] lg:h-[430px]"
                     } object-contain object-top opacity-95 vizitka-float-soft`}
                   />
                   <div className={`pointer-events-none absolute left-1/2 top-[67.8%] w-[115vw] -translate-x-1/2 items-center gap-6 xl:top-[68.2%] ${compact ? "hidden" : "hidden lg:flex"}`}>
@@ -622,10 +622,10 @@ export function PremiumOnlineCardPreview({
                     onClick={meetingCta.onClick}
                     disabled={meetingCta.disabled || meetingCta.busy}
                     className={`inline-flex items-center justify-center gap-2 rounded-[20px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow ${
-                      compact ? "min-w-[220px] px-5 py-2.5 text-base" : "mt-1 min-w-[220px] px-5 py-2.5 text-base sm:-mt-10 sm:min-w-[260px] sm:px-7 sm:py-3 sm:text-lg lg:-mt-12"
+                      compact ? "min-w-[220px] px-5 py-2.5 text-base" : "mt-0 min-w-[190px] px-4 py-2 text-sm sm:-mt-10 sm:min-w-[260px] sm:px-7 sm:py-3 sm:text-lg lg:-mt-12"
                     }`}
                   >
-                    <CalendarPlus2 className={compact ? "h-[18px] w-[18px]" : "h-5 w-5"} />
+                    <CalendarPlus2 className={compact ? "h-[18px] w-[18px]" : "h-4 w-4 sm:h-5 sm:w-5"} />
                     {meetingCta.busy ? "Odesílám..." : meetingCtaLabel}
                   </button>
                 ) : null}

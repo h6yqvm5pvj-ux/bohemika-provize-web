@@ -54,6 +54,20 @@ const normalizePhoneHref = (value: string): string => {
   return cleaned ? `tel:${cleaned}` : "";
 };
 
+const normalizeMapsAddressQuery = (value: string): string => {
+  const cleaned = value
+    .replace(/\bbohemika\s*a\.?\s*s\.?\b/giu, "")
+    .replace(/[|•]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (/tyr[sš]ova\s*133/i.test(cleaned) && /kada[nň]/i.test(cleaned)) {
+    return "Tyršova 133, 432 01 Kadaň, Česko";
+  }
+
+  return cleaned;
+};
+
 const escapeVCardValue = (value: string): string =>
   value
     .replace(/\\/g, "\\\\")
@@ -117,8 +131,9 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
     ? activeOfficePhotoMeta.width > activeOfficePhotoMeta.height * 1.05
     : false;
   const officeAddressText = officeLabel || card.location.trim();
+  const officeMapsQuery = normalizeMapsAddressQuery(officeAddressText);
   const officeMapsLink = officeAddressText
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(officeAddressText)}`
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(officeMapsQuery)}`
     : "";
   const lightMode = theme === "light";
 
@@ -242,18 +257,17 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             : "border-violet-400/22 bg-[linear-gradient(180deg,#10081f_0%,#0f0b22_48%,#080715_100%)] text-white shadow-[0_36px_110px_rgba(5,4,18,0.72)]"
         }`}
       >
-        <div className="sticky top-2 z-30 flex flex-wrap justify-end gap-2 px-3 pt-3 sm:absolute sm:right-5 sm:top-5 sm:px-0 sm:pt-0">
+        <div className="sticky top-2 z-30 flex flex-wrap justify-end gap-1.5 px-3 pt-3 sm:absolute sm:right-5 sm:top-5 sm:gap-2 sm:px-0 sm:pt-0">
           <button
             type="button"
             onClick={handleDownloadContactVCard}
-            className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800"
+            className="hidden items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800 sm:inline-flex"
           >
             <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Uložit kontakt</span>
-            <span className="sm:hidden">Kontakt</span>
+            Uložit kontakt
           </button>
           <div
-            className={`inline-flex items-center rounded-full border p-1 text-xs font-bold shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur ${
+            className={`inline-flex items-center rounded-full border p-0.5 text-[11px] font-bold shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur sm:p-1 sm:text-xs ${
               lightMode
                 ? "border-violet-200 bg-white/90 text-slate-700"
                 : "border-white/16 bg-slate-950/42 text-violet-100"
@@ -264,7 +278,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
               type="button"
               onClick={() => setTheme("dark")}
               aria-pressed={!lightMode}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition ${
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 transition sm:gap-1.5 sm:px-3 ${
                 !lightMode ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]" : "hover:bg-violet-50"
               }`}
             >
@@ -275,7 +289,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
               type="button"
               onClick={() => setTheme("light")}
               aria-pressed={lightMode}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition ${
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 transition sm:gap-1.5 sm:px-3 ${
                 lightMode ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]" : "hover:bg-white/10"
               }`}
             >
@@ -539,10 +553,9 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
               <button
                 type="button"
                 onClick={handleDownloadContactVCard}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] border border-violet-300/25 bg-violet-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(124,58,237,0.34)] transition hover:bg-violet-800 sm:w-auto"
+                className="inline-flex w-full items-center justify-center rounded-[18px] border border-violet-300/25 bg-violet-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(124,58,237,0.34)] transition hover:bg-violet-800 sm:w-auto"
               >
-                <Download className="h-4 w-4" />
-                Uložit kontakt jako .vcf
+                Uložit do kontaktů
               </button>
             </div>
           </div>
