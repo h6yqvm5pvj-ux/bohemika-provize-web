@@ -5,14 +5,17 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
+  Download,
   Globe2,
   Mail,
   MapPin,
+  Moon,
   PhoneCall,
+  Sun,
   X,
 } from "lucide-react";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
@@ -51,8 +54,45 @@ const normalizePhoneHref = (value: string): string => {
   return cleaned ? `tel:${cleaned}` : "";
 };
 
+const escapeVCardValue = (value: string): string =>
+  value
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .trim();
+
+const splitFullNameForVCard = (fullName: string): { firstName: string; lastName: string } => {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) {
+    return {
+      firstName: parts[0] ?? "",
+      lastName: "",
+    };
+  }
+
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts.at(-1) ?? "",
+  };
+};
+
+const sanitizeVCardFilename = (value: string): string => {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "kontakt";
+};
+
 export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicClientProps) {
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [officePhotoIndex, setOfficePhotoIndex] = useState(0);
   const [officePhotoMetaByUrl, setOfficePhotoMetaByUrl] = useState<Record<string, OfficePhotoMeta>>({});
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(
@@ -80,6 +120,41 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
   const officeMapsLink = officeAddressText
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(officeAddressText)}`
     : "";
+  const lightMode = theme === "light";
+
+  useEffect(() => {
+    const root = shellRef.current;
+    if (!root) return;
+
+    const revealItems = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-vizitka-reveal]")
+    );
+    if (revealItems.length === 0) return;
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion || !("IntersectionObserver" in window)) {
+      revealItems.forEach((item) => item.classList.add("is-visible"));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-visible");
+          observer.unobserve(entry.target);
+        });
+      },
+      {
+        rootMargin: "0px 0px -12% 0px",
+        threshold: 0.16,
+      }
+    );
+
+    revealItems.forEach((item) => observer.observe(item));
+
+    return () => observer.disconnect();
+  }, []);
 
   const openModal = () => {
     setStatus(null);
@@ -88,6 +163,48 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
 
   const closeModal = () => {
     setOpen(false);
+  };
+
+  const handleDownloadContactVCard = () => {
+    if (typeof document === "undefined" || typeof URL === "undefined") return;
+
+    const fullName = card.fullName.trim();
+    const { firstName, lastName } = splitFullNameForVCard(fullName);
+    const title = card.title.trim();
+    const phone = card.phone.trim();
+    const email = card.email.trim();
+    const website = cardWebsiteLink || sanitizeWebsite(card.website);
+    const address = officeAddressText || card.location.trim();
+    const note = card.bio.trim();
+
+    const lines = [
+      "BEGIN:VCARD",
+      "VERSION:3.0",
+      fullName ? `FN:${escapeVCardValue(fullName)}` : "",
+      fullName
+        ? `N:${escapeVCardValue(lastName)};${escapeVCardValue(firstName)};;;`
+        : "",
+      "ORG:Bohemika a.s.",
+      title ? `TITLE:${escapeVCardValue(title)}` : "",
+      phone ? `TEL;TYPE=CELL,VOICE:${escapeVCardValue(phone)}` : "",
+      email ? `EMAIL;TYPE=INTERNET:${escapeVCardValue(email)}` : "",
+      website ? `URL:${escapeVCardValue(website)}` : "",
+      address ? `ADR;TYPE=WORK:;;${escapeVCardValue(address)};;;;` : "",
+      note ? `NOTE:${escapeVCardValue(note)}` : "",
+      "END:VCARD",
+    ].filter(Boolean);
+
+    const blob = new Blob([`${lines.join("\r\n")}\r\n`], {
+      type: "text/vcard;charset=utf-8",
+    });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `${sanitizeVCardFilename(slug || fullName)}.vcf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
   };
 
   const handleOfficePhotoShift = (direction: 1 | -1) => {
@@ -109,10 +226,70 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
 
   return (
     <>
-      <div className="space-y-6 sm:space-y-8">
+      <div
+        className={`pointer-events-none fixed inset-0 z-0 transition-colors duration-300 ${
+          lightMode
+            ? "bg-[radial-gradient(circle_at_18%_8%,rgba(124,58,237,0.12),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]"
+            : "bg-[radial-gradient(circle_at_15%_12%,#271245_0%,#110a21_36%,#080715_72%,#05040f_100%)]"
+        }`}
+        aria-hidden="true"
+      />
+      <div
+        ref={shellRef}
+        className={`online-card-public-shell online-card-theme-${theme} relative z-10 mx-auto max-w-[1160px] overflow-hidden rounded-none border-x-0 border-y transition-colors duration-300 sm:rounded-[38px] sm:border ${
+          lightMode
+            ? "border-violet-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_48%,#ffffff_100%)] text-slate-950 shadow-[0_30px_90px_rgba(88,28,135,0.16)]"
+            : "border-violet-400/22 bg-[linear-gradient(180deg,#10081f_0%,#0f0b22_48%,#080715_100%)] text-white shadow-[0_36px_110px_rgba(5,4,18,0.72)]"
+        }`}
+      >
+        <div className="sticky top-2 z-30 flex flex-wrap justify-end gap-2 px-3 pt-3 sm:absolute sm:right-5 sm:top-5 sm:px-0 sm:pt-0">
+          <button
+            type="button"
+            onClick={handleDownloadContactVCard}
+            className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Uložit kontakt</span>
+            <span className="sm:hidden">Kontakt</span>
+          </button>
+          <div
+            className={`inline-flex items-center rounded-full border p-1 text-xs font-bold shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur ${
+              lightMode
+                ? "border-violet-200 bg-white/90 text-slate-700"
+                : "border-white/16 bg-slate-950/42 text-violet-100"
+            }`}
+            aria-label="Režim zobrazení vizitky"
+          >
+            <button
+              type="button"
+              onClick={() => setTheme("dark")}
+              aria-pressed={!lightMode}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition ${
+                !lightMode ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]" : "hover:bg-violet-50"
+              }`}
+            >
+              <Moon className="h-3.5 w-3.5" />
+              Tmavý
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme("light")}
+              aria-pressed={lightMode}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition ${
+                lightMode ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]" : "hover:bg-white/10"
+              }`}
+            >
+              <Sun className="h-3.5 w-3.5" />
+              Světlý
+            </button>
+          </div>
+        </div>
+
         <PremiumOnlineCardPreview
           value={card}
           layout="fullWidth"
+          surface="seamless"
+          theme={theme}
           showContactSection={false}
           meetingCta={{
             label: "Sjednat schůzku",
@@ -133,11 +310,19 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             {status.message}
           </p>
         ) : null}
-        <AdvisorProfileSections />
+        <AdvisorProfileSections flush reveal theme={theme} />
         {hasOfficeSection ? (
-          <section className="vizitka-anim-up [animation-delay:680ms]">
+          <section
+            data-vizitka-reveal
+            className={`online-card-public-section online-card-scroll-reveal vizitka-anim-up relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 [animation-delay:680ms] ${
+              lightMode
+                ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,245,255,0.94)_100%)]"
+                : "bg-[linear-gradient(180deg,rgba(10,8,24,0.99)_0%,rgba(13,10,29,0.99)_100%)]"
+            }`}
+          >
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(124,58,237,0.12),transparent_34%)]" />
             <div
-              className={`relative z-10 mx-auto grid max-w-[1160px] gap-5 lg:items-start ${
+              className={`relative z-10 mx-auto grid max-w-[1040px] gap-5 lg:items-start ${
                 activeOfficePhotoIsPortrait
                   ? "lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
                   : "lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]"
@@ -258,7 +443,14 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             </div>
           </section>
         ) : null}
-        <section className="relative mx-auto max-w-[1160px] overflow-hidden border-t border-violet-300/12 bg-[linear-gradient(180deg,rgba(13,10,29,0.99)_0%,rgba(8,7,18,0.99)_100%)] px-6 py-12 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:720ms]">
+        <section
+          data-vizitka-reveal
+          className={`online-card-public-section online-card-scroll-reveal relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:720ms] ${
+            lightMode
+              ? "bg-[linear-gradient(180deg,rgba(250,245,255,0.94)_0%,rgba(255,255,255,0.98)_100%)]"
+              : "bg-[linear-gradient(180deg,rgba(13,10,29,0.99)_0%,rgba(8,7,18,0.99)_100%)]"
+          }`}
+        >
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(124,58,237,0.1),transparent_44%)]" />
           <div className="relative z-10 space-y-5">
             <div className="text-center">
@@ -341,6 +533,17 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={handleDownloadContactVCard}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] border border-violet-300/25 bg-violet-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(124,58,237,0.34)] transition hover:bg-violet-800 sm:w-auto"
+              >
+                <Download className="h-4 w-4" />
+                Uložit kontakt jako .vcf
+              </button>
             </div>
           </div>
         </section>

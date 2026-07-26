@@ -41,6 +41,8 @@ type PremiumOnlineCardPreviewProps = {
   className?: string;
   layout?: "contained" | "fullWidth";
   density?: "normal" | "compact";
+  surface?: "card" | "seamless";
+  theme?: "dark" | "light";
   showContactSection?: boolean;
   meetingCta?: {
     label?: string;
@@ -172,11 +174,15 @@ export function PremiumOnlineCardPreview({
   className,
   layout = "contained",
   density = "normal",
+  surface = "card",
+  theme = "dark",
   showContactSection = true,
   meetingCta,
 }: PremiumOnlineCardPreviewProps) {
   const fullWidthLayout = layout === "fullWidth";
   const compact = fullWidthLayout && density === "compact";
+  const seamless = fullWidthLayout && surface === "seamless";
+  const lightFullWidth = fullWidthLayout && theme === "light";
   const websiteLink = sanitizeWebsite(value.website);
   const websiteLabel = websiteLink ? normalizeWebsiteLabel(websiteLink) : value.website;
   const phoneLink = value.phone ? normalizePhoneHref(value.phone) : "";
@@ -196,29 +202,41 @@ export function PremiumOnlineCardPreview({
   const fullNameInputClass = fullWidthLayout
     ? compact
       ? "w-full bg-transparent text-[34px] font-extrabold leading-[0.96] !text-white placeholder:text-white/45 outline-none sm:text-[44px] lg:text-[56px] xl:text-[62px]"
-      : "w-full bg-transparent text-[52px] font-extrabold leading-[0.95] tracking-[-0.05em] !text-white placeholder:text-white/45 outline-none sm:text-[74px] lg:text-[88px]"
+      : "w-full bg-transparent text-[38px] font-extrabold leading-[0.96] !text-white placeholder:text-white/45 outline-none sm:text-[64px] sm:leading-[0.95] lg:text-[84px]"
     : "w-full bg-transparent text-[40px] font-extrabold leading-[0.98] tracking-[-0.05em] !text-slate-950 placeholder:text-slate-400 outline-none sm:text-[58px]";
   const fullNameDisplayClass = fullWidthLayout
     ? compact
-      ? "text-[34px] font-extrabold leading-[0.96] text-white sm:text-[44px] lg:text-[56px] xl:text-[62px]"
-      : "text-[52px] font-extrabold leading-[0.95] tracking-[-0.05em] text-white sm:text-[74px] lg:text-[88px]"
+      ? `text-[34px] font-extrabold leading-[0.96] ${
+          lightFullWidth ? "text-slate-950" : "text-white"
+        } sm:text-[44px] lg:text-[56px] xl:text-[62px]`
+      : `text-[38px] font-extrabold leading-[0.96] ${
+          lightFullWidth ? "text-slate-950" : "text-white"
+        } sm:text-[64px] sm:leading-[0.95] lg:text-[84px]`
     : "text-[40px] font-extrabold leading-[0.98] tracking-[-0.05em] text-slate-950 sm:text-[58px]";
   const titleInputClass = fullWidthLayout
     ? compact
       ? "w-full bg-transparent text-[21px] font-semibold !text-white/78 placeholder:text-white/45 outline-none sm:text-[26px] lg:text-[30px]"
-      : "w-full bg-transparent text-[29px] font-semibold !text-white/78 placeholder:text-white/45 outline-none sm:text-[36px]"
+      : "w-full bg-transparent text-[22px] font-semibold !text-white/78 placeholder:text-white/45 outline-none sm:text-[32px] lg:text-[36px]"
     : "w-full bg-transparent text-base font-medium !text-slate-600 placeholder:text-slate-400 outline-none sm:text-xl";
   const titleDisplayClass = fullWidthLayout
     ? compact
-      ? "text-[21px] font-semibold text-white/78 sm:text-[26px] lg:text-[30px]"
-      : "text-[29px] font-semibold text-white/78 sm:text-[36px]"
+      ? `text-[21px] font-semibold ${
+          lightFullWidth ? "text-slate-700" : "text-white/78"
+        } sm:text-[26px] lg:text-[30px]`
+      : `text-[22px] font-semibold ${
+          lightFullWidth ? "text-slate-700" : "text-white/78"
+        } sm:text-[32px] lg:text-[36px]`
     : "text-base font-medium text-slate-600 sm:text-xl";
 
   const identityBlock = (
     <div className={`${fullWidthLayout ? (compact ? "space-y-1.5" : "space-y-2") : "space-y-2 pt-1"} vizitka-anim-up [animation-delay:140ms]`}>
       {fullWidthLayout ? (
         <p
-          className={`inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.06] font-semibold uppercase tracking-[0.18em] text-violet-100 ${
+          className={`inline-flex items-center gap-2 rounded-full border font-semibold uppercase tracking-[0.18em] ${
+            lightFullWidth
+              ? "border-violet-200 bg-white/70 text-violet-950"
+              : "border-violet-300/35 bg-white/[0.06] text-violet-100"
+          } ${
             compact ? "px-2.5 py-0.5 text-[9px]" : "px-3 py-1 text-[11px]"
           }`}
         >
@@ -268,7 +286,11 @@ export function PremiumOnlineCardPreview({
         <div className="inline-flex items-center gap-2.5 vizitka-anim-up [animation-delay:230ms]">
           <span
             className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
-              fullWidthLayout ? "border-white/16 bg-white/[0.06] text-violet-100" : "border-slate-200 bg-white/80 text-slate-600"
+              fullWidthLayout
+                ? lightFullWidth
+                  ? "border-violet-200 bg-white/75 text-violet-700"
+                  : "border-white/16 bg-white/[0.06] text-violet-100"
+                : "border-slate-200 bg-white/80 text-slate-600"
             }`}
           >
             <BriefcaseBusiness className="h-4 w-4" />
@@ -291,7 +313,7 @@ export function PremiumOnlineCardPreview({
         className={`inline-flex items-center gap-2 font-semibold uppercase tracking-[0.22em] ${
           compact ? "text-[9px]" : "text-[11px]"
         } ${
-          fullWidthLayout ? "text-violet-200/82" : "text-slate-500"
+          fullWidthLayout ? (lightFullWidth ? "text-violet-800/78" : "text-violet-200/82") : "text-slate-500"
         }`}
       >
         <MessageSquareQuote className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
@@ -314,7 +336,7 @@ export function PremiumOnlineCardPreview({
       ) : value.bio ? (
         <p
           className={`mt-3 whitespace-pre-line text-sm leading-relaxed sm:text-base ${
-            fullWidthLayout ? "text-white/82" : "text-slate-700"
+            fullWidthLayout ? (lightFullWidth ? "text-slate-700" : "text-white/82") : "text-slate-700"
           }`}
         >
           {value.bio}
@@ -479,20 +501,50 @@ export function PremiumOnlineCardPreview({
 
   return (
     <article
-      className={`${jakarta.className} relative isolate text-slate-900 ${
+      className={`${jakarta.className} premium-online-card-preview ${
+        fullWidthLayout ? "premium-online-card-preview--full" : "premium-online-card-preview--contained"
+      } relative isolate text-slate-900 ${
         fullWidthLayout
-          ? compact
-            ? "overflow-hidden rounded-[28px] border border-violet-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(168,85,247,0.34),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(145deg,#10081f_0%,#0f0b22_45%,#0b0a1b_100%)] px-4 py-3 text-white shadow-[0_24px_70px_rgba(8,6,28,0.5),inset_0_1px_0_rgba(196,181,253,0.2)] sm:px-5 sm:py-4 lg:px-7 lg:py-5"
-            : "overflow-hidden rounded-[36px] border border-violet-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(168,85,247,0.34),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(145deg,#10081f_0%,#0f0b22_45%,#0b0a1b_100%)] px-4 py-4 text-white shadow-[0_35px_90px_rgba(8,6,28,0.65),inset_0_1px_0_rgba(196,181,253,0.2)] sm:px-8 sm:py-6 lg:px-12 lg:py-8"
+          ? seamless
+            ? compact
+              ? `overflow-hidden bg-transparent px-4 py-3 ${
+                  lightFullWidth ? "text-slate-950" : "text-white"
+                } sm:px-5 sm:py-4 lg:px-7 lg:py-5`
+              : `overflow-hidden bg-transparent px-4 py-4 ${
+                  lightFullWidth ? "text-slate-950" : "text-white"
+                } sm:px-8 sm:py-6 lg:px-12 lg:py-8`
+            : compact
+              ? "overflow-hidden rounded-[28px] border border-violet-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(168,85,247,0.34),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(145deg,#10081f_0%,#0f0b22_45%,#0b0a1b_100%)] px-4 py-3 text-white shadow-[0_24px_70px_rgba(8,6,28,0.5),inset_0_1px_0_rgba(196,181,253,0.2)] sm:px-5 sm:py-4 lg:px-7 lg:py-5"
+              : "overflow-hidden rounded-[36px] border border-violet-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(168,85,247,0.34),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(145deg,#10081f_0%,#0f0b22_45%,#0b0a1b_100%)] px-4 py-4 text-white shadow-[0_35px_90px_rgba(8,6,28,0.65),inset_0_1px_0_rgba(196,181,253,0.2)] sm:px-8 sm:py-6 lg:px-12 lg:py-8"
           : "overflow-hidden rounded-[32px] border border-slate-200/85 bg-[linear-gradient(140deg,#f8fcff_0%,#ffffff_44%,#eef6ff_100%)] px-5 py-5 shadow-[0_28px_80px_rgba(15,23,42,0.09)] sm:px-8 sm:py-8"
       } ${className ?? ""}`}
     >
       {fullWidthLayout ? (
         <>
-          <div className="pointer-events-none absolute -right-32 -top-24 h-72 w-72 rounded-full bg-fuchsia-500/25 blur-[100px] vizitka-ambient-float" />
-          <div className="pointer-events-none absolute -left-32 bottom-[-140px] h-80 w-80 rounded-full bg-indigo-500/22 blur-[110px] vizitka-ambient-float [animation-delay:-6s]" />
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_28%,rgba(255,255,255,0.08),transparent_36%)]" />
-          <div className={`pointer-events-none absolute inset-[1px] border border-white/7 ${compact ? "rounded-[27px]" : "rounded-[35px]"}`} />
+          <div
+            className={`pointer-events-none absolute -right-32 -top-24 h-72 w-72 rounded-full blur-[100px] vizitka-ambient-float ${
+              lightFullWidth ? "bg-violet-200/45" : "bg-fuchsia-500/25"
+            }`}
+          />
+          <div
+            className={`pointer-events-none absolute -left-32 bottom-[-140px] h-80 w-80 rounded-full blur-[110px] vizitka-ambient-float [animation-delay:-6s] ${
+              lightFullWidth ? "bg-sky-100/50" : "bg-indigo-500/22"
+            }`}
+          />
+          <div
+            className={`pointer-events-none absolute inset-0 ${
+              lightFullWidth
+                ? "bg-[radial-gradient(circle_at_82%_28%,rgba(124,58,237,0.08),transparent_36%)]"
+                : "bg-[radial-gradient(circle_at_82%_28%,rgba(255,255,255,0.08),transparent_36%)]"
+            }`}
+          />
+          {!seamless ? (
+            <div
+              className={`pointer-events-none absolute inset-[1px] border ${
+                lightFullWidth ? "border-violet-100" : "border-white/7"
+              } ${compact ? "rounded-[27px]" : "rounded-[35px]"}`}
+            />
+          ) : null}
         </>
       ) : (
         <>
@@ -550,11 +602,13 @@ export function PremiumOnlineCardPreview({
               <div className={`order-1 ml-auto flex flex-col items-center text-center lg:order-2 vizitka-anim-right [animation-delay:260ms] ${compact ? "w-full max-w-[520px] gap-3 lg:mt-1" : "gap-4 lg:-mt-20 xl:-mt-24"}`}>
                 <div className="relative">
                   <Image
-                    src="/icons/bhmkwhite.png"
+                    src={lightFullWidth ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"}
                     alt="Bohemika logo"
                     width={420}
                     height={96}
-                    className={`${compact ? "h-auto w-full max-w-[500px]" : "h-[320px] w-auto sm:h-[430px]"} object-contain object-top opacity-95 vizitka-float-soft`}
+                    className={`premium-online-card-logo ${
+                      compact ? "h-auto w-full max-w-[500px]" : "h-[180px] w-auto sm:h-[320px] lg:h-[430px]"
+                    } object-contain object-top opacity-95 vizitka-float-soft`}
                   />
                   <div className={`pointer-events-none absolute left-1/2 top-[67.8%] w-[115vw] -translate-x-1/2 items-center gap-6 xl:top-[68.2%] ${compact ? "hidden" : "hidden lg:flex"}`}>
                     <span className="h-px flex-1 bg-[linear-gradient(90deg,rgba(196,181,253,0.06)_0%,rgba(216,180,254,0.42)_100%)] vizitka-line-pulse" />
@@ -568,7 +622,7 @@ export function PremiumOnlineCardPreview({
                     onClick={meetingCta.onClick}
                     disabled={meetingCta.disabled || meetingCta.busy}
                     className={`inline-flex items-center justify-center gap-2 rounded-[20px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow ${
-                      compact ? "min-w-[220px] px-5 py-2.5 text-base" : "-mt-10 min-w-[260px] px-7 py-3 text-lg sm:-mt-12"
+                      compact ? "min-w-[220px] px-5 py-2.5 text-base" : "mt-1 min-w-[220px] px-5 py-2.5 text-base sm:-mt-10 sm:min-w-[260px] sm:px-7 sm:py-3 sm:text-lg lg:-mt-12"
                     }`}
                   >
                     <CalendarPlus2 className={compact ? "h-[18px] w-[18px]" : "h-5 w-5"} />

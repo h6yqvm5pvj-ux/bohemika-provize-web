@@ -2820,8 +2820,8 @@ export default function SettingsPage() {
     document.body.removeChild(link);
   };
   const onlineCardStudioOfficeSection = (
-    <section className="relative overflow-hidden rounded-[20px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-4 shadow-[0_16px_42px_rgba(6,4,23,0.38)] sm:rounded-[30px] sm:p-8 sm:shadow-[0_24px_70px_rgba(6,4,23,0.48)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.2),transparent_34%)]" />
+    <section className="relative overflow-hidden bg-[linear-gradient(180deg,rgba(10,8,24,0.99)_0%,rgba(13,10,29,0.99)_100%)] px-4 py-10 sm:px-8 sm:py-12">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.16),transparent_34%)]" />
       <div className="relative z-10 space-y-4">
         <div className="text-center">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
@@ -2961,8 +2961,8 @@ export default function SettingsPage() {
     </section>
   );
   const onlineCardStudioContactSection = (
-    <section className="relative overflow-hidden rounded-[20px] border border-violet-400/18 bg-[linear-gradient(160deg,rgba(14,11,29,0.96)_0%,rgba(8,8,20,0.98)_100%)] p-4 shadow-[0_16px_42px_rgba(6,4,23,0.38)] sm:rounded-[30px] sm:p-8 sm:shadow-[0_24px_70px_rgba(6,4,23,0.48)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.2),transparent_34%)]" />
+    <section className="relative overflow-hidden bg-[linear-gradient(180deg,rgba(13,10,29,0.99)_0%,rgba(8,7,18,0.99)_100%)] px-4 py-10 sm:px-8 sm:py-12">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(139,92,246,0.14),transparent_34%)]" />
       <div className="relative z-10 space-y-4 sm:space-y-5">
         <div className="text-center">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">

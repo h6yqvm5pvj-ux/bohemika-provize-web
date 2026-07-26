@@ -99,11 +99,12 @@ export function OnlineCardSettingsPanel({
             </div>
           </div>
 
-          <div className="online-card-studio-preview space-y-3 sm:space-y-4">
+          <div className="online-card-studio-preview overflow-hidden rounded-[28px] bg-[linear-gradient(180deg,#10081f_0%,#0f0b22_48%,#080715_100%)] shadow-[0_24px_70px_rgba(8,6,28,0.38)] sm:rounded-[34px]">
             <PremiumOnlineCardPreview
               editable
               layout="fullWidth"
               density="compact"
+              surface="seamless"
               showContactSection={false}
               value={previewValue}
               meetingCta={{
@@ -113,12 +114,7 @@ export function OnlineCardSettingsPanel({
               onPatch={onDraftPatch}
             />
 
-            <p className="text-[11px] text-slate-500">
-              Přímá editace náhledu upravuje pole vizitky. Odeslání změn do profilu proveď
-              tlačítkem Uložit vizitku.
-            </p>
-
-            <AdvisorProfileSections />
+            <AdvisorProfileSections flush />
             {officeSection}
             {contactSection}
           </div>
@@ -157,10 +153,11 @@ export function OnlineCardSettingsPanel({
 
             <div className="flex-1 overflow-y-auto p-2.5 sm:p-5">
               <div className="w-full space-y-4">
-                <div className="online-card-studio-preview space-y-4">
+                <div className="online-card-studio-preview overflow-hidden rounded-[28px] bg-[linear-gradient(180deg,#10081f_0%,#0f0b22_48%,#080715_100%)] shadow-[0_24px_70px_rgba(8,6,28,0.38)] sm:rounded-[34px]">
                   <PremiumOnlineCardPreview
                     editable
                     layout="fullWidth"
+                    surface="seamless"
                     showContactSection={false}
                     value={previewValue}
                     meetingCta={{
@@ -169,7 +166,7 @@ export function OnlineCardSettingsPanel({
                     }}
                     onPatch={onDraftPatch}
                   />
-                  <AdvisorProfileSections />
+                  <AdvisorProfileSections flush />
                   {officeSection}
                   {contactSection}
                 </div>

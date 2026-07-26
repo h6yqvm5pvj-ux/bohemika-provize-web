@@ -617,6 +617,73 @@ body {
   animation: vizitka-bg-shift 22s ease-in-out infinite;
 }
 
+.online-card-theme-light .premium-online-card-preview--full :not(button)[class*="text-white"],
+.online-card-theme-light .online-card-flow-surface :not(button)[class*="text-white"],
+.online-card-theme-light .online-card-public-section :not(button)[class*="text-white"] {
+  color: #0f172a !important;
+}
+
+.online-card-theme-light .premium-online-card-preview--full [class*="text-violet-"],
+.online-card-theme-light .online-card-flow-surface [class*="text-violet-"],
+.online-card-theme-light .online-card-public-section [class*="text-violet-"] {
+  color: #64748b !important;
+}
+
+.online-card-theme-light .premium-online-card-preview--full h1,
+.online-card-theme-light .premium-online-card-preview--full h2,
+.online-card-theme-light .online-card-flow-surface h2,
+.online-card-theme-light .online-card-public-section h2,
+.online-card-theme-light .online-card-public-section p[class*="font-semibold"] {
+  color: #0f172a !important;
+}
+
+.online-card-theme-light .premium-online-card-preview--full [class*="border-white"],
+.online-card-theme-light .online-card-flow-surface [class*="border-white"],
+.online-card-theme-light .online-card-public-section [class*="border-white"] {
+  border-color: rgba(109, 40, 217, 0.18) !important;
+}
+
+.online-card-theme-light .premium-online-card-preview--full [class*="bg-white/"],
+.online-card-theme-light .online-card-flow-surface [class*="bg-white/"],
+.online-card-theme-light .online-card-public-section [class*="bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.online-card-theme-light .online-card-public-section a:not([class*="bg-"]) {
+  color: #4c1d95 !important;
+}
+
+.online-card-public-shell .online-card-scroll-reveal {
+  opacity: 0;
+  transform: translate3d(0, 34px, 0) scale(0.985);
+  filter: blur(10px);
+  transition:
+    opacity 760ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 760ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 760ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform, filter;
+}
+
+.online-card-public-shell .online-card-scroll-reveal:not(.is-visible) {
+  animation: none !important;
+}
+
+.online-card-public-shell .online-card-scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: blur(0);
+}
+
+@media (max-width: 640px) {
+  .online-card-public-shell .premium-online-card-logo {
+    max-width: min(82vw, 340px);
+  }
+
+  .online-card-public-shell .logo-loop-track {
+    gap: 0.75rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     scroll-behavior: auto !important;
@@ -648,6 +715,12 @@ body {
     transform: none !important;
     filter: none !important;
     opacity: 1 !important;
+  }
+  .online-card-public-shell .online-card-scroll-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    transition: none !important;
   }
 }
 

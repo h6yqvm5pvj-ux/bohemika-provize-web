@@ -25,6 +25,9 @@ type PartnerInsurer = {
 type AdvisorProfileSectionsProps = {
   onScheduleMeeting?: (() => void) | null;
   className?: string;
+  flush?: boolean;
+  reveal?: boolean;
+  theme?: "dark" | "light";
 };
 
 const PARTNER_INSURERS: PartnerInsurer[] = [
@@ -164,16 +167,41 @@ const COMPANY_PILLARS = [
 export function AdvisorProfileSections({
   onScheduleMeeting,
   className,
+  flush = false,
+  reveal = false,
+  theme = "dark",
 }: AdvisorProfileSectionsProps) {
+  const light = theme === "light";
+  const revealAttrs = reveal
+    ? {
+        "data-vizitka-reveal": true,
+      }
+    : {};
+  const revealClass = reveal ? "online-card-scroll-reveal" : "";
+
   return (
     <div
-      className={`relative isolate mx-auto w-full max-w-[1160px] overflow-hidden bg-[linear-gradient(180deg,rgba(16,10,32,0.98)_0%,rgba(13,10,29,0.99)_50%,rgba(8,7,18,0.99)_100%)] text-white ${className ?? ""}`}
+      className={`online-card-flow-surface relative isolate w-full overflow-hidden ${
+        flush ? "" : "mx-auto max-w-[1160px]"
+      } ${
+        light
+          ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,245,255,0.94)_54%,rgba(255,255,255,0.98)_100%)] text-slate-950"
+          : "bg-[linear-gradient(180deg,rgba(16,10,32,0.98)_0%,rgba(13,10,29,0.99)_50%,rgba(8,7,18,0.99)_100%)] text-white"
+      } ${className ?? ""}`}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(196,181,253,0.38),transparent)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_8%,rgba(124,58,237,0.18),transparent_30%),radial-gradient(circle_at_12%_52%,rgba(59,130,246,0.1),transparent_36%)]" />
+      <div
+        className={`pointer-events-none absolute inset-0 ${
+          light
+            ? "bg-[radial-gradient(circle_at_82%_8%,rgba(124,58,237,0.1),transparent_30%),radial-gradient(circle_at_12%_52%,rgba(59,130,246,0.08),transparent_36%)]"
+            : "bg-[radial-gradient(circle_at_82%_8%,rgba(124,58,237,0.18),transparent_30%),radial-gradient(circle_at_12%_52%,rgba(59,130,246,0.1),transparent_36%)]"
+        }`}
+      />
 
-      <section className="relative overflow-hidden px-6 py-12 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:220ms]">
-        <div className="relative z-10 space-y-7 text-center sm:space-y-8">
+      <section
+        {...revealAttrs}
+        className={`relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:220ms] ${revealClass}`}
+      >
+        <div className="relative z-10 space-y-7 text-left sm:space-y-8 sm:text-center">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-white/[0.06] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
             <ShieldCheck className="h-3.5 w-3.5" />
             Co pro vás zajistím
@@ -232,10 +260,13 @@ export function AdvisorProfileSections({
         </div>
       </section>
 
-      <section className="relative overflow-hidden border-t border-violet-300/12 px-6 py-12 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:430ms]">
+      <section
+        {...revealAttrs}
+        className={`relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:430ms] ${revealClass}`}
+      >
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgba(124,58,237,0.12),transparent_46%)]" />
         <div className="relative z-10 space-y-6">
-          <div className="text-center">
+          <div className="text-left sm:text-center">
             <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-sky-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-100">
               <Building2 className="h-3.5 w-3.5" />
               O firmě
@@ -302,8 +333,11 @@ export function AdvisorProfileSections({
         </div>
       </section>
 
-      <section className="relative overflow-hidden border-t border-violet-300/12 px-6 py-12 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:560ms]">
-        <div className="relative z-10 space-y-5 text-center">
+      <section
+        {...revealAttrs}
+        className={`relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:560ms] ${revealClass}`}
+      >
+        <div className="relative z-10 space-y-5 text-left sm:text-center">
           <div>
             <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
               <Handshake className="h-3.5 w-3.5" />

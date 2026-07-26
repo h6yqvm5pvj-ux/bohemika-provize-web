@@ -31,7 +31,7 @@ export default async function OnlineCardPage({
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_84%_4%,rgba(139,92,246,0.22),transparent_34%),radial-gradient(circle_at_18%_72%,rgba(59,130,246,0.16),transparent_40%),radial-gradient(circle_at_72%_78%,rgba(14,165,233,0.1),transparent_44%)] vizitka-bg-shift" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(192,132,252,0.52),transparent)] vizitka-line-pulse" />
 
-      <div className="relative w-full px-4 pb-10 pt-6 sm:px-8 sm:pb-12 sm:pt-8 lg:px-12">
+      <div className="relative w-full px-0 pb-0 pt-0 sm:px-8 sm:pb-12 sm:pt-8 lg:px-12">
         <div>
           <OnlineCardPublicClient slug={requestedSlug} card={card} />
         </div>
