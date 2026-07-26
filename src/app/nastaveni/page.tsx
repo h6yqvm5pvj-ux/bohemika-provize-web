@@ -2662,7 +2662,7 @@ export default function SettingsPage() {
   const toggleOffClass =
     "border-slate-300 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] hover:bg-slate-50";
   const notificationToggleOnClass =
-    "border-emerald-500 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] shadow-[0_8px_20px_rgba(16,185,129,0.3)]";
+    "border-violet-600 bg-[linear-gradient(135deg,#a855f7_0%,#6d28d9_100%)] shadow-[0_8px_20px_rgba(124,58,237,0.32)]";
   const notificationToggleOffClass =
     "border-slate-300 bg-slate-100";
   const requestMessageLength = userRequestMessage.trim().length;

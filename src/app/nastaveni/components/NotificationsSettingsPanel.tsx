@@ -50,28 +50,34 @@ export function NotificationsSettingsPanel({
 }: NotificationsSettingsPanelProps) {
   return (
     <section className={`h-full space-y-4 sm:space-y-5 lg:col-span-2 ${className}`}>
-      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#06b6d4_0%,#3b82f6_45%,#6366f1_100%)]" />
+      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#6d28d9_48%,#a855f7_100%)]" />
+      <div
+        className="pointer-events-none absolute right-0 top-0 h-40 w-40 rounded-full bg-violet-500/10 blur-3xl"
+        aria-hidden="true"
+      />
 
       <div className="relative z-10 space-y-4 sm:space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-              <BellRing size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-950 text-white shadow-[0_12px_24px_rgba(15,23,42,0.16)]">
+                <BellRing size={15} strokeWidth={2.2} aria-hidden="true" />
+              </span>
               <span>Notifikace</span>
             </h2>
-            <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">
               Push oprávnění, typy upozornění a intranet sekce na jednom místě.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
+            <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-[11px] font-semibold text-violet-800 shadow-[0_8px_18px_rgba(124,58,237,0.08)]">
               Aktivní typy: {enabledTypesCount}/6
             </span>
             <span
               className={`rounded-full border px-3 py-1 text-[11px] font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.08)] ${
                 fcmActive
-                  ? "border-emerald-700 bg-emerald-600 text-[#f8fafc]"
-                  : "border-rose-700 bg-rose-600 text-[#f8fafc]"
+                  ? "border-violet-700 bg-violet-700 !text-white"
+                  : "border-slate-300 bg-white text-slate-900"
               }`}
             >
               {fcmActive ? "Push aktivní" : "Push neaktivní"}
@@ -80,17 +86,17 @@ export function NotificationsSettingsPanel({
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)]">
-          <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white/95 shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[28px] sm:shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
-            <div className="flex flex-col gap-2 border-b border-slate-200/80 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-4 sm:py-4">
+          <div className="overflow-hidden rounded-[20px] border border-violet-200/80 bg-white shadow-[0_18px_44px_rgba(88,28,135,0.09)] sm:rounded-[28px]">
+            <div className="flex flex-col gap-2 border-b border-violet-100 bg-[linear-gradient(180deg,#ffffff_0%,#fbf8ff_100%)] px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-4 sm:py-4">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
                   Push
                 </div>
                 <h3 className="mt-1 text-xl font-bold tracking-[-0.015em] text-slate-900">
                   Zařízení a typy upozornění
                 </h3>
               </div>
-              <span className="inline-flex w-fit items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
+              <span className="inline-flex w-fit items-center rounded-full border border-violet-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-[0_8px_18px_rgba(124,58,237,0.07)]">
                 Prohlížeč:{" "}
                 {pushPermission === "granted"
                   ? "povoleno"
@@ -102,18 +108,18 @@ export function NotificationsSettingsPanel({
               </span>
             </div>
 
-            <div className="divide-y divide-slate-200/80">
+            <div className="divide-y divide-violet-100">
               <div className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-4 sm:py-4">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">
                     Push pro toto zařízení
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
                     Zapnutí vytvoří webový token pro aktuální prohlížeč.
                   </p>
                 </div>
                 {!pushSupported ? (
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
+                  <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
                     Prohlížeč web push nepodporuje.
                   </div>
                 ) : (
@@ -122,7 +128,7 @@ export function NotificationsSettingsPanel({
                       type="button"
                       onClick={() => void onEnableBrowserPush()}
                       disabled={pushBusy}
-                      className="rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_12px_24px_rgba(16,185,129,0.22)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-xl border border-violet-700 bg-violet-700 px-4 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {pushBusy ? "Nastavuju…" : "Zapnout"}
                     </button>
@@ -130,7 +136,7 @@ export function NotificationsSettingsPanel({
                       type="button"
                       onClick={() => void onDisableBrowserPush()}
                       disabled={pushBusy}
-                      className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Vypnout
                     </button>
@@ -144,11 +150,11 @@ export function NotificationsSettingsPanel({
                     <div className="text-sm font-semibold text-slate-900">
                       Typy notifikací
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-slate-600">
                       Vyber, které události mají chodit jako push.
                     </p>
                   </div>
-                  <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-800">
+                  <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-800">
                     {enabledTypesCount}/6
                   </span>
                 </div>
@@ -164,13 +170,13 @@ export function NotificationsSettingsPanel({
                         onClick={() => void onToggleType(typeOption.id)}
                         role="switch"
                         aria-checked={active}
-                        className="flex min-h-[54px] w-full items-center justify-between gap-3 border-b border-slate-100 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:text-slate-950"
+                        className="flex min-h-[54px] w-full items-center justify-between gap-3 border-b border-violet-50 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:text-slate-950"
                       >
                         <span className="inline-flex min-w-0 items-center gap-2.5">
                           <span
                             className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
                               active
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                ? "border-violet-200 bg-violet-50 text-violet-700"
                                 : "border-slate-200 bg-slate-50 text-slate-500"
                             }`}
                           >
@@ -199,7 +205,7 @@ export function NotificationsSettingsPanel({
               <div className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-4 sm:py-4">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Testovací push</div>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-slate-600">
                     Ověř, že push chodí přes webový token tohoto účtu.
                   </p>
                   {testPushStatus ? (
@@ -209,7 +215,7 @@ export function NotificationsSettingsPanel({
                 <button
                   type="button"
                   onClick={() => void onTestPush()}
-                  className="rounded-xl border border-slate-900 bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] px-4 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_12px_24px_rgba(29,78,216,0.2)] transition hover:brightness-95"
+                  className="rounded-xl border border-violet-700 bg-violet-700 px-4 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:bg-violet-800"
                 >
                   Odeslat test
                 </button>
@@ -217,9 +223,9 @@ export function NotificationsSettingsPanel({
             </div>
           </div>
 
-          <aside className="overflow-hidden rounded-[20px] border border-slate-200 bg-white/95 shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[28px] sm:shadow-[0_18px_38px_rgba(15,23,42,0.08)]">
-            <div className="border-b border-slate-200/80 px-3 py-3 sm:px-4 sm:py-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <aside className="overflow-hidden rounded-[20px] border border-violet-200/80 bg-white shadow-[0_18px_44px_rgba(88,28,135,0.09)] sm:rounded-[28px]">
+            <div className="border-b border-violet-100 bg-[linear-gradient(180deg,#ffffff_0%,#fbf8ff_100%)] px-3 py-3 sm:px-4 sm:py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-700">
                 Intranet
               </div>
               <h3 className="mt-1 text-xl font-bold tracking-[-0.015em] text-slate-900">
@@ -230,15 +236,15 @@ export function NotificationsSettingsPanel({
               </p>
             </div>
 
-            <div className="divide-y divide-slate-200/80">
+            <div className="divide-y divide-violet-100">
               <div className="px-3 py-3 sm:px-4 sm:py-4">
-                <div className="inline-flex w-full rounded-xl border border-slate-200 bg-slate-100/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                <div className="inline-flex w-full rounded-xl border border-violet-200 bg-violet-50/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                   <button
                     type="button"
                     onClick={() => void onSetIntranetMode("all")}
                     className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
                       settings.intranet.mode === "all"
-                        ? "bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] text-[#f8fafc] shadow-[0_10px_22px_rgba(29,78,216,0.24)]"
+                        ? "bg-violet-700 !text-white shadow-[0_10px_22px_rgba(124,58,237,0.25)]"
                         : "text-slate-700 hover:bg-white"
                     }`}
                   >
@@ -249,7 +255,7 @@ export function NotificationsSettingsPanel({
                     onClick={() => void onSetIntranetMode("selected")}
                     className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
                       settings.intranet.mode === "selected"
-                        ? "bg-[linear-gradient(135deg,#0f172a_0%,#0b1f3e_72%,#1d4ed8_100%)] text-[#f8fafc] shadow-[0_10px_22px_rgba(29,78,216,0.24)]"
+                        ? "bg-violet-700 !text-white shadow-[0_10px_22px_rgba(124,58,237,0.25)]"
                         : "text-slate-700 hover:bg-white"
                     }`}
                   >
@@ -270,13 +276,13 @@ export function NotificationsSettingsPanel({
                         onClick={() => void onToggleIntranetSection(section.key)}
                         role="switch"
                         aria-checked={active}
-                        className="flex min-h-[52px] w-full items-center justify-between gap-3 border-b border-slate-100 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:text-slate-950"
+                        className="flex min-h-[52px] w-full items-center justify-between gap-3 border-b border-violet-50 py-2.5 text-left text-sm font-semibold text-slate-800 transition hover:text-slate-950"
                       >
                         <span className="inline-flex min-w-0 items-center gap-2.5">
                           <span
                             className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border transition ${
                               active
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                ? "border-violet-200 bg-violet-50 text-violet-700"
                                 : "border-slate-200 bg-slate-50 text-slate-500"
                             }`}
                           >
@@ -300,7 +306,7 @@ export function NotificationsSettingsPanel({
                     );
                   })}
                   {settings.intranet.sections.length === 0 ? (
-                    <p className="py-3 text-[11px] text-amber-700">
+                    <p className="py-3 text-[11px] font-semibold text-violet-700">
                       Není vybraná žádná sekce, intranet push nebude chodit.
                     </p>
                   ) : null}

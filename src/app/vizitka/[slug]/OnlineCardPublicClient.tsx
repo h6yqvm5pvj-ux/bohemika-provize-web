@@ -11,6 +11,7 @@ import {
   MapPin,
   Moon,
   PhoneCall,
+  Share2,
   Sun,
   X,
 } from "lucide-react";
@@ -152,6 +153,18 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
       return;
     }
 
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const pendingItems = revealItems.filter((item) => {
+      const rect = item.getBoundingClientRect();
+      const alreadyReached = rect.top < viewportHeight * 0.92;
+      if (alreadyReached) {
+        item.classList.add("is-visible");
+        return false;
+      }
+      item.classList.remove("is-visible");
+      return true;
+    });
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -166,10 +179,10 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
       }
     );
 
-    revealItems.forEach((item) => observer.observe(item));
+    pendingItems.forEach((item) => observer.observe(item));
 
     return () => observer.disconnect();
-  }, []);
+  }, [theme]);
 
   const openModal = () => {
     setStatus(null);
@@ -222,6 +235,41 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
     URL.revokeObjectURL(objectUrl);
   };
 
+  const handleShareOnlineCard = async () => {
+    if (typeof window === "undefined") return;
+
+    const shareUrl = window.location.href;
+    const shareTitle = card.fullName.trim()
+      ? `${card.fullName.trim()} | Bohemika`
+      : "Online vizitka Bohemika";
+    const shareText = card.title.trim()
+      ? `${card.fullName.trim()} - ${card.title.trim()}`
+      : card.fullName.trim();
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText || "Online vizitka",
+          url: shareUrl,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      setStatus({
+        type: "success",
+        message: "Odkaz na vizitku byl zkopírován do schránky.",
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setStatus({
+        type: "error",
+        message: "Odkaz se nepodařilo sdílet. Zkopírujte ho prosím z adresního řádku.",
+      });
+    }
+  };
+
   const handleOfficePhotoShift = (direction: 1 | -1) => {
     if (officePhotoCount <= 1) return;
     setOfficePhotoIndex((prev) => (prev + direction + officePhotoCount) % officePhotoCount);
@@ -258,6 +306,15 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
         }`}
       >
         <div className="sticky top-2 z-30 flex flex-wrap justify-end gap-1.5 px-3 pt-3 sm:absolute sm:right-5 sm:top-5 sm:gap-2 sm:px-0 sm:pt-0">
+          <button
+            type="button"
+            onClick={handleShareOnlineCard}
+            className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            <span className="sm:hidden">Sdílet</span>
+            <span className="hidden sm:inline">Sdílet vizitku</span>
+          </button>
           <button
             type="button"
             onClick={handleDownloadContactVCard}
