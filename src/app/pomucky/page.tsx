@@ -13,6 +13,7 @@ import {
   Bike,
   Bot,
   Building2,
+  CalendarClock,
   CarFront,
   Clock3,
   Files,
@@ -278,6 +279,14 @@ export default function ToolsPage() {
         description: "Ověření výpovědních lhůt a výpočet data ukončení smlouvy.",
         icon: Clock3,
         href: "/pomucky/jak-stiham-vypoved-smlouvy",
+      },
+      {
+        key: "radar-vyroci",
+        category: "Obecné",
+        title: "Radar výročí",
+        description: "Přehled klientů, kterým se blíží výročí smlouvy, s kontrolním checklistem na obvolání.",
+        icon: CalendarClock,
+        href: "/pomucky/radar-vyroci",
       },
       {
         key: "tvorba",
@@ -546,7 +555,7 @@ export default function ToolsPage() {
               </p>
             </div>
           ) : (
-            <section className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
               {filteredTools.map((tool, index) => {
                 if (tool.render) {
                   return <div key={tool.key}>{tool.render()}</div>;
@@ -561,37 +570,37 @@ export default function ToolsPage() {
                       key={tool.key}
                       type="button"
                       onClick={tool.onClick}
-                      className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[188px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 text-left shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_36px_86px_rgba(10,5,30,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[236px] sm:rounded-[30px] sm:p-[18px] sm:shadow-[0_28px_72px_rgba(11,6,30,0.52)]`}
+                      className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[162px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 text-left shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_30px_72px_rgba(10,5,30,0.54)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[188px] sm:rounded-[26px] sm:p-4 sm:shadow-[0_24px_58px_rgba(11,6,30,0.46)]`}
                       style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
                     >
                       <span className="pointer-events-none absolute -left-12 -top-16 hidden h-44 w-44 rounded-full bg-violet-300/24 blur-3xl sm:block" aria-hidden="true" />
                       <span className="pointer-events-none absolute -right-16 bottom-4 hidden h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl sm:block" aria-hidden="true" />
                       <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]" aria-hidden="true" />
                       <ToolIcon
-                        className={`pointer-events-none absolute right-4 top-5 z-[1] h-[5.5rem] w-[5.5rem] opacity-[0.24] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.32] sm:right-5 sm:top-6 sm:h-[6.5rem] sm:w-[6.5rem] ${style.icon}`}
+                        className={`pointer-events-none absolute right-4 top-5 z-[1] h-[4.5rem] w-[4.5rem] opacity-[0.22] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.3] sm:right-5 sm:top-5 sm:h-[5.25rem] sm:w-[5.25rem] ${style.icon}`}
                         strokeWidth={1.35}
                         aria-hidden="true"
                       />
 
-                      <div className="relative z-10 flex w-full flex-col gap-3">
+                      <div className="relative z-10 flex w-full flex-col gap-2.5">
                         <div className="flex items-start">
-                          <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:py-1.5 sm:text-[0.72rem] sm:tracking-[0.2em] sm:shadow-[0_10px_26px_rgba(168,85,247,0.5)]">
+                          <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:text-[0.7rem] sm:tracking-[0.16em] sm:shadow-[0_10px_22px_rgba(168,85,247,0.42)]">
                             {categoryBadgeLabel}
                           </span>
                         </div>
 
                         <div className="min-w-0">
-                          <h2 className="text-[1.28rem] font-bold leading-[1.1] tracking-[-0.01em] text-[#f8fafc] sm:text-[1.55rem] sm:tracking-[-0.02em]">
+                          <h2 className="text-[1.18rem] font-bold leading-[1.1] text-[#f8fafc] sm:text-[1.34rem]">
                             {tool.title}
                           </h2>
-                          <p className="mt-1.5 text-[0.86rem] leading-6 text-violet-100/75 sm:mt-2 sm:text-[0.98rem] sm:leading-relaxed">
+                          <p className="mt-1.5 text-[0.82rem] leading-5 text-violet-100/75 sm:text-[0.9rem] sm:leading-6">
                             {tool.description}
                           </p>
                         </div>
 
                         <div className="mt-auto">
-                          <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:rounded-2xl sm:px-3 sm:py-2 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_22px_rgba(82,25,147,0.32)]">
-                            <span className="text-[0.82rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.9rem]">
+                          <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:px-3 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_18px_rgba(82,25,147,0.28)]">
+                            <span className="text-[0.8rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.84rem]">
                               Otevřít pomůcku
                             </span>
                             <ArrowUpRight className="h-3.5 w-3.5 text-[#1b1036]" />
@@ -614,37 +623,37 @@ export default function ToolsPage() {
                   <CardWrapper
                     key={tool.key}
                     {...wrapperProps}
-                    className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[188px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_36px_86px_rgba(10,5,30,0.62)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[236px] sm:rounded-[30px] sm:p-[18px] sm:shadow-[0_28px_72px_rgba(11,6,30,0.52)]`}
+                    className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[162px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_30px_72px_rgba(10,5,30,0.54)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[188px] sm:rounded-[26px] sm:p-4 sm:shadow-[0_24px_58px_rgba(11,6,30,0.46)]`}
                     style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
                   >
                     <span className="pointer-events-none absolute -left-12 -top-16 hidden h-44 w-44 rounded-full bg-violet-300/24 blur-3xl sm:block" aria-hidden="true" />
                     <span className="pointer-events-none absolute -right-16 bottom-4 hidden h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl sm:block" aria-hidden="true" />
                     <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]" aria-hidden="true" />
                     <ToolIcon
-                      className={`pointer-events-none absolute right-4 top-5 z-[1] h-[5.5rem] w-[5.5rem] opacity-[0.24] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.32] sm:right-5 sm:top-6 sm:h-[6.5rem] sm:w-[6.5rem] ${style.icon}`}
+                      className={`pointer-events-none absolute right-4 top-5 z-[1] h-[4.5rem] w-[4.5rem] opacity-[0.22] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.3] sm:right-5 sm:top-5 sm:h-[5.25rem] sm:w-[5.25rem] ${style.icon}`}
                       strokeWidth={1.35}
                       aria-hidden="true"
                     />
 
-                    <div className="relative z-10 flex w-full flex-col gap-3">
+                    <div className="relative z-10 flex w-full flex-col gap-2.5">
                       <div className="flex items-start">
-                        <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:py-1.5 sm:text-[0.72rem] sm:tracking-[0.2em] sm:shadow-[0_10px_26px_rgba(168,85,247,0.5)]">
+                        <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:text-[0.7rem] sm:tracking-[0.16em] sm:shadow-[0_10px_22px_rgba(168,85,247,0.42)]">
                           {categoryBadgeLabel}
                         </span>
                       </div>
 
                       <div className="min-w-0">
-                        <h2 className="text-[1.28rem] font-bold leading-[1.1] tracking-[-0.01em] text-[#f8fafc] sm:text-[1.55rem] sm:tracking-[-0.02em]">
+                        <h2 className="text-[1.18rem] font-bold leading-[1.1] text-[#f8fafc] sm:text-[1.34rem]">
                           {tool.title}
                         </h2>
-                        <p className="mt-1.5 text-[0.86rem] leading-6 text-violet-100/75 sm:mt-2 sm:text-[0.98rem] sm:leading-relaxed">
+                        <p className="mt-1.5 text-[0.82rem] leading-5 text-violet-100/75 sm:text-[0.9rem] sm:leading-6">
                           {tool.description}
                         </p>
                       </div>
 
                       <div className="mt-auto">
-                        <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:rounded-2xl sm:px-3 sm:py-2 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_22px_rgba(82,25,147,0.32)]">
-                          <span className="text-[0.82rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.9rem]">
+                        <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:px-3 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_18px_rgba(82,25,147,0.28)]">
+                          <span className="text-[0.8rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.84rem]">
                             Otevřít pomůcku
                           </span>
                           <ArrowUpRight className="h-3.5 w-3.5 text-[#1b1036]" />

@@ -151,7 +151,9 @@ export function AppLayout({ children, active }: AppLayoutProps) {
     pathname.startsWith("/klienti/") ||
     pathname === "/provizni-vypisy";
   const isTipsterAllowedRoute = pathname === "/" || isTipsRoute || isCashflowRoute;
-  const showToolsBackToIndex = active === "tools" && pathname !== "/pomucky";
+  const pageHasCustomToolsBackButton = pathname === "/pomucky/projekce-vykonu";
+  const showToolsBackToIndex =
+    active === "tools" && pathname !== "/pomucky" && !pageHasCustomToolsBackButton;
   const toolsBackButtonRightAligned = pathname === "/pomucky/invalidita";
   const contentOverflowClass =
     active === "tools" || active === "cashflow" ? "overflow-visible" : "overflow-x-clip";

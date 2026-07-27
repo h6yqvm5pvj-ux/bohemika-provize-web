@@ -9,8 +9,11 @@ import {
   Fingerprint,
   HelpCircle,
   KeyRound,
+  LogOut,
+  MonitorSmartphone,
   Play,
   QrCode as QrCodeIcon,
+  RefreshCw,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -27,6 +30,19 @@ const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
 type InlineStatus = {
   type: "success" | "error" | "info";
   message: string;
+};
+
+type AccountSessionSummary = {
+  id: string;
+  current: boolean;
+  deviceLabel: string;
+  browserLabel: string;
+  osLabel: string;
+  userAgent: string;
+  createdAtMs: number;
+  lastSeenAtMs: number;
+  expiresAtMs: number;
+  revokedAtMs: number | null;
 };
 
 type AccountSecurityPanelProps = {
@@ -52,6 +68,10 @@ type AccountSecurityPanelProps = {
   passkeyDeletingId: string | null;
   passkeyName: string;
   passkeyStatus: InlineStatus | null;
+  accountSessions: AccountSessionSummary[];
+  accountSessionsLoading: boolean;
+  accountSessionsBusy: boolean;
+  accountSessionsStatus: InlineStatus | null;
   mfaPassword: string;
   mfaBusy: boolean;
   mfaEnrollmentSecretKey: string | null;
@@ -70,6 +90,8 @@ type AccountSecurityPanelProps = {
   onNewPasswordChange: (value: string) => void;
   onConfirmPasswordChange: (value: string) => void;
   onChangePassword: () => void | Promise<void>;
+  onRefreshAccountSessions: () => void | Promise<void>;
+  onRevokeOtherSessions: () => void | Promise<void>;
   onPasskeyNameChange: (value: string) => void;
   onCreatePasskey: () => void | Promise<void>;
   onDeletePasskey: (credentialId: string) => void | Promise<void>;
@@ -113,6 +135,10 @@ export function AccountSecurityPanel({
   passkeyDeletingId,
   passkeyName,
   passkeyStatus,
+  accountSessions,
+  accountSessionsLoading,
+  accountSessionsBusy,
+  accountSessionsStatus,
   mfaPassword,
   mfaBusy,
   mfaEnrollmentSecretKey,
@@ -131,6 +157,8 @@ export function AccountSecurityPanel({
   onNewPasswordChange,
   onConfirmPasswordChange,
   onChangePassword,
+  onRefreshAccountSessions,
+  onRevokeOtherSessions,
   onPasskeyNameChange,
   onCreatePasskey,
   onDeletePasskey,
@@ -159,6 +187,8 @@ export function AccountSecurityPanel({
   const passwordPolicyPassed = passwordPolicyChecks.every((check) => check.passed);
   const passwordSubmitDisabled =
     changingPassword || currentPassword.length === 0 || !passwordPolicyPassed;
+  const otherSessionsCount = accountSessions.filter((session) => !session.current).length;
+  const revokeOtherSessionsDisabled = accountSessionsBusy || accountSessionsLoading;
 
   return (
     <section className={`space-y-4 sm:space-y-5 ${className}`}>
@@ -289,6 +319,106 @@ export function AccountSecurityPanel({
                   {passwordStatus.message}
                 </div>
               ) : null}
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <MonitorSmartphone
+                    size={13}
+                    strokeWidth={2}
+                    className="text-slate-500"
+                    aria-hidden="true"
+                  />
+                  <span>Aktivní zařízení</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void onRefreshAccountSessions()}
+                  disabled={accountSessionsLoading || accountSessionsBusy}
+                  className="inline-flex min-h-8 w-fit items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCw
+                    size={12}
+                    strokeWidth={2.2}
+                    className={accountSessionsLoading ? "animate-spin" : ""}
+                    aria-hidden="true"
+                  />
+                  Obnovit
+                </button>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl">
+                {accountSessionsLoading ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                    Načítám aktivní zařízení…
+                  </div>
+                ) : accountSessions.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                    Zatím není evidovaná žádná aktivní relace.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {accountSessions.map((session) => (
+                      <div
+                        key={session.id}
+                        className={`rounded-xl border px-3 py-3 sm:rounded-2xl ${
+                          session.current
+                            ? "border-violet-200 bg-violet-50"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="min-w-0 break-words text-sm font-semibold text-slate-900">
+                                {session.deviceLabel}
+                              </p>
+                              {session.current ? (
+                                <span className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-800">
+                                  Toto zařízení
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                              Naposledy {formatDateTime(session.lastSeenAtMs)} · platí do{" "}
+                              {formatDateTime(session.expiresAtMs)}
+                            </p>
+                          </div>
+                          <span
+                            className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                              session.current ? "bg-violet-700" : "bg-emerald-500"
+                            }`}
+                            aria-hidden="true"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void onRevokeOtherSessions()}
+                  disabled={revokeOtherSessionsDisabled}
+                  className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
+                >
+                  <LogOut size={16} strokeWidth={2.2} aria-hidden="true" />
+                  {accountSessionsBusy
+                    ? "Odhlašuji…"
+                    : otherSessionsCount > 0
+                      ? `Odhlásit ostatní zařízení (${otherSessionsCount})`
+                      : "Odhlásit ostatní zařízení"}
+                </button>
+
+                {accountSessionsStatus ? (
+                  <div
+                    className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${statusClass(accountSessionsStatus)}`}
+                  >
+                    {accountSessionsStatus.message}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">

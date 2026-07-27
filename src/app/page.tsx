@@ -62,13 +62,6 @@ import {
   type TeamLeaderboardEntry,
 } from "./home/types";
 
-const AutoAnniversaryModal = dynamic(
-  () =>
-    import("@/components/AutoAnniversaryModal").then(
-      (mod) => mod.AutoAnniversaryModal
-    ),
-  { ssr: false }
-);
 const GoldWidget = dynamic(
   () => import("./home/components/GoldWidget").then((mod) => mod.GoldWidget),
   { ssr: false }
@@ -1802,7 +1795,6 @@ export default function HomePage() {
 
   return (
     <AppLayout active="home">
-      {user && <AutoAnniversaryModal userEmail={user.email} />}
       {portalLinksModalOpen && (
         <InstitutionPortalLinksModal onClose={() => setPortalLinksModalOpen(false)} />
       )}

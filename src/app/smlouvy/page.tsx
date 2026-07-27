@@ -56,7 +56,6 @@ import {
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_CATALOG,
-  TRAVEL_PRODUCTS,
   productInstitutionLabel,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
@@ -69,6 +68,13 @@ import {
   institutionLogoFrameClass,
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
+import {
+  formatDaysLeft,
+  getAnniversaryStartDate,
+  getContractDate,
+  isAnniversarySoon,
+  shouldTrackAnniversary,
+} from "@/app/lib/contractAnniversary";
 import {
   CATEGORY_DEFS,
   INSTITUTION_DEFS,
@@ -178,7 +184,6 @@ const COMMISSION_AUDIT_CODE_DEFS: {
 
 const LIFE_PRODUCTS = new Set<Product>(LIFE_PRODUCTS_LIST);
 const GOLD_PRODUCT: Product = "comfortcc";
-const ANNIVERSARY_EXCLUDED_PRODUCTS = new Set<Product>(TRAVEL_PRODUCTS);
 const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   neon: "Životní pojištění NEON",
   flexi: "Životní pojištění FLEXI",
@@ -439,41 +444,6 @@ function adviserLabelForEmail(email: string, knownName?: string | null): string 
   return cleanDisplayName(knownName) || adviserNameFromEmail(email) || email;
 }
 
-function nextAnniversaryDate(start: Date, now: Date): Date {
-  const candidate = new Date(
-    now.getFullYear(),
-    start.getMonth(),
-    start.getDate()
-  );
-  if (candidate.getTime() < now.getTime()) {
-    candidate.setFullYear(candidate.getFullYear() + 1);
-  }
-  return candidate;
-}
-
-const ANNIVERSARY_WINDOW_DAYS = 90;
-
-function isAnniversarySoon(
-  date: Date | null
-): { soon: boolean; next?: Date; daysLeft?: number; anniversaryNumber?: number } {
-  if (!date) return { soon: false };
-  const nowRaw = new Date();
-  const now = new Date(nowRaw.getFullYear(), nowRaw.getMonth(), nowRaw.getDate());
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const next = nextAnniversaryDate(start, now);
-  const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  const daysLeft = Math.ceil(diffDays);
-  const anniversaryNumber = next.getFullYear() - start.getFullYear();
-  const isRealAnniversary = anniversaryNumber >= 1;
-  const soon = diffDays <= ANNIVERSARY_WINDOW_DAYS && diffDays >= 0 && isRealAnniversary;
-  return { soon, next, daysLeft, anniversaryNumber: isRealAnniversary ? anniversaryNumber : undefined };
-}
-
-function shouldTrackAnniversary(product?: Product | null): boolean {
-  if (!product) return true;
-  return !ANNIVERSARY_EXCLUDED_PRODUCTS.has(product);
-}
-
 function isContractStorno(
   contract:
     | ContractDoc
@@ -509,12 +479,6 @@ function originalReplacementLabel(product?: Product | null): string {
   return product === "neon" ? "Refresh" : "Náhrada";
 }
 
-function formatDaysLeft(days: number): string {
-  if (days === 1) return "1 den";
-  if (days >= 2 && days <= 4) return `${days} dny`;
-  return `${days} dnů`;
-}
-
 function contractOwnerEmail(
   contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })
 ): string {
@@ -532,19 +496,6 @@ function contractMatchesSelectedSubordinates(
   if (selectedSubordinates.size === 0) return true;
   const ownerEmail = contractOwnerEmail(contract);
   return ownerEmail.length > 0 && selectedSubordinates.has(ownerEmail);
-}
-
-function getContractDate(contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })): Date | null {
-  return (
-    toDate((contract as any).contractSignedDate) ??
-    toDate((contract as any).createdAt)
-  );
-}
-
-function getAnniversaryStartDate(
-  contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })
-): Date | null {
-  return toDate(contract.policyStartDate) ?? getContractDate(contract);
 }
 
 function getOldestContractDate(contracts: ContractDoc[]): Date | null {

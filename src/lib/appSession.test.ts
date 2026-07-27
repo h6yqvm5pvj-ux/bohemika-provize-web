@@ -45,6 +45,8 @@ describe("app session cookie", () => {
 
     expect(verified.ok).toBe(true);
     if (verified.ok) {
+      expect(created.sessionId).toEqual(verified.session.sessionId);
+      expect(verified.session.sessionId).toMatch(/.+/);
       expect(verified.session).toMatchObject({
         uid: "uid-123",
         email: "user@example.com",

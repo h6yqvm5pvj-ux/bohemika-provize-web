@@ -8,6 +8,7 @@ type AppSessionPayload = {
   v: typeof SESSION_VERSION;
   uid: string;
   email: string;
+  sid?: string;
   iat: number;
   exp: number;
 };
@@ -15,6 +16,7 @@ type AppSessionPayload = {
 export type VerifiedAppSession = {
   uid: string;
   email: string;
+  sessionId: string | null;
   issuedAt: number;
   expiresAt: number;
 };
@@ -154,12 +156,19 @@ export async function createAppSessionCookieValue({
   email,
   nowMs = Date.now(),
   maxAgeSeconds = getAppSessionMaxAgeSeconds(),
+  sessionId,
 }: {
   uid: string;
   email: string;
   nowMs?: number;
   maxAgeSeconds?: number;
-}): Promise<{ value: string; expiresAt: number; maxAgeSeconds: number }> {
+  sessionId?: string;
+}): Promise<{
+  value: string;
+  sessionId: string;
+  expiresAt: number;
+  maxAgeSeconds: number;
+}> {
   const secret = resolveAppSessionSecret();
   if (!secret) {
     throw new Error("APP_SESSION_SECRET není nastavený.");
@@ -171,10 +180,16 @@ export async function createAppSessionCookieValue({
     Math.min(Math.round(maxAgeSeconds), MAX_SESSION_MAX_AGE_SECONDS)
   );
   const expiresAt = issuedAt + safeMaxAgeSeconds;
+  const resolvedSessionId =
+    sessionId?.trim() ||
+    (typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${issuedAt}-${Math.random().toString(36).slice(2, 14)}`);
   const payload: AppSessionPayload = {
     v: SESSION_VERSION,
     uid: uid.trim(),
     email: email.trim().toLowerCase(),
+    sid: resolvedSessionId,
     iat: issuedAt,
     exp: expiresAt,
   };
@@ -183,6 +198,7 @@ export async function createAppSessionCookieValue({
 
   return {
     value: `${payloadBase64}.${signatureBase64}`,
+    sessionId: resolvedSessionId,
     expiresAt,
     maxAgeSeconds: safeMaxAgeSeconds,
   };
@@ -227,6 +243,10 @@ export async function verifyAppSessionCookieValue(
     session: {
       uid: parsed.uid.trim(),
       email: parsed.email.trim().toLowerCase(),
+      sessionId:
+        typeof parsed.sid === "string" && parsed.sid.trim().length > 0
+          ? parsed.sid.trim()
+          : null,
       issuedAt: parsed.iat,
       expiresAt: parsed.exp,
     },

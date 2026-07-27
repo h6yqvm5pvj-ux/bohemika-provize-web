@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -427,6 +428,15 @@ export default function LifeInsuranceComparisonPage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   const productViews = useMemo(
     () => buildProductViews(comparisonData.products ?? []),
     [comparisonData.products]
@@ -841,6 +851,38 @@ export default function LifeInsuranceComparisonPage() {
 
   return (
     <AppLayout active="tools">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="life-comparison-preparation-title"
+          className="w-full max-w-md overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.32)]"
+        >
+          <div className="bg-slate-950 px-6 py-5 text-white">
+            <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-200 ring-1 ring-sky-300/25">
+              <Info className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <h2
+              id="life-comparison-preparation-title"
+              className="text-2xl font-extrabold leading-tight tracking-tight"
+            >
+              Pomůcka je v přípravě
+            </h2>
+          </div>
+          <div className="space-y-5 px-6 py-6">
+            <p className="text-base font-semibold leading-7 text-slate-700">
+              Tato pomůcka je momentálně v přípravě a brzy bude dostupná.
+            </p>
+            <Link
+              href="/pomucky"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-extrabold text-white shadow-[0_14px_34px_rgba(15,23,42,0.24)] transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-300"
+            >
+              <ArrowRight className="h-4 w-4 rotate-180" aria-hidden="true" />
+              Zpět na pomůcky
+            </Link>
+          </div>
+        </section>
+      </div>
       <div className="w-full space-y-4 overflow-x-hidden px-1 py-1 text-slate-900 sm:px-2 sm:py-2">
         <div className="relative z-20 border-b border-slate-200 bg-white/90 pb-3 backdrop-blur">
           <header className="space-y-3">

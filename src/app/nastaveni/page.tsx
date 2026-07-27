@@ -31,6 +31,7 @@ import {
   onAuthStateChanged,
   reauthenticateWithCredential,
   TotpMultiFactorGenerator,
+  signInWithCustomToken,
   type TotpSecret,
   updatePassword,
 } from "firebase/auth";
@@ -546,6 +547,32 @@ type PushTokenApiResponse = {
   tokenRemoved?: boolean;
 };
 
+type AccountSessionSummary = {
+  id: string;
+  current: boolean;
+  deviceLabel: string;
+  browserLabel: string;
+  osLabel: string;
+  userAgent: string;
+  createdAtMs: number;
+  lastSeenAtMs: number;
+  expiresAtMs: number;
+  revokedAtMs: number | null;
+};
+
+type AccountSessionsApiResponse = {
+  ok?: boolean;
+  sessions?: AccountSessionSummary[];
+  error?: string;
+};
+
+type RevokeOtherSessionsApiResponse = {
+  ok?: boolean;
+  customToken?: string;
+  revokedSessions?: number;
+  error?: string;
+};
+
 type OnlineCardOfficePhotoUploadResponse = {
   ok?: boolean;
   url?: string;
@@ -680,6 +707,10 @@ export default function SettingsPage() {
   const [passkeyDeletingId, setPasskeyDeletingId] = useState<string | null>(null);
   const [passkeyName, setPasskeyName] = useState("");
   const [passkeyStatus, setPasskeyStatus] = useState<InlineStatus | null>(null);
+  const [accountSessions, setAccountSessions] = useState<AccountSessionSummary[]>([]);
+  const [accountSessionsLoading, setAccountSessionsLoading] = useState(false);
+  const [accountSessionsBusy, setAccountSessionsBusy] = useState(false);
+  const [accountSessionsStatus, setAccountSessionsStatus] = useState<InlineStatus | null>(null);
   const [fcmActive, setFcmActive] = useState<boolean | null>(null);
   const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">(
     "unsupported"
@@ -805,6 +836,36 @@ export default function SettingsPage() {
     }
   }, [user]);
 
+  const loadAccountSessions = useCallback(
+    async (targetUser?: FirebaseUser | null) => {
+      const activeUser = targetUser ?? user;
+      if (!activeUser) return;
+
+      setAccountSessionsLoading(true);
+      setAccountSessionsStatus(null);
+      try {
+        const payload = await fetchAuthedJsonOrThrow<AccountSessionsApiResponse>(
+          activeUser,
+          "/api/auth/sessions",
+          { method: "GET" }
+        );
+        setAccountSessions(Array.isArray(payload.sessions) ? payload.sessions : []);
+      } catch (error) {
+        setAccountSessions([]);
+        setAccountSessionsStatus({
+          type: "error",
+          message:
+            error instanceof Error && error.message.trim()
+              ? error.message.trim()
+              : "Aktivní relace se nepodařilo načíst.",
+        });
+      } finally {
+        setAccountSessionsLoading(false);
+      }
+    },
+    [user]
+  );
+
   useEffect(() => {
     if (!user) {
       setPasskeyCredentials([]);
@@ -814,6 +875,17 @@ export default function SettingsPage() {
     if (activeTab !== "account") return;
     void loadPasskeys();
   }, [activeTab, loadPasskeys, user]);
+
+  useEffect(() => {
+    if (!user) {
+      setAccountSessions([]);
+      setAccountSessionsStatus(null);
+      setAccountSessionsBusy(false);
+      return;
+    }
+    if (activeTab !== "account") return;
+    void loadAccountSessions(user);
+  }, [activeTab, loadAccountSessions, user]);
 
   useEffect(() => {
     if (!onlineCardStudioFullscreen || typeof window === "undefined") return;
@@ -2528,6 +2600,58 @@ export default function SettingsPage() {
     }
   };
 
+  const handleRevokeOtherSessions = async () => {
+    if (!user) return;
+    const otherSessionsCount = accountSessions.filter((session) => !session.current).length;
+    const confirmed = window.confirm(
+      otherSessionsCount > 0
+        ? `Odhlásit ${otherSessionsCount} další zařízení? Na tomto zařízení zůstaneš přihlášený.`
+        : "Odhlásit ostatní zařízení? Na tomto zařízení zůstaneš přihlášený."
+    );
+    if (!confirmed) return;
+
+    setAccountSessionsBusy(true);
+    setAccountSessionsStatus(null);
+
+    try {
+      const payload = await fetchAuthedJsonOrThrow<RevokeOtherSessionsApiResponse>(
+        user,
+        "/api/auth/sessions",
+        {
+          method: "POST",
+          body: JSON.stringify({ action: "revokeOthers" }),
+        }
+      );
+
+      if (!payload.customToken) {
+        throw new Error("Server nevrátil obnovovací token pro aktuální zařízení.");
+      }
+
+      const credential = await signInWithCustomToken(auth, payload.customToken);
+      setUser(credential.user);
+      await credential.user.getIdToken(true).catch(() => undefined);
+      await loadAccountSessions(credential.user);
+
+      setAccountSessionsStatus({
+        type: "success",
+        message:
+          typeof payload.revokedSessions === "number"
+            ? `Ostatní zařízení byla odhlášena. Počet evidovaných relací: ${payload.revokedSessions}.`
+            : "Ostatní zařízení byla odhlášena.",
+      });
+    } catch (error) {
+      setAccountSessionsStatus({
+        type: "error",
+        message:
+          error instanceof Error && error.message.trim()
+            ? error.message.trim()
+            : "Ostatní zařízení se nepodařilo odhlásit.",
+      });
+    } finally {
+      setAccountSessionsBusy(false);
+    }
+  };
+
   const handleCreatePasskey = async () => {
     if (!user) return;
     if (!passkeySupported) {
@@ -3552,6 +3676,10 @@ export default function SettingsPage() {
                 passkeyDeletingId={passkeyDeletingId}
                 passkeyName={passkeyName}
                 passkeyStatus={passkeyStatus}
+                accountSessions={accountSessions}
+                accountSessionsLoading={accountSessionsLoading}
+                accountSessionsBusy={accountSessionsBusy}
+                accountSessionsStatus={accountSessionsStatus}
                 mfaPassword={mfaPassword}
                 mfaBusy={mfaBusy}
                 mfaEnrollmentSecretKey={mfaEnrollmentSecret?.secretKey ?? null}
@@ -3579,6 +3707,8 @@ export default function SettingsPage() {
                 onNewPasswordChange={setNewPassword}
                 onConfirmPasswordChange={setConfirmPassword}
                 onChangePassword={handleChangePassword}
+                onRefreshAccountSessions={() => loadAccountSessions(user)}
+                onRevokeOtherSessions={handleRevokeOtherSessions}
                 onPasskeyNameChange={setPasskeyName}
                 onCreatePasskey={handleCreatePasskey}
                 onDeletePasskey={handleDeletePasskey}

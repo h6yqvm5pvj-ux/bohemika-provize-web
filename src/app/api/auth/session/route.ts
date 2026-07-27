@@ -15,6 +15,7 @@ import {
   consumeRateLimit,
   getRequestIp,
 } from "@/lib/server/rateLimit";
+import { recordAppSession } from "@/lib/server/appSessionRegistry";
 import { loadUserProfileForAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
 
@@ -167,6 +168,15 @@ export async function POST(req: NextRequest) {
       uid,
       email,
       maxAgeSeconds: getAppSessionMaxAgeSeconds(),
+    });
+    await recordAppSession({
+      email,
+      uid,
+      sessionId: session.sessionId,
+      expiresAtMs: session.expiresAt * 1000,
+      req,
+    }).catch((error) => {
+      console.warn("POST /api/auth/session: záznam aplikační relace selhal", error);
     });
     const response = NextResponse.json({
       ok: true,
