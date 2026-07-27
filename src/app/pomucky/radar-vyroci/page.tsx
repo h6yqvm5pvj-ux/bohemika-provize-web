@@ -1299,11 +1299,13 @@ export default function RadarVyrociPage() {
                 onClick={() => setWindowDays(days)}
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
                   windowDays === days
-                    ? "bg-[linear-gradient(135deg,#334155_0%,#0f172a_100%)] text-white shadow-[0_6px_16px_rgba(15,23,42,0.28)]"
+                    ? "bg-[linear-gradient(135deg,#334155_0%,#0f172a_100%)] !text-white shadow-[0_6px_16px_rgba(15,23,42,0.28)]"
                     : "text-slate-600 hover:bg-white"
                 }`}
               >
-                {days} dní
+                <span className={windowDays === days ? "!text-white" : ""}>
+                  {days} dní
+                </span>
               </button>
             ))}
           </div>
@@ -1479,7 +1481,7 @@ export default function RadarVyrociPage() {
                                 </>
                               ) : (
                                 <span className="text-[11px] font-semibold text-slate-400">
-                                  Bez výsledku kontaktu
+                                  Zatím nezpracováno
                                 </span>
                               )}
                             </div>

@@ -11,6 +11,7 @@ import {
   Network,
   Search,
   Trophy,
+  X,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -445,9 +446,46 @@ type TeamOverviewUpdateSuccess = {
   updated?: Array<"agencyNumber" | "position" | "positionTimeline">;
 };
 
+type WeeklyTeamReportCategoryKey =
+  | "life"
+  | "auto"
+  | "property"
+  | "business"
+  | "foreigners"
+  | "travel";
+
+type WeeklyTeamReportMetrics = {
+  contracts: number;
+  annualPremium: number;
+  monthlyPremium: number;
+};
+
+type WeeklyTeamReport = {
+  mailboxId: string;
+  reportId: string;
+  title: string;
+  body: string;
+  createdAtMs: number;
+  periodStart: string;
+  periodEnd: string;
+  categories: Record<WeeklyTeamReportCategoryKey, WeeklyTeamReportMetrics>;
+  topAdvisor: {
+    email: string;
+    name: string;
+    contracts: number;
+    annualPremium: number;
+  } | null;
+};
+
+type WeeklyTeamReportApiResponse = {
+  ok: true;
+  report: WeeklyTeamReport | null;
+} & Record<string, unknown>;
+
 const TEAM_CACHE_TTL_MS = 60 * 1000;
 const TEAM_MIN_LOADING_MS = 1800;
 const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
+const WEEKLY_REPORT_SEEN_PREFIX = "bohemika:weekly-team-report-modal";
 
 type SortKey = "activity" | "month" | "total" | "name";
 
@@ -457,6 +495,87 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "total", label: "Celkem smluv" },
   { key: "name", label: "Jméno A-Z" },
 ];
+
+const WEEKLY_REPORT_ROWS: Array<{
+  key: WeeklyTeamReportCategoryKey;
+  title: string;
+  premiumLabel: string;
+  iconSrc: string;
+  iconAlt: string;
+}> = [
+  {
+    key: "life",
+    title: "Životní pojištění",
+    premiumLabel: "měsíční pojistné",
+    iconSrc: "/icons/zivot.webp",
+    iconAlt: "Životní pojištění",
+  },
+  {
+    key: "auto",
+    title: "Auta",
+    premiumLabel: "roční pojistné",
+    iconSrc: "/icons/icon_auto.webp",
+    iconAlt: "Auto pojištění",
+  },
+  {
+    key: "property",
+    title: "Majetek a odpovědnosti",
+    premiumLabel: "roční pojistné",
+    iconSrc: "/icons/icon_domex.webp",
+    iconAlt: "Majetek",
+  },
+  {
+    key: "business",
+    title: "Podnikatelé",
+    premiumLabel: "roční pojistné",
+    iconSrc: "/icons/icon_domex.webp",
+    iconAlt: "Podnikatelé",
+  },
+  {
+    key: "foreigners",
+    title: "Cizinci",
+    premiumLabel: "roční pojistné",
+    iconSrc: "/icons/icon_cestovko.webp",
+    iconAlt: "Cizinci",
+  },
+  {
+    key: "travel",
+    title: "Cestovko",
+    premiumLabel: "roční pojistné",
+    iconSrc: "/icons/icon_cestovko.webp",
+    iconAlt: "Cestovní pojištění",
+  },
+];
+
+const emptyWeeklyTeamReportMetrics = (): WeeklyTeamReportMetrics => ({
+  contracts: 0,
+  annualPremium: 0,
+  monthlyPremium: 0,
+});
+
+const weeklyReportSeenKey = (email: string, reportId: string): string =>
+  `${WEEKLY_REPORT_SEEN_PREFIX}:${email.toLowerCase()}:${reportId}`;
+
+const getWeeklyReportMetricValue = (
+  report: WeeklyTeamReport,
+  key: WeeklyTeamReportCategoryKey
+): WeeklyTeamReportMetrics =>
+  report.categories?.[key] ?? emptyWeeklyTeamReportMetrics();
+
+const formatWeeklyReportPeriod = (start: string, end: string): string => {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return "Uplynulý týden";
+  }
+
+  const formatter = new Intl.DateTimeFormat("cs-CZ", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  });
+  return `${formatter.format(startDate)} - ${formatter.format(endDate)}`;
+};
 
 const MEMBER_LIST_ESTIMATED_ROW_HEIGHT = 64;
 const MEMBER_LIST_OVERSCAN = 6;
@@ -521,9 +640,16 @@ export default function TeamPage() {
   const [endCollaborationSuccess, setEndCollaborationSuccess] = useState<string | null>(
     null
   );
+  const [weeklyReportModal, setWeeklyReportModal] = useState<WeeklyTeamReport | null>(
+    null
+  );
+  const [weeklyReportSeenStorageKey, setWeeklyReportSeenStorageKey] = useState<
+    string | null
+  >(null);
   const copyEmailTimerRef = useRef<number | null>(null);
   const careerSaveTimerRef = useRef<number | null>(null);
   const endCollaborationTimerRef = useRef<number | null>(null);
+  const weeklyReportRequestRef = useRef(false);
   const agencyNumberSelectedEmailRef = useRef<string | null>(null);
   const membersListRef = useRef<HTMLDivElement | null>(null);
   const [membersScrollTop, setMembersScrollTop] = useState(0);
@@ -786,6 +912,56 @@ export default function TeamPage() {
     };
     // only depends on signed-in user; selection should not retrigger fetch
   }, [authReady, userEmail, cacheKey, refreshNonce]);
+
+  useEffect(() => {
+    const loadWeeklyReportFromNotification = async () => {
+      if (!authReady || !userEmail) return;
+      if (weeklyReportRequestRef.current) return;
+      if (typeof window === "undefined") return;
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("source") !== "weekly-report") return;
+
+      weeklyReportRequestRef.current = true;
+      const requestedReportId = params.get("reportId")?.trim() ?? "";
+      if (requestedReportId) {
+        const preflightSeenKey = weeklyReportSeenKey(userEmail, requestedReportId);
+        try {
+          if (window.localStorage.getItem(preflightSeenKey) === "1") return;
+        } catch {
+          // localStorage může být v některých režimech prohlížeče blokované
+        }
+      }
+
+      try {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+        const query = requestedReportId
+          ? `?reportId=${encodeURIComponent(requestedReportId)}`
+          : "";
+        const payload =
+          await fetchAuthedJsonOrThrow<WeeklyTeamReportApiResponse>(
+            currentUser,
+            `/api/team-overview/weekly-report${query}`
+          );
+        if (!payload.report) return;
+
+        const seenKey = weeklyReportSeenKey(userEmail, payload.report.reportId);
+        try {
+          if (window.localStorage.getItem(seenKey) === "1") return;
+        } catch {
+          // best effort
+        }
+
+        setWeeklyReportSeenStorageKey(seenKey);
+        setWeeklyReportModal(payload.report);
+      } catch (error) {
+        console.error("Týdenní report se nepodařilo načíst:", error);
+      }
+    };
+
+    void loadWeeklyReportFromNotification();
+  }, [authReady, userEmail]);
 
   useEffect(() => {
     if (!loading) {
@@ -1181,6 +1357,18 @@ export default function TeamPage() {
     } catch {
       // clipboard může být blokovaný browserem
     }
+  };
+
+  const closeWeeklyReportModal = () => {
+    if (weeklyReportSeenStorageKey && typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(weeklyReportSeenStorageKey, "1");
+      } catch {
+        // best effort
+      }
+    }
+    setWeeklyReportModal(null);
+    setWeeklyReportSeenStorageKey(null);
   };
 
   const formatLastActive = (email: string): string => {
@@ -2516,6 +2704,159 @@ export default function TeamPage() {
           </div>
         )}
       </div>
+      {weeklyReportModal
+        ? (() => {
+            const totalContracts = WEEKLY_REPORT_ROWS.reduce(
+              (sum, row) =>
+                sum + getWeeklyReportMetricValue(weeklyReportModal, row.key).contracts,
+              0
+            );
+            const totalAnnualPremium = WEEKLY_REPORT_ROWS.reduce((sum, row) => {
+              const metrics = getWeeklyReportMetricValue(weeklyReportModal, row.key);
+              return (
+                sum +
+                (row.key === "life" ? metrics.monthlyPremium * 12 : metrics.annualPremium)
+              );
+            }, 0);
+            const periodLabel = formatWeeklyReportPeriod(
+              weeklyReportModal.periodStart,
+              weeklyReportModal.periodEnd
+            );
+
+            return (
+              <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/72 px-3 py-5 backdrop-blur-md sm:px-5">
+                <div className="relative max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/12 bg-black text-white shadow-[0_28px_90px_rgba(0,0,0,0.52)]">
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-white via-fuchsia-300 to-violet-500" />
+                  <span className="pointer-events-none absolute -right-24 -top-24 h-52 w-52 rounded-full bg-fuchsia-500/22 blur-3xl" />
+                  <span className="pointer-events-none absolute -left-24 bottom-0 h-56 w-56 rounded-full bg-violet-600/18 blur-3xl" />
+
+                  <div className="relative z-10 max-h-[92vh] overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="inline-flex items-center rounded-full border border-violet-300/50 bg-white/8 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.24em] !text-violet-100">
+                          Týdenní report týmu
+                        </div>
+                        <h2 className="mt-4 text-3xl font-black leading-none tracking-normal !text-white sm:text-5xl">
+                          Shrnutí za týden
+                        </h2>
+                        <p className="mt-2 text-sm font-semibold !text-white/72 sm:text-base">
+                          {periodLabel}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={closeWeeklyReportModal}
+                        className="ui-focus inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/18 bg-white/10 text-white shadow-[0_10px_24px_rgba(0,0,0,0.22)] transition hover:bg-white/18"
+                        aria-label="Zavřít týdenní report"
+                      >
+                        <X size={20} strokeWidth={2.2} aria-hidden="true" />
+                      </button>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-white/14 bg-white px-4 py-4 text-black">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                          Sjednáno
+                        </div>
+                        <div className="mt-2 text-3xl font-black tracking-normal text-black">
+                          {totalContracts}
+                        </div>
+                        <div className="text-sm font-semibold text-slate-600">smluv</div>
+                      </div>
+                      <div className="rounded-2xl border border-violet-300/28 bg-violet-500/18 px-4 py-4 text-white">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.22em] !text-violet-100/76">
+                          Roční objem
+                        </div>
+                        <div className="mt-2 text-3xl font-black tracking-normal !text-white">
+                          {formatMetricMoney(totalAnnualPremium)}
+                        </div>
+                        <div className="text-sm font-semibold !text-white/68">orientačně</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/14 bg-white/[0.06] px-4 py-4 text-white">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.22em] !text-white/56">
+                          Nejaktivnější poradce
+                        </div>
+                        <div className="mt-2 truncate text-2xl font-black tracking-normal !text-white">
+                          {weeklyReportModal.topAdvisor?.name ?? "Bez produkce"}
+                        </div>
+                        <div className="text-sm font-semibold !text-white/62">
+                          {weeklyReportModal.topAdvisor
+                            ? `${weeklyReportModal.topAdvisor.contracts} smluv`
+                            : "za vybrané období"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {WEEKLY_REPORT_ROWS.map((row) => {
+                        const metrics = getWeeklyReportMetricValue(
+                          weeklyReportModal,
+                          row.key
+                        );
+                        const premium =
+                          row.key === "life"
+                            ? metrics.monthlyPremium
+                            : metrics.annualPremium;
+
+                        return (
+                          <div
+                            key={row.key}
+                            className="group relative overflow-hidden rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                          >
+                            <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-fuchsia-300 to-violet-600 opacity-80" />
+                            <div className="flex items-center gap-3">
+                              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-white/12 bg-white shadow-[0_12px_28px_rgba(168,85,247,0.22)]">
+                                <Image
+                                  src={row.iconSrc}
+                                  alt={row.iconAlt}
+                                  fill
+                                  sizes="48px"
+                                  className="object-contain p-2"
+                                />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-base font-black !text-white">
+                                  {row.title}
+                                </div>
+                                <div className="mt-0.5 text-xs font-semibold uppercase tracking-[0.14em] !text-white/48">
+                                  {row.premiumLabel}
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 text-right">
+                                <div className="text-lg font-black !text-white">
+                                  {metrics.contracts}x
+                                </div>
+                                <div className="text-sm font-bold !text-violet-100">
+                                  {formatMetricMoney(premium)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-5 flex flex-col gap-2 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-semibold leading-relaxed !text-white/52">
+                        Data vychází z produkce podřízených za posledních 7 dní.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={closeWeeklyReportModal}
+                        className="ui-focus inline-flex items-center justify-center rounded-full border border-violet-300/50 bg-white px-5 py-3 text-sm font-black text-black shadow-[0_16px_34px_rgba(168,85,247,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-50"
+                      >
+                        Zavřít
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        : null}
       {endCollaborationModalOpen && selected ? (
         <div className="team-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
           <div className="team-modal-panel w-full max-w-lg rounded-2xl border border-rose-300 bg-white p-4 shadow-2xl">
