@@ -453,6 +453,7 @@ async function runWeeklyTeamReport(req: NextRequest) {
   const now = new Date();
   const untilMs = now.getTime();
   const sinceMs = untilMs - WEEKLY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  const targetEmail = normalizeEmail(req.nextUrl.searchParams.get("targetEmail"));
 
   const users = await loadUsersWithMergedProfiles();
 
@@ -485,6 +486,7 @@ async function runWeeklyTeamReport(req: NextRequest) {
   let skippedNoToken = 0;
 
   for (const manager of users) {
+    if (targetEmail && manager.email !== targetEmail) continue;
     if (!childrenByManager.has(manager.email)) continue;
     managersEvaluated += 1;
 
@@ -634,6 +636,7 @@ async function runWeeklyTeamReport(req: NextRequest) {
     failedNotifications,
     skippedPushDisabled,
     skippedNoToken,
+    targetEmail: targetEmail || null,
     since: new Date(sinceMs).toISOString(),
     until: new Date(untilMs).toISOString(),
   });
