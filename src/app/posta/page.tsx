@@ -721,7 +721,7 @@ export default function PostaPage() {
     return (
       <div
         key={item.id}
-        className={`${styles.mailCard} group relative w-full overflow-hidden rounded-[20px] border ${
+        className={`${styles.mailCard} ${styles.mailItemCard} group relative w-full overflow-hidden rounded-[20px] border ${
           compact ? "p-3" : "p-4"
         } text-left shadow-[0_8px_22px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)] ${
           isTipsterTip
@@ -743,7 +743,7 @@ export default function PostaPage() {
           aria-hidden="true"
         />
 
-        <div className="flex items-start justify-between gap-3 pl-2">
+        <div className={`${styles.mailCardInner} flex items-start justify-between gap-3 pl-2`}>
           <button
             type="button"
             onClick={() => {
@@ -753,9 +753,9 @@ export default function PostaPage() {
               }
               void openItem(item);
             }}
-            className="min-w-0 flex-1 text-left"
+            className={`${styles.mailCardMain} min-w-0 flex-1 text-left`}
           >
-            <div className="flex items-center gap-2">
+            <div className={`${styles.mailTitleRow} flex items-center gap-2`}>
               {selectMode ? (
                 <span
                   className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[11px] font-bold ${
@@ -801,7 +801,7 @@ export default function PostaPage() {
             ) : null}
             <p className="mt-2 text-xs text-slate-500">{formatDateTime(item.createdAtMs)}</p>
           </button>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <div className={`${styles.mailCardActions} flex shrink-0 flex-wrap items-center justify-end gap-2`}>
             {!selectMode && !isSent ? (
               snoozed ? (
                 <button
@@ -1222,7 +1222,7 @@ export default function PostaPage() {
 
   return (
     <AppLayout active="home">
-      <div className="relative min-h-screen w-full overflow-hidden bg-white px-2 pb-10 pt-2 sm:px-3">
+      <div className={`${styles.postaPage} relative min-h-screen w-full overflow-hidden bg-white px-2 pb-10 pt-2 sm:px-3`}>
         <div className={styles.canvas} aria-hidden="true">
           <span className={styles.mesh} />
           <span className={styles.grain} />
@@ -1230,7 +1230,7 @@ export default function PostaPage() {
 
         <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-4 pt-3 text-slate-900 sm:pt-6">
           <section
-            className={`${styles.heroPanel} rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:p-5`}
+            className={`${styles.heroPanel} ${styles.mailHero} rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:p-5`}
           >
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
               <div className="flex min-w-0 items-start gap-4">
@@ -1253,7 +1253,7 @@ export default function PostaPage() {
               </div>
 
               <div className="flex flex-col gap-3 xl:items-end">
-                <div className="grid w-full grid-cols-3 gap-2 text-xs text-slate-600 sm:w-auto">
+                <div className={`${styles.heroStats} grid w-full grid-cols-3 gap-2 text-xs text-slate-600 sm:w-auto`}>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2">
                     <div className="font-semibold uppercase tracking-[0.12em] text-slate-400">Nepřečtené</div>
                     <div className="mt-1 text-lg font-bold leading-none text-violet-800">{unreadCount}</div>
@@ -1268,7 +1268,7 @@ export default function PostaPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                <div className={`${styles.heroActions} flex flex-wrap items-center gap-2 xl:justify-end`}>
                 <button
                   type="button"
                   onClick={openComposeModal}
@@ -1319,9 +1319,9 @@ export default function PostaPage() {
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5">
-              <div className="inline-flex items-center rounded-2xl border border-slate-200 bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+          <section className={`${styles.mailListPanel} overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.07)]`}>
+            <div className={`${styles.filterBar} flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5`}>
+              <div className={`${styles.filterTabs} inline-flex items-center rounded-2xl border border-slate-200 bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]`}>
                 <button
                   type="button"
                   onClick={() => setMailFilter("all")}
@@ -1368,12 +1368,12 @@ export default function PostaPage() {
                 </button>
               </div>
 
-              <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+              <div className={`${styles.visibleCount} rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500`}>
                 Zobrazeno: <strong className="text-violet-800">{visibleItems.length}</strong>
               </div>
             </div>
 
-            <div className="p-4 sm:p-5">
+            <div className={`${styles.mailListBody} p-4 sm:p-5`}>
             {selectMode ? (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-900">
@@ -1445,19 +1445,19 @@ export default function PostaPage() {
                   const groupSnoozing = row.items.some((item) => snoozingIds.includes(item.id));
                   return (
                     <div key={row.key} className="space-y-2">
-                      <div className="relative overflow-hidden rounded-[20px] border border-violet-200 bg-[linear-gradient(180deg,#fbf8ff_0%,#ffffff_100%)] p-4 shadow-[0_8px_22px_rgba(15,23,42,0.05)]">
+                      <div className={`${styles.groupCard} relative overflow-hidden rounded-[20px] border border-violet-200 bg-[linear-gradient(180deg,#fbf8ff_0%,#ffffff_100%)] p-4 shadow-[0_8px_22px_rgba(15,23,42,0.05)]`}>
                         <span
                           className="absolute inset-y-0 left-0 w-1.5 bg-[linear-gradient(180deg,#020617_0%,#6d28d9_100%)]"
                           aria-hidden="true"
                         />
-                        <div className="flex flex-wrap items-start justify-between gap-3 pl-2">
+                        <div className={`${styles.groupCardInner} flex flex-wrap items-start justify-between gap-3 pl-2`}>
                           <button
                             type="button"
                             onClick={() => toggleExpandedGroup(row.key)}
-                            className="min-w-0 flex-1 text-left"
+                            className={`${styles.groupCardMain} min-w-0 flex-1 text-left`}
                             aria-expanded={expanded}
                           >
-                            <div className="flex min-w-0 items-center gap-2">
+                            <div className={`${styles.groupTitleRow} flex min-w-0 items-center gap-2`}>
                               <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
                                 <Layers3 className="h-3.5 w-3.5" aria-hidden="true" />
                               </span>
@@ -1476,7 +1476,7 @@ export default function PostaPage() {
                             </p>
                           </button>
 
-                          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                          <div className={`${styles.groupCardActions} flex shrink-0 flex-wrap items-center justify-end gap-2`}>
                             {groupSnoozed ? (
                               <button
                                 type="button"
@@ -1530,7 +1530,7 @@ export default function PostaPage() {
                       </div>
 
                       {expanded ? (
-                        <div className="space-y-2 pl-3 sm:pl-5">
+                        <div className={`${styles.groupChildren} space-y-2 pl-3 sm:pl-5`}>
                           {row.items.map((item, childIndex) =>
                             renderMailboxItemCard(item, index + childIndex + 1, true)
                           )}
