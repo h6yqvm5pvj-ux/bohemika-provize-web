@@ -19,6 +19,8 @@ const MAX_TOKENS_PER_USER = 30;
 const MAX_TOKENS_PER_MULTICAST = 500;
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
 const WEEKLY_REPORT_DEEP_LINK_BASE = "/muj-tym/tydenni-report?source=weekly-report";
+const WEEKLY_REPORT_NOTIFICATION_TITLE = "📊 Týdenní report produkce";
+const WEEKLY_REPORT_NOTIFICATION_BODY = "Klikni pro zobrazení!";
 const INVALID_TOKEN_CODES = new Set([
   "messaging/registration-token-not-registered",
   "messaging/invalid-registration-token",
@@ -169,13 +171,6 @@ function annualPremiumFromEntry(
   }
 
   return rawAmount * paymentsPerYear(normalizeFrequency(data.frequencyRaw));
-}
-
-function formatMoney(value: number): string {
-  const rounded = Math.max(0, Math.round(value));
-  return `${new Intl.NumberFormat("cs-CZ", {
-    maximumFractionDigits: 0,
-  }).format(rounded)} Kč`;
 }
 
 function emptyWeeklyReportMetrics(): WeeklyReportMetrics {
@@ -543,16 +538,12 @@ async function runWeeklyTeamReport(req: NextRequest) {
       categories.foreigners.annualPremium +
       categories.travel.annualPremium;
 
-    const body = `ŽP ${lifeContracts} smluv / ${formatMoney(
-      lifeMonthlyPremium
-    )} • Neživot ${nonLifeContracts} smluv / ${formatMoney(nonLifeAnnualPremium)}`;
-
     try {
       const mailbox = await writeMailboxEntries({
         recipientEmails: [manager.email],
         type: "weekly_team_report",
-        title: "Týdenní report produkce",
-        body,
+        title: WEEKLY_REPORT_NOTIFICATION_TITLE,
+        body: WEEKLY_REPORT_NOTIFICATION_BODY,
         deepLink: reportDeepLink,
         metadata: buildWeeklyReportMetadata({
           reportId,
@@ -586,8 +577,8 @@ async function runWeeklyTeamReport(req: NextRequest) {
         const multicast = await adminMessaging.sendEachForMulticast({
           tokens: chunk,
           notification: {
-            title: "Týdenní report produkce",
-            body,
+            title: WEEKLY_REPORT_NOTIFICATION_TITLE,
+            body: WEEKLY_REPORT_NOTIFICATION_BODY,
           },
           data: {
             type: "weekly_team_report",
