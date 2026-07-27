@@ -73,6 +73,321 @@
     Roboto, Helvetica, Arial, sans-serif;
 }
 
+@layer components {
+  @media (max-width: 767px) {
+    .team-panel-root {
+      max-width: 100% !important;
+      overflow-x: clip;
+      border-radius: 0 !important;
+      background: #ffffff !important;
+      padding: 0.5rem 0.625rem 1rem !important;
+    }
+
+    .team-panel-root > :not([hidden]) ~ :not([hidden]) {
+      margin-top: 0.875rem !important;
+    }
+
+    .team-panel-header {
+      min-width: 0;
+      padding-inline: 0.125rem;
+    }
+
+    .team-panel-title {
+      max-width: 100%;
+      font-size: 2.35rem !important;
+      line-height: 0.98 !important;
+      letter-spacing: 0 !important;
+      overflow-wrap: anywhere;
+    }
+
+    .team-panel-layout {
+      gap: 0.875rem !important;
+    }
+
+    .team-panel-sidebar {
+      border-radius: 22px !important;
+      padding: 0.75rem !important;
+      box-shadow: 0 14px 34px rgba(76, 29, 149, 0.08) !important;
+    }
+
+    .team-sidebar-content {
+      gap: 0.625rem !important;
+    }
+
+    .team-panel-search {
+      border-radius: 16px !important;
+      padding: 0.55rem 0.7rem !important;
+      box-shadow: none !important;
+    }
+
+    .team-panel-search input,
+    .team-panel-sort {
+      min-height: 2.55rem !important;
+      font-size: 16px !important;
+    }
+
+    .team-panel-sort {
+      border-radius: 16px !important;
+      padding: 0.55rem 0.7rem !important;
+    }
+
+    .team-panel-actions {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 0.45rem !important;
+    }
+
+    .team-panel-actions a {
+      min-height: 2.55rem !important;
+      border-radius: 16px !important;
+      padding: 0.5rem 0.35rem !important;
+      font-size: 0.72rem !important;
+      line-height: 1.1 !important;
+      box-shadow: none !important;
+    }
+
+    .team-panel-actions svg {
+      height: 0.9rem !important;
+      width: 0.9rem !important;
+    }
+
+    .team-member-section {
+      padding-top: 0.7rem !important;
+    }
+
+    .team-member-list {
+      max-height: none !important;
+      gap: 0.5rem !important;
+      overflow: visible !important;
+      padding-right: 0 !important;
+    }
+
+    .team-member-card {
+      min-height: 3.1rem !important;
+      border-radius: 16px !important;
+      padding: 0.5rem 0.55rem !important;
+      box-shadow: none !important;
+    }
+
+    .team-member-card > div > div:first-child {
+      height: 2.15rem !important;
+      width: 2.15rem !important;
+    }
+
+    .team-member-name {
+      font-size: 0.94rem !important;
+      line-height: 1.1 !important;
+    }
+
+    .team-member-status {
+      max-width: 8.6rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 0.66rem !important;
+      line-height: 1rem !important;
+    }
+
+    .team-detail-shell {
+      scroll-margin-top: 5.75rem;
+    }
+
+    .team-detail-panel {
+      border-radius: 22px !important;
+      box-shadow: 0 14px 34px rgba(76, 29, 149, 0.09) !important;
+    }
+
+    .team-detail-hero {
+      padding: 0.9rem !important;
+    }
+
+    .team-detail-hero > span {
+      display: none !important;
+    }
+
+    .team-detail-hero-content {
+      gap: 0.65rem !important;
+    }
+
+    .team-detail-name {
+      font-size: 1.7rem !important;
+      line-height: 1.03 !important;
+      letter-spacing: 0 !important;
+    }
+
+    .team-detail-meta {
+      gap: 0.35rem !important;
+    }
+
+    .team-detail-meta > span {
+      border-radius: 999px !important;
+      padding: 0.35rem 0.5rem !important;
+      font-size: 0.68rem !important;
+      line-height: 1.05 !important;
+    }
+
+    .team-detail-body {
+      padding: 0.75rem !important;
+    }
+
+    .team-detail-body > :not([hidden]) ~ :not([hidden]) {
+      margin-top: 0.7rem !important;
+    }
+
+    .team-detail-toolbar {
+      gap: 0.55rem !important;
+    }
+
+    .team-detail-actions {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      width: 100%;
+      gap: 0.4rem !important;
+    }
+
+    .team-detail-actions > * {
+      min-height: 2.15rem !important;
+      justify-content: center !important;
+      padding: 0.4rem 0.35rem !important;
+      font-size: 0.68rem !important;
+      line-height: 1.1 !important;
+      box-shadow: none !important;
+    }
+
+    .team-detail-tabs {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      width: 100%;
+      border-radius: 16px !important;
+      gap: 0.25rem !important;
+    }
+
+    .team-detail-tabs button {
+      min-height: 2rem !important;
+      padding: 0.35rem 0.3rem !important;
+      font-size: 0.68rem !important;
+      line-height: 1.1 !important;
+    }
+
+    .team-overview-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 0.5rem !important;
+      padding-block: 0.75rem !important;
+    }
+
+    .team-stat-card {
+      min-height: 5.6rem;
+      border-radius: 16px !important;
+      padding: 0.7rem !important;
+      box-shadow: none !important;
+    }
+
+    .team-stat-card [class*="text-3xl"] {
+      font-size: 1.7rem !important;
+      line-height: 1 !important;
+    }
+
+    .team-stat-card [class*="text-2xl"] {
+      font-size: 1.25rem !important;
+      line-height: 1.05 !important;
+    }
+
+    .team-stat-card [class*="tracking"] {
+      letter-spacing: 0.12em !important;
+    }
+
+    .team-production-panel {
+      border-radius: 18px !important;
+      padding: 0.75rem !important;
+      box-shadow: none !important;
+    }
+
+    .team-production-panel > span {
+      height: 2px !important;
+    }
+
+    .team-production-panel > div:first-of-type > div:last-child {
+      display: none !important;
+    }
+
+    .team-production-tabs {
+      display: flex !important;
+      flex-wrap: nowrap !important;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      border-radius: 16px !important;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .team-production-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .team-production-tabs button {
+      flex: 0 0 auto;
+      padding: 0.42rem 0.65rem !important;
+      font-size: 0.72rem !important;
+      line-height: 1.1 !important;
+    }
+
+    .team-production-table {
+      border-radius: 16px !important;
+      background: #ffffff !important;
+      padding: 0.55rem !important;
+    }
+
+    .team-production-row,
+    .team-production-total {
+      grid-template-columns: minmax(0, 1fr) auto auto !important;
+      align-items: center !important;
+      gap: 0.35rem 0.65rem !important;
+      border-radius: 16px !important;
+      padding: 0.65rem 0.7rem !important;
+      box-shadow: none !important;
+    }
+
+    .team-production-row > div:first-child {
+      grid-column: 1 / -1;
+      gap: 0.55rem !important;
+    }
+
+    .team-production-logo {
+      height: 1.75rem !important;
+      width: 3.15rem !important;
+    }
+
+    .team-production-name {
+      font-size: 0.96rem !important;
+      line-height: 1.12 !important;
+    }
+
+    .team-production-contracts,
+    .team-production-money {
+      font-size: 0.9rem !important;
+      line-height: 1.12 !important;
+      white-space: nowrap;
+    }
+
+    .team-production-total > span {
+      display: none !important;
+    }
+
+    .team-production-total-label {
+      grid-column: 1 / -1;
+      font-size: 1rem !important;
+      line-height: 1.1 !important;
+    }
+
+    .team-production-total-contracts,
+    .team-production-total-money {
+      font-size: 0.92rem !important;
+      line-height: 1.12 !important;
+      white-space: nowrap;
+    }
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

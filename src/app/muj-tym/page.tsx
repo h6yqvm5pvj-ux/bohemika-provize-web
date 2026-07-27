@@ -652,6 +652,7 @@ export default function TeamPage() {
   const weeklyReportRequestRef = useRef(false);
   const agencyNumberSelectedEmailRef = useRef<string | null>(null);
   const membersListRef = useRef<HTMLDivElement | null>(null);
+  const teamDetailRef = useRef<HTMLDivElement | null>(null);
   const [membersScrollTop, setMembersScrollTop] = useState(0);
   const [membersViewportHeight, setMembersViewportHeight] = useState(0);
 
@@ -1903,7 +1904,7 @@ export default function TeamPage() {
         className={`${introStyles.pageEnter} team-panel-root w-full max-w-6xl space-y-6 rounded-[34px] bg-[linear-gradient(180deg,#fbfaff_0%,#ffffff_46%,#fbfaff_100%)] px-1 py-1 text-slate-900 sm:px-2 sm:py-2`}
       >
         {!loading && (
-          <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <header className="team-panel-header flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <SplitTitle text="Můj tým" className="team-panel-title !text-slate-900" />
           </header>
         )}
@@ -1919,15 +1920,15 @@ export default function TeamPage() {
         ) : (
           <div className={introStyles.bodyReveal} style={teamRevealStyle(70)}>
             <div
-              className={`grid grid-cols-1 gap-4 ${
+              className={`team-panel-layout grid grid-cols-1 gap-4 ${
                 showTeamSidebar ? "lg:grid-cols-[340px_minmax(0,1fr)] lg:items-stretch" : ""
               }`}
             >
               {showTeamSidebar ? (
-	              <aside className="ui-card team-panel-sidebar relative h-full overflow-hidden rounded-3xl border border-violet-100/90 bg-white p-3 shadow-[0_18px_48px_rgba(76,29,149,0.08)]">
-	                <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
-                <div className="flex h-full flex-col gap-3">
-	                  <div className="flex min-w-0 sm:min-w-[220px] items-center gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(76,29,149,0.05)]">
+		              <aside className="ui-card team-panel-sidebar relative h-full overflow-hidden rounded-3xl border border-violet-100/90 bg-white p-3 shadow-[0_18px_48px_rgba(76,29,149,0.08)]">
+		                <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
+                <div className="team-sidebar-content flex h-full flex-col gap-3">
+	                  <div className="team-panel-search flex min-w-0 sm:min-w-[220px] items-center gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(76,29,149,0.05)]">
 	                    <Search className="h-4 w-4 text-violet-500" aria-hidden="true" />
                     <input
                       type="text"
@@ -1941,7 +1942,7 @@ export default function TeamPage() {
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as SortKey)}
-	                    className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition hover:bg-violet-50/50 focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
+		                    className="team-panel-sort w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition hover:bg-violet-50/50 focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   >
                     {SORT_OPTIONS.map((option) => (
                       <option key={option.key} value={option.key}>
@@ -1950,7 +1951,7 @@ export default function TeamPage() {
                     ))}
                   </select>
 
-                  <div className="grid grid-cols-1 gap-2">
+	                  <div className="team-panel-actions grid grid-cols-1 gap-2">
                     <Link
                       href="/pomucky/struktura"
 	                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 shadow-[0_10px_24px_rgba(76,29,149,0.10)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100"
@@ -1978,7 +1979,7 @@ export default function TeamPage() {
                     ) : null}
                   </div>
 
-	                  <div className="space-y-2 border-t border-violet-100 pt-3">
+		                  <div className="team-member-section space-y-2 border-t border-violet-100 pt-3">
 	                    <div className="flex items-center justify-between">
 	                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{teamListTitle}</div>
 	                      <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700">
@@ -1987,7 +1988,7 @@ export default function TeamPage() {
                     </div>
                     <div
                       ref={membersListRef}
-                      className="grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible"
+	                      className="team-member-list grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible"
                     >
                       {filteredMembers.length === 0 && (
 	                        <div className="col-span-full rounded-2xl border border-violet-100 bg-violet-50/50 px-3 py-2 text-sm text-slate-500">
@@ -2007,7 +2008,20 @@ export default function TeamPage() {
                         return (
                           <button
                             key={m.email}
-                            onClick={() => setSelectedEmail(m.email)}
+	                            onClick={() => {
+	                              setSelectedEmail(m.email);
+	                              if (
+	                                typeof window !== "undefined" &&
+	                                window.matchMedia("(max-width: 767px)").matches
+	                              ) {
+	                                window.setTimeout(() => {
+	                                  teamDetailRef.current?.scrollIntoView({
+	                                    behavior: "smooth",
+	                                    block: "start",
+	                                  });
+	                                }, 0);
+	                              }
+	                            }}
 	                            className={[
 	                              "team-member-card relative w-full min-h-[54px] overflow-hidden rounded-xl border px-2.5 py-2 text-left transition",
 	                              isSelected
@@ -2039,11 +2053,11 @@ export default function TeamPage() {
 
                               <div className="min-w-0 flex-1">
                                 <div className="flex min-w-0 items-center justify-between gap-2">
-                                  <div className="min-w-0 truncate text-[13px] font-semibold leading-tight">
+	                                  <div className="team-member-name min-w-0 truncate text-[13px] font-semibold leading-tight">
                                     {m.name}
                                   </div>
                                   <span
-                                    className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] ${last.className}`}
+	                                    className={`team-member-status inline-flex shrink-0 items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] ${last.className}`}
                                     aria-label={last.title}
                                     title={last.title}
                                   >
@@ -2070,16 +2084,16 @@ export default function TeamPage() {
               </aside>
               ) : null}
 
-	              <div className="relative">
-	                  {selected ? (
-	                    <section className="overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
-		                      <div className="relative overflow-hidden border-b border-violet-200/30 bg-[linear-gradient(135deg,#2e1065_0%,#6d28d9_52%,#a855f7_100%)] px-4 py-4 !text-white sm:px-5">
+		              <div ref={teamDetailRef} className="team-detail-shell relative">
+		                  {selected ? (
+	                    <section className="team-detail-panel overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
+		                      <div className="team-detail-hero relative overflow-hidden border-b border-violet-200/30 bg-[linear-gradient(135deg,#2e1065_0%,#6d28d9_52%,#a855f7_100%)] px-4 py-4 !text-white sm:px-5">
 		                        <span className="pointer-events-none absolute -right-20 -top-28 h-44 w-44 rounded-full bg-white/18 blur-3xl" />
 		                        <span className="pointer-events-none absolute -left-20 -bottom-24 h-40 w-40 rounded-full bg-fuchsia-300/18 blur-3xl" />
-		                        <div className="relative z-10 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+		                        <div className="team-detail-hero-content relative z-10 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 	                          <div className="min-w-0">
 	                            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] !text-violet-100/80">Detail</div>
-	                            <div className="break-words text-3xl font-bold leading-tight !text-white sm:text-4xl">{selected.name}</div>
+	                            <div className="team-detail-name break-words text-3xl font-bold leading-tight !text-white sm:text-4xl">{selected.name}</div>
 	                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
 	                              <div className="inline-flex min-w-0 items-center gap-2 text-sm !text-violet-50/86 sm:text-base">
 	                                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] !text-violet-100/72">
@@ -2093,7 +2107,7 @@ export default function TeamPage() {
 	                              <p className="min-w-0 break-all text-sm !text-violet-50/80">{selected.email}</p>
 	                            </div>
 	                          </div>
-	                          <div className="flex flex-wrap items-center gap-2 lg:max-w-[360px] lg:justify-end">
+	                          <div className="team-detail-meta flex flex-wrap items-center gap-2 lg:max-w-[360px] lg:justify-end">
 	                            <span
 	                              className={[
 	                                "inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur",
@@ -2134,7 +2148,7 @@ export default function TeamPage() {
 	                        </div>
 	                      </div>
 
-	                      <div className="space-y-3 bg-white px-4 py-4 sm:px-5">
+	                      <div className="team-detail-body space-y-3 bg-white px-4 py-4 sm:px-5">
 	                        <div className="space-y-2.5">
 	                          {canFillSelectedAgencyNumber ? (
 		                            <div className="mt-3 max-w-2xl rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_8px_22px_rgba(76,29,149,0.05)]">
@@ -2176,8 +2190,8 @@ export default function TeamPage() {
                               {agencyNumberStatus.message}
                             </div>
                           ) : null}
-                          <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                            <div className="flex flex-wrap gap-2">
+	                          <div className="team-detail-toolbar mt-2 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+	                            <div className="team-detail-actions flex flex-wrap gap-2">
                               <button
                                 type="button"
                                 onClick={handleCopySelectedEmail}
@@ -2216,7 +2230,7 @@ export default function TeamPage() {
                               {endCollaborationSuccess}
                             </div>
                           ) : null}
-	                          <div className="mt-2 inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
+		                          <div className="team-detail-tabs mt-2 inline-flex flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
                             <button
                               type="button"
                               onClick={() => setDetailTab("overview")}
@@ -2255,7 +2269,7 @@ export default function TeamPage() {
 
 	                      {detailTab === "overview" ? (
                         <>
-	                          <div className="relative z-10 grid grid-cols-1 gap-3 border-b border-violet-100 py-4 sm:grid-cols-2 xl:grid-cols-4">
+		                          <div className="team-overview-stats relative z-10 grid grid-cols-1 gap-3 border-b border-violet-100 py-4 sm:grid-cols-2 xl:grid-cols-4">
 	                            <div className="team-stat-card relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_100%)] px-3 py-3 !text-white shadow-[0_16px_34px_rgba(76,29,149,0.20)]">
 	                              <span className="pointer-events-none absolute -right-10 -top-12 h-28 w-28 rounded-full bg-white/18 blur-2xl" />
                               <div className="relative z-10 text-[10px] font-semibold uppercase tracking-[0.16em] !text-violet-100/80">
@@ -2330,7 +2344,7 @@ export default function TeamPage() {
                             </div>
                           </div>
 
-	                          <div className="relative overflow-hidden space-y-3 rounded-2xl border border-violet-100 bg-white px-3 py-4 shadow-[0_16px_38px_rgba(76,29,149,0.07)]">
+		                          <div className="team-production-panel relative overflow-hidden space-y-3 rounded-2xl border border-violet-100 bg-white px-3 py-4 shadow-[0_16px_38px_rgba(76,29,149,0.07)]">
 	                            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{productionBoxTitle}</div>
@@ -2341,7 +2355,7 @@ export default function TeamPage() {
                               </div>
                             </div>
 
-	                            <div className="inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
+		                            <div className="team-production-tabs inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
                               {PRODUCTION_CATEGORY_TABS.map((tab) => {
                                 const active = productionCategory === tab.key;
                                 return (
@@ -2361,7 +2375,7 @@ export default function TeamPage() {
                               })}
                             </div>
 
-	                            <div className="ui-card ui-card-quiet rounded-2xl border border-violet-100 bg-violet-50/30 px-4 py-4">
+		                            <div className="team-production-table ui-card ui-card-quiet rounded-2xl border border-violet-100 bg-violet-50/30 px-4 py-4">
                               {selectedProductionRows.length === 0 ? (
 	                                <div className="text-sm text-slate-500">{emptyProductionMessage}</div>
                               ) : (
@@ -2387,7 +2401,7 @@ export default function TeamPage() {
                                       <div className="min-w-0 flex items-center gap-2">
                                         {logo ? (
                                           <span
-                                            className={`relative inline-flex shrink-0 items-center justify-center ${institutionLogoFrameClass(
+                                            className={`team-production-logo relative inline-flex shrink-0 items-center justify-center ${institutionLogoFrameClass(
                                               logoKey,
                                               "compact"
                                             )}`}
@@ -2401,28 +2415,28 @@ export default function TeamPage() {
                                             />
                                           </span>
                                         ) : null}
-                                        <span className="min-w-0 text-base font-bold text-slate-900 sm:text-lg">{row.name}</span>
+                                        <span className="team-production-name min-w-0 text-base font-bold text-slate-900 sm:text-lg">{row.name}</span>
                                       </div>
-                                      <div className="text-sm font-semibold text-slate-700 sm:text-right sm:text-base">{row.contracts}x smluv</div>
+                                      <div className="team-production-contracts text-sm font-semibold text-slate-700 sm:text-right sm:text-base">{row.contracts}x smluv</div>
                                       {showMonthlyPremiumInProduction ? (
-	                                        <div className="text-base font-bold text-violet-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
+	                                        <div className="team-production-money text-base font-bold text-violet-700 sm:text-right sm:text-xl">{formatMoney(row.monthlyPremium)}</div>
                                       ) : null}
-	                                      <div className="text-base font-bold text-violet-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
+	                                      <div className="team-production-money text-base font-bold text-violet-700 sm:text-right sm:text-xl">{formatMoney(row.annualPremium)}</div>
                                     </div>
                                   );
                                   })}
                                   <div
-	                                    className={`relative grid grid-cols-1 gap-1 overflow-hidden rounded-2xl border border-violet-700/90 bg-[linear-gradient(135deg,#4c1d95_0%,#6d28d9_54%,#312e81_100%)] px-4 py-3 !text-white shadow-[0_20px_48px_rgba(76,29,149,0.34)] ${productionGridColsClass} sm:items-center sm:gap-3`}
+		                                    className={`team-production-total relative grid grid-cols-1 gap-1 overflow-hidden rounded-2xl border border-violet-700/90 bg-[linear-gradient(135deg,#4c1d95_0%,#6d28d9_54%,#312e81_100%)] px-4 py-3 !text-white shadow-[0_20px_48px_rgba(76,29,149,0.34)] ${productionGridColsClass} sm:items-center sm:gap-3`}
                                   >
 	                                    <span className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-violet-300/24 blur-3xl" />
 	                                    <span className="pointer-events-none absolute -left-16 -bottom-20 h-44 w-44 rounded-full bg-fuchsia-300/16 blur-3xl" />
                                     <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/40" />
-                                    <div className="relative z-10 text-base font-bold !text-white drop-shadow-none sm:text-lg">Celkem</div>
-                                    <div className="relative z-10 text-sm font-semibold !text-white drop-shadow-none sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
+                                    <div className="team-production-total-label relative z-10 text-base font-bold !text-white drop-shadow-none sm:text-lg">Celkem</div>
+                                    <div className="team-production-total-contracts relative z-10 text-sm font-semibold !text-white drop-shadow-none sm:text-right sm:text-base">{selectedProductionTotals.contracts}x smluv</div>
                                     {showMonthlyPremiumInProduction ? (
-	                                      <div className="relative z-10 text-base font-bold tracking-tight text-violet-100 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
+	                                      <div className="team-production-total-money relative z-10 text-base font-bold tracking-tight text-violet-100 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.monthlyPremium)}</div>
                                     ) : null}
-	                                    <div className="relative z-10 text-base font-bold tracking-tight text-violet-100 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
+	                                    <div className="team-production-total-money relative z-10 text-base font-bold tracking-tight text-violet-100 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] sm:text-right sm:text-xl">{formatMoney(selectedProductionTotals.annualPremium)}</div>
                                   </div>
                                 </div>
                               )}
