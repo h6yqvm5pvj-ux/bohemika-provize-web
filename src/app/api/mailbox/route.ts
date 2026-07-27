@@ -146,6 +146,10 @@ const parseMailboxDoc = (
     (typeof data.snoozedAtMs === "number" && Number.isFinite(data.snoozedAtMs)
       ? Math.round(data.snoozedAtMs)
       : null) ?? toMillis(data.snoozedAt);
+  const archivedAtMs =
+    (typeof data.archivedAtMs === "number" && Number.isFinite(data.archivedAtMs)
+      ? Math.round(data.archivedAtMs)
+      : null) ?? toMillis(data.archivedAt);
 
   const metadataRaw = data.metadata;
   const metadata =
@@ -166,6 +170,7 @@ const parseMailboxDoc = (
     readAtMs,
     snoozedUntilMs,
     snoozedAtMs,
+    archivedAtMs,
     metadata: normalizedMetadata,
   };
 };
@@ -178,6 +183,12 @@ const getUnreadCount = async (email: string): Promise<number> => {
   const unreadSnap = await getMailboxCollection(email).where("read", "==", false).get();
   return unreadSnap.docs.filter((docSnap) => {
     const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+    const archivedAtMs =
+      (typeof data.archivedAtMs === "number" && Number.isFinite(data.archivedAtMs)
+        ? Math.round(data.archivedAtMs)
+        : null) ?? toMillis(data.archivedAt);
+    if (archivedAtMs) return false;
+
     const snoozedUntilMs =
       (typeof data.snoozedUntilMs === "number" && Number.isFinite(data.snoozedUntilMs)
         ? Math.round(data.snoozedUntilMs)
@@ -267,12 +278,14 @@ export async function PATCH(req: NextRequest) {
         markAllRead?: unknown;
         snoozeUntilMs?: unknown;
         clearSnooze?: unknown;
+        archived?: unknown;
       }
     | null;
 
   const markAllRead = body?.markAllRead === true;
   const clearSnooze = body?.clearSnooze === true;
   const hasSnoozeUpdate = clearSnooze || body?.snoozeUntilMs !== undefined;
+  const hasArchiveUpdate = typeof body?.archived === "boolean";
   const ids = parseIds(body?.ids);
 
   if (!markAllRead && ids.length === 0) {
@@ -285,10 +298,20 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  if (markAllRead && hasSnoozeUpdate) {
+  if (markAllRead && (hasSnoozeUpdate || hasArchiveUpdate)) {
     return withRateLimitHeaders(
       NextResponse.json(
-        { ok: false, error: "Odložení nelze kombinovat s označením vše přečteno." },
+        { ok: false, error: "Archivaci ani odložení nelze kombinovat s označením vše přečteno." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+
+  if (hasSnoozeUpdate && hasArchiveUpdate) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Archivaci nelze kombinovat s odložením zprávy." },
         { status: 400 }
       ),
       ctx
@@ -334,6 +357,34 @@ export async function PATCH(req: NextRequest) {
 
         if (unreadSnap.size < MAILBOX_MARK_ALL_BATCH_SIZE) break;
       }
+    } else if (hasArchiveUpdate) {
+      const archive = body?.archived === true;
+      const batch = adminDb.batch();
+      ids.forEach((id) => {
+        const ref = mailboxCol.doc(id);
+        batch.set(
+          ref,
+          archive
+            ? {
+                archivedAtMs: nowMs,
+                archivedAt: FieldValue.serverTimestamp(),
+                snoozedUntilMs: FieldValue.delete(),
+                snoozedUntil: FieldValue.delete(),
+                snoozedAtMs: FieldValue.delete(),
+                snoozedAt: FieldValue.delete(),
+                snoozeReminderProcessingAtMs: FieldValue.delete(),
+                snoozeReminderProcessingAt: FieldValue.delete(),
+                snoozeReminderClaimId: FieldValue.delete(),
+              }
+            : {
+                archivedAtMs: FieldValue.delete(),
+                archivedAt: FieldValue.delete(),
+              },
+          { merge: true }
+        );
+      });
+      await batch.commit();
+      updated = ids.length;
     } else if (hasSnoozeUpdate) {
       const batch = adminDb.batch();
       ids.forEach((id) => {

@@ -9,6 +9,7 @@ export type MailboxItem = {
   readAtMs: number | null;
   snoozedUntilMs?: number | null;
   snoozedAtMs?: number | null;
+  archivedAtMs?: number | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -67,7 +68,7 @@ export type MailboxComposeResponse = {
   error?: string;
 };
 
-export type MailFilterMode = "all" | "unread" | "snoozed" | "sent";
+export type MailFilterMode = "all" | "unread" | "snoozed" | "archived" | "sent";
 
 export type MailboxAttachment = {
   id: string;

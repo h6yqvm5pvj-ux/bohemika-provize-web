@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
+  ArchiveRestore,
   CheckCheck,
   ChevronDown,
   Layers3,
@@ -160,6 +162,11 @@ const isMailboxSnoozed = (item: MailboxItem, nowMs = Date.now()): boolean =>
   Number.isFinite(item.snoozedUntilMs) &&
   item.snoozedUntilMs > nowMs;
 
+const isMailboxArchived = (item: MailboxItem): boolean =>
+  typeof item.archivedAtMs === "number" &&
+  Number.isFinite(item.archivedAtMs) &&
+  item.archivedAtMs > 0;
+
 const formatSnoozedUntil = (item: MailboxItem): string =>
   item.snoozedUntilMs ? `Odloženo do ${formatDateTime(item.snoozedUntilMs)}` : "";
 
@@ -220,6 +227,7 @@ export default function PostaPage() {
   const [error, setError] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [snoozingIds, setSnoozingIds] = useState<string[]>([]);
+  const [archivingIds, setArchivingIds] = useState<string[]>([]);
   const [snoozeNowMs, setSnoozeNowMs] = useState(() => Date.now());
   const [previewItem, setPreviewItem] = useState<MailboxItem | null>(null);
   const [previewAttachmentBlobUrls, setPreviewAttachmentBlobUrls] = useState<Record<string, string>>({});
@@ -318,12 +326,13 @@ export default function PostaPage() {
 
   const receivedItems = useMemo(() => items.filter((item) => !isSentMailboxItem(item)), [items]);
   const activeReceivedItems = useMemo(() => {
-    return receivedItems.filter((item) => !isMailboxSnoozed(item, snoozeNowMs));
+    return receivedItems.filter((item) => !isMailboxArchived(item) && !isMailboxSnoozed(item, snoozeNowMs));
   }, [receivedItems, snoozeNowMs]);
   const snoozedItems = useMemo(() => {
-    return receivedItems.filter((item) => isMailboxSnoozed(item, snoozeNowMs));
+    return receivedItems.filter((item) => !isMailboxArchived(item) && isMailboxSnoozed(item, snoozeNowMs));
   }, [receivedItems, snoozeNowMs]);
-  const sentItems = useMemo(() => items.filter(isSentMailboxItem), [items]);
+  const archivedItems = useMemo(() => items.filter(isMailboxArchived), [items]);
+  const sentItems = useMemo(() => items.filter((item) => isSentMailboxItem(item) && !isMailboxArchived(item)), [items]);
 
   const visibleItems = useMemo(() => {
     if (mailFilter === "sent") {
@@ -332,11 +341,14 @@ export default function PostaPage() {
     if (mailFilter === "snoozed") {
       return snoozedItems;
     }
+    if (mailFilter === "archived") {
+      return archivedItems;
+    }
     if (mailFilter === "unread") {
       return activeReceivedItems.filter((item) => !item.read);
     }
     return activeReceivedItems;
-  }, [activeReceivedItems, mailFilter, sentItems, snoozedItems]);
+  }, [activeReceivedItems, archivedItems, mailFilter, sentItems, snoozedItems]);
 
   const visibleRows = useMemo(
     () => buildMailboxDisplayRows(visibleItems, !selectMode && mailFilter !== "sent"),
@@ -690,6 +702,57 @@ export default function PostaPage() {
     }
   };
 
+  const archiveMailboxItems = async (ids: string[], archived: boolean) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser || ids.length === 0) return;
+
+    setArchivingIds((prev) => [...new Set([...prev, ...ids])]);
+    setError(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<MailboxPatchResponse>(
+        currentUser,
+        "/api/mailbox",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ ids, archived }),
+        }
+      );
+      const nowMs = Date.now();
+      setItems((prev) =>
+        prev.map((item) =>
+          ids.includes(item.id)
+            ? {
+                ...item,
+                archivedAtMs: archived ? nowMs : null,
+                snoozedUntilMs: archived ? null : item.snoozedUntilMs,
+                snoozedAtMs: archived ? null : item.snoozedAtMs,
+              }
+            : item
+        )
+      );
+      if (typeof payload.unreadCount === "number" && Number.isFinite(payload.unreadCount)) {
+        setUnreadCount(Math.max(0, Math.floor(payload.unreadCount)));
+      }
+    } catch (err: any) {
+      setError(err?.message || (archived ? "Nepodařilo se archivovat zprávu." : "Nepodařilo se vrátit zprávu z archivu."));
+    } finally {
+      setArchivingIds((prev) => prev.filter((id) => !ids.includes(id)));
+    }
+  };
+
+  const archivePreviewItem = async (archived: boolean) => {
+    if (!previewItem) return;
+    await archiveMailboxItems([previewItem.id], archived);
+    closePreviewModal();
+  };
+
+  const deletePreviewItem = async () => {
+    if (!previewItem) return;
+    const id = previewItem.id;
+    await deleteMailboxItems([id]);
+    closePreviewModal();
+  };
+
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]));
   };
@@ -713,7 +776,9 @@ export default function PostaPage() {
     const sentTo = isSent ? sentRecipientText(item) : "";
     const deleting = deletingIds.includes(item.id);
     const snoozed = isMailboxSnoozed(item);
+    const archived = isMailboxArchived(item);
     const snoozing = snoozingIds.includes(item.id);
+    const archiving = archivingIds.includes(item.id);
     const attachments = item.type === "direct_message" ? parseMailboxAttachments(item) : [];
     const itemTitle = isTipsterTip ? tipsterTipListTitle(item) : item.title;
     const itemBody = isTipsterTip ? tipsterTipSenderText(item) : item.body;
@@ -724,7 +789,9 @@ export default function PostaPage() {
         className={`${styles.mailCard} ${styles.mailItemCard} group relative w-full overflow-hidden rounded-[20px] border ${
           compact ? "p-3" : "p-4"
         } text-left shadow-[0_8px_22px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)] ${
-          isTipsterTip
+          archived
+            ? "border-slate-200 bg-slate-50/90 hover:border-slate-300"
+            : isTipsterTip
             ? "border-violet-200 bg-violet-50/70 hover:border-violet-300"
             : item.read
             ? "border-slate-200 bg-white hover:border-violet-200"
@@ -734,7 +801,9 @@ export default function PostaPage() {
       >
         <span
           className={`absolute inset-y-0 left-0 w-1.5 ${
-            isTipsterTip
+            archived
+              ? "bg-slate-300"
+              : isTipsterTip
               ? "bg-[linear-gradient(180deg,#8b5cf6_0%,#c084fc_100%)]"
               : item.read
               ? "bg-slate-200"
@@ -785,6 +854,11 @@ export default function PostaPage() {
                   TIP
                 </span>
               )}
+              {archived && (
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  Archiv
+                </span>
+              )}
             </div>
             <p className="mt-1 line-clamp-2 text-sm text-slate-700">{itemBody}</p>
             {attachments.length > 0 ? (
@@ -796,13 +870,28 @@ export default function PostaPage() {
             {sentTo ? (
               <p className="mt-1 text-xs text-violet-700">{sentTo}</p>
             ) : null}
-            {snoozed ? (
+            {archived ? (
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                Archivováno {formatDateTime(item.archivedAtMs ?? null)}
+              </p>
+            ) : snoozed ? (
               <p className="mt-1 text-xs font-medium text-violet-700">{formatSnoozedUntil(item)}</p>
             ) : null}
             <p className="mt-2 text-xs text-slate-500">{formatDateTime(item.createdAtMs)}</p>
           </button>
           <div className={`${styles.mailCardActions} flex shrink-0 flex-wrap items-center justify-end gap-2`}>
-            {!selectMode && !isSent ? (
+            {!selectMode && archived ? (
+              <button
+                type="button"
+                onClick={() => void archiveMailboxItems([item.id], false)}
+                disabled={archiving}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ArchiveRestore className="h-3.5 w-3.5" />
+                Vrátit
+              </button>
+            ) : null}
+            {!selectMode && !isSent && !archived ? (
               snoozed ? (
                 <button
                   type="button"
@@ -832,6 +921,17 @@ export default function PostaPage() {
                   </button>
                 </>
               )
+            ) : null}
+            {!selectMode && !archived ? (
+              <button
+                type="button"
+                onClick={() => void archiveMailboxItems([item.id], true)}
+                disabled={archiving}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Archive className="h-3.5 w-3.5" />
+                Archivovat
+              </button>
             ) : null}
             <button
               type="button"
@@ -1208,6 +1308,8 @@ export default function PostaPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [composeModalOpen, composeSubmitting]);
 
+  const previewItemArchived = previewItem ? isMailboxArchived(previewItem) : false;
+
   if (!authReady) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white text-slate-900">
@@ -1357,6 +1459,17 @@ export default function PostaPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setMailFilter("archived")}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition ${
+                    mailFilter === "archived"
+                      ? "bg-[linear-gradient(135deg,#020617_0%,#211442_58%,#6d28d9_100%)] !text-white shadow-[0_8px_18px_rgba(88,28,135,0.2)]"
+                      : "text-slate-700 hover:bg-white hover:text-slate-950"
+                  }`}
+                >
+                  Archiv
+                </button>
+                <button
+                  type="button"
                   onClick={() => setMailFilter("sent")}
                   className={`rounded-xl px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition ${
                     mailFilter === "sent"
@@ -1395,6 +1508,24 @@ export default function PostaPage() {
                     className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Vyčistit výběr
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void archiveMailboxItems(
+                        selectedIds.filter((id) => visibleItemIds.includes(id)),
+                        mailFilter !== "archived"
+                      )
+                    }
+                    disabled={selectedVisibleCount === 0 || archivingIds.length > 0}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {mailFilter === "archived" ? (
+                      <ArchiveRestore className="h-3.5 w-3.5" />
+                    ) : (
+                      <Archive className="h-3.5 w-3.5" />
+                    )}
+                    {mailFilter === "archived" ? "Vrátit" : "Archivovat"}
                   </button>
                   <button
                     type="button"
@@ -1441,6 +1572,9 @@ export default function PostaPage() {
 
                   const expanded = expandedGroupKeys.includes(row.key);
                   const rowIds = row.items.map((item) => item.id);
+                  const groupArchived = row.items.every((item) => isMailboxArchived(item));
+                  const groupArchiving = row.items.some((item) => archivingIds.includes(item.id));
+                  const groupDeleting = row.items.some((item) => deletingIds.includes(item.id));
                   const groupSnoozed = row.items.every((item) => isMailboxSnoozed(item));
                   const groupSnoozing = row.items.some((item) => snoozingIds.includes(item.id));
                   return (
@@ -1477,7 +1611,17 @@ export default function PostaPage() {
                           </button>
 
                           <div className={`${styles.groupCardActions} flex shrink-0 flex-wrap items-center justify-end gap-2`}>
-                            {groupSnoozed ? (
+                            {groupArchived ? (
+                              <button
+                                type="button"
+                                onClick={() => void archiveMailboxItems(rowIds, false)}
+                                disabled={groupArchiving}
+                                className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <ArchiveRestore className="h-3.5 w-3.5" />
+                                Vrátit
+                              </button>
+                            ) : groupSnoozed ? (
                               <button
                                 type="button"
                                 onClick={() => void snoozeMailboxItems(rowIds, null)}
@@ -1506,6 +1650,26 @@ export default function PostaPage() {
                                 </button>
                               </>
                             )}
+                            {!groupArchived ? (
+                              <button
+                                type="button"
+                                onClick={() => void archiveMailboxItems(rowIds, true)}
+                                disabled={groupArchiving}
+                                className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <Archive className="h-3.5 w-3.5" />
+                                Archivovat
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => void deleteMailboxItems(rowIds)}
+                              disabled={groupDeleting}
+                              className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {groupDeleting ? "Mažu…" : "Smazat"}
+                            </button>
                             <button
                               type="button"
                               onClick={() => void openItem(row.latestItem)}
@@ -1796,21 +1960,21 @@ export default function PostaPage() {
         )}
 
         {previewItem && mailboxPreviewHtml && (
-          <div className="fixed inset-0 z-[90]">
+          <div className={`${styles.previewOverlay} fixed inset-0 z-[90]`}>
             <button
               type="button"
               aria-label="Zavřít náhled"
               onClick={closePreviewModal}
-              className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]"
+              className={`${styles.previewBackdrop} absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]`}
             />
 
-            <div className="relative z-[91] flex min-h-full items-center justify-center p-4">
+            <div className={`${styles.previewWrap} relative z-[91] flex min-h-full items-center justify-center p-4`}>
               <section
-                className={`w-full overflow-hidden rounded-[30px] border border-violet-300 bg-violet-50 shadow-[0_30px_82px_rgba(15,23,42,0.4)] ${
+                className={`${styles.previewSheet} w-full overflow-hidden rounded-[30px] border border-violet-300 bg-violet-50 shadow-[0_30px_82px_rgba(15,23,42,0.4)] ${
                   previewItem.type === "online_card_meeting_request" ? "max-w-[860px]" : "max-w-[980px]"
                 }`}
               >
-                <div className="flex min-h-[44px] items-center justify-between gap-2 border-b border-white/10 bg-[linear-gradient(130deg,#020617_0%,#211442_58%,#6d28d9_100%)] px-3 py-1.5">
+                <div className={`${styles.previewHeader} flex min-h-[44px] items-center justify-between gap-2 border-b border-white/10 bg-[linear-gradient(130deg,#020617_0%,#211442_58%,#6d28d9_100%)] px-3 py-1.5`}>
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="h-3 w-3 rounded-full bg-violet-300" />
                     <span className="h-3 w-3 rounded-full bg-white/80" />
@@ -1820,18 +1984,42 @@ export default function PostaPage() {
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={closePreviewModal}
-                    aria-label="Zavřít náhled"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/60 bg-white/20 text-white shadow-[0_6px_14px_rgba(2,6,23,0.35)] transition hover:bg-white/30"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className={`${styles.previewHeaderActions} flex shrink-0 items-center gap-2`}>
+                    <button
+                      type="button"
+                      onClick={() => void archivePreviewItem(!previewItemArchived)}
+                      disabled={archivingIds.includes(previewItem.id)}
+                      className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      {previewItemArchived ? (
+                        <ArchiveRestore className="h-3.5 w-3.5" />
+                      ) : (
+                        <Archive className="h-3.5 w-3.5" />
+                      )}
+                      {previewItemArchived ? "Vrátit" : "Archivovat"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deletePreviewItem()}
+                      disabled={deletingIds.includes(previewItem.id)}
+                      className="inline-flex items-center gap-1 rounded-full border border-rose-200/70 bg-rose-500/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Smazat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closePreviewModal}
+                      aria-label="Zavřít náhled"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/60 bg-white/20 text-white shadow-[0_6px_14px_rgba(2,6,23,0.35)] transition hover:bg-white/30"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div
-                  className={`relative flex flex-col bg-violet-50 p-0 ${
+                  className={`${styles.previewContent} relative flex flex-col bg-violet-50 p-0 ${
                     previewItem.type === "online_card_meeting_request"
                       ? "h-[72vh] min-h-[460px]"
                       : "h-[84vh] min-h-[640px]"

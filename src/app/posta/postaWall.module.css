@@ -243,6 +243,65 @@
   .groupChildren {
     padding-left: 0;
   }
+
+  .previewOverlay {
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .previewBackdrop {
+    backdrop-filter: blur(2px);
+  }
+
+  .previewWrap {
+    min-height: 100%;
+    width: 100%;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+    pointer-events: none;
+  }
+
+  .previewSheet {
+    width: 100%;
+    max-width: none;
+    max-height: 92dvh;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 24px 24px 0 0;
+    pointer-events: auto;
+  }
+
+  .previewHeader {
+    min-height: 3.25rem;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .previewHeaderActions {
+    gap: 0.35rem;
+  }
+
+  .previewHeaderActions > button {
+    min-height: 2rem;
+  }
+
+  .previewHeaderActions > button:not(:last-child) {
+    border-radius: 12px;
+    padding: 0.4rem 0.48rem;
+    font-size: 0.66rem;
+    line-height: 1.1;
+  }
+
+  .previewHeaderActions svg {
+    height: 0.82rem;
+    width: 0.82rem;
+  }
+
+  .previewContent {
+    height: calc(92dvh - 3.25rem) !important;
+    min-height: 0 !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
