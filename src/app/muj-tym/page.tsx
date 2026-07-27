@@ -9,6 +9,7 @@ import {
   Mail,
   MessageSquare,
   Network,
+  PhoneCall,
   Search,
   Trophy,
   X,
@@ -282,6 +283,13 @@ function formatMoney(value: number): string {
 
 function formatMetricMoney(value: number): string {
   return formatMoney(value) || "0 Kč";
+}
+
+function phoneTelHref(value: string | null | undefined): string | null {
+  const raw = (value ?? "").trim();
+  const digits = raw.replace(/\D+/g, "");
+  if (!digits) return null;
+  return `tel:${raw.startsWith("+") ? "+" : ""}${digits}`;
 }
 
 function emptyAggregateMetrics(): AggregateMetrics {
@@ -1166,6 +1174,7 @@ export default function TeamPage() {
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
   const selectedAgencyNumber = selected?.agencyNumber?.trim() ?? "";
   const selectedPhoneNumber = selected?.phoneNumber?.trim() ?? "";
+  const selectedPhoneHref = phoneTelHref(selectedPhoneNumber);
   const selectedIco = selected?.ico?.trim() ?? "";
   const selectedIsTipster = selected?.accountType === "tipster";
   const selectedContractStats = selected ? contractCounts[selected.email] ?? null : null;
@@ -2200,6 +2209,16 @@ export default function TeamPage() {
                                 <Copy size={12} strokeWidth={2} aria-hidden="true" />
                                 {copiedEmail ? "Zkopírováno" : "Kopírovat e-mail"}
                               </button>
+                              {isSelectedSubordinate && selectedPhoneHref ? (
+                                <a
+                                  href={selectedPhoneHref}
+                                  className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-semibold !text-white shadow-[0_6px_16px_rgba(76,29,149,0.14)] transition hover:bg-violet-800 sm:hidden"
+                                  aria-label={`Volat ${selectedPhoneNumber}`}
+                                >
+                                  <PhoneCall size={12} strokeWidth={2} aria-hidden="true" />
+                                  Volat
+                                </a>
+                              ) : null}
                               <a
                                 href={`mailto:${selected.email}`}
 	                                className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_6px_16px_rgba(76,29,149,0.05)] transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
