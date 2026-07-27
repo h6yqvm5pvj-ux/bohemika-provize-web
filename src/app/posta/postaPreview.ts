@@ -389,7 +389,7 @@ const buildTipsterTipPreviewHtml = ({
           .kicker {
             color: rgba(221, 214, 254, 0.82);
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 500;
             letter-spacing: 0.08em;
             text-transform: uppercase;
           }
@@ -407,7 +407,7 @@ const buildTipsterTipPreviewHtml = ({
           }
           .meta strong {
             color: #ffffff;
-            font-weight: 600;
+            font-weight: 500;
           }
           .hero-grid {
             display: grid;
@@ -467,13 +467,13 @@ const buildTipsterTipPreviewHtml = ({
             margin-top: 6px;
             color: #ffffff;
             font-size: 17px;
-            font-weight: 600;
+            font-weight: 500;
           }
           .field-label,
           .section-label {
             color: rgba(221, 214, 254, 0.76);
             font-size: 10px;
-            font-weight: 600;
+            font-weight: 500;
             letter-spacing: 0.06em;
             text-transform: uppercase;
           }
@@ -1547,10 +1547,6 @@ const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | n
     typeof metadata.meetingOwnerName === "string" && metadata.meetingOwnerName.trim().length > 0
       ? metadata.meetingOwnerName.trim()
       : "";
-  const slug =
-    typeof metadata.slug === "string" && metadata.slug.trim().length > 0
-      ? metadata.slug.trim()
-      : "";
   const requestId =
     typeof metadata.requestId === "string" && metadata.requestId.trim().length > 0
       ? metadata.requestId.trim()
@@ -1560,364 +1556,305 @@ const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | n
   const messageRaw =
     typeof metadata.requesterMessage === "string" ? metadata.requesterMessage : "";
   const { topics, message } = splitMeetingTopicsAndMessage(topicsRaw, messageRaw);
-  const requesterInitials =
-    requesterName
-      .split(/\s+/)
-      .map((part) => part.charAt(0))
-      .join("")
-      .slice(0, 2)
-      .toUpperCase() || "K";
   const phoneHref = requesterPhone.replace(/[^\d+]/g, "");
-  const onlineCardPath = slug ? `/vizitka/${slug}` : "";
-  const onlineCardLabel = onlineCardPath || "Neuvedeno";
+  const phoneLink = phoneHref ? `tel:${phoneHref}` : "";
+  const deliveredAt = formatDateTime(item.createdAtMs);
 
   return `
     <html>
       <head>
         <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <style>
           * { box-sizing: border-box; }
           body {
             margin: 0;
-            min-height: 100vh;
-            padding: 26px;
+            min-height: 100dvh;
+            padding: 14px;
             background:
-              linear-gradient(180deg, rgba(241, 245, 249, 0.88) 0%, rgba(248, 250, 252, 0.98) 100%),
-              linear-gradient(135deg, #e9f3ff 0%, #f5f0ff 46%, #edfdf6 100%);
+              radial-gradient(circle at 20% 5%, rgba(217, 70, 239, 0.22), transparent 28%),
+              radial-gradient(circle at 78% 0%, rgba(124, 58, 237, 0.16), transparent 26%),
+              linear-gradient(135deg, #040206 0%, #13031b 50%, #020102 100%);
             font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-            color: #10213d;
+            color: #ffffff;
+          }
+          body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.16;
+            background-image:
+              linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+            background-size: 34px 34px;
           }
           .page {
-            max-width: 920px;
+            position: relative;
+            max-width: 760px;
             margin: 0 auto;
             overflow: hidden;
-            border-radius: 30px;
-            border: 1px solid #d9e3f2;
-            background: #ffffff;
-            box-shadow: 0 28px 70px rgba(15, 23, 42, 0.14);
+            border-radius: 26px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: #000000;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.52);
           }
-          .hero {
-            position: relative;
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) 260px;
-            gap: 22px;
-            padding: 28px;
-            color: #f8fafc;
-            background:
-              linear-gradient(135deg, rgba(14, 10, 31, 0.95) 0%, rgba(43, 21, 79, 0.96) 54%, rgba(15, 23, 42, 0.98) 100%);
-          }
-          .hero::after {
+          .page::before {
             content: "";
             position: absolute;
-            inset: auto 28px 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(196, 181, 253, 0.55), transparent);
+            inset: 0 0 auto;
+            height: 4px;
+            background: linear-gradient(90deg, #ffffff, #f0abfc, #7c3aed);
+            z-index: 2;
           }
-          .hero-main,
-          .person-card {
+          .inner {
             position: relative;
             z-index: 1;
+            padding: 24px 24px 22px;
           }
           .pill {
-            display: inline-flex;
+            display: block;
             width: fit-content;
-            border-radius: 999px;
-            border: 1px solid rgba(196, 181, 253, 0.34);
-            background: rgba(255, 255, 255, 0.08);
-            color: #ddd6fe;
-            padding: 6px 13px;
-            font-size: 11px;
-            letter-spacing: 0.11em;
+            color: #ede9fe;
+            font-size: 10px;
+            letter-spacing: 0.16em;
             text-transform: uppercase;
-            font-weight: 800;
+            font-weight: 500;
           }
           h1 {
-            margin: 14px 0 10px;
+            margin: 14px 0 7px;
             max-width: 620px;
-            font-size: 42px;
-            line-height: 0.98;
+            font-size: 36px;
+            line-height: 1.06;
             color: #ffffff;
-            font-weight: 900;
+            font-weight: 500;
             letter-spacing: 0;
           }
           .meta {
             font-size: 13px;
-            color: #cbd5e1;
+            font-weight: 450;
+            color: rgba(255, 255, 255, 0.62);
           }
-          .meta strong {
+          .advisor {
             color: #ffffff;
+            font-weight: 500;
           }
-          .person-card {
-            align-self: stretch;
-            display: grid;
-            gap: 13px;
-            border-radius: 24px;
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            background: rgba(255, 255, 255, 0.08);
-            padding: 16px;
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
-          }
-          .avatar-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            min-width: 0;
-          }
-          .avatar {
+          .client-line {
             display: inline-flex;
-            width: 54px;
-            height: 54px;
-            flex: 0 0 auto;
             align-items: center;
-            justify-content: center;
-            border-radius: 18px;
-            background: linear-gradient(135deg, #a855f7 0%, #60a5fa 100%);
-            color: #fff;
-            font-size: 18px;
-            font-weight: 900;
-            box-shadow: 0 16px 30px rgba(59, 130, 246, 0.22);
-          }
-          .person-name {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            font-size: 18px;
-            font-weight: 900;
-            color: #ffffff;
-          }
-          .person-label {
-            margin-top: 3px;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.11em;
-            text-transform: uppercase;
-            color: #c4b5fd;
-          }
-          .action-row {
-            display: grid;
-            gap: 8px;
-          }
-          .action {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            min-width: 0;
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            background: rgba(15, 23, 42, 0.28);
-            padding: 10px 11px;
-            color: #f8fafc;
-            text-decoration: none;
-          }
-          .action span:first-child {
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            gap: 9px;
+            margin-top: 13px;
             font-size: 13px;
-            font-weight: 800;
+            color: rgba(255, 255, 255, 0.84);
           }
-          .action-code {
-            flex: 0 0 auto;
-            border-radius: 999px;
-            background: rgba(196, 181, 253, 0.16);
-            padding: 4px 7px;
-            color: #ddd6fe;
+          .client-label {
             font-size: 10px;
-            font-weight: 900;
-            letter-spacing: 0.06em;
+            font-weight: 500;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.48);
           }
-          .content {
-            padding: 24px 28px 26px;
-          }
-          .grid {
+          .body-grid {
             display: grid;
-            grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-            gap: 14px;
-            align-items: stretch;
+            grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+            gap: 26px;
+            margin-top: 22px;
+            padding-top: 4px;
           }
           .panel {
-            border: 1px solid #d4deec;
-            border-radius: 22px;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-            padding: 16px;
-            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+            position: relative;
+            min-width: 0;
+          }
+          .panel::before {
+            content: none;
           }
           .panel-title {
-            margin: 0 0 13px;
-            color: #111827;
-            font-size: 17px;
-            font-weight: 900;
+            margin: 0 0 12px;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 500;
+            letter-spacing: 0;
           }
-          .detail-list {
+          .contact-list {
             display: grid;
-            gap: 10px;
+            gap: 0;
           }
-          .detail {
+          .contact-row {
             display: grid;
-            grid-template-columns: 42px minmax(0, 1fr);
-            gap: 11px;
-            align-items: center;
-            border-radius: 17px;
-            border: 1px solid #e2e8f0;
-            background: #f8fafc;
-            padding: 10px;
+            grid-template-columns: 86px minmax(0, 1fr);
+            gap: 12px;
+            align-items: baseline;
+            padding: 6px 0;
           }
-          .detail-icon {
-            display: inline-flex;
-            height: 42px;
-            width: 42px;
-            align-items: center;
-            justify-content: center;
-            border-radius: 14px;
-            background: #eef2ff;
-            color: #4338ca;
-            font-size: 10px;
-            font-weight: 900;
-            letter-spacing: 0.04em;
+          .contact-text {
+            min-width: 0;
           }
           .label {
             font-size: 10px;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.14em;
             text-transform: uppercase;
-            color: #5f7494;
-            font-weight: 800;
+            color: rgba(255, 255, 255, 0.48);
+            font-weight: 500;
           }
-          .value {
-            margin-top: 3px;
-            color: #13284d;
-            font-size: 15px;
-            font-weight: 850;
-            word-break: break-word;
+          .value-line {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            gap: 10px;
+          }
+          .value,
+          .value a {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.15;
+            text-decoration: none;
+          }
+          .value a:hover {
+            text-decoration: underline;
+            text-decoration-color: rgba(240, 171, 252, 0.7);
+            text-underline-offset: 4px;
+          }
+          .mobile-call {
+            display: none;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: #ffffff;
+            color: #000000;
+            padding: 6px 11px;
+            font-size: 12px;
+            font-weight: 500;
+            text-decoration: none;
+            box-shadow: 0 10px 24px rgba(168, 85, 247, 0.18);
           }
           .topics {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
+            margin-bottom: 16px;
           }
           .topic {
-            display: inline-flex;
-            border-radius: 999px;
-            border: 1px solid #c4b5fd;
-            background: #f5f3ff;
-            color: #5b21b6;
-            padding: 7px 11px;
-            font-size: 12px;
-            font-weight: 850;
+            display: block;
+            color: #f5d0fe;
+            font-size: 14px;
+            font-weight: 400;
           }
           .message {
-            min-height: 140px;
-            border-radius: 18px;
-            border: 1px solid #d9e4f4;
-            background: #f8fbff;
-            padding: 14px;
-            color: #1f355d;
+            min-height: 0;
+            padding-top: 0;
+            color: rgba(255, 255, 255, 0.86);
             font-size: 15px;
+            font-weight: 400;
             line-height: 1.55;
             white-space: pre-wrap;
           }
           .empty {
-            color: #64748b;
-            font-weight: 650;
+            color: rgba(255, 255, 255, 0.46);
+            font-weight: 400;
           }
           .footer {
-            margin-top: 18px;
+            margin-top: 16px;
+            padding-top: 0;
+            color: rgba(255, 255, 255, 0.48);
             font-size: 11px;
-            color: #60748f;
-            border-top: 1px dashed #cad7ea;
-            padding-top: 12px;
+            font-weight: 400;
           }
           @media (max-width: 760px) {
-            body { padding: 14px; }
-            .hero,
-            .grid {
-              grid-template-columns: 1fr;
+            body { padding: 8px; }
+            .page {
+              border-radius: 22px;
             }
-            .hero {
-              padding: 22px;
+            .inner {
+              padding: 20px 14px 16px;
             }
             h1 {
-              font-size: 34px;
+              font-size: 30px;
             }
-            .content {
-              padding: 18px;
+            .meta {
+              font-size: 14px;
+            }
+            .body-grid {
+              grid-template-columns: 1fr;
+              gap: 18px;
+            }
+            .body-grid {
+              margin-top: 14px;
+            }
+            .contact-row {
+              grid-template-columns: 82px minmax(0, 1fr);
+            }
+            .value,
+            .value a {
+              font-size: 17px;
+            }
+            .mobile-call {
+              display: inline-flex;
             }
           }
         </style>
       </head>
       <body>
         <div class="page">
-          <section class="hero">
-            <div class="hero-main">
-              <span class="pill">Žádost z online vizitky</span>
+          <section class="inner">
+            <header>
+              <span class="pill">Žádost o schůzku</span>
               <h1>${escapeHtml(item.title || "Nová žádost o schůzku")}</h1>
-              <div class="meta">Doručeno ${escapeHtml(formatDateTime(item.createdAtMs))}${
-                ownerName ? ` • Poradce: <strong>${escapeHtml(ownerName)}</strong>` : ""
+              <div class="meta">Doručeno ${escapeHtml(deliveredAt)}${
+                ownerName ? ` • <span class="advisor">Poradce: ${escapeHtml(ownerName)}</span>` : ""
               }</div>
+            </header>
+
+            <div class="client-line">
+              <span class="client-label">Klient</span>
+              <span>${escapeHtml(requesterName)}</span>
             </div>
-            <aside class="person-card">
-              <div class="avatar-row">
-                <span class="avatar">${escapeHtml(requesterInitials)}</span>
-                <div>
-                  <div class="person-name">${escapeHtml(requesterName)}</div>
-                  <div class="person-label">Klient</div>
-                </div>
-              </div>
-              <div class="action-row">
-                ${
-                  requesterPhone
-                    ? `<a class="action" href="${escapeHtml(`tel:${phoneHref}`)}"><span>${escapeHtml(requesterPhone)}</span><span class="action-code">TEL</span></a>`
-                    : `<div class="action"><span>Telefon neuveden</span><span class="action-code">TEL</span></div>`
-                }
-                ${
-                  requesterEmail
-                    ? `<a class="action" href="${escapeHtml(`mailto:${requesterEmail}`)}"><span>${escapeHtml(requesterEmail)}</span><span class="action-code">@</span></a>`
-                    : `<div class="action"><span>E-mail neuveden</span><span class="action-code">@</span></div>`
-                }
-              </div>
-            </aside>
-          </section>
 
-          <section class="content">
-            <div class="grid">
-              <div class="panel">
+            <div class="body-grid">
+              <section class="panel">
                 <h2 class="panel-title">Kontakt</h2>
-                <div class="detail-list">
-                  <div class="detail">
-                    <span class="detail-icon">TEL</span>
-                    <div>
-                      <div class="label">Telefon</div>
-                      <div class="value">${escapeHtml(requesterPhone || "Neuvedeno")}</div>
+                <div class="contact-list">
+                  <div class="contact-row">
+                    <div class="label">Telefon</div>
+                    <div class="contact-text">
+                      <div class="value-line">
+                        <div class="value">${
+                          requesterPhone && phoneLink
+                            ? `<a href="${escapeHtml(phoneLink)}">${escapeHtml(requesterPhone)}</a>`
+                            : escapeHtml(requesterPhone || "Neuvedeno")
+                        }</div>
+                        ${
+                          requesterPhone && phoneLink
+                            ? `<a class="mobile-call" href="${escapeHtml(phoneLink)}">Volat</a>`
+                            : ""
+                        }
+                      </div>
                     </div>
                   </div>
-                  <div class="detail">
-                    <span class="detail-icon">@</span>
-                    <div>
-                      <div class="label">E-mail</div>
-                      <div class="value">${escapeHtml(requesterEmail || "Neuvedeno")}</div>
-                    </div>
-                  </div>
-                  <div class="detail">
-                    <span class="detail-icon">URL</span>
-                    <div>
-                      <div class="label">Vizitka</div>
-                      <div class="value">${escapeHtml(onlineCardLabel)}</div>
+                  <div class="contact-row">
+                    <div class="label">E-mail</div>
+                    <div class="contact-text">
+                      <div class="value">${
+                        requesterEmail
+                          ? `<a href="${escapeHtml(`mailto:${requesterEmail}`)}">${escapeHtml(requesterEmail)}</a>`
+                          : "Neuvedeno"
+                      }</div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </section>
 
-              <div class="panel">
+              <section class="panel">
                 <h2 class="panel-title">Požadavek</h2>
                 ${
                   topics.length > 0
                     ? `<div class="topics">${topics.map((topic) => `<span class="topic">${escapeHtml(topic)}</span>`).join("")}</div>`
                     : `<div class="message empty">Klient nevybral konkrétní téma.</div>`
                 }
-                <h2 class="panel-title" style="margin-top: 16px;">Poznámka klienta</h2>
+                <h2 class="panel-title" style="margin-top: 18px;">Poznámka klienta</h2>
                 <div class="message">${escapeHtml(message || "Žadatel neposlal doplňující zprávu.")}</div>
-              </div>
+              </section>
             </div>
 
             <div class="footer">

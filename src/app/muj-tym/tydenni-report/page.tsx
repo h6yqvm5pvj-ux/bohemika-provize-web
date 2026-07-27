@@ -244,23 +244,23 @@ export default function WeeklyTeamReportPage() {
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_5%,rgba(217,70,239,0.34),transparent_30%),radial-gradient(circle_at_78%_0%,rgba(124,58,237,0.22),transparent_28%),linear-gradient(135deg,#040206_0%,#13031b_50%,#020102_100%)]" />
       <div className="pointer-events-none fixed inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:34px_34px]" />
 
-      <section className="relative z-10 flex min-h-[100dvh] items-center justify-center px-3 py-3 sm:px-6 sm:py-6">
-        <div className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/14 bg-black shadow-[0_30px_100px_rgba(0,0,0,0.58)] sm:max-h-[calc(100dvh-3rem)] sm:rounded-[34px]">
-          <span className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-white via-fuchsia-300 to-violet-600" />
+      <section className="relative z-10 flex min-h-[100dvh] items-center justify-center px-2 py-2 sm:px-6 sm:py-6">
+        <div className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[22px] border border-white/14 bg-black shadow-[0_30px_100px_rgba(0,0,0,0.58)] sm:max-h-[calc(100dvh-3rem)] sm:rounded-[34px]">
+          <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-white via-fuchsia-300 to-violet-600 sm:h-1.5" />
           <span className="pointer-events-none absolute -right-28 -top-24 h-60 w-60 rounded-full bg-fuchsia-500/24 blur-3xl" />
           <span className="pointer-events-none absolute -left-24 bottom-0 h-64 w-64 rounded-full bg-violet-700/22 blur-3xl" />
 
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col px-4 pb-4 pt-6 sm:px-7 sm:pb-7 sm:pt-8">
-            <header className="flex shrink-0 items-start justify-between gap-3">
+          <div className="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-3 pt-4 sm:px-7 sm:pb-7 sm:pt-8">
+            <header className="flex shrink-0 items-start justify-between gap-2 sm:gap-3">
               <div className="min-w-0">
-                <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-violet-200/45 bg-white/[0.06] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] sm:text-[11px]">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} aria-hidden="true" />
+                <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-violet-200/45 bg-white/[0.06] px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.18em] text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[11px] sm:tracking-[0.22em]">
+                  <Sparkles className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" strokeWidth={2.4} aria-hidden="true" />
                   <span className="truncate">Týdenní report týmu</span>
                 </div>
-                <h1 className="mt-4 text-[40px] font-black leading-[0.92] tracking-normal text-white sm:text-6xl">
+                <h1 className="mt-3 text-[30px] font-black leading-[0.94] tracking-normal text-white sm:mt-4 sm:text-6xl">
                   Shrnutí za týden
                 </h1>
-                <p className="mt-2 text-base font-bold text-white/62 sm:text-lg">
+                <p className="mt-1.5 text-[13px] font-bold text-white/62 sm:mt-2 sm:text-lg">
                   {periodLabel}
                 </p>
               </div>
@@ -268,10 +268,10 @@ export default function WeeklyTeamReportPage() {
               <button
                 type="button"
                 onClick={closeReport}
-                className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/16 bg-white/[0.08] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_14px_34px_rgba(0,0,0,0.32)] backdrop-blur-md transition hover:bg-white/[0.14]"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/16 bg-white/[0.08] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_14px_34px_rgba(0,0,0,0.32)] backdrop-blur-md transition hover:bg-white/[0.14] sm:h-12 sm:w-12"
                 aria-label="Zavřít týdenní report"
               >
-                <X className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+                <X className="h-[18px] w-[18px] sm:h-6 sm:w-6" strokeWidth={2.5} aria-hidden="true" />
               </button>
             </header>
 
@@ -293,39 +293,39 @@ export default function WeeklyTeamReportPage() {
               </div>
             ) : (
               <>
-                <div className="mt-5 grid shrink-0 grid-cols-2 gap-2 sm:mt-6 sm:grid-cols-3 sm:gap-3">
-                  <div className="rounded-[22px] border border-white/12 bg-white px-4 py-4 text-black shadow-[0_16px_44px_rgba(255,255,255,0.12)] sm:px-5">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.19em] text-slate-500">
-                      <FileCheck2 className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+                <div className="mt-3 grid shrink-0 grid-cols-2 gap-1.5 sm:mt-6 sm:grid-cols-3 sm:gap-3">
+                  <div className="rounded-[17px] border border-white/12 bg-white px-3 py-2.5 text-black shadow-[0_16px_44px_rgba(255,255,255,0.12)] sm:rounded-[22px] sm:px-5 sm:py-4">
+                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-slate-500 sm:gap-2 sm:text-[10px] sm:tracking-[0.19em]">
+                      <FileCheck2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" strokeWidth={2.4} aria-hidden="true" />
                       Sjednáno
                     </div>
-                    <div className="mt-2 text-4xl font-black tracking-normal text-black">
+                    <div className="mt-1 text-2xl font-black tracking-normal text-black sm:mt-2 sm:text-4xl">
                       {totals.contracts}
                     </div>
-                    <div className="text-sm font-black text-slate-600">
+                    <div className="text-xs font-black text-slate-600 sm:text-sm">
                       {contractLabel(totals.contracts).replace(/^\d+\s*/, "")}
                     </div>
                   </div>
 
-                  <div className="rounded-[22px] border border-violet-200/24 bg-violet-500/14 px-4 py-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_44px_rgba(168,85,247,0.16)] backdrop-blur-md sm:px-5">
-                    <div className="text-[10px] font-black uppercase tracking-[0.19em] text-violet-100/72">
+                  <div className="rounded-[17px] border border-violet-200/24 bg-violet-500/14 px-3 py-2.5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_44px_rgba(168,85,247,0.16)] backdrop-blur-md sm:rounded-[22px] sm:px-5 sm:py-4">
+                    <div className="text-[8px] font-black uppercase tracking-[0.14em] text-violet-100/72 sm:text-[10px] sm:tracking-[0.19em]">
                       Roční objem
                     </div>
-                    <div className="mt-2 text-3xl font-black tracking-normal text-white sm:text-4xl">
+                    <div className="mt-1 text-[24px] font-black leading-none tracking-normal text-white sm:mt-2 sm:text-4xl">
                       {formatMetricMoney(totals.annualPremium)}
                     </div>
-                    <div className="text-sm font-bold text-white/58">orientačně</div>
+                    <div className="mt-0.5 text-xs font-bold text-white/58 sm:text-sm">orientačně</div>
                   </div>
 
-                  <div className="col-span-2 rounded-[22px] border border-white/12 bg-white/[0.06] px-4 py-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md sm:col-span-1 sm:px-5">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white/50">
-                      <Trophy className="h-4 w-4 text-fuchsia-200" strokeWidth={2.3} aria-hidden="true" />
+                  <div className="col-span-2 rounded-[17px] border border-white/12 bg-white/[0.06] px-3 py-2.5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md sm:col-span-1 sm:rounded-[22px] sm:px-5 sm:py-4">
+                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-white/50 sm:gap-2 sm:text-[10px] sm:tracking-[0.18em]">
+                      <Trophy className="h-3.5 w-3.5 text-fuchsia-200 sm:h-4 sm:w-4" strokeWidth={2.3} aria-hidden="true" />
                       Nejaktivnější
                     </div>
-                    <div className="mt-2 truncate text-2xl font-black tracking-normal text-white">
+                    <div className="mt-1 truncate text-lg font-black tracking-normal text-white sm:mt-2 sm:text-2xl">
                       {report.topAdvisor?.name ?? "Bez produkce"}
                     </div>
-                    <div className="text-sm font-bold text-white/54">
+                    <div className="text-xs font-bold text-white/54 sm:text-sm">
                       {report.topAdvisor
                         ? contractLabel(report.topAdvisor.contracts)
                         : "za vybrané období"}
@@ -333,8 +333,8 @@ export default function WeeklyTeamReportPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 sm:mt-5">
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1 sm:mt-5">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2.5">
                     {CATEGORY_ROWS.map((row) => {
                       const metrics = getReportMetric(report, row.key);
                       const premium =
@@ -346,28 +346,28 @@ export default function WeeklyTeamReportPage() {
                       return (
                         <article
                           key={row.key}
-                          className="group relative overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.055] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md"
+                          className="group relative overflow-hidden rounded-[17px] border border-white/10 bg-white/[0.055] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md sm:rounded-[22px] sm:px-3 sm:py-3"
                         >
-                          <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-fuchsia-300 via-fuchsia-500 to-violet-700" />
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/16 bg-white/[0.10] text-fuchsia-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_30px_rgba(168,85,247,0.18)]">
-                              <Icon className="h-6 w-6" strokeWidth={2.15} aria-hidden="true" />
+                          <span className="pointer-events-none absolute inset-y-0 left-0 w-0.5 bg-gradient-to-b from-fuchsia-300 via-fuchsia-500 to-violet-700 sm:w-1" />
+                          <div className="flex items-center gap-2.5 sm:gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/[0.10] text-fuchsia-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_30px_rgba(168,85,247,0.18)] sm:h-12 sm:w-12 sm:rounded-2xl">
+                              <Icon className="h-[18px] w-[18px] sm:h-6 sm:w-6" strokeWidth={2.15} aria-hidden="true" />
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <h2 className="text-lg font-black leading-tight tracking-normal text-white">
+                              <h2 className="text-[15px] font-black leading-tight tracking-normal text-white sm:text-lg">
                                 {row.title}
                               </h2>
-                              <p className="mt-1 text-[11px] font-black uppercase tracking-[0.16em] text-white/48">
+                              <p className="mt-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/48 sm:mt-1 sm:text-[11px] sm:tracking-[0.16em]">
                                 {row.premiumLabel}
                               </p>
                             </div>
 
                             <div className="shrink-0 text-right">
-                              <div className="text-2xl font-black leading-none tracking-normal text-white">
+                              <div className="text-xl font-black leading-none tracking-normal text-white sm:text-2xl">
                                 {metrics.contracts}x
                               </div>
-                              <div className="mt-1 text-sm font-black text-violet-100">
+                              <div className="mt-0.5 text-xs font-black text-violet-100 sm:mt-1 sm:text-sm">
                                 {formatMetricMoney(premium)}
                               </div>
                             </div>
@@ -378,14 +378,14 @@ export default function WeeklyTeamReportPage() {
                   </div>
                 </div>
 
-                <footer className="mt-4 shrink-0 border-t border-white/10 pt-3 sm:mt-5 sm:flex sm:items-center sm:justify-between sm:gap-4">
-                  <p className="text-xs font-semibold leading-relaxed text-white/48">
+                <footer className="mt-3 shrink-0 border-t border-white/10 pt-2.5 sm:mt-5 sm:flex sm:items-center sm:justify-between sm:gap-4 sm:pt-3">
+                  <p className="text-[11px] font-semibold leading-relaxed text-white/48 sm:text-xs">
                     Data vychází z produkce podřízených za posledních 7 dní.
                   </p>
                   <button
                     type="button"
                     onClick={closeReport}
-                    className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-white/18 bg-white px-5 py-3 text-sm font-black text-black shadow-[0_16px_38px_rgba(168,85,247,0.22)] transition hover:bg-violet-50 sm:mt-0 sm:w-auto"
+                    className="mt-2.5 inline-flex w-full items-center justify-center rounded-full border border-white/18 bg-white px-4 py-2.5 text-xs font-black text-black shadow-[0_16px_38px_rgba(168,85,247,0.22)] transition hover:bg-violet-50 sm:mt-0 sm:w-auto sm:px-5 sm:py-3 sm:text-sm"
                   >
                     Zavřít report
                   </button>

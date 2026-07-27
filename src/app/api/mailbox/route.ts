@@ -21,6 +21,7 @@ const MAILBOX_LIST_DEFAULT_LIMIT = 60;
 const MAILBOX_LIST_MAX_LIMIT = 180;
 const MAILBOX_MARK_MAX_IDS = 200;
 const MAILBOX_MARK_ALL_BATCH_SIZE = 250;
+const MAILBOX_SNOOZE_MAX_MS = 90 * 24 * 60 * 60 * 1000;
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -82,6 +83,15 @@ const parseIds = (value: unknown): string[] => {
   return [...out].slice(0, MAILBOX_MARK_MAX_IDS);
 };
 
+const parseSnoozeUntilMs = (value: unknown, nowMs: number): number | null => {
+  const ms = toMillis(value);
+  if (!ms || !Number.isFinite(ms)) return null;
+  const safe = Math.round(ms);
+  if (safe <= nowMs) return null;
+  if (safe > nowMs + MAILBOX_SNOOZE_MAX_MS) return null;
+  return safe;
+};
+
 const buildMailboxAttachmentApiUrl = (messageId: string, attachmentId: string): string => {
   const params = new URLSearchParams({
     messageId,
@@ -128,6 +138,14 @@ const parseMailboxDoc = (
     (typeof data.readAtMs === "number" && Number.isFinite(data.readAtMs)
       ? Math.round(data.readAtMs)
       : null) ?? toMillis(data.readAt);
+  const snoozedUntilMs =
+    (typeof data.snoozedUntilMs === "number" && Number.isFinite(data.snoozedUntilMs)
+      ? Math.round(data.snoozedUntilMs)
+      : null) ?? toMillis(data.snoozedUntil);
+  const snoozedAtMs =
+    (typeof data.snoozedAtMs === "number" && Number.isFinite(data.snoozedAtMs)
+      ? Math.round(data.snoozedAtMs)
+      : null) ?? toMillis(data.snoozedAt);
 
   const metadataRaw = data.metadata;
   const metadata =
@@ -146,6 +164,8 @@ const parseMailboxDoc = (
     read: data.read === true,
     createdAtMs,
     readAtMs,
+    snoozedUntilMs,
+    snoozedAtMs,
     metadata: normalizedMetadata,
   };
 };
@@ -154,8 +174,16 @@ const getMailboxCollection = (email: string) =>
   adminDb!.collection("usersPrivate").doc(email).collection("mailbox");
 
 const getUnreadCount = async (email: string): Promise<number> => {
+  const nowMs = Date.now();
   const unreadSnap = await getMailboxCollection(email).where("read", "==", false).get();
-  return unreadSnap.size;
+  return unreadSnap.docs.filter((docSnap) => {
+    const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+    const snoozedUntilMs =
+      (typeof data.snoozedUntilMs === "number" && Number.isFinite(data.snoozedUntilMs)
+        ? Math.round(data.snoozedUntilMs)
+        : null) ?? toMillis(data.snoozedUntil);
+    return !snoozedUntilMs || snoozedUntilMs <= nowMs;
+  }).length;
 };
 
 export async function GET(req: NextRequest) {
@@ -237,10 +265,14 @@ export async function PATCH(req: NextRequest) {
     | {
         ids?: unknown;
         markAllRead?: unknown;
+        snoozeUntilMs?: unknown;
+        clearSnooze?: unknown;
       }
     | null;
 
   const markAllRead = body?.markAllRead === true;
+  const clearSnooze = body?.clearSnooze === true;
+  const hasSnoozeUpdate = clearSnooze || body?.snoozeUntilMs !== undefined;
   const ids = parseIds(body?.ids);
 
   if (!markAllRead && ids.length === 0) {
@@ -253,10 +285,33 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  if (markAllRead && hasSnoozeUpdate) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Odložení nelze kombinovat s označením vše přečteno." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+
   try {
     const mailboxCol = getMailboxCollection(ctx.email);
     const nowMs = Date.now();
     let updated = 0;
+    const snoozeUntilMs = hasSnoozeUpdate && !clearSnooze
+      ? parseSnoozeUntilMs(body?.snoozeUntilMs, nowMs)
+      : null;
+
+    if (hasSnoozeUpdate && !clearSnooze && !snoozeUntilMs) {
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Neplatný čas odložení zprávy." },
+          { status: 400 }
+        ),
+        ctx
+      );
+    }
 
     if (markAllRead) {
       while (true) {
@@ -279,6 +334,42 @@ export async function PATCH(req: NextRequest) {
 
         if (unreadSnap.size < MAILBOX_MARK_ALL_BATCH_SIZE) break;
       }
+    } else if (hasSnoozeUpdate) {
+      const batch = adminDb.batch();
+      ids.forEach((id) => {
+        const ref = mailboxCol.doc(id);
+        batch.set(
+          ref,
+          clearSnooze
+            ? {
+                snoozedUntilMs: FieldValue.delete(),
+                snoozedUntil: FieldValue.delete(),
+                snoozedAtMs: FieldValue.delete(),
+                snoozedAt: FieldValue.delete(),
+                snoozeReminderProcessingAtMs: FieldValue.delete(),
+                snoozeReminderProcessingAt: FieldValue.delete(),
+                snoozeReminderClaimId: FieldValue.delete(),
+              }
+            : {
+                snoozedUntilMs: snoozeUntilMs,
+                snoozedUntil: new Date(snoozeUntilMs!),
+                snoozedAtMs: nowMs,
+                snoozedAt: FieldValue.serverTimestamp(),
+                snoozeReminderSentAtMs: FieldValue.delete(),
+                snoozeReminderSentAt: FieldValue.delete(),
+                snoozeReminderSkippedAtMs: FieldValue.delete(),
+                snoozeReminderSkippedAt: FieldValue.delete(),
+                snoozeReminderProcessingAtMs: FieldValue.delete(),
+                snoozeReminderProcessingAt: FieldValue.delete(),
+                snoozeReminderClaimId: FieldValue.delete(),
+                snoozeReminderLastError: FieldValue.delete(),
+                snoozeReminderLastStatus: FieldValue.delete(),
+              },
+          { merge: true }
+        );
+      });
+      await batch.commit();
+      updated = ids.length;
     } else {
       const batch = adminDb.batch();
       ids.forEach((id) => {
