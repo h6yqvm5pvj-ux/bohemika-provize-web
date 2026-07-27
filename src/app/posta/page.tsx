@@ -663,6 +663,16 @@ export default function PostaPage() {
     if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
+    if (item.type === "weekly_team_report") {
+      const reportId =
+        item.metadata && typeof item.metadata.reportId === "string"
+          ? item.metadata.reportId.trim()
+          : "";
+      const params = new URLSearchParams({ source: "weekly-report" });
+      if (reportId) params.set("reportId", reportId);
+      router.push(`/muj-tym/tydenni-report?${params.toString()}`);
+      return;
+    }
     if (item.type === "direct_message") {
       setSharedExportPreviewHtml(null);
       setSharedExportPreviewLoading(false);

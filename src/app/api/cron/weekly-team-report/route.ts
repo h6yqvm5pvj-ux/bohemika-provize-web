@@ -18,7 +18,7 @@ const WEEKLY_LOOKBACK_DAYS = 7;
 const MAX_TOKENS_PER_USER = 30;
 const MAX_TOKENS_PER_MULTICAST = 500;
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
-const WEEKLY_REPORT_DEEP_LINK_BASE = "/muj-tym?source=weekly-report";
+const WEEKLY_REPORT_DEEP_LINK_BASE = "/muj-tym/tydenni-report?source=weekly-report";
 const INVALID_TOKEN_CODES = new Set([
   "messaging/registration-token-not-registered",
   "messaging/invalid-registration-token",

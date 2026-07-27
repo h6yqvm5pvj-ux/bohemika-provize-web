@@ -179,6 +179,19 @@ function clearAppSessionCookie(response: NextResponse): void {
   });
 }
 
+function buildWeeklyReportLegacyRedirectResponse(
+  req: NextRequest,
+  pathname: string
+): NextResponse | null {
+  if (pathname !== "/muj-tym") return null;
+  const source = req.nextUrl.searchParams.get("source")?.trim().toLowerCase();
+  if (source !== "weekly-report") return null;
+
+  const redirectUrl = req.nextUrl.clone();
+  redirectUrl.pathname = "/muj-tym/tydenni-report";
+  return NextResponse.redirect(redirectUrl);
+}
+
 async function buildAuthRedirectResponse(
   req: NextRequest,
   pathname: string
@@ -238,9 +251,11 @@ export async function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-csp-nonce", nonce);
 
-  const authRedirect = await buildAuthRedirectResponse(req, pathname);
+  const earlyRedirect =
+    buildWeeklyReportLegacyRedirectResponse(req, pathname) ??
+    (await buildAuthRedirectResponse(req, pathname));
   const res =
-    authRedirect ??
+    earlyRedirect ??
     NextResponse.next({
       request: {
         headers: requestHeaders,
