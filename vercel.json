@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/weekly-team-report",
       "schedule": "0 7 * * 1"
-    },
-    {
-      "path": "/api/cron/mailbox-snooze-reminders",
-      "schedule": "*/10 * * * *"
     }
   ]
 }
