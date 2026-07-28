@@ -27,20 +27,6 @@ import {
 } from "@/lib/appLanguage";
 
 import { AppLayout } from "@/components/AppLayout";
-import {
-  applyStatementMissingPayoutShifts,
-  applyStatementPayoutTotalsToMonths,
-  calculateNetCashflow,
-  calculateStornoFund,
-  groupItemsByMonth,
-  statementMonthKey,
-} from "./cashflow/helpers";
-import type { CashflowCommissionStatementSummary } from "./cashflow/types";
-import { useCashflowData } from "./cashflow/useCashflowData";
-import { ExpectedPayoutSection } from "./home/components/ExpectedPayoutSection";
-import { MonthlyGoalSection } from "./home/components/MonthlyGoalSection";
-import { ProductionSummarySection } from "./home/components/ProductionSummarySection";
-import { TeamLeaderboardSection } from "./home/components/TeamLeaderboardSection";
 import { invalidateHomeCache, useHomeData } from "./home/useHomeData";
 import { type PaymentFrequency, type Product } from "./types/domain";
 import {
@@ -66,10 +52,38 @@ const GoldWidget = dynamic(
   () => import("./home/components/GoldWidget").then((mod) => mod.GoldWidget),
   { ssr: false }
 );
+const ExpectedPayoutWidget = dynamic(
+  () =>
+    import("./home/components/ExpectedPayoutWidget").then(
+      (mod) => mod.ExpectedPayoutWidget
+    ),
+  { ssr: false }
+);
+const MonthlyGoalSection = dynamic(
+  () =>
+    import("./home/components/MonthlyGoalSection").then(
+      (mod) => mod.MonthlyGoalSection
+    ),
+  { ssr: false }
+);
 const ProductionChartSection = dynamic(
   () =>
     import("./home/components/ProductionChartSection").then(
       (mod) => mod.ProductionChartSection
+    ),
+  { ssr: false }
+);
+const ProductionSummarySection = dynamic(
+  () =>
+    import("./home/components/ProductionSummarySection").then(
+      (mod) => mod.ProductionSummarySection
+    ),
+  { ssr: false }
+);
+const TeamLeaderboardSection = dynamic(
+  () =>
+    import("./home/components/TeamLeaderboardSection").then(
+      (mod) => mod.TeamLeaderboardSection
     ),
   { ssr: false }
 );
@@ -634,74 +648,7 @@ export default function HomePage() {
     loadTeamHistory: shouldLoadAdvisorHome && homeWidgets.teamLeaderboard,
     reloadKey: homeReloadKey,
   });
-  const { loading: cashflowLoading, cashflowItems } = useCashflowData({
-    userEmail: advisorDataEmail,
-    scopeFilter: "combined",
-    productFilter: "all",
-    enabled: shouldLoadExpectedPayout,
-    reloadKey: homeReloadKey,
-  });
-  const [commissionStatements, setCommissionStatements] = useState<
-    CashflowCommissionStatementSummary[]
-  >([]);
-  const [commissionStatementsLoading, setCommissionStatementsLoading] =
-    useState(false);
-  const [commissionStatementsReady, setCommissionStatementsReady] =
-    useState(false);
-
-  useEffect(() => {
-    if (!shouldLoadExpectedPayout || !user) {
-      setCommissionStatements([]);
-      setCommissionStatementsLoading(false);
-      setCommissionStatementsReady(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadStatements = async () => {
-      setCommissionStatementsLoading(true);
-      setCommissionStatementsReady(false);
-      try {
-        const token = await user.getIdToken();
-        const response = await fetch("/api/commission-statements?limit=240", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          cache: "no-store",
-        });
-        const payload = (await response.json().catch(() => null)) as
-          | {
-              ok?: boolean;
-              items?: CashflowCommissionStatementSummary[];
-              error?: string;
-            }
-          | null;
-        if (!response.ok || payload?.ok !== true || !Array.isArray(payload.items)) {
-          throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
-        }
-        if (!cancelled) setCommissionStatements(payload.items);
-      } catch (error) {
-        if (cancelled) return;
-        console.warn(
-          "Domovská stránka: provizní výpisy pro očekávanou výplatu se nepodařilo načíst.",
-          error
-        );
-        setCommissionStatements([]);
-      } finally {
-        if (!cancelled) {
-          setCommissionStatementsLoading(false);
-          setCommissionStatementsReady(true);
-        }
-      }
-    };
-
-    void loadStatements();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [homeReloadKey, shouldLoadExpectedPayout, user]);
+  const [expectedPayoutLoading, setExpectedPayoutLoading] = useState(false);
 
   const now = new Date();
   const monthLabel = formatHomeMonthLabel(now, language);
@@ -1192,65 +1139,8 @@ export default function HomePage() {
   const homeRefreshBusy =
     summaryLoading ||
     historyLoading ||
-    cashflowLoading ||
-    commissionStatementsLoading ||
+    expectedPayoutLoading ||
     goldLoading;
-
-  const expectedPayoutStatementsByMonthKey = useMemo(() => {
-    const map: Record<string, CashflowCommissionStatementSummary[]> = {};
-    commissionStatements.forEach((statement) => {
-      const key = statementMonthKey(statement);
-      if (!key) return;
-      map[key] = [...(map[key] ?? []), statement];
-    });
-    return map;
-  }, [commissionStatements]);
-
-  const expectedPayout = useMemo(() => {
-    const dateNow = new Date();
-    const currentYear = dateNow.getFullYear();
-    const currentMonth = dateNow.getMonth();
-    const currentMonthKey = `${currentYear}-${currentMonth + 1}`;
-    const reconciledItems = applyStatementMissingPayoutShifts({
-      cashflowItems,
-      statementsByMonthKey: expectedPayoutStatementsByMonthKey,
-      enabled: true,
-    });
-    const monthGroups = applyStatementPayoutTotalsToMonths({
-      monthGroups: groupItemsByMonth(reconciledItems),
-      statementsByMonthKey: expectedPayoutStatementsByMonthKey,
-      enabled: true,
-    });
-    const currentMonthGroup = monthGroups.find(
-      (month) => month.key === currentMonthKey
-    );
-
-    if (!currentMonthGroup) {
-      return {
-        grossAmount: 0,
-        stornoFundAmount: 0,
-        netAmount: 0,
-      };
-    }
-
-    const grossAmount = currentMonthGroup.total;
-    if (currentMonthGroup.totalSource === "paid") {
-      return {
-        grossAmount,
-        stornoFundAmount: 0,
-        netAmount: grossAmount,
-      };
-    }
-
-    const currentMonthItems = currentMonthGroup.items;
-    const stornoFundAmount = calculateStornoFund(currentMonthItems);
-    const netAmount = calculateNetCashflow(grossAmount, stornoFundAmount);
-    return {
-      grossAmount,
-      stornoFundAmount,
-      netAmount,
-    };
-  }, [cashflowItems, expectedPayoutStatementsByMonthKey]);
 
   const handleSectionDragStart = (id: HomeSection) => {
     setDraggingSection(id);
@@ -1347,18 +1237,14 @@ export default function HomePage() {
       case "expectedPayout":
         if (!showExpectedPayoutSection) return null;
         return (
-          <ExpectedPayoutSection
+          <ExpectedPayoutWidget
             language={language}
-            loading={
-              cashflowLoading ||
-              commissionStatementsLoading ||
-              (shouldLoadExpectedPayout && !!user && !commissionStatementsReady)
-            }
-            grossAmount={expectedPayout.grossAmount}
-            stornoFundAmount={expectedPayout.stornoFundAmount}
-            netAmount={expectedPayout.netAmount}
+            user={user}
+            advisorDataEmail={advisorDataEmail}
+            homeReloadKey={homeReloadKey}
             periodLabel={`${monthLabelCapitalized} ${year}`}
             isLiteUI={isLiteUI}
+            onLoadingChange={setExpectedPayoutLoading}
           />
         );
       case "leaderboard":

@@ -68,4 +68,53 @@ describe("contract commission payout display helpers", () => {
       })
     ).toBe(-384.94);
   });
+
+  it("counts a corrected payout from the replacement after the original is fully deducted", () => {
+    const payouts: ContractCommissionPayout[] = [
+      {
+        code: "A101",
+        amount: 1501.38,
+        expectedAmount: 1643.81,
+        difference: -142.43,
+        differenceReason: "career_mismatch",
+        status: "difference",
+        career: "Kar. 106",
+        statementNumber: "65",
+      },
+      {
+        code: "A101",
+        amount: -1501.38,
+        expectedAmount: 1643.81,
+        difference: -3145.19,
+        differenceReason: "storno",
+        status: "storno",
+        career: "Kar. 106",
+        statementNumber: "75",
+      },
+      {
+        code: "A101",
+        amount: 1643.81,
+        expectedAmount: 1643.81,
+        difference: 0,
+        status: "paid",
+        career: "Kar. 107",
+        statementNumber: "75",
+      },
+    ];
+
+    const state = payoutStatusForCodes(payouts, ["A101"], 1643.81);
+
+    expect(state.status).toBe("paid");
+    expect(state.paidAmount).toBe(1643.81);
+    expect(state.records).toHaveLength(1);
+    expect(state.records[0]?.amount).toBe(1643.81);
+    expect(stornoPayoutAmountFromRecords(state.records)).toBeNull();
+    expect(
+      payoutDifferenceAmountFromRecords({
+        expectedAmount: 1643.81,
+        paidAmount: state.paidAmount,
+        records: state.records,
+      })
+    ).toBeNull();
+  });
 });

@@ -77,6 +77,7 @@ const monoChipDarkClass =
 const collapsibleButtonClass =
   "flex h-10 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
 const COMMISSION_PAYOUT_AMOUNT_TOLERANCE = 10;
+const FULL_STORNO_OFFSET_TOLERANCE = 0.01;
 const AUTO_COMMISSION_PRODUCTS = new Set<Product>([
   "cppAuto",
   "slaviaauto",
@@ -324,6 +325,62 @@ const payoutRecordsForCodes = (
 const payoutTargetsForInstallment = (installment: CommissionInstallment): string[] =>
   installment.code ? [installment.code, installment.key] : [installment.key];
 
+const payoutAmountsMatch = (
+  left: number | null | undefined,
+  right: number | null | undefined
+): boolean =>
+  Math.abs(validPayoutAmount(left) - validPayoutAmount(right)) <=
+  FULL_STORNO_OFFSET_TOLERANCE;
+
+const payoutRecordsCanOffset = (
+  payout: ContractCommissionPayout,
+  storno: ContractCommissionPayout
+): boolean => {
+  const payoutCode = normalizePayoutCode(payout.code);
+  const stornoCode = normalizePayoutCode(storno.code);
+  if (payoutCode && stornoCode && payoutCode !== stornoCode) return false;
+
+  const payoutCareer = normalizePayoutCode(payout.career);
+  const stornoCareer = normalizePayoutCode(storno.career);
+  return !payoutCareer || !stornoCareer || payoutCareer === stornoCareer;
+};
+
+const fullyOffsetPayoutRecordIndexes = (
+  records: ContractCommissionPayout[]
+): Set<number> => {
+  const pairedIndexes = new Set<number>();
+
+  records.forEach((storno, stornoIndex) => {
+    if (!isStornoPayoutRecord(storno) || pairedIndexes.has(stornoIndex)) return;
+
+    const stornoAmount = Math.abs(validPayoutAmount(storno.amount));
+    if (stornoAmount <= COMMISSION_PAYOUT_AMOUNT_TOLERANCE) return;
+
+    const payoutIndex = records.findIndex(
+      (payout, index) =>
+        !pairedIndexes.has(index) &&
+        !isStornoPayoutRecord(payout) &&
+        validPayoutAmount(payout.amount) > COMMISSION_PAYOUT_AMOUNT_TOLERANCE &&
+        payoutAmountsMatch(payout.amount, stornoAmount) &&
+        payoutRecordsCanOffset(payout, storno)
+    );
+    if (payoutIndex < 0) return;
+
+    pairedIndexes.add(payoutIndex);
+    pairedIndexes.add(stornoIndex);
+  });
+
+  return pairedIndexes;
+};
+
+const activePayoutRecordsAfterFullStornos = (
+  records: ContractCommissionPayout[]
+): ContractCommissionPayout[] => {
+  const offsetIndexes = fullyOffsetPayoutRecordIndexes(records);
+  if (offsetIndexes.size === 0) return records;
+  return records.filter((_, index) => !offsetIndexes.has(index));
+};
+
 export const payoutStatusForCodes = (
   payouts: ContractCommissionPayout[],
   codes: string[],
@@ -334,17 +391,19 @@ export const payoutStatusForCodes = (
   records: ContractCommissionPayout[];
 } => {
   const records = payoutRecordsForCodes(payouts, codes);
-  const nonStornoRecords = records.filter((record) => !isStornoPayoutRecord(record));
+  const activeRecords = activePayoutRecordsAfterFullStornos(records);
+  const nonStornoRecords = activeRecords.filter((record) => !isStornoPayoutRecord(record));
   const paidAmount = nonStornoRecords.reduce(
     (sum, record) => sum + validPayoutAmount(record.amount),
     0
   );
   const hasStorno = records.some(isStornoPayoutRecord);
+  const displayRecords = nonStornoRecords.length > 0 ? activeRecords : records;
 
   if (paidAmount >= Math.max(0, expectedAmount - COMMISSION_PAYOUT_AMOUNT_TOLERANCE)) {
-    return { status: "paid", paidAmount, records };
+    return { status: "paid", paidAmount, records: displayRecords };
   }
-  if (paidAmount > 0) return { status: "partial", paidAmount, records };
+  if (paidAmount > 0) return { status: "partial", paidAmount, records: displayRecords };
   if (hasStorno) return { status: "storno", paidAmount, records };
   return { status: "pending", paidAmount, records };
 };
@@ -403,10 +462,11 @@ export const payoutDifferenceAmountFromRecords = ({
 }): number | null => {
   if (records.length === 0) return null;
 
-  const hasNonStornoRecord = records.some((record) => !isStornoPayoutRecord(record));
+  const activeRecords = activePayoutRecordsAfterFullStornos(records);
+  const hasNonStornoRecord = activeRecords.some((record) => !isStornoPayoutRecord(record));
   if (!hasNonStornoRecord) return null;
 
-  const importantRecord = importantPayoutRecord(records);
+  const importantRecord = importantPayoutRecord(activeRecords);
   if (!importantRecord || !isStornoPayoutRecord(importantRecord)) {
     const storedDifference = Number(importantRecord?.difference);
     if (

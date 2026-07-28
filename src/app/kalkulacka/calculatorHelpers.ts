@@ -814,9 +814,14 @@ export type EndorsementSourceEntry = {
 export type EndorsementDraft = {
   productKey: Product;
   contractNumber: string;
+  contractSignedDate: string;
   sourceEntryId: string;
   sourceEntryPath: string;
   rootContractEntryId: string;
+  position: Position;
+  commissionMode: CommissionMode;
+  durationYears: number | null;
+  durationMonths: number | null;
   previousPremiumAmount: number;
   newPremiumAmount: number;
   deltaAmount: number;

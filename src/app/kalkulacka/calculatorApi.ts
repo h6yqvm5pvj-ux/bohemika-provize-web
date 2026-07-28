@@ -115,6 +115,8 @@ export type ContractNumberLiveCheckState =
   | { status: "checking" }
   | { status: "ok" }
   | { status: "duplicate"; count: number }
+  | { status: "foundForEndorsement"; count: number }
+  | { status: "notFoundForEndorsement" }
   | { status: "error" };
 
 type RefreshOriginalContractInfo = {

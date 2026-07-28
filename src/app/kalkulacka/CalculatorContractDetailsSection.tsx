@@ -2,7 +2,14 @@
 
 import { FileText } from "lucide-react";
 
-type ContractNumberLiveCheckStatus = "idle" | "checking" | "ok" | "duplicate" | "error";
+type ContractNumberLiveCheckStatus =
+  | "idle"
+  | "checking"
+  | "ok"
+  | "duplicate"
+  | "foundForEndorsement"
+  | "notFoundForEndorsement"
+  | "error";
 
 type CalculatorContractDetailsSectionProps = {
   isVisible: boolean;
@@ -16,6 +23,7 @@ type CalculatorContractDetailsSectionProps = {
   contractNumber: string;
   contractNumberLiveCheckStatus: ContractNumberLiveCheckStatus;
   contractNumberLiveCheckCount: number | null;
+  contractNumberLiveCheckMode: "newContract" | "endorsement";
   policyStartDate: string;
   contractDateErrorText: string | null;
   contractDateWarningText: string | null;
@@ -43,6 +51,7 @@ export function CalculatorContractDetailsSection({
   contractNumber,
   contractNumberLiveCheckStatus,
   contractNumberLiveCheckCount,
+  contractNumberLiveCheckMode,
   policyStartDate,
   contractDateErrorText,
   contractDateWarningText,
@@ -142,15 +151,33 @@ export function CalculatorContractDetailsSection({
             placeholder=""
           />
           {contractNumberLiveCheckStatus === "checking" && (
-            <p className="text-[11px] text-slate-500">Kontroluji duplicitu čísla smlouvy…</p>
+            <p className="text-[11px] text-slate-500">
+              {contractNumberLiveCheckMode === "endorsement"
+                ? "Ověřuji původní smlouvu pro dodatek…"
+                : "Kontroluji duplicitu čísla smlouvy…"}
+            </p>
           )}
           {contractNumberLiveCheckStatus === "duplicate" && (
             <p className="text-[11px] text-rose-700">
               Smlouva s tímto číslem už existuje ({contractNumberLiveCheckCount ?? 0}×).
             </p>
           )}
+          {contractNumberLiveCheckStatus === "foundForEndorsement" && (
+            <p className="text-[11px] text-emerald-700">
+              Původní smlouva nalezena ({contractNumberLiveCheckCount ?? 0}×). Změna se uloží jako dodatek.
+            </p>
+          )}
+          {contractNumberLiveCheckStatus === "notFoundForEndorsement" && (
+            <p className="text-[11px] text-amber-700">
+              Původní smlouva s tímto číslem u vybraného poradce a produktu zatím není nalezena.
+            </p>
+          )}
           {contractNumberLiveCheckStatus === "error" && (
-            <p className="text-[11px] text-amber-700">Nepodařilo se ověřit duplicitu čísla smlouvy.</p>
+            <p className="text-[11px] text-amber-700">
+              {contractNumberLiveCheckMode === "endorsement"
+                ? "Nepodařilo se ověřit původní smlouvu pro dodatek."
+                : "Nepodařilo se ověřit duplicitu čísla smlouvy."}
+            </p>
           )}
         </div>
 

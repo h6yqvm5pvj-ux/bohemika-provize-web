@@ -41,7 +41,6 @@ import {
 import { onAuthStateChanged, type User } from "firebase/auth";
 import Image from "next/image";
 import Link from "next/link";
-import QRCode from "qrcode";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
@@ -2630,15 +2629,18 @@ export default function AdminRequestsPage() {
     setAdminUserOnlineCardQrError(null);
     setAdminUserOnlineCardQrStatus(null);
 
-    void QRCode.toDataURL(selectedAdminUserOnlineCardUrl, {
-      width: 520,
-      margin: 2,
-      errorCorrectionLevel: "M",
-      color: {
-        dark: "#0f172a",
-        light: "#ffffff",
-      },
-    })
+    void import("qrcode")
+      .then((qrCodeModule) =>
+        qrCodeModule.default.toDataURL(selectedAdminUserOnlineCardUrl, {
+          width: 520,
+          margin: 2,
+          errorCorrectionLevel: "M",
+          color: {
+            dark: "#0f172a",
+            light: "#ffffff",
+          },
+        })
+      )
       .then((dataUrl) => {
         if (!cancelled) {
           setAdminUserOnlineCardQrDataUrl(dataUrl);

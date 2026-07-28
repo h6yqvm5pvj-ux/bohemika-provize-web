@@ -90,22 +90,20 @@ export function DuplicateContractModal({
 
 type EndorsementDraftModalProps = {
   draft: EndorsementDraft | null;
-  saving: boolean;
   onCancel: () => void;
-  onSave: () => void | Promise<void>;
+  onContinue: () => void;
 };
 
 export function EndorsementDraftModal({
   draft,
-  saving,
   onCancel,
-  onSave,
+  onContinue,
 }: EndorsementDraftModalProps) {
   if (!draft) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onContinue} />
       <div className="relative w-full max-w-lg rounded-2xl border border-slate-300 bg-white shadow-[0_20px_70px_rgba(0,0,0,0.35)] p-5 space-y-4">
         <div className="space-y-2 text-sm text-slate-900">
           <p>
@@ -154,7 +152,7 @@ export function EndorsementDraftModal({
             </p>
           )}
           <p className="text-xs text-slate-500">
-            Dodatek bude uložen zvlášť a navázán na původní smlouvu.
+            Dodatek se zatím neuložil. Uloží se až přes tlačítko Uložit jako sepsáno a bude navázaný na původní smlouvu.
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
@@ -163,15 +161,14 @@ export function EndorsementDraftModal({
             onClick={onCancel}
             className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-900 hover:bg-slate-100 transition"
           >
-            Zrušit
+            Zrušit změnu
           </button>
           <button
             type="button"
-            onClick={() => void onSave()}
-            disabled={saving}
+            onClick={onContinue}
             className="rounded-full border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? "Ukládám…" : "Uložit změnu"}
+            Pokračovat k sepsání
           </button>
         </div>
       </div>

@@ -82,6 +82,7 @@ import {
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import { auth } from "@/app/firebase";
 import { AppLayout } from "@/components/AppLayout";
+import introStyles from "../cashflow/cashflowIntro.module.css";
 import { StatementPairingLoader } from "./StatementPairingLoader";
 import {
   downloadDiscrepancySummaryPdf,
@@ -171,6 +172,7 @@ import type {
   ContractStatusRule,
   ContractTimelinePositionMismatch,
   ContractsMutationResponse,
+  DeductionCommissionRow,
   DiscrepancyPdfItem,
   DiscrepancyReviewState,
   DiscrepancyReviewStateItem,
@@ -476,6 +478,52 @@ const correctedRowsDetails = (
     .filter((detail): detail is string => Boolean(detail));
 
   return [...new Set(details)];
+};
+
+type CurrentStatementCorrectionInfo = {
+  label: string;
+  details: string[];
+};
+
+const currentStatementCorrectionInfoForRows = (
+  rows: CommissionRow[],
+  deductionRows: DeductionCommissionRow[] | null | undefined
+): CurrentStatementCorrectionInfo | null => {
+  if (rows.length === 0 || !deductionRows || deductionRows.length === 0) return null;
+
+  const usedDeductionIndexes = new Set<number>();
+  const details: string[] = [];
+  let careerCorrection = false;
+
+  for (const row of rows) {
+    const deductionIndex = deductionRows.findIndex(
+      (deduction, index) =>
+        !usedDeductionIndexes.has(index) && commissionRowCanReplaceDeduction(row, deduction)
+    );
+    if (deductionIndex < 0) continue;
+
+    const deduction = deductionRows[deductionIndex];
+    if (!deduction) continue;
+    usedDeductionIndexes.add(deductionIndex);
+
+    const code = normalizeStatementCommissionCode(row.type) || row.type || "provize";
+    const careerChanged =
+      normalizedRowText(row.career) !== normalizedRowText(deduction.career);
+    careerCorrection = careerCorrection || careerChanged;
+
+    details.push(
+      careerChanged
+        ? `Tento výpis opravuje ${code}: odečítá původní výplatu na Kar. ${deduction.career || "—"} (${formatMoney(deduction.commission)} Kč) a zapisuje novou výplatu na Kar. ${row.career || "—"} (${formatMoney(row.commission)} Kč). Do historie smlouvy se zapisuje odúčtování i nová výplata.`
+        : `Tento výpis opravuje ${code}: odečítá původní výplatu ${formatMoney(deduction.commission)} Kč a zapisuje novou výplatu ${formatMoney(row.commission)} Kč. Do historie smlouvy se zapisuje odúčtování i nová výplata.`
+    );
+  }
+
+  if (details.length === 0) return null;
+
+  return {
+    label: careerCorrection ? "Opravná provize: kariérní stupeň" : "Opravná provize",
+    details: [...new Set(details)],
+  };
 };
 
 const statementFileReadSortValue = (
@@ -1021,6 +1069,158 @@ const PROCESSING_CAPTIONS = [
   "Čekám na potvrzení zápisu",
 ] as const;
 
+function StatementProcessingOverlay({
+  caption,
+  progress,
+  stepIndex,
+  statementCount,
+}: {
+  caption: string;
+  progress: number;
+  stepIndex: number;
+  statementCount: number;
+}) {
+  const visibleProgress = Math.max(0, Math.min(100, progress));
+  const pileSheetCount = Math.max(4, Math.min(10, Math.ceil(visibleProgress / 12) + 2));
+  const progressStyle = useMemo(
+    () => ({ width: `${visibleProgress}%` }),
+    [visibleProgress]
+  );
+  const documentStackStyle = useMemo(
+    () => ({
+      ["--statement-pile-height" as string]: `${70 + visibleProgress * 0.48}px`,
+      minHeight: "18rem",
+    }),
+    [visibleProgress]
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-md"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <section
+        className={`${introStyles.initialLoaderShell} relative w-full max-w-5xl overflow-hidden rounded-[28px] border border-white/80 px-5 py-5 shadow-[0_32px_96px_rgba(15,23,42,0.28)] sm:px-7 sm:py-7`}
+        role="status"
+      >
+        <span className={introStyles.initialLoaderBeam} aria-hidden="true" />
+
+        <div className="relative z-10 grid items-center gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-fuchsia-200 bg-white text-fuchsia-700 shadow-[0_14px_30px_rgba(162,28,175,0.13)]">
+                <ReceiptText className="h-6 w-6" strokeWidth={2.2} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-black">Zpracování výpisu</p>
+                <p className="text-sm text-black/55">
+                  {statementCount === 1
+                    ? "Zapisuji 1 provizní výpis"
+                    : `Zapisuji ${statementCount} provizní výpisy`}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-end gap-2 font-mono text-6xl font-semibold leading-none text-black sm:text-7xl">
+                <span>{visibleProgress}</span>
+                <span className="pb-1.5 text-2xl text-fuchsia-700 sm:text-3xl">%</span>
+              </div>
+              <h2
+                key={caption}
+                className={`${introStyles.initialLoaderStage} mt-4 min-h-10 text-2xl font-semibold leading-tight text-black sm:text-3xl`}
+              >
+                {caption}
+              </h2>
+              <div className="mt-3 flex flex-wrap gap-2 text-sm font-semibold text-black/55">
+                <span>Zápis do historie smluv</span>
+                <span aria-hidden="true">·</span>
+                <span>Provizní kalendář</span>
+              </div>
+            </div>
+
+            <div
+              className={introStyles.initialLoaderProgress}
+              role="progressbar"
+              aria-label="Průběh zpracování provizního výpisu"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={visibleProgress}
+            >
+              <span className={introStyles.initialLoaderProgressFill} style={progressStyle} />
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {PROCESSING_CAPTIONS.map((stage, index) => (
+                <span
+                  key={stage}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    index <= stepIndex ? "w-9 bg-slate-950" : "w-3 bg-white/80"
+                  }`}
+                  aria-hidden="true"
+                />
+              ))}
+            </div>
+          </div>
+
+          <div
+            className={introStyles.initialLoaderConsole}
+            style={documentStackStyle}
+            aria-hidden="true"
+          >
+            <div className="relative z-10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-black">
+                <Loader2 className="h-5 w-5 animate-spin text-fuchsia-700" strokeWidth={2.2} />
+                Zápis položek
+              </div>
+              <div className="text-sm font-semibold text-black/50">probíhá</div>
+            </div>
+
+            <div
+              className={introStyles.statementLoaderDropZone}
+              style={{ minHeight: "13rem" }}
+            >
+              {[0, 1, 2, 3, 4].map((paperIndex) => (
+                <span
+                  key={paperIndex}
+                  className={introStyles.statementLoaderPaper}
+                  style={{ ["--paper-index" as string]: paperIndex }}
+                >
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              ))}
+
+              <div className={introStyles.statementLoaderPile}>
+                {Array.from({ length: pileSheetCount }, (_, sheetIndex) => {
+                  const xOffset = ((sheetIndex % 5) - 2) * 6;
+                  const rotation = ((sheetIndex % 6) - 2.5) * 1.4;
+
+                  return (
+                    <span
+                      key={sheetIndex}
+                      style={{
+                        bottom: `${sheetIndex * 6}px`,
+                        transform: `translateX(${xOffset}px) rotate(${rotation}deg)`,
+                        zIndex: sheetIndex + 1,
+                      }}
+                    >
+                      <span />
+                      <span />
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 const buildStatementSavePayload = ({ statement, html }: StatementFileRead) => {
   const managerRows = statement.managerCommissions.flatMap((advisor) => advisor.rows);
 
@@ -1540,6 +1740,143 @@ const rowsByKind = (
   kind: LifeSplitCommissionKind
 ): CommissionRow[] => contract.rows.filter((row) => row.lifeSplitKind === kind);
 
+const commissionCodeAliasesForPayoutHistory = (
+  value: string | null | undefined
+): string[] => {
+  const code = normalizeStatementCommissionCode(value);
+  if (!code) return [];
+
+  const aliases = new Set<string>();
+  const addAlias = (alias: string) => {
+    const normalized = normalizeStatementCommissionCode(alias);
+    if (!normalized) return;
+    aliases.add(normalized);
+    aliases.add(normalized.replace(/[_-]/g, ""));
+  };
+
+  addAlias(code);
+
+  const compact = code.replace(/[_-]/g, "");
+  const installmentRangeMatch = code.match(/^([AB])(\d{3})-\1(\d{3})$/);
+  if (installmentRangeMatch) {
+    const prefix = installmentRangeMatch[1] ?? "";
+    const start = Number(installmentRangeMatch[2]);
+    const end = Number(installmentRangeMatch[3]);
+    if (
+      prefix &&
+      Number.isInteger(start) &&
+      Number.isInteger(end) &&
+      end >= start &&
+      end - start <= 24
+    ) {
+      for (let item = start; item <= end; item += 1) {
+        addAlias(`${prefix}${String(item).padStart(3, "0")}`);
+      }
+    }
+  }
+
+  if (compact === "B36HALF" || compact === "B036HALF" || compact === "B3601HALF") {
+    ["B36_HALF", "B036_HALF", "B3601_HALF"].forEach(addAlias);
+  } else if (compact === "B36" || compact === "B036" || compact === "B3601") {
+    ["B36", "B036", "B3601"].forEach(addAlias);
+  } else if (compact === "B48" || compact === "B048" || compact === "B4801") {
+    ["B48", "B048", "B4801"].forEach(addAlias);
+  } else if (compact === "B101B104") {
+    ["B101-B104", "B101", "B102", "B103", "B104"].forEach(addAlias);
+  } else if (compact === "B201B206") {
+    ["B201-B206", "B201", "B202", "B203", "B204", "B205", "B206"].forEach(addAlias);
+  } else if (/^B20[1-6]$/.test(compact)) {
+    addAlias("B201-B206");
+  }
+
+  const closingRoleMatch = compact.match(/^(?:APZ|AP|AZ)(\d+)$/);
+  if (closingRoleMatch) addAlias(`A${closingRoleMatch[1]}`);
+
+  return [...aliases];
+};
+
+const payoutRecordCodeAliases = (payout: ContractCommissionPayoutRecord): string[] => {
+  const aliases = new Set<string>();
+  const addAliases = (value: string | null | undefined) => {
+    for (const alias of commissionCodeAliasesForPayoutHistory(value)) {
+      aliases.add(alias);
+    }
+
+    const normalizedValue = normalizeStatementCommissionCode(value);
+    for (const match of normalizedValue.matchAll(
+      /\b(A1(?:0[1-9]|1[0-2])|B0301|B1(?:0[1-9]|1[0-2])|B20[1-6]|B4801|B48|B048|B3601|B36|B036)(?:[_-]?HALF)?\b/g
+    )) {
+      const baseCode = match[1] ?? "";
+      const matchedCode = match[0] ?? "";
+      const isHalfB36 =
+        /HALF$/.test(matchedCode) &&
+        (baseCode === "B36" || baseCode === "B036" || baseCode === "B3601");
+      const code = isHalfB36 ? `${baseCode}_HALF` : baseCode;
+      for (const alias of commissionCodeAliasesForPayoutHistory(code)) {
+        aliases.add(alias);
+      }
+    }
+
+    const normalizedTitle = normalizeCommissionTitle(value);
+    if (
+      normalizedTitle.includes("50") &&
+      (normalizedTitle.includes("b36") || normalizedTitle.includes("b036") || normalizedTitle.includes("b3601"))
+    ) {
+      for (const alias of commissionCodeAliasesForPayoutHistory("B3601_HALF")) {
+        aliases.add(alias);
+      }
+    }
+  };
+
+  addAliases(payout.code);
+  addAliases(payout.key);
+  addAliases(payout.title);
+  return [...aliases];
+};
+
+const historicalPayoutSignedAmount = (payout: ContractCommissionPayoutRecord): number => {
+  const amount = Number(payout.amount);
+  if (!Number.isFinite(amount)) return 0;
+  const status = normalizeText(payout.status).toLowerCase();
+  const differenceReason = normalizeText(payout.differenceReason).toLowerCase();
+  if (status === "storno" || differenceReason === "storno" || amount < 0) {
+    return -Math.abs(amount);
+  }
+  return amount;
+};
+
+const historicalPaidPayoutAmountForCodes = (
+  systemContract: MatchedSystemContract | null | undefined,
+  codes: string[]
+): number => {
+  const expectedAliases = new Set(
+    codes.flatMap(commissionCodeAliasesForPayoutHistory).filter(Boolean)
+  );
+  if (!systemContract || expectedAliases.size === 0) return 0;
+
+  const amount = (systemContract.commissionPayouts ?? []).reduce((sum, payout) => {
+    const matches = payoutRecordCodeAliases(payout).some((alias) => expectedAliases.has(alias));
+    return matches ? sum + historicalPayoutSignedAmount(payout) : sum;
+  }, 0);
+
+  return Math.round(amount * 100) / 100;
+};
+
+const hasHistoricalPaidPayoutForCodes = (
+  systemContract: MatchedSystemContract | null | undefined,
+  codes: string[]
+): boolean =>
+  historicalPaidPayoutAmountForCodes(systemContract, codes) > COMMISSION_AMOUNT_TOLERANCE;
+
+const hasHistoricalB0301Payout = (
+  systemContract: MatchedSystemContract | null | undefined
+): boolean => hasHistoricalPaidPayoutForCodes(systemContract, ["B0301"]);
+
+const hasHistoricalB36HalfPayout = (
+  systemContract: MatchedSystemContract | null | undefined
+): boolean =>
+  hasHistoricalPaidPayoutForCodes(systemContract, ["B36_HALF", "B036_HALF", "B3601_HALF"]);
+
 const lifeSplitContractHasOnlyTipRows = (contract: LifeSplitContractPreview): boolean =>
   contract.rows.length > 0 &&
   contract.rows.some((row) => row.lifeSplitKind === "tip") &&
@@ -1549,12 +1886,16 @@ const lifeSplitContractMatchScope = (
   contract: LifeSplitContractPreview
 ): ContractMatchScope => (lifeSplitContractHasOnlyTipRows(contract) ? "tip" : "my");
 
-const statusForContract = (contract: LifeSplitContractPreview): {
+const statusForContract = (
+  contract: LifeSplitContractPreview,
+  systemContract?: MatchedSystemContract | null
+): {
   label: string;
   tone: "ok" | "warn" | "info" | "tip";
 } => {
   const hasA101 = rowsByKind(contract, "a101").length > 0;
   const hasB0301 = rowsByKind(contract, "b0301").length > 0;
+  const hasB0301InHistory = hasHistoricalB0301Payout(systemContract);
   const hasTip = rowsByKind(contract, "tip").length > 0;
   const hasIncrease = rowsByKind(contract, "increase").length > 0;
   const hasOnlyLaterItems =
@@ -1576,6 +1917,7 @@ const statusForContract = (contract: LifeSplitContractPreview): {
   if (hasTip) return { label: "Provize z TIPU", tone: "tip" };
   if (hasOnlyLaterItems) return { label: "Následná provize", tone: "info" };
   if (hasA101 && hasB0301) return { label: "Sjednávací část OK", tone: "ok" };
+  if (hasA101 && hasB0301InHistory) return { label: "B0301 už zapsaná dříve", tone: "ok" };
   if (hasA101 && !hasB0301) return { label: "B0301 nenalezeno v tomto výpisu", tone: "warn" };
   if (!hasA101 && hasB0301) return { label: "Doplacená B0301", tone: "ok" };
   return { label: "Ke kontrole", tone: "warn" };
@@ -1875,8 +2217,16 @@ const normalizePaymentFrequencyValue = (value: unknown): PaymentFrequency =>
     ? value
     : "annual";
 
-const hasCommissionType = (rows: CommissionRow[], type: string): boolean =>
-  rows.some((row) => row.type.trim().toUpperCase() === type);
+const hasCommissionType = (rows: CommissionRow[], type: string): boolean => {
+  const expectedAliases = new Set(commissionCodeAliasesForPayoutHistory(type));
+  if (expectedAliases.size === 0) return false;
+
+  return rows.some((row) =>
+    commissionCodeAliasesForPayoutHistory(row.type).some((alias) =>
+      expectedAliases.has(alias)
+    )
+  );
+};
 
 const missingAcceleratedB36Warning = (
   rows: CommissionRow[],
@@ -1891,7 +2241,12 @@ const missingAcceleratedB36Warning = (
   if (!systemContractExpectsImmediateB36(systemContract)) return null;
   const hasA101 = hasCommissionType(rows, "A101");
   const hasB0301 = hasCommissionType(rows, "B0301");
+  const hasB0301InHistory = hasHistoricalB0301Payout(systemContract);
   if (!hasA101) return null;
+  const hasCurrentB36HalfDeduction = b36Payments.some(
+    (payment) => payment.isB36Half && payment.amount < -COMMISSION_AMOUNT_TOLERANCE
+  );
+  if (hasHistoricalB36HalfPayout(systemContract) && !hasCurrentB36HalfDeduction) return null;
   if (
     b36Payments.some(
       (payment) => payment.isB36Half && payment.amount > COMMISSION_AMOUNT_TOLERANCE
@@ -1908,7 +2263,9 @@ const missingAcceleratedB36Warning = (
       .join(", "),
     detail: hasB0301
       ? "Ve výpisu je A101 a B0301, ale není nalezená odpovídající 50% z B36 v ostatních platbách."
-      : "Ve výpisu je A101. B0301 může přijít později po kartě klienta, ale u zrychleného režimu chybí odpovídající 50% z B36 v ostatních platbách.",
+      : hasB0301InHistory
+        ? "Ve výpisu je A101 a B0301 už je zapsaná v historii smlouvy, ale není nalezená odpovídající 50% z B36 v ostatních platbách."
+        : "Ve výpisu je A101. B0301 může přijít později po kartě klienta, ale u zrychleného režimu chybí odpovídající 50% z B36 v ostatních platbách.",
   };
 };
 
@@ -3717,6 +4074,8 @@ const buildLifeSplitAmountComparisons = (
   if (items.length === 0 && tipRows.length === 0) return [];
   const hasA101InStatement = rowsByKind(contract, "a101").length > 0;
   const hasB0301InStatement = rowsByKind(contract, "b0301").length > 0;
+  const hasB0301InHistory = hasHistoricalB0301Payout(systemContract);
+  const hasB36HalfInHistory = hasHistoricalB36HalfPayout(systemContract);
   const subsequentRows = rowsByKind(contract, "subsequent");
   const subsequentStatementAmount = sumRows(subsequentRows);
   const subsequentExpectedPerPeriod = expectedAmountFromItems(
@@ -3740,6 +4099,14 @@ const buildLifeSplitAmountComparisons = (
     contract.b36Payments,
     expectedB36HalfAmount
   );
+  const hasB36HalfInStatement = b36PaidPaymentAmounts(contract.b36Payments).some(
+    (amount) => amount > COMMISSION_AMOUNT_TOLERANCE
+  );
+  const hasB36HalfDeductionInStatement = contract.b36Payments.some(
+    (payment) => payment.isB36Half && payment.amount < -COMMISSION_AMOUNT_TOLERANCE
+  );
+  const shouldReviewB36Half =
+    hasB36HalfInStatement || hasB36HalfDeductionInStatement || !hasB36HalfInHistory;
 
   const statementParts = [
     {
@@ -3769,9 +4136,12 @@ const buildLifeSplitAmountComparisons = (
     {
       key: "b36-half",
       label: b36HalfLabelForProduct(contract.productCode),
-      requiredNow: hasA101InStatement && hasB0301InStatement,
-      statementAmount: statementB36HalfAmount,
-      expectedAmount: expectedB36HalfAmount,
+      requiredNow:
+        shouldReviewB36Half &&
+        hasA101InStatement &&
+        (hasB0301InStatement || hasB0301InHistory),
+      statementAmount: shouldReviewB36Half ? statementB36HalfAmount : 0,
+      expectedAmount: shouldReviewB36Half ? expectedB36HalfAmount : 0,
     },
     {
       key: "b3601",
@@ -5003,7 +5373,11 @@ const buildStatementDiscrepancyIssues = (
       });
     }
 
-    if (rowsByKind(reviewContract, "a101").length > 0 && rowsByKind(reviewContract, "b0301").length === 0) {
+    if (
+      rowsByKind(reviewContract, "a101").length > 0 &&
+      rowsByKind(reviewContract, "b0301").length === 0 &&
+      !hasHistoricalB0301Payout(systemContract)
+    ) {
       addIssue({
         key: discrepancyIssueKey(statementKey, "life-missing-b0301", contract.contractNumber),
         statementKey,
@@ -5807,8 +6181,10 @@ function StatementCorrectionWarning({
   if (details.length === 0) return null;
 
   const title =
-    label === "Oprava kariérního stupně"
+    label === "Oprava kariérního stupně" || label === "Opravná provize: kariérní stupeň"
       ? "Pozor: smlouva byla zprovizována na jiném kariérním stupni, než by měla"
+      : label === "Opravná provize"
+        ? "Pozor: tento výpis obsahuje opravu provize"
       : "Pozor: provize byla opravena navazujícím výpisem";
 
   return (
@@ -6440,6 +6816,7 @@ function StatementSummary({ statement }: { statement: ParsedStatement }) {
 function LifeSplitContractCard({
   contract,
   match,
+  deductionRows,
   statementId,
   statementPeriod,
   statementKey,
@@ -6449,6 +6826,7 @@ function LifeSplitContractCard({
 }: {
   contract: LifeSplitContractPreview;
   match: ContractMatchState | null;
+  deductionRows?: DeductionCommissionRow[];
   statementId?: string | null;
   statementPeriod?: string | null;
   statementKey?: string;
@@ -6458,7 +6836,6 @@ function LifeSplitContractCard({
     target: ManualNeonRefreshConversionTarget
   ) => Promise<ManualNeonRefreshConversionResponse>;
 }) {
-  const status = statusForContract(contract);
   const a101Rows = rowsByKind(contract, "a101");
   const b0301Rows = rowsByKind(contract, "b0301");
   const a101 = sumRows(a101Rows);
@@ -6477,8 +6854,6 @@ function LifeSplitContractCard({
   const lifeIncreaseAnnualPremium = increaseRows
     .map((row) => row.base)
     .find((base) => base > 0) ?? 0;
-  const missingClientCardCommissionWarning = a101Rows.length > 0 && b0301Rows.length === 0;
-  const deferredClientCardCommission = a101Rows.length === 0 && b0301Rows.length > 0;
   const b36HalfLabel = b36HalfLabelForProduct(contract.productCode);
   const pairedB36PaymentIndexes = b36OffsetPairIndexes(contract.b36Payments);
   const expectedProductKey = resolveStatementProduct(contract.productCode).productKey;
@@ -6501,7 +6876,19 @@ function LifeSplitContractCard({
   const correctionDetails = statementKey
     ? correctedRowsDetails(statementKey, contract.rows, correctionContext)
     : [];
+  const currentCorrectionInfo = currentStatementCorrectionInfoForRows(
+    reviewContract.rows,
+    deductionRows
+  );
   const systemContract = matchedSystemContractForLifeSplit(reviewContract, match);
+  const reviewA101Rows = rowsByKind(reviewContract, "a101");
+  const reviewB0301Rows = rowsByKind(reviewContract, "b0301");
+  const hasHistoricalB0301 = hasHistoricalB0301Payout(systemContract);
+  const status = statusForContract(reviewContract, systemContract);
+  const missingClientCardCommissionWarning =
+    reviewA101Rows.length > 0 && reviewB0301Rows.length === 0 && !hasHistoricalB0301;
+  const deferredClientCardCommission =
+    reviewA101Rows.length === 0 && reviewB0301Rows.length > 0;
   const missingB36Warning = tipOnlyContract
     ? null
     : missingAcceleratedB36Warning(
@@ -6649,6 +7036,11 @@ function LifeSplitContractCard({
             {correctionLabel && (
               <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
                 {correctionLabel}
+              </span>
+            )}
+            {currentCorrectionInfo && (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                {currentCorrectionInfo.label}
               </span>
             )}
             {hasCareerIssue && (
@@ -6804,6 +7196,10 @@ function LifeSplitContractCard({
           )}
 
           <StatementCorrectionWarning details={correctionDetails} label={correctionLabel} />
+          <StatementCorrectionWarning
+            details={currentCorrectionInfo?.details ?? []}
+            label={currentCorrectionInfo?.label ?? null}
+          />
           <ContractTimelinePositionWarning mismatch={timelinePositionMismatch} />
           <CareerMismatchWarning
             careerCheck={careerCheck}
@@ -6963,6 +7359,7 @@ function LifeSplitContractCard({
 function OtherProductContractCard({
   contract,
   match,
+  deductionRows,
   statementPeriod,
   statementKey,
   correctionContext,
@@ -6970,6 +7367,7 @@ function OtherProductContractCard({
 }: {
   contract: OtherProductContractPreview;
   match: ContractMatchState | null;
+  deductionRows?: DeductionCommissionRow[];
   statementPeriod?: string | null;
   statementKey?: string;
   correctionContext?: StatementCorrectionContext;
@@ -7007,6 +7405,10 @@ function OtherProductContractCard({
   const correctionDetails = statementKey
     ? correctedRowsDetails(statementKey, contract.rows, correctionContext)
     : [];
+  const currentCorrectionInfo = currentStatementCorrectionInfoForRows(
+    reviewContract.rows,
+    deductionRows
+  );
   const missingB36Warning = tipOnlyContract
     ? null
     : missingAcceleratedB36Warning(
@@ -7130,6 +7532,11 @@ function OtherProductContractCard({
                 {correctionLabel}
               </span>
             )}
+            {currentCorrectionInfo && (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                {currentCorrectionInfo.label}
+              </span>
+            )}
             {hasCareerIssue && (
               <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
                 {statementCareerBadgeLabel(careerCheck?.careers)}
@@ -7251,6 +7658,10 @@ function OtherProductContractCard({
           )}
 
           <StatementCorrectionWarning details={correctionDetails} label={correctionLabel} />
+          <StatementCorrectionWarning
+            details={currentCorrectionInfo?.details ?? []}
+            label={currentCorrectionInfo?.label ?? null}
+          />
           <ContractTimelinePositionWarning mismatch={timelinePositionMismatch} />
           <CareerMismatchWarning
             careerCheck={careerCheck}
@@ -7416,6 +7827,7 @@ function OtherProductContractCard({
 function LifeSplitProductsSection({
   contracts,
   matchesByContractNumber,
+  deductionRows,
   statementId,
   statementPeriod,
   statementKey,
@@ -7425,6 +7837,7 @@ function LifeSplitProductsSection({
 }: {
   contracts: LifeSplitContractPreview[];
   matchesByContractNumber: ContractMatchesByNumber;
+  deductionRows?: DeductionCommissionRow[];
   statementId?: string | null;
   statementPeriod?: string | null;
   statementKey: string;
@@ -7491,6 +7904,7 @@ function LifeSplitProductsSection({
                 contract.contractNumber,
                 lifeSplitContractMatchScope(contract)
               )}
+              deductionRows={deductionRows}
               statementId={statementId}
               statementPeriod={statementPeriod}
               statementKey={statementKey}
@@ -7509,11 +7923,13 @@ function UnpairedContractsSection({
   lifeContracts,
   otherContracts,
   matchesByContractNumber,
+  deductionRows,
   markingControls,
 }: {
   lifeContracts: LifeSplitContractPreview[];
   otherContracts: OtherProductContractPreview[];
   matchesByContractNumber: ContractMatchesByNumber;
+  deductionRows?: DeductionCommissionRow[];
   markingControls?: MarkingControls;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -7588,6 +8004,7 @@ function UnpairedContractsSection({
                 contract.contractNumber,
                 lifeSplitContractMatchScope(contract)
               )}
+              deductionRows={deductionRows}
               markingControls={markingControls}
             />
           ))}
@@ -7634,6 +8051,7 @@ function UnpairedContractsSection({
                         contract.contractNumber,
                         otherProductContractMatchScope(contract)
                       )}
+                      deductionRows={deductionRows}
                       markingControls={markingControls}
                     />
                   ))}
@@ -7684,6 +8102,7 @@ function UnpairedContractsSection({
                         contract.contractNumber,
                         otherProductContractMatchScope(contract)
                       )}
+                      deductionRows={deductionRows}
                       markingControls={markingControls}
                     />
                   ))}
@@ -7700,6 +8119,7 @@ function UnpairedContractsSection({
                 contract.contractNumber,
                 otherProductContractMatchScope(contract)
               )}
+              deductionRows={deductionRows}
               markingControls={markingControls}
             />
           ))}
@@ -8812,6 +9232,7 @@ function OtherProductsSection({
   showDescription = false,
   contracts,
   matchesByContractNumber,
+  deductionRows,
   statementPeriod,
   statementKey,
   correctionContext,
@@ -8823,6 +9244,7 @@ function OtherProductsSection({
   showDescription?: boolean;
   contracts?: OtherProductContractPreview[];
   matchesByContractNumber: ContractMatchesByNumber;
+  deductionRows?: DeductionCommissionRow[];
   statementPeriod?: string | null;
   statementKey: string;
   correctionContext?: StatementCorrectionContext;
@@ -8913,6 +9335,7 @@ function OtherProductsSection({
                 contract.contractNumber,
                 otherProductContractMatchScope(contract)
               )}
+              deductionRows={deductionRows}
               statementPeriod={statementPeriod}
               statementKey={statementKey}
               correctionContext={correctionContext}
@@ -9828,6 +10251,7 @@ function StatementPreview({
       <LifeSplitProductsSection
         contracts={statement.lifeSplitContracts}
         matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
         statementId={selectedStatementId}
         statementPeriod={statement.header.period}
         statementKey={statementKey}
@@ -9841,6 +10265,7 @@ function StatementPreview({
         description="Auto produkty se párují primárně podle čísla smlouvy. Produkt z výpisu je doplňující kontrola."
         contracts={autoProductContracts}
         matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
         statementKey={statementKey}
         correctionContext={correctionContext}
@@ -9850,6 +10275,7 @@ function StatementPreview({
       <OtherProductsSection
         contracts={remainingOtherProductContracts}
         matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
         statementKey={statementKey}
         correctionContext={correctionContext}
@@ -9860,6 +10286,7 @@ function StatementPreview({
         lifeContracts={[]}
         otherContracts={unpairedOtherProductContracts}
         matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
         markingControls={markingControls}
       />
 
@@ -9977,6 +10404,7 @@ export default function CommissionStatementsPage() {
     status: "idle",
     message: null,
   });
+  const statementProcessingInFlightRef = useRef(false);
   const [processingAuditSummary, setProcessingAuditSummary] =
     useState<StatementProcessingSummary | null>(null);
   const [stornoActionTarget, setStornoActionTarget] =
@@ -10093,7 +10521,9 @@ export default function CommissionStatementsPage() {
     }
 
     const intervalId = window.setInterval(() => {
-      setProcessingStepIndex((previous) => (previous + 1) % PROCESSING_CAPTIONS.length);
+      setProcessingStepIndex((previous) =>
+        Math.min(previous + 1, PROCESSING_CAPTIONS.length - 1)
+      );
     }, 1700);
 
     return () => window.clearInterval(intervalId);
@@ -10705,6 +11135,8 @@ export default function CommissionStatementsPage() {
   };
 
   const processStatementRecords = async () => {
+    if (statementProcessingInFlightRef.current || statementRecordsProcessed) return;
+
     if (statementFilesForProcessing.length === 0) {
       setStatementSaveState({
         status: "error",
@@ -10721,6 +11153,8 @@ export default function CommissionStatementsPage() {
       return;
     }
 
+    statementProcessingInFlightRef.current = true;
+    setProcessingStepIndex(0);
     setStatementSaveState({
       status: "saving",
       message: "Zpracovávám záznam a ukládám výpis pro provizní kalendář…",
@@ -10787,7 +11221,7 @@ export default function CommissionStatementsPage() {
       setNeonRefreshPromptSaving(false);
       void refreshProcessedStatementHistory();
     } catch (saveError) {
-      console.error("Provizní výpisy: zpracování záznamu selhalo.", saveError);
+      console.warn("Provizní výpisy: zpracování záznamu selhalo.", saveError);
       setStatementSaveState({
         status: "error",
         message:
@@ -10796,6 +11230,8 @@ export default function CommissionStatementsPage() {
             : "Záznam se nepodařilo zpracovat.",
       });
       setProcessingAuditSummary(null);
+    } finally {
+      statementProcessingInFlightRef.current = false;
     }
   };
 
@@ -11121,54 +11557,19 @@ export default function CommissionStatementsPage() {
                 </button>
               </div>
 
-              {statementRecordsProcessing && (
-                <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-4 text-sky-950">
-                  <div className="flex items-start gap-3">
-                    <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-sky-700">
-                      <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.3} aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-bold">Zpracování běží</div>
-                      <div className="mt-1 min-h-5 text-sm font-semibold text-sky-800">
-                        {activeProcessingCaption}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className="mt-4 h-2 overflow-hidden rounded-full bg-white"
-                    role="progressbar"
-                    aria-label="Průběh zpracování záznamu"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={processingProgressPercent}
-                  >
-                    <div
-                      className="h-full rounded-full bg-slate-950 transition-all duration-700 ease-out"
-                      style={{ width: `${processingProgressPercent}%` }}
-                    />
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {PROCESSING_CAPTIONS.map((caption, index) => (
-                      <span
-                        key={caption}
-                        className={`h-1.5 rounded-full transition-all duration-300 ${
-                          index <= processingStepIndex
-                            ? "w-8 bg-slate-950"
-                            : "w-3 bg-white"
-                        }`}
-                        aria-hidden="true"
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
             </section>
           </div>
         )}
       </div>
+
+      {statementRecordsProcessing && (
+        <StatementProcessingOverlay
+          caption={activeProcessingCaption}
+          progress={processingProgressPercent}
+          stepIndex={processingStepIndex}
+          statementCount={statements.length}
+        />
+      )}
 
       {reportModalOpen && (
         <DiscrepancyPdfNotesModal

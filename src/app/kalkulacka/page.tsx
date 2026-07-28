@@ -250,6 +250,8 @@ const SETTINGS_KEYS = {
   tipsterMode: "settings.tipsterMode",
   tipsterPercent: "settings.tipsterPercent",
 };
+const profileModeStorageKey = (email: string | null | undefined) =>
+  email ? `${SETTINGS_KEYS.mode}:${email}` : SETTINGS_KEYS.mode;
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
 const EMAIL_LOOKUP_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
@@ -324,6 +326,38 @@ type PrepareEndorsementOptions = {
   newPremiumAmountOverride?: number | null;
   source?: "manual" | "pdf";
 };
+
+type ContractsFindEntry = NonNullable<ContractsFindApiResponse["contracts"]>[number];
+
+const contractOwnerEmail = (entry: ContractsFindEntry): string =>
+  normalizeEmailValue(entry.userEmail) || normalizeEmailValue(entry.adviserEmail);
+
+const buildEndorsementSourceEntries = (
+  contracts: ContractsFindEntry[],
+  targetProduct: Product
+): EndorsementSourceEntry[] =>
+  contracts
+    .map((entry) => {
+      const entryId = typeof entry.id === "string" ? entry.id.trim() : "";
+      if (!entryId) return null;
+      const ownerEmail = contractOwnerEmail(entry);
+      return {
+        id: entryId,
+        path: entryPathFromContractOwner(ownerEmail, entryId),
+        productKey: (entry?.productKey as Product | undefined) ?? null,
+        rootContractEntryId:
+          (typeof entry?.rootContractEntryId === "string"
+            ? entry.rootContractEntryId
+            : null) ?? null,
+        effectiveInputAmount: resolveEffectivePremium(entry),
+        policyStartDate: toDate(entry?.policyStartDate),
+        contractSignedDate: toDate(entry?.contractSignedDate),
+        createdAt: toDate(entry?.createdAt),
+      };
+    })
+    .filter((entry): entry is EndorsementSourceEntry => Boolean(entry))
+    .filter((entry) => entry.productKey === targetProduct)
+    .sort(compareSourceEntriesByRecency);
 
 // ---------- Kalkulačka ----------
 
@@ -511,6 +545,10 @@ export default function CalculatorPage() {
     entries: { id: string; ownerEmail: string; path: string; contractNumber: string | null }[];
   } | null>(null);
   const [endorsementDraft, setEndorsementDraft] = useState<EndorsementDraft | null>(null);
+  const [endorsementDraftModalOpen, setEndorsementDraftModalOpen] = useState(false);
+  const [endorsementWorkflowActive, setEndorsementWorkflowActive] = useState(false);
+  const [endorsementPreviewSource, setEndorsementPreviewSource] =
+    useState<EndorsementSourceEntry | null>(null);
   const [saveSuccessFlash, setSaveSuccessFlash] = useState<{
     contractNumber: string | null;
     clientName: string | null;
@@ -534,6 +572,7 @@ export default function CalculatorPage() {
   const normalizedUserEmail = normalizeEmailValue(user?.email);
   const impersonatedUserEmail = normalizeEmailValue(adminImpersonation?.email);
   const activeSaveBaseEmail = impersonatedUserEmail || normalizedUserEmail;
+  const activeProfileEmail = activeSaveBaseEmail;
   const canOverrideOwnerOnSave =
     normalizedUserEmail === CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL;
   const effectiveSaveOwnerEmail =
@@ -659,20 +698,6 @@ export default function CalculatorPage() {
     return true;
   };
 
-  const paymentBasedTotalsMemo = useMemo(() => {
-    if (
-      (!isSeparatedPeriodCommissionProduct(product) &&
-        !isFrequencyAutoPayoutProduct(product)) ||
-      items.length === 0
-    ) {
-      return null;
-    }
-    const multiplier = isAnnualSeparatedPeriodProduct(product)
-      ? 1
-      : paymentsPerYear(frequency);
-    return paymentBasedTotals(items, multiplier);
-  }, [product, items, frequency]);
-
   const tipContractImmediateGrossFirstYear = useMemo(
     () => tipContractGrossBaseForProduct(product, items),
     [product, items]
@@ -749,30 +774,6 @@ export default function CalculatorPage() {
     refreshOriginalLookup.original,
     neonRefreshCommissionBase,
   ]);
-  const tipContractTipsterAmountFirstYear = useMemo(() => {
-    if (!tipContractConfig) return 0;
-    return roundToCents(
-      tipContractImmediateGrossFirstYear * (tipContractConfig.tipsterPercent / 100)
-    );
-  }, [tipContractConfig, tipContractImmediateGrossFirstYear]);
-  const tipContractImmediateNetFirstYear = useMemo(() => {
-    if (!tipContractConfig) return 0;
-    return roundToCents(
-      tipContractImmediateGrossFirstYear - tipContractTipsterAmountFirstYear
-    );
-  }, [
-    tipContractConfig,
-    tipContractImmediateGrossFirstYear,
-    tipContractTipsterAmountFirstYear,
-  ]);
-  const tipContractTotalNet = useMemo(() => {
-    if (!tipContractConfig) return total;
-    return roundToCents(Math.max(0, total - tipContractTipsterAmountFirstYear));
-  }, [tipContractConfig, tipContractTipsterAmountFirstYear, total]);
-  const tipsterImmediateCommission = useMemo(
-    () => tipContractImmediateGrossFirstYear * (tipsterPercent / 100),
-    [tipContractImmediateGrossFirstYear, tipsterPercent]
-  );
   const comfortPayoutCount = useMemo(() => {
     if (product !== "comfortcc" || !comfortGradual) return null;
     const payment = parseNumber(comfortPaymentText);
@@ -1544,13 +1545,22 @@ export default function CalculatorPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!activeProfileEmail) return;
 
-    const storedMode = window.localStorage.getItem(
-      SETTINGS_KEYS.mode
+    const profileStoredMode = window.localStorage.getItem(
+      profileModeStorageKey(activeProfileEmail)
     ) as CommissionMode | null;
-    if (storedMode) {
+    const legacyStoredMode = impersonatedUserEmail
+      ? null
+      : (window.localStorage.getItem(SETTINGS_KEYS.mode) as CommissionMode | null);
+    const storedMode = profileStoredMode ?? legacyStoredMode;
+    if (storedMode === "standard" || storedMode === "accelerated") {
       setMode(storedMode);
     }
+  }, [activeProfileEmail, impersonatedUserEmail]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
     const storedTipsterMode = window.localStorage.getItem(SETTINGS_KEYS.tipsterMode);
     if (storedTipsterMode === "1" || storedTipsterMode === "0") {
@@ -1567,14 +1577,30 @@ export default function CalculatorPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadUserPosition = async () => {
-      if (!user?.email) return;
+      if (!user?.email || !activeProfileEmail) {
+        setUserCommissionMode(null);
+        setPositionTimeline([]);
+        setManagerEmailSnapshot(null);
+        setManagerPositionSnapshot(null);
+        setManagerModeSnapshot(null);
+        setManagerChainSnapshot([]);
+        return;
+      }
       try {
         const payload = await fetchAuthedJsonOrThrow<{
           ok?: boolean;
+          email?: string;
           profile?: Record<string, unknown>;
         }>(user, "/api/user/profile", { method: "GET" });
+        if (cancelled) return;
         const data = (payload?.profile ?? {}) as any;
+        const profileEmail =
+          normalizeEmailValue(payload?.email) ||
+          normalizeEmailValue(data?.email) ||
+          activeProfileEmail;
 
         const parsedPositionTimeline = parsePositionTimeline(data?.positionTimeline);
         setPositionTimeline(parsedPositionTimeline);
@@ -1588,12 +1614,18 @@ export default function CalculatorPage() {
 
         let mgrEmail = (data?.managerEmail as string | undefined)?.toLowerCase() ?? null;
         setManagerEmailSnapshot(mgrEmail ?? null);
-        const userMode = (data?.commissionMode as CommissionMode | undefined) ?? null;
+        const userMode =
+          data?.commissionMode === "standard" || data?.commissionMode === "accelerated"
+            ? data.commissionMode
+            : null;
         if (userMode) {
           setUserCommissionMode(userMode);
           setMode(userMode);
           if (typeof window !== "undefined") {
-            window.localStorage.setItem(SETTINGS_KEYS.mode, userMode);
+            window.localStorage.setItem(profileModeStorageKey(profileEmail), userMode);
+            if (!impersonatedUserEmail && profileEmail === normalizedUserEmail) {
+              window.localStorage.setItem(SETTINGS_KEYS.mode, userMode);
+            }
           }
         }
 
@@ -1631,6 +1663,7 @@ export default function CalculatorPage() {
             user,
             signedDateIso: null,
           });
+          if (cancelled) return;
           const snapshotManagerEmail = snapshot.managerEmail ?? null;
           if (snapshotManagerEmail) {
             setManagerEmailSnapshot(snapshotManagerEmail);
@@ -1645,18 +1678,23 @@ export default function CalculatorPage() {
           setManagerModeSnapshot(null);
         }
 
+        if (cancelled) return;
         if (chain.length === 0 && mgrEmail) {
           chain = ensureManagerChainWithDirectManager(chain, mgrEmail, null, null);
         }
         setManagerChainSnapshot(chain);
       } catch (err) {
+        if (cancelled) return;
         console.error("Failed to load user position", err);
         setPositionTimeline([]);
       }
     };
 
     loadUserPosition();
-  }, [user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, activeProfileEmail, impersonatedUserEmail, normalizedUserEmail]);
 
   useEffect(() => {
     if (calculatorViewMode === "commissionOnly") {
@@ -2069,17 +2107,20 @@ export default function CalculatorPage() {
 
   useEffect(() => {
     const trimmedContractNumber = contractNumber.trim();
-    if (!user || !trimmedContractNumber || trimmedContractNumber.length < 3 || endorsementDraft) {
+    const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user?.email);
+    if (!user || !trimmedContractNumber || trimmedContractNumber.length < 3 || !targetOwnerEmail) {
       setContractNumberLiveCheck({ status: "idle" });
+      setEndorsementPreviewSource(null);
       return;
     }
 
+    const checkMode = endorsementWorkflowActive ? "endorsement" : "newContract";
     let canceled = false;
     const timer = window.setTimeout(async () => {
       setContractNumberLiveCheck({ status: "checking" });
       try {
         const params = new URLSearchParams({
-          scope: "my",
+          scope: isSavingForSubordinate ? "team" : "my",
           q: trimmedContractNumber,
         });
         const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
@@ -2089,11 +2130,29 @@ export default function CalculatorPage() {
         if (canceled) return;
 
         if (payload.ok === false) {
+          setEndorsementPreviewSource(null);
           setContractNumberLiveCheck({ status: "error" });
           return;
         }
 
-        const dupCount = Array.isArray(payload.contracts) ? payload.contracts.length : 0;
+        const ownerContracts = (Array.isArray(payload.contracts) ? payload.contracts : []).filter(
+          (entry) => contractOwnerEmail(entry) === targetOwnerEmail
+        );
+
+        if (checkMode === "endorsement") {
+          const sourceContracts = buildEndorsementSourceEntries(ownerContracts, product);
+          const sourceContractCount = sourceContracts.length;
+          setEndorsementPreviewSource(sourceContracts[0] ?? null);
+          setContractNumberLiveCheck(
+            sourceContractCount > 0
+              ? { status: "foundForEndorsement", count: sourceContractCount }
+              : { status: "notFoundForEndorsement" }
+          );
+          return;
+        }
+
+        setEndorsementPreviewSource(null);
+        const dupCount = ownerContracts.length;
         if (dupCount > 0) {
           setContractNumberLiveCheck({
             status: "duplicate",
@@ -2104,7 +2163,10 @@ export default function CalculatorPage() {
         setContractNumberLiveCheck({ status: "ok" });
       } catch (err) {
         console.warn("Live kontrola duplicitního čísla smlouvy selhala", err);
-        if (!canceled) setContractNumberLiveCheck({ status: "error" });
+        if (!canceled) {
+          setEndorsementPreviewSource(null);
+          setContractNumberLiveCheck({ status: "error" });
+        }
       }
     }, 350);
 
@@ -2112,7 +2174,14 @@ export default function CalculatorPage() {
       canceled = true;
       window.clearTimeout(timer);
     };
-  }, [user, contractNumber, endorsementDraft]);
+  }, [
+    contractNumber,
+    effectiveSaveOwnerEmail,
+    endorsementWorkflowActive,
+    isSavingForSubordinate,
+    product,
+    user,
+  ]);
 
   useEffect(() => {
     const trimmedOriginalNumber = refreshOriginalContractNumber.trim();
@@ -3332,6 +3401,7 @@ export default function CalculatorPage() {
       }
 
       if (parsedIsEndorsement) {
+        setEndorsementWorkflowActive(true);
         const parsedContractNumber =
           typeof parsed.contractNumber === "string" ? parsed.contractNumber.trim() : "";
         const parsedSignedDate =
@@ -3954,14 +4024,42 @@ export default function CalculatorPage() {
     setMissingFields([]);
     setDuplicateModal(null);
     setEndorsementDraft(null);
+    setEndorsementDraftModalOpen(false);
+    setEndorsementWorkflowActive(false);
+    setEndorsementPreviewSource(null);
   };
 
   useEffect(() => {
     if (!endorsementDraft) return;
-    if (!isLifeProduct || endorsementDraft.productKey !== product) {
+    const currentPremiumAmount = parseNumber(amountText);
+    const draftNoLongerMatches =
+      !isLifeProduct ||
+      endorsementDraft.productKey !== product ||
+      endorsementDraft.contractNumber !== contractNumber.trim() ||
+      endorsementDraft.contractSignedDate !== contractSignedDate.trim() ||
+      endorsementDraft.position !== position ||
+      endorsementDraft.commissionMode !== mode ||
+      endorsementDraft.durationYears !== (durationYears ?? null) ||
+      endorsementDraft.durationMonths !== (durationMonths ?? null) ||
+      Math.abs(currentPremiumAmount - endorsementDraft.newPremiumAmount) > 0.01;
+
+    if (draftNoLongerMatches) {
       setEndorsementDraft(null);
+      setEndorsementDraftModalOpen(false);
+      setSaveMessage("Formulář změny se upravil. Klikni na Změna znovu.");
     }
-  }, [endorsementDraft, isLifeProduct, product]);
+  }, [
+    amountText,
+    contractNumber,
+    contractSignedDate,
+    durationMonths,
+    durationYears,
+    endorsementDraft,
+    isLifeProduct,
+    mode,
+    position,
+    product,
+  ]);
 
   const resolveEndorsementPositionForSignedDate = (
     signedDateIso: string
@@ -4078,6 +4176,7 @@ export default function CalculatorPage() {
       return false;
     }
 
+    setEndorsementWorkflowActive(true);
     const positionForEndorsement = resolveEndorsementPositionForSignedDate(signedDateIso);
     if (!positionForEndorsement) return false;
 
@@ -4092,8 +4191,7 @@ export default function CalculatorPage() {
         { method: "GET" }
       );
       const contracts = (Array.isArray(payload?.contracts) ? payload.contracts : []).filter(
-        (entry) =>
-          normalizeEmailValue(entry.userEmail ?? entry.adviserEmail) === targetOwnerEmail
+        (entry) => contractOwnerEmail(entry) === targetOwnerEmail
       );
 
       if (contracts.length === 0) {
@@ -4103,27 +4201,7 @@ export default function CalculatorPage() {
         return false;
       }
 
-      const productMatches: EndorsementSourceEntry[] = contracts
-        .map((entry) => {
-          const entryId = typeof entry.id === "string" ? entry.id.trim() : "";
-          if (!entryId) return null;
-          return {
-            id: entryId,
-            path: entryPathFromContractOwner(entry.userEmail ?? entry.adviserEmail, entryId),
-            productKey: (entry?.productKey as Product | undefined) ?? null,
-            rootContractEntryId:
-              (typeof entry?.rootContractEntryId === "string"
-                ? entry.rootContractEntryId
-                : null) ?? null,
-            effectiveInputAmount: resolveEffectivePremium(entry),
-            policyStartDate: toDate(entry?.policyStartDate),
-            contractSignedDate: toDate(entry?.contractSignedDate),
-            createdAt: toDate(entry?.createdAt),
-          };
-        })
-        .filter((entry): entry is EndorsementSourceEntry => Boolean(entry))
-        .filter((entry) => entry.productKey === targetProduct);
-
+      const productMatches = buildEndorsementSourceEntries(contracts, targetProduct);
       if (productMatches.length === 0) {
         setValidationError(
           `Pro smlouvu č. ${trimmedContractNumber} není uložený produkt ${productLabel(targetProduct)}.`
@@ -4131,9 +4209,8 @@ export default function CalculatorPage() {
         return false;
       }
 
-      productMatches.sort(compareSourceEntriesByRecency);
-
       const latestEntry = productMatches[0];
+      setEndorsementPreviewSource(latestEntry);
       const previousPremiumAmount = latestEntry.effectiveInputAmount;
       const deltaAmount = newPremiumAmount - previousPremiumAmount;
 
@@ -4165,9 +4242,14 @@ export default function CalculatorPage() {
       setEndorsementDraft({
         productKey: targetProduct,
         contractNumber: trimmedContractNumber,
+        contractSignedDate: signedDateIso,
         sourceEntryId: latestEntry.id,
         sourceEntryPath: latestEntry.path,
         rootContractEntryId: latestEntry.rootContractEntryId ?? latestEntry.id,
+        position: positionForEndorsement,
+        commissionMode: mode,
+        durationYears: durationYears ?? null,
+        durationMonths: durationMonths ?? null,
         previousPremiumAmount,
         newPremiumAmount,
         deltaAmount,
@@ -4177,7 +4259,8 @@ export default function CalculatorPage() {
         total: endorsementTotal,
       });
       setValidationError(null);
-      setSaveMessage(null);
+      setSaveMessage("Změna je připravená. Uloží se až po kliknutí na Uložit jako sepsáno.");
+      setEndorsementDraftModalOpen(true);
       return true;
     } catch (error) {
       console.error("Chyba při přípravě dodatku", error);
@@ -4232,6 +4315,7 @@ export default function CalculatorPage() {
         "Produkt se od otevření okna změnil. Klikni prosím na Změna znovu."
       );
       setEndorsementDraft(null);
+      setEndorsementDraftModalOpen(false);
       return;
     }
 
@@ -4240,6 +4324,16 @@ export default function CalculatorPage() {
         "Číslo smlouvy se od otevření okna změnilo. Klikni prosím na Změna znovu."
       );
       setEndorsementDraft(null);
+      setEndorsementDraftModalOpen(false);
+      return;
+    }
+
+    if (contractSignedDate.trim() !== endorsementDraft.contractSignedDate) {
+      setValidationError(
+        "Datum sjednání se od přípravy změny změnilo. Klikni prosím na Změna znovu."
+      );
+      setEndorsementDraft(null);
+      setEndorsementDraftModalOpen(false);
       return;
     }
 
@@ -4249,6 +4343,21 @@ export default function CalculatorPage() {
         "Částka se od otevření okna změnila. Klikni prosím na Změna znovu."
       );
       setEndorsementDraft(null);
+      setEndorsementDraftModalOpen(false);
+      return;
+    }
+
+    if (
+      position !== endorsementDraft.position ||
+      mode !== endorsementDraft.commissionMode ||
+      (durationYears ?? null) !== endorsementDraft.durationYears ||
+      (durationMonths ?? null) !== endorsementDraft.durationMonths
+    ) {
+      setValidationError(
+        "Parametry výpočtu se od přípravy změny změnily. Klikni prosím na Změna znovu."
+      );
+      setEndorsementDraft(null);
+      setEndorsementDraftModalOpen(false);
       return;
     }
 
@@ -4299,6 +4408,7 @@ export default function CalculatorPage() {
       const endorsementEntryPayload = {
         productKey: endorsementDraft.productKey,
         entryType: "endorsement" as ContractEntryType,
+        commissionMode: endorsementDraft.commissionMode,
         rootContractEntryId: endorsementDraft.rootContractEntryId,
         parentContractEntryId: endorsementDraft.sourceEntryId,
         parentContractEntryPath: endorsementDraft.sourceEntryPath,
@@ -4413,6 +4523,9 @@ export default function CalculatorPage() {
       });
       setContractSaveCelebrationKey((prev) => prev + 1);
       setEndorsementDraft(null);
+      setEndorsementDraftModalOpen(false);
+      setEndorsementWorkflowActive(false);
+      setEndorsementPreviewSource(null);
     } catch (error) {
       const errorMessage =
         error instanceof Error && error.message.trim().length > 0
@@ -4426,6 +4539,18 @@ export default function CalculatorPage() {
   };
 
   const handleSaveContract = async (skipDuplicateCheck = false) => {
+    if (endorsementDraft) {
+      await handleSaveEndorsement();
+      return;
+    }
+
+    if (endorsementWorkflowActive) {
+      const msg = "Nejdřív klikni na Změna a připrav aktuální dodatek.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return;
+    }
+
     if (!user) return;
     const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
     if (!targetOwnerEmail) {
@@ -6607,26 +6732,128 @@ export default function CalculatorPage() {
     }
   };
 
-    const currentTipContractUser = getCurrentTipContractUser();
-    const canShowTipContractTipsButton = currentTipContractUser?.accountType === "tipster";
-    const tipContractExampleGrossFirstYearLabel = formatMoneyResult(
-      tipContractImmediateGrossFirstYear
+  const liveEndorsementPreview = (() => {
+    if (
+      !endorsementWorkflowActive ||
+      endorsementDraft ||
+      !endorsementPreviewSource ||
+      !hasSelectedProduct ||
+      !isLifeProduct ||
+      endorsementPreviewSource.productKey !== product
+    ) {
+      return null;
+    }
+
+    const newPremiumAmount = parseNumber(amountText);
+    if (newPremiumAmount <= 0) return null;
+
+    const previousPremiumAmount = endorsementPreviewSource.effectiveInputAmount;
+    const deltaAmount = newPremiumAmount - previousPremiumAmount;
+    const calculationAmount = deltaAmount > 0 ? deltaAmount : 0;
+    const changeType: EndorsementChangeType =
+      deltaAmount > 0 ? "increase" : deltaAmount < 0 ? "decrease" : "same";
+
+    if (calculationAmount <= 0) {
+      return {
+        items: [] as CommissionResultItemDTO[],
+        total: 0,
+        previousPremiumAmount,
+        newPremiumAmount,
+        deltaAmount,
+        calculationAmount,
+        changeType,
+      };
+    }
+
+    const signedDateIso = contractSignedDate.trim();
+    const timelinePosition =
+      isIsoDay(signedDateIso)
+        ? resolvePositionTimelineMatch(signedDateIso, effectivePositionTimeline)?.position ?? null
+        : null;
+    const positionForPreview =
+      timelineMatchedPosition?.position ?? timelinePosition ?? position;
+    const signedDateForPreview = isIsoDay(signedDateIso)
+      ? signedDateIso
+      : contractSignedDateForNeon;
+    const result = computeItemsForPositionAndMode(
+      positionForPreview,
+      mode,
+      calculationAmount,
+      product,
+      signedDateForPreview
     );
-    const tipContractExampleAdvisorRemainderLabel = formatMoneyResult(
-      roundToCents(
-        tipContractImmediateGrossFirstYear *
-          (1 - clampTipContractPercent(tipContractDraftPercent) / 100)
+    if (!result) return null;
+
+    return {
+      items: result.items,
+      total: result.total,
+      previousPremiumAmount,
+      newPremiumAmount,
+      deltaAmount,
+      calculationAmount,
+      changeType,
+    };
+  })();
+  const displayedCommissionItems =
+    endorsementDraft?.items ?? liveEndorsementPreview?.items ?? items;
+  const displayedCommissionTotal =
+    endorsementDraft?.total ?? liveEndorsementPreview?.total ?? total;
+  const displayedPaymentBasedTotals =
+    (!isSeparatedPeriodCommissionProduct(product) &&
+      !isFrequencyAutoPayoutProduct(product)) ||
+    displayedCommissionItems.length === 0
+      ? null
+      : paymentBasedTotals(
+          displayedCommissionItems,
+          isAnnualSeparatedPeriodProduct(product)
+            ? 1
+            : paymentsPerYear(frequency)
+        );
+  const displayedTipContractImmediateGrossFirstYear =
+    tipContractGrossBaseForProduct(product, displayedCommissionItems);
+  const displayedTipContractTipsterAmountFirstYear = tipContractConfig
+    ? roundToCents(
+        displayedTipContractImmediateGrossFirstYear *
+          (tipContractConfig.tipsterPercent / 100)
       )
+    : 0;
+  const displayedTipContractImmediateNetFirstYear = tipContractConfig
+    ? roundToCents(
+        displayedTipContractImmediateGrossFirstYear -
+          displayedTipContractTipsterAmountFirstYear
+      )
+    : 0;
+  const displayedTipContractTotalNet = tipContractConfig
+    ? roundToCents(
+        Math.max(
+          0,
+          displayedCommissionTotal - displayedTipContractTipsterAmountFirstYear
+        )
+      )
+    : displayedCommissionTotal;
+  const displayedTipsterImmediateCommission =
+    displayedTipContractImmediateGrossFirstYear * (tipsterPercent / 100);
+
+  const currentTipContractUser = getCurrentTipContractUser();
+  const canShowTipContractTipsButton = currentTipContractUser?.accountType === "tipster";
+  const tipContractExampleGrossFirstYearLabel = formatMoneyResult(
+    tipContractImmediateGrossFirstYear
+  );
+  const tipContractExampleAdvisorRemainderLabel = formatMoneyResult(
+    roundToCents(
+      tipContractImmediateGrossFirstYear *
+        (1 - clampTipContractPercent(tipContractDraftPercent) / 100)
+    )
+  );
+  const tipContractApplyDisabled = (() => {
+    const normalizedDraftEmail = tipContractDraftEmail.trim().toLowerCase();
+    if (!normalizedDraftEmail) return false;
+    return (
+      tipContractLookupState.status !== "found" ||
+      tipContractLookupState.email !== normalizedDraftEmail
     );
-    const tipContractApplyDisabled = (() => {
-      const normalizedDraftEmail = tipContractDraftEmail.trim().toLowerCase();
-      if (!normalizedDraftEmail) return false;
-      return (
-        tipContractLookupState.status !== "found" ||
-        tipContractLookupState.email !== normalizedDraftEmail
-      );
-    })();
-    const renderProductAndPdfSection = (large = false) => (
+  })();
+  const renderProductAndPdfSection = (large = false) => (
       <CalculatorProductAndPdfSection
         canImportFromPdf={canImportFromPdf && isAddContractMode}
         productOpen={productOpen}
@@ -6684,10 +6911,15 @@ export default function CalculatorPage() {
         onConfirm={handleConfirmDuplicateModal}
       />
       <EndorsementDraftModal
-        draft={endorsementDraft}
-        saving={saving}
-        onCancel={() => setEndorsementDraft(null)}
-        onSave={handleSaveEndorsement}
+        draft={endorsementDraftModalOpen ? endorsementDraft : null}
+        onCancel={() => {
+          setEndorsementDraft(null);
+          setEndorsementDraftModalOpen(false);
+          setEndorsementWorkflowActive(false);
+          setEndorsementPreviewSource(null);
+          setSaveMessage(null);
+        }}
+        onContinue={() => setEndorsementDraftModalOpen(false)}
       />
 
       <TipContractModal
@@ -6942,7 +7174,13 @@ export default function CalculatorPage() {
               contractNumber={contractNumber}
               contractNumberLiveCheckStatus={contractNumberLiveCheck.status}
               contractNumberLiveCheckCount={
-                contractNumberLiveCheck.status === "duplicate" ? contractNumberLiveCheck.count : null
+                contractNumberLiveCheck.status === "duplicate" ||
+                contractNumberLiveCheck.status === "foundForEndorsement"
+                  ? contractNumberLiveCheck.count
+                  : null
+              }
+              contractNumberLiveCheckMode={
+                endorsementWorkflowActive ? "endorsement" : "newContract"
               }
               policyStartDate={policyStartDate}
               contractDateErrorText={contractDateErrorText}
@@ -7050,8 +7288,8 @@ export default function CalculatorPage() {
             }
             unsupported={unsupported}
             supportedLabel={SUPPORTED_LABEL}
-            items={items}
-            tipsterImmediateCommission={tipsterImmediateCommission}
+            items={displayedCommissionItems}
+            tipsterImmediateCommission={displayedTipsterImmediateCommission}
             product={product}
             position={position}
             mode={mode}
@@ -7060,23 +7298,31 @@ export default function CalculatorPage() {
                 (frequency === "annual" || !isFrequencyAutoPayoutProduct(product))) ||
               (product === "domex" && frequency === "annual")
             }
-            paymentBasedTotalsMemo={paymentBasedTotalsMemo}
-            tipContractImmediateGrossFirstYear={tipContractImmediateGrossFirstYear}
-            tipContractTipsterAmountFirstYear={tipContractTipsterAmountFirstYear}
-            tipContractImmediateNetFirstYear={tipContractImmediateNetFirstYear}
-            tipContractTotalNet={tipContractTotalNet}
-            total={total}
+            paymentBasedTotalsMemo={displayedPaymentBasedTotals}
+            tipContractImmediateGrossFirstYear={displayedTipContractImmediateGrossFirstYear}
+            tipContractTipsterAmountFirstYear={displayedTipContractTipsterAmountFirstYear}
+            tipContractImmediateNetFirstYear={displayedTipContractImmediateNetFirstYear}
+            tipContractTotalNet={displayedTipContractTotalNet}
+            total={displayedCommissionTotal}
             saving={saving}
             canSaveContract={
               isAddContractMode &&
               hasSelectedProduct &&
               !saving &&
-              items.length > 0 &&
               parseNumber(amountText) > 0 &&
               !autoHullSumNeedsInput &&
               !effectivePositionTimelineLoading &&
-              effectivePositionTimeline.length > 0
+              effectivePositionTimeline.length > 0 &&
+              (endorsementWorkflowActive ? Boolean(endorsementDraft) : items.length > 0)
             }
+            saveButtonLabel={
+              endorsementDraft
+                ? "Uložit dodatek jako sepsáno"
+                : endorsementWorkflowActive
+                ? "Nejdřív klikni na Změna"
+                : "Uložit jako sepsáno"
+            }
+            savingButtonLabel={endorsementDraft ? "Ukládám dodatek…" : "Ukládám smlouvu…"}
             lastSavedContractHref={lastSavedContractHref}
             onOpenCoefModal={() => setShowCoefModal(true)}
             onToggleTipsterPercentPanel={() => setTipsterPercentPanelOpen((prev) => !prev)}

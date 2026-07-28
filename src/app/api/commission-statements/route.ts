@@ -132,6 +132,10 @@ type CommissionStatementPayoutRow = {
   status: CommissionStatementPayoutStatus;
 };
 
+type StatementPayoutCorrectionInfo = {
+  detail: string;
+};
+
 type ContractCommissionPayoutDifferenceReason =
   | "career_mismatch"
   | "premium_base_mismatch"
@@ -666,6 +670,23 @@ const deductionOffsetsPayoutRow = (
   moneyAmountsMatch(row.baseAmount, deduction.baseAmount) &&
   moneyAmountsMatch(row.commission, Math.abs(deduction.commission)) &&
   moneyAmountsMatch(row.reserveFund, Math.abs(deduction.reserveFund ?? 0));
+
+const payoutRowCanReplaceDeduction = (
+  row: CommissionStatementPayoutRow,
+  deduction: CommissionStatementPayoutRow
+): boolean =>
+  row.status === "paid" &&
+  row.commission > 0 &&
+  deduction.status === "storno" &&
+  deduction.commission < 0 &&
+  row.source === "own" &&
+  deduction.source === "own" &&
+  row.contractNumber === deduction.contractNumber &&
+  normalizeProductCode(row.productCode) === normalizeProductCode(deduction.productCode) &&
+  normalizeCommissionCodeKey(row.commissionCode) ===
+    normalizeCommissionCodeKey(deduction.commissionCode) &&
+  moneyAmountsMatch(row.baseAmount, deduction.baseAmount) &&
+  !deductionOffsetsPayoutRow(row, deduction);
 
 const splitPayoutRowsOffsetByDeductions = (
   payoutRows: CommissionStatementPayoutRow[],
@@ -2649,6 +2670,44 @@ const formatSignedMoneyDetail = (value: number | null | undefined): string => {
   return `${value > 0 ? "+" : ""}${formatMoneyDetail(value)}`;
 };
 
+const buildStatementPayoutCorrectionInfoByRowKey = (
+  rows: CommissionStatementPayoutRow[]
+): Map<string, StatementPayoutCorrectionInfo> => {
+  const corrections = new Map<string, StatementPayoutCorrectionInfo>();
+  const deductions = rows.filter(
+    (row) => row.status === "storno" && row.source === "own" && row.commission < 0
+  );
+  const usedReplacementKeys = new Set<string>();
+
+  for (const deduction of deductions) {
+    const replacement = rows.find(
+      (row) => !usedReplacementKeys.has(row.rowKey) && payoutRowCanReplaceDeduction(row, deduction)
+    );
+    if (!replacement) continue;
+
+    usedReplacementKeys.add(replacement.rowKey);
+    const code =
+      normalizeCommissionCodeKey(replacement.commissionCode) ||
+      normalizeCommissionCodeKey(deduction.commissionCode) ||
+      "položka";
+    const careerChanged =
+      normalizeText(replacement.career, 24) !== normalizeText(deduction.career, 24);
+
+    corrections.set(deduction.rowKey, {
+      detail: careerChanged
+        ? `Součást opravného výpisu: odúčtování původní ${code} na Kar. ${deduction.career || "—"} a náhrada novou výplatou na Kar. ${replacement.career || "—"} (${formatMoneyDetail(replacement.commission)}).`
+        : `Součást opravného výpisu: odúčtování původní ${code} a náhrada novou výplatou ${formatMoneyDetail(replacement.commission)}.`,
+    });
+    corrections.set(replacement.rowKey, {
+      detail: careerChanged
+        ? `Součást opravného výpisu: nová výplata ${code} na Kar. ${replacement.career || "—"} po odúčtování původní položky na Kar. ${deduction.career || "—"} (${formatMoneyDetail(deduction.commission)}).`
+        : `Součást opravného výpisu: nová výplata ${code} po odúčtování původní položky ${formatMoneyDetail(deduction.commission)}.`,
+    });
+  }
+
+  return corrections;
+};
+
 const payoutRecordDetail = ({
   row,
   contract,
@@ -2657,6 +2716,7 @@ const payoutRecordDetail = ({
   difference,
   differenceReason,
   status,
+  correctionInfo,
   viewerEmail,
 }: {
   row: CommissionStatementPayoutRow;
@@ -2666,6 +2726,7 @@ const payoutRecordDetail = ({
   difference: number | null;
   differenceReason: ContractCommissionPayoutDifferenceReason | null;
   status: ContractCommissionPayoutRecord["status"];
+  correctionInfo?: StatementPayoutCorrectionInfo | null;
   viewerEmail: string | null | undefined;
 }): string => {
   const code = normalizeCommissionCodeKey(row.commissionCode) || "položka";
@@ -2731,6 +2792,10 @@ const payoutRecordDetail = ({
     parts.push("Priorita kontroly: prověřit rozdíl vyplacené částky této položky.");
   }
 
+  if (correctionInfo?.detail) {
+    parts.push(correctionInfo.detail);
+  }
+
   return parts.join(" ");
 };
 
@@ -2792,6 +2857,7 @@ const payoutRecordFromStatementRow = ({
   payoutMonthKey,
   nowMs,
   writtenBy,
+  correctionInfo = null,
 }: {
   row: CommissionStatementPayoutRow;
   contract: ContractDoc;
@@ -2803,6 +2869,7 @@ const payoutRecordFromStatementRow = ({
   payoutMonthKey: string | null;
   nowMs: number;
   writtenBy: string;
+  correctionInfo?: StatementPayoutCorrectionInfo | null;
 }): ContractCommissionPayoutRecord => {
   const expectedAmount = expectedPayoutAmountForRow(contract, row, writtenBy);
   const signedAmount = Math.round(row.commission * 100) / 100;
@@ -2832,6 +2899,7 @@ const payoutRecordFromStatementRow = ({
     difference,
     differenceReason,
     status,
+    correctionInfo,
     viewerEmail: writtenBy,
   });
 
@@ -3580,6 +3648,8 @@ const processStatementWrites = async ({
     const payoutRowsForRecords = coefficientSetOverride
       ? contractPayoutRows
       : filteredContractPayoutRows;
+    const payoutCorrectionInfoByRowKey =
+      buildStatementPayoutCorrectionInfoByRowKey(payoutRowsForRecords);
     const incomingPayouts = payoutRowsForRecords.map((row) =>
       payoutRecordFromStatementRow({
         row,
@@ -3592,6 +3662,7 @@ const processStatementWrites = async ({
         payoutMonthKey,
         nowMs,
         writtenBy: ctxEmail,
+        correctionInfo: payoutCorrectionInfoByRowKey.get(row.rowKey) ?? null,
       })
     );
     const payoutMerge = mergePayoutRecordsByKey(

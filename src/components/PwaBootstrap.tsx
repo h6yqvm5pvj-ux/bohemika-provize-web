@@ -2,8 +2,6 @@
 
 import { useEffect, useLayoutEffect } from "react";
 
-import { firebaseApp } from "@/app/firebase-app";
-
 type ForegroundPushPayload = {
   data?: Record<string, string>;
   fcmOptions?: {
@@ -68,11 +66,14 @@ export function PwaBootstrap() {
 
     const registerForegroundMessages = async () => {
       try {
-        const messagingModule = await import("firebase/messaging");
+        const [messagingModule, appModule] = await Promise.all([
+          import("firebase/messaging"),
+          import("@/app/firebase-app"),
+        ]);
         if (!(await messagingModule.isSupported())) return;
         if (cancelled || Notification.permission !== "granted") return;
 
-        const messaging = messagingModule.getMessaging(firebaseApp);
+        const messaging = messagingModule.getMessaging(appModule.firebaseApp);
         unsubscribe = messagingModule.onMessage(messaging, (payload) => {
           if (Notification.permission !== "granted") return;
 

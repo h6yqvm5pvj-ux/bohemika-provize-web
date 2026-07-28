@@ -50,6 +50,8 @@ type CalculatorResultsSectionProps = {
   total: number;
   saving: boolean;
   canSaveContract: boolean;
+  saveButtonLabel?: string;
+  savingButtonLabel?: string;
   lastSavedContractHref: string | null;
   onOpenCoefModal: () => void;
   onToggleTipsterPercentPanel: () => void;
@@ -201,6 +203,8 @@ export function CalculatorResultsSection({
   total,
   saving,
   canSaveContract,
+  saveButtonLabel = "Uložit jako sepsáno",
+  savingButtonLabel = "Ukládám smlouvu…",
   lastSavedContractHref,
   onOpenCoefModal,
   onToggleTipsterPercentPanel,
@@ -700,7 +704,7 @@ export function CalculatorResultsSection({
                 <CheckCircle2 size={15} strokeWidth={2.4} className="shrink-0" />
               )}
             </span>
-            {saving ? "Ukládám smlouvu…" : "Uložit jako sepsáno"}
+            {saving ? savingButtonLabel : saveButtonLabel}
           </button>
           {lastSavedContractHref && (
             <Link

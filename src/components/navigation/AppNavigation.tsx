@@ -237,7 +237,7 @@ function NavigationList({
           <Link
             key={item.key}
             href={item.href}
-            prefetch={item.key === "team" ? false : true}
+            prefetch={false}
             onClick={(event: MouseEvent<HTMLAnchorElement>) => {
               if (isPreparationGated && !canAccessPreparationSections) {
                 event.preventDefault();
