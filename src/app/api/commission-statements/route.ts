@@ -1892,6 +1892,111 @@ const expectedAutoSubsequentPayoutAmountForRow = (
   return coefficient == null ? null : Math.round(rowBase * coefficient * 100) / 100;
 };
 
+const expectedNeonAmountFromItemsForCode = (
+  items: CommissionResultItemDTO[],
+  rowCode: string
+): number | null => {
+  const code = normalizeCommissionCodeKey(rowCode);
+  const comparableCode = baseCommissionCodeForStatementComparison(code);
+  if (/^A\d+$/.test(comparableCode)) {
+    return amountFromCommissionItems(
+      items,
+      "A101",
+      (title) =>
+        title === "provize a101" ||
+        title.includes("okamzita provize") ||
+        title.includes("ziskatelska provize")
+    );
+  }
+  if (code === "B0301") {
+    return amountFromCommissionItems(items, "B0301", (title) => title === "provize b0301");
+  }
+  if (code === "B3601_HALF" || code === "B36_HALF" || code === "B036_HALF") {
+    return amountFromCommissionItems(
+      items,
+      code,
+      (title) =>
+        title.includes("50") &&
+        (title.includes("b3601") || title.includes("b036") || title.includes("b36"))
+    );
+  }
+  if (code === "B3601" || code === "B36" || code === "B036") {
+    return amountFromCommissionItems(
+      items,
+      code,
+      (title) =>
+        title.includes("po 3 letech") ||
+        (!title.includes("50") &&
+          (title.includes("b3601") || title.includes("b036") || title.includes("b36")))
+    );
+  }
+  if (code === "B4801" || code === "B48" || code === "B048") {
+    return amountFromCommissionItems(
+      items,
+      code,
+      (title) => title.includes("po 4 letech")
+    );
+  }
+  if (/^B10[1-4]$/.test(code)) {
+    return amountFromCommissionItems(
+      items,
+      code,
+      (title) =>
+        title.includes("nasledna provize") &&
+        ((title.includes("2") && title.includes("5")) || !title.includes("od 6"))
+    );
+  }
+  if (/^B20[1-6]$/.test(code)) {
+    return amountFromCommissionItems(
+      items,
+      code,
+      (title) =>
+        title.includes("pecovatelska provize") ||
+        (title.includes("nasledna provize") && title.includes("od 6"))
+    );
+  }
+  if (/^B\d+$/.test(code)) {
+    return amountFromCommissionItems(
+      items,
+      code,
+      (title) => title.includes("nasledna provize") || title.includes("provize za rok")
+    );
+  }
+  return null;
+};
+
+const expectedNeonRefreshPayoutAmountForRow = (
+  contract: ContractDoc,
+  row: CommissionStatementPayoutRow
+): number | null => {
+  if (row.source !== "own") return null;
+  if (contract.productKey !== "neon" || !isNeonRefreshStatementProductCode(row.productCode)) {
+    return null;
+  }
+  const rowBase = finiteMoneyOrNull(row.baseAmount);
+  if (rowBase == null || rowBase <= 0) return null;
+  const position = normalizePositionValue(contract.position);
+  if (!position) return null;
+  const signedDateIso = contractSignedDateIso(contract);
+  const coefficientSet = effectiveCoefficientSetForContract(contract, signedDateIso);
+  if (coefficientSet !== "historical" && coefficientSet !== "current") return null;
+  const result = calculateResultForCoefficientSet({
+    productKey: "neon",
+    amount: Math.round((rowBase / 12) * 100) / 100,
+    frequencyRaw: normalizePaymentFrequencyValue(contract.frequencyRaw),
+    position,
+    commissionMode: normalizeCommissionModeValue(contract.commissionMode),
+    signedDateIso,
+    coefficientSet,
+    durationYears:
+      typeof contract.durationYears === "number" && Number.isFinite(contract.durationYears)
+        ? contract.durationYears
+        : null,
+  });
+  if (!result) return null;
+  return expectedNeonAmountFromItemsForCode(result.items, row.commissionCode);
+};
+
 const expectedPayoutAmountForRow = (
   contract: ContractDoc,
   row: CommissionStatementPayoutRow,
@@ -1910,6 +2015,9 @@ const expectedPayoutAmountForRow = (
     row.source === "manager"
       ? amountFromCommissionItems(sourceItems, comparableCode, predicate)
       : amountFromContractItems(contract, comparableCode, predicate);
+
+  const neonRefreshExpected = expectedNeonRefreshPayoutAmountForRow(contract, row);
+  if (neonRefreshExpected != null) return neonRefreshExpected;
 
   const autoSubsequentExpected = expectedAutoSubsequentPayoutAmountForRow(contract, row);
   if (autoSubsequentExpected != null) return autoSubsequentExpected;
@@ -2043,19 +2151,7 @@ const expectedNeonAmountFromItems = (
   items: CommissionResultItemDTO[],
   rowCode: string
 ): number | null => {
-  const code = normalizeCommissionCodeKey(rowCode);
-  const comparableCode = baseCommissionCodeForStatementComparison(code);
-  if (comparableCode === "A101") {
-    return amountFromCommissionItems(
-      items,
-      "A101",
-      (title) => title === "provize a101" || title.includes("okamzita provize")
-    );
-  }
-  if (comparableCode === "B0301") {
-    return amountFromCommissionItems(items, "B0301", (title) => title === "provize b0301");
-  }
-  return null;
+  return expectedNeonAmountFromItemsForCode(items, rowCode);
 };
 
 const isNeonRefreshMissingOriginalInSystem = (contract: ContractDoc): boolean =>
@@ -2170,6 +2266,49 @@ const buildNeonRefreshMissingOriginalStatementUpdate = ({
       frequencyRaw,
       durationYears,
     }),
+  };
+};
+
+const buildStatementRefreshCommissionBase = ({
+  contract,
+  update,
+  method,
+}: {
+  contract: ContractDoc;
+  update: NeonRefreshMissingOriginalStatementUpdate;
+  method: string;
+}): NonNullable<ContractDoc["refreshCommissionBase"]> => {
+  const existing =
+    contract.refreshCommissionBase && typeof contract.refreshCommissionBase === "object"
+      ? contract.refreshCommissionBase
+      : {};
+  const currentMonthlyPremium =
+    finiteMoneyOrNull(contract.effectiveInputAmount) ??
+    finiteMoneyOrNull(contract.inputAmount) ??
+    finiteMoneyOrNull(existing.newMonthlyPremium);
+  const policyStartMs = toMillis(contract.policyStartDate);
+  const refreshPolicyStartDateIso =
+    existing.refreshPolicyStartDateIso ??
+    (policyStartMs == null ? null : isoDateFromMs(policyStartMs));
+  const originalContractNumber =
+    existing.originalContractNumber ??
+    normalizeContractNumber(contract.refreshOriginalContractNumber ?? null) ??
+    null;
+
+  return {
+    ...existing,
+    productKey: "neon",
+    method,
+    originalContractNumber,
+    refreshPolicyStartDateIso,
+    newMonthlyPremium: existing.newMonthlyPremium ?? currentMonthlyPremium,
+    newAnnualPremium:
+      existing.newAnnualPremium ??
+      (currentMonthlyPremium == null
+        ? null
+        : Math.round(currentMonthlyPremium * 12 * 100) / 100),
+    calculationMonthlyPremium: update.statementMonthlyPremiumBase,
+    calculationAnnualPremium: update.statementAnnualPremiumBase,
   };
 };
 
@@ -2642,7 +2781,10 @@ const payoutDifferenceReasonForRow = ({
   }
 
   const productKey = contract.productKey;
-  if (productKey === "neon" || (productKey && isAutoProduct(productKey))) {
+  if (
+    (productKey === "neon" && !isNeonRefreshStatementProductCode(row.productCode)) ||
+    (productKey && isAutoProduct(productKey))
+  ) {
     const statementPremium = rowCalculationPremiumForCoefficientSet(productKey, row);
     const systemPremium = contractCalculationPremiumForCoefficientSet(contract);
     if (
@@ -3587,31 +3729,22 @@ const processStatementWrites = async ({
       contract,
       payoutRows: contractPayoutRows,
       coefficientSetOverride: coefficientSetOverride?.coefficientSet ?? null,
+      allowStatementMarkedRefresh: true,
     });
-    const neonRefreshCurrentMonthlyPremium =
-      finiteMoneyOrNull(contract.effectiveInputAmount) ??
-      finiteMoneyOrNull(contract.inputAmount);
-    const neonRefreshPolicyStartMs = toMillis(contract.policyStartDate);
+    const neonRefreshStatementStatus = isNeonRefreshMissingOriginalInSystem(contract)
+      ? "statement_resolved_refresh_missing_original"
+      : "statement_resolved_refresh_base";
     const contractForPayoutExpectations: ContractDoc = neonRefreshMissingOriginalUpdate
       ? {
           ...contract,
           calculationInputAmount: neonRefreshMissingOriginalUpdate.statementMonthlyPremiumBase,
-          refreshCommissionBase: {
-            productKey: "neon",
-            method: "cpp_neon_statement_refresh_missing_original",
-            originalContractNumber: null,
-            refreshPolicyStartDateIso:
-              neonRefreshPolicyStartMs == null ? null : isoDateFromMs(neonRefreshPolicyStartMs),
-            newMonthlyPremium: neonRefreshCurrentMonthlyPremium,
-            newAnnualPremium:
-              neonRefreshCurrentMonthlyPremium == null
-                ? null
-                : Math.round(neonRefreshCurrentMonthlyPremium * 12 * 100) / 100,
-            calculationMonthlyPremium:
-              neonRefreshMissingOriginalUpdate.statementMonthlyPremiumBase,
-            calculationAnnualPremium:
-              neonRefreshMissingOriginalUpdate.statementAnnualPremiumBase,
-          },
+          refreshCommissionBase: buildStatementRefreshCommissionBase({
+            contract,
+            update: neonRefreshMissingOriginalUpdate,
+            method: isNeonRefreshMissingOriginalInSystem(contract)
+              ? "cpp_neon_statement_refresh_missing_original"
+              : "cpp_neon_statement_refresh_base",
+          }),
           items: neonRefreshMissingOriginalUpdate.items,
           result: {
             items: neonRefreshMissingOriginalUpdate.items,
@@ -3762,7 +3895,7 @@ const processStatementWrites = async ({
       updatePayload.total = neonRefreshMissingOriginalUpdate.total;
       updatePayload.managerOverrides = neonRefreshMissingOriginalUpdate.managerOverrides;
       updatePayload.requiresStatementRefresh = false;
-      updatePayload.commissionCalculationStatus = "statement_resolved_refresh_missing_original";
+      updatePayload.commissionCalculationStatus = neonRefreshStatementStatus;
       updatePayload.commissionBaseSource = "commission_statement";
       updatePayload.refreshStatementResolvedAtMs = nowMs;
       updatePayload.refreshStatementResolvedStatementId = docId;
