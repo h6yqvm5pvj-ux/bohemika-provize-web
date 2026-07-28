@@ -268,6 +268,7 @@ export type StatementProcessingResult = {
   coefficientOverridesApplied?: number;
   duplicatePayoutRowsSkipped?: number;
   premiumUpdates?: number;
+  premiumHistoryBackfills?: number;
   olderPremiumUpdatesSkipped?: number;
   accountingRepairDrafts?: number;
   externalUpdateTasks?: number;
@@ -288,6 +289,7 @@ export type StatementProcessingSummary = {
   coefficientOverridesApplied: number;
   duplicatePayoutRowsSkipped: number;
   premiumUpdates: number;
+  premiumHistoryBackfills: number;
   olderPremiumUpdatesSkipped: number;
   accountingRepairDrafts: number;
   externalUpdateTasks: number;

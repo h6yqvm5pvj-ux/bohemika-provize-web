@@ -215,6 +215,7 @@ type ProcessingResult = {
   coefficientOverridesApplied: number;
   duplicatePayoutRowsSkipped: number;
   premiumUpdates: number;
+  premiumHistoryBackfills: number;
   olderPremiumUpdatesSkipped: number;
   accountingRepairDrafts: number;
   externalUpdateTasks: number;
@@ -1273,6 +1274,7 @@ const emptyProcessingResult = (): ProcessingResult => ({
   coefficientOverridesApplied: 0,
   duplicatePayoutRowsSkipped: 0,
   premiumUpdates: 0,
+  premiumHistoryBackfills: 0,
   olderPremiumUpdatesSkipped: 0,
   accountingRepairDrafts: 0,
   externalUpdateTasks: 0,
@@ -1473,8 +1475,10 @@ const premiumHistoryEntryDateMs = (
 
 const autoPremiumBeforeStatement = (
   contract: ContractDoc,
-  referenceMs: number | null
+  referenceMs: number | null,
+  options: { allowCurrentFallback?: boolean } = {}
 ): number | null => {
+  const allowCurrentFallback = options.allowCurrentFallback ?? true;
   const history = contractPremiumHistoryArray(contract)
     .filter(
       (entry) =>
@@ -1490,7 +1494,9 @@ const autoPremiumBeforeStatement = (
     }))
     .sort((a, b) => (a.dateMs ?? 0) - (b.dateMs ?? 0));
 
-  if (history.length === 0) return contractCurrentAutoAnnualPremium(contract);
+  if (history.length === 0) {
+    return allowCurrentFallback ? contractCurrentAutoAnnualPremium(contract) : null;
+  }
 
   if (referenceMs != null) {
     const latestBefore = [...history]
@@ -1498,13 +1504,65 @@ const autoPremiumBeforeStatement = (
       .at(-1);
     if (latestBefore?.newPremium != null) return latestBefore.newPremium;
 
-    const earliestKnownPrevious = history.find((item) => item.previousPremium != null);
-    if (earliestKnownPrevious?.previousPremium != null) {
-      return earliestKnownPrevious.previousPremium;
+    if (allowCurrentFallback) {
+      const earliestKnownPrevious = history.find((item) => item.previousPremium != null);
+      if (earliestKnownPrevious?.previousPremium != null) {
+        return earliestKnownPrevious.previousPremium;
+      }
     }
+
+    return null;
   }
 
-  return history.at(-1)?.newPremium ?? contractCurrentAutoAnnualPremium(contract);
+  return (
+    history.at(-1)?.newPremium ??
+    (allowCurrentFallback ? contractCurrentAutoAnnualPremium(contract) : null)
+  );
+};
+
+const lifePremiumBeforeStatement = (
+  contract: ContractDoc,
+  referenceMs: number | null,
+  options: { allowCurrentFallback?: boolean } = {}
+): number | null => {
+  const allowCurrentFallback = options.allowCurrentFallback ?? true;
+  const history = contractPremiumHistoryArray(contract)
+    .filter(
+      (entry) =>
+        entry.premiumKind === "life_increase" &&
+        finiteMoneyOrNull(entry.newPremium) != null
+    )
+    .map((entry) => ({
+      dateMs: premiumHistoryEntryDateMs(entry),
+      newPremium: finiteMoneyOrNull(entry.newPremium),
+      previousPremium: finiteMoneyOrNull(entry.previousPremium),
+    }))
+    .sort((a, b) => (a.dateMs ?? 0) - (b.dateMs ?? 0));
+
+  if (history.length === 0) {
+    return allowCurrentFallback ? contractCurrentPremium(contract) : null;
+  }
+
+  if (referenceMs != null) {
+    const latestBefore = [...history]
+      .filter((item) => item.dateMs != null && item.dateMs < referenceMs)
+      .at(-1);
+    if (latestBefore?.newPremium != null) return latestBefore.newPremium;
+
+    if (allowCurrentFallback) {
+      const earliestKnownPrevious = history.find((item) => item.previousPremium != null);
+      if (earliestKnownPrevious?.previousPremium != null) {
+        return earliestKnownPrevious.previousPremium;
+      }
+    }
+
+    return null;
+  }
+
+  return (
+    history.at(-1)?.newPremium ??
+    (allowCurrentFallback ? contractCurrentPremium(contract) : null)
+  );
 };
 
 const canApplyPremiumStatementToCurrentContract = (
@@ -1583,6 +1641,13 @@ const premiumHistoryCompletenessScore = (
   return score + (entry.writtenAtMs ?? 0) / 1_000_000_000_000;
 };
 
+const premiumHistorySortMs = (entry: ContractPremiumStatementHistoryEntry): number =>
+  premiumHistoryEntryDateMs(entry) ??
+  premiumHistoryEntryChronologyMs(entry) ??
+  (typeof entry.writtenAtMs === "number" && Number.isFinite(entry.writtenAtMs)
+    ? entry.writtenAtMs
+    : 0);
+
 const mergePremiumHistoryRecords = (
   existing: ContractPremiumStatementHistoryEntry[],
   incoming: ContractPremiumStatementHistoryEntry[],
@@ -1633,7 +1698,11 @@ const mergePremiumHistoryRecords = (
   const merged = order
     .map((key) => recordsBySemanticKey.get(key))
     .filter((item): item is ContractPremiumStatementHistoryEntry => Boolean(item))
-    .sort((a, b) => (a.writtenAtMs ?? 0) - (b.writtenAtMs ?? 0))
+    .sort(
+      (a, b) =>
+        premiumHistorySortMs(a) - premiumHistorySortMs(b) ||
+        (a.writtenAtMs ?? 0) - (b.writtenAtMs ?? 0)
+    )
     .slice(-maxCount);
   return { merged, added, existingCount, updatedExisting };
 };
@@ -1892,111 +1961,6 @@ const expectedAutoSubsequentPayoutAmountForRow = (
   return coefficient == null ? null : Math.round(rowBase * coefficient * 100) / 100;
 };
 
-const expectedNeonAmountFromItemsForCode = (
-  items: CommissionResultItemDTO[],
-  rowCode: string
-): number | null => {
-  const code = normalizeCommissionCodeKey(rowCode);
-  const comparableCode = baseCommissionCodeForStatementComparison(code);
-  if (/^A\d+$/.test(comparableCode)) {
-    return amountFromCommissionItems(
-      items,
-      "A101",
-      (title) =>
-        title === "provize a101" ||
-        title.includes("okamzita provize") ||
-        title.includes("ziskatelska provize")
-    );
-  }
-  if (code === "B0301") {
-    return amountFromCommissionItems(items, "B0301", (title) => title === "provize b0301");
-  }
-  if (code === "B3601_HALF" || code === "B36_HALF" || code === "B036_HALF") {
-    return amountFromCommissionItems(
-      items,
-      code,
-      (title) =>
-        title.includes("50") &&
-        (title.includes("b3601") || title.includes("b036") || title.includes("b36"))
-    );
-  }
-  if (code === "B3601" || code === "B36" || code === "B036") {
-    return amountFromCommissionItems(
-      items,
-      code,
-      (title) =>
-        title.includes("po 3 letech") ||
-        (!title.includes("50") &&
-          (title.includes("b3601") || title.includes("b036") || title.includes("b36")))
-    );
-  }
-  if (code === "B4801" || code === "B48" || code === "B048") {
-    return amountFromCommissionItems(
-      items,
-      code,
-      (title) => title.includes("po 4 letech")
-    );
-  }
-  if (/^B10[1-4]$/.test(code)) {
-    return amountFromCommissionItems(
-      items,
-      code,
-      (title) =>
-        title.includes("nasledna provize") &&
-        ((title.includes("2") && title.includes("5")) || !title.includes("od 6"))
-    );
-  }
-  if (/^B20[1-6]$/.test(code)) {
-    return amountFromCommissionItems(
-      items,
-      code,
-      (title) =>
-        title.includes("pecovatelska provize") ||
-        (title.includes("nasledna provize") && title.includes("od 6"))
-    );
-  }
-  if (/^B\d+$/.test(code)) {
-    return amountFromCommissionItems(
-      items,
-      code,
-      (title) => title.includes("nasledna provize") || title.includes("provize za rok")
-    );
-  }
-  return null;
-};
-
-const expectedNeonRefreshPayoutAmountForRow = (
-  contract: ContractDoc,
-  row: CommissionStatementPayoutRow
-): number | null => {
-  if (row.source !== "own") return null;
-  if (contract.productKey !== "neon" || !isNeonRefreshStatementProductCode(row.productCode)) {
-    return null;
-  }
-  const rowBase = finiteMoneyOrNull(row.baseAmount);
-  if (rowBase == null || rowBase <= 0) return null;
-  const position = normalizePositionValue(contract.position);
-  if (!position) return null;
-  const signedDateIso = contractSignedDateIso(contract);
-  const coefficientSet = effectiveCoefficientSetForContract(contract, signedDateIso);
-  if (coefficientSet !== "historical" && coefficientSet !== "current") return null;
-  const result = calculateResultForCoefficientSet({
-    productKey: "neon",
-    amount: Math.round((rowBase / 12) * 100) / 100,
-    frequencyRaw: normalizePaymentFrequencyValue(contract.frequencyRaw),
-    position,
-    commissionMode: normalizeCommissionModeValue(contract.commissionMode),
-    signedDateIso,
-    coefficientSet,
-    durationYears:
-      typeof contract.durationYears === "number" && Number.isFinite(contract.durationYears)
-        ? contract.durationYears
-        : null,
-  });
-  if (!result) return null;
-  return expectedNeonAmountFromItemsForCode(result.items, row.commissionCode);
-};
-
 const expectedPayoutAmountForRow = (
   contract: ContractDoc,
   row: CommissionStatementPayoutRow,
@@ -2015,9 +1979,6 @@ const expectedPayoutAmountForRow = (
     row.source === "manager"
       ? amountFromCommissionItems(sourceItems, comparableCode, predicate)
       : amountFromContractItems(contract, comparableCode, predicate);
-
-  const neonRefreshExpected = expectedNeonRefreshPayoutAmountForRow(contract, row);
-  if (neonRefreshExpected != null) return neonRefreshExpected;
 
   const autoSubsequentExpected = expectedAutoSubsequentPayoutAmountForRow(contract, row);
   if (autoSubsequentExpected != null) return autoSubsequentExpected;
@@ -2151,7 +2112,19 @@ const expectedNeonAmountFromItems = (
   items: CommissionResultItemDTO[],
   rowCode: string
 ): number | null => {
-  return expectedNeonAmountFromItemsForCode(items, rowCode);
+  const code = normalizeCommissionCodeKey(rowCode);
+  const comparableCode = baseCommissionCodeForStatementComparison(code);
+  if (comparableCode === "A101") {
+    return amountFromCommissionItems(
+      items,
+      "A101",
+      (title) => title === "provize a101" || title.includes("okamzita provize")
+    );
+  }
+  if (comparableCode === "B0301") {
+    return amountFromCommissionItems(items, "B0301", (title) => title === "provize b0301");
+  }
+  return null;
 };
 
 const isNeonRefreshMissingOriginalInSystem = (contract: ContractDoc): boolean =>
@@ -2266,49 +2239,6 @@ const buildNeonRefreshMissingOriginalStatementUpdate = ({
       frequencyRaw,
       durationYears,
     }),
-  };
-};
-
-const buildStatementRefreshCommissionBase = ({
-  contract,
-  update,
-  method,
-}: {
-  contract: ContractDoc;
-  update: NeonRefreshMissingOriginalStatementUpdate;
-  method: string;
-}): NonNullable<ContractDoc["refreshCommissionBase"]> => {
-  const existing =
-    contract.refreshCommissionBase && typeof contract.refreshCommissionBase === "object"
-      ? contract.refreshCommissionBase
-      : {};
-  const currentMonthlyPremium =
-    finiteMoneyOrNull(contract.effectiveInputAmount) ??
-    finiteMoneyOrNull(contract.inputAmount) ??
-    finiteMoneyOrNull(existing.newMonthlyPremium);
-  const policyStartMs = toMillis(contract.policyStartDate);
-  const refreshPolicyStartDateIso =
-    existing.refreshPolicyStartDateIso ??
-    (policyStartMs == null ? null : isoDateFromMs(policyStartMs));
-  const originalContractNumber =
-    existing.originalContractNumber ??
-    normalizeContractNumber(contract.refreshOriginalContractNumber ?? null) ??
-    null;
-
-  return {
-    ...existing,
-    productKey: "neon",
-    method,
-    originalContractNumber,
-    refreshPolicyStartDateIso,
-    newMonthlyPremium: existing.newMonthlyPremium ?? currentMonthlyPremium,
-    newAnnualPremium:
-      existing.newAnnualPremium ??
-      (currentMonthlyPremium == null
-        ? null
-        : Math.round(currentMonthlyPremium * 12 * 100) / 100),
-    calculationMonthlyPremium: update.statementMonthlyPremiumBase,
-    calculationAnnualPremium: update.statementAnnualPremiumBase,
   };
 };
 
@@ -2781,10 +2711,7 @@ const payoutDifferenceReasonForRow = ({
   }
 
   const productKey = contract.productKey;
-  if (
-    (productKey === "neon" && !isNeonRefreshStatementProductCode(row.productCode)) ||
-    (productKey && isAutoProduct(productKey))
-  ) {
+  if (productKey === "neon" || (productKey && isAutoProduct(productKey))) {
     const statementPremium = rowCalculationPremiumForCoefficientSet(productKey, row);
     const systemPremium = contractCalculationPremiumForCoefficientSet(contract);
     if (
@@ -3150,6 +3077,7 @@ const premiumHistoryEntryFromStatementRow = ({
   statementChronologyMs,
   nowMs,
   writtenBy,
+  allowCurrentPremiumFallback = true,
 }: {
   row: AutoPremiumStatementRow;
   contract: ContractDoc;
@@ -3162,18 +3090,14 @@ const premiumHistoryEntryFromStatementRow = ({
   statementChronologyMs: number | null;
   nowMs: number;
   writtenBy: string;
+  allowCurrentPremiumFallback?: boolean;
 }): ContractPremiumStatementHistoryEntry | null => {
   if (row.premiumKind === "life_increase") {
     if (contract.productKey !== row.productKey) return null;
 
-    const previousPremium = contractCurrentPremium(contract);
-    if (previousPremium == null || previousPremium <= 0) return null;
-
     const annualDifference = Math.round(row.basePremium * 100) / 100;
     if (Math.abs(annualDifference) <= PREMIUM_CHANGE_TOLERANCE) return null;
     const monthlyDifference = Math.round((annualDifference / 12) * 100) / 100;
-    const newPremium = Math.round((previousPremium + monthlyDifference) * 100) / 100;
-    if (newPremium <= 0) return null;
 
     const effectiveDateMs =
       parseCzechDate(row.validFrom) ??
@@ -3181,6 +3105,13 @@ const premiumHistoryEntryFromStatementRow = ({
       periodEndMs ??
       toMillis(contract.policyStartDate) ??
       nowMs;
+    const previousPremium = lifePremiumBeforeStatement(contract, effectiveDateMs, {
+      allowCurrentFallback: allowCurrentPremiumFallback,
+    });
+    if (previousPremium == null || previousPremium <= 0) return null;
+
+    const newPremium = Math.round((previousPremium + monthlyDifference) * 100) / 100;
+    if (newPremium <= 0) return null;
 
     return {
       key: compactHash(
@@ -3234,7 +3165,8 @@ const premiumHistoryEntryFromStatementRow = ({
   const statementAnnualPremium = autoPremiumStatementAnnualBase(row, contract);
   const previousAnnualPremium = autoPremiumBeforeStatement(
     contract,
-    anniversary.anniversaryDateMs
+    anniversary.anniversaryDateMs,
+    { allowCurrentFallback: allowCurrentPremiumFallback }
   );
   const annualDifference =
     previousAnnualPremium == null
@@ -3729,22 +3661,31 @@ const processStatementWrites = async ({
       contract,
       payoutRows: contractPayoutRows,
       coefficientSetOverride: coefficientSetOverride?.coefficientSet ?? null,
-      allowStatementMarkedRefresh: true,
     });
-    const neonRefreshStatementStatus = isNeonRefreshMissingOriginalInSystem(contract)
-      ? "statement_resolved_refresh_missing_original"
-      : "statement_resolved_refresh_base";
+    const neonRefreshCurrentMonthlyPremium =
+      finiteMoneyOrNull(contract.effectiveInputAmount) ??
+      finiteMoneyOrNull(contract.inputAmount);
+    const neonRefreshPolicyStartMs = toMillis(contract.policyStartDate);
     const contractForPayoutExpectations: ContractDoc = neonRefreshMissingOriginalUpdate
       ? {
           ...contract,
           calculationInputAmount: neonRefreshMissingOriginalUpdate.statementMonthlyPremiumBase,
-          refreshCommissionBase: buildStatementRefreshCommissionBase({
-            contract,
-            update: neonRefreshMissingOriginalUpdate,
-            method: isNeonRefreshMissingOriginalInSystem(contract)
-              ? "cpp_neon_statement_refresh_missing_original"
-              : "cpp_neon_statement_refresh_base",
-          }),
+          refreshCommissionBase: {
+            productKey: "neon",
+            method: "cpp_neon_statement_refresh_missing_original",
+            originalContractNumber: null,
+            refreshPolicyStartDateIso:
+              neonRefreshPolicyStartMs == null ? null : isoDateFromMs(neonRefreshPolicyStartMs),
+            newMonthlyPremium: neonRefreshCurrentMonthlyPremium,
+            newAnnualPremium:
+              neonRefreshCurrentMonthlyPremium == null
+                ? null
+                : Math.round(neonRefreshCurrentMonthlyPremium * 12 * 100) / 100,
+            calculationMonthlyPremium:
+              neonRefreshMissingOriginalUpdate.statementMonthlyPremiumBase,
+            calculationAnnualPremium:
+              neonRefreshMissingOriginalUpdate.statementAnnualPremiumBase,
+          },
           items: neonRefreshMissingOriginalUpdate.items,
           result: {
             items: neonRefreshMissingOriginalUpdate.items,
@@ -3804,6 +3745,12 @@ const processStatementWrites = async ({
       MAX_STORED_CONTRACT_PAYOUTS
     );
 
+    const existingPremiumHistory = contractPremiumHistoryArray(contract);
+    const existingPremiumKeys = new Set(existingPremiumHistory.map((entry) => entry.key));
+    const canApplyPremiumToCurrentContract = canApplyPremiumStatementToCurrentContract(
+      contract,
+      statementChronologyMs
+    );
     const detectedPremiumHistoryEntries = contractPremiumRows
       .map((row) =>
         premiumHistoryEntryFromStatementRow({
@@ -3818,19 +3765,12 @@ const processStatementWrites = async ({
           statementChronologyMs,
           nowMs,
           writtenBy: ctxEmail,
+          allowCurrentPremiumFallback: canApplyPremiumToCurrentContract,
         })
       )
       .filter((entry): entry is ContractPremiumStatementHistoryEntry => Boolean(entry));
     const premiumHistoryEntries = detectedPremiumHistoryEntries;
-    const existingPremiumHistory = contractPremiumHistoryArray(contract);
-    const existingPremiumKeys = new Set(existingPremiumHistory.map((entry) => entry.key));
-    const canApplyPremiumToCurrentContract = canApplyPremiumStatementToCurrentContract(
-      contract,
-      statementChronologyMs
-    );
-    const premiumHistoryEntriesForMerge = canApplyPremiumToCurrentContract
-      ? premiumHistoryEntries
-      : premiumHistoryEntries.filter((entry) => existingPremiumKeys.has(entry.key));
+    const premiumHistoryEntriesForMerge = premiumHistoryEntries;
     const premiumMerge = mergePremiumHistoryRecords(
       existingPremiumHistory,
       premiumHistoryEntriesForMerge,
@@ -3841,11 +3781,11 @@ const processStatementWrites = async ({
     const actionablePremiumAddedCount = actionablePremiumHistoryEntries.filter(
       (entry) => !existingPremiumKeys.has(entry.key)
     ).length;
-    const skippedOlderPremiumAddedCount = canApplyPremiumToCurrentContract
+    const backfilledPremiumAddedCount = canApplyPremiumToCurrentContract
       ? 0
       : detectedPremiumHistoryEntries.filter((entry) => !existingPremiumKeys.has(entry.key))
           .length;
-    result.olderPremiumUpdatesSkipped += skippedOlderPremiumAddedCount;
+    result.premiumHistoryBackfills += backfilledPremiumAddedCount;
 
     const updatePayload: Record<string, unknown> = {
       commissionPayouts: payoutMerge.merged,
@@ -3895,7 +3835,7 @@ const processStatementWrites = async ({
       updatePayload.total = neonRefreshMissingOriginalUpdate.total;
       updatePayload.managerOverrides = neonRefreshMissingOriginalUpdate.managerOverrides;
       updatePayload.requiresStatementRefresh = false;
-      updatePayload.commissionCalculationStatus = neonRefreshStatementStatus;
+      updatePayload.commissionCalculationStatus = "statement_resolved_refresh_missing_original";
       updatePayload.commissionBaseSource = "commission_statement";
       updatePayload.refreshStatementResolvedAtMs = nowMs;
       updatePayload.refreshStatementResolvedStatementId = docId;

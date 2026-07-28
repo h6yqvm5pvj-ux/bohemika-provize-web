@@ -608,6 +608,8 @@ const sumProcessingResults = (
       duplicatePayoutRowsSkipped:
         summary.duplicatePayoutRowsSkipped + (result.duplicatePayoutRowsSkipped ?? 0),
       premiumUpdates: summary.premiumUpdates + (result.premiumUpdates ?? 0),
+      premiumHistoryBackfills:
+        summary.premiumHistoryBackfills + (result.premiumHistoryBackfills ?? 0),
       olderPremiumUpdatesSkipped:
         summary.olderPremiumUpdatesSkipped + (result.olderPremiumUpdatesSkipped ?? 0),
       accountingRepairDrafts:
@@ -638,6 +640,7 @@ const sumProcessingResults = (
       coefficientOverridesApplied: 0,
       duplicatePayoutRowsSkipped: 0,
       premiumUpdates: 0,
+      premiumHistoryBackfills: 0,
       olderPremiumUpdatesSkipped: 0,
       accountingRepairDrafts: 0,
       externalUpdateTasks: 0,
@@ -663,6 +666,7 @@ const processedStatementLabel = (
     `Koeficientové výjimky: ${summary.coefficientOverridesApplied}.`,
     `Přeskočeno duplicit: ${summary.duplicatePayoutRowsSkipped}.`,
     `Změny pojistného: ${summary.premiumUpdates}.`,
+    `Doplněná historie pojistného: ${summary.premiumHistoryBackfills}.`,
     `Návrhy účetních oprav: ${summary.accountingRepairDrafts}.`,
     `Podklady pro MAXX/extranet: ${summary.externalUpdateTasks}.`,
   ];
@@ -678,6 +682,9 @@ const processedStatementLabel = (
       : null,
     summary.olderPremiumUpdatesSkipped > 0
       ? `Starší pojistné změny po novějším výpisu přeskočeny: ${summary.olderPremiumUpdatesSkipped}.`
+      : null,
+    summary.premiumHistoryBackfills > 0
+      ? `Starší pojistné změny doplněny do historie bez přepsání aktuální smlouvy: ${summary.premiumHistoryBackfills}.`
       : null,
     summary.errors.length > 0 ? `Chyby: ${summary.errors.slice(0, 3).join(" | ")}.` : null,
   ].filter(Boolean);
@@ -2770,112 +2777,17 @@ const expectedNeonAmountFromItems = (
   items: CommissionResultItemDTO[],
   rowCode: string
 ): number => {
-  const code = normalizeText(rowCode).toUpperCase().replace(/\s+/g, "");
-  const comparableCode = baseCommissionCodeForStatementComparison(code);
-  if (/^A\d+$/.test(comparableCode)) {
+  const code = baseCommissionCodeForStatementComparison(rowCode);
+  if (code === "A101") {
     return expectedAmountFromItems(
       items,
-      (title) =>
-        title === "provize a101" ||
-        title.includes("okamzita provize") ||
-        title.includes("ziskatelska provize")
+      (title) => title === "provize a101" || title.includes("okamzita provize")
     );
   }
   if (code === "B0301") {
     return expectedAmountFromItems(items, (title) => title === "provize b0301");
   }
-  if (code === "B3601_HALF" || code === "B36_HALF" || code === "B036_HALF") {
-    return expectedAmountFromItems(
-      items,
-      (title) =>
-        title.includes("50") &&
-        (title.includes("b3601") || title.includes("b036") || title.includes("b36"))
-    );
-  }
-  if (code === "B3601" || code === "B36" || code === "B036") {
-    return expectedAmountFromItems(
-      items,
-      (title) =>
-        title.includes("po 3 letech") ||
-        (!title.includes("50") &&
-          (title.includes("b3601") || title.includes("b036") || title.includes("b36")))
-    );
-  }
-  if (code === "B4801" || code === "B48" || code === "B048") {
-    return expectedAmountFromItems(
-      items,
-      (title) => title.includes("b4801") || title.includes("b48") || title.includes("po 4 letech")
-    );
-  }
-  if (/^B10[1-4]$/.test(code)) {
-    return expectedAmountFromItems(
-      items,
-      (title) =>
-        title.includes("nasledna provize") &&
-        ((title.includes("2") && title.includes("5")) || !title.includes("od 6"))
-    );
-  }
-  if (/^B20[1-6]$/.test(code)) {
-    return expectedAmountFromItems(
-      items,
-      (title) =>
-        title.includes("pecovatelska") ||
-        (title.includes("nasledna provize") && title.includes("5 10"))
-    );
-  }
-  if (/^B\d+$/.test(code)) {
-    return expectedAmountFromItems(
-      items,
-      (title) => title.includes("nasledna provize") || title.includes("provize za rok")
-    );
-  }
   return 0;
-};
-
-const expectedNeonRefreshAmountForRow = (
-  row: CommissionRow,
-  systemContract: MatchedSystemContract
-): number | null => {
-  if (normalizeProductCode(row.product) !== "CPP_NRF_LF") return null;
-  if (systemContract.productKey !== "neon") return null;
-  const rowBase = Number(row.base);
-  if (!Number.isFinite(rowBase) || rowBase <= 0) return null;
-  const position = systemContractPosition(systemContract);
-  if (!position) return null;
-  const signedDateIso = isoDayFromSystemDate(systemContract.contractSignedDate);
-  const coefficientSet = effectiveCoefficientSetForContract(systemContract, signedDateIso);
-  if (coefficientSet !== "historical" && coefficientSet !== "current") return null;
-  const result = calculateResultForCoefficientSet({
-    productKey: "neon",
-    amount: Math.round((rowBase / 12) * 100) / 100,
-    frequencyRaw: normalizePaymentFrequencyValue(systemContract.frequencyRaw),
-    position,
-    commissionMode: normalizeCommissionModeValue(systemContract.commissionMode),
-    signedDateIso,
-    coefficientSet,
-    durationYears:
-      typeof systemContract.durationYears === "number" &&
-      Number.isFinite(systemContract.durationYears)
-        ? systemContract.durationYears
-        : null,
-  });
-  if (!result) return null;
-  return expectedNeonAmountFromItems(result.items, row.type);
-};
-
-const expectedNeonRefreshAmountForRows = (
-  rows: CommissionRow[],
-  systemContract: MatchedSystemContract
-): number | null => {
-  if (rows.length === 0) return null;
-  let hasExpected = false;
-  const total = rows.reduce((sum, row) => {
-    const expected = expectedNeonRefreshAmountForRow(row, systemContract);
-    if (expected == null) return sum;
-    hasExpected = true;
-    return sum + expected;
-  }, 0);
-  return hasExpected ? Math.round(total * 100) / 100 : null;
 };
 
 const expectedAutoAmountFromItems = (
@@ -4171,35 +4083,21 @@ const buildLifeSplitAmountComparisons = (
   const hasB0301InStatement = rowsByKind(contract, "b0301").length > 0;
   const hasB0301InHistory = hasHistoricalB0301Payout(systemContract);
   const hasB36HalfInHistory = hasHistoricalB36HalfPayout(systemContract);
-  const a101Rows = rowsByKind(contract, "a101");
-  const b0301Rows = rowsByKind(contract, "b0301");
-  const b3601Rows = rowsByKind(contract, "b3601");
-  const b4801Rows = rowsByKind(contract, "b4801");
   const subsequentRows = rowsByKind(contract, "subsequent");
-  const careRows = rowsByKind(contract, "care");
   const subsequentStatementAmount = sumRows(subsequentRows);
-  const subsequentExpectedFromStatementRows = expectedNeonRefreshAmountForRows(
-    subsequentRows,
-    systemContract
+  const subsequentExpectedPerPeriod = expectedAmountFromItems(
+    items,
+    (title) =>
+      title.includes("nasledna") &&
+      (title.includes("2 5") || title.includes("2 5 rok"))
   );
-  const subsequentExpectedPerPeriod =
-    subsequentExpectedFromStatementRows ??
-    expectedAmountFromItems(
-      items,
-      (title) =>
-        title.includes("nasledna") &&
-        (title.includes("2 5") || title.includes("2 5 rok"))
-    );
-  const subsequentBundleInfo =
-    subsequentExpectedFromStatementRows == null
-      ? subsequentPayoutBundleInfo({
-          rows: subsequentRows,
-          statementAmount: subsequentStatementAmount,
-          expectedPerPeriod: subsequentExpectedPerPeriod,
-          systemContract,
-          statementPeriod,
-        })
-      : null;
+  const subsequentBundleInfo = subsequentPayoutBundleInfo({
+    rows: subsequentRows,
+    statementAmount: subsequentStatementAmount,
+    expectedPerPeriod: subsequentExpectedPerPeriod,
+    systemContract,
+    statementPeriod,
+  });
   const expectedB36HalfAmount = expectedAmountFromItems(
     items,
     (title) => title.includes("50") && (title.includes("b36") || title.includes("b3601"))
@@ -4232,19 +4130,15 @@ const buildLifeSplitAmountComparisons = (
       key: "a101",
       label: "A101",
       requiredNow: false,
-      statementAmount: sumRows(a101Rows),
-      expectedAmount:
-        expectedNeonRefreshAmountForRows(a101Rows, systemContract) ??
-        expectedAmountFromItems(items, (title) => title.includes("a101")),
+      statementAmount: sumRows(rowsByKind(contract, "a101")),
+      expectedAmount: expectedAmountFromItems(items, (title) => title.includes("a101")),
     },
     {
       key: "b0301",
       label: "B0301",
       requiredNow: false,
-      statementAmount: sumRows(b0301Rows),
-      expectedAmount:
-        expectedNeonRefreshAmountForRows(b0301Rows, systemContract) ??
-        expectedAmountFromItems(items, (title) => title.includes("b0301")),
+      statementAmount: sumRows(rowsByKind(contract, "b0301")),
+      expectedAmount: expectedAmountFromItems(items, (title) => title.includes("b0301")),
     },
     {
       key: "b36-half",
@@ -4260,28 +4154,23 @@ const buildLifeSplitAmountComparisons = (
       key: "b3601",
       label: b36DeferredCodeForProduct(contract.productCode),
       requiredNow: false,
-      statementAmount: sumRows(b3601Rows),
-      expectedAmount:
-        expectedNeonRefreshAmountForRows(b3601Rows, systemContract) ??
-        expectedAmountFromItems(
-          items,
-          (title) =>
-            !title.includes("50") &&
-            (title.includes("b3601") || title.includes("b36") || title.includes("po 3 letech"))
-        ),
+      statementAmount: sumRows(rowsByKind(contract, "b3601")),
+      expectedAmount: expectedAmountFromItems(
+        items,
+        (title) =>
+          !title.includes("50") &&
+          (title.includes("b3601") || title.includes("b36") || title.includes("po 3 letech"))
+      ),
     },
     {
       key: "b4801",
       label: "B4801",
       requiredNow: false,
-      statementAmount: sumRows(b4801Rows),
-      expectedAmount:
-        expectedNeonRefreshAmountForRows(b4801Rows, systemContract) ??
-        expectedAmountFromItems(
-          items,
-          (title) =>
-            title.includes("b4801") || title.includes("b48") || title.includes("po 4 letech")
-        ),
+      statementAmount: sumRows(rowsByKind(contract, "b4801")),
+      expectedAmount: expectedAmountFromItems(
+        items,
+        (title) => title.includes("b4801") || title.includes("b48") || title.includes("po 4 letech")
+      ),
     },
     {
       key: "subsequent",
@@ -4297,15 +4186,13 @@ const buildLifeSplitAmountComparisons = (
       key: "care",
       label: "B201-B206",
       requiredNow: false,
-      statementAmount: sumRows(careRows),
-      expectedAmount:
-        expectedNeonRefreshAmountForRows(careRows, systemContract) ??
-        expectedAmountFromItems(
-          items,
-          (title) =>
-            title.includes("pecovatelska") ||
-            (title.includes("nasledna") && title.includes("5 10"))
-        ),
+      statementAmount: sumRows(rowsByKind(contract, "care")),
+      expectedAmount: expectedAmountFromItems(
+        items,
+        (title) =>
+          title.includes("pecovatelska") ||
+          (title.includes("nasledna") && title.includes("5 10"))
+      ),
     },
   ];
 
@@ -5316,7 +5203,6 @@ const buildStatementDiscrepancyIssues = (
     const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber, matchScope);
     const systemContract = matchedSystemContractForLifeSplit(reviewContract, match);
     const expectedProductKey = productMeta.productKey;
-    const isStatementNrfRefresh = normalizeProductCode(reviewContract.productCode) === "CPP_NRF_LF";
 
     addIssue(
       contractMatchDiscrepancyIssue({
@@ -5398,12 +5284,7 @@ const buildStatementDiscrepancyIssues = (
         expectedAmount: premiumMismatch.systemAnnualPremium,
         difference: premiumMismatch.difference,
       });
-    } else if (
-      premiumMismatch &&
-      !premiumMismatch.explainedByEndorsement &&
-      !hasLifePremiumIncrease &&
-      !isStatementNrfRefresh
-    ) {
+    } else if (premiumMismatch && !premiumMismatch.explainedByEndorsement && !hasLifePremiumIncrease) {
       const statementMonthlyPremium = premiumMismatch.statementAnnualPremium / 12;
       const monthlyDifference = statementMonthlyPremium - premiumMismatch.systemMonthlyPremium;
       addIssue({

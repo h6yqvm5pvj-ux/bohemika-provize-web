@@ -217,7 +217,7 @@ export function CalculatorAmountAndActionsSection({
                   {originalReplacementButtonLabel}
                 </button>
               )}
-              {isLifeProduct && (
+              {isLifeProduct && !refreshOriginalOpen && (
                 <button
                   type="button"
                   onClick={onPrepareEndorsement}

@@ -992,6 +992,16 @@ export default function CalculatorPage() {
     refreshOriginalLookup.original,
     neonRefreshCommissionBase,
   ]);
+  const originalReplacementWorkflowActive =
+    supportsOriginalContractReplacement(product) && refreshOriginalOpen;
+  useEffect(() => {
+    if (!originalReplacementWorkflowActive) return;
+    setEndorsementDraft(null);
+    setEndorsementDraftModalOpen(false);
+    setEndorsementWorkflowActive(false);
+    setEndorsementDurationManualOverride(false);
+    setEndorsementPreviewSource(null);
+  }, [originalReplacementWorkflowActive]);
   const comfortPayoutCount = useMemo(() => {
     if (product !== "comfortcc" || !comfortGradual) return null;
     const payment = parseNumber(comfortPaymentText);
@@ -2374,7 +2384,7 @@ export default function CalculatorPage() {
           const sourceContracts = LIFE_PRODUCTS.includes(product)
             ? buildEndorsementSourceEntries(ownerContracts, product)
             : [];
-          if (sourceContracts.length > 0) {
+          if (!originalReplacementWorkflowActive && sourceContracts.length > 0) {
             setEndorsementPreviewSource(sourceContracts[0]);
             setContractNumberLiveCheck({
               status: "foundForEndorsement",
@@ -2409,6 +2419,7 @@ export default function CalculatorPage() {
     effectiveSaveOwnerEmail,
     endorsementWorkflowActive,
     isSavingForSubordinate,
+    originalReplacementWorkflowActive,
     product,
     user,
   ]);
@@ -4261,6 +4272,7 @@ export default function CalculatorPage() {
   };
 
   const endorsementDuplicateCandidateActive =
+    !originalReplacementWorkflowActive &&
     !endorsementWorkflowActive &&
     !endorsementDraft &&
     isLifeProduct &&
@@ -5022,9 +5034,7 @@ export default function CalculatorPage() {
     const trimmedContractNumber = contractNumber.trim();
     const trimmedClientName = clientName.trim();
     const signedDateIsoDay = contractSignedDate.trim();
-    const shouldReplaceOriginalContract =
-      supportsOriginalContractReplacement(product) &&
-      refreshOriginalOpen;
+    const shouldReplaceOriginalContract = originalReplacementWorkflowActive;
     const isRefreshWithoutOriginalInSystem =
       shouldReplaceOriginalContract &&
       product === "neon" &&
@@ -7632,15 +7642,21 @@ export default function CalculatorPage() {
                   }
                 }}
                 onOpenTipContractModal={openTipContractModal}
-                onToggleRefreshOriginal={() =>
-                  setRefreshOriginalOpen((prev) => {
-                    if (prev) {
-                      setRefreshOriginalMissingInSystem(false);
-                      setRefreshOriginalPdfLookupNumber(null);
-                    }
-                    return !prev;
-                  })
-                }
+                onToggleRefreshOriginal={() => {
+                  const nextRefreshOpen = !refreshOriginalOpen;
+                  if (nextRefreshOpen) {
+                    setEndorsementDraft(null);
+                    setEndorsementDraftModalOpen(false);
+                    setEndorsementWorkflowActive(false);
+                    setEndorsementDurationManualOverride(false);
+                    setEndorsementPreviewSource(null);
+                    setSaveMessage(null);
+                  } else {
+                    setRefreshOriginalMissingInSystem(false);
+                    setRefreshOriginalPdfLookupNumber(null);
+                  }
+                  setRefreshOriginalOpen(nextRefreshOpen);
+                }}
                 onPrepareEndorsement={() => {
                   void handlePrepareEndorsement();
                 }}
