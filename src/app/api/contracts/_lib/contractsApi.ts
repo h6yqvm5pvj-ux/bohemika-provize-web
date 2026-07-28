@@ -102,6 +102,7 @@ import {
   signedDateForCoefficientSetOverride,
 } from "@/app/lib/productFormulas/coefficientSets";
 import {
+  calculateNeonDecreaseStornoBase,
   calculateNeonRefreshCommissionBase,
   isNeonHistoricalPeriod,
   NEON_REFRESH_STORNO_MONTHS,
@@ -776,6 +777,12 @@ const roundPremiumAmount = (value: number): number =>
 const positivePremiumAmount = (value: unknown): number | null => {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue) || numberValue <= 0) return null;
+  return roundPremiumAmount(numberValue);
+};
+
+const nonNegativePremiumAmount = (value: unknown): number | null => {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue < 0) return null;
   return roundPremiumAmount(numberValue);
 };
 
@@ -1710,6 +1717,82 @@ const stripTotalRows = (
 
 const roundToCents = (value: number): number =>
   Number.isFinite(value) ? Math.round(value * 100) / 100 : 0;
+
+const isImmediateCommissionItem = (item: CommissionResultItemDTO): boolean => {
+  const code = normalizeCommissionCodeKey(item.code);
+  if (
+    code === "A101" ||
+    code === "APZ101" ||
+    code === "B0301" ||
+    code === "B301" ||
+    code === "B3601_HALF" ||
+    code === "B36_HALF"
+  ) {
+    return true;
+  }
+
+  const title = normalizeTitleKey(item.title ?? "");
+  return (
+    title.includes("okamzita provize") ||
+    title.includes("ziskatelska provize") ||
+    title.includes("provize a101") ||
+    title.includes("provize b0301") ||
+    title.includes("provize 50% z b3601") ||
+    title.includes("provize 50% z b36")
+  );
+};
+
+const negativeImmediateCommissionResult = (
+  result: { items: CommissionResultItemDTO[]; total: number } | null
+): { items: CommissionResultItemDTO[]; total: number } | null => {
+  if (!result) return null;
+  const items = result.items
+    .filter(isImmediateCommissionItem)
+    .map((item) => ({
+      ...item,
+      amount: -Math.abs(roundToCents(item.amount ?? 0)),
+    }))
+    .filter((item) => Math.abs(item.amount ?? 0) > 0);
+  return {
+    items,
+    total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
+  };
+};
+
+const negativeImmediateCommissionResultFromSourceItems = ({
+  sourceItems,
+  previousPremiumAmount,
+  calculationAmount,
+}: {
+  sourceItems: CommissionResultItemDTO[];
+  previousPremiumAmount: number;
+  calculationAmount: number;
+}): { items: CommissionResultItemDTO[]; total: number } | null => {
+  if (
+    sourceItems.length === 0 ||
+    previousPremiumAmount <= 0 ||
+    calculationAmount <= 0
+  ) {
+    return null;
+  }
+
+  const ratio = calculationAmount / previousPremiumAmount;
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+
+  const items = sourceItems
+    .filter(isImmediateCommissionItem)
+    .map((item) => ({
+      ...item,
+      amount: -Math.abs(roundToCents((item.amount ?? 0) * ratio)),
+    }))
+    .filter((item) => Math.abs(item.amount ?? 0) > 0);
+  if (items.length === 0) return null;
+
+  return {
+    items,
+    total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
+  };
+};
 
 type TipPayoutOccurrence = {
   sequence: number;
@@ -4878,6 +4961,104 @@ export async function handleContractsCreate(req: NextRequest) {
       }
     }
 
+    let neonDecreaseSourceItems: CommissionResultItemDTO[] = [];
+    let neonDecreasePreviousPremiumAmount: number | null = null;
+    let neonDecreaseFallbackPosition: Position | null = null;
+    let neonDecreaseFallbackMode: CommissionMode | null = null;
+    let neonDecreaseFallbackSignedDateIso: string | null = null;
+
+    const isNeonDecreaseEndorsement =
+      normalizedEntry.payload.entryType === "endorsement" &&
+      normalizedEntry.payload.productKey === "neon" &&
+      (normalizedEntry.payload.changeType === "decrease" ||
+        (normalizedEntry.payload.premiumDelta ?? 0) < 0);
+
+    if (isNeonDecreaseEndorsement) {
+      const parentEntryId = normalizedEntry.payload.parentContractEntryId ?? "";
+      const parentPath = normalizedEntry.payload.parentContractEntryPath ?? "";
+      const ownerEntryPrefix = `users/${targetOwnerEmail}/entries/`;
+      const parentRef =
+        parentPath && parentPath.startsWith(ownerEntryPrefix)
+          ? db.doc(parentPath)
+          : parentEntryId
+            ? ownerEntriesRef.doc(parentEntryId)
+            : null;
+
+      if (!parentRef) {
+        return NextResponse.json(
+          { ok: false, error: "Dodatek nemá platnou vazbu na původní smlouvu." },
+          { status: 400 }
+        );
+      }
+
+      const parentSnap = await parentRef.get();
+      if (!parentSnap.exists) {
+        return NextResponse.json(
+          { ok: false, error: "Původní smlouva pro snížení dodatkem nebyla nalezena." },
+          { status: 400 }
+        );
+      }
+
+      const parentData = (parentSnap.data() ?? {}) as ContractDoc;
+      if (parentData.productKey !== "neon") {
+        return NextResponse.json(
+          { ok: false, error: "Snížení dodatkem je zatím podporované jen pro ČPP ŽP NEON." },
+          { status: 400 }
+        );
+      }
+      if (
+        normalizeContractNumber(parentData.contractNumber) !==
+        normalizeContractNumber(normalizedEntry.payload.contractNumber)
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Původní smlouva neodpovídá číslu dodatku." },
+          { status: 400 }
+        );
+      }
+
+      const previousMonthlyPremium =
+        positivePremiumAmount(normalizedEntry.payload.previousInputAmount) ??
+        lifePremiumAmountForEntry(parentData);
+      const newMonthlyPremium =
+        nonNegativePremiumAmount(normalizedEntry.payload.newInputAmount) ??
+        nonNegativePremiumAmount(normalizedEntry.payload.effectiveInputAmount);
+      const originalStornoStartDateIso =
+        isoDayFromUnknown(parentData.policyStartDate) ??
+        isoDayFromUnknown(parentData.contractSignedDate);
+      const endorsementPolicyStartDateIso = toIsoDay(normalizedEntry.payload.policyStartDate);
+      const decreaseBase = calculateNeonDecreaseStornoBase({
+        previousMonthlyPremium,
+        newMonthlyPremium,
+        originalStornoStartDateIso,
+        endorsementPolicyStartDateIso,
+      });
+
+      if (!decreaseBase) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Nepodařilo se spočítat storno základnu pro snížení NEON dodatku.",
+          },
+          { status: 400 }
+        );
+      }
+
+      neonDecreaseSourceItems = Array.isArray(parentData.result?.items)
+        ? parentData.result.items
+        : Array.isArray(parentData.items)
+          ? parentData.items
+          : [];
+      neonDecreasePreviousPremiumAmount = previousMonthlyPremium;
+      neonDecreaseFallbackPosition =
+        normalizePositionValue(parentData.position) ?? trustedPosition;
+      neonDecreaseFallbackMode =
+        normalizeCommissionModeValue(parentData.commissionMode) ?? effectiveTrustedMode;
+      neonDecreaseFallbackSignedDateIso =
+        isoDayFromUnknown(parentData.contractSignedDate) ?? signedDateIso;
+      commissionInputAmount = decreaseBase.calculationMonthlyPremium;
+    }
+
     const trustedResult = computeItemsForProductPositionAndMode({
       productKey: normalizedEntry.payload.productKey,
       position: trustedPosition,
@@ -4917,7 +5098,46 @@ export async function handleContractsCreate(req: NextRequest) {
     let tipContractImmediateFirstYearNet: number | null = null;
     let tipContractTipsterAmountFirstYear: number | null = null;
 
-    if (normalizedEntry.payload.tipContractTipsterPercent != null) {
+    if (isNeonDecreaseEndorsement) {
+      const sourceDecreaseResult =
+        neonDecreasePreviousPremiumAmount == null
+          ? null
+          : negativeImmediateCommissionResultFromSourceItems({
+              sourceItems: neonDecreaseSourceItems,
+              previousPremiumAmount: neonDecreasePreviousPremiumAmount,
+              calculationAmount: commissionInputAmount,
+            });
+      const fallbackDecreaseBaseResult =
+        sourceDecreaseResult || !neonDecreaseFallbackPosition
+          ? null
+          : computeItemsForProductPositionAndMode({
+              productKey: normalizedEntry.payload.productKey,
+              position: neonDecreaseFallbackPosition,
+              commissionMode: neonDecreaseFallbackMode ?? effectiveTrustedMode,
+              contractSignedDateIso:
+                neonDecreaseFallbackSignedDateIso ?? signedDateIso,
+              commissionCoefficientSetOverride: null,
+              neonCoefficientSetOverride: null,
+              inputAmount: commissionInputAmount,
+              frequencyRaw: normalizedEntry.payload.frequencyRaw,
+              durationYears: normalizedEntry.payload.durationYears,
+              durationMonths: normalizedEntry.payload.durationMonths,
+              maxCizinKomplexVariant: normalizedEntry.payload.maxCizinKomplexVariant,
+              comfortPayment: normalizedEntry.payload.comfortPayment,
+              comfortGradual: normalizedEntry.payload.comfortGradual,
+              comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
+            });
+      const decreaseResult =
+        sourceDecreaseResult ??
+        negativeImmediateCommissionResult(fallbackDecreaseBaseResult ?? trustedResult);
+      trustedItems = decreaseResult?.items ?? [];
+      trustedTotal = decreaseResult?.total ?? 0;
+    }
+
+    if (
+      !isNeonDecreaseEndorsement &&
+      normalizedEntry.payload.tipContractTipsterPercent != null
+    ) {
       if (normalizedEntry.payload.tipContractTipsterEmail) {
         const tipsterProfile = await loadUserProfileByEmail(
           normalizedEntry.payload.tipContractTipsterEmail
@@ -4948,7 +5168,7 @@ export async function handleContractsCreate(req: NextRequest) {
       tipContractTipsterAmountFirstYear = tipAdjusted.tipsterAmount;
     }
 
-    const trustedManagerOverrides = computeManagerOverridesForChain({
+    let trustedManagerOverrides = computeManagerOverridesForChain({
       managerChain: trustedManagerChain,
       adviserPosition: trustedPosition,
       adviserMode: effectiveTrustedMode,
@@ -4965,6 +5185,18 @@ export async function handleContractsCreate(req: NextRequest) {
       comfortGradual: normalizedEntry.payload.comfortGradual,
       comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
     });
+    if (isNeonDecreaseEndorsement) {
+      trustedManagerOverrides = trustedManagerOverrides
+        .map((override) => {
+          const decreaseResult = negativeImmediateCommissionResult(override);
+          return {
+            ...override,
+            items: decreaseResult?.items ?? [],
+            total: decreaseResult?.total ?? 0,
+          };
+        })
+        .filter((override) => override.items.length > 0 && override.total < 0);
+    }
     const trustedManagerPosition = trustedManagerChain[0]?.position ?? null;
     const trustedManagerMode = trustedManagerChain[0]?.commissionMode ?? null;
     const trustedAllowedEmails = collectAllowedEmailsForCreate({

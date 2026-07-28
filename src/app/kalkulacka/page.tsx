@@ -66,6 +66,7 @@ import {
   SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
 } from "../lib/productFormulas";
 import {
+  calculateNeonDecreaseStornoBase,
   calculateNeonRefreshCommissionBase,
   type NeonRefreshCommissionBase,
 } from "../lib/productFormulas/neon";
@@ -124,6 +125,7 @@ import {
   roundToCents,
   SUPPORTED_LABEL,
   paymentBasedTotals,
+  isImmediateCommissionTitle,
   supportsOriginalContractReplacement,
   supportsPolicyEndDate,
   originalReplacementLabel,
@@ -341,23 +343,237 @@ const buildEndorsementSourceEntries = (
       const entryId = typeof entry.id === "string" ? entry.id.trim() : "";
       if (!entryId) return null;
       const ownerEmail = contractOwnerEmail(entry);
+      const policyStartDate = toDate(entry?.policyStartDate);
+      const policyEndDate = toDate(entry?.policyEndDate);
+      const storedDurationYears = finitePositiveDuration(entry?.durationYears);
       return {
         id: entryId,
         path: entryPathFromContractOwner(ownerEmail, entryId),
         productKey: (entry?.productKey as Product | undefined) ?? null,
+        position: POSITION_ORDER.includes(entry?.position as Position)
+          ? (entry?.position as Position)
+          : null,
+        commissionMode:
+          entry?.commissionMode === "standard" || entry?.commissionMode === "accelerated"
+            ? entry.commissionMode
+            : null,
         rootContractEntryId:
           (typeof entry?.rootContractEntryId === "string"
             ? entry.rootContractEntryId
             : null) ?? null,
         effectiveInputAmount: resolveEffectivePremium(entry),
-        policyStartDate: toDate(entry?.policyStartDate),
+        durationYears:
+          storedDurationYears ??
+          durationYearsFromDates(policyStartDate, policyEndDate),
+        durationMonths: finitePositiveDuration(entry?.durationMonths),
+        policyStartDate,
+        policyEndDate,
         contractSignedDate: toDate(entry?.contractSignedDate),
         createdAt: toDate(entry?.createdAt),
+        items: Array.isArray(entry?.result?.items)
+          ? entry.result.items
+          : Array.isArray(entry?.items)
+            ? entry.items
+            : [],
       };
     })
     .filter((entry): entry is EndorsementSourceEntry => Boolean(entry))
     .filter((entry) => entry.productKey === targetProduct)
     .sort(compareSourceEntriesByRecency);
+
+const dateToIsoDay = (date: Date | null | undefined): string | null => {
+  if (!date || Number.isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isoDayToLocalDate = (value: string | null | undefined): Date | null => {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const completedCalendarMonthsBetween = (
+  startDate: Date | null | undefined,
+  endDate: Date | null | undefined
+): number | null => {
+  if (
+    !startDate ||
+    !endDate ||
+    Number.isNaN(startDate.getTime()) ||
+    Number.isNaN(endDate.getTime()) ||
+    endDate.getTime() <= startDate.getTime()
+  ) {
+    return null;
+  }
+  let months =
+    (endDate.getFullYear() - startDate.getFullYear()) * 12 +
+    (endDate.getMonth() - startDate.getMonth());
+  if (endDate.getDate() < startDate.getDate()) {
+    months -= 1;
+  }
+  return Math.max(0, months);
+};
+
+const durationYearsFromDates = (
+  startDate: Date | null | undefined,
+  endDate: Date | null | undefined
+): number | null => {
+  if (
+    !startDate ||
+    !endDate ||
+    Number.isNaN(startDate.getTime()) ||
+    Number.isNaN(endDate.getTime()) ||
+    endDate.getTime() <= startDate.getTime()
+  ) {
+    return null;
+  }
+  const diffYears =
+    (endDate.getTime() - startDate.getTime()) / (365.2425 * 24 * 60 * 60 * 1000);
+  if (!Number.isFinite(diffYears) || diffYears <= 0) return null;
+  return Math.max(1, Math.ceil(diffYears));
+};
+
+const finitePositiveDuration = (value: unknown): number | null => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return Math.floor(num);
+};
+
+const durationYearsLabel = (years: number | null | undefined): string | null => {
+  if (years == null) return null;
+  if (years === 1) return "1 rok";
+  if (years >= 2 && years <= 4) return `${years} roky`;
+  return `${years} let`;
+};
+
+const resolveRemainingEndorsementDurationYears = (
+  source: EndorsementSourceEntry | null,
+  targetProduct: Product,
+  endorsementPolicyStartDateIso: string
+): number | null => {
+  if (!source || !shouldShowDuration(targetProduct)) return null;
+  const effectiveDate =
+    isoDayToLocalDate(endorsementPolicyStartDateIso) ??
+    toDate(endorsementPolicyStartDateIso);
+  if (!effectiveDate) return null;
+
+  const remainingByEndDate = durationYearsFromDates(
+    effectiveDate,
+    source.policyEndDate
+  );
+  if (remainingByEndDate != null) {
+    return normalizedDurationYears(targetProduct, remainingByEndDate);
+  }
+
+  const sourceDurationYears = finitePositiveDuration(source.durationYears);
+  const sourceStartDate = source.policyStartDate ?? source.contractSignedDate;
+  const elapsedMonths = completedCalendarMonthsBetween(
+    sourceStartDate,
+    effectiveDate
+  );
+  if (sourceDurationYears != null && elapsedMonths != null) {
+    const remainingMonths = sourceDurationYears * 12 - elapsedMonths;
+    if (remainingMonths > 0) {
+      return normalizedDurationYears(
+        targetProduct,
+        Math.max(1, Math.ceil(remainingMonths / 12))
+      );
+    }
+    return null;
+  }
+
+  return sourceDurationYears == null
+    ? null
+    : normalizedDurationYears(targetProduct, sourceDurationYears);
+};
+
+const resolveRemainingEndorsementDurationMonths = (
+  source: EndorsementSourceEntry | null,
+  targetProduct: Product,
+  endorsementPolicyStartDateIso: string
+): number | null => {
+  if (!source || !shouldShowDurationMonths(targetProduct)) return null;
+  const sourceDurationMonths = finitePositiveDuration(source.durationMonths);
+  const effectiveDate =
+    isoDayToLocalDate(endorsementPolicyStartDateIso) ??
+    toDate(endorsementPolicyStartDateIso);
+  if (!effectiveDate) return null;
+  const sourceStartDate = source.policyStartDate ?? source.contractSignedDate;
+  const elapsedMonths = completedCalendarMonthsBetween(
+    sourceStartDate,
+    effectiveDate
+  );
+  if (sourceDurationMonths != null && elapsedMonths != null) {
+    const remainingMonths = sourceDurationMonths - elapsedMonths;
+    if (remainingMonths > 0) {
+      return normalizedDurationMonths(targetProduct, remainingMonths);
+    }
+    return null;
+  }
+  return sourceDurationMonths == null
+    ? null
+    : normalizedDurationMonths(targetProduct, sourceDurationMonths);
+};
+
+const negativeImmediateCommissionResult = (
+  result: { items: CommissionResultItemDTO[]; total: number } | null
+): { items: CommissionResultItemDTO[]; total: number } | null => {
+  if (!result) return null;
+  const items = result.items
+    .filter((item) => isImmediateCommissionTitle(item.title ?? ""))
+    .map((item) => ({
+      ...item,
+      amount: -Math.abs(roundToCents(item.amount ?? 0)),
+    }))
+    .filter((item) => Math.abs(item.amount ?? 0) > 0);
+  return {
+    items,
+    total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
+  };
+};
+
+const negativeImmediateCommissionResultFromSourceItems = ({
+  sourceItems,
+  previousPremiumAmount,
+  calculationAmount,
+}: {
+  sourceItems: CommissionResultItemDTO[];
+  previousPremiumAmount: number;
+  calculationAmount: number;
+}): { items: CommissionResultItemDTO[]; total: number } | null => {
+  if (
+    sourceItems.length === 0 ||
+    previousPremiumAmount <= 0 ||
+    calculationAmount <= 0
+  ) {
+    return null;
+  }
+
+  const ratio = calculationAmount / previousPremiumAmount;
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+
+  const items = sourceItems
+    .filter((item) => isImmediateCommissionTitle(item.title ?? ""))
+    .map((item) => ({
+      ...item,
+      amount: -Math.abs(roundToCents((item.amount ?? 0) * ratio)),
+    }))
+    .filter((item) => Math.abs(item.amount ?? 0) > 0);
+  if (items.length === 0) return null;
+
+  return {
+    items,
+    total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
+  };
+};
 
 // ---------- Kalkulačka ----------
 
@@ -547,6 +763,8 @@ export default function CalculatorPage() {
   const [endorsementDraft, setEndorsementDraft] = useState<EndorsementDraft | null>(null);
   const [endorsementDraftModalOpen, setEndorsementDraftModalOpen] = useState(false);
   const [endorsementWorkflowActive, setEndorsementWorkflowActive] = useState(false);
+  const [endorsementDurationManualOverride, setEndorsementDurationManualOverride] =
+    useState(false);
   const [endorsementPreviewSource, setEndorsementPreviewSource] =
     useState<EndorsementSourceEntry | null>(null);
   const [saveSuccessFlash, setSaveSuccessFlash] = useState<{
@@ -2151,15 +2369,27 @@ export default function CalculatorPage() {
           return;
         }
 
-        setEndorsementPreviewSource(null);
         const dupCount = ownerContracts.length;
         if (dupCount > 0) {
+          const sourceContracts = LIFE_PRODUCTS.includes(product)
+            ? buildEndorsementSourceEntries(ownerContracts, product)
+            : [];
+          if (sourceContracts.length > 0) {
+            setEndorsementPreviewSource(sourceContracts[0]);
+            setContractNumberLiveCheck({
+              status: "foundForEndorsement",
+              count: sourceContracts.length,
+            });
+            return;
+          }
+          setEndorsementPreviewSource(null);
           setContractNumberLiveCheck({
             status: "duplicate",
             count: dupCount,
           });
           return;
         }
+        setEndorsementPreviewSource(null);
         setContractNumberLiveCheck({ status: "ok" });
       } catch (err) {
         console.warn("Live kontrola duplicitního čísla smlouvy selhala", err);
@@ -4026,8 +4256,109 @@ export default function CalculatorPage() {
     setEndorsementDraft(null);
     setEndorsementDraftModalOpen(false);
     setEndorsementWorkflowActive(false);
+    setEndorsementDurationManualOverride(false);
     setEndorsementPreviewSource(null);
   };
+
+  const endorsementDuplicateCandidateActive =
+    !endorsementWorkflowActive &&
+    !endorsementDraft &&
+    isLifeProduct &&
+    contractNumberLiveCheck.status === "foundForEndorsement" &&
+    endorsementPreviewSource?.productKey === product;
+  const endorsementPreviewContextActive =
+    endorsementWorkflowActive || endorsementDuplicateCandidateActive;
+
+  const endorsementOriginalDurationYears =
+    endorsementPreviewContextActive && shouldShowDuration(product)
+      ? resolveRemainingEndorsementDurationYears(
+          endorsementPreviewSource,
+          product,
+          policyStartDate.trim()
+        )
+      : null;
+  const endorsementOriginalDurationMonths =
+    endorsementPreviewContextActive && shouldShowDurationMonths(product)
+      ? resolveRemainingEndorsementDurationMonths(
+          endorsementPreviewSource,
+          product,
+          policyStartDate.trim()
+        )
+      : null;
+  const endorsementOriginalDurationLabel =
+    endorsementOriginalDurationYears != null
+      ? `Zbývá ${durationYearsLabel(endorsementOriginalDurationYears)}`
+      : endorsementOriginalDurationMonths != null
+        ? `Zbývá ${endorsementOriginalDurationMonths} měsíců`
+        : null;
+  const endorsementUsesOriginalDuration =
+    endorsementPreviewContextActive &&
+    Boolean(endorsementPreviewSource) &&
+    !endorsementDurationManualOverride &&
+    Boolean(endorsementOriginalDurationLabel);
+  const effectiveEndorsementDurationYears =
+    endorsementUsesOriginalDuration && endorsementOriginalDurationYears != null
+      ? endorsementOriginalDurationYears
+      : durationYears ?? null;
+  const effectiveEndorsementDurationMonths =
+    endorsementUsesOriginalDuration && endorsementOriginalDurationMonths != null
+      ? endorsementOriginalDurationMonths
+      : durationMonths ?? null;
+
+  const handleUseOriginalEndorsementDuration = () => {
+    if (!endorsementPreviewSource) return;
+    const sourceDurationYears = resolveRemainingEndorsementDurationYears(
+      endorsementPreviewSource,
+      product,
+      policyStartDate.trim()
+    );
+    const sourceDurationMonths = resolveRemainingEndorsementDurationMonths(
+      endorsementPreviewSource,
+      product,
+      policyStartDate.trim()
+    );
+    setEndorsementDurationManualOverride(false);
+    if (shouldShowDuration(product) && sourceDurationYears != null) {
+      setDurationYears(normalizedDurationYears(product, sourceDurationYears));
+    }
+    if (shouldShowDurationMonths(product) && sourceDurationMonths != null) {
+      setDurationMonths(normalizedDurationMonths(product, sourceDurationMonths));
+    }
+  };
+
+  useEffect(() => {
+    if (!endorsementPreviewContextActive) {
+      if (endorsementDurationManualOverride) {
+        setEndorsementDurationManualOverride(false);
+      }
+      return;
+    }
+    if (endorsementDurationManualOverride || !endorsementPreviewSource) return;
+
+    const sourceDurationYears = resolveRemainingEndorsementDurationYears(
+      endorsementPreviewSource,
+      product,
+      policyStartDate.trim()
+    );
+    const sourceDurationMonths = resolveRemainingEndorsementDurationMonths(
+      endorsementPreviewSource,
+      product,
+      policyStartDate.trim()
+    );
+
+    if (shouldShowDuration(product) && sourceDurationYears != null) {
+      setDurationYears(normalizedDurationYears(product, sourceDurationYears));
+    }
+    if (shouldShowDurationMonths(product) && sourceDurationMonths != null) {
+      setDurationMonths(normalizedDurationMonths(product, sourceDurationMonths));
+    }
+  }, [
+    endorsementDurationManualOverride,
+    endorsementPreviewSource,
+    endorsementPreviewContextActive,
+    policyStartDate,
+    product,
+  ]);
 
   useEffect(() => {
     if (!endorsementDraft) return;
@@ -4039,8 +4370,8 @@ export default function CalculatorPage() {
       endorsementDraft.contractSignedDate !== contractSignedDate.trim() ||
       endorsementDraft.position !== position ||
       endorsementDraft.commissionMode !== mode ||
-      endorsementDraft.durationYears !== (durationYears ?? null) ||
-      endorsementDraft.durationMonths !== (durationMonths ?? null) ||
+      endorsementDraft.durationYears !== effectiveEndorsementDurationYears ||
+      endorsementDraft.durationMonths !== effectiveEndorsementDurationMonths ||
       Math.abs(currentPremiumAmount - endorsementDraft.newPremiumAmount) > 0.01;
 
     if (draftNoLongerMatches) {
@@ -4054,6 +4385,8 @@ export default function CalculatorPage() {
     contractSignedDate,
     durationMonths,
     durationYears,
+    effectiveEndorsementDurationMonths,
+    effectiveEndorsementDurationYears,
     endorsementDraft,
     isLifeProduct,
     mode,
@@ -4155,6 +4488,7 @@ export default function CalculatorPage() {
     const signedDateIso = (
       options.contractSignedDateOverride ?? contractSignedDate
     ).trim();
+    const endorsementPolicyStartDateIso = policyStartDate.trim();
     const newPremiumAmount =
       options.newPremiumAmountOverride == null
         ? parseNumber(amountText)
@@ -4163,8 +4497,13 @@ export default function CalculatorPage() {
     const missing: string[] = [];
     if (!trimmedContractNumber) missing.push("číslo smlouvy");
     if (!signedDateIso) missing.push("datum sjednání");
+    if (!endorsementPolicyStartDateIso) missing.push("datum počátku");
     if (newPremiumAmount <= 0) missing.push("částku");
-    if (targetProduct === "maximaMaxEfekt" && durationYears == null) {
+    if (
+      targetProduct === "maximaMaxEfekt" &&
+      durationYears == null &&
+      endorsementDurationManualOverride
+    ) {
       missing.push("dobu trvání smlouvy");
     }
 
@@ -4213,6 +4552,41 @@ export default function CalculatorPage() {
       setEndorsementPreviewSource(latestEntry);
       const previousPremiumAmount = latestEntry.effectiveInputAmount;
       const deltaAmount = newPremiumAmount - previousPremiumAmount;
+      const sourceDurationYears = resolveRemainingEndorsementDurationYears(
+        latestEntry,
+        targetProduct,
+        endorsementPolicyStartDateIso
+      );
+      const sourceDurationMonths = resolveRemainingEndorsementDurationMonths(
+        latestEntry,
+        targetProduct,
+        endorsementPolicyStartDateIso
+      );
+      const endorsementDurationYears =
+        shouldShowDuration(targetProduct) && !endorsementDurationManualOverride
+          ? sourceDurationYears ?? durationYears ?? null
+          : durationYears ?? null;
+      const endorsementDurationMonths =
+        shouldShowDurationMonths(targetProduct) && !endorsementDurationManualOverride
+          ? sourceDurationMonths ?? durationMonths ?? null
+          : durationMonths ?? null;
+
+      if (shouldShowDuration(targetProduct) && endorsementDurationYears != null) {
+        setDurationYears(normalizedDurationYears(targetProduct, endorsementDurationYears));
+      }
+      if (shouldShowDurationMonths(targetProduct) && endorsementDurationMonths != null) {
+        setDurationMonths(
+          normalizedDurationMonths(targetProduct, endorsementDurationMonths)
+        );
+      }
+
+      if (targetProduct === "maximaMaxEfekt" && endorsementDurationYears == null) {
+        const msg =
+          "Původní smlouva nemá uloženou dobu trvání. Klikni u doby trvání na Upravit a doplň ji ručně.";
+        setValidationError(msg);
+        setSaveMessage(msg);
+        return false;
+      }
 
       if (Math.abs(deltaAmount) < 0.01) {
         setValidationError(
@@ -4223,17 +4597,63 @@ export default function CalculatorPage() {
 
       const changeType: EndorsementChangeType =
         deltaAmount > 0 ? "increase" : deltaAmount < 0 ? "decrease" : "same";
-      const calculationAmount = deltaAmount > 0 ? deltaAmount : 0;
+      let calculationAmount = Math.abs(deltaAmount);
 
       let endorsementItems: CommissionResultItemDTO[] = [];
       let endorsementTotal = 0;
-      if (calculationAmount > 0) {
+      if (changeType === "decrease" && targetProduct === "neon") {
+        const originalStornoStartDateIso =
+          dateToIsoDay(latestEntry.policyStartDate) ??
+          dateToIsoDay(latestEntry.contractSignedDate);
+        const decreaseBase = calculateNeonDecreaseStornoBase({
+          previousMonthlyPremium: previousPremiumAmount,
+          newMonthlyPremium: newPremiumAmount,
+          originalStornoStartDateIso,
+          endorsementPolicyStartDateIso,
+        });
+        if (!decreaseBase || !originalStornoStartDateIso || !isIsoDay(endorsementPolicyStartDateIso)) {
+          const msg =
+            "Nepodařilo se spočítat storno základnu pro snížení NEON dodatku. Zkontroluj počátek původní smlouvy a účinnost dodatku.";
+          setValidationError(msg);
+          setSaveMessage(msg);
+          return false;
+        }
+        calculationAmount = decreaseBase.calculationMonthlyPremium;
+        if (calculationAmount > 0) {
+          const sourceResult = negativeImmediateCommissionResultFromSourceItems({
+            sourceItems: latestEntry.items,
+            previousPremiumAmount,
+            calculationAmount,
+          });
+          const fallbackPosition = latestEntry.position ?? positionForEndorsement;
+          const fallbackMode = latestEntry.commissionMode ?? mode;
+          const fallbackSignedDateIso =
+            dateToIsoDay(latestEntry.contractSignedDate) ?? signedDateIso;
+          const result =
+            sourceResult ??
+            negativeImmediateCommissionResult(
+              computeItemsForPositionAndMode(
+                fallbackPosition,
+                fallbackMode,
+                calculationAmount,
+                targetProduct,
+                fallbackSignedDateIso,
+                endorsementDurationYears
+              )
+            );
+          endorsementItems = result?.items ?? [];
+          endorsementTotal = result?.total ?? 0;
+        }
+      } else if (changeType === "decrease") {
+        calculationAmount = 0;
+      } else if (calculationAmount > 0) {
         const result = computeItemsForPositionAndMode(
           positionForEndorsement,
           mode,
           calculationAmount,
           targetProduct,
-          signedDateIso
+          signedDateIso,
+          endorsementDurationYears
         );
         endorsementItems = result?.items ?? [];
         endorsementTotal = result?.total ?? 0;
@@ -4248,8 +4668,8 @@ export default function CalculatorPage() {
         rootContractEntryId: latestEntry.rootContractEntryId ?? latestEntry.id,
         position: positionForEndorsement,
         commissionMode: mode,
-        durationYears: durationYears ?? null,
-        durationMonths: durationMonths ?? null,
+        durationYears: endorsementDurationYears,
+        durationMonths: endorsementDurationMonths,
         previousPremiumAmount,
         newPremiumAmount,
         deltaAmount,
@@ -4287,7 +4707,7 @@ export default function CalculatorPage() {
     if (!contractNumber.trim()) missing.push("číslo smlouvy");
     if (!contractSignedDate.trim()) missing.push("datum sjednání");
     if (!policyStartDate.trim()) missing.push("datum počátku");
-    if (product === "maximaMaxEfekt" && durationYears == null) {
+    if (product === "maximaMaxEfekt" && endorsementDraft.durationYears == null) {
       missing.push("dobu trvání smlouvy");
     }
 
@@ -4350,8 +4770,8 @@ export default function CalculatorPage() {
     if (
       position !== endorsementDraft.position ||
       mode !== endorsementDraft.commissionMode ||
-      (durationYears ?? null) !== endorsementDraft.durationYears ||
-      (durationMonths ?? null) !== endorsementDraft.durationMonths
+      effectiveEndorsementDurationYears !== endorsementDraft.durationYears ||
+      effectiveEndorsementDurationMonths !== endorsementDraft.durationMonths
     ) {
       setValidationError(
         "Parametry výpočtu se od přípravy změny změnily. Klikni prosím na Změna znovu."
@@ -4429,10 +4849,13 @@ export default function CalculatorPage() {
         policyStartDate: policyStartDate.trim(),
         policyEndDate: policyEndDate.trim() || null,
         durationYears: shouldShowDuration(endorsementDraft.productKey)
-          ? durationYears
+          ? endorsementDraft.durationYears
           : null,
         durationMonths: shouldShowDurationMonths(endorsementDraft.productKey)
-          ? normalizedDurationMonths(endorsementDraft.productKey, durationMonths)
+          ? normalizedDurationMonths(
+              endorsementDraft.productKey,
+              endorsementDraft.durationMonths
+            )
           : null,
         maxCizinKomplexVariant:
           endorsementDraft.productKey === "maxcizinkomplex"
@@ -4525,6 +4948,7 @@ export default function CalculatorPage() {
       setEndorsementDraft(null);
       setEndorsementDraftModalOpen(false);
       setEndorsementWorkflowActive(false);
+      setEndorsementDurationManualOverride(false);
       setEndorsementPreviewSource(null);
     } catch (error) {
       const errorMessage =
@@ -4544,7 +4968,7 @@ export default function CalculatorPage() {
       return;
     }
 
-    if (endorsementWorkflowActive) {
+    if (endorsementWorkflowActive || endorsementDuplicateCandidateActive) {
       const msg = "Nejdřív klikni na Změna a připrav aktuální dodatek.";
       setSaveMessage(msg);
       setValidationError(msg);
@@ -6589,13 +7013,14 @@ export default function CalculatorPage() {
     customMode?: CommissionMode | null,
     amountOverride?: number | null,
     productOverride?: Product | null,
-    contractSignedDateOverride?: string | null
+    contractSignedDateOverride?: string | null,
+    durationYearsOverride?: number | null
   ): { items: CommissionResultItemDTO[]; total: number } | null => {
     if (!pos) return null;
     const val =
       amountOverride == null ? parseNumber(amountText) : toNonNegativeNumber(amountOverride);
     const freq = frequency;
-    const years = durationYears;
+    const years = durationYearsOverride ?? durationYears;
     const usedMode = (customMode ?? mode) as CommissionMode;
     const targetProduct = productOverride ?? product;
     const signedDateForCalculation =
@@ -6734,7 +7159,7 @@ export default function CalculatorPage() {
 
   const liveEndorsementPreview = (() => {
     if (
-      !endorsementWorkflowActive ||
+      !endorsementPreviewContextActive ||
       endorsementDraft ||
       !endorsementPreviewSource ||
       !hasSelectedProduct ||
@@ -6749,9 +7174,25 @@ export default function CalculatorPage() {
 
     const previousPremiumAmount = endorsementPreviewSource.effectiveInputAmount;
     const deltaAmount = newPremiumAmount - previousPremiumAmount;
-    const calculationAmount = deltaAmount > 0 ? deltaAmount : 0;
     const changeType: EndorsementChangeType =
       deltaAmount > 0 ? "increase" : deltaAmount < 0 ? "decrease" : "same";
+    let calculationAmount = Math.abs(deltaAmount);
+
+    if (changeType === "decrease" && product === "neon") {
+      const originalStornoStartDateIso =
+        dateToIsoDay(endorsementPreviewSource.policyStartDate) ??
+        dateToIsoDay(endorsementPreviewSource.contractSignedDate);
+      const endorsementPolicyStartDateIso = policyStartDate.trim();
+      const decreaseBase = calculateNeonDecreaseStornoBase({
+        previousMonthlyPremium: previousPremiumAmount,
+        newMonthlyPremium: newPremiumAmount,
+        originalStornoStartDateIso,
+        endorsementPolicyStartDateIso,
+      });
+      calculationAmount = decreaseBase?.calculationMonthlyPremium ?? 0;
+    } else if (changeType === "decrease") {
+      calculationAmount = 0;
+    }
 
     if (calculationAmount <= 0) {
       return {
@@ -6775,18 +7216,48 @@ export default function CalculatorPage() {
     const signedDateForPreview = isIsoDay(signedDateIso)
       ? signedDateIso
       : contractSignedDateForNeon;
+    const durationYearsForPreview =
+      shouldShowDuration(product) && !endorsementDurationManualOverride
+        ? resolveRemainingEndorsementDurationYears(
+            endorsementPreviewSource,
+            product,
+            policyStartDate.trim()
+          )
+        : durationYears ?? null;
+    if (shouldShowDuration(product) && durationYearsForPreview == null) {
+      return null;
+    }
+    const sourceDecreaseResult =
+      changeType === "decrease" && product === "neon"
+        ? negativeImmediateCommissionResultFromSourceItems({
+            sourceItems: endorsementPreviewSource.items,
+            previousPremiumAmount,
+            calculationAmount,
+          })
+        : null;
     const result = computeItemsForPositionAndMode(
-      positionForPreview,
-      mode,
+      changeType === "decrease" && product === "neon"
+        ? endorsementPreviewSource.position ?? positionForPreview
+        : positionForPreview,
+      changeType === "decrease" && product === "neon"
+        ? endorsementPreviewSource.commissionMode ?? mode
+        : mode,
       calculationAmount,
       product,
-      signedDateForPreview
+      changeType === "decrease" && product === "neon"
+        ? dateToIsoDay(endorsementPreviewSource.contractSignedDate) ?? signedDateForPreview
+        : signedDateForPreview,
+      durationYearsForPreview
     );
-    if (!result) return null;
+    const displayedResult =
+      changeType === "decrease" && product === "neon"
+        ? sourceDecreaseResult ?? negativeImmediateCommissionResult(result)
+        : result;
+    if (!displayedResult) return null;
 
     return {
-      items: result.items,
-      total: result.total,
+      items: displayedResult.items,
+      total: displayedResult.total,
       previousPremiumAmount,
       newPremiumAmount,
       deltaAmount,
@@ -6916,6 +7387,7 @@ export default function CalculatorPage() {
           setEndorsementDraft(null);
           setEndorsementDraftModalOpen(false);
           setEndorsementWorkflowActive(false);
+          setEndorsementDurationManualOverride(false);
           setEndorsementPreviewSource(null);
           setSaveMessage(null);
         }}
@@ -7084,6 +7556,8 @@ export default function CalculatorPage() {
                 durationHelpOpen={durationHelpOpen}
                 durationYears={durationYears}
                 durationMonths={durationMonths}
+                durationSourceLabel={endorsementOriginalDurationLabel}
+                durationUsingOriginal={endorsementUsesOriginalDuration}
                 missingFields={missingFields}
                 maxCizinKomplexVariant={maxCizinKomplexVariant}
                 maxCizinOptions={MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS}
@@ -7094,8 +7568,20 @@ export default function CalculatorPage() {
                 comfortGradual={comfortGradual}
                 amountText={amountText}
                 onToggleDurationHelp={() => setDurationHelpOpen((prev) => !prev)}
-                onDurationYearsChange={setDurationYears}
-                onDurationMonthsChange={setDurationMonths}
+                onDurationYearsChange={(value) => {
+                  if (endorsementPreviewContextActive && endorsementPreviewSource) {
+                    setEndorsementDurationManualOverride(true);
+                  }
+                  setDurationYears(value);
+                }}
+                onDurationMonthsChange={(value) => {
+                  if (endorsementPreviewContextActive && endorsementPreviewSource) {
+                    setEndorsementDurationManualOverride(true);
+                  }
+                  setDurationMonths(value);
+                }}
+                onUseOriginalDuration={handleUseOriginalEndorsementDuration}
+                onEditDuration={() => setEndorsementDurationManualOverride(true)}
                 onMaxCizinVariantChange={setMaxCizinKomplexVariant}
                 onFrequencyChange={setFrequency}
                 onAmountTextChange={setAmountText}
@@ -7313,12 +7799,12 @@ export default function CalculatorPage() {
               !autoHullSumNeedsInput &&
               !effectivePositionTimelineLoading &&
               effectivePositionTimeline.length > 0 &&
-              (endorsementWorkflowActive ? Boolean(endorsementDraft) : items.length > 0)
+              (endorsementPreviewContextActive ? Boolean(endorsementDraft) : items.length > 0)
             }
             saveButtonLabel={
               endorsementDraft
                 ? "Uložit dodatek jako sepsáno"
-                : endorsementWorkflowActive
+                : endorsementPreviewContextActive
                 ? "Nejdřív klikni na Změna"
                 : "Uložit jako sepsáno"
             }

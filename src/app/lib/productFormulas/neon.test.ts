@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildNeonImmediateBreakdown,
   calculateNeon,
+  calculateNeonDecreaseStornoBase,
   calculateNeonRefreshCommissionBase,
   isNeonHistoricalPeriod,
   neonMaxDurationYears,
@@ -102,6 +103,25 @@ describe("NEON commission formulas", () => {
       calculationMonthlyPremium: 1000,
       calculationAnnualPremium: 12000,
       stornedOriginalMonthlyPremium: 500,
+    });
+  });
+
+  it("calculates decrease storno base from remaining 60 month liability", () => {
+    const result = calculateNeonDecreaseStornoBase({
+      previousMonthlyPremium: 1500,
+      newMonthlyPremium: 550,
+      originalStornoStartDateIso: "2020-12-01",
+      endorsementPolicyStartDateIso: "2022-12-01",
+    });
+
+    expect(result).toMatchObject({
+      previousMonthlyPremium: 1500,
+      newMonthlyPremium: 550,
+      premiumDecreaseMonthly: 950,
+      calculationMonthlyPremium: 570,
+      elapsedMonths: 24,
+      remainingMonths: 36,
+      remainingRatio: 0.6,
     });
   });
 

@@ -1,7 +1,12 @@
 import type { User } from "firebase/auth";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import type { CommissionMode, Position, Product } from "../types/domain";
+import type {
+  CommissionMode,
+  CommissionResultItemDTO,
+  Position,
+  Product,
+} from "../types/domain";
 
 import {
   POSITION_ORDER,
@@ -32,17 +37,27 @@ export type ContractsFindApiResponse = {
     adviserName?: string | null;
     userEmail?: string | null;
     productKey?: Product | null;
+    position?: Position | null;
+    commissionMode?: CommissionMode | null;
     rootContractEntryId?: string | null;
     effectiveInputAmount?: number | null;
     newInputAmount?: number | null;
     inputAmount?: number | null;
+    durationYears?: number | null;
+    durationMonths?: number | null;
     refreshCommissionBase?: {
       calculationMonthlyPremium?: number | null;
       calculationAnnualPremium?: number | null;
     } | null;
     policyStartDate?: unknown;
+    policyEndDate?: unknown;
     contractSignedDate?: unknown;
     createdAt?: unknown;
+    items?: CommissionResultItemDTO[] | null;
+    result?: {
+      items?: CommissionResultItemDTO[] | null;
+      total?: number | null;
+    } | null;
     lifePremiumChanges?: Array<{
       premiumAmount?: number | null;
       policyStartDate?: unknown;

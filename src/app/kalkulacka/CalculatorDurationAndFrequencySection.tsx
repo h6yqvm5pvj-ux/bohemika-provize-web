@@ -1,6 +1,6 @@
 "use client";
 
-import { SlidersHorizontal } from "lucide-react";
+import { PencilLine, RotateCcw, SlidersHorizontal } from "lucide-react";
 
 import {
   type MaxCizinKomplexVariant,
@@ -30,6 +30,8 @@ type CalculatorDurationAndFrequencySectionProps = {
   durationHelpOpen: boolean;
   durationYears: number | null;
   durationMonths: number | null;
+  durationSourceLabel?: string | null;
+  durationUsingOriginal?: boolean;
   missingFields: string[];
   maxCizinKomplexVariant: MaxCizinKomplexVariant;
   maxCizinOptions: MaxCizinOption[];
@@ -42,6 +44,8 @@ type CalculatorDurationAndFrequencySectionProps = {
   onToggleDurationHelp: () => void;
   onDurationYearsChange: (value: number | null) => void;
   onDurationMonthsChange: (value: number | null) => void;
+  onUseOriginalDuration?: () => void;
+  onEditDuration?: () => void;
   onMaxCizinVariantChange: (value: MaxCizinKomplexVariant) => void;
   onFrequencyChange: (value: PaymentFrequency) => void;
   onAmountTextChange: (value: string) => void;
@@ -54,6 +58,8 @@ export function CalculatorDurationAndFrequencySection({
   durationHelpOpen,
   durationYears,
   durationMonths,
+  durationSourceLabel = null,
+  durationUsingOriginal = false,
   missingFields,
   maxCizinKomplexVariant,
   maxCizinOptions,
@@ -66,6 +72,8 @@ export function CalculatorDurationAndFrequencySection({
   onToggleDurationHelp,
   onDurationYearsChange,
   onDurationMonthsChange,
+  onUseOriginalDuration,
+  onEditDuration,
   onMaxCizinVariantChange,
   onFrequencyChange,
   onAmountTextChange,
@@ -107,14 +115,44 @@ export function CalculatorDurationAndFrequencySection({
           {durationHelp}
         </p>
       )}
+      {durationSourceLabel && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-700">
+              Dle původní smlouvy
+            </p>
+            <p className="truncate text-xs font-semibold text-slate-800">
+              {durationSourceLabel}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={
+              durationUsingOriginal ? onEditDuration : onUseOriginalDuration
+            }
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-sky-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-800 shadow-sm transition hover:border-sky-300 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={
+              durationUsingOriginal ? !onEditDuration : !onUseOriginalDuration
+            }
+          >
+            {durationUsingOriginal ? (
+              <PencilLine size={13} strokeWidth={2.2} aria-hidden="true" />
+            ) : (
+              <RotateCcw size={13} strokeWidth={2.2} aria-hidden="true" />
+            )}
+            <span>{durationUsingOriginal ? "Upravit" : "Použít"}</span>
+          </button>
+        </div>
+      )}
       <input
         type="number"
-        className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
+        className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${
           missingFields.includes("dobu trvání smlouvy")
             ? "border-rose-400/70"
             : "border-violet-200"
         }`}
         value={durationYears ?? ""}
+        disabled={durationUsingOriginal}
         onChange={(event) => {
           const raw = event.target.value.trim();
           if (!raw) {

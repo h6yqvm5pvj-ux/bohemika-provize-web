@@ -141,14 +141,23 @@ export function EndorsementDraftModal({
             </p>
             <p className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2">
               <span className="text-slate-600">Provize k dodatku</span>
-              <span className="font-semibold text-slate-900">
+              <span
+                className={`font-semibold ${
+                  draft.total < 0 ? "text-rose-700" : "text-slate-900"
+                }`}
+              >
                 {formatMoney(draft.total)}
               </span>
             </p>
           </div>
-          {draft.changeType === "decrease" && (
+          {draft.changeType === "decrease" && draft.total < 0 && (
+            <p className="text-xs text-rose-700">
+              Ponížení se uloží jako odúčtování okamžité provize ze zbývajícího storno období.
+            </p>
+          )}
+          {draft.changeType === "decrease" && draft.total === 0 && (
             <p className="text-xs text-amber-700">
-              Ponížení zatím neřešíme výpočtem. Dodatek se uloží s provizí 0 Kč.
+              Ponížení nemá vypočtené odúčtování. Dodatek se uloží s provizí 0 Kč.
             </p>
           )}
           <p className="text-xs text-slate-500">

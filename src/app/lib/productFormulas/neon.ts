@@ -111,6 +111,20 @@ export type NeonRefreshCommissionBase = {
   motivationalAnnualPremium: number;
 };
 
+export type NeonDecreaseStornoBase = {
+  calculationMethod: "storno_60_60";
+  previousMonthlyPremium: number;
+  newMonthlyPremium: number;
+  premiumDecreaseMonthly: number;
+  premiumDecreaseAnnual: number;
+  calculationMonthlyPremium: number;
+  calculationAnnualPremium: number;
+  elapsedMonths: number;
+  remainingMonths: number;
+  earnedRatio: number;
+  remainingRatio: number;
+};
+
 export function calculateNeonRefreshCommissionBase({
   newMonthlyPremium,
   originalMonthlyPremium,
@@ -196,6 +210,62 @@ export function calculateNeonRefreshCommissionBase({
     stornedOriginalAnnualPremium: roundToCents(stornedOriginalMonthlyPremium * 12),
     motivationalMonthlyPremium: roundToCents(motivationalMonthlyPremium),
     motivationalAnnualPremium: roundToCents(motivationalMonthlyPremium * 12),
+  };
+}
+
+export function calculateNeonDecreaseStornoBase({
+  previousMonthlyPremium,
+  newMonthlyPremium,
+  originalStornoStartDateIso,
+  endorsementPolicyStartDateIso,
+  stornoMonths = NEON_REFRESH_STORNO_MONTHS,
+}: {
+  previousMonthlyPremium: number | null | undefined;
+  newMonthlyPremium: number | null | undefined;
+  originalStornoStartDateIso: string | null | undefined;
+  endorsementPolicyStartDateIso: string | null | undefined;
+  stornoMonths?: number;
+}): NeonDecreaseStornoBase | null {
+  const safePrevious = Number(previousMonthlyPremium);
+  const safeNew = Number(newMonthlyPremium);
+  const safeStornoMonths = Math.max(1, Math.floor(Number(stornoMonths)));
+  if (
+    !Number.isFinite(safePrevious) ||
+    safePrevious <= 0 ||
+    !Number.isFinite(safeNew) ||
+    safeNew < 0 ||
+    safeNew >= safePrevious ||
+    !Number.isFinite(safeStornoMonths)
+  ) {
+    return null;
+  }
+
+  const elapsed = completedCalendarMonthsBetween(
+    originalStornoStartDateIso,
+    endorsementPolicyStartDateIso
+  );
+  if (elapsed == null) return null;
+
+  const elapsedMonths = Math.min(safeStornoMonths, Math.max(0, elapsed));
+  const remainingMonths = Math.max(0, safeStornoMonths - elapsedMonths);
+  const earnedRatio = elapsedMonths / safeStornoMonths;
+  const remainingRatio = remainingMonths / safeStornoMonths;
+  const premiumDecreaseMonthly = safePrevious - safeNew;
+  const calculationMonthlyRaw = premiumDecreaseMonthly * remainingRatio;
+  const calculationAnnualPremium = roundToCents(calculationMonthlyRaw * 12);
+
+  return {
+    calculationMethod: "storno_60_60",
+    previousMonthlyPremium: roundToCents(safePrevious),
+    newMonthlyPremium: roundToCents(safeNew),
+    premiumDecreaseMonthly: roundToCents(premiumDecreaseMonthly),
+    premiumDecreaseAnnual: roundToCents(premiumDecreaseMonthly * 12),
+    calculationMonthlyPremium: calculationAnnualPremium / 12,
+    calculationAnnualPremium,
+    elapsedMonths,
+    remainingMonths,
+    earnedRatio,
+    remainingRatio,
   };
 }
 

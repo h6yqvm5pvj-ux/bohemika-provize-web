@@ -804,11 +804,17 @@ export type EndorsementSourceEntry = {
   id: string;
   path: string;
   productKey: Product | null;
+  position: Position | null;
+  commissionMode: CommissionMode | null;
   rootContractEntryId: string | null;
   effectiveInputAmount: number;
+  durationYears: number | null;
+  durationMonths: number | null;
   policyStartDate: Date | null;
+  policyEndDate: Date | null;
   contractSignedDate: Date | null;
   createdAt: Date | null;
+  items: CommissionResultItemDTO[];
 };
 
 export type EndorsementDraft = {
