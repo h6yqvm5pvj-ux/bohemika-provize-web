@@ -81,6 +81,11 @@ import {
 } from "@/app/lib/productFormulas/autoCommission";
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import { auth } from "@/app/firebase";
+import {
+  ADMIN_IMPERSONATION_EVENT,
+  readAdminImpersonationState,
+  type AdminImpersonationState,
+} from "@/app/lib/adminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
 import introStyles from "../cashflow/cashflowIntro.module.css";
 import { StatementPairingLoader } from "./StatementPairingLoader";
@@ -4651,6 +4656,34 @@ const managerCommissionPremiumBaseMismatch = (
   };
 };
 
+const managerCommissionBaseComparison = (
+  row: ManagerCommissionRow,
+  systemContract: MatchedSystemContract | null
+): PremiumBaseComparison | null => {
+  const statementBase = Number(row.base);
+  if (!Number.isFinite(statementBase) || statementBase <= ANNUAL_PREMIUM_TOLERANCE) {
+    return null;
+  }
+
+  const product = resolveStatementProduct(row.product);
+  const comparison = premiumBaseComparison(
+    statementBase,
+    systemContract,
+    product.usesAnnualPremiumBase ? "annual" : "payment"
+  );
+  if (!comparison) return null;
+
+  return {
+    ...comparison,
+    key: `manager-${row.id}-${row.contractNumber}-${row.type}-base`,
+    label: "Základna pojistného",
+    canBeAnniversaryPremiumChange: false,
+    firstAnniversaryDate: null,
+    anniversaryDate: null,
+    referenceDate: null,
+  };
+};
+
 const managerCommissionDifferenceReason = (
   row: ManagerCommissionRow,
   systemContract: MatchedSystemContract | null,
@@ -6020,6 +6053,56 @@ function AmountComparisonPanel({
 }) {
   if (comparisons.length === 0 && baseComparisons.length === 0) return null;
 
+  const baseDisplayLines = (
+    comparison: PremiumBaseComparison,
+    side: "system" | "statement"
+  ): { primary: string; secondary: string | null } => {
+    if (comparison.statementBasePeriod === "annual") {
+      const amount =
+        side === "system"
+          ? comparison.systemAnnualPremiumBase
+          : comparison.statementAnnualPremiumBase;
+      return {
+        primary: `${formatWholeMoney(amount)} Kč ročně`,
+        secondary: null,
+      };
+    }
+
+    const amount =
+      side === "system" ? comparison.systemPremiumBase : comparison.statementPaymentBase;
+    return {
+      primary:
+        side === "system"
+          ? paymentAmountWithFrequencyLabel(amount, comparison.systemPaymentFrequency)
+          : `${formatWholeMoney(amount)} Kč za platbu`,
+      secondary:
+        comparison.paymentsPerYear > 1
+          ? `${formatWholeMoney(
+              side === "system"
+                ? comparison.systemAnnualPremiumBase
+                : comparison.statementAnnualPremiumBase
+            )} Kč ročně`
+          : null,
+    };
+  };
+  const baseDifferenceLines = (
+    comparison: PremiumBaseComparison
+  ): { primary: string; secondary: string | null } => {
+    if (comparison.statementBasePeriod === "annual") {
+      return {
+        primary: formatSignedWholeMoney(comparison.annualDifference),
+        secondary: null,
+      };
+    }
+
+    return {
+      primary: formatSignedWholeMoney(comparison.difference),
+      secondary:
+        comparison.paymentsPerYear > 1
+          ? `${formatSignedWholeMoney(comparison.annualDifference)} ročně`
+          : null,
+    };
+  };
   const issueCount = comparisons.filter((comparison) => comparison.status !== "ok").length;
   const baseChangeCount = baseComparisons.filter(
     (comparison) =>
@@ -6082,7 +6165,7 @@ function AmountComparisonPanel({
     <div className={`mt-3 rounded-xl border px-3 py-3 ${panelClass}`}>
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="font-bold text-slate-950">
-          Kontrola vyplacených částek
+          {baseComparisons.length > 0 ? "Kontrola výpisu" : "Kontrola vyplacených částek"}
         </div>
         <div className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
           {badgeLabel}
@@ -6101,39 +6184,55 @@ function AmountComparisonPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {baseComparisons.map((comparison) => (
-              <tr key={comparison.key}>
-                <td className="px-3 py-2 font-semibold text-slate-900">
-                  {comparison.label}
-                </td>
-                <td className="px-3 py-2 text-right text-slate-700">
-                  {formatWholeMoney(comparison.systemAnnualPremiumBase)} Kč ročně
-                </td>
-                <td className="px-3 py-2 text-right text-slate-700">
-                  {formatWholeMoney(comparison.statementAnnualPremiumBase)} Kč ročně
-                </td>
-                <td
-                  className={`px-3 py-2 text-right font-semibold ${
-                    Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE
-                      ? "text-slate-700"
-                      : !comparison.canBeAnniversaryPremiumChange
-                        ? "text-amber-900"
-                      : comparison.annualDifference > 0
-                        ? "text-emerald-800"
-                        : "text-sky-800"
-                  }`}
-                >
-                  {formatSignedWholeMoney(comparison.annualDifference)}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${baseStatusClass(comparison)}`}
+            {baseComparisons.map((comparison) => {
+              const systemLines = baseDisplayLines(comparison, "system");
+              const statementLines = baseDisplayLines(comparison, "statement");
+              const differenceLines = baseDifferenceLines(comparison);
+              return (
+                <tr key={comparison.key}>
+                  <td className="px-3 py-2 font-semibold text-slate-900">
+                    {comparison.label}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-700">
+                    <div>{systemLines.primary}</div>
+                    {systemLines.secondary && (
+                      <div className="text-xs text-slate-500">{systemLines.secondary}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-700">
+                    <div>{statementLines.primary}</div>
+                    {statementLines.secondary && (
+                      <div className="text-xs text-slate-500">{statementLines.secondary}</div>
+                    )}
+                  </td>
+                  <td
+                    className={`px-3 py-2 text-right font-semibold ${
+                      Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE
+                        ? "text-slate-700"
+                        : !comparison.canBeAnniversaryPremiumChange
+                          ? "text-amber-900"
+                        : comparison.annualDifference > 0
+                          ? "text-emerald-800"
+                          : "text-sky-800"
+                    }`}
                   >
-                    {baseStatusLabel(comparison)}
-                  </span>
-                </td>
-              </tr>
-            ))}
+                    <div>{differenceLines.primary}</div>
+                    {differenceLines.secondary && (
+                      <div className="text-xs font-medium text-slate-500">
+                        {differenceLines.secondary}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <span
+                      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${baseStatusClass(comparison)}`}
+                    >
+                      {baseStatusLabel(comparison)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
             {comparisons.map((comparison) => (
               <tr key={comparison.key}>
                 <td className="px-3 py-2 font-semibold text-slate-900">
@@ -8189,6 +8288,24 @@ function ManagerCommissionRowCard({
   const classification = classifyGeneralCommissionCode(row.product, row.type);
   const match = contractMatchForNumber(matchesByContractNumber, row.contractNumber, "team");
   const matchedContract = matchedSystemContract(match);
+  const rowBaseComparisonMap = new Map<string, PremiumBaseComparison>();
+  rowItems.forEach((item) => {
+    const comparison = managerCommissionBaseComparison(item, matchedContract);
+    if (!comparison) return;
+    const comparisonKey = [
+      comparison.label,
+      comparison.statementBasePeriod,
+      Math.round(comparison.statementPremiumBase * 100),
+      Math.round(comparison.statementAnnualPremiumBase * 100),
+      Math.round(comparison.systemPremiumBase * 100),
+      Math.round(comparison.systemAnnualPremiumBase * 100),
+      comparison.paymentsPerYear,
+    ].join(":");
+    if (!rowBaseComparisonMap.has(comparisonKey)) {
+      rowBaseComparisonMap.set(comparisonKey, comparison);
+    }
+  });
+  const rowBaseComparisons = [...rowBaseComparisonMap.values()];
   const extranetUrl = firstSjednatelExtranetUrl(rowItems, matchedContract);
   const stornoActionTarget: StornoStatementActionTarget | null =
     hasStorno && matchedContract
@@ -8382,6 +8499,13 @@ function ManagerCommissionRowCard({
           </div>
         </div>
       </div>
+
+      {(rowComparisons.length > 0 || rowBaseComparisons.length > 0) && (
+        <AmountComparisonPanel
+          comparisons={rowComparisons}
+          baseComparisons={rowBaseComparisons}
+        />
+      )}
 
       {group.rows.length > 1 && (
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
@@ -10391,6 +10515,10 @@ function StatementPreview({
 export default function CommissionStatementsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [adminImpersonation, setAdminImpersonation] =
+    useState<AdminImpersonationState | null>(() =>
+      typeof window === "undefined" ? null : readAdminImpersonationState()
+    );
   const [statements, setStatements] = useState<ParsedStatement[]>([]);
   const [statementFilesForProcessing, setStatementFilesForProcessing] = useState<
     StatementFileRead[]
@@ -10412,6 +10540,7 @@ export default function CommissionStatementsPage() {
     message: null,
   });
   const statementProcessingInFlightRef = useRef(false);
+  const lastMatchEffectiveUserEmailRef = useRef<string | null>(null);
   const [processingAuditSummary, setProcessingAuditSummary] =
     useState<StatementProcessingSummary | null>(null);
   const [stornoActionTarget, setStornoActionTarget] =
@@ -10441,11 +10570,26 @@ export default function CommissionStatementsPage() {
   >([]);
   const [neonRefreshPromptSaving, setNeonRefreshPromptSaving] = useState(false);
   const [neonRefreshPromptError, setNeonRefreshPromptError] = useState<string | null>(null);
+  const effectiveUserEmail =
+    normalizeEmailForComparison(adminImpersonation?.email) ||
+    normalizeEmailForComparison(user?.email);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncImpersonation = () => {
+      setAdminImpersonation(readAdminImpersonationState());
+    };
+    syncImpersonation();
+    window.addEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    return () => {
+      window.removeEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    };
   }, []);
 
   const refreshProcessedStatementHistory = async () => {
@@ -10519,7 +10663,7 @@ export default function CommissionStatementsPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [effectiveUserEmail, user]);
 
   useEffect(() => {
     if (!statementRecordsProcessing) {
@@ -10802,6 +10946,9 @@ export default function CommissionStatementsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const previousEffectiveUserEmail = lastMatchEffectiveUserEmailRef.current;
+    const effectiveUserChanged = previousEffectiveUserEmail !== effectiveUserEmail;
+    lastMatchEffectiveUserEmailRef.current = effectiveUserEmail || null;
 
     setMatchingError(null);
 
@@ -10824,7 +10971,10 @@ export default function CommissionStatementsPage() {
       for (const request of statementContractMatchRequests) {
         const key = contractMatchKey(request.scope, request.contractNumber);
         if (!key) continue;
-        next[key] = previous[key]?.status === "matched" ? previous[key] : { status: "loading", contracts: [] };
+        next[key] =
+          !effectiveUserChanged && previous[key]?.status === "matched"
+            ? previous[key]
+            : { status: "loading", contracts: [] };
       }
       return next;
     });
@@ -10849,7 +10999,7 @@ export default function CommissionStatementsPage() {
     return () => {
       cancelled = true;
     };
-  }, [statementContractMatchRequests, statements.length, user]);
+  }, [effectiveUserEmail, statementContractMatchRequests, statements.length, user]);
 
   const matchStats = useMemo<ContractMatchStats>(() => {
     let matched = 0;
@@ -10902,11 +11052,11 @@ export default function CommissionStatementsPage() {
         buildStatementDiscrepancyIssues(
           statement,
           matchesByContractNumber,
-          user?.email ?? null,
+          effectiveUserEmail,
           statementCorrectionContext
         )
       ),
-    [matchesByContractNumber, statementCorrectionContext, statements, user?.email]
+    [effectiveUserEmail, matchesByContractNumber, statementCorrectionContext, statements]
   );
 
   const selectedPdfItems = useMemo<DiscrepancyPdfItem[]>(
@@ -11504,7 +11654,7 @@ export default function CommissionStatementsPage() {
                   key={`${statement.fileName}-${statement.header.statementNumber ?? "bez-cisla"}`}
                   statement={statement}
                   matchesByContractNumber={matchesByContractNumber}
-                  currentUserEmail={user?.email ?? null}
+                  currentUserEmail={effectiveUserEmail}
                   selectedStatementId={statementIdForActions}
                   onRequestSystemStorno={openStornoActionModal}
                   onConvertNeonRefresh={convertNeonRefreshFromStatement}
