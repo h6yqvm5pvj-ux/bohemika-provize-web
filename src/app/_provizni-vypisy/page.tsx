@@ -24,8 +24,10 @@ import {
   ExternalLink,
   HandCoins,
   HeartPulse,
+  House,
   ListChecks,
   Loader2,
+  Plane,
   Plus,
   Printer,
   ReceiptText,
@@ -1376,17 +1378,27 @@ const managerCommissionMatchSortRank = (match: ContractMatchState | null): numbe
 const managerCommissionProductSortRank = (category: StatementProductCategory): number => {
   if (category === "life") return 0;
   if (category === "auto") return 1;
-  return 2;
+  if (category === "property") return 2;
+  if (category === "business") return 3;
+  if (category === "travel") return 4;
+  if (category === "investment") return 5;
+  return 6;
 };
 
 type ManagerCommissionRowSectionKey =
   | "unpairedLife"
   | "unpairedAuto"
+  | "unpairedProperty"
+  | "unpairedBusiness"
+  | "unpairedTravel"
   | "unpairedTroyOunce"
   | "unpairedInvestment"
   | "unpairedOther"
   | "life"
   | "auto"
+  | "property"
+  | "business"
+  | "travel"
   | "troyOunce"
   | "investment"
   | "other";
@@ -1418,14 +1430,20 @@ type ManagerCommissionContractGroup = {
 const MANAGER_COMMISSION_ROW_SECTION_ORDER: ManagerCommissionRowSectionKey[] = [
   "life",
   "auto",
-  "other",
+  "property",
+  "business",
+  "travel",
   "investment",
   "troyOunce",
+  "other",
   "unpairedLife",
   "unpairedAuto",
-  "unpairedOther",
+  "unpairedProperty",
+  "unpairedBusiness",
+  "unpairedTravel",
   "unpairedInvestment",
   "unpairedTroyOunce",
+  "unpairedOther",
 ];
 
 const managerCommissionRowSectionMeta = (
@@ -1442,6 +1460,24 @@ const managerCommissionRowSectionMeta = (
       return {
         label: "Nespárované / Auta",
         description: "Auto řádky bez jednoznačné shody v týmových smlouvách.",
+        className: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "unpairedProperty":
+      return {
+        label: "Nespárované / Majetek a odpovědnost",
+        description: "Majetkové a odpovědnostní řádky bez jednoznačné shody v týmových smlouvách.",
+        className: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "unpairedBusiness":
+      return {
+        label: "Nespárované / Podnikatelé",
+        description: "Podnikatelské řádky bez jednoznačné shody v týmových smlouvách.",
+        className: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "unpairedTravel":
+      return {
+        label: "Nespárované / Cestovní pojištění",
+        description: "Cestovní řádky bez jednoznačné shody v týmových smlouvách.",
         className: "border-amber-200 bg-amber-50 text-amber-950",
       };
     case "unpairedTroyOunce":
@@ -1474,6 +1510,24 @@ const managerCommissionRowSectionMeta = (
         description: "Meziprovize z autopojištění.",
         className: "border-sky-200 bg-sky-50 text-sky-950",
       };
+    case "property":
+      return {
+        label: "Majetek a odpovědnost",
+        description: "Meziprovize z majetkových a odpovědnostních produktů.",
+        className: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "business":
+      return {
+        label: "Podnikatelé",
+        description: "Meziprovize z podnikatelských produktů.",
+        className: "border-orange-200 bg-orange-50 text-orange-950",
+      };
+    case "travel":
+      return {
+        label: "Cestovní pojištění",
+        description: "Meziprovize z cestovního pojištění.",
+        className: "border-cyan-200 bg-cyan-50 text-cyan-950",
+      };
     case "troyOunce":
       return {
         label: "Troyská unce / zlato",
@@ -1505,6 +1559,15 @@ const managerCommissionRowSectionIcon = (
     case "unpairedAuto":
     case "auto":
       return Car;
+    case "unpairedProperty":
+    case "property":
+      return House;
+    case "unpairedBusiness":
+    case "business":
+      return ReceiptText;
+    case "unpairedTravel":
+    case "travel":
+      return Plane;
     case "unpairedOther":
       return AlertTriangle;
     case "unpairedInvestment":
@@ -1538,6 +1601,9 @@ const managerCommissionRowSectionKey = (
   if (matchNotice) {
     if (product.category === "life") return "unpairedLife";
     if (product.category === "auto") return "unpairedAuto";
+    if (product.category === "property") return "unpairedProperty";
+    if (product.category === "business") return "unpairedBusiness";
+    if (product.category === "travel") return "unpairedTravel";
     if (rawCode.startsWith("TU_")) return "unpairedTroyOunce";
     if (product.category === "investment") return "unpairedInvestment";
     return "unpairedOther";
@@ -1545,6 +1611,9 @@ const managerCommissionRowSectionKey = (
 
   if (product.category === "life") return "life";
   if (product.category === "auto") return "auto";
+  if (product.category === "property") return "property";
+  if (product.category === "business") return "business";
+  if (product.category === "travel") return "travel";
   if (rawCode.startsWith("TU_")) return "troyOunce";
   if (product.category === "investment") return "investment";
 
@@ -2105,6 +2174,43 @@ const contractHasInvestmentSectionProduct = (
   uniqueProductMetasForRows(contract.rows).some((product) =>
     INVESTMENT_SECTION_PRODUCT_CODES.has(normalizeProductCode(product.rawCode))
   );
+
+const otherProductContractPrimaryCategory = (
+  contract: OtherProductContractPreview
+): StatementProductCategory | "other" => {
+  if (contractHasProductCategory(contract, "life")) return "life";
+  if (contractHasProductCategory(contract, "auto")) return "auto";
+  if (contractHasProductCategory(contract, "property")) return "property";
+  if (contractHasProductCategory(contract, "business")) return "business";
+  if (contractHasProductCategory(contract, "travel")) return "travel";
+  if (contractHasProductCategory(contract, "investment")) return "investment";
+  if (contractHasProductCategory(contract, "comfort")) return "comfort";
+  return "other";
+};
+
+const otherProductContractCategoryLabel = (
+  contract: OtherProductContractPreview
+): string => {
+  const category = otherProductContractPrimaryCategory(contract);
+  switch (category) {
+    case "auto":
+      return "Auta";
+    case "property":
+      return "Majetek a odpovědnost";
+    case "business":
+      return "Podnikatelé";
+    case "travel":
+      return "Cestovní pojištění";
+    case "investment":
+      return "Investice";
+    case "comfort":
+      return "Comfort";
+    case "life":
+      return "Životní pojištění";
+    default:
+      return "Ostatní smlouvy";
+  }
+};
 
 const POSITION_VALUES: Position[] = [
   "poradce1",
@@ -5448,7 +5554,7 @@ const buildStatementDiscrepancyIssues = (
       productMetas.length > 0
         ? productMetas.map((product) => `${product.label} · ${product.rawCode}`).join("; ")
         : "Produkt nezjištěn";
-    const category = contractHasProductCategory(contract, "auto") ? "Auta" : "Ostatní smlouvy";
+    const category = otherProductContractCategoryLabel(contract);
     const tipOnlyContract = otherProductContractHasOnlyTipRows(reviewContract);
     const matchScope = otherProductContractMatchScope(reviewContract);
     const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber, matchScope);
@@ -8039,25 +8145,82 @@ function UnpairedContractsSection({
   markingControls?: MarkingControls;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [otherLifeExpanded, setOtherLifeExpanded] = useState(false);
   const [troyOunceExpanded, setTroyOunceExpanded] = useState(false);
   const [investmentExpanded, setInvestmentExpanded] = useState(false);
+  const [propertyExpanded, setPropertyExpanded] = useState(false);
+  const [businessExpanded, setBusinessExpanded] = useState(false);
+  const [travelExpanded, setTravelExpanded] = useState(false);
   const totalContracts = lifeContracts.length + otherContracts.length;
   if (totalContracts === 0) return null;
 
   const troyOunceContracts = otherContracts.filter(contractHasTroyOunceProduct);
+  const otherLifeContracts = otherContracts.filter(
+    (contract) =>
+      !contractHasTroyOunceProduct(contract) &&
+      !contractHasInvestmentSectionProduct(contract) &&
+      contractHasProductCategory(contract, "life")
+  );
   const investmentContracts = otherContracts.filter(
     (contract) =>
-      !contractHasTroyOunceProduct(contract) && contractHasInvestmentSectionProduct(contract)
+      !contractHasTroyOunceProduct(contract) &&
+      !contractHasProductCategory(contract, "life") &&
+      contractHasInvestmentSectionProduct(contract)
+  );
+  const propertyContracts = otherContracts.filter(
+    (contract) =>
+      !contractHasTroyOunceProduct(contract) &&
+      !contractHasProductCategory(contract, "life") &&
+      !contractHasInvestmentSectionProduct(contract) &&
+      contractHasProductCategory(contract, "property")
+  );
+  const businessContracts = otherContracts.filter(
+    (contract) =>
+      !contractHasTroyOunceProduct(contract) &&
+      !contractHasProductCategory(contract, "life") &&
+      !contractHasInvestmentSectionProduct(contract) &&
+      !contractHasProductCategory(contract, "property") &&
+      contractHasProductCategory(contract, "business")
+  );
+  const travelContracts = otherContracts.filter(
+    (contract) =>
+      !contractHasTroyOunceProduct(contract) &&
+      !contractHasProductCategory(contract, "life") &&
+      !contractHasInvestmentSectionProduct(contract) &&
+      !contractHasProductCategory(contract, "property") &&
+      !contractHasProductCategory(contract, "business") &&
+      contractHasProductCategory(contract, "travel")
   );
   const remainingOtherContracts = otherContracts.filter(
     (contract) =>
-      !contractHasTroyOunceProduct(contract) && !contractHasInvestmentSectionProduct(contract)
+      !contractHasTroyOunceProduct(contract) &&
+      !contractHasProductCategory(contract, "life") &&
+      !contractHasInvestmentSectionProduct(contract) &&
+      !contractHasProductCategory(contract, "property") &&
+      !contractHasProductCategory(contract, "business") &&
+      !contractHasProductCategory(contract, "travel")
   );
   const troyOunceCommission = troyOunceContracts.reduce(
     (sum, contract) => sum + otherProductContractTotal(contract),
     0
   );
+  const otherLifeCommission = otherLifeContracts.reduce(
+    (sum, contract) => sum + otherProductContractTotal(contract),
+    0
+  );
   const investmentCommission = investmentContracts.reduce(
+    (sum, contract) => sum + otherProductContractTotal(contract),
+    0
+  );
+  const propertyCommission = propertyContracts.reduce(
+    (sum, contract) => sum + otherProductContractTotal(contract),
+    0
+  );
+  const businessCommission = businessContracts.reduce(
+    (sum, contract) => sum + otherProductContractTotal(contract),
+    0
+  );
+  const travelCommission = travelContracts.reduce(
     (sum, contract) => sum + otherProductContractTotal(contract),
     0
   );
@@ -8114,6 +8277,59 @@ function UnpairedContractsSection({
               markingControls={markingControls}
             />
           ))}
+          {otherLifeContracts.length > 0 && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60">
+              <button
+                type="button"
+                onClick={() => setOtherLifeExpanded((value) => !value)}
+                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
+                aria-expanded={otherLifeExpanded}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-700">
+                    <HeartPulse className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h4 className="text-base font-bold text-emerald-950">
+                      Životní pojištění
+                    </h4>
+                    <p className="text-sm text-emerald-900">
+                      Životní produkty mimo detailní rozpad jsou oddělené od ostatních nespárovaných smluv.
+                    </p>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-950">
+                  <span>
+                    {otherLifeContracts.length} smluv · {formatMoney(otherLifeCommission)} Kč
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${
+                      otherLifeExpanded ? "rotate-180" : ""
+                    }`}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                </span>
+              </button>
+              {otherLifeExpanded && (
+                <div className="space-y-3 border-t border-emerald-200 px-4 py-4">
+                  {otherLifeContracts.map((contract) => (
+                    <OtherProductContractCard
+                      key={`unpaired-other-life-${contract.key}`}
+                      contract={contract}
+                      match={contractMatchForNumber(
+                        matchesByContractNumber,
+                        contract.contractNumber,
+                        otherProductContractMatchScope(contract)
+                      )}
+                      deductionRows={deductionRows}
+                      markingControls={markingControls}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {troyOunceContracts.length > 0 && (
             <div className="rounded-2xl border border-violet-200 bg-violet-50/60">
               <button
@@ -8202,6 +8418,165 @@ function UnpairedContractsSection({
                   {investmentContracts.map((contract) => (
                     <OtherProductContractCard
                       key={`unpaired-investment-${contract.key}`}
+                      contract={contract}
+                      match={contractMatchForNumber(
+                        matchesByContractNumber,
+                        contract.contractNumber,
+                        otherProductContractMatchScope(contract)
+                      )}
+                      deductionRows={deductionRows}
+                      markingControls={markingControls}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {propertyContracts.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/60">
+              <button
+                type="button"
+                onClick={() => setPropertyExpanded((value) => !value)}
+                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
+                aria-expanded={propertyExpanded}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-white text-amber-700">
+                    <House className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h4 className="text-base font-bold text-amber-950">
+                      Majetek a odpovědnost
+                    </h4>
+                    <p className="text-sm text-amber-900">
+                      Majetkové a odpovědnostní smlouvy jsou oddělené od ostatních nespárovaných smluv.
+                    </p>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-amber-950">
+                  <span>
+                    {propertyContracts.length} smluv · {formatMoney(propertyCommission)} Kč
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${
+                      propertyExpanded ? "rotate-180" : ""
+                    }`}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                </span>
+              </button>
+              {propertyExpanded && (
+                <div className="space-y-3 border-t border-amber-200 px-4 py-4">
+                  {propertyContracts.map((contract) => (
+                    <OtherProductContractCard
+                      key={`unpaired-property-${contract.key}`}
+                      contract={contract}
+                      match={contractMatchForNumber(
+                        matchesByContractNumber,
+                        contract.contractNumber,
+                        otherProductContractMatchScope(contract)
+                      )}
+                      deductionRows={deductionRows}
+                      markingControls={markingControls}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {businessContracts.length > 0 && (
+            <div className="rounded-2xl border border-orange-200 bg-orange-50/60">
+              <button
+                type="button"
+                onClick={() => setBusinessExpanded((value) => !value)}
+                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
+                aria-expanded={businessExpanded}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-orange-200 bg-white text-orange-700">
+                    <ReceiptText className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h4 className="text-base font-bold text-orange-950">
+                      Podnikatelé
+                    </h4>
+                    <p className="text-sm text-orange-900">
+                      Podnikatelské smlouvy jsou oddělené od ostatních nespárovaných smluv.
+                    </p>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-orange-950">
+                  <span>
+                    {businessContracts.length} smluv · {formatMoney(businessCommission)} Kč
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${
+                      businessExpanded ? "rotate-180" : ""
+                    }`}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                </span>
+              </button>
+              {businessExpanded && (
+                <div className="space-y-3 border-t border-orange-200 px-4 py-4">
+                  {businessContracts.map((contract) => (
+                    <OtherProductContractCard
+                      key={`unpaired-business-${contract.key}`}
+                      contract={contract}
+                      match={contractMatchForNumber(
+                        matchesByContractNumber,
+                        contract.contractNumber,
+                        otherProductContractMatchScope(contract)
+                      )}
+                      deductionRows={deductionRows}
+                      markingControls={markingControls}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {travelContracts.length > 0 && (
+            <div className="rounded-2xl border border-cyan-200 bg-cyan-50/60">
+              <button
+                type="button"
+                onClick={() => setTravelExpanded((value) => !value)}
+                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
+                aria-expanded={travelExpanded}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-200 bg-white text-cyan-700">
+                    <Plane className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h4 className="text-base font-bold text-cyan-950">
+                      Cestovní pojištění
+                    </h4>
+                    <p className="text-sm text-cyan-900">
+                      Cestovní smlouvy jsou oddělené od ostatních nespárovaných smluv.
+                    </p>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-950">
+                  <span>
+                    {travelContracts.length} smluv · {formatMoney(travelCommission)} Kč
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${
+                      travelExpanded ? "rotate-180" : ""
+                    }`}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                </span>
+              </button>
+              {travelExpanded && (
+                <div className="space-y-3 border-t border-cyan-200 px-4 py-4">
+                  {travelContracts.map((contract) => (
+                    <OtherProductContractCard
+                      key={`unpaired-travel-${contract.key}`}
                       contract={contract}
                       match={contractMatchForNumber(
                         matchesByContractNumber,
@@ -9361,6 +9736,7 @@ function OtherProductsSection({
   description = "Primárně seskupeno podle čísla smlouvy. Produkt je doplňující kontrola z výpisu.",
   showTitle = true,
   showDescription = false,
+  sectionKind = "other",
   contracts,
   matchesByContractNumber,
   deductionRows,
@@ -9373,6 +9749,7 @@ function OtherProductsSection({
   description?: string;
   showTitle?: boolean;
   showDescription?: boolean;
+  sectionKind?: "life" | "auto" | "property" | "business" | "travel" | "investment" | "other";
   contracts?: OtherProductContractPreview[];
   matchesByContractNumber: ContractMatchesByNumber;
   deductionRows?: DeductionCommissionRow[];
@@ -9401,20 +9778,80 @@ function OtherProductsSection({
       ),
     0
   );
-  const isAutoSection = title.toLowerCase().includes("auta");
-  const HeaderIcon = isAutoSection ? Car : ReceiptText;
-  const headerIconClass = isAutoSection
-    ? "border-sky-200 bg-sky-50 text-sky-700"
-    : "border-slate-200 bg-slate-50 text-slate-600";
-  const sectionContainerClass = isAutoSection
-    ? "border-sky-200 bg-sky-50/35 shadow-[0_14px_32px_rgba(2,132,199,0.05)]"
-    : "border-slate-200 bg-slate-50/45 shadow-[0_14px_32px_rgba(15,23,42,0.04)]";
-  const sectionAccentClass = isAutoSection ? "bg-sky-500" : "bg-slate-500";
-  const sectionDividerClass = isAutoSection ? "border-sky-100" : "border-slate-200";
+  const sectionMeta: {
+    icon: LucideIcon;
+    iconClass: string;
+    containerClass: string;
+    accentClass: string;
+    dividerClass: string;
+  } =
+    sectionKind === "life"
+      ? {
+          icon: HeartPulse,
+          iconClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+          containerClass:
+            "border-emerald-200 bg-emerald-50/35 shadow-[0_14px_32px_rgba(5,150,105,0.05)]",
+          accentClass: "bg-emerald-500",
+          dividerClass: "border-emerald-100",
+        }
+    : sectionKind === "auto"
+      ? {
+          icon: Car,
+          iconClass: "border-sky-200 bg-sky-50 text-sky-700",
+          containerClass:
+            "border-sky-200 bg-sky-50/35 shadow-[0_14px_32px_rgba(2,132,199,0.05)]",
+          accentClass: "bg-sky-500",
+          dividerClass: "border-sky-100",
+        }
+      : sectionKind === "property"
+        ? {
+            icon: House,
+            iconClass: "border-amber-200 bg-amber-50 text-amber-700",
+            containerClass:
+              "border-amber-200 bg-amber-50/35 shadow-[0_14px_32px_rgba(217,119,6,0.05)]",
+            accentClass: "bg-amber-500",
+            dividerClass: "border-amber-100",
+          }
+      : sectionKind === "business"
+        ? {
+            icon: ReceiptText,
+            iconClass: "border-orange-200 bg-orange-50 text-orange-700",
+            containerClass:
+              "border-orange-200 bg-orange-50/35 shadow-[0_14px_32px_rgba(234,88,12,0.05)]",
+            accentClass: "bg-orange-500",
+            dividerClass: "border-orange-100",
+          }
+      : sectionKind === "travel"
+        ? {
+            icon: Plane,
+            iconClass: "border-cyan-200 bg-cyan-50 text-cyan-700",
+            containerClass:
+              "border-cyan-200 bg-cyan-50/35 shadow-[0_14px_32px_rgba(8,145,178,0.05)]",
+            accentClass: "bg-cyan-500",
+            dividerClass: "border-cyan-100",
+          }
+      : sectionKind === "investment"
+        ? {
+            icon: HandCoins,
+            iconClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            containerClass:
+              "border-emerald-200 bg-emerald-50/35 shadow-[0_14px_32px_rgba(5,150,105,0.05)]",
+            accentClass: "bg-emerald-500",
+            dividerClass: "border-emerald-100",
+          }
+      : {
+          icon: ReceiptText,
+          iconClass: "border-slate-200 bg-slate-50 text-slate-600",
+          containerClass:
+            "border-slate-200 bg-slate-50/45 shadow-[0_14px_32px_rgba(15,23,42,0.04)]",
+          accentClass: "bg-slate-500",
+          dividerClass: "border-slate-200",
+        };
+  const HeaderIcon = sectionMeta.icon;
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl border ${sectionContainerClass}`}>
-      <span className={`pointer-events-none absolute inset-y-0 left-0 w-3 ${sectionAccentClass}`} />
+    <div className={`relative overflow-hidden rounded-2xl border ${sectionMeta.containerClass}`}>
+      <span className={`pointer-events-none absolute inset-y-0 left-0 w-3 ${sectionMeta.accentClass}`} />
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
@@ -9427,7 +9864,7 @@ function OtherProductsSection({
       >
         {showTitle && (
           <div className="flex items-start gap-3">
-            <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${headerIconClass}`}>
+            <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${sectionMeta.iconClass}`}>
               <HeaderIcon className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
             </span>
             <div>
@@ -9456,7 +9893,7 @@ function OtherProductsSection({
       </button>
 
       {expanded && (
-        <div className={`space-y-4 border-t ${sectionDividerClass} py-4 pl-7 pr-4`}>
+        <div className={`space-y-4 border-t ${sectionMeta.dividerClass} py-4 pl-7 pr-4`}>
           {safeContracts.map((contract) => (
             <OtherProductContractCard
               key={contract.key}
@@ -10337,11 +10774,32 @@ function StatementPreview({
         )
       )
   );
+  const lifeProductContracts = pairedOtherProductContracts.filter((contract) =>
+    contractHasProductCategory(contract, "life")
+  );
   const autoProductContracts = pairedOtherProductContracts.filter((contract) =>
     contractHasProductCategory(contract, "auto")
   );
+  const propertyProductContracts = pairedOtherProductContracts.filter((contract) =>
+    contractHasProductCategory(contract, "property")
+  );
+  const businessProductContracts = pairedOtherProductContracts.filter((contract) =>
+    contractHasProductCategory(contract, "business")
+  );
+  const travelProductContracts = pairedOtherProductContracts.filter((contract) =>
+    contractHasProductCategory(contract, "travel")
+  );
+  const investmentProductContracts = pairedOtherProductContracts.filter((contract) =>
+    contractHasProductCategory(contract, "investment")
+  );
   const remainingOtherProductContracts = pairedOtherProductContracts.filter(
-    (contract) => !contractHasProductCategory(contract, "auto")
+    (contract) =>
+      !contractHasProductCategory(contract, "life") &&
+      !contractHasProductCategory(contract, "auto") &&
+      !contractHasProductCategory(contract, "property") &&
+      !contractHasProductCategory(contract, "business") &&
+      !contractHasProductCategory(contract, "travel") &&
+      !contractHasProductCategory(contract, "investment")
   );
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white px-4 py-4">
@@ -10392,8 +10850,22 @@ function StatementPreview({
       />
 
       <OtherProductsSection
+        title="Životní pojištění"
+        description="Životní produkty mimo detailní rozpad jsou oddělené od ostatních smluv."
+        sectionKind="life"
+        contracts={lifeProductContracts}
+        matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
+        statementPeriod={statement.header.period}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
+        markingControls={markingControls}
+      />
+
+      <OtherProductsSection
         title="Auta"
         description="Auto produkty se párují primárně podle čísla smlouvy. Produkt z výpisu je doplňující kontrola."
+        sectionKind="auto"
         contracts={autoProductContracts}
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
@@ -10404,6 +10876,59 @@ function StatementPreview({
       />
 
       <OtherProductsSection
+        title="Majetek a odpovědnost"
+        description="Majetkové a odpovědnostní produkty jsou oddělené od ostatních smluv."
+        sectionKind="property"
+        contracts={propertyProductContracts}
+        matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
+        statementPeriod={statement.header.period}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
+        markingControls={markingControls}
+      />
+
+      <OtherProductsSection
+        title="Podnikatelé"
+        description="Podnikatelské produkty jsou oddělené od ostatních smluv."
+        sectionKind="business"
+        contracts={businessProductContracts}
+        matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
+        statementPeriod={statement.header.period}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
+        markingControls={markingControls}
+      />
+
+      <OtherProductsSection
+        title="Cestovní pojištění"
+        description="Cestovní produkty jsou oddělené od ostatních smluv."
+        sectionKind="travel"
+        contracts={travelProductContracts}
+        matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
+        statementPeriod={statement.header.period}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
+        markingControls={markingControls}
+      />
+
+      <OtherProductsSection
+        title="Investice"
+        description="Investiční produkty jsou oddělené od ostatních smluv."
+        sectionKind="investment"
+        contracts={investmentProductContracts}
+        matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
+        statementPeriod={statement.header.period}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
+        markingControls={markingControls}
+      />
+
+      <OtherProductsSection
+        title="Ostatní produkty"
         contracts={remainingOtherProductContracts}
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}

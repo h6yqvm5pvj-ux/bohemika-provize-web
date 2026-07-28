@@ -231,8 +231,10 @@ const AUTO_STATEMENT_PRODUCT_KEYS: Record<string, Product> = {
   CPP_ACPIVZ: "cppAuto",
   ALLMOJEAUT: "allianzAuto",
   CSOBP_AU_Z: "csobAuto",
+  SOBP_AU_Z: "csobAuto",
   UNIQA_AUTO: "uniqaAuto",
   PIL_AUTOZ: "pillowAuto",
+  SLA_AUTO: "slaviaauto",
   SLA_AUTOZ: "slaviaauto",
   KOO_NAMIRU: "kooperativaAuto",
 };
@@ -241,6 +243,7 @@ const LIFE_STATEMENT_PRODUCT_KEYS: Record<string, Product> = {
   CPP_N_LIFE: "neon",
   CPP_N_RISK: "neon",
   CPP_NEON: "neon",
+  CPP_NEONRF: "neon",
   CPP_NRF_LF: "neon",
   KOOP_FLEXI: "flexi",
   BHMK_PILLOW_UR_NM: "pillowInjury",

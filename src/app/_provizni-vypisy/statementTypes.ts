@@ -40,6 +40,7 @@ export type GeneralCommissionKind =
 
 export type StatementProductCategory =
   | ProductPrimaryCategory
+  | "business"
   | "investment"
   | "unknown";
 

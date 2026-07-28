@@ -4,6 +4,8 @@ import {
   addMonthsToMonthKey,
   classifyLifeSplitCommissionCode,
   formatMonthKey,
+  INVESTMENT_SECTION_PRODUCT_CODES,
+  isLifeSplitProductCode,
   monthKeyFromStatementPeriod,
   normalizeContractNumberForMatch,
   parseLocalDate,
@@ -33,6 +35,55 @@ describe("commission statement parsing helpers", () => {
       category: "life",
       usesAnnualPremiumBase: true,
     });
+  });
+
+  it("puts COLOS_NEMO statement rows into the investment section", () => {
+    expect(resolveStatementProduct("COLOS_NEMO")).toMatchObject({
+      rawCode: "COLOS_NEMO",
+      category: "investment",
+    });
+    expect(INVESTMENT_SECTION_PRODUCT_CODES.has("COLOS_NEMO")).toBe(true);
+  });
+
+  it("maps statement product aliases into product categories", () => {
+    expect(resolveStatementProduct("CPP_DOMEX+")).toMatchObject({
+      productKey: "domex",
+      category: "property",
+    });
+    expect(resolveStatementProduct("MAX_DOM3")).toMatchObject({
+      productKey: "maxdomov",
+      category: "property",
+    });
+    expect(resolveStatementProduct("CPP_SIMPLE")).toMatchObject({
+      productKey: "cppsimplex",
+      category: "business",
+    });
+    expect(resolveStatementProduct("CPP_KP_III")).toMatchObject({
+      category: "business",
+    });
+    expect(resolveStatementProduct("CPP_PPD")).toMatchObject({
+      category: "business",
+    });
+    expect(resolveStatementProduct("CPP_PPR")).toMatchObject({
+      productKey: "cppPPRbez",
+      category: "business",
+    });
+    expect(resolveStatementProduct("CPP_CS_Z")).toMatchObject({
+      productKey: "cppcestovko",
+      category: "travel",
+    });
+    expect(resolveStatementProduct("AXA_CS")).toMatchObject({
+      productKey: "axacestovko",
+      category: "travel",
+    });
+    expect(resolveStatementProduct("SOBP_AU_Z")).toMatchObject({
+      productKey: "csobAuto",
+      category: "auto",
+    });
+    expect(resolveStatementProduct("KOO_PRANI")).toMatchObject({
+      category: "life",
+    });
+    expect(isLifeSplitProductCode("KOO_PRANI")).toBe(false);
   });
 
   it("classifies life split commission codes including role split variants", () => {

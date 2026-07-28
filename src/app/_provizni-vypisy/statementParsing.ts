@@ -25,6 +25,7 @@ const LIFE_SPLIT_PRODUCT_CODES = new Set([
   "CPP_N_LIFE",
   "CPP_N_RISK",
   "CPP_NEON",
+  "CPP_NEONRF",
   "CPP_NRF_LF",
   "KOOP_FLEXI",
   "BHMK_PILLOW_UR_NM",
@@ -35,6 +36,7 @@ const INVESTMENT_SECTION_PRODUCT_CODES = new Set([
   "EFEKTIKA",
   "MONETIKA",
   "CON_INV2_C",
+  "COLOS_NEMO",
 ]);
 
 type KnownStatementProduct = {
@@ -60,6 +62,11 @@ const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
     label: "ČPP ŽP NEON",
     usesAnnualPremiumBase: true,
   },
+  CPP_NEONRF: {
+    product: "neon",
+    label: "ČPP ŽP NEON RF",
+    usesAnnualPremiumBase: true,
+  },
   KOOP_FLEXI: {
     product: "flexi",
     usesAnnualPremiumBase: true,
@@ -82,11 +89,30 @@ const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
   "CPP_DOMX+2": {
     product: "domex",
   },
+  "CPP_DOMEX+": {
+    product: "domex",
+    label: "ČPP DOMEX",
+    category: "property",
+  },
   CPP_SIMPLE: {
     product: "cppsimplex",
+    category: "business",
   },
   CPP_HAFAN: {
     product: "cpphafan",
+  },
+  CPP_KP_III: {
+    label: "ČPP KOMPLEX",
+    category: "business",
+  },
+  CPP_PPD: {
+    label: "ČPP PPD",
+    category: "business",
+  },
+  CPP_PPR: {
+    product: "cppPPRbez",
+    label: "ČPP PPR",
+    category: "business",
   },
   CPP_ACPIII: {
     product: "cppAuto",
@@ -106,11 +132,19 @@ const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
   CSOBP_AU_Z: {
     product: "csobAuto",
   },
+  SOBP_AU_Z: {
+    product: "csobAuto",
+    label: "ČSOB Auto",
+    category: "auto",
+  },
   UNIQA_AUTO: {
     product: "uniqaAuto",
   },
   PIL_AUTOZ: {
     product: "pillowAuto",
+  },
+  SLA_AUTO: {
+    product: "slaviaauto",
   },
   SLA_AUTOZ: {
     product: "slaviaauto",
@@ -126,6 +160,10 @@ const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
     label: "Kooperativa odpovědnost zaměstnance",
     category: "property",
   },
+  KOO_PRANI: {
+    label: "Kooperativa Přání",
+    category: "life",
+  },
   KOOP_PMOP: {
     product: "kooppmop",
     label: "Kooperativa PMOP",
@@ -138,6 +176,31 @@ const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
   },
   MAX_CIZIN: {
     product: "maxcizinkomplex",
+  },
+  MAX_DOM3: {
+    product: "maxdomov",
+    label: "Maxima MAXDOMOV",
+    category: "property",
+  },
+  MAX_DOM4: {
+    product: "maxdomov",
+    label: "Maxima MAXDOMOV",
+    category: "property",
+  },
+  CPP_CS_Z: {
+    product: "cppcestovko",
+    label: "ČPP Cestovní pojištění",
+    category: "travel",
+  },
+  AXA_CS: {
+    product: "axacestovko",
+    label: "AXA Cestovní pojištění",
+    category: "travel",
+  },
+  AXA_CS_Z: {
+    product: "axacestovko",
+    label: "AXA Cestovní pojištění",
+    category: "travel",
   },
   INVESTIKA: {
     label: "Investika",
@@ -155,6 +218,10 @@ const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
     label: "Conseq investice",
     category: "investment",
   },
+  COLOS_NEMO: {
+    label: "COLOS_NEMO",
+    category: "investment",
+  },
   TU_ZLATO: {
     label: "Troyská unce - zlato",
     category: "investment",
@@ -162,6 +229,11 @@ const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
   },
   TU_ESHOPJN: {
     label: "Troyská unce - nákup",
+    category: "investment",
+    note: "U Troyské unce se význam kódů A/B liší podle varianty produktu.",
+  },
+  TU_ZP: {
+    label: "Troyská unce - z poplatku",
     category: "investment",
     note: "U Troyské unce se význam kódů A/B liší podle varianty produktu.",
   },
@@ -220,8 +292,9 @@ const inferStatementProductCategory = (rawCode: string): StatementProductCategor
   if (/^(?:TU_|INVESTIKA|EFEKTIKA|CON_)/.test(rawCode)) return "investment";
   if (/FLEXI|NEON|N_LIFE|N_RISK|PILLOW.*(?:UR|NM)/.test(rawCode)) return "life";
   if (/AUTO|AU_|ACP|PIL_AUTO|MOJEAUT|AUTOZ|NAMIRU/.test(rawCode)) return "auto";
-  if (/DOM|SIMPLE|HAFAN|OBCAN|OD_ZAM/.test(rawCode)) return "property";
-  if (/CEST|CIZIN/.test(rawCode)) return "travel";
+  if (/SIMPLE|PPR|PPD|KP_/.test(rawCode)) return "business";
+  if (/DOM|HAFAN|OBCAN|OD_ZAM/.test(rawCode)) return "property";
+  if (/CEST|CIZIN|_CS/.test(rawCode)) return "travel";
   if (/COMFORT|CC/.test(rawCode)) return "comfort";
   return "unknown";
 };
@@ -233,7 +306,9 @@ const statementProductCategoryLabel = (category: StatementProductCategory): stri
     case "auto":
       return "Auto";
     case "property":
-      return "Majetek / odpovědnost";
+      return "Majetek a odpovědnost";
+    case "business":
+      return "Podnikatelé";
     case "travel":
       return "Cestovní";
     case "comfort":
