@@ -1,6 +1,6 @@
 export const APP_SESSION_COOKIE_NAME = "bohemika_app_session";
 
-const DEFAULT_SESSION_MAX_AGE_SECONDS = 2 * 60 * 60;
+const DEFAULT_SESSION_MAX_AGE_SECONDS = 12 * 60 * 60;
 const MAX_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 const SESSION_VERSION = 1;
 

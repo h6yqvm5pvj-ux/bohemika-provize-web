@@ -50,7 +50,7 @@ interface AppLayoutProps {
   active: ActivePage;
 }
 
-const AUTO_LOGOUT_AFTER_MS = 120 * 60 * 1000;
+const AUTO_LOGOUT_AFTER_MS = 12 * 60 * 60 * 1000;
 const APP_LAYOUT_COPY: Record<
   AppLanguage,
   {
