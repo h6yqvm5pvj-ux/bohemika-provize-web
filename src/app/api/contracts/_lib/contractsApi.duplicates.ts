@@ -140,6 +140,43 @@ export async function collectContractDuplicateGuardRefs({
   const indexedRefs = await resolveEntryRefsByContractNumber(normalized);
   indexedRefs.forEach(addRef);
 
+  const ownerRefs = await collectOwnerEntryRefsByContractNumber({
+    ownerEntriesRef,
+    contractNumber,
+    excludeEntryPath,
+    contextLabel: "collectContractDuplicateGuardRefs",
+  });
+  ownerRefs.forEach(addRef);
+
+  return [...refsByPath.values()];
+}
+
+export async function collectOwnerEntryRefsByContractNumber({
+  ownerEntriesRef,
+  contractNumber,
+  excludeEntryPath,
+  contextLabel = "collectOwnerEntryRefsByContractNumber",
+}: {
+  ownerEntriesRef: FirebaseFirestore.CollectionReference<FirebaseFirestore.DocumentData>;
+  contractNumber: string;
+  excludeEntryPath?: string | null;
+  contextLabel?: string;
+}): Promise<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[]> {
+  const normalized = normalizeContractNumber(contractNumber);
+  if (!normalized) return [];
+
+  const excludedPath = (excludeEntryPath ?? "").trim();
+  const refsByPath = new Map<
+    string,
+    FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
+  >();
+  const addRef = (
+    ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
+  ) => {
+    if (excludedPath && ref.path === excludedPath) return;
+    refsByPath.set(ref.path, ref);
+  };
+
   const possibleStoredNumbers = new Set<string>();
   const raw = contractNumber.trim();
   if (raw) possibleStoredNumbers.add(raw);
@@ -147,13 +184,35 @@ export async function collectContractDuplicateGuardRefs({
   const loose = normalizeContractNumberLoose(contractNumber);
   if (loose) possibleStoredNumbers.add(loose);
 
-  const ownerSnaps = await Promise.all(
-    [...possibleStoredNumbers].map((number) =>
-      ownerEntriesRef.where("contractNumber", "==", number).get()
-    )
-  );
-  for (const snap of ownerSnaps) {
+  const consumeOwnerSnap = (
+    snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>
+  ) => {
     for (const docSnap of snap.docs) {
+      addRef(docSnap.ref);
+    }
+  };
+
+  try {
+    const ownerSnaps = await Promise.all(
+      [...possibleStoredNumbers].map((number) =>
+        ownerEntriesRef.where("contractNumber", "==", number).get()
+      )
+    );
+    ownerSnaps.forEach(consumeOwnerSnap);
+  } catch (queryErr) {
+    if (!isFirestoreFailedPrecondition(queryErr)) {
+      throw queryErr;
+    }
+    console.warn(
+      `${contextLabel}: owner entries contractNumber query failed with FAILED_PRECONDITION, falling back to owner collection scan.`,
+      queryErr
+    );
+    const ownerSnap = await ownerEntriesRef.get();
+    for (const docSnap of ownerSnap.docs) {
+      const data = (docSnap.data() ?? {}) as { contractNumber?: unknown };
+      const docContractNumber =
+        typeof data.contractNumber === "string" ? data.contractNumber : null;
+      if (normalizeContractNumber(docContractNumber) !== normalized) continue;
       addRef(docSnap.ref);
     }
   }

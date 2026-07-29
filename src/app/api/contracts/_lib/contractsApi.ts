@@ -173,6 +173,7 @@ import {
   CONTRACT_REFS_COLLECTION,
   applyContractRefToBatch,
   collectContractDuplicateGuardRefs,
+  collectOwnerEntryRefsByContractNumber,
   contractRefDocId,
   contractRefFromData,
   findExistingContractByNumber,
@@ -5857,25 +5858,25 @@ export async function handleContractsPatch(
         ?.collection("users")
         .doc(ownerEmail)
         .collection("entries");
-      let targetDocs = await ownerEntriesRef
-        ?.where("contractNumber", "==", contractNumberRaw)
-        .get();
-
-      if ((targetDocs?.docs.length ?? 0) === 0) {
-        targetDocs = await ownerEntriesRef
-          ?.where("contractNumber", "==", contractNumber)
-          .get();
-      }
 
       const targetRefs = new Map<
         string,
         FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>
       >();
-      for (const docSnap of targetDocs?.docs ?? []) {
-        const data = docSnap.data() as ContractDoc;
+      const ownerMatchedRefs = ownerEntriesRef
+        ? await collectOwnerEntryRefsByContractNumber({
+            ownerEntriesRef,
+            contractNumber: contractNumberRaw || contractNumber,
+            contextLabel: "POST /api/contracts cpp status sync",
+          })
+        : [];
+      for (const ref of ownerMatchedRefs) {
+        const snap = await ref.get();
+        if (!snap.exists) continue;
+        const data = snap.data() as ContractDoc;
         const docProduct = data.productKey as Product | undefined;
         if (!docProduct || !CPP_STATUS_SYNC_PRODUCTS.has(docProduct)) continue;
-        targetRefs.set(docSnap.ref.path, docSnap.ref);
+        targetRefs.set(ref.path, ref);
       }
 
       const indexedRefs = await resolveEntryRefsByContractNumber(contractNumber);

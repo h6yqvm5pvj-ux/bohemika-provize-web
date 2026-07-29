@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   CONTRACT_NUMBER_CLAIMS_COLLECTION,
   CONTRACT_REFS_COLLECTION,
+  collectOwnerEntryRefsByContractNumber,
   contractRefDocId,
   contractRefFromData,
   entryRefPath,
@@ -80,5 +81,46 @@ describe("contracts duplicate Firestore helpers", () => {
     ).toBe(true);
     expect(isFirestoreFailedPrecondition({ code: 6 })).toBe(false);
     expect(isFirestoreFailedPrecondition(new Error("already exists"))).toBe(false);
+  });
+
+  it("falls back to owner collection scan when contractNumber index is not ready", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const whereGet = vi.fn().mockRejectedValue({ code: 9 });
+    const matchingRef = { path: "users/advisor@example.com/entries/match" };
+    const excludedRef = { path: "users/advisor@example.com/entries/excluded" };
+    const otherRef = { path: "users/advisor@example.com/entries/other" };
+    const ownerEntriesRef = {
+      where: vi.fn(() => ({ get: whereGet })),
+      get: vi.fn().mockResolvedValue({
+        docs: [
+          {
+            ref: matchingRef,
+            data: () => ({ contractNumber: "00123" }),
+          },
+          {
+            ref: excludedRef,
+            data: () => ({ contractNumber: "00123" }),
+          },
+          {
+            ref: otherRef,
+            data: () => ({ contractNumber: "999" }),
+          },
+        ],
+      }),
+    } as unknown as FirebaseFirestore.CollectionReference<FirebaseFirestore.DocumentData>;
+
+    try {
+      const refs = await collectOwnerEntryRefsByContractNumber({
+        ownerEntriesRef,
+        contractNumber: "001 23",
+        excludeEntryPath: excludedRef.path,
+      });
+
+      expect(refs.map((ref) => ref.path)).toEqual([matchingRef.path]);
+      expect(ownerEntriesRef.where).toHaveBeenCalled();
+      expect(ownerEntriesRef.get).toHaveBeenCalledOnce();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
