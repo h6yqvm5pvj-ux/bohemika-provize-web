@@ -243,7 +243,7 @@ export function AccountSecurityPanel({
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             Automatické odhlášení
           </p>
-          <p className="mt-2 text-lg font-black text-slate-950 sm:text-xl">120 minut</p>
+          <p className="mt-2 text-lg font-black text-slate-950 sm:text-xl">12 hodin</p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
             Neaktivní relace se sama ukončí.
           </p>
