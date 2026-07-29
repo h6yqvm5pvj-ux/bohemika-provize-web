@@ -5,12 +5,14 @@ import {
   classifyLifeSplitCommissionCode,
   formatMonthKey,
   INVESTMENT_SECTION_PRODUCT_CODES,
+  isInvestmentSectionProductCode,
   isLifeSplitProductCode,
   monthKeyFromStatementPeriod,
   normalizeContractNumberForMatch,
   parseLocalDate,
   resolveStatementProduct,
 } from "./statementParsing";
+import { createStatementProductMappingIndex } from "./statementProductMap";
 
 describe("commission statement parsing helpers", () => {
   it("normalizes contract numbers for matching", () => {
@@ -84,6 +86,31 @@ describe("commission statement parsing helpers", () => {
       category: "life",
     });
     expect(isLifeSplitProductCode("KOO_PRANI")).toBe(false);
+  });
+
+  it("allows runtime product map overrides for statement parsing", () => {
+    const mapping = createStatementProductMappingIndex([
+      {
+        code: "CPP_NRF_LF",
+        label: "NEON mimo rozpad",
+        productKey: "neon",
+        category: "property",
+        baseRule: "statement",
+        isLifeSplit: false,
+        isInvestmentSection: true,
+        note: null,
+      },
+    ]);
+
+    expect(resolveStatementProduct("CPP_NRF_LF", mapping)).toMatchObject({
+      rawCode: "CPP_NRF_LF",
+      label: "NEON mimo rozpad",
+      productKey: "neon",
+      category: "property",
+      usesAnnualPremiumBase: false,
+    });
+    expect(isLifeSplitProductCode("CPP_NRF_LF", mapping)).toBe(false);
+    expect(isInvestmentSectionProductCode("CPP_NRF_LF", mapping)).toBe(true);
   });
 
   it("classifies life split commission codes including role split variants", () => {

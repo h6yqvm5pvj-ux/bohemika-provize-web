@@ -3526,6 +3526,14 @@ export default function AdminRequestsPage() {
                     ) : null}
                     {isAllowedAdmin ? (
                       <Link
+                        href="/admin/provizni-vypisy/produktova-mapa"
+                        className="whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold !text-violet-100/72 transition hover:bg-white/[0.08] hover:!text-white"
+                      >
+                        Mapa výpisů
+                      </Link>
+                    ) : null}
+                    {isAllowedAdmin ? (
+                      <Link
                         href="/admin/data-health"
                         className="whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold !text-violet-100/72 transition hover:bg-white/[0.08] hover:!text-white"
                       >

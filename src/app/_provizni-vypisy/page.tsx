@@ -113,7 +113,6 @@ import {
   AUTO_PREMIUM_ANNIVERSARY_TOLERANCE_MONTHS,
   COMMISSION_AMOUNT_TOLERANCE,
   COMMISSION_CODE_RULES,
-  INVESTMENT_SECTION_PRODUCT_CODES,
   MANAGER_COMMISSION_AMOUNT_TOLERANCE,
   TROY_OUNCE_COMMISSION_CODE_RULES,
   addMonthsToLocalDate,
@@ -136,6 +135,7 @@ import {
   formatSystemDate,
   formatWholeMoney,
   hasSjednatelExtranetFromDetailLink,
+  isInvestmentSectionProductCode,
   isLifeSplitProductCode,
   isNeonInitialCommissionCode,
   monthKeyFromDate,
@@ -157,10 +157,12 @@ import {
   productLabelFromKey,
   readStatementFile,
   resolveStatementProduct,
+  setActiveStatementProductMapping,
   statementCorrectionSortValue,
   statementProductCategoryLabel,
   toDateInputValue,
 } from "./statementParsing";
+import type { StatementProductMapEntry } from "./statementProductMap";
 import type {
   BohemkaContractDetailModalPayload,
   CoefficientOverrideInfo,
@@ -220,6 +222,11 @@ import type {
   StornoContractGroup,
   StornoStatementActionTarget,
 } from "./statementTypes";
+
+type StatementProductMapResponse = {
+  ok: true;
+  entries: StatementProductMapEntry[];
+} & Record<string, unknown>;
 
 const systemContractPositionRaw = (
   contract: MatchedSystemContract | null | undefined
@@ -595,6 +602,41 @@ const fetchProcessedCommissionStatementHistory = async (
   return payload.items
     .filter(isProcessedSavedStatement)
     .sort((left, right) => savedStatementHistorySortValue(right) - savedStatementHistorySortValue(left));
+};
+
+const fetchStatementProductMap = async (
+  currentUser: FirebaseUser
+): Promise<StatementProductMapEntry[]> => {
+  const request = async (forceRefreshToken = false) => {
+    const token = await currentUser.getIdToken(forceRefreshToken);
+    return fetch("/api/commission-statements/product-map", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+  };
+
+  let response = await request(false);
+  if (response.status === 401) {
+    response = await request(true);
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | StatementProductMapResponse
+    | null;
+
+  if (!response.ok || payload?.ok !== true || !Array.isArray(payload.entries)) {
+    const message =
+      payload &&
+      typeof payload === "object" &&
+      typeof (payload as Record<string, unknown>).error === "string"
+        ? ((payload as Record<string, unknown>).error as string)
+        : "Produktovou mapu výpisů se nepodařilo načíst.";
+    throw new Error(message);
+  }
+
+  return payload.entries;
 };
 
 const sumProcessingResults = (
@@ -2172,7 +2214,7 @@ const contractHasInvestmentSectionProduct = (
   contract: OtherProductContractPreview
 ): boolean =>
   uniqueProductMetasForRows(contract.rows).some((product) =>
-    INVESTMENT_SECTION_PRODUCT_CODES.has(normalizeProductCode(product.rawCode))
+    isInvestmentSectionProductCode(product.rawCode)
   );
 
 const otherProductContractPrimaryCategory = (
@@ -11095,6 +11137,7 @@ export default function CommissionStatementsPage() {
   >([]);
   const [neonRefreshPromptSaving, setNeonRefreshPromptSaving] = useState(false);
   const [neonRefreshPromptError, setNeonRefreshPromptError] = useState<string | null>(null);
+  const [statementProductMapLoaded, setStatementProductMapLoaded] = useState(false);
   const effectiveUserEmail =
     normalizeEmailForComparison(adminImpersonation?.email) ||
     normalizeEmailForComparison(user?.email);
@@ -11116,6 +11159,36 @@ export default function CommissionStatementsPage() {
       window.removeEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!user) {
+      setActiveStatementProductMapping(null);
+      setStatementProductMapLoaded(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setStatementProductMapLoaded(false);
+    void fetchStatementProductMap(user)
+      .then((entries) => {
+        if (cancelled) return;
+        setActiveStatementProductMapping(entries);
+        setStatementProductMapLoaded(true);
+      })
+      .catch((mapError) => {
+        if (cancelled) return;
+        console.warn("Provizní výpisy: produktovou mapu se nepodařilo načíst.", mapError);
+        setActiveStatementProductMapping(null);
+        setStatementProductMapLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const refreshProcessedStatementHistory = async () => {
     if (!user) {
@@ -11698,9 +11771,21 @@ export default function CommissionStatementsPage() {
     setNeonRefreshPromptError(null);
     setNeonRefreshPromptSaving(false);
 
+    if (user && !statementProductMapLoaded) {
+      try {
+        const entries = await fetchStatementProductMap(user);
+        setActiveStatementProductMapping(entries);
+        setStatementProductMapLoaded(true);
+      } catch (mapError) {
+        console.warn("Provizní výpisy: produktovou mapu před importem se nepodařilo načíst.", mapError);
+        setActiveStatementProductMapping(null);
+        setStatementProductMapLoaded(true);
+      }
+    }
+
     let parsedFiles: StatementFileRead[];
     try {
-      parsedFiles = await Promise.all(htmlFiles.map(readStatementFile));
+      parsedFiles = await Promise.all(htmlFiles.map((file) => readStatementFile(file)));
     } catch (parseError) {
       console.error("Provizní výpisy: importní náhled selhal.", parseError);
       setError("Soubor se nepodařilo přečíst. Zkontroluj, že jde o uložený HTML výpis.");

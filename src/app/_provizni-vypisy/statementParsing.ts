@@ -16,228 +16,18 @@ import type {
   ParsedStatement,
   StatementFileRead,
   StatementHeader,
-  StatementProductCategory,
   StatementProductMeta,
   StornoCommissionRow,
 } from "./statementTypes";
-
-const LIFE_SPLIT_PRODUCT_CODES = new Set([
-  "CPP_N_LIFE",
-  "CPP_N_RISK",
-  "CPP_NEON",
-  "CPP_NEONRF",
-  "CPP_NRF_LF",
-  "KOOP_FLEXI",
-  "BHMK_PILLOW_UR_NM",
-]);
-
-const INVESTMENT_SECTION_PRODUCT_CODES = new Set([
-  "INVESTIKA",
-  "EFEKTIKA",
-  "MONETIKA",
-  "CON_INV2_C",
-  "COLOS_NEMO",
-]);
-
-type KnownStatementProduct = {
-  product?: Product;
-  label?: string;
-  category?: StatementProductCategory;
-  usesAnnualPremiumBase?: boolean;
-  note?: string;
-};
-
-const KNOWN_STATEMENT_PRODUCTS: Record<string, KnownStatementProduct> = {
-  CPP_N_LIFE: {
-    product: "neon",
-    usesAnnualPremiumBase: true,
-  },
-  CPP_NEON: {
-    product: "neon",
-    label: "ČPP ŽP NEON",
-    usesAnnualPremiumBase: true,
-  },
-  CPP_NRF_LF: {
-    product: "neon",
-    label: "ČPP ŽP NEON",
-    usesAnnualPremiumBase: true,
-  },
-  CPP_NEONRF: {
-    product: "neon",
-    label: "ČPP ŽP NEON RF",
-    usesAnnualPremiumBase: true,
-  },
-  KOOP_FLEXI: {
-    product: "flexi",
-    usesAnnualPremiumBase: true,
-    note: "Životní pojištění. Pokud výpis uvádí základnu, bereme ji jako roční pojistné. V testovaném lednu ale KOOP_FLEXI posílá základnu 0, takže měsíční pojistné doplníme až ze spárované smlouvy.",
-  },
-  BHMK_PILLOW_UR_NM: {
-    product: "pillowInjury",
-    label: "Pillow Úraz / Nemoc",
-    category: "life",
-    usesAnnualPremiumBase: true,
-  },
-  CPP_N_RISK: {
-    product: "neon",
-    label: "ČPP ŽP NEON RISK",
-    usesAnnualPremiumBase: true,
-  },
-  CPP_DOMX: {
-    product: "domex",
-  },
-  "CPP_DOMX+2": {
-    product: "domex",
-  },
-  "CPP_DOMEX+": {
-    product: "domex",
-    label: "ČPP DOMEX",
-    category: "property",
-  },
-  CPP_SIMPLE: {
-    product: "cppsimplex",
-    category: "business",
-  },
-  CPP_HAFAN: {
-    product: "cpphafan",
-  },
-  CPP_KP_III: {
-    label: "ČPP KOMPLEX",
-    category: "business",
-  },
-  CPP_PPD: {
-    label: "ČPP PPD",
-    category: "business",
-  },
-  CPP_PPR: {
-    product: "cppPPRbez",
-    label: "ČPP PPR",
-    category: "business",
-  },
-  CPP_ACPIII: {
-    product: "cppAuto",
-  },
-  CPP_ACPIV: {
-    product: "cppAuto",
-  },
-  CPP_ACPIVZ: {
-    product: "cppAuto",
-  },
-  ALLMOJEAUT: {
-    product: "allianzAuto",
-  },
-  "ČSOBP_AU_Z": {
-    product: "csobAuto",
-  },
-  CSOBP_AU_Z: {
-    product: "csobAuto",
-  },
-  SOBP_AU_Z: {
-    product: "csobAuto",
-    label: "ČSOB Auto",
-    category: "auto",
-  },
-  UNIQA_AUTO: {
-    product: "uniqaAuto",
-  },
-  PIL_AUTOZ: {
-    product: "pillowAuto",
-  },
-  SLA_AUTO: {
-    product: "slaviaauto",
-  },
-  SLA_AUTOZ: {
-    product: "slaviaauto",
-  },
-  KOO_NAMIRU: {
-    product: "kooperativaAuto",
-  },
-  KOO_OBCAN: {
-    product: "koopmajetekobcan",
-  },
-  KOO_OD_ZAM: {
-    product: "koopodzam",
-    label: "Kooperativa odpovědnost zaměstnance",
-    category: "property",
-  },
-  KOO_PRANI: {
-    label: "Kooperativa Přání",
-    category: "life",
-  },
-  KOOP_PMOP: {
-    product: "kooppmop",
-    label: "Kooperativa PMOP",
-    category: "property",
-  },
-  KOO_PMOP: {
-    product: "kooppmop",
-    label: "Kooperativa PMOP",
-    category: "property",
-  },
-  MAX_CIZIN: {
-    product: "maxcizinkomplex",
-  },
-  MAX_DOM3: {
-    product: "maxdomov",
-    label: "Maxima MAXDOMOV",
-    category: "property",
-  },
-  MAX_DOM4: {
-    product: "maxdomov",
-    label: "Maxima MAXDOMOV",
-    category: "property",
-  },
-  CPP_CS_Z: {
-    product: "cppcestovko",
-    label: "ČPP Cestovní pojištění",
-    category: "travel",
-  },
-  AXA_CS: {
-    product: "axacestovko",
-    label: "AXA Cestovní pojištění",
-    category: "travel",
-  },
-  AXA_CS_Z: {
-    product: "axacestovko",
-    label: "AXA Cestovní pojištění",
-    category: "travel",
-  },
-  INVESTIKA: {
-    label: "Investika",
-    category: "investment",
-  },
-  EFEKTIKA: {
-    label: "Efektika",
-    category: "investment",
-  },
-  MONETIKA: {
-    label: "Monetika",
-    category: "investment",
-  },
-  CON_INV2_C: {
-    label: "Conseq investice",
-    category: "investment",
-  },
-  COLOS_NEMO: {
-    label: "COLOS_NEMO",
-    category: "investment",
-  },
-  TU_ZLATO: {
-    label: "Troyská unce - zlato",
-    category: "investment",
-    note: "U Troyské unce se význam kódů A/B liší podle varianty produktu.",
-  },
-  TU_ESHOPJN: {
-    label: "Troyská unce - nákup",
-    category: "investment",
-    note: "U Troyské unce se význam kódů A/B liší podle varianty produktu.",
-  },
-  TU_ZP: {
-    label: "Troyská unce - z poplatku",
-    category: "investment",
-    note: "U Troyské unce se význam kódů A/B liší podle varianty produktu.",
-  },
-};
+import {
+  DEFAULT_STATEMENT_PRODUCT_MAPPING_INDEX,
+  createStatementProductMappingIndex,
+  inferStatementProductCategory,
+  shouldUseAnnualPremiumBase,
+  statementProductCategoryLabel,
+  type StatementProductMapEntry,
+  type StatementProductMappingIndex,
+} from "./statementProductMap";
 
 const normalizeText = (value: string | null | undefined): string =>
   String(value ?? "").replace(/\s+/g, " ").trim();
@@ -248,8 +38,49 @@ const normalizeProductCode = (value: string | null | undefined): string =>
 const normalizeContractNumberForMatch = (value: string | null | undefined): string =>
   normalizeText(value).replace(/\s+/g, "").toUpperCase();
 
-const isLifeSplitProductCode = (product: string | null | undefined): boolean =>
-  LIFE_SPLIT_PRODUCT_CODES.has(normalizeProductCode(product));
+let activeStatementProductMappingIndex: StatementProductMappingIndex =
+  DEFAULT_STATEMENT_PRODUCT_MAPPING_INDEX;
+
+const INVESTMENT_SECTION_PRODUCT_CODES =
+  DEFAULT_STATEMENT_PRODUCT_MAPPING_INDEX.investmentSectionCodes;
+
+const statementProductMappingIndexFromInput = (
+  input?: StatementProductMappingIndex | StatementProductMapEntry[] | null
+): StatementProductMappingIndex => {
+  if (!input) return activeStatementProductMappingIndex;
+  if (Array.isArray(input)) return createStatementProductMappingIndex(input);
+  return input;
+};
+
+const setActiveStatementProductMapping = (
+  entries?: StatementProductMappingIndex | StatementProductMapEntry[] | null
+): StatementProductMappingIndex => {
+  activeStatementProductMappingIndex = entries
+    ? statementProductMappingIndexFromInput(entries)
+    : DEFAULT_STATEMENT_PRODUCT_MAPPING_INDEX;
+  return activeStatementProductMappingIndex;
+};
+
+const resetActiveStatementProductMapping = (): StatementProductMappingIndex => {
+  activeStatementProductMappingIndex = DEFAULT_STATEMENT_PRODUCT_MAPPING_INDEX;
+  return activeStatementProductMappingIndex;
+};
+
+const isLifeSplitProductCode = (
+  product: string | null | undefined,
+  mappingIndex?: StatementProductMappingIndex | null
+): boolean =>
+  (mappingIndex ?? activeStatementProductMappingIndex).lifeSplitCodes.has(
+    normalizeProductCode(product)
+  );
+
+const isInvestmentSectionProductCode = (
+  product: string | null | undefined,
+  mappingIndex?: StatementProductMappingIndex | null
+): boolean =>
+  (mappingIndex ?? activeStatementProductMappingIndex).investmentSectionCodes.has(
+    normalizeProductCode(product)
+  );
 
 const hasSjednatelExtranetFromDetailLink = (
   product: string | null | undefined
@@ -288,51 +119,21 @@ const normalizeCommissionTitle = (value: string | null | undefined): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-const inferStatementProductCategory = (rawCode: string): StatementProductCategory => {
-  if (/^(?:TU_|INVESTIKA|EFEKTIKA|CON_)/.test(rawCode)) return "investment";
-  if (/FLEXI|NEON|N_LIFE|N_RISK|PILLOW.*(?:UR|NM)/.test(rawCode)) return "life";
-  if (/AUTO|AU_|ACP|PIL_AUTO|MOJEAUT|AUTOZ|NAMIRU/.test(rawCode)) return "auto";
-  if (/SIMPLE|PPR|PPD|KP_/.test(rawCode)) return "business";
-  if (/DOM|HAFAN|OBCAN|OD_ZAM/.test(rawCode)) return "property";
-  if (/CEST|CIZIN|_CS/.test(rawCode)) return "travel";
-  if (/COMFORT|CC/.test(rawCode)) return "comfort";
-  return "unknown";
-};
-
-const statementProductCategoryLabel = (category: StatementProductCategory): string => {
-  switch (category) {
-    case "life":
-      return "Životní";
-    case "auto":
-      return "Auto";
-    case "property":
-      return "Majetek a odpovědnost";
-    case "business":
-      return "Podnikatelé";
-    case "travel":
-      return "Cestovní";
-    case "comfort":
-      return "Comfort";
-    case "investment":
-      return "Investice";
-    default:
-      return "Nezařazeno";
-  }
-};
-
-const resolveStatementProduct = (product: string): StatementProductMeta => {
+const resolveStatementProduct = (
+  product: string,
+  mappingIndex?: StatementProductMappingIndex | null
+): StatementProductMeta => {
   const rawCode = normalizeProductCode(product) || "NEZNAMY_PRODUKT";
-  const known = KNOWN_STATEMENT_PRODUCTS[rawCode];
-  const catalogMeta = known?.product ? PRODUCT_CATALOG[known.product] : null;
-  const category = known?.category ?? catalogMeta?.category ?? inferStatementProductCategory(rawCode);
+  const known = (mappingIndex ?? activeStatementProductMappingIndex).products[rawCode];
+  const category = known?.category ?? inferStatementProductCategory(rawCode);
 
   return {
     rawCode,
-    label: known?.label ?? catalogMeta?.label ?? rawCode,
-    productKey: known?.product ?? null,
+    label: known?.label ?? rawCode,
+    productKey: known?.productKey ?? null,
     category,
-    usesAnnualPremiumBase: known?.usesAnnualPremiumBase ?? category === "life",
-    note: known?.note,
+    usesAnnualPremiumBase: shouldUseAnnualPremiumBase(known, category),
+    note: known?.note ?? undefined,
   };
 };
 
@@ -1315,13 +1116,16 @@ const parseManagerCommissions = (doc: Document): ManagerCommissionAdvisor[] => {
 
 const buildLifeSplitContracts = (
   commissionRows: CommissionRow[],
-  otherPayments: OtherPayment[]
+  otherPayments: OtherPayment[],
+  mappingIndex: StatementProductMappingIndex
 ): LifeSplitContractPreview[] => {
   const grouped = new Map<string, LifeSplitContractPreview>();
-  const splitRows = commissionRows.filter((row) => isLifeSplitProductCode(row.product));
+  const splitRows = commissionRows.filter((row) =>
+    isLifeSplitProductCode(row.product, mappingIndex)
+  );
 
   for (const row of splitRows) {
-    const product = resolveStatementProduct(row.product);
+    const product = resolveStatementProduct(row.product, mappingIndex);
     const key = `${product.rawCode}:${row.contractNumber || row.id}`;
     const existing =
       grouped.get(key) ??
@@ -1370,10 +1174,13 @@ const buildLifeSplitContracts = (
 
 const buildOtherProductContracts = (
   commissionRows: CommissionRow[],
-  otherPayments: OtherPayment[]
+  otherPayments: OtherPayment[],
+  mappingIndex: StatementProductMappingIndex
 ): OtherProductContractPreview[] => {
   const grouped = new Map<string, OtherProductContractPreview>();
-  const rows = commissionRows.filter((row) => !isLifeSplitProductCode(row.product));
+  const rows = commissionRows.filter(
+    (row) => !isLifeSplitProductCode(row.product, mappingIndex)
+  );
 
   for (const row of rows) {
     const key = row.contractNumber || row.id;
@@ -1425,7 +1232,16 @@ const findUnmatchedB36Payments = (
   );
 };
 
-const parseStatementHtml = (html: string, fileName: string): ParsedStatement => {
+type ParseStatementOptions = {
+  productMap?: StatementProductMappingIndex | StatementProductMapEntry[] | null;
+};
+
+const parseStatementHtml = (
+  html: string,
+  fileName: string,
+  options?: ParseStatementOptions
+): ParsedStatement => {
+  const mappingIndex = statementProductMappingIndexFromInput(options?.productMap);
   const doc = new DOMParser().parseFromString(html, "text/html");
   const payoutTotal = parseStatementPayoutTotal(doc);
   const rawCommissionRows = parseCommissionRows(doc);
@@ -1438,8 +1254,16 @@ const parseStatementHtml = (html: string, fileName: string): ParsedStatement => 
   const otherPayments = parseOtherPayments(doc);
   const contractStatusRules = parseContractStatusRules(doc);
   const managerCommissions = parseManagerCommissions(doc);
-  const lifeSplitContracts = buildLifeSplitContracts(commissionRows, otherPayments);
-  const otherProductContracts = buildOtherProductContracts(commissionRows, otherPayments);
+  const lifeSplitContracts = buildLifeSplitContracts(
+    commissionRows,
+    otherPayments,
+    mappingIndex
+  );
+  const otherProductContracts = buildOtherProductContracts(
+    commissionRows,
+    otherPayments,
+    mappingIndex
+  );
   const unmatchedB36Payments = findUnmatchedB36Payments(commissionRows, otherPayments);
   const parseWarnings: string[] = [];
 
@@ -1467,12 +1291,15 @@ const parseStatementHtml = (html: string, fileName: string): ParsedStatement => 
   };
 };
 
-const readStatementFile = async (file: File): Promise<StatementFileRead> => {
+const readStatementFile = async (
+  file: File,
+  options?: ParseStatementOptions
+): Promise<StatementFileRead> => {
   const buffer = await file.arrayBuffer();
   const html = new TextDecoder("iso-8859-2").decode(buffer);
   return {
     html,
-    statement: parseStatementHtml(html, file.name),
+    statement: parseStatementHtml(html, file.name, options),
   };
 };
 
@@ -1568,6 +1395,7 @@ export {
   formatSystemDate,
   formatWholeMoney,
   hasSjednatelExtranetFromDetailLink,
+  isInvestmentSectionProductCode,
   isLifePremiumIncreaseCommissionCode,
   isLifeSplitProductCode,
   isNeonInitialCommissionCode,
@@ -1592,7 +1420,9 @@ export {
   paymentsPerYearForFrequency,
   productLabelFromKey,
   readStatementFile,
+  resetActiveStatementProductMapping,
   resolveStatementProduct,
+  setActiveStatementProductMapping,
   statementCorrectionSortValue,
   statementProductCategoryLabel,
   toDateInputValue,
