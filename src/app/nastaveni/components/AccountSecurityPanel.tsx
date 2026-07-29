@@ -274,8 +274,8 @@ export function AccountSecurityPanel({
         </article>
       </div>
 
-      <div className="grid gap-3 sm:gap-4 xl:grid-cols-[minmax(430px,1.12fr)_minmax(320px,0.88fr)] xl:items-start">
-        <div className="xl:order-2">
+      <div className="grid gap-4 xl:grid-cols-[minmax(430px,1.08fr)_minmax(340px,0.92fr)] xl:items-start">
+        <div className="order-2 space-y-4 xl:order-2">
           <div className="rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[24px] sm:p-4 sm:shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
             <div className="flex items-start gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 sm:h-11 sm:w-11 sm:rounded-2xl">
@@ -287,12 +287,14 @@ export function AccountSecurityPanel({
                 </div>
                 <div className="mt-1 break-all text-base font-bold text-slate-950">{userEmail}</div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  Odhlášení najdeš dole v levém panelu.
+                  Hlavní odhlášení najdeš v navigaci aplikace.
                 </p>
               </div>
             </div>
+          </div>
 
-            <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[24px] sm:p-4 sm:shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
+            <div>
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <KeyRound size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
@@ -320,108 +322,10 @@ export function AccountSecurityPanel({
                 </div>
               ) : null}
             </div>
+          </div>
 
-            <div className="mt-4 border-t border-slate-100 pt-4">
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <MonitorSmartphone
-                    size={13}
-                    strokeWidth={2}
-                    className="text-slate-500"
-                    aria-hidden="true"
-                  />
-                  <span>Aktivní zařízení</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void onRefreshAccountSessions()}
-                  disabled={accountSessionsLoading || accountSessionsBusy}
-                  className="inline-flex min-h-8 w-fit items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <RefreshCw
-                    size={12}
-                    strokeWidth={2.2}
-                    className={accountSessionsLoading ? "animate-spin" : ""}
-                    aria-hidden="true"
-                  />
-                  Obnovit
-                </button>
-              </div>
-
-              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl">
-                {accountSessionsLoading ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                    Načítám aktivní zařízení…
-                  </div>
-                ) : accountSessions.length === 0 ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                    Zatím není evidovaná žádná aktivní relace.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {accountSessions.map((session) => (
-                      <div
-                        key={session.id}
-                        className={`rounded-xl border px-3 py-3 sm:rounded-2xl ${
-                          session.current
-                            ? "border-violet-200 bg-violet-50"
-                            : "border-slate-200 bg-white"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="min-w-0 break-words text-sm font-semibold text-slate-900">
-                                {session.deviceLabel}
-                              </p>
-                              {session.current ? (
-                                <span className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-800">
-                                  Toto zařízení
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                              Naposledy {formatDateTime(session.lastSeenAtMs)} · platí do{" "}
-                              {formatDateTime(session.expiresAtMs)}
-                            </p>
-                          </div>
-                          <span
-                            className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                              session.current ? "bg-violet-700" : "bg-emerald-500"
-                            }`}
-                            aria-hidden="true"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => void onRevokeOtherSessions()}
-                  disabled={revokeOtherSessionsDisabled}
-                  className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
-                >
-                  <LogOut size={16} strokeWidth={2.2} aria-hidden="true" />
-                  {accountSessionsBusy
-                    ? "Odhlašuji…"
-                    : otherSessionsCount > 0
-                      ? `Odhlásit ostatní zařízení (${otherSessionsCount})`
-                      : "Odhlásit ostatní zařízení"}
-                </button>
-
-                {accountSessionsStatus ? (
-                  <div
-                    className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${statusClass(accountSessionsStatus)}`}
-                  >
-                    {accountSessionsStatus.message}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[24px] sm:p-4 sm:shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
+            <div>
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -531,7 +435,8 @@ export function AccountSecurityPanel({
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[24px] sm:shadow-[0_18px_36px_rgba(15,23,42,0.08)] xl:order-1">
+        <div className="order-1 space-y-4 xl:order-1">
+        <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[24px] sm:shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
           <div className="mfa-security-hero bg-[linear-gradient(135deg,#0b0717_0%,#1d1238_52%,#5b21b6_100%)] px-3.5 py-4 text-white sm:px-5 sm:py-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-3">
@@ -788,6 +693,120 @@ export function AccountSecurityPanel({
             )}
           </div>
         </div>
+
+        <div className="rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[24px] sm:p-4 sm:shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-violet-100 bg-violet-50 text-violet-800">
+                <MonitorSmartphone size={18} strokeWidth={2.2} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Aktivní zařízení
+                </p>
+                <h3 className="mt-1 text-lg font-black text-slate-950">
+                  Přihlášené relace
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Přehled prohlížečů a zařízení, kde je účet aktuálně přihlášený.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void onRefreshAccountSessions()}
+              disabled={accountSessionsLoading || accountSessionsBusy}
+              className="inline-flex min-h-9 w-fit items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw
+                size={13}
+                strokeWidth={2.2}
+                className={accountSessionsLoading ? "animate-spin" : ""}
+                aria-hidden="true"
+              />
+              Obnovit
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-3 rounded-[18px] border border-slate-200 bg-slate-50 p-3">
+            {accountSessionsLoading ? (
+              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
+                Načítám aktivní zařízení…
+              </div>
+            ) : accountSessions.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
+                Zatím není evidovaná žádná aktivní relace.
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {accountSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={`rounded-2xl border px-3 py-3 ${
+                      session.current
+                        ? "border-violet-200 bg-violet-50"
+                        : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="min-w-0 break-words text-sm font-bold text-slate-950">
+                            {session.deviceLabel}
+                          </p>
+                          {session.current ? (
+                            <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-violet-800">
+                              Toto zařízení
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-2 grid gap-1 text-[11px] leading-relaxed text-slate-500 sm:grid-cols-2">
+                          <p>
+                            <span className="font-semibold text-slate-600">Naposledy:</span>{" "}
+                            {formatDateTime(session.lastSeenAtMs)}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-600">Platí do:</span>{" "}
+                            {formatDateTime(session.expiresAtMs)}
+                          </p>
+                        </div>
+                      </div>
+                      <span
+                        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                          session.current ? "bg-violet-700" : "bg-emerald-500"
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => void onRevokeOtherSessions()}
+              disabled={revokeOtherSessionsDisabled}
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <LogOut size={16} strokeWidth={2.2} aria-hidden="true" />
+              {accountSessionsBusy
+                ? "Odhlašuji…"
+                : otherSessionsCount > 0
+                  ? `Odhlásit ostatní zařízení (${otherSessionsCount})`
+                  : "Odhlásit ostatní zařízení"}
+            </button>
+
+            {accountSessionsStatus ? (
+              <div
+                className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${statusClass(accountSessionsStatus)}`}
+              >
+                {accountSessionsStatus.message}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
       </div>
       {showPasswordForm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4">
