@@ -75,10 +75,7 @@ async function verifyMatchingAppSession(req: NextRequest, ctx: { uid: string; em
 
     return {
       ok: false as const,
-      error:
-        verification.reason === "missing"
-          ? "Chybí serverová session cookie."
-          : "Serverová session už není platná.",
+      error: "Serverová session není správně nakonfigurována.",
     };
   }
 
