@@ -122,6 +122,7 @@ const shouldAttachImpersonationHeader = (
 ): boolean => {
   const url = requestUrl(input);
   if (!url || url.origin !== window.location.origin) return false;
+  if (window.location.pathname === "/nastaveni") return false;
   const { pathname } = url;
   const method = requestMethod(input, init);
   if (pathname === "/api/user/profile") {

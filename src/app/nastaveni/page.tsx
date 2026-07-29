@@ -1,7 +1,7 @@
 // src/app/nastaveni/page.tsx
 "use client";
 
-import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
   Calculator,
@@ -39,6 +39,10 @@ import {
 import { auth } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  clearAdminImpersonationState,
+  readAdminImpersonationState,
+} from "@/app/lib/adminImpersonation";
 import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import {
   createPasskeyForUser,
@@ -782,6 +786,11 @@ export default function SettingsPage() {
   };
 
   // auth
+  useLayoutEffect(() => {
+    if (!readAdminImpersonationState()) return;
+    clearAdminImpersonationState();
+  }, []);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       if (!fbUser) {
@@ -1048,9 +1057,21 @@ export default function SettingsPage() {
       try {
         const payload = await fetchAuthedJsonOrThrow<{
           ok?: boolean;
+          email?: string;
           hasProfile?: boolean;
           profile?: Record<string, unknown>;
         }>(user, "/api/user/profile", { method: "GET" });
+
+        const payloadEmail = normalizeEmail(payload?.email);
+        if (payloadEmail && payloadEmail !== email) {
+          setOnlineCardDraft(defaultOnlineCardFromUser(email, {}));
+          setProfileStatus({
+            type: "error",
+            message:
+              "Nastavení načetlo profil jiného uživatele. Obnov stránku a zkontroluj přihlášení.",
+          });
+          return;
+        }
 
         let profileManagerEmailForHierarchy = "";
 
