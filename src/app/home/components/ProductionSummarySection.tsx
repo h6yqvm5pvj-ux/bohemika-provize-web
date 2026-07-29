@@ -3,6 +3,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  CircleHelp,
   Minus,
   Tag,
   UserRound,
@@ -10,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { type AppLanguage } from "@/lib/appLanguage";
+import { HelpDialog } from "@/components/HelpDialog";
 import { AnimatedMoney, AnimatedNumber } from "./AnimatedNumbers";
 import { LoadingProgressPanel } from "./LoadingProgressPanel";
 
@@ -314,6 +316,7 @@ export function ProductionSummarySection({
   const copy = PRODUCTION_SUMMARY_COPY[language];
   const [loadingProgress, setLoadingProgress] = useState(14);
   const [mobileCardIndex, setMobileCardIndex] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
   const mobileCarouselRef = useRef<HTMLDivElement | null>(null);
   const clampedLoadingProgress = Math.max(8, Math.min(97, loadingProgress));
 
@@ -449,9 +452,86 @@ export function ProductionSummarySection({
     }
   };
 
+  const helpButton = (
+    <button
+      type="button"
+      onClick={() => setHelpOpen(true)}
+      aria-label="Otevřít nápovědu k produkci"
+      title="Nápověda"
+      className="absolute right-4 top-4 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-violet-100/42 bg-violet-100/12 text-violet-50 shadow-[0_10px_24px_rgba(11,3,33,0.32)] backdrop-blur-md transition hover:border-violet-100/72 hover:bg-violet-100/20 focus:outline-none focus:ring-2 focus:ring-violet-100/70"
+    >
+      <CircleHelp className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
+    </button>
+  );
+
+  const helpDialog = (
+    <HelpDialog
+      isOpen={helpOpen}
+      onClose={() => setHelpOpen(false)}
+      title={showTeamBox ? "Nápověda k týmové produkci" : "Nápověda k produkci poradce"}
+      description="Tahle karta ukazuje provizní produkci za aktuální měsíc."
+    >
+      <div className="space-y-5 text-sm leading-6 text-slate-700">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+          <p className="font-semibold">Základní pravidlo</p>
+          <p className="mt-1">
+            Zobrazují se zde pouze smlouvy, u kterých datum uzavření spadá do
+            aktuálního měsíce. Datum vytvoření záznamu v aplikaci pro tento
+            přehled nerozhoduje.
+          </p>
+        </div>
+
+        <section>
+          <h3 className="text-base font-bold text-slate-950">Vlastní produkce</h3>
+          <p className="mt-1">
+            Součet okamžitých provizí ze smluv, které má poradce sjednané v
+            aktuálním měsíci. U produktů rozdělených na provizní kódy se počítá
+            jen okamžitá část, například A101, B0301 a polovina B36/B3601.
+            Následné provize a souhrnné řádky se do této částky nezapočítávají.
+          </p>
+        </section>
+
+        <section>
+          <h3 className="text-base font-bold text-slate-950">TIP</h3>
+          <p className="mt-1">
+            Pokud má poradce TIP výplaty, aplikace je zobrazuje samostatně.
+            Počet TIPů vychází ze zdrojových smluv v aktuálním měsíci a částka
+            sčítá kladné TIP výplaty. Když je u TIPu známé datum uzavření
+            zdrojové smlouvy, používá se ono; jinak se použije datum výplaty.
+          </p>
+        </section>
+
+        {showTeamBox ? (
+          <>
+            <section>
+              <h3 className="text-base font-bold text-slate-950">Týmová produkce</h3>
+              <p className="mt-1">
+                Manažer zde vidí meziprovize ze smluv v podřízené týmové
+                struktuře, opět pouze za smlouvy s datem uzavření v aktuálním
+                měsíci. Do částky se počítají jen okamžité části meziprovize,
+                ne celá meziprovize ani pozdější následné části.
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-base font-bold text-slate-950">Celková produkce</h3>
+              <p className="mt-1">
+                Celková produkce je součet vlastní produkce, týmové produkce a
+                případných TIP výplat. Počet smluv v celkové kartě je součet
+                vlastních a týmových smluv; TIP má vlastní počet zvlášť.
+              </p>
+            </section>
+          </>
+        ) : null}
+      </div>
+    </HelpDialog>
+  );
+
   if (loading) {
     return (
       <section className={containerShellClass} data-fixed-box-theme="slate">
+        {helpButton}
+        {helpDialog}
         <div className="relative z-10 flex h-full items-center">
           <LoadingProgressPanel
             title={copy.loadingTitle}
@@ -468,6 +548,8 @@ export function ProductionSummarySection({
   if (!showTeamBox) {
     return (
       <section className={containerShellClass} data-fixed-box-theme="slate">
+        {helpButton}
+        {helpDialog}
         <div className="relative z-10 md:hidden">
           <div
             ref={mobileCarouselRef}
@@ -513,6 +595,8 @@ export function ProductionSummarySection({
 
   return (
     <section className={containerShellClass} data-fixed-box-theme="slate">
+      {helpButton}
+      {helpDialog}
       <div className="relative z-10 md:hidden">
         <div
           ref={mobileCarouselRef}

@@ -29,7 +29,10 @@ import {
 } from "@/app/lib/teamHierarchy";
 import { toDate } from "@/app/lib/formatters";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
-import { totalWithMultipliers } from "@/app/lib/commissionTotals";
+import {
+  isImmediateCommissionItem,
+  totalWithMultipliers,
+} from "@/app/lib/commissionTotals";
 import { computeLegacyFrequencyOverrideTotal } from "@/app/lib/managerOverrideTotals";
 import {
   applyTipContractAdjustmentToCommissionItems,
@@ -1718,30 +1721,6 @@ const stripTotalRows = (
 
 const roundToCents = (value: number): number =>
   Number.isFinite(value) ? Math.round(value * 100) / 100 : 0;
-
-const isImmediateCommissionItem = (item: CommissionResultItemDTO): boolean => {
-  const code = normalizeCommissionCodeKey(item.code);
-  if (
-    code === "A101" ||
-    code === "APZ101" ||
-    code === "B0301" ||
-    code === "B301" ||
-    code === "B3601_HALF" ||
-    code === "B36_HALF"
-  ) {
-    return true;
-  }
-
-  const title = normalizeTitleKey(item.title ?? "");
-  return (
-    title.includes("okamzita provize") ||
-    title.includes("ziskatelska provize") ||
-    title.includes("provize a101") ||
-    title.includes("provize b0301") ||
-    title.includes("provize 50% z b3601") ||
-    title.includes("provize 50% z b36")
-  );
-};
 
 const negativeImmediateCommissionResult = (
   result: { items: CommissionResultItemDTO[]; total: number } | null

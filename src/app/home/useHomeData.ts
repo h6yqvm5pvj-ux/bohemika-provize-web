@@ -12,6 +12,7 @@ import {
 import {
   entrySignedDate,
 } from "./homeUtils";
+import { sumImmediateCommissionItems } from "@/app/lib/commissionTotals";
 import {
   clearPersistedHomeCache,
   readPersistedHomeCache,
@@ -140,7 +141,7 @@ type UserProfileApiResponse = {
 };
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
-const HOME_CACHE_VERSION = "v2-team-scope";
+const HOME_CACHE_VERSION = "v3-immediate-components";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 
 export const invalidateHomeCache = (email?: string | null) => {
@@ -490,17 +491,9 @@ export function useHomeData({
             if (signed < rangeStart || signed >= rangeEnd) return;
             count += 1;
 
-            const items = (data.items ?? []) as CommissionResultItemDTO[];
-            immediate += items.reduce((sum, item) => {
-              const title = (item.title ?? "").toLowerCase();
-              const isImmediate =
-                title.includes("okamžitá provize") ||
-                title.includes("provize a101") ||
-                title.includes("provize b0301") ||
-                title.includes("50% z b3601") ||
-                title.includes("50% z b36");
-              return isImmediate ? sum + (item.amount ?? 0) : sum;
-            }, 0);
+            immediate += sumImmediateCommissionItems(
+              (data.items ?? []) as CommissionResultItemDTO[]
+            );
           });
           return { count, immediate };
         };
@@ -523,12 +516,11 @@ export function useHomeData({
             );
             if (!override) return;
             const overrideItems = (override.items ?? []) as CommissionResultItemDTO[];
-            const overrideImmediate =
-              overrideItems.find((it) =>
-                (it.title ?? "").toLowerCase().includes("okamžitá")
-              )?.amount ?? (Number.isFinite(override.total) ? (override.total as number) : null);
-            if (overrideImmediate != null) {
+            const overrideImmediate = sumImmediateCommissionItems(overrideItems);
+            if (overrideItems.length > 0) {
               immediate += overrideImmediate;
+            } else if (Number.isFinite(override.total)) {
+              immediate += override.total as number;
             }
           });
           return { count, immediate };

@@ -4,7 +4,7 @@ import {
   hasNeonImmediateCoefficient,
   type NeonImmediateBreakdown,
 } from "../../lib/productFormulas/neon";
-import { normalizeTitleForCompare } from "./contractDetailHelpers";
+export { isImmediateCommissionTitle } from "../../lib/commissionTotals";
 import { type ContractDoc } from "./contractDetailTypes";
 
 export {
@@ -47,14 +47,3 @@ export type ContractDetailApiResponse = ContractsApiResponseBase & {
 
 export const toCommissionMode = (value: unknown): CommissionMode | null =>
   value === "accelerated" || value === "standard" ? value : null;
-
-export const isImmediateCommissionTitle = (title: string): boolean => {
-  const normalized = normalizeTitleForCompare(title);
-  return (
-    normalized.includes("okamžitá provize") ||
-    normalized.includes("provize a101") ||
-    normalized.includes("provize b0301") ||
-    normalized.includes("50% z b3601") ||
-    normalized.includes("50% z b36")
-  );
-};

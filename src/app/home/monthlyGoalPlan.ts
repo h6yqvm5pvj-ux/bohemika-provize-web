@@ -1,6 +1,5 @@
 import {
   type CommissionMode,
-  type CommissionResultItemDTO,
   type PaymentFrequency,
   type Position,
   type Product,
@@ -15,6 +14,7 @@ import {
   calculateMaxdomov,
   calculateNeon,
 } from "@/app/lib/productFormulas";
+import { sumImmediateCommissionItems } from "@/app/lib/commissionTotals";
 import { productLabel } from "@/app/lib/productCatalog";
 
 type PremiumUnit = "monthly" | "annual";
@@ -175,30 +175,7 @@ function templatesForRemaining(remainingImmediate: number): SuggestionTemplate[]
   return [NEON_TEMPLATE, ...NON_LIFE_TEMPLATES];
 }
 
-function normalizeTitle(title: string | undefined | null): string {
-  if (!title) return "";
-  return title.toLowerCase().trim();
-}
-
-function isImmediateTitle(title: string | undefined | null): boolean {
-  const normalized = normalizeTitle(title);
-  return (
-    normalized.includes("okamžitá provize") ||
-    normalized.includes("získatelská") ||
-    normalized.includes("provize a101") ||
-    normalized.includes("provize b0301") ||
-    normalized.includes("50% z b3601") ||
-    normalized.includes("50% z b36") ||
-    normalized.includes("okamžitá")
-  );
-}
-
-function immediateFromItems(items: CommissionResultItemDTO[]): number {
-  return items.reduce((sum, item) => {
-    if (!isImmediateTitle(item.title)) return sum;
-    return sum + (item.amount ?? 0);
-  }, 0);
-}
+const immediateFromItems = sumImmediateCommissionItems;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
