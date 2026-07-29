@@ -1,6 +1,6 @@
 import SplitTitle from "../../pomucky/plan-produkce/SplitTitle";
 import { formatMoney } from "../helpers";
-import { BrainCircuit, CalendarRange, Sparkles } from "lucide-react";
+import { BrainCircuit, CalendarRange, CircleHelp, Sparkles } from "lucide-react";
 
 type CashflowHeaderProps = {
   totalCashflow: number;
@@ -10,6 +10,7 @@ type CashflowHeaderProps = {
   showPastYears: boolean;
   onTogglePastYears: () => void;
   onOpenPredictionInfo: () => void;
+  onOpenHelp: () => void;
   tipsterMode?: boolean;
 };
 
@@ -21,6 +22,7 @@ export function CashflowHeader({
   showPastYears,
   onTogglePastYears,
   onOpenPredictionInfo,
+  onOpenHelp,
   tipsterMode = false,
 }: CashflowHeaderProps) {
   return (
@@ -67,7 +69,17 @@ export function CashflowHeader({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap xl:justify-end">
+          <div className="grid grid-cols-[auto_1fr_1fr] gap-2 sm:flex sm:flex-wrap xl:justify-end">
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              aria-label="Otevřít nápovědu k proviznímu kalendáři"
+              title="Nápověda"
+              className="ui-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#d8b4fe] bg-white text-[#581c87] shadow-[0_10px_22px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-[#a855f7] hover:bg-[#faf5ff] sm:h-11 sm:w-11"
+            >
+              <CircleHelp className="h-4 w-4 sm:h-4.5 sm:w-4.5" strokeWidth={2.2} aria-hidden="true" />
+            </button>
+
             {!tipsterMode && (
               <button
                 type="button"

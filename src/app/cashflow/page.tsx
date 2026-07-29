@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 
 import { AppLayout } from "@/components/AppLayout";
+import { HelpDialog } from "@/components/HelpDialog";
 import { auth } from "../firebase";
 import { readAdminImpersonationState } from "@/app/lib/adminImpersonation";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
@@ -206,6 +207,7 @@ export default function CashflowPage() {
   const [showPastYears, setShowPastYears] = useState(false);
   const [intelligentPredictionEnabled, setIntelligentPredictionEnabled] = useState(false);
   const [predictionInfoOpen, setPredictionInfoOpen] = useState(false);
+  const [cashflowHelpOpen, setCashflowHelpOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<MonthGroup | null>(null);
   const [commissionStatements, setCommissionStatements] = useState<CashflowCommissionStatementSummary[]>([]);
   const [statementPreview, setStatementPreview] = useState<CashflowCommissionStatementDetail | null>(null);
@@ -610,6 +612,7 @@ export default function CashflowPage() {
                   showPastYears={showPastYears}
                   onTogglePastYears={() => setShowPastYears((value) => !value)}
                   onOpenPredictionInfo={() => setPredictionInfoOpen(true)}
+                  onOpenHelp={() => setCashflowHelpOpen(true)}
                   tipsterMode={isTipsterMode}
                 />
               </div>
@@ -697,6 +700,85 @@ export default function CashflowPage() {
             setPredictionInfoOpen(false);
           }}
         />
+
+        <HelpDialog
+          isOpen={cashflowHelpOpen}
+          onClose={() => setCashflowHelpOpen(false)}
+          title="Nápověda k proviznímu kalendáři"
+          description="Jak číst očekávané výplaty, filtry a rozdíly proti provizním výpisům."
+        >
+          <div className="space-y-5 text-sm leading-6 text-slate-700">
+            <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-violet-950">
+              <p className="font-semibold">Co kalendář ukazuje</p>
+              <p className="mt-1">
+                Provizní kalendář je predikce očekávaných výplat po měsících a
+                letech. Nejde o garantovanou výplatu, ale o přehled podle smluv,
+                které jsou uložené v systému.
+              </p>
+              <p className="mt-2">
+                Standardně zobrazuje období od aktuálního měsíce na následujících
+                10 let. Historii zobrazíš tlačítkem Předchozí roky.
+              </p>
+            </div>
+
+            <section>
+              <h3 className="text-base font-bold text-slate-950">Odkud se částky berou</h3>
+              <p className="mt-1">
+                Částky se počítají ze sepsaných smluv, produktu, frekvence platby,
+                režimu provize a případných TIPů, náhrad, refreshů nebo změn.
+                Když se smlouva upraví, promítne se to i do kalendáře.
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-base font-bold text-slate-950">Provizní výpisy</h3>
+              <p className="mt-1">
+                Doporučujeme každý měsíc nahrávat provizní výpisy. Kalendář se
+                díky nim průběžně aktualizuje, u daného měsíce ukáže skutečně
+                vyplacené provize a očekávané nevyplacené částky může přesunout
+                do dalšího měsíce.
+              </p>
+            </section>
+
+            {!isTipsterMode && (
+              <section>
+                <h3 className="text-base font-bold text-slate-950">Inteligentní predikce</h3>
+                <p className="mt-1">
+                  Inteligentní predikce dopočítává budoucí cashflow podle známých
+                  pravidel a očekávaného vývoje. Výsledek se může změnit po
+                  nahrání provizního výpisu, stornu nebo ruční úpravě smlouvy.
+                </p>
+              </section>
+            )}
+
+            <section>
+              <h3 className="text-base font-bold text-slate-950">Filtry a detail</h3>
+              <p className="mt-1">
+                Filtrem můžeš přepnout vlastní, týmové nebo kombinované cashflow
+                a omezit výběr podle typu produktu. Klikni na rok, potom na měsíc
+                a uvidíš konkrétní položky, ze kterých se částka skládá.
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-base font-bold text-slate-950">Když nesedí částka s výpisem</h3>
+              <p className="mt-1">
+                Rozdíl může vzniknout kvůli stornu, změně, refreshi, náhradě,
+                pozdě uhrazené smlouvě, chybějící původní smlouvě nebo rozdílnému
+                zpracování na provizním výpisu pojišťovny.
+              </p>
+            </section>
+
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950">
+              <h3 className="text-base font-bold">TIP</h3>
+              <p className="mt-1">
+                Pokud chceš ověřit konkrétní smlouvu, zadej její číslo do filtru.
+                Rychle tak najdeš, ve kterých měsících a částkách se ve cashflow
+                objevuje.
+              </p>
+            </section>
+          </div>
+        </HelpDialog>
 
         {statementPreviewError && (
           <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-[0_18px_42px_rgba(146,64,14,0.16)]">

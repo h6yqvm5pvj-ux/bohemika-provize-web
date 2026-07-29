@@ -4,6 +4,7 @@ import {
   APP_SESSION_COOKIE_NAME,
   createAppSessionCookieValue,
   getAppSessionMaxAgeSeconds,
+  type VerifiedAppSession,
   verifyAppSessionCookieValue,
 } from "@/lib/appSession";
 import {
@@ -23,6 +24,16 @@ const SESSIONS_MUTATE_RATE_LIMIT = 10;
 const SESSIONS_RATE_LIMIT_WINDOW_MS = 60_000;
 
 type ApiError = { ok: false; error: string };
+type ResolvedCurrentSession =
+  | {
+      ok: true;
+      session: VerifiedAppSession;
+      cookie?: {
+        value: string;
+        maxAgeSeconds: number;
+      };
+    }
+  | { ok: false; error: string };
 
 function setNoStoreHeaders(response: NextResponse): NextResponse {
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
@@ -53,6 +64,15 @@ async function verifyMatchingAppSession(req: NextRequest, ctx: { uid: string; em
     req.cookies.get(APP_SESSION_COOKIE_NAME)?.value
   );
   if (!verification.ok) {
+    if (
+      verification.reason === "missing" ||
+      verification.reason === "expired" ||
+      verification.reason === "malformed" ||
+      verification.reason === "invalid-signature"
+    ) {
+      return createCurrentAppSession(req, ctx);
+    }
+
     return {
       ok: false as const,
       error:
@@ -63,14 +83,51 @@ async function verifyMatchingAppSession(req: NextRequest, ctx: { uid: string; em
   }
 
   const session = verification.session;
-  if (session.uid !== ctx.uid || session.email !== ctx.email) {
-    return {
-      ok: false as const,
-      error: "Serverová session nepatří aktuálně přihlášenému účtu.",
-    };
+  if (session.uid !== ctx.uid || session.email !== ctx.email || !session.sessionId) {
+    return createCurrentAppSession(req, ctx);
   }
 
   return { ok: true as const, session };
+}
+
+async function createCurrentAppSession(
+  req: NextRequest,
+  ctx: { uid: string; email: string }
+): Promise<ResolvedCurrentSession> {
+  try {
+    const session = await createAppSessionCookieValue({
+      uid: ctx.uid,
+      email: ctx.email,
+      maxAgeSeconds: getAppSessionMaxAgeSeconds(),
+    });
+    await recordAppSession({
+      email: ctx.email,
+      uid: ctx.uid,
+      sessionId: session.sessionId,
+      expiresAtMs: session.expiresAt * 1000,
+      req,
+    });
+    return {
+      ok: true,
+      session: {
+        uid: ctx.uid,
+        email: ctx.email,
+        sessionId: session.sessionId,
+        issuedAt: session.expiresAt - session.maxAgeSeconds,
+        expiresAt: session.expiresAt,
+      },
+      cookie: {
+        value: session.value,
+        maxAgeSeconds: session.maxAgeSeconds,
+      },
+    };
+  } catch (error) {
+    console.error("Vytvoření aktuální aplikační session selhalo:", error);
+    return {
+      ok: false as const,
+      error: "Serverovou session se nepodařilo obnovit.",
+    };
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -119,16 +176,15 @@ export async function GET(req: NextRequest) {
     currentSessionId: current.session.sessionId,
   });
 
-  return setNoStoreHeaders(
-    withRateLimitHeaders(
-      NextResponse.json({
-        ok: true,
-        sessions,
-        currentSessionId: current.session.sessionId,
-      }),
-      ctx
-    )
-  );
+  const response = NextResponse.json({
+    ok: true,
+    sessions,
+    currentSessionId: current.session.sessionId,
+  });
+  if (current.cookie) {
+    setAppSessionCookie(response, current.cookie.value, current.cookie.maxAgeSeconds);
+  }
+  return setNoStoreHeaders(withRateLimitHeaders(response, ctx));
 }
 
 export async function POST(req: NextRequest) {
@@ -179,24 +235,22 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const currentSessionId = current.session.sessionId;
+    if (!currentSessionId) {
+      throw new Error("Aktuální serverová session nemá ID.");
+    }
     const customToken = await adminAuth.createCustomToken(ctx.uid);
     await adminAuth.revokeRefreshTokens(ctx.uid);
 
-    const session = await createAppSessionCookieValue({
-      uid: ctx.uid,
+    await touchAppSession({
       email: ctx.email,
-      maxAgeSeconds: getAppSessionMaxAgeSeconds(),
-    });
-    await recordAppSession({
-      email: ctx.email,
-      uid: ctx.uid,
-      sessionId: session.sessionId,
-      expiresAtMs: session.expiresAt * 1000,
-      req,
+      sessionId: currentSessionId,
+    }).catch((error) => {
+      console.warn("POST /api/auth/sessions: aktualizace aktuální relace selhala", error);
     });
     const revokedSessions = await revokeOtherAppSessions({
       email: ctx.email,
-      keepSessionId: session.sessionId,
+      keepSessionId: currentSessionId,
       reason: "user_revoke_others",
     });
 
@@ -204,11 +258,13 @@ export async function POST(req: NextRequest) {
       ok: true,
       customToken,
       revokedSessions,
-      sessionId: session.sessionId,
-      expiresAt: session.expiresAt,
-      maxAgeSeconds: session.maxAgeSeconds,
+      sessionId: currentSessionId,
+      expiresAt: current.session.expiresAt,
+      maxAgeSeconds: current.session.expiresAt - current.session.issuedAt,
     });
-    setAppSessionCookie(response, session.value, session.maxAgeSeconds);
+    if (current.cookie) {
+      setAppSessionCookie(response, current.cookie.value, current.cookie.maxAgeSeconds);
+    }
     return setNoStoreHeaders(withRateLimitHeaders(response, ctx));
   } catch (error) {
     console.error("POST /api/auth/sessions revokeOthers selhalo:", error);

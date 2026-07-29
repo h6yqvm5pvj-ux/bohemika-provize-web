@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { CircleHelp, Users } from "lucide-react";
 import { auth } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
@@ -86,6 +86,7 @@ import {
 } from "@/app/lib/institutionLogoDisplay";
 import { autoAssistancePlanLabel } from "@/app/lib/autoAssistanceLabels";
 import { AppLayout } from "@/components/AppLayout";
+import { HelpDialog } from "@/components/HelpDialog";
 import {
   ADMIN_IMPERSONATION_EVENT,
   readAdminImpersonationState,
@@ -712,6 +713,7 @@ export default function CalculatorPage() {
     original: null,
   });
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
+  const [addContractHelpOpen, setAddContractHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
@@ -4692,7 +4694,7 @@ export default function CalculatorPage() {
       });
       setValidationError(null);
       setSaveMessage("Změna je připravená. Uloží se až po kliknutí na Uložit jako sepsáno.");
-      setEndorsementDraftModalOpen(true);
+      setEndorsementDraftModalOpen(targetProduct !== "neon");
       return true;
     } catch (error) {
       console.error("Chyba při přípravě dodatku", error);
@@ -5989,6 +5991,7 @@ export default function CalculatorPage() {
     : isAddContractMode
       ? "Přidat smlouvu"
       : "Kalkulačka provizí";
+  const showAddContractHelp = isAddContractMode || tipsterModeEnabled;
   const hasFrequencyPicker = allowed.length > 1;
   const showPolicyEndDateField = supportsPolicyEndDate(product);
   const lastSavedContractHref = lastSavedContractRef
@@ -5997,6 +6000,11 @@ export default function CalculatorPage() {
       )}?from=list`
     : null;
   const currentProduct = PRODUCT_OPTIONS.find((p) => p.id === product)!;
+  const showNeonAddContractHelp = hasSelectedProduct && product === "neon";
+  const showReplacementAddContractHelp =
+    hasSelectedProduct &&
+    supportsOriginalContractReplacement(product) &&
+    originalReplacementLabel(product) === "Náhrada";
   const currentProductInstitutionId = productInstitutionIdFromCatalog(product);
   const autoHullSumInsuredText = autoCarHullSumInsuredText.trim();
   const autoHullSumInsuredDraftText = autoCarHullSumInsuredDraft.trim();
@@ -6998,7 +7006,7 @@ export default function CalculatorPage() {
 
     return items;
   })();
-  const durationHelp = durationTooltip(product, isNeonHistoricalBySignedDate);
+  const durationHelp = durationTooltip(product);
   const canChooseMode =
     isLifeProduct &&
     !(product === "neon" && isNeonHistoricalBySignedDate);
@@ -7392,7 +7400,7 @@ export default function CalculatorPage() {
         onConfirm={handleConfirmDuplicateModal}
       />
       <EndorsementDraftModal
-        draft={endorsementDraftModalOpen ? endorsementDraft : null}
+        draft={endorsementDraftModalOpen && product !== "neon" ? endorsementDraft : null}
         onCancel={() => {
           setEndorsementDraft(null);
           setEndorsementDraftModalOpen(false);
@@ -7480,6 +7488,125 @@ export default function CalculatorPage() {
         onSelectProduct={selectProduct}
       />
 
+      <HelpDialog
+        isOpen={addContractHelpOpen}
+        onClose={() => setAddContractHelpOpen(false)}
+        title={
+          hasSelectedProduct
+            ? `Nápověda k produktu ${currentProduct.label}`
+            : "Nápověda k přidání smlouvy"
+        }
+        description={
+          showNeonAddContractHelp
+            ? "Doporučený postup pro nahrání PDF, kontrolu údajů a práci s Refreshem nebo Změnou."
+            : showReplacementAddContractHelp
+              ? "Doporučený postup pro nahrání PDF, kontrolu údajů a práci s Náhradou."
+            : "Doporučený postup pro nahrání PDF, kontrolu údajů a uložení smlouvy jako sepsané."
+        }
+      >
+        <div className="space-y-5 text-sm leading-6 text-slate-700">
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-violet-950">
+            <p className="font-semibold">Doporučený postup</p>
+            <p className="mt-1">
+              Když máš smlouvu v PDF, nahraj ji hned na začátku. PDF se po
+              uložení přiloží k detailu smlouvy a ve většině případů se z něj
+              automaticky propíšou potřebná data.
+            </p>
+          </div>
+
+          <section>
+            <h3 className="text-base font-bold text-slate-950">Originální PDF vs. sken</h3>
+            <p className="mt-1">
+              Automatické načítání dat aktuálně funguje hlavně u originálních
+              PDF smluv. U skenů nebo fotek smluv, což bývá časté u starších
+              smluv, může systém PDF přiložit, ale údaje bude většinou potřeba
+              doplnit ručně.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="text-base font-bold text-slate-950">Když se něco nenačte</h3>
+            <p className="mt-1">
+              Může se stát, že aplikace některou informaci z PDF nedohledá,
+              nerozpozná produkt nebo si nebude jistá konkrétním údajem. V tom
+              případě pole doplň ručně podle smlouvy.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="text-base font-bold text-slate-950">Smlouva z TIPU</h3>
+            <p className="mt-1">
+              Sjednal jsi smlouvu na základě tipu? Klikni na Smlouva z TIPU a
+              zadej firemní e-mail nebo jméno tipaře. Tipař může, ale nemusí být
+              v systému Bohemka.App.
+            </p>
+            <p className="mt-2">
+              Potom nastav procenta pro tipaře a potvrď. Tipařská část se ti
+              automaticky odečte ze vznikové provize.
+            </p>
+          </section>
+
+          {showNeonAddContractHelp && (
+            <section className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-950">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">
+                ČPP ŽP NEON
+              </p>
+              <div className="mt-3 space-y-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-950">Refresh smlouvy</h3>
+                  <p className="mt-1">
+                    Správného výpočtu provize lze dosáhnout pouze tehdy, když je
+                    v systému uložená původní smlouva. Pokud původní smlouva v
+                    systému není, smlouvu lze uložit i tak, ale je potřeba
+                    zaškrtnout možnost Původní smlouva není v systému.
+                  </p>
+                  <p className="mt-2">
+                    Po následném nahrání provizního výpisu se taková smlouva
+                    automaticky aktualizuje podle údajů z výpisu.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-base font-bold text-slate-950">Změna smlouvy</h3>
+                  <p className="mt-1">
+                    U změny zadej nové celkové pojistné ze smlouvy, ne jen rozdíl
+                    oproti původní částce. Systém nové pojistné porovná s
+                    pojistným z původní smlouvy.
+                  </p>
+                  <p className="mt-2">
+                    Podle výsledku porovnání dojde buď k ponížení provize, nebo
+                    k vyplacení provize za navýšení.
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {showReplacementAddContractHelp && (
+            <section className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-950">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">
+                Náhrada smlouvy
+              </p>
+              <p className="mt-2">
+                V případě náhrady můžeš zadat číslo původní smlouvy. Pokud se
+                původní smlouva najde v systému, při uložení nové smlouvy se
+                automaticky označí jako stornovaná k datu počátku nové smlouvy.
+              </p>
+            </section>
+          )}
+
+          <section>
+            <h3 className="text-base font-bold text-slate-950">Kontrola před uložením</h3>
+            <p className="mt-1">
+              Před kliknutím na tlačítko Uložit jako sepsáno vždy zkontroluj
+              hlavně produkt, jméno klienta, číslo smlouvy, datum uzavření,
+              pojistné, frekvenci platby, pozici a režim provize. Uložením se
+              smlouva začne používat v produkci, výplatách a dalších přehledech.
+            </p>
+          </section>
+        </div>
+      </HelpDialog>
+
       <div className="w-full max-w-6xl space-y-6">
         {/* Header */}
         <header
@@ -7488,32 +7615,45 @@ export default function CalculatorPage() {
           }`}
         >
           <SplitTitle text={headerTitle} className="!text-slate-900" />
-          {!tipsterModeEnabled && (
-            <div className="inline-flex items-center rounded-full border border-violet-200 bg-white/85 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            {showAddContractHelp && (
               <button
                 type="button"
-                onClick={() => setCalculatorViewMode("addContract")}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:text-sm ${
-                  isAddContractMode
-                    ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.18)]"
-                    : "text-slate-600 hover:bg-violet-50 hover:text-violet-800"
-                }`}
+                onClick={() => setAddContractHelpOpen(true)}
+                aria-label="Otevřít nápovědu k přidání smlouvy"
+                title="Nápověda"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-violet-200 bg-white/90 text-violet-800 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur-xl transition hover:border-violet-300 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-600"
               >
-                Přidat smlouvu
+                <CircleHelp className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
               </button>
-              <button
-                type="button"
-                onClick={() => setCalculatorViewMode("commissionOnly")}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:text-sm ${
-                  isCommissionOnlyMode
-                    ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.18)]"
-                    : "text-slate-600 hover:bg-violet-50 hover:text-violet-800"
-                }`}
-              >
-                Kalkulačka provizí
-              </button>
-            </div>
-          )}
+            )}
+            {!tipsterModeEnabled && (
+              <div className="inline-flex items-center rounded-full border border-violet-200 bg-white/85 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+                <button
+                  type="button"
+                  onClick={() => setCalculatorViewMode("addContract")}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:text-sm ${
+                    isAddContractMode
+                      ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.18)]"
+                      : "text-slate-600 hover:bg-violet-50 hover:text-violet-800"
+                  }`}
+                >
+                  Přidat smlouvu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCalculatorViewMode("commissionOnly")}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:text-sm ${
+                    isCommissionOnlyMode
+                      ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.18)]"
+                      : "text-slate-600 hover:bg-violet-50 hover:text-violet-800"
+                  }`}
+                >
+                  Kalkulačka provizí
+                </button>
+              </div>
+            )}
+          </div>
         </header>
         {(isCommissionOnlyMode || tipsterModeEnabled) && (
           <div className="flex justify-start sm:justify-end">
@@ -7620,6 +7760,7 @@ export default function CalculatorPage() {
                 refreshOriginalLookupProgress={refreshOriginalLookup.progress}
                 refreshOriginalLookupAdviserName={refreshOriginalLookup.adviserName}
                 refreshOriginalInfoText={neonRefreshInfoText}
+                inlineEndorsementDraft={product === "neon" ? endorsementDraft : null}
                 onComfortGradualChange={setComfortGradual}
                 onAmountTextChange={setAmountText}
                 onComfortPaymentTextChange={setComfortPaymentText}
@@ -7659,6 +7800,14 @@ export default function CalculatorPage() {
                 }}
                 onPrepareEndorsement={() => {
                   void handlePrepareEndorsement();
+                }}
+                onCancelEndorsement={() => {
+                  setEndorsementDraft(null);
+                  setEndorsementDraftModalOpen(false);
+                  setEndorsementWorkflowActive(false);
+                  setEndorsementDurationManualOverride(false);
+                  setEndorsementPreviewSource(null);
+                  setSaveMessage(null);
                 }}
                 onSwitchToManualEntry={() => setCalculatorViewMode("addContract")}
               />

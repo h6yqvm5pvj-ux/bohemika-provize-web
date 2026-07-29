@@ -94,7 +94,7 @@ export function CalculatorDurationAndFrequencySection({
       : "Částka";
   const renderDurationYearsField = (labelClassName: string) => (
     <div className="space-y-1">
-      <label className={labelClassName}>
+      <label className={`flex min-h-7 items-center ${labelClassName}`}>
         <span className="inline-flex items-center gap-2">
           Doba trvání smlouvy
           {durationHelp && (
@@ -146,7 +146,7 @@ export function CalculatorDurationAndFrequencySection({
       )}
       <input
         type="number"
-        className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${
+        className={`h-10 w-full rounded-xl border bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${
           missingFields.includes("dobu trvání smlouvy")
             ? "border-rose-400/70"
             : "border-violet-200"
@@ -181,13 +181,13 @@ export function CalculatorDurationAndFrequencySection({
         {hasContractParameterFields && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {showDurationYearsInContractFields &&
-              renderDurationYearsField("block text-sm font-semibold text-slate-800")}
+              renderDurationYearsField("text-sm font-semibold text-slate-800")}
 
             {showMaxCizinVariant && (
               <div className="space-y-1">
-                <label className="block text-sm font-semibold text-slate-800">Varianta produktu</label>
+                <label className="flex min-h-7 items-center text-sm font-semibold text-slate-800">Varianta produktu</label>
                 <select
-                  className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
+                  className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
                   value={maxCizinKomplexVariant}
                   onChange={(event) => onMaxCizinVariantChange(event.target.value as MaxCizinKomplexVariant)}
                 >
@@ -202,12 +202,12 @@ export function CalculatorDurationAndFrequencySection({
 
             {showDurationMonths && (
               <div className="space-y-1">
-                <label className="block text-sm font-semibold text-slate-800">Doba trvání smlouvy (měsíce)</label>
+                <label className="flex min-h-7 items-center text-sm font-semibold text-slate-800">Doba trvání smlouvy (měsíce)</label>
                 <input
                   type="number"
                   min={durationMonthsRange(product)[0]}
                   max={durationMonthsRange(product)[1]}
-                  className={`w-full rounded-xl border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
+                  className={`h-10 w-full rounded-xl border bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
                     missingFields.includes("dobu trvání v měsících")
                       ? "border-rose-400/70"
                       : "border-violet-200"
@@ -246,10 +246,10 @@ export function CalculatorDurationAndFrequencySection({
             }`}
           >
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-slate-700">{amountLabel}</label>
+              <label className="flex min-h-7 items-center text-xs font-semibold text-slate-700">{amountLabel}</label>
               <input
                 type="number"
-                className={`w-full rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
+                className={`h-10 w-full rounded-xl border bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
                   missingFields.includes("částku") ? "border-rose-400/70" : "border-violet-200"
                 }`}
                 value={amountText}
@@ -259,13 +259,13 @@ export function CalculatorDurationAndFrequencySection({
             </div>
 
             {pairAmountWithDuration
-              ? renderDurationYearsField("block text-xs font-semibold text-slate-700")
+              ? renderDurationYearsField("text-xs font-semibold text-slate-700")
               : showFrequencyValue && (
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-700">Frekvence platby</label>
+                    <label className="flex min-h-7 items-center text-xs font-semibold text-slate-700">Frekvence platby</label>
                     {hasFrequencyPicker ? (
                       <select
-                        className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
+                        className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
                         value={frequency}
                         onChange={(event) => onFrequencyChange(event.target.value as PaymentFrequency)}
                       >
@@ -276,7 +276,7 @@ export function CalculatorDurationAndFrequencySection({
                         ))}
                       </select>
                     ) : (
-                      <p className="rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-sm text-slate-700">
+                      <p className="flex h-10 items-center rounded-xl border border-violet-100 bg-white/80 px-3 text-sm text-slate-700">
                         {defaultFrequencyText(product)}
                       </p>
                     )}

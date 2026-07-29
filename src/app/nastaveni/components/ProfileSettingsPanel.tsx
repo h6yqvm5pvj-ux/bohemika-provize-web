@@ -150,8 +150,8 @@ export function ProfileSettingsPanel({
                       {completionPercent} %
                     </p>
                   </div>
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-700 text-white shadow-[0_10px_20px_rgba(109,40,217,0.22)] sm:h-11 sm:w-11 sm:rounded-2xl">
-                    <CheckCircle2 size={21} strokeWidth={2.2} aria-hidden="true" />
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-700 !text-white shadow-[0_10px_20px_rgba(109,40,217,0.22)] sm:h-11 sm:w-11 sm:rounded-2xl [&_svg]:!stroke-white">
+                    <CheckCircle2 size={21} strokeWidth={2.2} className="!text-white" aria-hidden="true" />
                   </span>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
@@ -331,7 +331,7 @@ export function ProfileSettingsPanel({
             <button
               type="submit"
               disabled={profileSaving}
-              className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-violet-700 bg-violet-700 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(109,40,217,0.24)] transition hover:-translate-y-0.5 hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto sm:min-w-[180px] [&_*]:!text-white"
+              className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-violet-700 bg-violet-700 px-5 py-2.5 text-sm font-semibold !text-white shadow-[0_16px_30px_rgba(109,40,217,0.24)] transition hover:-translate-y-0.5 hover:bg-violet-800 hover:!text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto sm:min-w-[180px] [&_*]:!text-white [&_svg]:!stroke-white"
             >
               <ShieldCheck size={17} strokeWidth={2} aria-hidden="true" />
               {profileSaving ? "Ukládám..." : "Uložit profil"}

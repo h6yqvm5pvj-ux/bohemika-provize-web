@@ -489,6 +489,31 @@ body {
   background: rgba(51, 65, 85, 0.92);
 }
 
+.help-dialog-scrollbar {
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(124, 58, 237, 0.92) rgba(237, 233, 254, 0.85);
+  scrollbar-width: thin;
+}
+
+.help-dialog-scrollbar::-webkit-scrollbar {
+  width: 13px;
+}
+
+.help-dialog-scrollbar::-webkit-scrollbar-track {
+  background: rgba(237, 233, 254, 0.85);
+  border-radius: 999px;
+}
+
+.help-dialog-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.92);
+  border: 3px solid rgba(255, 255, 255, 0.96);
+  border-radius: 999px;
+}
+
+.help-dialog-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(109, 40, 217, 0.98);
+}
+
 /* Vypnutí animací pro uživatele (toggle nebo prefers-reduced-motion) */
 :root[data-motion="off"] {
   scroll-behavior: auto !important;

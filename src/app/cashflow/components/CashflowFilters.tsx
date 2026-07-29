@@ -195,6 +195,81 @@ export function CashflowFilters({
   const productFilterOptions = showSubscriptionFilter
     ? PRODUCT_FILTER_OPTIONS
     : PRODUCT_FILTER_OPTIONS.filter((option) => option.value !== "subscription");
+  const contractNumberSearchControl = (
+    <div className="grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-[minmax(280px,390px)_minmax(0,1fr)] lg:items-end">
+      <label className="block min-w-0">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 sm:text-[11px] sm:tracking-[0.16em]">
+          Číslo smlouvy
+        </span>
+        <span className="relative mt-2 flex h-10 items-center sm:mt-2.5 sm:h-12">
+          <Search
+            className="pointer-events-none absolute left-3.5 h-4.5 w-4.5 text-slate-400"
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          <input
+            type="search"
+            inputMode="search"
+            autoComplete="off"
+            value={contractNumberQuery}
+            onChange={(event) => onContractNumberChange(event.target.value)}
+            placeholder="Zadej číslo smlouvy"
+            className="ui-focus h-full w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-11 font-mono text-[0.95rem] font-semibold text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.06)] outline-none transition placeholder:font-sans placeholder:text-sm placeholder:font-medium placeholder:text-slate-400 hover:border-slate-300 focus:border-[#a65af2] focus:ring-4 focus:ring-[#c084fc]/18 sm:text-[1.05rem] sm:shadow-[0_10px_24px_rgba(15,23,42,0.07)]"
+          />
+          {contractNumberQuery.trim() ? (
+            <button
+              type="button"
+              onClick={() => onContractNumberChange("")}
+              className="ui-focus absolute right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
+              aria-label="Vyčistit číslo smlouvy"
+            >
+              <X className="h-4 w-4" strokeWidth={2.2} />
+            </button>
+          ) : null}
+        </span>
+      </label>
+
+      {contractNumberSearchActive ? (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
+            contractNumberMatchCount === 0
+              ? "border-amber-200 bg-amber-50 text-amber-950"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+          }`}
+        >
+          {contractNumberSummary ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <span>
+                Nalezena smlouva{" "}
+                <strong className="font-black">
+                  {productLabel(contractNumberSummary.productKey)}
+                </strong>
+              </span>
+              <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
+              <span>
+                Klient: <strong className="font-black">{summaryClientName}</strong>
+              </span>
+              <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
+              <span>
+                Pojistné:{" "}
+                <strong className="font-black">{summaryAmount}</strong> / {summaryFrequency}
+              </span>
+              {summaryStatus ? (
+                <>
+                  <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
+                  <span className="rounded-full border border-emerald-300 bg-white/65 px-2.5 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-950">
+                    Stav: {summaryStatus}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ) : (
+            searchResultLabel
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
     <section className="relative overflow-visible px-0 py-0 sm:px-1 sm:py-1">
@@ -251,6 +326,9 @@ export function CashflowFilters({
                 Týmové
               </button>
             </div>
+            <div className="mt-1">
+              {contractNumberSearchControl}
+            </div>
           </div>
         ) : null}
 
@@ -291,79 +369,7 @@ export function CashflowFilters({
         </div>
       </div>
 
-      <div className="mt-0 grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-[minmax(280px,390px)_minmax(0,1fr)] lg:items-end">
-        <label className="block min-w-0">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 sm:text-[11px] sm:tracking-[0.16em]">
-            Číslo smlouvy
-          </span>
-          <span className="relative mt-2 flex h-10 items-center sm:mt-2.5 sm:h-12">
-            <Search
-              className="pointer-events-none absolute left-3.5 h-4.5 w-4.5 text-slate-400"
-              strokeWidth={2}
-              aria-hidden="true"
-            />
-            <input
-              type="search"
-              inputMode="search"
-              autoComplete="off"
-              value={contractNumberQuery}
-              onChange={(event) => onContractNumberChange(event.target.value)}
-              placeholder="Zadej číslo smlouvy"
-              className="ui-focus h-full w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-11 font-mono text-[0.95rem] font-semibold text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.06)] outline-none transition placeholder:font-sans placeholder:text-sm placeholder:font-medium placeholder:text-slate-400 hover:border-slate-300 focus:border-[#a65af2] focus:ring-4 focus:ring-[#c084fc]/18 sm:text-[1.05rem] sm:shadow-[0_10px_24px_rgba(15,23,42,0.07)]"
-            />
-            {contractNumberQuery.trim() ? (
-              <button
-                type="button"
-                onClick={() => onContractNumberChange("")}
-                className="ui-focus absolute right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-slate-300 hover:bg-white hover:text-slate-900"
-                aria-label="Vyčistit číslo smlouvy"
-              >
-                <X className="h-4 w-4" strokeWidth={2.2} />
-              </button>
-            ) : null}
-          </span>
-        </label>
-
-        {contractNumberSearchActive ? (
-          <div
-            className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
-              contractNumberMatchCount === 0
-                ? "border-amber-200 bg-amber-50 text-amber-950"
-                : "border-emerald-200 bg-emerald-50 text-emerald-900"
-            }`}
-          >
-            {contractNumberSummary ? (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <span>
-                  Nalezena smlouva{" "}
-                  <strong className="font-black">
-                    {productLabel(contractNumberSummary.productKey)}
-                  </strong>
-                </span>
-                <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
-                <span>
-                  Klient: <strong className="font-black">{summaryClientName}</strong>
-                </span>
-                <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
-                <span>
-                  Pojistné:{" "}
-                  <strong className="font-black">{summaryAmount}</strong> / {summaryFrequency}
-                </span>
-                {summaryStatus ? (
-                  <>
-                    <span className="hidden h-1.5 w-1.5 rounded-full bg-emerald-400 sm:inline-block" />
-                    <span className="rounded-full border border-emerald-300 bg-white/65 px-2.5 py-1 text-xs font-black uppercase tracking-[0.08em] text-emerald-950">
-                      Stav: {summaryStatus}
-                    </span>
-                  </>
-                ) : null}
-              </div>
-            ) : (
-              searchResultLabel
-            )}
-          </div>
-        ) : null}
-      </div>
+      {!hasTeam && <div className="mt-1">{contractNumberSearchControl}</div>}
     </section>
   );
 }

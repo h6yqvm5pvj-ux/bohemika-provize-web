@@ -76,7 +76,7 @@ export function HelpDialog({
           </button>
         </div>
 
-        <div className="max-h-[calc(min(86vh,760px)-132px)] overflow-y-auto px-5 py-5 sm:px-6">
+        <div className="help-dialog-scrollbar max-h-[calc(min(86vh,760px)-132px)] overflow-y-scroll px-5 py-5 sm:px-6">
           {children}
         </div>
       </section>
