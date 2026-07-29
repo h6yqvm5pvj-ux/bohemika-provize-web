@@ -8,7 +8,7 @@ import {
   verifyAppSessionCookieValue,
 } from "@/lib/appSession";
 import {
-  listActiveAppSessions,
+  listAppSessions,
   recordAppSession,
   revokeOtherAppSessions,
   touchAppSession,
@@ -164,11 +164,12 @@ export async function GET(req: NextRequest) {
   await touchAppSession({
     email: ctx.email,
     sessionId: current.session.sessionId,
+    req,
   }).catch((error) => {
     console.warn("GET /api/auth/sessions: aktualizace aktuální relace selhala", error);
   });
 
-  const sessions = await listActiveAppSessions({
+  const sessions = await listAppSessions({
     email: ctx.email,
     currentSessionId: current.session.sessionId,
   });
@@ -242,6 +243,7 @@ export async function POST(req: NextRequest) {
     await touchAppSession({
       email: ctx.email,
       sessionId: currentSessionId,
+      req,
     }).catch((error) => {
       console.warn("POST /api/auth/sessions: aktualizace aktuální relace selhala", error);
     });

@@ -1,4 +1,5 @@
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 import { FieldValue } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
 
@@ -6,15 +7,19 @@ import { getRequestIp } from "@/lib/server/rateLimit";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 
 const MAX_USER_AGENT_LEN = 240;
+const MAX_LOCATION_PART_LEN = 80;
 const MAX_SESSIONS_TO_SCAN = 100;
 
 export type AppSessionSummary = {
   id: string;
   current: boolean;
+  status: "active" | "expired" | "revoked";
   deviceLabel: string;
   browserLabel: string;
   osLabel: string;
   userAgent: string;
+  locationLabel: string;
+  ipLabel: string;
   createdAtMs: number;
   lastSeenAtMs: number;
   expiresAtMs: number;
@@ -28,6 +33,98 @@ const sanitizeUserAgent = (value: unknown): string => {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, MAX_USER_AGENT_LEN);
 };
+
+const sanitizeLocationPart = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.replace(/\+/g, " ").trim();
+  if (!trimmed) return "";
+  try {
+    return decodeURIComponent(trimmed).replace(/\s+/g, " ").slice(0, MAX_LOCATION_PART_LEN);
+  } catch {
+    return trimmed.replace(/\s+/g, " ").slice(0, MAX_LOCATION_PART_LEN);
+  }
+};
+
+function resolveLocation(req: NextRequest): {
+  city: string;
+  region: string;
+  country: string;
+  locationLabel: string;
+} {
+  const city = sanitizeLocationPart(req.headers.get("x-vercel-ip-city"));
+  const region = sanitizeLocationPart(req.headers.get("x-vercel-ip-country-region"));
+  const country = sanitizeLocationPart(req.headers.get("x-vercel-ip-country"));
+  const locationParts = [city, region, country].filter(Boolean);
+  return {
+    city,
+    region,
+    country,
+    locationLabel: locationParts.length > 0 ? locationParts.join(", ") : "",
+  };
+}
+
+function readFirstHeaderIp(value: string | null): string {
+  if (!value) return "";
+  const first = value.split(",")[0]?.trim() ?? "";
+  const normalized = first.replace(/^\[/, "").replace(/\]$/, "");
+  return isIP(normalized) ? normalized : "";
+}
+
+function resolveSessionDisplayIp(req: NextRequest): string {
+  return (
+    readFirstHeaderIp(req.headers.get("cf-connecting-ip")) ||
+    readFirstHeaderIp(req.headers.get("true-client-ip")) ||
+    readFirstHeaderIp(req.headers.get("x-real-ip")) ||
+    readFirstHeaderIp(req.headers.get("x-forwarded-for")) ||
+    ""
+  );
+}
+
+function maskIpAddress(ip: string): string {
+  if (!ip) return "";
+  if (isIP(ip) === 4) {
+    const parts = ip.split(".");
+    return parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}.xxx` : "";
+  }
+  if (isIP(ip) === 6) {
+    const parts = ip.split(":").filter(Boolean);
+    return parts.length > 0 ? `${parts.slice(0, 3).join(":")}:...` : "";
+  }
+  return "";
+}
+
+function resolveSessionRequestMetadata(req: NextRequest): {
+  userAgent: string;
+  ipHash: string;
+  ipLabel: string;
+  city: string;
+  region: string;
+  country: string;
+  locationLabel: string;
+} {
+  const requestIp = getRequestIp(req);
+  const displayIp = resolveSessionDisplayIp(req) || (isIP(requestIp) ? requestIp : "");
+  return {
+    userAgent: sanitizeUserAgent(req.headers.get("user-agent")),
+    ipHash: hashIp(displayIp),
+    ipLabel: maskIpAddress(displayIp),
+    ...resolveLocation(req),
+  };
+}
+
+function compactSessionRequestMetadata(
+  metadata: ReturnType<typeof resolveSessionRequestMetadata>
+): Partial<ReturnType<typeof resolveSessionRequestMetadata>> {
+  const update: Partial<ReturnType<typeof resolveSessionRequestMetadata>> = {};
+  if (metadata.userAgent) update.userAgent = metadata.userAgent;
+  if (metadata.ipHash) update.ipHash = metadata.ipHash;
+  if (metadata.ipLabel) update.ipLabel = metadata.ipLabel;
+  if (metadata.city) update.city = metadata.city;
+  if (metadata.region) update.region = metadata.region;
+  if (metadata.country) update.country = metadata.country;
+  if (metadata.locationLabel) update.locationLabel = metadata.locationLabel;
+  return update;
+}
 
 function hashIp(ip: string): string {
   if (!ip) return "";
@@ -100,15 +197,13 @@ export async function recordAppSession({
   if (!collection || !sessionId) return;
 
   const nowMs = Date.now();
-  const userAgent = sanitizeUserAgent(req.headers.get("user-agent"));
-  const ipHash = hashIp(getRequestIp(req));
+  const metadata = resolveSessionRequestMetadata(req);
   await collection.doc(sessionId).set(
     {
       uid,
       email: normalizeEmail(email),
       sessionId,
-      userAgent,
-      ipHash,
+      ...metadata,
       createdAt: FieldValue.serverTimestamp(),
       createdAtMs: nowMs,
       lastSeenAt: FieldValue.serverTimestamp(),
@@ -124,14 +219,18 @@ export async function recordAppSession({
 export async function touchAppSession({
   email,
   sessionId,
+  req,
 }: {
   email: string;
   sessionId: string | null;
+  req?: NextRequest;
 }): Promise<void> {
   const collection = appSessionsCollection(email);
   if (!collection || !sessionId) return;
+  const metadata = req ? compactSessionRequestMetadata(resolveSessionRequestMetadata(req)) : {};
   await collection.doc(sessionId).set(
     {
+      ...metadata,
       lastSeenAt: FieldValue.serverTimestamp(),
       lastSeenAtMs: Date.now(),
     },
@@ -139,7 +238,7 @@ export async function touchAppSession({
   );
 }
 
-export async function listActiveAppSessions({
+export async function listAppSessions({
   email,
   currentSessionId,
 }: {
@@ -175,21 +274,31 @@ export async function listActiveAppSessions({
         typeof data.revokedAtMs === "number" && Number.isFinite(data.revokedAtMs)
           ? data.revokedAtMs
           : null;
+      const locationLabel = sanitizeLocationPart(data.locationLabel);
+      const ipLabel = sanitizeLocationPart(data.ipLabel);
+      const status: AppSessionSummary["status"] =
+        revokedAtMs !== null ? "revoked" : expiresAtMs > nowMs ? "active" : "expired";
       const labels = buildDeviceLabel(userAgent);
       return {
         id: docSnap.id,
         current: Boolean(currentSessionId && docSnap.id === currentSessionId),
+        status,
         ...labels,
         userAgent,
+        locationLabel,
+        ipLabel,
         createdAtMs,
         lastSeenAtMs,
         expiresAtMs,
         revokedAtMs,
       };
     })
-    .filter((session) => !session.revokedAtMs && session.expiresAtMs > nowMs)
     .sort((a, b) => {
       if (a.current !== b.current) return a.current ? -1 : 1;
+      if (a.status !== b.status) {
+        if (a.status === "active") return -1;
+        if (b.status === "active") return 1;
+      }
       return b.lastSeenAtMs - a.lastSeenAtMs;
     });
 }

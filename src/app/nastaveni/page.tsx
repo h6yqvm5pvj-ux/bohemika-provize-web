@@ -550,10 +550,13 @@ type PushTokenApiResponse = {
 type AccountSessionSummary = {
   id: string;
   current: boolean;
+  status: "active" | "expired" | "revoked";
   deviceLabel: string;
   browserLabel: string;
   osLabel: string;
   userAgent: string;
+  locationLabel: string;
+  ipLabel: string;
   createdAtMs: number;
   lastSeenAtMs: number;
   expiresAtMs: number;

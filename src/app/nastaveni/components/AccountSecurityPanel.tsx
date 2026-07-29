@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Fingerprint,
   HelpCircle,
+  History,
   KeyRound,
   LogOut,
   MonitorSmartphone,
@@ -35,10 +36,13 @@ type InlineStatus = {
 type AccountSessionSummary = {
   id: string;
   current: boolean;
+  status: "active" | "expired" | "revoked";
   deviceLabel: string;
   browserLabel: string;
   osLabel: string;
   userAgent: string;
+  locationLabel: string;
+  ipLabel: string;
   createdAtMs: number;
   lastSeenAtMs: number;
   expiresAtMs: number;
@@ -173,6 +177,7 @@ export function AccountSecurityPanel({
   onDisableMfa,
 }: AccountSecurityPanelProps) {
   const [passkeyHelpOpen, setPasskeyHelpOpen] = useState(false);
+  const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
   const passwordPolicyChecks = useMemo(
     () =>
       getPasswordPolicyChecks({
@@ -187,7 +192,11 @@ export function AccountSecurityPanel({
   const passwordPolicyPassed = passwordPolicyChecks.every((check) => check.passed);
   const passwordSubmitDisabled =
     changingPassword || currentPassword.length === 0 || !passwordPolicyPassed;
-  const otherSessionsCount = accountSessions.filter((session) => !session.current).length;
+  const activeAccountSessions = accountSessions.filter((session) => session.status === "active");
+  const historicalAccountSessions = accountSessions.filter(
+    (session) => session.status !== "active"
+  );
+  const otherSessionsCount = activeAccountSessions.filter((session) => !session.current).length;
   const revokeOtherSessionsDisabled = accountSessionsBusy || accountSessionsLoading;
 
   return (
@@ -702,13 +711,13 @@ export function AccountSecurityPanel({
               </span>
               <div className="min-w-0">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-                  Aktivní zařízení
+                  Zařízení a relace
                 </p>
                 <h3 className="mt-1 text-lg font-black text-slate-950">
-                  Přihlášené relace
+                  Aktuální přihlášení
                 </h3>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  Přehled prohlížečů a zařízení, kde je účet aktuálně přihlášený.
+                  Zařízení, kde je účet právě přihlášený. Starší relace najdeš v historii.
                 </p>
               </div>
             </div>
@@ -731,55 +740,87 @@ export function AccountSecurityPanel({
           <div className="mt-4 space-y-3 rounded-[18px] border border-slate-200 bg-slate-50 p-3">
             {accountSessionsLoading ? (
               <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
-                Načítám aktivní zařízení…
+                Načítám zařízení…
               </div>
             ) : accountSessions.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
-                Zatím není evidovaná žádná aktivní relace.
+                Zatím není evidované žádné zařízení.
               </div>
             ) : (
-              <div className="grid gap-2">
-                {accountSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className={`rounded-2xl border px-3 py-3 ${
-                      session.current
-                        ? "border-violet-200 bg-violet-50"
-                        : "border-slate-200 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="min-w-0 break-words text-sm font-bold text-slate-950">
-                            {session.deviceLabel}
-                          </p>
-                          {session.current ? (
-                            <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-violet-800">
-                              Toto zařízení
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-2 grid gap-1 text-[11px] leading-relaxed text-slate-500 sm:grid-cols-2">
-                          <p>
-                            <span className="font-semibold text-slate-600">Naposledy:</span>{" "}
-                            {formatDateTime(session.lastSeenAtMs)}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-slate-600">Platí do:</span>{" "}
-                            {formatDateTime(session.expiresAtMs)}
-                          </p>
-                        </div>
-                      </div>
-                      <span
-                        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                          session.current ? "bg-violet-700" : "bg-emerald-500"
-                        }`}
-                        aria-hidden="true"
-                      />
-                    </div>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    <span>Aktuálně přihlášeno</span>
+                    <span>{activeAccountSessions.length}</span>
                   </div>
-                ))}
+
+                  {activeAccountSessions.length === 0 ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
+                      Momentálně není evidovaná žádná aktivní relace.
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {activeAccountSessions.map((session) => (
+                        <div
+                          key={session.id}
+                          className={`rounded-2xl border px-3 py-3 ${
+                            session.current
+                              ? "border-violet-200 bg-violet-50"
+                              : "border-slate-200 bg-white"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="min-w-0 break-words text-sm font-bold text-slate-950">
+                                  {session.deviceLabel}
+                                </p>
+                                {session.current ? (
+                                  <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-violet-800">
+                                    Toto zařízení
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="mt-2 grid gap-1 text-[11px] leading-relaxed text-slate-500 sm:grid-cols-2">
+                                <p>
+                                  <span className="font-semibold text-slate-600">Naposledy:</span>{" "}
+                                  {formatDateTime(session.lastSeenAtMs)}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-slate-600">Platí do:</span>{" "}
+                                  {formatDateTime(session.expiresAtMs)}
+                                </p>
+                                <p className="sm:col-span-2">
+                                  <span className="font-semibold text-slate-600">Odkud:</span>{" "}
+                                  {session.locationLabel || "Lokace není dostupná"}
+                                </p>
+                                <p className="sm:col-span-2">
+                                  <span className="font-semibold text-slate-600">IP:</span>{" "}
+                                  {session.ipLabel || "IP není dostupná"}
+                                </p>
+                              </div>
+                            </div>
+                            <span
+                              className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                                session.current ? "bg-violet-700" : "bg-emerald-500"
+                              }`}
+                              aria-hidden="true"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSessionHistoryOpen(true)}
+                  className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800"
+                >
+                  <History size={16} strokeWidth={2.2} aria-hidden="true" />
+                  Zobrazit historii zařízení ({historicalAccountSessions.length})
+                </button>
               </div>
             )}
 
@@ -954,6 +995,103 @@ export function AccountSecurityPanel({
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+      {sessionHistoryOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+            aria-label="Zavřít historii zařízení"
+            onClick={() => setSessionHistoryOpen(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="session-history-title"
+            className="relative z-10 max-h-[calc(100dvh-1rem)] w-full max-w-3xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(2,6,23,0.42)] sm:rounded-[30px]"
+          >
+            <div className="relative overflow-hidden bg-[#0b0717] px-4 py-4 text-white sm:px-5">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b0717_0%,#7c3aed_56%,#c084fc_100%)]" />
+              <div className="relative z-10 flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white">
+                    <History size={18} strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-violet-100/70">
+                      Historie zařízení
+                    </p>
+                    <h3 id="session-history-title" className="mt-1 text-xl font-black text-white">
+                      Starší přihlášení
+                    </h3>
+                    <p className="mt-1 text-xs font-semibold leading-relaxed text-violet-100/75">
+                      U nových relací ukládáme přibližnou lokaci a maskovanou IP adresu.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSessionHistoryOpen(false)}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/15"
+                  aria-label="Zavřít historii zařízení"
+                >
+                  <X size={16} strokeWidth={2.2} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto px-4 py-4 sm:px-5">
+              {historicalAccountSessions.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                  Zatím tu není žádná starší relace.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {historicalAccountSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="min-w-0 break-words text-sm font-bold text-slate-950">
+                              {session.deviceLabel}
+                            </p>
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                              {session.status === "revoked" ? "Odhlášeno" : "Vypršelo"}
+                            </span>
+                          </div>
+                          <div className="mt-2 grid gap-1 text-[11px] leading-relaxed text-slate-500 sm:grid-cols-2">
+                            <p>
+                              <span className="font-semibold text-slate-600">Naposledy:</span>{" "}
+                              {formatDateTime(session.lastSeenAtMs)}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-slate-600">
+                                {session.status === "revoked" ? "Odhlášeno:" : "Platilo do:"}
+                              </span>{" "}
+                              {formatDateTime(session.revokedAtMs ?? session.expiresAtMs)}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-slate-600">Odkud:</span>{" "}
+                              {session.locationLabel || "Lokace není dostupná"}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-slate-600">IP:</span>{" "}
+                              {session.ipLabel || "IP není dostupná"}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-300" aria-hidden="true" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       ) : null}
       {passkeyHelpOpen ? (
