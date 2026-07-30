@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { ChevronDown } from "lucide-react";
+import { AlertTriangle, ChevronDown } from "lucide-react";
 
 import {
   type CommissionMode,
@@ -39,6 +39,7 @@ type ContractCommissionSectionProps = {
   expandedMeziprovisionKeys: string[];
   onToggleMeziprovisionCard: (key: string) => void;
   adviserItems: CommissionResultItemDTO[];
+  commissionWarning?: string | null;
   commissionPayouts?: ContractCommissionPayout[] | null;
   viewerEmail?: string | null;
   contractOwnerEmail?: string | null;
@@ -610,6 +611,7 @@ export function ContractCommissionSection({
   expandedMeziprovisionKeys,
   onToggleMeziprovisionCard,
   adviserItems,
+  commissionWarning = null,
   commissionPayouts = [],
   viewerEmail = null,
   contractOwnerEmail = null,
@@ -626,6 +628,7 @@ export function ContractCommissionSection({
   const normalizedCommissionPayouts = commissionPayouts ?? [];
   const normalizedViewerEmail = normalizeEmail(viewerEmail);
   const normalizedOwnerEmail = normalizeEmail(contractOwnerEmail);
+  const trimmedCommissionWarning = commissionWarning?.trim() || null;
 
   const payoutsForWriter = (
     writerEmail: string | null | undefined,
@@ -986,6 +989,14 @@ export function ContractCommissionSection({
     );
   };
 
+  const renderCommissionWarning = () =>
+    trimmedCommissionWarning ? (
+      <div className="mb-3 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold leading-relaxed text-amber-900">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} />
+        <span>{trimmedCommissionWarning}</span>
+      </div>
+    ) : null;
+
   return (
     <div className="space-y-4">
       {showAnyMeziprovision && (
@@ -1080,6 +1091,7 @@ export function ContractCommissionSection({
             Výpočet provizí
           </h3>
           <div className={commissionPanelClass}>
+            {renderCommissionWarning()}
             <div className="space-y-1">
               {renderCommissionRows(
                 adviserItems,
@@ -1141,6 +1153,7 @@ export function ContractCommissionSection({
 
           {showAdvisorDetails && (
             <div className={commissionPanelClass}>
+              {renderCommissionWarning()}
               <div className="space-y-1">
                 {renderCommissionRows(
                   adviserItems,

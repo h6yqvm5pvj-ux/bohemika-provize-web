@@ -64,6 +64,7 @@ import {
   calculateUniqaAuto,
   calculateUniqaFlotila,
   calculateKoopFlotila,
+  isSlaviaAutoSupportedForSignedDate,
 } from "@/app/lib/productFormulas";
 import {
   candidateCoefficientSetsForProduct,
@@ -2982,6 +2983,25 @@ const isoDayFromSystemDate = (
   return date ? toDateInputValue(date) : null;
 };
 
+const isUnsupportedSlaviaAutoStatementContract = (
+  contract: OtherProductContractPreview,
+  systemContract: MatchedSystemContract | null | undefined
+): boolean => {
+  const hasSlaviaAuto =
+    systemContract?.productKey === "slaviaauto" ||
+    contract.rows.some(
+      (row) => resolveStatementProduct(row.product).productKey === "slaviaauto"
+    );
+  if (!hasSlaviaAuto) return false;
+
+  const signedDateIso =
+    isoDayFromSystemDate(contract.signedAt) ??
+    isoDayFromSystemDate(systemContract?.contractSignedDate) ??
+    isoDayFromSystemDate(systemContract?.createdAt);
+
+  return !isSlaviaAutoSupportedForSignedDate(signedDateIso);
+};
+
 const effectiveCoefficientSetForContract = (
   systemContract: MatchedSystemContract | null,
   signedDateIso: string | null
@@ -4516,6 +4536,8 @@ const buildOtherProductAmountComparisons = (
   systemContract: MatchedSystemContract,
   statementPeriod?: string | null
 ): CommissionAmountComparison[] => {
+  if (isUnsupportedSlaviaAutoStatementContract(contract, systemContract)) return [];
+
   if (otherProductContractHasOnlyTipRows(contract)) {
     const statementAmount = sumRows(rowsByGeneralKinds(contract, ["tip"]));
     const expectedAmount = tipExpectedAmountFromSystemContract(systemContract);

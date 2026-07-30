@@ -60,6 +60,10 @@ describe("commission statement parsing helpers", () => {
       productKey: "cppbytex",
       category: "property",
     });
+    expect(resolveStatementProduct("CPP_ZAMEX")).toMatchObject({
+      productKey: "zamex",
+      category: "property",
+    });
     expect(resolveStatementProduct("MAX_DOM3")).toMatchObject({
       productKey: "maxdomov",
       category: "property",

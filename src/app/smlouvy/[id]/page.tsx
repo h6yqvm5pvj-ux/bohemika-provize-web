@@ -127,6 +127,7 @@ import { parseNeonPdf } from "@/app/lib/parseNeonPdf";
 import { parsePillowAutoPdf } from "@/app/lib/parsePillowAutoPdf";
 import { parseSlaviaAutoPdf } from "@/app/lib/parseSlaviaAutoPdf";
 import { parseUniqaAutoPdf } from "@/app/lib/parseUniqaAutoPdf";
+import { isSlaviaAutoSupportedForSignedDate } from "@/app/lib/productFormulas/slaviaAuto";
 
 const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
@@ -1762,6 +1763,15 @@ export default function ContractDetailPage() {
   const signedAnnualPremium =
     Number.isFinite(signedPremiumAmount) && signedPremiumAmount > 0
       ? Math.round(signedPremiumAmount * paymentsPerYear(signedPremiumFrequency) * 100) / 100
+      : null;
+  const contractSignedDateIso = toDateInputValue(
+    contract?.contractSignedDate ?? contract?.createdAt
+  );
+  const commissionWarning =
+    prod === "slaviaauto" &&
+    contractSignedDateIso &&
+    !isSlaviaAutoSupportedForSignedDate(contractSignedDateIso)
+      ? "U smluv Slavia Auto sjednaných před 01.04.2026 nebylo možné vypočítat správně provizi."
       : null;
   const isPaymentBasedProduct =
     isSeparatedPeriodCommissionProduct(prod) || isFrequencyAutoCommissionProduct;
@@ -5886,6 +5896,7 @@ export default function ContractDetailPage() {
                 expandedMeziprovisionKeys={expandedMeziprovisionKeys}
                 onToggleMeziprovisionCard={toggleMeziprovisionCard}
                 adviserItems={adviserItems}
+                commissionWarning={commissionWarning}
                 commissionPayouts={contract?.commissionPayouts ?? []}
                 viewerEmail={normalizedViewerEmail}
                 contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}

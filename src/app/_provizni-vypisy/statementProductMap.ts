@@ -94,7 +94,7 @@ export const inferStatementProductCategory = (
   }
   if (/AUTO|AU_|ACP|PIL_AUTO|MOJEAUT|AUTOZ|NAMIRU/.test(rawCode)) return "auto";
   if (/SIMPLE|PPR|PPD|KP_/.test(rawCode)) return "business";
-  if (/DOM|BYTEX|HAFAN|OBCAN|OD_ZAM/.test(rawCode)) return "property";
+  if (/DOM|BYTEX|ZAMEX|HAFAN|OBCAN|OD_ZAM/.test(rawCode)) return "property";
   if (/CEST|CIZIN|_CS/.test(rawCode)) return "travel";
   if (/COMFORT|CC/.test(rawCode)) return "comfort";
   return "unknown";
@@ -258,6 +258,12 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
     code: "CPP_BYTEX",
     productKey: "cppbytex",
     label: "ČPP BYTEX",
+    category: "property",
+  }),
+  defaultEntry({
+    code: "CPP_ZAMEX",
+    productKey: "zamex",
+    label: "ČPP ZAMEX",
     category: "property",
   }),
   defaultEntry({
