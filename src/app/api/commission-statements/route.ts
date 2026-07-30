@@ -4319,6 +4319,89 @@ const handleManualNeonRefreshConversion = async ({
   );
 };
 
+const handleSavedStatementReprocess = async ({
+  body,
+  ctxEmail,
+  teamEmails,
+  withRateLimit,
+}: {
+  body: Record<string, unknown>;
+  ctxEmail: string;
+  teamEmails: string[];
+  withRateLimit: (response: NextResponse) => NextResponse;
+}): Promise<NextResponse> => {
+  const statementId = safeStatementId(normalizeText(body.statementId, 80));
+  if (!statementId) {
+    return withRateLimit(
+      NextResponse.json({ ok: false, error: "Chybí ID zpracovaného výpisu." }, { status: 400 })
+    );
+  }
+
+  const docRef = statementCollection(ctxEmail).doc(statementId);
+  const docSnap = await docRef.get();
+  if (!docSnap.exists) {
+    return withRateLimit(
+      NextResponse.json({ ok: false, error: "Provizní výpis nebyl nalezen." }, { status: 404 })
+    );
+  }
+
+  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const html = normalizeText(data.html, MAX_HTML_LENGTH);
+  if (!html) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Uložený výpis nemá HTML obsah pro opětovné zpracování." },
+        { status: 400 }
+      )
+    );
+  }
+
+  const statementDate = normalizeText(data.statementDate, 32);
+  const statementDateMs = toMillis(data.statementDateMs) ?? parseCzechDate(statementDate);
+  const statementPeriod = normalizeText(data.period, 80);
+  const storedPeriodStartMs = toMillis(data.periodStartMs);
+  const storedPeriodEndMs = toMillis(data.periodEndMs);
+  const parsedPeriod = parsePeriodRange(statementPeriod);
+  const periodStartMs = storedPeriodStartMs ?? parsedPeriod.periodStartMs;
+  const periodEndMs = storedPeriodEndMs ?? parsedPeriod.periodEndMs;
+  const statementChronologyMs =
+    toMillis(data.statementChronologyMs) ??
+    statementChronologyMsFromParts({
+      statementDate,
+      statementDateMs,
+      statementPeriod,
+      periodEndMs,
+      periodStartMs,
+    });
+  const payoutMonthKey =
+    normalizeText(data.payoutMonthKey, 16) ??
+    resolvePayoutMonthKey({ statementDateMs, periodEndMs, periodStartMs });
+  const nowMs = Date.now();
+
+  const processingResult = await processStatementWrites({
+    docId: statementId,
+    docRef,
+    html,
+    ctxEmail,
+    teamEmails,
+    statementNumber: normalizeText(data.statementNumber, 64),
+    statementPeriod,
+    statementDate,
+    periodEndMs,
+    statementChronologyMs,
+    payoutMonthKey,
+    nowMs,
+  });
+
+  return withRateLimit(
+    NextResponse.json({
+      ok: true,
+      item: serializeStatementDoc(await docRef.get(), false),
+      processingResult,
+    })
+  );
+};
+
 export async function GET(req: NextRequest) {
   const guard = await requireAuthedRateLimited(req, {
     namespace: "api:commission-statements:get",
@@ -4425,6 +4508,24 @@ export async function POST(req: NextRequest) {
       return withRateLimit(
         NextResponse.json(
           { ok: false, error: "Smlouvu se nepodařilo převést na REFRESH." },
+          { status: 500 }
+        )
+      );
+    }
+  }
+  if (action === "reprocess-saved-statement") {
+    try {
+      return await handleSavedStatementReprocess({
+        body,
+        ctxEmail: ctx.email,
+        teamEmails: ctx.teamEmails,
+        withRateLimit,
+      });
+    } catch (error) {
+      console.error("Commission statements saved reprocess failed:", error);
+      return withRateLimit(
+        NextResponse.json(
+          { ok: false, error: "Zpracovaný výpis se nepodařilo spustit znovu." },
           { status: 500 }
         )
       );

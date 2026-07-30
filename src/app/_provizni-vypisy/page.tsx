@@ -123,7 +123,6 @@ import {
   b36DeferredCodeForProduct,
   b36HalfLabelForProduct,
   b36OffsetPairIndexes,
-  b36PaidPaymentAmounts,
   b36StatementAmountForReview,
   baseCommissionCodeForStatementComparison,
   classifyGeneralCommissionCode,
@@ -1974,6 +1973,24 @@ const sumRows = (rows: CommissionRow[]): number =>
 const sumPayments = (payments: OtherPayment[]): number =>
   payments.reduce((sum, payment) => sum + payment.amount, 0);
 
+const STATEMENT_AMOUNT_PRESENCE_TOLERANCE = 0.005;
+
+const hasStatementAmountForComparison = (amount: number): boolean =>
+  Number.isFinite(amount) && Math.abs(amount) >= STATEMENT_AMOUNT_PRESENCE_TOLERANCE;
+
+const hasRowsForAmountComparison = (rows: CommissionRow[]): boolean =>
+  rows.some((row) => hasStatementAmountForComparison(row.commission));
+
+const hasPaymentsForAmountComparison = (payments: OtherPayment[]): boolean =>
+  payments.some((payment) => hasStatementAmountForComparison(payment.amount));
+
+const b36PaidPaymentAmountsForComparison = (payments: OtherPayment[]): number[] =>
+  payments
+    .filter(
+      (payment) => payment.isB36Half && payment.amount > STATEMENT_AMOUNT_PRESENCE_TOLERANCE
+    )
+    .map((payment) => payment.amount);
+
 const tipExpectedAmountFromSystemContract = (
   contract: MatchedSystemContract | null | undefined
 ): number => {
@@ -2846,6 +2863,33 @@ const matchedSystemContractForLifeSplit = (
   return matchingBase ?? primarySystemContractForFamily(timeline);
 };
 
+const lifePremiumBaseComparisonForContract = (
+  contract: LifeSplitContractPreview,
+  systemContract: MatchedSystemContract | null
+): PremiumBaseComparison | null => {
+  if (!systemContract || contract.annualPremium <= 0) return null;
+
+  const hasLifePremiumIncrease = rowsByKind(contract, "increase").length > 0;
+  if (hasLifePremiumIncrease) {
+    const annualDelta = Math.abs(systemContractAnnualPremiumDelta(systemContract) ?? 0);
+    if (annualDelta <= ANNUAL_PREMIUM_TOLERANCE) return null;
+    return premiumBaseComparisonForAnnualStatementBase({
+      key: "life-premium-increase-base",
+      label: "Základna navýšení",
+      statementAnnualPremium: contract.annualPremium,
+      systemContract,
+      systemMonthlyPremiumOverride: annualDelta / 12,
+    });
+  }
+
+  return premiumBaseComparisonForAnnualStatementBase({
+    key: "life-premium-base",
+    label: "Základna pojistného",
+    statementAnnualPremium: contract.annualPremium,
+    systemContract,
+  });
+};
+
 const KOOPERATIVA_OBCAN_STATEMENT_PRODUCTS = new Set<Product>([
   "koopmajetekobcan",
   "koopfit",
@@ -3396,6 +3440,38 @@ const annualPremiumBaseMismatch = (
   };
 };
 
+const premiumBaseComparisonForAnnualStatementBase = ({
+  key,
+  label,
+  statementAnnualPremium,
+  systemContract,
+  systemMonthlyPremiumOverride,
+}: {
+  key: string;
+  label: string;
+  statementAnnualPremium: number;
+  systemContract: MatchedSystemContract | null;
+  systemMonthlyPremiumOverride?: number | null;
+}): PremiumBaseComparison | null => {
+  const comparison = premiumBaseComparison(
+    statementAnnualPremium,
+    systemContract,
+    "annual",
+    systemMonthlyPremiumOverride
+  );
+  if (!comparison) return null;
+
+  return {
+    ...comparison,
+    key,
+    label,
+    canBeAnniversaryPremiumChange: false,
+    firstAnniversaryDate: null,
+    anniversaryDate: null,
+    referenceDate: null,
+  };
+};
+
 const premiumBaseComparison = (
   statementPremiumBase: number,
   systemContract: MatchedSystemContract | null,
@@ -3492,6 +3568,89 @@ const autoPremiumBaseForMismatch = (
   }
 
   return null;
+};
+
+const statementBasePeriodClosestToSystem = (
+  statementBase: number,
+  systemContract: MatchedSystemContract | null,
+  fallback: "annual" | "payment"
+): "annual" | "payment" => {
+  const systemPaymentAmount = systemCommissionPaymentBase(systemContract);
+  if (
+    statementBase <= 0 ||
+    !Number.isFinite(systemPaymentAmount) ||
+    systemPaymentAmount <= 0
+  ) {
+    return fallback;
+  }
+
+  const paymentsPerYear = paymentsPerYearForFrequency(systemContract?.frequencyRaw);
+  if (paymentsPerYear <= 1) return fallback;
+
+  const paymentDifference = Math.abs(statementBase - systemPaymentAmount);
+  const annualDifference = Math.abs(statementBase - systemPaymentAmount * paymentsPerYear);
+  return annualDifference <= paymentDifference ? "annual" : "payment";
+};
+
+const otherProductPremiumBaseForComparison = (
+  contract: OtherProductContractPreview,
+  systemContract: MatchedSystemContract | null
+): { base: number; period: "annual" | "payment" } | null => {
+  const rowsWithBase = contract.rows.filter((row) => row.base > 0);
+  if (rowsWithBase.length === 0) return null;
+
+  const annualBaseRow = rowsWithBase.find(
+    (row) => resolveStatementProduct(row.product).usesAnnualPremiumBase
+  );
+  if (annualBaseRow) return { base: annualBaseRow.base, period: "annual" };
+
+  const prioritizedRow =
+    rowsWithBase.find((row) => {
+      const kind = classifyGeneralCommissionCode(row.product, row.type).kind;
+      return kind === "closing" || kind === "installment" || kind === "subsequent";
+    }) ?? rowsWithBase[0];
+
+  return prioritizedRow
+    ? {
+        base: prioritizedRow.base,
+        period: statementBasePeriodClosestToSystem(
+          prioritizedRow.base,
+          systemContract,
+          "payment"
+        ),
+      }
+    : null;
+};
+
+const otherProductPremiumBaseComparisonForContract = (
+  contract: OtherProductContractPreview,
+  systemContract: MatchedSystemContract | null,
+  statementPeriod?: string | null
+): PremiumBaseComparison | null => {
+  if (contractHasProductCategory(contract, "auto")) {
+    return autoPremiumBaseComparisonForContract(contract, systemContract, statementPeriod);
+  }
+
+  const statementBase = otherProductPremiumBaseForComparison(contract, systemContract);
+  if (!statementBase) return null;
+
+  const comparison = premiumBaseComparison(
+    statementBase.base,
+    systemContract,
+    statementBase.period,
+    statementBase.period === "payment" ? systemCommissionPaymentBase(systemContract) : null
+  );
+  if (!comparison) return null;
+
+  return {
+    ...comparison,
+    key: "other-premium-base",
+    label: "Základna pojistného",
+    canBeAnniversaryPremiumChange: false,
+    firstAnniversaryDate: null,
+    anniversaryDate: null,
+    referenceDate: null,
+  };
 };
 
 const autoPremiumReferenceDate = (
@@ -4383,9 +4542,14 @@ const buildLifeSplitAmountComparisons = (
   const items = coefficientOverride?.items ?? systemContract.items ?? [];
   const tipRows = rowsByKind(contract, "tip");
   const tipStatementAmount = sumRows(tipRows);
-  if (items.length === 0 && tipRows.length === 0) return [];
-  const hasA101InStatement = rowsByKind(contract, "a101").length > 0;
-  const hasB0301InStatement = rowsByKind(contract, "b0301").length > 0;
+  const a101Rows = rowsByKind(contract, "a101");
+  const b0301Rows = rowsByKind(contract, "b0301");
+  const b3601Rows = rowsByKind(contract, "b3601");
+  const b4801Rows = rowsByKind(contract, "b4801");
+  const increaseRows = rowsByKind(contract, "increase");
+  const careRows = rowsByKind(contract, "care");
+  const hasA101InStatement = a101Rows.length > 0;
+  const hasB0301InStatement = b0301Rows.length > 0;
   const hasB0301InHistory = hasHistoricalB0301Payout(systemContract);
   const hasB36HalfInHistory = hasHistoricalB36HalfPayout(systemContract);
   const subsequentRows = rowsByKind(contract, "subsequent");
@@ -4411,11 +4575,11 @@ const buildLifeSplitAmountComparisons = (
     contract.b36Payments,
     expectedB36HalfAmount
   );
-  const hasB36HalfInStatement = b36PaidPaymentAmounts(contract.b36Payments).some(
-    (amount) => amount > COMMISSION_AMOUNT_TOLERANCE
+  const hasB36HalfInStatement = b36PaidPaymentAmountsForComparison(contract.b36Payments).some(
+    hasStatementAmountForComparison
   );
   const hasB36HalfDeductionInStatement = contract.b36Payments.some(
-    (payment) => payment.isB36Half && payment.amount < -COMMISSION_AMOUNT_TOLERANCE
+    (payment) => payment.isB36Half && hasStatementAmountForComparison(payment.amount)
   );
   const shouldReviewB36Half =
     hasB36HalfInStatement || hasB36HalfDeductionInStatement || !hasB36HalfInHistory;
@@ -4425,6 +4589,7 @@ const buildLifeSplitAmountComparisons = (
       key: "tip",
       label: "ATP101",
       requiredNow: false,
+      hasStatementRows: hasRowsForAmountComparison(tipRows),
       statementAmount: tipStatementAmount,
       expectedAmount: tipExpectedAmountFromSystemContract(systemContract),
       detailLines: [
@@ -4435,14 +4600,16 @@ const buildLifeSplitAmountComparisons = (
       key: "a101",
       label: "A101",
       requiredNow: false,
-      statementAmount: sumRows(rowsByKind(contract, "a101")),
+      hasStatementRows: hasRowsForAmountComparison(a101Rows),
+      statementAmount: sumRows(a101Rows),
       expectedAmount: expectedAmountFromItems(items, (title) => title.includes("a101")),
     },
     {
       key: "b0301",
       label: "B0301",
       requiredNow: false,
-      statementAmount: sumRows(rowsByKind(contract, "b0301")),
+      hasStatementRows: hasRowsForAmountComparison(b0301Rows),
+      statementAmount: sumRows(b0301Rows),
       expectedAmount: expectedAmountFromItems(items, (title) => title.includes("b0301")),
     },
     {
@@ -4452,6 +4619,7 @@ const buildLifeSplitAmountComparisons = (
         shouldReviewB36Half &&
         hasA101InStatement &&
         (hasB0301InStatement || hasB0301InHistory),
+      hasStatementRows: shouldReviewB36Half && hasPaymentsForAmountComparison(contract.b36Payments),
       statementAmount: shouldReviewB36Half ? statementB36HalfAmount : 0,
       expectedAmount: shouldReviewB36Half ? expectedB36HalfAmount : 0,
     },
@@ -4459,7 +4627,8 @@ const buildLifeSplitAmountComparisons = (
       key: "b3601",
       label: b36DeferredCodeForProduct(contract.productCode),
       requiredNow: false,
-      statementAmount: sumRows(rowsByKind(contract, "b3601")),
+      hasStatementRows: hasRowsForAmountComparison(b3601Rows),
+      statementAmount: sumRows(b3601Rows),
       expectedAmount: expectedAmountFromItems(
         items,
         (title) =>
@@ -4471,11 +4640,20 @@ const buildLifeSplitAmountComparisons = (
       key: "b4801",
       label: "B4801",
       requiredNow: false,
-      statementAmount: sumRows(rowsByKind(contract, "b4801")),
+      hasStatementRows: hasRowsForAmountComparison(b4801Rows),
+      statementAmount: sumRows(b4801Rows),
       expectedAmount: expectedAmountFromItems(
         items,
         (title) => title.includes("b4801") || title.includes("b48") || title.includes("po 4 letech")
       ),
+    },
+    {
+      key: "increase",
+      label: "Navýšení",
+      requiredNow: false,
+      hasStatementRows: hasRowsForAmountComparison(increaseRows),
+      statementAmount: sumRows(increaseRows),
+      expectedAmount: expectedAmountFromItems(items, (title) => title.includes("navyseni")),
     },
     {
       key: "subsequent",
@@ -4483,6 +4661,7 @@ const buildLifeSplitAmountComparisons = (
         ? `B101-B104 (${subsequentBundleInfo.periods} období)`
         : "B101-B104",
       requiredNow: false,
+      hasStatementRows: hasRowsForAmountComparison(subsequentRows),
       statementAmount: subsequentStatementAmount,
       expectedAmount: subsequentBundleInfo?.expectedAmount ?? subsequentExpectedPerPeriod,
       detailLines: subsequentBundleInfo?.detailLines,
@@ -4491,7 +4670,8 @@ const buildLifeSplitAmountComparisons = (
       key: "care",
       label: "B201-B206",
       requiredNow: false,
-      statementAmount: sumRows(rowsByKind(contract, "care")),
+      hasStatementRows: hasRowsForAmountComparison(careRows),
+      statementAmount: sumRows(careRows),
       expectedAmount: expectedAmountFromItems(
         items,
         (title) =>
@@ -4504,7 +4684,7 @@ const buildLifeSplitAmountComparisons = (
   return statementParts
     .filter(
       (part) =>
-        part.statementAmount > COMMISSION_AMOUNT_TOLERANCE ||
+        part.hasStatementRows ||
         (part.requiredNow && part.expectedAmount > COMMISSION_AMOUNT_TOLERANCE)
     )
     .map((part) => ({
@@ -4539,9 +4719,13 @@ const buildOtherProductAmountComparisons = (
   if (isUnsupportedSlaviaAutoStatementContract(contract, systemContract)) return [];
 
   if (otherProductContractHasOnlyTipRows(contract)) {
-    const statementAmount = sumRows(rowsByGeneralKinds(contract, ["tip"]));
+    const tipRows = rowsByGeneralKinds(contract, ["tip"]);
+    const statementAmount = sumRows(tipRows);
     const expectedAmount = tipExpectedAmountFromSystemContract(systemContract);
-    if (statementAmount <= COMMISSION_AMOUNT_TOLERANCE && expectedAmount <= COMMISSION_AMOUNT_TOLERANCE) {
+    if (
+      !hasRowsForAmountComparison(tipRows) &&
+      expectedAmount <= COMMISSION_AMOUNT_TOLERANCE
+    ) {
       return [];
     }
     return [
@@ -4561,7 +4745,6 @@ const buildOtherProductAmountComparisons = (
 
   const coefficientOverride = autoCoefficientOverrideInfo(contract, systemContract);
   const items = coefficientOverride?.items ?? systemContract.items ?? [];
-  if (items.length === 0) return [];
   const isAutoContract = contractHasProductCategory(contract, "auto");
 
   if (isAutoContract) {
@@ -4590,7 +4773,7 @@ const buildOtherProductAmountComparisons = (
         premiumReference
       );
     const comparisons: CommissionAmountComparison[] =
-      immediateStatementAmount > COMMISSION_AMOUNT_TOLERANCE
+      hasRowsForAmountComparison(immediateRows)
         ? [
             {
               key: "auto-immediate",
@@ -4603,7 +4786,7 @@ const buildOtherProductAmountComparisons = (
           ]
         : [];
 
-    if (subsequentStatementAmount > COMMISSION_AMOUNT_TOLERANCE) {
+    if (hasRowsForAmountComparison(subsequentRows)) {
       const productKey = systemContract.productKey;
       const expectedSubsequent =
         productKey && isAutoProduct(productKey)
@@ -4653,11 +4836,11 @@ const buildOtherProductAmountComparisons = (
       });
     }
 
-    const b36GrossAmount = b36PaidPaymentAmounts(contract.b36Payments).reduce(
+    const b36GrossAmount = b36PaidPaymentAmountsForComparison(contract.b36Payments).reduce(
       (sum, amount) => sum + amount,
       0
     );
-    if (b36GrossAmount > COMMISSION_AMOUNT_TOLERANCE) {
+    if (hasStatementAmountForComparison(b36GrossAmount)) {
       const expectedB36 = expectedClosestAmountFromItems(
         items,
         b36GrossAmount,
@@ -4744,15 +4927,16 @@ const buildOtherProductAmountComparisons = (
         difference: statementAmount - expectedAmount,
         status: comparisonStatus(statementAmount, expectedAmount),
         detailLines: subsequentBundleInfo?.detailLines,
+        hasStatementRows: hasRowsForAmountComparison(group.rows),
       };
     })
-    .filter((comparison) => comparison.statementAmount > COMMISSION_AMOUNT_TOLERANCE);
+    .filter((comparison) => comparison.hasStatementRows);
 
-  const b36GrossAmount = b36PaidPaymentAmounts(contract.b36Payments).reduce(
+  const b36GrossAmount = b36PaidPaymentAmountsForComparison(contract.b36Payments).reduce(
     (sum, amount) => sum + amount,
     0
   );
-  if (b36GrossAmount > COMMISSION_AMOUNT_TOLERANCE) {
+  if (hasStatementAmountForComparison(b36GrossAmount)) {
     const expectedB36 = expectedClosestAmountFromItems(
       items,
       b36GrossAmount,
@@ -7404,6 +7588,10 @@ function LifeSplitContractCard({
   const amountComparisons = systemContract
     ? buildLifeSplitAmountComparisons(reviewContract, systemContract, statementPeriod)
     : [];
+  const lifePremiumBaseComparison =
+    systemContract && !tipOnlyContract
+      ? lifePremiumBaseComparisonForContract(reviewContract, systemContract)
+      : null;
   const coefficientOverride = systemContract
     ? lifeCoefficientOverrideInfo(reviewContract, systemContract)
     : null;
@@ -7797,7 +7985,10 @@ function LifeSplitContractCard({
             </div>
           )}
 
-          <AmountComparisonPanel comparisons={amountComparisons} />
+          <AmountComparisonPanel
+            comparisons={amountComparisons}
+            baseComparisons={lifePremiumBaseComparison ? [lifePremiumBaseComparison] : []}
+          />
 
           {missingB36Warning && (
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">
@@ -7928,9 +8119,10 @@ function OtherProductContractCard({
     isAutoContract && systemContract && !tipOnlyContract
       ? autoCoefficientOverrideInfo(reviewContract, systemContract)
       : null;
-  const autoPremiumBaseComparison = isAutoContract && !tipOnlyContract
-    ? autoPremiumBaseComparisonForContract(reviewContract, systemContract, statementPeriod)
+  const statementPremiumBaseComparison = systemContract && !tipOnlyContract
+    ? otherProductPremiumBaseComparisonForContract(reviewContract, systemContract, statementPeriod)
     : null;
+  const autoPremiumBaseComparison = isAutoContract ? statementPremiumBaseComparison : null;
   const autoPremiumChange = tipOnlyContract
     ? null
     : autoPremiumChangeInfo(
@@ -7938,10 +8130,7 @@ function OtherProductContractCard({
         systemContract,
         statementPeriod
       );
-  const amountComparisonsForReview = amountComparisons.filter(
-    (comparison) =>
-      !isAmountComparisonExplainedByAutoPremiumChange(comparison, autoPremiumChange)
-  );
+  const amountComparisonsForReview = amountComparisons;
   const amountIssueCount = amountComparisonsForReview.filter(
     (comparison) => comparison.status !== "ok"
   ).length;
@@ -8234,7 +8423,7 @@ function OtherProductContractCard({
           <AmountComparisonPanel
             comparisons={amountComparisonsForReview}
             baseComparisons={
-              autoPremiumChange || !autoPremiumBaseComparison ? [] : [autoPremiumBaseComparison]
+              statementPremiumBaseComparison ? [statementPremiumBaseComparison] : []
             }
           />
 
@@ -9647,6 +9836,8 @@ function StornoContractsSection({
   onRequestSystemStorno?: (target: StornoStatementActionTarget) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [pairedExpanded, setPairedExpanded] = useState(true);
+  const [unpairedExpanded, setUnpairedExpanded] = useState(true);
   const otherPaymentStornos = statement.otherPayments.filter((payment) => payment.isStorno);
   const stornoStatementGroups = groupStornoRowsByContract(statement.stornoRows);
   const combinedStornoGroups = groupStornoItemsByContract(
@@ -9659,15 +9850,6 @@ function StornoContractsSection({
   const statusRuleByCode = new Map(
     statement.contractStatusRules.map((rule) => [rule.code.trim().toUpperCase(), rule])
   );
-  const contractNumbers = new Set<string>();
-  for (const row of statement.stornoRows) {
-    const key = normalizeContractNumberForMatch(row.contractNumber);
-    if (key) contractNumbers.add(key);
-  }
-  for (const payment of otherPaymentStornos) {
-    const key = normalizeContractNumberForMatch(payment.contractNumber);
-    if (key) contractNumbers.add(key);
-  }
 
   const totalStorno =
     statement.stornoRows.reduce((sum, row) => sum + row.commission, 0) +
@@ -9680,9 +9862,74 @@ function StornoContractsSection({
     (sum, payment) => sum + payment.amount,
     0
   );
-  const stornoUncertaintyCount = [...contractNumbers].filter((contractNumber) =>
-    stornoSystemUncertainty(contractMatchForNumber(matchesByContractNumber, contractNumber))
+  const stornoGroupEntries = combinedStornoGroups.map((group, groupIndex) => {
+    const match = contractMatchForNumber(matchesByContractNumber, group.contractNumber);
+    const systemContract = matchedSystemContract(match);
+    return {
+      group,
+      groupIndex,
+      match,
+      systemContract,
+    };
+  });
+  const pairedStornoGroupEntries = stornoGroupEntries.filter((entry) =>
+    Boolean(entry.systemContract)
+  );
+  const unpairedStornoGroupEntries = stornoGroupEntries.filter(
+    (entry) => !entry.systemContract
+  );
+  const stornoUncertaintyCount = stornoGroupEntries.filter(
+    (entry) =>
+      !normalizeContractNumberForMatch(entry.group.contractNumber) ||
+      stornoSystemUncertainty(entry.match)
   ).length;
+  type StornoGroupEntry = (typeof stornoGroupEntries)[number];
+  const stornoSectionTotal = (entries: StornoGroupEntry[]): number =>
+    entries.reduce((sum, entry) => sum + entry.group.totalAmount, 0);
+  const stornoSectionItemCount = (entries: StornoGroupEntry[]): number =>
+    entries.reduce(
+      (sum, entry) => sum + entry.group.rows.length + entry.group.payments.length,
+      0
+    );
+  const pairedNeedsSystemStornoCount = pairedStornoGroupEntries.filter(
+    (entry) => entry.systemContract && !systemContractIsStorno(entry.systemContract)
+  ).length;
+  const stornoSections = [
+    {
+      key: "paired",
+      title: "Spárované smlouvy",
+      description: "Storna s nalezenou smlouvou v systému.",
+      entries: pairedStornoGroupEntries,
+      expanded: pairedExpanded,
+      onToggle: () => setPairedExpanded((value) => !value),
+      icon: CheckCircle2,
+      containerClass: "border-emerald-200 bg-emerald-50/60",
+      iconClass: "border-emerald-200 text-emerald-700",
+      textClass: "text-emerald-950",
+      descriptionClass: "text-emerald-900",
+      dividerClass: "border-emerald-200",
+      warningCount: pairedNeedsSystemStornoCount,
+      warningLabel: "není storno v systému",
+      warningClass: "border-rose-200 bg-white text-rose-800",
+    },
+    {
+      key: "unpaired",
+      title: "Nespárované smlouvy",
+      description: "Storna bez jednoznačné shody v systému.",
+      entries: unpairedStornoGroupEntries,
+      expanded: unpairedExpanded,
+      onToggle: () => setUnpairedExpanded((value) => !value),
+      icon: AlertTriangle,
+      containerClass: "border-amber-200 bg-amber-50/70",
+      iconClass: "border-amber-200 text-amber-700",
+      textClass: "text-amber-950",
+      descriptionClass: "text-amber-900",
+      dividerClass: "border-amber-200",
+      warningCount: unpairedStornoGroupEntries.length,
+      warningLabel: "k ruční kontrole",
+      warningClass: "border-amber-200 bg-white text-amber-900",
+    },
+  ].filter((section) => section.entries.length > 0);
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-rose-50/70 shadow-[0_14px_32px_rgba(159,18,57,0.05)]">
@@ -9749,12 +9996,63 @@ function StornoContractsSection({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <h4 className="text-sm font-bold text-rose-950">Storna podle smlouvy</h4>
-            {combinedStornoGroups.map((group, groupIndex) => {
+          <div className="space-y-3">
+            {stornoSections.map((section) => {
+              const SectionIcon = section.icon;
+              return (
+                <div
+                  key={`storno-section-${section.key}`}
+                  className={`overflow-hidden rounded-2xl border ${section.containerClass}`}
+                >
+                  <button
+                    type="button"
+                    onClick={section.onToggle}
+                    className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
+                    aria-expanded={section.expanded}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border bg-white ${section.iconClass}`}
+                      >
+                        <SectionIcon className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <h4 className={`text-base font-bold ${section.textClass}`}>
+                          {section.title}
+                        </h4>
+                        <p className={`text-sm ${section.descriptionClass}`}>
+                          {section.description}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`inline-flex flex-wrap items-center justify-end gap-2 text-sm font-semibold ${section.textClass}`}
+                    >
+                      <span>
+                        {section.entries.length} smluv ·{" "}
+                        {stornoSectionItemCount(section.entries)} položek ·{" "}
+                        {formatMoney(stornoSectionTotal(section.entries))} Kč
+                      </span>
+                      {section.warningCount > 0 && (
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${section.warningClass}`}
+                        >
+                          {section.warningCount} {section.warningLabel}
+                        </span>
+                      )}
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${
+                          section.expanded ? "rotate-180" : ""
+                        }`}
+                        strokeWidth={2.2}
+                        aria-hidden="true"
+                      />
+                    </span>
+                  </button>
+                  {section.expanded && (
+                    <div className={`space-y-3 border-t ${section.dividerClass} px-4 py-4`}>
+                      {section.entries.map(({ group, groupIndex, match, systemContract }) => {
               const row = group.rows[0] ?? null;
-              const match = contractMatchForNumber(matchesByContractNumber, group.contractNumber);
-              const systemContract = matchedSystemContract(match);
               const stornoInference = fullAutoStornoInferenceForGroup({
                 statement,
                 statementId,
@@ -10029,6 +10327,11 @@ function StornoContractsSection({
                     onRequestStorno={onRequestSystemStorno}
                   />
                 </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               );
             })}
           </div>
@@ -12289,12 +12592,125 @@ export default function CommissionStatementsPage() {
     }
   };
 
+  const reprocessSelectedHistoryStatement = async () => {
+    if (statementProcessingInFlightRef.current) return;
+
+    const statementId = selectedHistoryStatementId?.trim();
+    if (!statementId) {
+      setStatementSaveState({
+        status: "error",
+        message: "Nejdřív otevři zpracovaný výpis z historie.",
+      });
+      return;
+    }
+
+    if (!user) {
+      setStatementSaveState({
+        status: "error",
+        message: "Pro opětovné zpracování výpisu musíš být přihlášený.",
+      });
+      return;
+    }
+
+    statementProcessingInFlightRef.current = true;
+    setProcessingStepIndex(0);
+    setStatementSaveState({
+      status: "saving",
+      message: "Znovu zpracovávám uložený výpis podle aktuálních smluv…",
+    });
+    setProcessingAuditSummary(null);
+
+    try {
+      const sendRequest = async (forceRefreshToken = false) => {
+        const token = await user.getIdToken(forceRefreshToken);
+        return fetch("/api/commission-statements", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "reprocess-saved-statement",
+            statementId,
+          }),
+        });
+      };
+
+      let response = await sendRequest(false);
+      if (response.status === 401) {
+        response = await sendRequest(true);
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            error?: string;
+            item?: SavedCommissionStatement;
+            processingResult?: StatementProcessingResult;
+          }
+        | null;
+      if (!response.ok || payload?.ok !== true) {
+        throw new Error(payload?.error || "Výpis se nepodařilo zpracovat znovu.");
+      }
+
+      const processingResult = payload.processingResult ?? {};
+      const processingResults = [processingResult];
+      const processingSummary = sumProcessingResults(processingResults);
+      const processedStatementId = payload.item?.id ?? statementId;
+      const currentStatement = statements[0] ?? null;
+      const nextProcessedStatementIdsByKey = currentStatement
+        ? {
+            [statementDiscrepancyKey(currentStatement)]: processedStatementId,
+          }
+        : {};
+
+      setStatementSaveState({
+        status: "saved",
+        message: `Výpis z historie byl znovu zpracovaný. ${processedStatementLabel(
+          1,
+          processingResults
+        )}`,
+      });
+      setProcessingAuditSummary(processingSummary);
+      setSelectedHistoryStatementId(processedStatementId);
+      setProcessedStatementIdsByKey((previous) => ({
+        ...previous,
+        ...nextProcessedStatementIdsByKey,
+      }));
+      const neonRefreshTargets = collectPostProcessingNeonRefreshPromptTargets({
+        statements,
+        matchesByContractNumber,
+        processedStatementIdsByKey: nextProcessedStatementIdsByKey,
+      });
+      setNeonRefreshPromptTargets(neonRefreshTargets);
+      setNeonRefreshPromptError(null);
+      setNeonRefreshPromptSaving(false);
+      void refreshProcessedStatementHistory();
+    } catch (saveError) {
+      console.warn("Provizní výpisy: opětovné zpracování výpisu selhalo.", saveError);
+      setStatementSaveState({
+        status: "error",
+        message:
+          saveError instanceof Error
+            ? saveError.message
+            : "Výpis se nepodařilo zpracovat znovu.",
+      });
+      setProcessingAuditSummary(null);
+    } finally {
+      statementProcessingInFlightRef.current = false;
+    }
+  };
+
   const freshUploadPairingInProgress =
     statements.length > 0 &&
     statementFilesForProcessing.length > 0 &&
     matchStats.total > 0 &&
     matchStats.completed < matchStats.total &&
     !matchingError;
+  const canReprocessSelectedHistoryStatement =
+    statements.length === 1 &&
+    statementFilesForProcessing.length === 0 &&
+    Boolean(selectedHistoryStatementId);
   const visibleStatementSaveMessage =
     freshUploadPairingInProgress && statementSaveState.status === "ready"
       ? null
@@ -12586,29 +13002,54 @@ export default function CommissionStatementsPage() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    void processStatementRecords();
-                  }}
-                  disabled={
-                    statementRecordsProcessing ||
-                    statementRecordsProcessed ||
-                    statementFilesForProcessing.length === 0
-                  }
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {statementRecordsProcessing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                <div className="flex flex-wrap items-center gap-2">
+                  {canReprocessSelectedHistoryStatement && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void reprocessSelectedHistoryStatement();
+                      }}
+                      disabled={statementRecordsProcessing}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {statementRecordsProcessing ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin"
+                          strokeWidth={2.2}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                      )}
+                      {statementRecordsProcessing
+                        ? "Zpracovávám…"
+                        : "Zpracovat znovu podle aktuálních smluv"}
+                    </button>
                   )}
-                  {statementRecordsProcessing
-                    ? "Zpracovávám…"
-                    : statementRecordsProcessed
-                      ? "Výpis zpracován"
-                      : "Zpracovat výpis"}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void processStatementRecords();
+                    }}
+                    disabled={
+                      statementRecordsProcessing ||
+                      statementRecordsProcessed ||
+                      statementFilesForProcessing.length === 0
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {statementRecordsProcessing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                    )}
+                    {statementRecordsProcessing
+                      ? "Zpracovávám…"
+                      : statementRecordsProcessed
+                        ? "Výpis zpracován"
+                        : "Zpracovat výpis"}
+                  </button>
+                </div>
               </div>
 
             </section>
