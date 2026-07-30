@@ -980,14 +980,23 @@ export default function CalculatorPage() {
           stornoBaseAnnual
         )} = ${formatMoney(neonRefreshCommissionBase.motivationalAnnualPremium)}`
       : stornoPartLabel;
+    const premiumIncreaseAnnual = neonRefreshCommissionBase.premiumIncreaseAnnual;
+    const premiumMovementLabel =
+      premiumIncreaseAnnual >= 0
+        ? `navýšení ${formatMoney(premiumIncreaseAnnual)} (${formatMoney(
+            newAnnual
+          )} - ${formatMoney(originalAnnual)})`
+        : `pokles pojistného ${formatMoney(
+            Math.abs(premiumIncreaseAnnual)
+          )} (${formatMoney(newAnnual)} - ${formatMoney(
+            originalAnnual
+          )}), záporné navýšení se nezapočítává`;
     const periodLabel = usesMotivationalBase
       ? "motivační provize po 5 letech"
       : `${neonRefreshCommissionBase.remainingMonths}/60 původní storno lhůty`;
     return `Refresh základna pro provizi: ${formatMoney(
       neonRefreshCommissionBase.calculationAnnualPremium
-    )} ročně (${periodLabel}). Výpočet: navýšení ${formatMoney(
-      neonRefreshCommissionBase.premiumIncreaseAnnual
-    )} (${formatMoney(newAnnual)} - ${formatMoney(originalAnnual)})${originalBasePartLabel}.`;
+    )} ročně (${periodLabel}). Výpočet: ${premiumMovementLabel}${originalBasePartLabel}.`;
   }, [
     product,
     refreshOriginalOpen,

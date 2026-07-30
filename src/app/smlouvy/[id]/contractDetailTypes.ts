@@ -140,6 +140,8 @@ export type ContractDoc = {
   refreshStatementResolvedStatementId?: string | null;
   refreshStatementResolvedStatementNumber?: string | null;
   refreshStatementResolvedStatementPeriod?: string | null;
+  refreshStatementResolvedStatementDate?: string | null;
+  refreshStatementResolvedStatementChronologyMs?: number | null;
   refreshCommissionBase?: {
     productKey?: Product | null;
     method?: "cpp_neon_5y_storno" | string | null;

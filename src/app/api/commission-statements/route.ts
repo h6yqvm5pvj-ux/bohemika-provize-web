@@ -47,6 +47,7 @@ import {
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { statementChronologyCanOverwrite } from "./statementChronologyGuards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1468,6 +1469,27 @@ const latestPremiumStatementChronologyMs = (contract: ContractDoc): number | nul
   }, null);
 };
 
+const refreshStatementResolvedChronologyMs = (contract: ContractDoc): number | null =>
+  toMillis(
+    (contract as { refreshStatementResolvedStatementChronologyMs?: unknown })
+      .refreshStatementResolvedStatementChronologyMs
+  ) ??
+  statementChronologyMsFromParts({
+    statementDate: (contract as { refreshStatementResolvedStatementDate?: string | null })
+      .refreshStatementResolvedStatementDate,
+    statementPeriod: contract.refreshStatementResolvedStatementPeriod,
+  });
+
+const coefficientSetOverrideStatementChronologyMs = (contract: ContractDoc): number | null =>
+  toMillis(
+    (contract as { commissionCoefficientSetOverrideStatementChronologyMs?: unknown })
+      .commissionCoefficientSetOverrideStatementChronologyMs
+  ) ??
+  statementChronologyMsFromParts({
+    statementDate: contract.commissionCoefficientSetOverrideStatementDate,
+    statementPeriod: contract.commissionCoefficientSetOverrideStatementPeriod,
+  });
+
 const premiumHistoryEntryDateMs = (
   entry: ContractPremiumStatementHistoryEntry
 ): number | null => {
@@ -2139,7 +2161,7 @@ const isNeonRefreshMissingOriginalInSystem = (contract: ContractDoc): boolean =>
     contract.requiresStatementRefresh === true ||
     contract.commissionCalculationStatus === "provisional_refresh_missing_original");
 
-type NeonRefreshMissingOriginalStatementUpdate = {
+type NeonRefreshStatementBaseUpdate = {
   statementAnnualPremiumBase: number;
   statementMonthlyPremiumBase: number;
   coefficientSet: CommissionCoefficientSet;
@@ -2168,7 +2190,7 @@ const statementAnnualBaseForNeonRefresh = (
   return first;
 };
 
-const buildNeonRefreshMissingOriginalStatementUpdate = ({
+const buildNeonRefreshStatementBaseUpdate = ({
   contract,
   payoutRows,
   coefficientSetOverride,
@@ -2178,7 +2200,7 @@ const buildNeonRefreshMissingOriginalStatementUpdate = ({
   payoutRows: CommissionStatementPayoutRow[];
   coefficientSetOverride: CommissionCoefficientSet | null;
   allowStatementMarkedRefresh?: boolean;
-}): NeonRefreshMissingOriginalStatementUpdate | null => {
+}): NeonRefreshStatementBaseUpdate | null => {
   const productKey = contract.productKey;
   if (productKey !== "neon") return null;
 
@@ -2242,6 +2264,43 @@ const buildNeonRefreshMissingOriginalStatementUpdate = ({
       frequencyRaw,
       durationYears,
     }),
+  };
+};
+
+const buildNeonRefreshStatementCommissionBase = ({
+  contract,
+  statementUpdate,
+  method,
+}: {
+  contract: ContractDoc;
+  statementUpdate: NeonRefreshStatementBaseUpdate;
+  method: string;
+}): NonNullable<ContractDoc["refreshCommissionBase"]> => {
+  const existing = contract.refreshCommissionBase ?? {};
+  const currentMonthlyPremium =
+    finiteMoneyOrNull(contract.effectiveInputAmount) ??
+    finiteMoneyOrNull(contract.inputAmount);
+  const newMonthlyPremium =
+    finiteMoneyOrNull(existing.newMonthlyPremium) ?? currentMonthlyPremium;
+  const policyStartMs = toMillis(contract.policyStartDate);
+
+  return {
+    ...existing,
+    productKey: "neon",
+    method,
+    originalContractNumber:
+      existing.originalContractNumber ?? contract.refreshOriginalContractNumber ?? null,
+    refreshPolicyStartDateIso:
+      existing.refreshPolicyStartDateIso ??
+      (policyStartMs == null ? null : isoDateFromMs(policyStartMs)),
+    newMonthlyPremium,
+    newAnnualPremium:
+      finiteMoneyOrNull(existing.newAnnualPremium) ??
+      (newMonthlyPremium == null
+        ? null
+        : Math.round(newMonthlyPremium * 12 * 100) / 100),
+    calculationMonthlyPremium: statementUpdate.statementMonthlyPremiumBase,
+    calculationAnnualPremium: statementUpdate.statementAnnualPremiumBase,
   };
 };
 
@@ -3660,42 +3719,60 @@ const processStatementWrites = async ({
       contract,
       contractPayoutRows
     );
-    const neonRefreshMissingOriginalUpdate = buildNeonRefreshMissingOriginalStatementUpdate({
+    const canApplyCoefficientSetOverride =
+      coefficientSetOverride != null &&
+      statementChronologyCanOverwrite(
+        statementChronologyMs,
+        coefficientSetOverrideStatementChronologyMs(contract)
+      );
+    const neonRefreshStatementUpdate = buildNeonRefreshStatementBaseUpdate({
       contract,
       payoutRows: contractPayoutRows,
       coefficientSetOverride: coefficientSetOverride?.coefficientSet ?? null,
+      allowStatementMarkedRefresh: contract.isRefresh === true,
     });
-    const neonRefreshCurrentMonthlyPremium =
-      finiteMoneyOrNull(contract.effectiveInputAmount) ??
-      finiteMoneyOrNull(contract.inputAmount);
-    const neonRefreshPolicyStartMs = toMillis(contract.policyStartDate);
-    const contractForPayoutExpectations: ContractDoc = neonRefreshMissingOriginalUpdate
+    const neonRefreshMissingOriginal = isNeonRefreshMissingOriginalInSystem(contract);
+    const neonRefreshStatementCommissionBase = neonRefreshStatementUpdate
+      ? buildNeonRefreshStatementCommissionBase({
+          contract,
+          statementUpdate: neonRefreshStatementUpdate,
+          method: neonRefreshMissingOriginal
+            ? "cpp_neon_statement_refresh_missing_original"
+            : "cpp_neon_statement_refresh_base",
+        })
+      : null;
+    const existingNeonRefreshCalculationMonthlyBase = finiteMoneyOrNull(
+      contract.calculationInputAmount
+    );
+    const existingNeonRefreshStatementAnnualBase =
+      finiteMoneyOrNull(contract.refreshCommissionBase?.calculationAnnualPremium) ??
+      (existingNeonRefreshCalculationMonthlyBase != null
+        ? Math.round(existingNeonRefreshCalculationMonthlyBase * 12 * 100) / 100
+        : null);
+    const shouldApplyNeonRefreshStatementUpdate =
+      neonRefreshStatementUpdate != null &&
+      statementChronologyCanOverwrite(
+        statementChronologyMs,
+        refreshStatementResolvedChronologyMs(contract)
+      ) &&
+      (contract.commissionBaseSource !== "commission_statement" ||
+        existingNeonRefreshStatementAnnualBase == null ||
+        Math.abs(
+          existingNeonRefreshStatementAnnualBase -
+            neonRefreshStatementUpdate.statementAnnualPremiumBase
+        ) > MONEY_MATCH_TOLERANCE);
+    const contractForPayoutExpectations: ContractDoc = neonRefreshStatementUpdate
       ? {
           ...contract,
-          calculationInputAmount: neonRefreshMissingOriginalUpdate.statementMonthlyPremiumBase,
-          refreshCommissionBase: {
-            productKey: "neon",
-            method: "cpp_neon_statement_refresh_missing_original",
-            originalContractNumber: null,
-            refreshPolicyStartDateIso:
-              neonRefreshPolicyStartMs == null ? null : isoDateFromMs(neonRefreshPolicyStartMs),
-            newMonthlyPremium: neonRefreshCurrentMonthlyPremium,
-            newAnnualPremium:
-              neonRefreshCurrentMonthlyPremium == null
-                ? null
-                : Math.round(neonRefreshCurrentMonthlyPremium * 12 * 100) / 100,
-            calculationMonthlyPremium:
-              neonRefreshMissingOriginalUpdate.statementMonthlyPremiumBase,
-            calculationAnnualPremium:
-              neonRefreshMissingOriginalUpdate.statementAnnualPremiumBase,
-          },
-          items: neonRefreshMissingOriginalUpdate.items,
+          calculationInputAmount: neonRefreshStatementUpdate.statementMonthlyPremiumBase,
+          refreshCommissionBase: neonRefreshStatementCommissionBase,
+          items: neonRefreshStatementUpdate.items,
           result: {
-            items: neonRefreshMissingOriginalUpdate.items,
-            total: neonRefreshMissingOriginalUpdate.total,
+            items: neonRefreshStatementUpdate.items,
+            total: neonRefreshStatementUpdate.total,
           },
-          total: neonRefreshMissingOriginalUpdate.total,
-          managerOverrides: neonRefreshMissingOriginalUpdate.managerOverrides,
+          total: neonRefreshStatementUpdate.total,
+          managerOverrides: neonRefreshStatementUpdate.managerOverrides,
         }
       : coefficientSetOverride
       ? {
@@ -3789,6 +3866,12 @@ const processStatementWrites = async ({
       : detectedPremiumHistoryEntries.filter((entry) => !existingPremiumKeys.has(entry.key))
           .length;
     result.premiumHistoryBackfills += backfilledPremiumAddedCount;
+    if (!canApplyPremiumToCurrentContract && contractPremiumRows.length > 0) {
+      result.olderPremiumUpdatesSkipped += Math.max(
+        0,
+        contractPremiumRows.length - backfilledPremiumAddedCount
+      );
+    }
 
     const updatePayload: Record<string, unknown> = {
       commissionPayouts: payoutMerge.merged,
@@ -3796,12 +3879,14 @@ const processStatementWrites = async ({
       updatedAt: new Date(nowMs),
       ...externalLinkPatch,
     };
-    if (coefficientSetOverride) {
+    if (coefficientSetOverride && canApplyCoefficientSetOverride) {
       updatePayload.commissionCoefficientSetOverride = coefficientSetOverride.coefficientSet;
       updatePayload.commissionCoefficientSetOverrideSource = coefficientSetOverride.reason;
       updatePayload.commissionCoefficientSetOverrideStatementId = docId;
       updatePayload.commissionCoefficientSetOverrideStatementNumber = statementNumber;
       updatePayload.commissionCoefficientSetOverrideStatementPeriod = statementPeriod;
+      updatePayload.commissionCoefficientSetOverrideStatementDate = statementDate;
+      updatePayload.commissionCoefficientSetOverrideStatementChronologyMs = statementChronologyMs;
       updatePayload.commissionCoefficientSetOverrideAppliedAtMs = nowMs;
       updatePayload.commissionCoefficientSetOverrideAppliedBy = ctxEmail;
       if (
@@ -3814,6 +3899,8 @@ const processStatementWrites = async ({
         updatePayload.neonCoefficientSetOverrideStatementId = docId;
         updatePayload.neonCoefficientSetOverrideStatementNumber = statementNumber;
         updatePayload.neonCoefficientSetOverrideStatementPeriod = statementPeriod;
+        updatePayload.neonCoefficientSetOverrideStatementDate = statementDate;
+        updatePayload.neonCoefficientSetOverrideStatementChronologyMs = statementChronologyMs;
         updatePayload.neonCoefficientSetOverrideAppliedAtMs = nowMs;
         updatePayload.neonCoefficientSetOverrideAppliedBy = ctxEmail;
       }
@@ -3825,25 +3912,29 @@ const processStatementWrites = async ({
       updatePayload.total = coefficientSetOverride.total;
       updatePayload.managerOverrides = coefficientSetOverride.managerOverrides;
     }
-    if (neonRefreshMissingOriginalUpdate) {
+    if (neonRefreshStatementUpdate && shouldApplyNeonRefreshStatementUpdate) {
       updatePayload.calculationInputAmount =
-        neonRefreshMissingOriginalUpdate.statementMonthlyPremiumBase;
+        neonRefreshStatementUpdate.statementMonthlyPremiumBase;
       updatePayload.refreshCommissionBase =
-        contractForPayoutExpectations.refreshCommissionBase ?? null;
-      updatePayload.items = neonRefreshMissingOriginalUpdate.items;
+        neonRefreshStatementCommissionBase ?? null;
+      updatePayload.items = neonRefreshStatementUpdate.items;
       updatePayload.result = {
-        items: neonRefreshMissingOriginalUpdate.items,
-        total: neonRefreshMissingOriginalUpdate.total,
+        items: neonRefreshStatementUpdate.items,
+        total: neonRefreshStatementUpdate.total,
       };
-      updatePayload.total = neonRefreshMissingOriginalUpdate.total;
-      updatePayload.managerOverrides = neonRefreshMissingOriginalUpdate.managerOverrides;
+      updatePayload.total = neonRefreshStatementUpdate.total;
+      updatePayload.managerOverrides = neonRefreshStatementUpdate.managerOverrides;
       updatePayload.requiresStatementRefresh = false;
-      updatePayload.commissionCalculationStatus = "statement_resolved_refresh_missing_original";
+      updatePayload.commissionCalculationStatus = neonRefreshMissingOriginal
+        ? "statement_resolved_refresh_missing_original"
+        : "statement_resolved_refresh_base";
       updatePayload.commissionBaseSource = "commission_statement";
       updatePayload.refreshStatementResolvedAtMs = nowMs;
       updatePayload.refreshStatementResolvedStatementId = docId;
       updatePayload.refreshStatementResolvedStatementNumber = statementNumber;
       updatePayload.refreshStatementResolvedStatementPeriod = statementPeriod;
+      updatePayload.refreshStatementResolvedStatementDate = statementDate;
+      updatePayload.refreshStatementResolvedStatementChronologyMs = statementChronologyMs;
     }
     const commissionStornoSummary = commissionStornoSummaryFromPayouts({
       payouts: payoutMerge.merged,
@@ -3877,8 +3968,8 @@ const processStatementWrites = async ({
       premiumMerge.added > 0 ||
       premiumMerge.updatedExisting > 0 ||
       hasExternalLinkPatch ||
-      coefficientSetOverride ||
-      neonRefreshMissingOriginalUpdate
+      canApplyCoefficientSetOverride ||
+      shouldApplyNeonRefreshStatementUpdate
     ) {
       batchWriter.set(resolution.ref, updatePayload, { merge: true });
       touchedContractPaths.add(resolution.ref.path);
@@ -3887,7 +3978,7 @@ const processStatementWrites = async ({
       result.payoutRecordsAdded += payoutMerge.added;
       result.payoutRecordsExisting += payoutMerge.existingCount;
       result.payoutRecordsUpdated += payoutMerge.updatedExisting;
-      if (coefficientSetOverride) result.coefficientOverridesApplied += 1;
+      if (canApplyCoefficientSetOverride) result.coefficientOverridesApplied += 1;
       if (canApplyPremiumToCurrentContract) {
         result.premiumUpdates += actionablePremiumAddedCount;
       }
@@ -4118,7 +4209,7 @@ const handleManualNeonRefreshConversion = async ({
   }
 
   const coefficientSetOverride = detectCoefficientSetOverrideFromPayoutRows(contract, payoutRows);
-  const refreshUpdate = buildNeonRefreshMissingOriginalStatementUpdate({
+  const refreshUpdate = buildNeonRefreshStatementBaseUpdate({
     contract,
     payoutRows,
     coefficientSetOverride: coefficientSetOverride?.coefficientSet ?? null,
@@ -4174,6 +4265,13 @@ const handleManualNeonRefreshConversion = async ({
     refreshStatementResolvedStatementId: statementId,
     refreshStatementResolvedStatementNumber: statementNumber,
     refreshStatementResolvedStatementPeriod: statementPeriod,
+    refreshStatementResolvedStatementDate: normalizeText(statementData.statementDate, 32),
+    refreshStatementResolvedStatementChronologyMs: statementChronologyMsFromParts({
+      statementDate: normalizeText(statementData.statementDate, 32),
+      statementPeriod,
+      periodEndMs: toMillis(statementData.periodEndMs),
+      periodStartMs: toMillis(statementData.periodStartMs),
+    }),
     updatedAt: new Date(nowMs),
   };
 
@@ -4183,6 +4281,12 @@ const handleManualNeonRefreshConversion = async ({
     contractPatch.commissionCoefficientSetOverrideStatementId = statementId;
     contractPatch.commissionCoefficientSetOverrideStatementNumber = statementNumber;
     contractPatch.commissionCoefficientSetOverrideStatementPeriod = statementPeriod;
+    contractPatch.commissionCoefficientSetOverrideStatementDate = normalizeText(
+      statementData.statementDate,
+      32
+    );
+    contractPatch.commissionCoefficientSetOverrideStatementChronologyMs =
+      contractPatch.refreshStatementResolvedStatementChronologyMs;
     contractPatch.commissionCoefficientSetOverrideAppliedAtMs = nowMs;
     contractPatch.commissionCoefficientSetOverrideAppliedBy = ctxEmail;
     contractPatch.neonCoefficientSetOverride = coefficientSetOverride.coefficientSet;
@@ -4190,6 +4294,12 @@ const handleManualNeonRefreshConversion = async ({
     contractPatch.neonCoefficientSetOverrideStatementId = statementId;
     contractPatch.neonCoefficientSetOverrideStatementNumber = statementNumber;
     contractPatch.neonCoefficientSetOverrideStatementPeriod = statementPeriod;
+    contractPatch.neonCoefficientSetOverrideStatementDate = normalizeText(
+      statementData.statementDate,
+      32
+    );
+    contractPatch.neonCoefficientSetOverrideStatementChronologyMs =
+      contractPatch.refreshStatementResolvedStatementChronologyMs;
     contractPatch.neonCoefficientSetOverrideAppliedAtMs = nowMs;
     contractPatch.neonCoefficientSetOverrideAppliedBy = ctxEmail;
   }

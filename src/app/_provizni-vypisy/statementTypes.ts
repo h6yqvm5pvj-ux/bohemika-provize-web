@@ -410,6 +410,8 @@ export type MatchedSystemContract = {
   commissionCoefficientSetOverrideStatementId?: string | null;
   commissionCoefficientSetOverrideStatementNumber?: string | null;
   commissionCoefficientSetOverrideStatementPeriod?: string | null;
+  commissionCoefficientSetOverrideStatementDate?: string | null;
+  commissionCoefficientSetOverrideStatementChronologyMs?: number | null;
   commissionCoefficientSetOverrideAppliedAtMs?: number | null;
   commissionCoefficientSetOverrideAppliedBy?: string | null;
   neonCoefficientSetOverride?: string | null;
@@ -417,6 +419,8 @@ export type MatchedSystemContract = {
   neonCoefficientSetOverrideStatementId?: string | null;
   neonCoefficientSetOverrideStatementNumber?: string | null;
   neonCoefficientSetOverrideStatementPeriod?: string | null;
+  neonCoefficientSetOverrideStatementDate?: string | null;
+  neonCoefficientSetOverrideStatementChronologyMs?: number | null;
   neonCoefficientSetOverrideAppliedAtMs?: number | null;
   neonCoefficientSetOverrideAppliedBy?: string | null;
   isRefresh?: boolean | null;
@@ -425,6 +429,11 @@ export type MatchedSystemContract = {
   requiresStatementRefresh?: boolean | null;
   commissionCalculationStatus?: string | null;
   commissionBaseSource?: string | null;
+  refreshStatementResolvedStatementId?: string | null;
+  refreshStatementResolvedStatementNumber?: string | null;
+  refreshStatementResolvedStatementPeriod?: string | null;
+  refreshStatementResolvedStatementDate?: string | null;
+  refreshStatementResolvedStatementChronologyMs?: number | null;
   inputAmount?: number | null;
   calculationInputAmount?: number | null;
   effectiveInputAmount?: number | null;

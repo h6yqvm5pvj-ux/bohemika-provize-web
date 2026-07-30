@@ -344,6 +344,16 @@ export function CalculatorAmountAndActionsSection({
                     </span>
                   </label>
                 )}
+                {product === "neon" && (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-900">
+                    Refresh základna je při sjednání orientační. Po nahrání
+                    provizního výpisu se smlouva přepočte podle výpisové
+                    základny ČPP, aby seděla na skutečně vyplacenou provizi.
+                    {refreshOriginalMissingInSystem
+                      ? " U varianty bez původní smlouvy v systému je výpis autoritativní zdroj základu."
+                      : ""}
+                  </p>
+                )}
                 {!refreshOriginalMissingInSystem && (
                   <>
                     <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
@@ -368,11 +378,6 @@ export function CalculatorAmountAndActionsSection({
                         : "Při uložení se původní smlouva stornuje ke dni počátku nové smlouvy."}
                     </p>
                   </>
-                )}
-                {refreshOriginalMissingInSystem && (
-                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-900">
-                    Výpočet provize je orientační. Po nahrání provizního výpisu se smlouva bere jako REFRESH bez původní smlouvy v systému a základna se musí sladit podle výpisu.
-                  </p>
                 )}
                 {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "checking" && (
                   <div className="space-y-1.5">

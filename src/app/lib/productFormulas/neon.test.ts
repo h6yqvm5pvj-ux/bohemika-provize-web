@@ -106,6 +106,26 @@ describe("NEON commission formulas", () => {
     });
   });
 
+  it("does not subtract a premium decrease from a chained refresh residual base", () => {
+    const result = calculateNeonRefreshCommissionBase({
+      newMonthlyPremium: 1200,
+      originalMonthlyPremium: 1250,
+      stornoBaseMonthlyPremium: 12010 / 12,
+      originalStornoStartDateIso: "2024-03-01",
+      refreshPolicyStartDateIso: "2026-01-04",
+    });
+
+    expect(result).toMatchObject({
+      calculationMethod: "storno_60_60",
+      elapsedMonths: 23,
+      remainingMonths: 37,
+      premiumIncreaseAnnual: -600,
+      stornoBaseAnnualPremium: 15000,
+      stornedOriginalAnnualPremium: 9250,
+      calculationAnnualPremium: 9250,
+    });
+  });
+
   it("calculates decrease storno base from remaining 60 month liability", () => {
     const result = calculateNeonDecreaseStornoBase({
       previousMonthlyPremium: 1500,

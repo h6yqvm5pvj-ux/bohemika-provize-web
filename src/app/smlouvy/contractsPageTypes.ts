@@ -31,6 +31,8 @@ export type ContractDoc = {
   refreshStatementResolvedStatementId?: string | null;
   refreshStatementResolvedStatementNumber?: string | null;
   refreshStatementResolvedStatementPeriod?: string | null;
+  refreshStatementResolvedStatementDate?: string | null;
+  refreshStatementResolvedStatementChronologyMs?: number | null;
   refreshCommissionBase?: unknown;
   entryType?: "contract" | "endorsement" | string | null;
   rootContractEntryId?: string | null;

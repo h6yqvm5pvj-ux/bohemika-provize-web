@@ -165,25 +165,36 @@ export function calculateNeonRefreshCommissionBase({
   );
   if (elapsed == null) return null;
 
-  const elapsedMonths = Math.min(safeStornoMonths, Math.max(0, elapsed));
+  const rawElapsedMonths = Math.min(safeStornoMonths, Math.max(0, elapsed));
   const usesMotivationalBase = elapsed >= safeStornoMonths;
+  const premiumIncreaseMonthly = safeNew - safeOriginal;
+  const isPremiumIncrease = premiumIncreaseMonthly >= 0;
+  const elapsedMonths =
+    usesMotivationalBase || isPremiumIncrease
+      ? rawElapsedMonths
+      : Math.min(safeStornoMonths, rawElapsedMonths + 1);
   const remainingMonths = usesMotivationalBase
     ? 0
     : Math.max(0, safeStornoMonths - elapsedMonths);
   const earnedRatio = elapsedMonths / safeStornoMonths;
   const remainingRatio = remainingMonths / safeStornoMonths;
-  const premiumIncreaseMonthly = safeNew - safeOriginal;
-  const isPremiumIncrease = premiumIncreaseMonthly >= 0;
+  const positivePremiumIncreaseMonthly = Math.max(0, premiumIncreaseMonthly);
+  // Refresh/decrease statements keep the residual base; the decrease is not
+  // subtracted from the remaining storno part.
+  const remainingStornoBaseMonthlyPremium =
+    usesMotivationalBase || isPremiumIncrease
+      ? safeStornoBase
+      : Math.max(safeStornoBase, safeOriginal);
   const motivationalSourceMonthlyPremium = isPremiumIncrease ? safeStornoBase : safeNew;
   const motivationalMonthlyPremium = usesMotivationalBase
     ? motivationalSourceMonthlyPremium * NEON_REFRESH_MOTIVATIONAL_RATIO
     : 0;
   const stornedOriginalMonthlyPremium = usesMotivationalBase
     ? 0
-    : safeStornoBase * remainingRatio;
+    : remainingStornoBaseMonthlyPremium * remainingRatio;
   const refreshBaseMonthlyPremium = usesMotivationalBase
-    ? Math.max(0, (isPremiumIncrease ? premiumIncreaseMonthly : 0) + motivationalMonthlyPremium)
-    : Math.max(0, premiumIncreaseMonthly + stornedOriginalMonthlyPremium);
+    ? Math.max(0, positivePremiumIncreaseMonthly + motivationalMonthlyPremium)
+    : Math.max(0, positivePremiumIncreaseMonthly + stornedOriginalMonthlyPremium);
   const calculationMonthlyPremium = Math.max(
     0,
     refreshBaseMonthlyPremium
@@ -204,8 +215,8 @@ export function calculateNeonRefreshCommissionBase({
     remainingRatio,
     premiumIncreaseMonthly: roundToCents(premiumIncreaseMonthly),
     premiumIncreaseAnnual: roundToCents(premiumIncreaseMonthly * 12),
-    stornoBaseMonthlyPremium: roundToCents(safeStornoBase),
-    stornoBaseAnnualPremium: roundToCents(safeStornoBase * 12),
+    stornoBaseMonthlyPremium: roundToCents(remainingStornoBaseMonthlyPremium),
+    stornoBaseAnnualPremium: roundToCents(remainingStornoBaseMonthlyPremium * 12),
     stornedOriginalMonthlyPremium: roundToCents(stornedOriginalMonthlyPremium),
     stornedOriginalAnnualPremium: roundToCents(stornedOriginalMonthlyPremium * 12),
     motivationalMonthlyPremium: roundToCents(motivationalMonthlyPremium),

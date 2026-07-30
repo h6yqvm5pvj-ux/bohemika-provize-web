@@ -16,7 +16,10 @@ const webpBytes = Buffer.from([
 ]);
 
 function imageFile(bytes: Buffer, name: string, type: string): File {
-  return new File([bytes], name, { type });
+  const arrayBuffer = new ArrayBuffer(bytes.byteLength);
+  const fileBytes = new Uint8Array(arrayBuffer);
+  fileBytes.set(bytes);
+  return new File([fileBytes], name, { type });
 }
 
 describe("online card office photo upload preparation", () => {

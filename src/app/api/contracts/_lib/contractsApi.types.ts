@@ -47,6 +47,8 @@ export type ContractDoc = {
   refreshStatementResolvedStatementId?: string | null;
   refreshStatementResolvedStatementNumber?: string | null;
   refreshStatementResolvedStatementPeriod?: string | null;
+  refreshStatementResolvedStatementDate?: string | null;
+  refreshStatementResolvedStatementChronologyMs?: number | null;
   refreshCommissionBase?: {
     productKey?: Product | null;
     method?: "cpp_neon_5y_storno" | string | null;
@@ -100,6 +102,8 @@ export type ContractDoc = {
   commissionCoefficientSetOverrideStatementId?: string | null;
   commissionCoefficientSetOverrideStatementNumber?: string | null;
   commissionCoefficientSetOverrideStatementPeriod?: string | null;
+  commissionCoefficientSetOverrideStatementDate?: string | null;
+  commissionCoefficientSetOverrideStatementChronologyMs?: number | null;
   commissionCoefficientSetOverrideAppliedAtMs?: number | null;
   commissionCoefficientSetOverrideAppliedBy?: string | null;
   neonCoefficientSetOverride?: NeonCoefficientSet | string | null;
@@ -107,6 +111,8 @@ export type ContractDoc = {
   neonCoefficientSetOverrideStatementId?: string | null;
   neonCoefficientSetOverrideStatementNumber?: string | null;
   neonCoefficientSetOverrideStatementPeriod?: string | null;
+  neonCoefficientSetOverrideStatementDate?: string | null;
+  neonCoefficientSetOverrideStatementChronologyMs?: number | null;
   neonCoefficientSetOverrideAppliedAtMs?: number | null;
   neonCoefficientSetOverrideAppliedBy?: string | null;
   position?: Position | null;
