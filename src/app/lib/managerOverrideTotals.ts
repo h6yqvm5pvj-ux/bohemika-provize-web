@@ -6,6 +6,7 @@ import {
 
 const LEGACY_FREQUENCY_OVERRIDE_PRODUCTS = new Set<Product>([
   "domex",
+  "cppbytex",
   "cppAuto",
   "csobAuto",
   "uniqaAuto",

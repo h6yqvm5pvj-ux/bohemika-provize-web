@@ -51,6 +51,9 @@ import type {
   AuthContextOptions,
   ContractDetailResponse,
   ContractDoc,
+  ContractsFindBulkRequestItem,
+  ContractsFindBulkResponse,
+  ContractsFindBulkResponseItem,
   ContractLifePremiumChange,
   ContractListFilters,
   ContractListResponseShape,
@@ -73,6 +76,7 @@ import {
   calculateMaxEfekt,
   calculatePillowInjury,
   calculateDomex,
+  calculateCppBytex,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
@@ -188,6 +192,7 @@ import {
   canManageContractOwner,
   extractEmailFromUnknown,
   hasContractAccess,
+  type ContractFindScope,
   resolveAccountType,
   resolveContractFindScope,
   resolveContractListScope,
@@ -214,6 +219,8 @@ const CONTRACTS_MUTATION_RATE_LIMIT = 60;
 const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const CONTRACTS_GET_RATE_LIMIT = 180;
 const CONTRACTS_GET_RATE_LIMIT_WINDOW_MS = 60_000;
+const CONTRACTS_FIND_BULK_MAX_ITEMS = 750;
+const CONTRACTS_FIND_BULK_WORKER_COUNT = 8;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const USER_TREE_CACHE_TTL_MS = 5 * 60 * 1000;
 const SUBSCRIPTION_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -944,7 +951,15 @@ const resolveRefreshOriginalPremiumInfo = async ({
   const latestPremiumChange = [...changes]
     .reverse()
     .find((change) => positivePremiumAmount(change.premiumAmount) != null);
+  const storedRefreshNewMonthly = positivePremiumAmount(
+    contract.refreshCommissionBase?.newMonthlyPremium
+  );
+  const storedRefreshNewAnnual = positivePremiumAmount(
+    contract.refreshCommissionBase?.newAnnualPremium
+  );
   const premiumAmount =
+    storedRefreshNewMonthly ??
+    (storedRefreshNewAnnual != null ? storedRefreshNewAnnual / 12 : null) ??
     positivePremiumAmount(latestPremiumChange?.premiumAmount) ??
     lifePremiumAmountForEntry(contract);
   if (premiumAmount == null) return null;
@@ -965,6 +980,7 @@ const resolveRefreshOriginalPremiumInfo = async ({
       Boolean(isoDayFromUnknown(change.policyStartDate))
   );
   const stornoStartDateIso =
+    isoDayFromUnknown(contract.refreshCommissionBase?.refreshPolicyStartDateIso) ??
     isoDayFromUnknown(firstChangeWithDate?.policyStartDate) ??
     isoDayFromUnknown(contract.policyStartDate) ??
     isoDayFromUnknown(firstChangeWithDate?.contractSignedDate) ??
@@ -1630,6 +1646,7 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
     case "maximaMaxEfekt":
       return ["monthly"];
     case "domex":
+    case "cppbytex":
     case "cpphafan":
       return ["quarterly", "semiannual", "annual"];
     case "pillowmajetek":
@@ -2325,6 +2342,7 @@ const computeItemsForProductPositionAndMode = ({
     case "pillowInjury":
       return calculatePillowInjury(safeAmount, position, commissionMode);
     case "domex":
+    case "cppbytex":
     case "cpphafan":
     case "koopmajetekobcan":
     case "koopfit":
@@ -2334,6 +2352,8 @@ const computeItemsForProductPositionAndMode = ({
       const dto =
         productKey === "domex"
           ? calculateDomex(safeAmount, usedFrequency, position, coefficientSignedDateIso)
+          : productKey === "cppbytex"
+          ? calculateCppBytex(safeAmount, usedFrequency, position)
           : productKey === "cpphafan"
           ? calculateCppHafan(safeAmount, usedFrequency, position)
           : productKey === "koopodzam"
@@ -4268,6 +4288,167 @@ export async function handleContractsGet(
   return withRateLimit(NextResponse.json(response));
 }
 
+const sortContractsFindResults = (contracts: ContractResponseItem[]): ContractResponseItem[] => {
+  const uniqueContracts = dedupeEquivalentContractResponseItems(contracts);
+
+  uniqueContracts.sort((a, b) => {
+    const da = contractSortDate(a);
+    const db = contractSortDate(b);
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    const diff = db.getTime() - da.getTime();
+    if (diff !== 0) return diff;
+    const keyA = responseCursorKey(a);
+    const keyB = responseCursorKey(b);
+    if (keyA === keyB) return 0;
+    return keyA > keyB ? -1 : 1;
+  });
+
+  return uniqueContracts;
+};
+
+type ContractsFindResolverContext = {
+  email: string;
+  teamEmails: string[];
+  usersByEmail: Map<string, UserNode>;
+  ownerProfileByEmail: Map<string, ContractOwnerPositionContext | null>;
+  entryRefsByQuery: Map<
+    string,
+    Promise<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[]>
+  >;
+  logPrefix: string;
+};
+
+const resolveOwnerProfileForFind = async (
+  context: ContractsFindResolverContext,
+  ownerEmail: string
+): Promise<ContractOwnerPositionContext | null> => {
+  const normalizedOwner = normalizeEmail(ownerEmail);
+  if (!normalizedOwner) return null;
+  if (context.ownerProfileByEmail.has(normalizedOwner)) {
+    return context.ownerProfileByEmail.get(normalizedOwner) ?? null;
+  }
+  const profile =
+    context.usersByEmail.get(normalizedOwner) ?? (await loadUserProfileByEmail(normalizedOwner));
+  context.ownerProfileByEmail.set(normalizedOwner, profile ?? null);
+  return profile ?? null;
+};
+
+const resolveEntryRefsByFindQuery = (
+  context: ContractsFindResolverContext,
+  queryRaw: string
+): Promise<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[]> => {
+  const cacheKey = queryRaw;
+  const cached = context.entryRefsByQuery.get(cacheKey);
+  if (cached) return cached;
+  const promise = resolveEntryRefsByContractNumber(queryRaw);
+  context.entryRefsByQuery.set(cacheKey, promise);
+  return promise;
+};
+
+const resolveContractsFindContracts = async ({
+  context,
+  queryRaw,
+  scope,
+}: {
+  context: ContractsFindResolverContext;
+  queryRaw: string;
+  scope: ContractFindScope;
+}): Promise<ContractResponseItem[]> => {
+  const normalizedContractNumber = normalizeContractNumber(queryRaw);
+  if (!normalizedContractNumber) return [];
+
+  const allowedOwners = buildFindAllowedOwnerSet({
+    scope,
+    viewerEmail: context.email,
+    teamEmails: context.teamEmails,
+  });
+
+  let entryRefs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[];
+  try {
+    entryRefs = await resolveEntryRefsByFindQuery(context, queryRaw);
+  } catch (err) {
+    console.error(`${context.logPrefix}: resolveEntryRefsByContractNumber selhalo:`, err);
+    throw new Error("Nepodařilo se dohledat smlouvu podle čísla.");
+  }
+
+  const contracts: ContractResponseItem[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const ref of entryRefs) {
+    const ownerFromPath = normalizeEmail(ref.path.split("/")[1] ?? "");
+    if (!ownerFromPath) continue;
+    if (allowedOwners && !allowedOwners.has(ownerFromPath)) continue;
+
+    try {
+      const snap = await ref.get();
+      if (!snap.exists) continue;
+      const contract = snap.data() as ContractDoc;
+      if (normalizeContractNumber(contract.contractNumber ?? null) !== normalizedContractNumber) {
+        continue;
+      }
+      if (scope === "tip") {
+        const tipsterEmail = normalizeEmail(contract.tipContractTipsterEmail);
+        if (!tipsterEmail || tipsterEmail !== normalizeEmail(context.email)) continue;
+      } else if (
+        !hasContractAccess({
+          viewerEmail: context.email,
+          teamEmails: context.teamEmails,
+          ownerEmail: ownerFromPath,
+          contract,
+        })
+      ) {
+        continue;
+      }
+
+      const itemKey = `${ownerFromPath}___${snap.id}`;
+      if (seenKeys.has(itemKey)) continue;
+      seenKeys.add(itemKey);
+      const ownerProfile = await resolveOwnerProfileForFind(context, ownerFromPath);
+      const item = toContractResponseItem(
+        snap.id,
+        ownerFromPath,
+        contract,
+        normalizeOptionalDisplayName(ownerProfile?.name) ?? null,
+        ownerProfile
+      );
+      if (item.productKey && LIFE_TIMELINE_PRODUCTS.has(item.productKey as Product)) {
+        item.lifePremiumChanges = await loadLifePremiumChangesForFindMatch({
+          ownerEmail: ownerFromPath,
+          contract: item,
+          adviserName: item.adviserName ?? null,
+          ownerContext: ownerProfile,
+        });
+      }
+      contracts.push(item);
+    } catch (entryErr) {
+      console.warn(`${context.logPrefix}: načtení entry selhalo:`, ref.path, entryErr);
+    }
+  }
+
+  return sortContractsFindResults(contracts);
+};
+
+const createContractsFindResolverContext = ({
+  email,
+  teamEmails,
+  users,
+  logPrefix,
+}: {
+  email: string;
+  teamEmails: string[];
+  users: UserNode[];
+  logPrefix: string;
+}): ContractsFindResolverContext => ({
+  email,
+  teamEmails,
+  usersByEmail: new Map(users.map((item) => [item.email, item])),
+  ownerProfileByEmail: new Map(),
+  entryRefsByQuery: new Map(),
+  logPrefix,
+});
+
 export async function handleContractsFind(req: NextRequest) {
   const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:find",
@@ -4277,7 +4458,6 @@ export async function handleContractsFind(req: NextRequest) {
   if (!guard.ok) return guard.response;
   const { ctx, withRateLimit } = guard;
   const { email, teamEmails, users } = ctx;
-  const usersByEmail = new Map(users.map((item) => [item.email, item]));
 
   const search = req.nextUrl.searchParams;
   const queryRaw = (search.get("q") ?? "").trim();
@@ -4296,126 +4476,154 @@ export async function handleContractsFind(req: NextRequest) {
     );
   }
 
-  const normalizedContractNumber = normalizeContractNumber(queryRaw);
-  if (!normalizedContractNumber) {
-    const emptyResponse: ContractsFindResponse = {
-      ok: true,
-      scope,
-      query: queryRaw,
-      contracts: [],
-    };
-    return withRateLimit(NextResponse.json(emptyResponse));
-  }
-
-  const allowedOwners = buildFindAllowedOwnerSet({
-    scope,
-    viewerEmail: email,
+  const resolverContext = createContractsFindResolverContext({
+    email,
     teamEmails,
+    users,
+    logPrefix: "GET /api/contracts/find",
   });
 
-  let entryRefs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[];
+  let contracts: ContractResponseItem[];
   try {
-    entryRefs = await resolveEntryRefsByContractNumber(queryRaw);
+    contracts = await resolveContractsFindContracts({
+      context: resolverContext,
+      queryRaw,
+      scope,
+    });
   } catch (err) {
-    console.error("GET /api/contracts/find: resolveEntryRefsByContractNumber selhalo:", err);
+    const message =
+      err instanceof Error ? err.message : "Nepodařilo se dohledat smlouvu podle čísla.";
     return NextResponse.json(
-      { ok: false, error: "Nepodařilo se dohledat smlouvu podle čísla." } satisfies ErrorResponse,
+      { ok: false, error: message } satisfies ErrorResponse,
       { status: 500 }
     );
   }
-
-  const contracts: ContractResponseItem[] = [];
-  const seenKeys = new Set<string>();
-  const ownerProfileByEmail = new Map<string, UserProfileSnapshot | ContractOwnerPositionContext | null>();
-
-  const resolveOwnerProfile = async (
-    ownerEmail: string
-  ): Promise<UserProfileSnapshot | ContractOwnerPositionContext | null> => {
-    const normalizedOwner = normalizeEmail(ownerEmail);
-    if (!normalizedOwner) return null;
-    if (ownerProfileByEmail.has(normalizedOwner)) {
-      return ownerProfileByEmail.get(normalizedOwner) ?? null;
-    }
-    const profile = usersByEmail.get(normalizedOwner) ?? (await loadUserProfileByEmail(normalizedOwner));
-    ownerProfileByEmail.set(normalizedOwner, profile ?? null);
-    return profile ?? null;
-  };
-
-  for (const ref of entryRefs) {
-    const ownerFromPath = normalizeEmail(ref.path.split("/")[1] ?? "");
-    if (!ownerFromPath) continue;
-    if (allowedOwners && !allowedOwners.has(ownerFromPath)) continue;
-
-    try {
-      const snap = await ref.get();
-      if (!snap.exists) continue;
-      const contract = snap.data() as ContractDoc;
-      if (normalizeContractNumber(contract.contractNumber ?? null) !== normalizedContractNumber) {
-        continue;
-      }
-      if (scope === "tip") {
-        const tipsterEmail = normalizeEmail(contract.tipContractTipsterEmail);
-        if (!tipsterEmail || tipsterEmail !== normalizeEmail(email)) continue;
-      } else if (
-        !hasContractAccess({
-          viewerEmail: email,
-          teamEmails,
-          ownerEmail: ownerFromPath,
-          contract,
-        })
-      ) {
-        continue;
-      }
-
-      const itemKey = `${ownerFromPath}___${snap.id}`;
-      if (seenKeys.has(itemKey)) continue;
-      seenKeys.add(itemKey);
-      const ownerProfile = await resolveOwnerProfile(ownerFromPath);
-      const item = toContractResponseItem(
-        snap.id,
-        ownerFromPath,
-        contract,
-        normalizeOptionalDisplayName(ownerProfile?.name) ?? null,
-        ownerProfile
-      );
-      if (
-        item.productKey &&
-        LIFE_TIMELINE_PRODUCTS.has(item.productKey as Product)
-      ) {
-        item.lifePremiumChanges = await loadLifePremiumChangesForFindMatch({
-          ownerEmail: ownerFromPath,
-          contract: item,
-          adviserName: item.adviserName ?? null,
-          ownerContext: ownerProfile,
-        });
-      }
-      contracts.push(item);
-    } catch (entryErr) {
-      console.warn("GET /api/contracts/find: načtení entry selhalo:", ref.path, entryErr);
-    }
-  }
-
-  const uniqueContracts = dedupeEquivalentContractResponseItems(contracts);
-
-  uniqueContracts.sort((a, b) => {
-    const da = contractSortDate(a);
-    const db = contractSortDate(b);
-    if (!da && !db) return 0;
-    if (!da) return 1;
-    if (!db) return -1;
-    const diff = db.getTime() - da.getTime();
-    if (diff !== 0) return diff;
-    const keyA = responseCursorKey(a);
-    const keyB = responseCursorKey(b);
-    if (keyA === keyB) return 0;
-    return keyA > keyB ? -1 : 1;
-  });
 
   const response: ContractsFindResponse = {
     ok: true,
     scope,
     query: queryRaw,
-    contracts: uniqueContracts,
+    contracts,
+  };
+  return withRateLimit(NextResponse.json(response));
+}
+
+const normalizeContractsFindBulkItem = (
+  raw: unknown,
+  index: number
+): { key: string; scope: ContractFindScope; queryRaw: string } => {
+  const item = isPlainObject(raw) ? (raw as ContractsFindBulkRequestItem) : {};
+  const scopeRaw = typeof item.scope === "string" ? item.scope : null;
+  const scope = resolveContractFindScope(scopeRaw);
+  const queryRaw = typeof item.q === "string" ? item.q.trim() : "";
+  const keyRaw = typeof item.key === "string" ? item.key.trim() : "";
+  const key = keyRaw || `${scope}:${queryRaw || index}`;
+  return { key: key.slice(0, 200), scope, queryRaw };
+};
+
+export async function handleContractsFindBulk(req: NextRequest) {
+  const guard = await requireContractsEntryGuard(req, {
+    namespace: "api:contracts:find",
+    limit: CONTRACTS_GET_RATE_LIMIT,
+    windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const { ctx, withRateLimit } = guard;
+  const { email, teamEmails, users } = ctx;
+
+  const body = await req.json().catch(() => null);
+  const rawItems = isPlainObject(body) && Array.isArray(body.requests) ? body.requests : null;
+  if (!rawItems) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Chybí pole requests." } satisfies ErrorResponse,
+        { status: 400 }
+      )
+    );
+  }
+  if (rawItems.length > CONTRACTS_FIND_BULK_MAX_ITEMS) {
+    return withRateLimit(
+      NextResponse.json(
+        {
+          ok: false,
+          error: `Najednou lze párovat nejvýše ${CONTRACTS_FIND_BULK_MAX_ITEMS} smluv.`,
+        } satisfies ErrorResponse,
+        { status: 400 }
+      )
+    );
+  }
+
+  const resolverContext = createContractsFindResolverContext({
+    email,
+    teamEmails,
+    users,
+    logPrefix: "POST /api/contracts/find",
+  });
+  const normalizedItems = rawItems.map(normalizeContractsFindBulkItem);
+  const results = new Array<ContractsFindBulkResponseItem>(normalizedItems.length);
+  const queue = normalizedItems.map((item, index) => ({ item, index }));
+  const workerCount = Math.min(CONTRACTS_FIND_BULK_WORKER_COUNT, Math.max(1, queue.length));
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (queue.length > 0) {
+        const next = queue.shift();
+        if (!next) continue;
+        const { item, index } = next;
+
+        if (!item.queryRaw) {
+          results[index] = {
+            ok: false,
+            key: item.key,
+            scope: item.scope,
+            query: item.queryRaw,
+            error: "Chybí parametr q.",
+          };
+          continue;
+        }
+        if (item.scope === "team" && teamEmails.length === 0) {
+          results[index] = {
+            ok: false,
+            key: item.key,
+            scope: item.scope,
+            query: item.queryRaw,
+            error: "Nemáš práva pro zobrazení týmových smluv.",
+          };
+          continue;
+        }
+
+        try {
+          const contracts = await resolveContractsFindContracts({
+            context: resolverContext,
+            queryRaw: item.queryRaw,
+            scope: item.scope,
+          });
+          results[index] = {
+            ok: true,
+            key: item.key,
+            scope: item.scope,
+            query: item.queryRaw,
+            contracts,
+          };
+        } catch (err) {
+          results[index] = {
+            ok: false,
+            key: item.key,
+            scope: item.scope,
+            query: item.queryRaw,
+            error:
+              err instanceof Error
+                ? err.message
+                : "Nepodařilo se dohledat smlouvu podle čísla.",
+          };
+        }
+      }
+    })
+  );
+
+  const response: ContractsFindBulkResponse = {
+    ok: true,
+    results,
   };
   return withRateLimit(NextResponse.json(response));
 }

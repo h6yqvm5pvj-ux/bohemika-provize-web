@@ -476,11 +476,24 @@ const normalizeOnlineCardDraft = (
     return fallback;
   }
   const row = value as Record<string, unknown>;
-  const fullName = typeof row.fullName === "string" ? row.fullName.trim() : "";
-  const email =
+  const fallbackEmail = normalizeEmail(fallback.email);
+  const ownerEmail =
+    typeof row.ownerEmail === "string" && row.ownerEmail.trim()
+      ? normalizeEmail(row.ownerEmail)
+      : "";
+  const storedEmail =
     typeof row.email === "string" && row.email.trim()
       ? normalizeEmail(row.email)
-      : fallback.email;
+      : "";
+  if (
+    fallbackEmail &&
+    ((ownerEmail && ownerEmail !== fallbackEmail) ||
+      (storedEmail && storedEmail !== fallbackEmail))
+  ) {
+    return fallback;
+  }
+  const fullName = typeof row.fullName === "string" ? row.fullName.trim() : "";
+  const email = storedEmail || fallback.email;
   const normalizedFullName = fullName || fallback.fullName;
   const storedSlug = slugifyOnlineCard(row.slug);
   const slug =
@@ -668,6 +681,7 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
 
 export default function SettingsPage() {
   const onlineCardQueryAppliedRef = useRef(false);
+  const metaLoadVersionRef = useRef(0);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
@@ -1045,12 +1059,25 @@ export default function SettingsPage() {
 
   // načtení metadat uživatele z Firestore
   useEffect(() => {
+    let isCancelled = false;
+    const loadVersion = ++metaLoadVersionRef.current;
+    const isCurrentLoad = (email: string) =>
+      !isCancelled &&
+      metaLoadVersionRef.current === loadVersion &&
+      normalizeEmail(auth.currentUser?.email) === email;
+
     const loadMeta = async () => {
-      if (!user) return;
+      if (!user) {
+        setLoadingMeta(false);
+        return;
+      }
 
       const emailRaw = user.email;
       const email = normalizeEmail(emailRaw);
-      if (!email) return; // email může být teoreticky null
+      if (!email) {
+        setLoadingMeta(false);
+        return;
+      }
 
       setLoadingMeta(true);
 
@@ -1061,6 +1088,8 @@ export default function SettingsPage() {
           hasProfile?: boolean;
           profile?: Record<string, unknown>;
         }>(user, "/api/user/profile", { method: "GET" });
+
+        if (!isCurrentLoad(email)) return;
 
         const payloadEmail = normalizeEmail(payload?.email);
         if (payloadEmail && payloadEmail !== email) {
@@ -1211,11 +1240,13 @@ export default function SettingsPage() {
             email,
             profileManagerEmailForHierarchy
           );
+          if (!isCurrentLoad(email)) return;
           setDirectManager(resolvedManager);
           if (resolvedManager?.email) {
             setManagerEmail(resolvedManager.email);
           }
         } catch (managerError) {
+          if (!isCurrentLoad(email)) return;
           console.warn("Přímého manažera se nepodařilo načíst z týmové hierarchie:", managerError);
           setDirectManager(
             profileManagerEmailForHierarchy
@@ -1227,13 +1258,20 @@ export default function SettingsPage() {
           );
         }
       } catch (e) {
+        if (!isCurrentLoad(email)) return;
         console.error("Chyba při načítání nastavení:", e);
       } finally {
-        setLoadingMeta(false);
+        if (isCurrentLoad(email)) {
+          setLoadingMeta(false);
+        }
       }
     };
 
-    loadMeta();
+    void loadMeta();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [user]);
 
   const loadSubscription = useCallback(async () => {
@@ -1796,10 +1834,28 @@ export default function SettingsPage() {
   };
 
   const handleSaveOnlineCard = async () => {
+    const ownerEmail = normalizeEmail(user?.email);
     const fullName = onlineCardDraft.fullName.trim();
     const email = normalizeEmail(onlineCardDraft.email);
     const slug = slugifyOnlineCard(onlineCardDraft.slug);
     const website = sanitizeOnlineCardWebsiteInput(onlineCardDraft.website);
+
+    if (!ownerEmail) {
+      setOnlineCardStatus({
+        type: "error",
+        message: "Nejde ověřit přihlášený e-mail. Přihlas se prosím znovu.",
+      });
+      return;
+    }
+
+    if (email && email !== ownerEmail) {
+      setOnlineCardStatus({
+        type: "error",
+        message:
+          "Vizitka patří jinému e-mailu. Obnov stránku a zkontroluj, že nejsi v admin přepnutí.",
+      });
+      return;
+    }
 
     if (onlineCardDraft.enabled && fullName.length === 0) {
       setOnlineCardStatus({
@@ -1842,7 +1898,7 @@ export default function SettingsPage() {
       fullName,
       title: onlineCardDraft.title.trim().slice(0, 120),
       phone: onlineCardDraft.phone.trim().slice(0, 80),
-      email,
+      email: ownerEmail,
       website,
       ico: onlineCardDraft.ico.replace(/\D+/g, "").slice(0, ONLINE_CARD_ICO_MAX_LEN),
       bio: onlineCardDraft.bio.trim().slice(0, 1_000),

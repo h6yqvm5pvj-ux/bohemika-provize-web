@@ -52,6 +52,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "domex":
       import("../../lib/productFormulas/domex");
       break;
+    case "cppbytex":
+      import("../../lib/productFormulas/cppbytex");
+      break;
     case "cpphafan":
       import("../../lib/productFormulas/cpphafan");
       break;
@@ -489,6 +492,12 @@ export async function calculateResultForPosition(
         "../../lib/productFormulas/koopmajetekobcan"
       );
       return calculateKoopMajetekObcan(amount, freq, position);
+    }
+    case "cppbytex": {
+      const { calculateCppBytex } = await import(
+        "../../lib/productFormulas/cppbytex"
+      );
+      return calculateCppBytex(amount, freq, position);
     }
     case "koopodzam": {
       const { calculateKoopOdzam } = await import(

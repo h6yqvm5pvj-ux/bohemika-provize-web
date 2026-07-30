@@ -108,6 +108,7 @@ import {
   statementDiscrepancyKey,
   statementDiscrepancyLabel,
 } from "./statementDiscrepancies";
+import { detectFullAutoCommissionStorno } from "./stornoInference";
 import {
   ANNUAL_PREMIUM_TOLERANCE,
   AUTO_PREMIUM_ANNIVERSARY_TOLERANCE_MONTHS,
@@ -151,6 +152,7 @@ import {
   normalizedRowText,
   parseLocalDate,
   parsePeriodEndDate,
+  parsePeriodStartDate,
   parseStatementHtml,
   paymentAmountWithFrequencyLabel,
   paymentsPerYearForFrequency,
@@ -220,6 +222,7 @@ import type {
   StornoCommissionGroup,
   StornoCommissionRow,
   StornoContractGroup,
+  StornoStatementInference,
   StornoStatementActionTarget,
 } from "./statementTypes";
 
@@ -362,6 +365,76 @@ const suggestedStornoDateForStatement = (
   parseLocalDate(header.statementDate) ??
   parsePeriodEndDate(header.period) ??
   new Date();
+
+const fullAutoStornoInferenceForGroup = ({
+  statement,
+  statementId,
+  group,
+  systemContract,
+  currentUserEmail,
+}: {
+  statement: ParsedStatement;
+  statementId?: string | null;
+  group: StornoContractGroup;
+  systemContract: MatchedSystemContract | null;
+  currentUserEmail?: string | null;
+}): StornoStatementInference | null => {
+  if (!systemContract || group.rows.length === 0) return null;
+  const statementHasAutoProduct = group.rows.some(
+    (row) => resolveStatementProduct(row.product).category === "auto"
+  );
+  const contractHasAutoProduct = Boolean(
+    systemContract.productKey && isAutoProduct(systemContract.productKey)
+  );
+  if (!statementHasAutoProduct && !contractHasAutoProduct) return null;
+
+  const policyStart = toDate(systemContract.policyStartDate);
+  if (!policyStart) return null;
+  const fallbackStornoDate = suggestedStornoDateForStatement(statement.header);
+  const statementPeriodStart = parsePeriodStartDate(statement.header.period);
+  const statementPeriodEnd = parsePeriodEndDate(statement.header.period);
+  const detection = detectFullAutoCommissionStorno({
+    isAutoProduct: true,
+    contractStatus: systemContract.status,
+    policyStartMs: policyStart.getTime(),
+    currentRows: group.rows.map((row) => ({
+      rowId: row.id,
+      productCode: row.product,
+      commissionCode: row.type,
+      commission: row.commission,
+      signedAt: row.signedAt,
+      source: "own",
+      status: "storno",
+    })),
+    existingPayouts: systemContract.commissionPayouts ?? [],
+    contractItems: systemContract.items ?? [],
+    currentStatementId: statementId || statementDiscrepancyKey(statement),
+    statementPeriodStartMs: statementPeriodStart?.getTime() ?? null,
+    statementPeriodEndMs: statementPeriodEnd?.getTime() ?? null,
+    writtenBy: currentUserEmail ?? systemContract.adviserEmail ?? null,
+    fallbackStornoDateMs: fallbackStornoDate?.getTime() ?? null,
+  });
+  if (!detection) return null;
+
+  return {
+    kind: "full_auto_storno_within_2_months",
+    suggestedDate: new Date(detection.stornoDateMs),
+    policyStartDate: new Date(detection.policyStartMs),
+    fullStornoBoundaryDate: new Date(detection.fullStornoBoundaryMs),
+    referenceDateSource: detection.referenceDateSource,
+    commissionCode: detection.commissionCode,
+    stornoAmount: detection.stornoAmount,
+    matchedPaidAmount: detection.matchedPaidAmount,
+    matchedSource: detection.matchedSource,
+    matchedTitle: detection.matchedTitle,
+    rowId: detection.rowId,
+    productCode: detection.productCode,
+    matchedPayoutKey: detection.matchedPayoutKey,
+    matchedStatementId: detection.matchedStatementId,
+    matchedStatementNumber: detection.matchedStatementNumber,
+    matchedStatementPeriod: detection.matchedStatementPeriod,
+  };
+};
 
 const stornoUpdateEntryIds = (contract: MatchedSystemContract): string[] =>
   Array.from(
@@ -1380,7 +1453,7 @@ const managerCommissionMatchNotice = (
 
   if (match.status === "error") {
     return {
-      title: "Chyba párování",
+      title: "Ověření nedokončeno",
       lines: [
         match.error || "Smlouvu se nepodařilo ověřit vůči systému.",
         "Před ostrým zápisem bude potřeba kontrolu zopakovat nebo smlouvu dohledat ručně.",
@@ -1764,18 +1837,56 @@ const sortManagerCommissionRows = (
     })
     .map((item) => item.row);
 
-const fetchSystemContractMatch = async (
+const CONTRACT_MATCH_BATCH_SIZE = 700;
+
+type SystemContractFindBulkResult =
+  | {
+      ok?: true;
+      key?: string;
+      scope?: ContractMatchScope;
+      query?: string;
+      contracts?: MatchedSystemContract[];
+    }
+  | {
+      ok: false;
+      key?: string;
+      scope?: ContractMatchScope;
+      query?: string;
+      error?: string;
+    };
+
+const systemContractMatchStateFromContracts = (
+  contractsRaw: MatchedSystemContract[] | undefined
+): ContractMatchState => {
+  const contracts = dedupeEquivalentSystemContracts(Array.isArray(contractsRaw) ? contractsRaw : []);
+  if (contracts.length === 0) return { status: "not_found", contracts: [] };
+  return { status: "matched", contracts };
+};
+
+const systemContractMatchError = (error: string): ContractMatchState => ({
+  status: "error",
+  contracts: [],
+  error,
+});
+
+const fetchSystemContractMatchBatch = async (
   user: FirebaseUser,
-  matchRequest: ContractMatchRequest
-): Promise<ContractMatchState> => {
-  const params = new URLSearchParams({
-    scope: matchRequest.scope,
-    q: matchRequest.contractNumber,
-  });
+  requests: ContractMatchRequest[]
+): Promise<Map<string, ContractMatchState>> => {
+  const payloadRequests = requests.map((request, index) => ({
+    key: contractMatchKey(request.scope, request.contractNumber) ?? `${request.scope}:${index}`,
+    scope: request.scope,
+    q: request.contractNumber,
+  }));
 
   const sendRequest = async (token: string) =>
-    fetch(`/api/contracts/find?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    fetch("/api/contracts/find", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests: payloadRequests }),
     });
 
   let token = await user.getIdToken();
@@ -1789,23 +1900,41 @@ const fetchSystemContractMatch = async (
     | {
         ok?: boolean;
         error?: string;
-        contracts?: MatchedSystemContract[];
+        results?: SystemContractFindBulkResult[];
       }
     | null;
 
   if (!response.ok || payload?.ok === false) {
-    return {
-      status: "error",
-      contracts: [],
-      error: payload?.error ?? `Nepodařilo se dohledat smlouvu (HTTP ${response.status}).`,
-    };
+    const message =
+      payload?.error ?? `Nepodařilo se dohledat smlouvy (HTTP ${response.status}).`;
+    return new Map(
+      payloadRequests.map((request) => [request.key, systemContractMatchError(message)])
+    );
   }
 
-  const contracts = dedupeEquivalentSystemContracts(
-    Array.isArray(payload?.contracts) ? payload.contracts : []
-  );
-  if (contracts.length === 0) return { status: "not_found", contracts: [] };
-  return { status: "matched", contracts };
+  if (!Array.isArray(payload?.results)) {
+    return new Map(
+      payloadRequests.map((request) => [
+        request.key,
+        systemContractMatchError("Párování vrátilo neočekávanou odpověď."),
+      ])
+    );
+  }
+
+  const matches = new Map<string, ContractMatchState>();
+  for (const result of payload.results) {
+    const key = typeof result.key === "string" ? result.key : null;
+    if (!key) continue;
+    if (result.ok === false) {
+      matches.set(
+        key,
+        systemContractMatchError(result.error || "Nepodařilo se dohledat smlouvu v systému.")
+      );
+    } else {
+      matches.set(key, systemContractMatchStateFromContracts(result.contracts));
+    }
+  }
+  return matches;
 };
 
 const fetchSystemContractMatches = async (
@@ -1813,26 +1942,29 @@ const fetchSystemContractMatches = async (
   requests: ContractMatchRequest[],
   onMatch: (request: ContractMatchRequest, match: ContractMatchState) => void
 ) => {
-  const queue = [...requests];
-  const workerCount = Math.min(8, Math.max(1, queue.length));
+  for (let index = 0; index < requests.length; index += CONTRACT_MATCH_BATCH_SIZE) {
+    const batch = requests.slice(index, index + CONTRACT_MATCH_BATCH_SIZE);
+    const matches = await fetchSystemContractMatchBatch(user, batch).catch((err) => {
+      const message =
+        err instanceof Error ? err.message : "Nepodařilo se dohledat smlouvy v systému.";
+      return new Map(
+        batch.map((request) => [
+          contractMatchKey(request.scope, request.contractNumber) ?? request.contractNumber,
+          systemContractMatchError(message),
+        ])
+      );
+    });
 
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (queue.length > 0) {
-        const request = queue.shift();
-        if (!request) continue;
-        const match = await fetchSystemContractMatch(user, request).catch((err) => ({
-          status: "error" as const,
-          contracts: [],
-          error:
-            err instanceof Error
-              ? err.message
-              : "Nepodařilo se dohledat smlouvu v systému.",
-        }));
-        onMatch(request, match);
-      }
-    })
-  );
+    for (const request of batch) {
+      const key = contractMatchKey(request.scope, request.contractNumber);
+      if (!key) continue;
+      onMatch(
+        request,
+        matches.get(key) ??
+          systemContractMatchError("Párování nevrátilo výsledek pro tuto smlouvu.")
+      );
+    }
+  }
 };
 
 const sumRows = (rows: CommissionRow[]): number =>
@@ -6550,7 +6682,7 @@ function SystemMatchBadge({
             : scope === "tip"
               ? "Nenalezeno přes TIP"
             : "Nenalezeno v mých smlouvách"
-          : "Chyba párování";
+          : "Ověření nedokončeno";
 
   return (
     <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
@@ -6599,7 +6731,7 @@ function SystemMatchPanel({
   if (match.status === "error") {
     return (
       <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">
-        Párování se systémem selhalo: {match.error}
+        Ověření se systémem selhalo: {match.error}
       </div>
     );
   }
@@ -6709,18 +6841,53 @@ function StornoSystemActionPanel({
 }) {
   if (!target || systemContractIsStorno(target.contract)) return null;
 
+  const inference = target.inference ?? null;
+  const inferenceAmountSourceLabel =
+    inference?.matchedSource === "contract_item"
+      ? "v detailu smlouvy je stejná provize"
+      : "v historii výpisů je stejná výplata";
+  const inferenceDateSourceLabel =
+    inference?.referenceDateSource === "statement_period"
+      ? "konec období výpisu"
+      : inference?.referenceDateSource === "statement_period_overlap"
+        ? "překryv období výpisu s dvouměsíční lhůtou"
+      : inference?.referenceDateSource === "row_date"
+        ? "datum řádku storna"
+        : "navržené datum";
+
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
         <div>
-          <div className="font-bold">Výpis hlásí storno, systém ne</div>
-          <div className="mt-0.5 font-medium text-amber-900">
-            Smlouva je v systému vedená jako {systemContractStatusLabel(target.contract)}.
-          </div>
-          <div className="mt-1 text-xs font-medium text-amber-800">
-            Datum storna před uložením ověř proklikem do MAXXu nebo Extranetu.
-          </div>
+          {inference ? (
+            <>
+              <div className="font-bold">
+                Pravděpodobně storno smlouvy do 2 měsíců od počátku
+              </div>
+              <div className="mt-0.5 font-medium text-amber-900">
+                Výpis vrací {formatMoney(inference.stornoAmount)} Kč z{" "}
+                {inference.commissionCode ?? "provize"} a {inferenceAmountSourceLabel}{" "}
+                {formatMoney(inference.matchedPaidAmount)} Kč.
+              </div>
+              <div className="mt-1 text-xs font-medium text-amber-800">
+                Čas: počátek {formatLocalDate(inference.policyStartDate)}, {inferenceDateSourceLabel}{" "}
+                {formatLocalDate(inference.suggestedDate)}, hranice 2 měsíců{" "}
+                {formatLocalDate(inference.fullStornoBoundaryDate)}. Výpis drží zápornou položku v
+                cashflow, tlačítko jen doplní storno smlouvy a zastaví další projekce.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-bold">Výpis hlásí storno, systém ne</div>
+              <div className="mt-0.5 font-medium text-amber-900">
+                Smlouva je v systému vedená jako {systemContractStatusLabel(target.contract)}.
+              </div>
+              <div className="mt-1 text-xs font-medium text-amber-800">
+                Datum storna před uložením ověř proklikem do MAXXu nebo Extranetu.
+              </div>
+            </>
+          )}
         </div>
       </div>
       {onRequestStorno && (
@@ -6730,7 +6897,7 @@ function StornoSystemActionPanel({
           className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-900 transition hover:border-amber-400 hover:bg-amber-100"
         >
           <CalendarX className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-          Označit jako stornovanou
+          {inference ? "Označit podle výpisu" : "Označit jako stornovanou"}
         </button>
       )}
     </div>
@@ -6755,6 +6922,25 @@ function StornoStatementActionModal({
   onConfirm: () => void;
 }) {
   const extranetUrl = firstSjednatelExtranetUrl([], target.contract);
+  const inference = target.inference ?? null;
+  const inferenceAmountSourceTitle =
+    inference?.matchedSource === "contract_item" ? "Provize v detailu" : "Původní výplata";
+  const inferenceDateSourceTitle =
+    inference?.referenceDateSource === "statement_period"
+      ? "Konec období výpisu"
+      : inference?.referenceDateSource === "statement_period_overlap"
+        ? "Překryv období a lhůty"
+      : inference?.referenceDateSource === "row_date"
+        ? "Datum řádku storna"
+        : "Navržené datum";
+  const inferenceDatePrefillLabel =
+    inference?.referenceDateSource === "statement_period"
+      ? "konce období výpisu"
+      : inference?.referenceDateSource === "statement_period_overlap"
+        ? "překryvu období výpisu a dvouměsíční lhůty"
+      : inference?.referenceDateSource === "row_date"
+        ? "data řádku storna"
+        : "navrženého data";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -6781,7 +6967,9 @@ function StornoStatementActionModal({
             </p>
             <p className="mt-0.5 text-sm text-slate-500">{target.product}</p>
             <p className="mt-2 text-sm font-medium text-slate-600">
-              Datum storna ověř v MAXXu nebo Extranetu a pak ho ulož do systému.
+              {inference
+                ? `Pravděpodobně jde o storno smlouvy do 2 měsíců od počátku. Datum je předvyplněné podle ${inferenceDatePrefillLabel}.`
+                : "Datum storna ověř v MAXXu nebo Extranetu a pak ho ulož do systému."}
             </p>
           </div>
           <button
@@ -6799,6 +6987,47 @@ function StornoStatementActionModal({
           <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
             <ContractDetailLink href={target.contract.maxxContractDetailUrl} compact />
             <SjednatelExtranetLink href={extranetUrl} compact />
+          </div>
+        )}
+
+        {inference && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+            <div className="font-semibold">Doporučení z výpisu</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                  Vrácená provize
+                </div>
+                <div className="font-semibold">{formatMoney(inference.stornoAmount)} Kč</div>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                  {inferenceAmountSourceTitle}
+                </div>
+                <div className="font-semibold">{formatMoney(inference.matchedPaidAmount)} Kč</div>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                  Počátek smlouvy
+                </div>
+                <div className="font-semibold">
+                  {formatLocalDate(inference.policyStartDate)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                  {inferenceDateSourceTitle}
+                </div>
+                <div className="font-semibold">
+                  {formatLocalDate(inference.suggestedDate)}
+                </div>
+              </div>
+            </div>
+            <div className="mt-2 text-xs font-medium text-amber-800">
+              Hranice pro plné storno je {formatLocalDate(inference.fullStornoBoundaryDate)}.
+              Uložením se smlouva označí jako storno k navrženému datu, provize z výpisu se tím
+              nepřepíše.
+            </div>
           </div>
         )}
 
@@ -9382,12 +9611,16 @@ function ManagerCommissionsSection({
 
 function StornoContractsSection({
   statement,
+  statementId,
   matchesByContractNumber,
+  currentUserEmail,
   markingControls,
   onRequestSystemStorno,
 }: {
   statement: ParsedStatement;
+  statementId?: string | null;
   matchesByContractNumber: ContractMatchesByNumber;
+  currentUserEmail?: string | null;
   markingControls?: MarkingControls;
   onRequestSystemStorno?: (target: StornoStatementActionTarget) => void;
 }) {
@@ -9500,6 +9733,13 @@ function StornoContractsSection({
               const row = group.rows[0] ?? null;
               const match = contractMatchForNumber(matchesByContractNumber, group.contractNumber);
               const systemContract = matchedSystemContract(match);
+              const stornoInference = fullAutoStornoInferenceForGroup({
+                statement,
+                statementId,
+                group,
+                systemContract,
+                currentUserEmail,
+              });
               const extranetUrl = firstSjednatelExtranetUrl(group.rows, systemContract);
               const uniqueProducts = uniqueProductMetasForRows(group.rows);
               const statementProductLabel =
@@ -9544,7 +9784,10 @@ function StornoContractsSection({
                     contractNumber: group.contractNumber || systemContract.contractNumber || "",
                     client: displayClient,
                     product: productLabel,
-                    suggestedDate: suggestedStornoDateForStatement(statement.header),
+                    suggestedDate:
+                      stornoInference?.suggestedDate ??
+                      suggestedStornoDateForStatement(statement.header),
+                    inference: stornoInference,
                   }
                 : null;
               const markedItem: MarkedDiscrepancyItem | null = markingControls
@@ -10797,6 +11040,25 @@ function StatementPreview({
   ) => Promise<ManualNeonRefreshConversionResponse>;
 }) {
   const statementKey = statementDiscrepancyKey(statement);
+  const unpairedLifeSplitContracts = statement.lifeSplitContracts.filter((contract) =>
+    isUnpairedContractMatch(
+      contractMatchForNumber(
+        matchesByContractNumber,
+        contract.contractNumber,
+        lifeSplitContractMatchScope(contract)
+      )
+    )
+  );
+  const pairedLifeSplitContracts = statement.lifeSplitContracts.filter(
+    (contract) =>
+      !isUnpairedContractMatch(
+        contractMatchForNumber(
+          matchesByContractNumber,
+          contract.contractNumber,
+          lifeSplitContractMatchScope(contract)
+        )
+      )
+  );
   const unpairedOtherProductContracts = statement.otherProductContracts.filter((contract) =>
     isUnpairedContractMatch(
       contractMatchForNumber(
@@ -10880,7 +11142,7 @@ function StatementPreview({
       <StatementSummary statement={statement} />
 
       <LifeSplitProductsSection
-        contracts={statement.lifeSplitContracts}
+        contracts={pairedLifeSplitContracts}
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementId={selectedStatementId}
@@ -10981,7 +11243,7 @@ function StatementPreview({
       />
 
       <UnpairedContractsSection
-        lifeContracts={[]}
+        lifeContracts={unpairedLifeSplitContracts}
         otherContracts={unpairedOtherProductContracts}
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
@@ -11058,7 +11320,9 @@ function StatementPreview({
 
       <StornoContractsSection
         statement={statement}
+        statementId={selectedStatementId}
         matchesByContractNumber={matchesByContractNumber}
+        currentUserEmail={currentUserEmail}
         markingControls={markingControls}
         onRequestSystemStorno={onRequestSystemStorno}
       />
@@ -11279,8 +11543,9 @@ export default function CommissionStatementsPage() {
   }, [statementRecordsProcessing]);
 
   const openStornoActionModal = (target: StornoStatementActionTarget) => {
+    const suggestedDate = target.inference?.suggestedDate ?? target.suggestedDate;
     setStornoActionTarget(target);
-    setStornoActionDateInput("");
+    setStornoActionDateInput(toDateInputValue(suggestedDate));
     setStornoActionError(null);
   };
 

@@ -59,6 +59,20 @@ describe("detectProductFromPdf", () => {
     });
   });
 
+  it("detects CPP BYTEX from contract text", async () => {
+    pdfState.pages = [
+      [
+        "CPP BYTEX+",
+        "Česká podnikatelská pojišťovna, a. s.",
+      ],
+    ];
+
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({
+      product: "cppbytex",
+      confidence: "high",
+    });
+  });
+
   it("supports last-page requirements for Slavia auto", async () => {
     pdfState.pages = [
       ["Povinné ručení"],

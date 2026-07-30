@@ -46,6 +46,12 @@ export type ContractsFindApiResponse = {
     durationYears?: number | null;
     durationMonths?: number | null;
     refreshCommissionBase?: {
+      originalStornoStartDateIso?: string | null;
+      refreshPolicyStartDateIso?: string | null;
+      newMonthlyPremium?: number | null;
+      newAnnualPremium?: number | null;
+      originalMonthlyPremium?: number | null;
+      originalAnnualPremium?: number | null;
       calculationMonthlyPremium?: number | null;
       calculationAnnualPremium?: number | null;
     } | null;
@@ -186,17 +192,25 @@ export function resolveRefreshOriginalContractInfo(
   const latestPremiumChange = [...changes]
     .reverse()
     .find((change) => finitePositiveNumber(change?.premiumAmount) != null);
+  const refreshBasePremiumAmount =
+    finitePositiveNumber(contract.refreshCommissionBase?.newMonthlyPremium) ??
+    (finitePositiveNumber(contract.refreshCommissionBase?.newAnnualPremium) != null
+      ? finitePositiveNumber(contract.refreshCommissionBase?.newAnnualPremium)! / 12
+      : null);
+  const storedRefreshBasePremiumAmount =
+    finitePositiveNumber(contract.refreshCommissionBase?.calculationMonthlyPremium) ??
+    (finitePositiveNumber(contract.refreshCommissionBase?.calculationAnnualPremium) != null
+      ? finitePositiveNumber(contract.refreshCommissionBase?.calculationAnnualPremium)! / 12
+      : null);
   const premiumAmount =
+    refreshBasePremiumAmount ??
     finitePositiveNumber(latestPremiumChange?.premiumAmount) ??
     finitePositiveNumber(contract.newInputAmount) ??
     finitePositiveNumber(contract.effectiveInputAmount) ??
     finitePositiveNumber(contract.inputAmount);
   if (premiumAmount == null) return null;
   const stornoBasePremiumAmount =
-    finitePositiveNumber(contract.refreshCommissionBase?.calculationMonthlyPremium) ??
-    (finitePositiveNumber(contract.refreshCommissionBase?.calculationAnnualPremium) != null
-      ? finitePositiveNumber(contract.refreshCommissionBase?.calculationAnnualPremium)! / 12
-      : null) ??
+    storedRefreshBasePremiumAmount ??
     premiumAmount;
 
   const firstChangeWithDate = changes.find(
@@ -205,6 +219,7 @@ export function resolveRefreshOriginalContractInfo(
       Boolean(isoDayFromUnknown(change?.policyStartDate))
   );
   const stornoStartDateIso =
+    isoDayFromUnknown(contract.refreshCommissionBase?.refreshPolicyStartDateIso) ??
     isoDayFromUnknown(firstChangeWithDate?.policyStartDate) ??
     isoDayFromUnknown(contract.policyStartDate) ??
     isoDayFromUnknown(firstChangeWithDate?.contractSignedDate) ??

@@ -1,4 +1,5 @@
 import type { PaymentFrequency } from "../types/domain";
+import { cppBytexSubsequentPayoutYears } from "../lib/productFormulas/cppbytex";
 import { domexSubsequentPayoutYears } from "../lib/productFormulas/domex";
 import { toDate } from "./helpers";
 import type { CashflowItem, EntryDoc } from "./types";
@@ -202,6 +203,11 @@ const commissionCodeAliasesForCashflow = (code: string): string[] => {
 };
 
 const SETTLED_COMMISSION_PAYOUT_STATUSES = new Set(["paid", "difference"]);
+const STATEMENT_ONLY_COMMISSION_PAYOUT_STATUSES = new Set([
+  "paid",
+  "difference",
+  "storno",
+]);
 
 function uniqueCommissionCodes(codes: Array<string | null | undefined>): string[] {
   const result = new Set<string>();
@@ -255,12 +261,44 @@ function isSettledCommissionPayout(payout: EntryCommissionPayout): boolean {
   return Number.isFinite(amount) && amount > 0;
 }
 
+function isStatementOnlyCommissionPayout(payout: EntryCommissionPayout): boolean {
+  const status = String(payout.status ?? "").trim().toLowerCase();
+  if (!STATEMENT_ONLY_COMMISSION_PAYOUT_STATUSES.has(status)) return false;
+  const amount = Number(payout.amount);
+  return Number.isFinite(amount) && amount !== 0;
+}
+
 function indexSettledCommissionPayouts(
   payouts: EntryDoc["commissionPayouts"] | undefined | null
 ): IndexedCommissionPayout[] {
   return (payouts ?? [])
     .map((payout, index): IndexedCommissionPayout | null => {
       if (!isSettledCommissionPayout(payout)) return null;
+      const date = payoutMonthDateFromKey(payout.payoutMonthKey);
+      if (!date) return null;
+      return {
+        payout,
+        key:
+          payout.key ??
+          [
+            payout.code ?? "commission",
+            payout.payoutMonthKey ?? "month",
+            payout.amount ?? index,
+            index,
+          ].join(":"),
+        date,
+      };
+    })
+    .filter((payout): payout is IndexedCommissionPayout => Boolean(payout))
+    .sort((a, b) => payoutSortValue(a) - payoutSortValue(b));
+}
+
+function indexStatementOnlyCommissionPayouts(
+  payouts: EntryDoc["commissionPayouts"] | undefined | null
+): IndexedCommissionPayout[] {
+  return (payouts ?? [])
+    .map((payout, index): IndexedCommissionPayout | null => {
+      if (!isStatementOnlyCommissionPayout(payout)) return null;
       const date = payoutMonthDateFromKey(payout.payoutMonthKey);
       if (!date) return null;
       return {
@@ -461,6 +499,7 @@ export function generateCashflow(
     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
     const scopedPayouts = cashflowCommissionPayoutsForViewer(entry, viewerEmail);
     const settledPayouts = indexSettledCommissionPayouts(scopedPayouts);
+    const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts);
     const consumedPayoutKeys = new Set<string>();
 
     const start =
@@ -662,17 +701,19 @@ export function generateCashflow(
     };
 
     const pushUnmatchedStatementPayouts = () => {
-      for (const indexedPayout of settledPayouts) {
+      for (const indexedPayout of statementOnlyPayouts) {
         if (consumedPayoutKeys.has(indexedPayout.key)) continue;
         if (indexedPayout.date > horizonEnd) continue;
 
         const amount = Number(indexedPayout.payout.amount);
-        if (!Number.isFinite(amount) || amount <= 0) continue;
+        if (!Number.isFinite(amount) || amount === 0) continue;
 
         consumedPayoutKeys.add(indexedPayout.key);
         const code = normalizeCommissionCode(indexedPayout.payout.code);
         const commissionLabel = commissionLabelFromCode(code);
         const aliases = uniqueCommissionCodes([code]);
+        const payoutStatus = String(indexedPayout.payout.status ?? "").trim().toLowerCase();
+        const isStatementStorno = payoutStatus === "storno" || amount < 0;
 
         out.push({
           id: `${entry.id}-${indexedPayout.date.getTime()}-${code || "statement"}-${indexedPayout.key}-${globalItemSequence++}`,
@@ -682,8 +723,12 @@ export function generateCashflow(
           frequency: entry.frequencyRaw ?? null,
           note:
             entry.source === "manager"
-              ? "Manažerská · vyplaceno z výpisu"
-              : "Vlastní · vyplaceno z výpisu",
+              ? isStatementStorno
+                ? "Manažerská · storno z výpisu"
+                : "Manažerská · vyplaceno z výpisu"
+              : isStatementStorno
+                ? "Vlastní · storno z výpisu"
+                : "Vlastní · vyplaceno z výpisu",
           source: entry.source,
           contractNumber: entry.contractNumber ?? null,
           clientName: entry.clientName ?? null,
@@ -911,6 +956,7 @@ export function generateCashflow(
       }
 
       case "domex":
+      case "cppbytex":
       case "cpphafan":
       case "koopmajetekobcan":
       case "koopfit":
@@ -943,9 +989,13 @@ export function generateCashflow(
         const subsequentStart = annPlusYears(1);
         const domexHistoricalSubsequentYears =
           product === "domex" ? domexSubsequentPayoutYears(contractSignedDateIso) : null;
+        const cppBytexSubsequentYears =
+          product === "cppbytex" ? cppBytexSubsequentPayoutYears() : null;
+        const limitedSubsequentYears =
+          domexHistoricalSubsequentYears ?? cppBytexSubsequentYears;
         const subsequentEnd =
-          domexHistoricalSubsequentYears != null
-            ? annPlusYears(1 + domexHistoricalSubsequentYears)
+          limitedSubsequentYears != null
+            ? annPlusYears(1 + limitedSubsequentYears)
             : null;
 
         let payout = firstPayout;
@@ -973,6 +1023,8 @@ export function generateCashflow(
               `${
                 product === "domex"
                   ? "DOMEX"
+                  : product === "cppbytex"
+                  ? "BYTEX PLUS"
                   : product === "cpphafan"
                   ? "HAFAN"
                   : product === "koopmajetekobcan"

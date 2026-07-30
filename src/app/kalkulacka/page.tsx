@@ -23,6 +23,7 @@ import {
   calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
+  calculateCppBytex,
   calculateCppHafan,
   calculatePillowMajetek,
   calculateKoopMajetekObcan,
@@ -275,6 +276,7 @@ const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   cppsimplex: "/provize/cppsimplex.pdf",
   cppPPRbez: "/provize/cppbezupisu.pdf",
   cppPPRs: "/provize/cppupis.pdf",
+  cppbytex: "/provize/bytexprovize.pdf",
   domex: "/provize/domex2024.pdf",
   maxdomov: "/provize/maxdomov2025.pdf",
   maximaMaxEfekt: "/provize/maxefekt7.pdf",
@@ -1316,6 +1318,8 @@ export default function CalculatorPage() {
         return isDomexHistoricalInCoefModal
           ? `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Historická následná provize se vyplácí maximálně 4 roky.`
           : `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Aktuální následná provize se vyplácí po dobu aktivní smlouvy.`;
+      case "cppbytex":
+        return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Následná provize se vyplácí maximálně 4 roky. Provizní režim nemá vliv.`;
       case "cpphafan":
       case "koopmajetekobcan":
       case "koopfit":
@@ -3838,6 +3842,7 @@ export default function CalculatorPage() {
 
     if (
       product === "domex" ||
+      product === "cppbytex" ||
       product === "cpphafan" ||
       product === "koopmajetekobcan" ||
       product === "koopfit" ||
@@ -3848,6 +3853,8 @@ export default function CalculatorPage() {
       const dto =
         product === "domex"
           ? calculateDomex(val, frequency, positionForCalc, contractSignedDateForNeon)
+          : product === "cppbytex"
+          ? calculateCppBytex(val, frequency, positionForCalc)
           : product === "cpphafan"
           ? calculateCppHafan(val, frequency, positionForCalc)
           : product === "koopodzam"
@@ -7072,6 +7079,7 @@ export default function CalculatorPage() {
       case "pillowInjury":
         return calculatePillowInjury(val, pos, usedMode);
       case "domex":
+      case "cppbytex":
       case "cpphafan":
       case "koopmajetekobcan":
       case "koopfit":
@@ -7081,6 +7089,8 @@ export default function CalculatorPage() {
         const dto =
           targetProduct === "domex"
             ? calculateDomex(val, freq, pos, signedDateForCalculation)
+            : targetProduct === "cppbytex"
+            ? calculateCppBytex(val, freq, pos)
             : targetProduct === "cpphafan"
             ? calculateCppHafan(val, freq, pos)
             : targetProduct === "koopodzam"
@@ -7947,7 +7957,7 @@ export default function CalculatorPage() {
             hideAnnualAutoTotals={
               (isAutoProduct(product) &&
                 (frequency === "annual" || !isFrequencyAutoPayoutProduct(product))) ||
-              (product === "domex" && frequency === "annual")
+              ((product === "domex" || product === "cppbytex") && frequency === "annual")
             }
             paymentBasedTotalsMemo={displayedPaymentBasedTotals}
             tipContractImmediateGrossFirstYear={displayedTipContractImmediateGrossFirstYear}

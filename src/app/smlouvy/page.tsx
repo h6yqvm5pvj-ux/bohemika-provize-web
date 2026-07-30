@@ -190,6 +190,7 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   maximaMaxEfekt: "Životní pojištění MaxEfekt",
   pillowInjury: "Úraz / Nemoc",
   zamex: "ZAMEX",
+  cppbytex: "BYTEX PLUS",
   domex: "DOMEX",
   cpphafan: "HAFAN",
   pillowmajetek: "Majetek",

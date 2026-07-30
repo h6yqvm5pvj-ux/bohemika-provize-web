@@ -112,6 +112,7 @@ import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
 import { parseAllianzAutoPdf } from "@/app/lib/parseAllianzAutoPdf";
 import { parseComfortPdf } from "@/app/lib/parseComfortPdf";
 import { parseCppAutoPdf } from "@/app/lib/parseCppAutoPdf";
+import { parseCppBytexPdf } from "@/app/lib/parseCppBytexPdf";
 import { parseCppCestovkoPdf } from "@/app/lib/parseCppCestovkoPdf";
 import { parseCppHafanPdf } from "@/app/lib/parseCppHafanPdf";
 import { parseCppSimplexPdf } from "@/app/lib/parseCppSimplexPdf";
@@ -381,6 +382,7 @@ const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
   neon: parseNeonPdf,
   flexi: parseFlexiPdf,
   domex: parseDomexPdf,
+  cppbytex: parseCppBytexPdf,
   cpphafan: parseCppHafanPdf,
   koopodzam: parseKoopOdzamPdf,
   maxdomov: parseMaxdomovPdf,
@@ -1765,7 +1767,7 @@ export default function ContractDetailPage() {
     isSeparatedPeriodCommissionProduct(prod) || isFrequencyAutoCommissionProduct;
   const hideSeparatedPeriodTotals = Boolean(
     (isAutoCommissionProduct && (freq === "annual" || !isFrequencyAutoCommissionProduct)) ||
-      (prod === "domex" && freq === "annual")
+      ((prod === "domex" || prod === "cppbytex") && freq === "annual")
   );
   const paymentMultiplier =
     isPaymentBasedProduct && !isAnnualSeparatedPeriodProduct(prod)

@@ -660,4 +660,24 @@ export type StornoStatementActionTarget = {
   client: string;
   product: string;
   suggestedDate: Date | null;
+  inference?: StornoStatementInference | null;
+};
+
+export type StornoStatementInference = {
+  kind: "full_auto_storno_within_2_months";
+  suggestedDate: Date;
+  policyStartDate: Date;
+  fullStornoBoundaryDate: Date;
+  referenceDateSource: "statement_period" | "statement_period_overlap" | "row_date" | "fallback";
+  commissionCode: string | null;
+  stornoAmount: number;
+  matchedPaidAmount: number;
+  matchedSource: "statement_payout" | "contract_item";
+  matchedTitle: string | null;
+  rowId: string | null;
+  productCode: string | null;
+  matchedPayoutKey: string | null;
+  matchedStatementId: string | null;
+  matchedStatementNumber: string | null;
+  matchedStatementPeriod: string | null;
 };

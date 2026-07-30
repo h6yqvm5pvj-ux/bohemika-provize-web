@@ -49,6 +49,7 @@ export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
   ],
   property: [
     "zamex",
+    "cppbytex",
     "domex",
     "cpphafan",
     "pillowmajetek",

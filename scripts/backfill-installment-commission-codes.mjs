@@ -12,6 +12,7 @@ const jiti = createJiti(import.meta.url);
 const { calculateAllianzMujDomov } = jiti("../src/app/lib/productFormulas/allianzMujDomov.ts");
 const { calculateAxaCestovko } = jiti("../src/app/lib/productFormulas/axacestovko.ts");
 const { calculateCppCestovko } = jiti("../src/app/lib/productFormulas/cppcestovko.ts");
+const { calculateCppBytex } = jiti("../src/app/lib/productFormulas/cppbytex.ts");
 const { calculateCppHafan } = jiti("../src/app/lib/productFormulas/cpphafan.ts");
 const { calculateCppPPRbez } = jiti("../src/app/lib/productFormulas/cppPPRbez.ts");
 const { calculateCppPPRs } = jiti("../src/app/lib/productFormulas/cppPPRs.ts");
@@ -33,6 +34,7 @@ const { applyTipContractAdjustmentToCommissionItems } = jiti(
 const BATCH_LIMIT = 350;
 const TARGET_PRODUCTS = new Set([
   "domex",
+  "cppbytex",
   "cpphafan",
   "pillowmajetek",
   "koopmajetekobcan",
@@ -53,6 +55,7 @@ const TARGET_PRODUCTS = new Set([
 ]);
 const LEGACY_FREQUENCY_OVERRIDE_PRODUCTS = new Set([
   "domex",
+  "cppbytex",
   "cpphafan",
   "koopmajetekobcan",
   "koopfit",
@@ -128,6 +131,7 @@ const allowedFrequenciesForProduct = (productKey) => {
     case "pillowInjury":
       return ["monthly"];
     case "domex":
+    case "cppbytex":
     case "cpphafan":
       return ["quarterly", "semiannual", "annual"];
     case "pillowmajetek":
@@ -410,6 +414,9 @@ const calculateStoredResult = ({
         calculateDomex(amount, frequency, position, contractSignedDateIso),
         frequency
       );
+    }
+    case "cppbytex": {
+      return separatedPaymentResult(calculateCppBytex(amount, frequency, position), frequency);
     }
     case "cpphafan": {
       return separatedPaymentResult(calculateCppHafan(amount, frequency, position), frequency);

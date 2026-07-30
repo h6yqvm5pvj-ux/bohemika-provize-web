@@ -32,6 +32,7 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
     title: "Majetek",
     products: [
       "domex",
+      "cppbytex",
       "cpphafan",
       "pillowmajetek",
       "koopmajetekobcan",

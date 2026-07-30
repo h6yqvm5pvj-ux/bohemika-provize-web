@@ -165,6 +165,13 @@ import {
   zamexCoefficient,
 } from "./productFormulas/zamex";
 import {
+  calculateCppBytex,
+  CPP_BYTEX_COEFFICIENT_VALID_FROM,
+  cppBytexImmediateCoefficient,
+  cppBytexSubsequentCoefficient,
+  cppBytexSubsequentPayoutYears,
+} from "./productFormulas/cppbytex";
+import {
   calculateCppCestovko,
   CPP_CESTOVKO_COEFFICIENT_VALID_FROM,
   cppCestovkoCoefficient,
@@ -244,6 +251,9 @@ export {
   isKooperativaAutoHistoricalPeriod,
   calculateZamex,
   ZAMEX_COEFFICIENT_VALID_FROM,
+  calculateCppBytex,
+  CPP_BYTEX_COEFFICIENT_VALID_FROM,
+  cppBytexSubsequentPayoutYears,
   calculateCppCestovko,
   CPP_CESTOVKO_COEFFICIENT_VALID_FROM,
   calculateAxaCestovko,
@@ -283,6 +293,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "koopflotila",
   "allianzmujdomov",
   "zamex",
+  "cppbytex",
   "cppPPRbez",
   "cppPPRs",
   "cppcestovko",
@@ -774,6 +785,21 @@ export function getCoefficientSummary(
           value: zamexCoefficient(position),
         },
       ];
+    case "cppbytex": {
+      const validFrom = new Date(
+        `${CPP_BYTEX_COEFFICIENT_VALID_FROM}T00:00:00`
+      ).toLocaleDateString("cs-CZ");
+      return [
+        {
+          label: `Okamžitá (získatelská) provize (platné od ${validFrom})`,
+          value: cppBytexImmediateCoefficient(position),
+        },
+        {
+          label: `Následná provize (platné od ${validFrom}, max. 4 roky)`,
+          value: cppBytexSubsequentCoefficient(position),
+        },
+      ];
+    }
     case "cppcestovko":
       return [
         {

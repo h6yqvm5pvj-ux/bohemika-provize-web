@@ -178,6 +178,10 @@ export async function parseContractPdfByProduct(
       const { parseDomexPdf } = await import("../lib/parseDomexPdf");
       return parseDomexPdf(file, options);
     }
+    case "cppbytex": {
+      const { parseCppBytexPdf } = await import("../lib/parseCppBytexPdf");
+      return parseCppBytexPdf(file);
+    }
     case "cpphafan": {
       const { parseCppHafanPdf } = await import("../lib/parseCppHafanPdf");
       return parseCppHafanPdf(file);
@@ -231,6 +235,7 @@ const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
   "neon",
   "flexi",
   "domex",
+  "cppbytex",
   "cpphafan",
   "zamex",
   "koopodzam",

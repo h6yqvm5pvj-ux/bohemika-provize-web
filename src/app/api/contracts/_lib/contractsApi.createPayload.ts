@@ -125,6 +125,7 @@ export const SUPPORTED_PRODUCTS = new Set<Product>([
   "maxcizinkomplex",
   "pillowInjury",
   "zamex",
+  "cppbytex",
   "domex",
   "cpphafan",
   "pillowmajetek",

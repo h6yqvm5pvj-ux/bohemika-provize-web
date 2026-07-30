@@ -52,6 +52,14 @@ describe("commission statement parsing helpers", () => {
       productKey: "domex",
       category: "property",
     });
+    expect(resolveStatementProduct("CPP_BYTEX+")).toMatchObject({
+      productKey: "cppbytex",
+      category: "property",
+    });
+    expect(resolveStatementProduct("CPP_BYTEX")).toMatchObject({
+      productKey: "cppbytex",
+      category: "property",
+    });
     expect(resolveStatementProduct("MAX_DOM3")).toMatchObject({
       productKey: "maxdomov",
       category: "property",

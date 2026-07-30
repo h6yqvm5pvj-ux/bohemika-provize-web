@@ -23,6 +23,7 @@ import {
   calculateAxaCestovko,
   calculateComfortCC,
   calculateCppAuto,
+  calculateCppBytex,
   calculateSlaviaAuto,
   calculateCppCestovko,
   calculateCppPPRbez,
@@ -213,6 +214,8 @@ function calculateCommission(
       return immediateCommission(calculatePillowInjury(premium, pos, m));
     case "domex":
       return immediateCommission(calculateDomex(premium, "annual", pos));
+    case "cppbytex":
+      return immediateCommission(calculateCppBytex(premium, "annual", pos));
     case "pillowmajetek":
       return immediateCommission(calculatePillowMajetek(premium, "annual", pos));
     case "koopmajetekobcan":

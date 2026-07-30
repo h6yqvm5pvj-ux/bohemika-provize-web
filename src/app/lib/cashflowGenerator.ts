@@ -1,5 +1,6 @@
 // src/app/lib/cashflowGenerator.ts
 import { type Product, type PaymentFrequency } from "../types/domain";
+import { cppBytexSubsequentPayoutYears } from "./productFormulas/cppbytex";
 import { domexSubsequentPayoutYears } from "./productFormulas/domex";
 
 /**
@@ -407,6 +408,7 @@ export const CashflowGenerator = {
 
         // ============= DOMEX / Kooperativa majetek občanů / ČPP PPR bez ÚPIS – dle frekvence, po 1. výročí následná =============
         case "domex":
+        case "cppbytex":
         case "cpphafan":
         case "koopmajetekobcan":
         case "koopfit":
@@ -429,9 +431,13 @@ export const CashflowGenerator = {
           const subsequentStart = anniversaryPlusYears(1);
           const domexHistoricalSubsequentYears =
             product === "domex" ? domexSubsequentPayoutYears(contractSignedDateIso) : null;
+          const cppBytexSubsequentYears =
+            product === "cppbytex" ? cppBytexSubsequentPayoutYears() : null;
+          const limitedSubsequentYears =
+            domexHistoricalSubsequentYears ?? cppBytexSubsequentYears;
           const subsequentEnd =
-            domexHistoricalSubsequentYears != null
-              ? anniversaryPlusYears(1 + domexHistoricalSubsequentYears)
+            limitedSubsequentYears != null
+              ? anniversaryPlusYears(1 + limitedSubsequentYears)
               : null;
 
           let payout = firstPayout;

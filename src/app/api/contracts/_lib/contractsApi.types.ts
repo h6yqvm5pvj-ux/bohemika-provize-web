@@ -463,6 +463,33 @@ export type ContractsFindResponse = {
   contracts: ContractResponseItem[];
 };
 
+export type ContractsFindBulkRequestItem = {
+  key?: string | null;
+  scope?: "my" | "team" | "tip" | string | null;
+  q?: string | null;
+};
+
+export type ContractsFindBulkResponseItem =
+  | {
+      ok: true;
+      key: string;
+      scope: "my" | "team" | "tip";
+      query: string;
+      contracts: ContractResponseItem[];
+    }
+  | {
+      ok: false;
+      key: string;
+      scope: "my" | "team" | "tip";
+      query: string;
+      error: string;
+    };
+
+export type ContractsFindBulkResponse = {
+  ok: true;
+  results: ContractsFindBulkResponseItem[];
+};
+
 export type ContractsPrecheckEntry = {
   id: string;
   contractNumber: string | null;

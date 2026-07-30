@@ -395,6 +395,7 @@ service cloud.firestore {
         "maxcizinkomplex",
         "pillowInjury",
         "zamex",
+        "cppbytex",
         "domex",
         "cpphafan",
         "pillowmajetek",

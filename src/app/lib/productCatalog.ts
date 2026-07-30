@@ -67,6 +67,7 @@ export const PRODUCT_ORDER: Product[] = [
   "maximaMaxEfekt",
   "pillowInjury",
   "zamex",
+  "cppbytex",
   "domex",
   "cpphafan",
   "pillowmajetek",
@@ -124,6 +125,13 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
   zamex: {
     label: "ČPP ZAMEX",
     icon: "/icons/icon_zamex.webp",
+    institutionId: "cpp",
+    category: "property",
+    extraGroups: ["liability"],
+  },
+  cppbytex: {
+    label: "ČPP BYTEX PLUS",
+    icon: "/icons/icon_domex.webp",
     institutionId: "cpp",
     category: "property",
     extraGroups: ["liability"],

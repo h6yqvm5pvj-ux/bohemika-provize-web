@@ -266,6 +266,13 @@ const parsePeriodEndDate = (period: string | null | undefined): Date | null => {
   return parseLocalDate(last[0]);
 };
 
+const parsePeriodStartDate = (period: string | null | undefined): Date | null => {
+  const matches = [...normalizeText(period).matchAll(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/g)];
+  const first = matches[0];
+  if (!first) return null;
+  return parseLocalDate(first[0]);
+};
+
 const monthKeyFromDate = (date: Date | null | undefined): string | null => {
   if (!date || Number.isNaN(date.getTime())) return null;
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -1414,6 +1421,7 @@ export {
   parseMoney,
   parseOptionalMoney,
   parsePeriodEndDate,
+  parsePeriodStartDate,
   parseStatementHtml,
   paymentAmountWithFrequencyLabel,
   paymentFrequencyLabel,

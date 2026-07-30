@@ -368,6 +368,7 @@ async function getHasTipsters(email: string): Promise<boolean> {
 type OnlineCardPayload = {
   enabled: boolean;
   slug: string;
+  ownerEmail: string;
   fullName: string;
   title: string;
   phone: string;
@@ -439,15 +440,16 @@ const sanitizeOnlineCardPhotos = (value: unknown): string[] | null => {
   return photos;
 };
 
-function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
+function sanitizeOnlineCard(value: unknown, ownerEmail: string): OnlineCardPayload | null {
   if (!isPlainObject(value)) return null;
 
+  const normalizedOwnerEmail = normalizeEmail(ownerEmail);
   const enabled = value.enabled === true;
   const slug = normalizeOnlineCardSlug(value.slug);
   const fullName = normalizeOptionalText(value.fullName, 120);
   const title = normalizeOptionalText(value.title, 120);
   const phone = normalizeOptionalText(value.phone, 80);
-  const emailRaw = normalizeOptionalText(value.email, 160);
+  const emailRaw = value.email == null ? "" : normalizeOptionalText(value.email, 160);
   const websiteRaw = normalizeOptionalText(value.website, 220);
   const icoRaw = value.ico;
   const bio = normalizeOptionalText(value.bio, 1_000);
@@ -459,7 +461,6 @@ function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
     fullName == null ||
     title == null ||
     phone == null ||
-    emailRaw == null ||
     websiteRaw == null ||
     bio == null ||
     location == null ||
@@ -469,8 +470,10 @@ function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
     return null;
   }
 
-  const email = normalizeEmail(emailRaw);
+  const email = emailRaw ? normalizeEmail(emailRaw) : normalizedOwnerEmail;
+  if (emailRaw && !email) return null;
   if (email && !SIMPLE_EMAIL_RE.test(email)) return null;
+  if (normalizedOwnerEmail && email && email !== normalizedOwnerEmail) return null;
 
   const website = normalizeOnlineCardWebsite(websiteRaw);
   if (website == null) return null;
@@ -489,6 +492,7 @@ function sanitizeOnlineCard(value: unknown): OnlineCardPayload | null {
   return {
     enabled,
     slug,
+    ownerEmail: normalizedOwnerEmail || email,
     fullName,
     title,
     phone,
@@ -823,7 +827,8 @@ function resolveCurrentPositionFromTimeline(
 }
 
 function buildPatchFromBody(
-  body: unknown
+  body: unknown,
+  ownerEmail: string
 ): { patch: Record<string, unknown> } | { error: string } {
   if (!isPlainObject(body)) {
     return { error: "Neplatný payload." };
@@ -995,7 +1000,7 @@ function buildPatchFromBody(
   }
 
   if (body.onlineCard != null) {
-    const value = sanitizeOnlineCard(body.onlineCard);
+    const value = sanitizeOnlineCard(body.onlineCard, ownerEmail);
     if (!value) return { error: "Pole onlineCard má neplatný formát." };
     patch.onlineCard = value;
   }
@@ -1054,9 +1059,13 @@ export async function GET(req: NextRequest) {
       profile.positionTimeline = sanitizedTimeline;
       profile.position = resolveCurrentPositionFromTimeline(sanitizedTimeline);
     }
-    const sanitizedOnlineCard = sanitizeOnlineCard(profile.onlineCard);
-    if (sanitizedOnlineCard) {
-      profile.onlineCard = sanitizedOnlineCard;
+    if (profile.onlineCard != null) {
+      const sanitizedOnlineCard = sanitizeOnlineCard(profile.onlineCard, email);
+      if (sanitizedOnlineCard) {
+        profile.onlineCard = sanitizedOnlineCard;
+      } else {
+        delete profile.onlineCard;
+      }
     }
     const hasProfile = Boolean(publicData || privateData);
 
@@ -1115,7 +1124,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => null);
-    const parsed = buildPatchFromBody(body);
+    const parsed = buildPatchFromBody(body, email);
     if ("error" in parsed) {
       return NextResponse.json(
         { ok: false, error: parsed.error } satisfies ApiError,
