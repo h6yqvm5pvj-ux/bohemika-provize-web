@@ -1538,9 +1538,15 @@ export default function CalculatorPage() {
         setClientSuggestions([]);
       }
 
+      const namesByKey = new Map<string, string>();
+      const publishClientSuggestions = () => {
+        if (!cancelled) {
+          setClientSuggestions(Array.from(namesByKey.values()));
+        }
+      };
+
       try {
         let bearerToken = await user.getIdToken();
-        const namesByKey = new Map<string, string>();
         let cursor: string | null = null;
 
         for (let page = 0; page < CLIENT_SUGGESTIONS_MAX_PAGES; page += 1) {
@@ -1584,6 +1590,8 @@ export default function CalculatorPage() {
               }
             });
 
+          publishClientSuggestions();
+
           const nextCursor = payload.nextCursorToken ?? null;
           if (!payload.hasMore || !nextCursor || nextCursor === cursor) {
             break;
@@ -1591,11 +1599,10 @@ export default function CalculatorPage() {
           cursor = nextCursor;
         }
 
-        if (!cancelled) {
-          setClientSuggestions(Array.from(namesByKey.values()));
-        }
+        publishClientSuggestions();
       } catch (err) {
         console.error("Failed to load client name suggestions", err);
+        publishClientSuggestions();
       }
     };
 

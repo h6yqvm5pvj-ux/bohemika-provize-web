@@ -69,8 +69,8 @@ export function CalculatorContractDetailsSection({
   if (!isVisible) return null;
 
   return (
-    <section className="relative overflow-hidden rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
-      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#4c1d95_100%)]" aria-hidden="true" />
+    <section className="relative overflow-visible rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 rounded-t-[1.1rem] bg-[linear-gradient(90deg,#020617_0%,#4c1d95_100%)]" aria-hidden="true" />
       <h2 className="mb-2 inline-flex items-center gap-2 text-sm font-bold text-slate-900">
         <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-violet-200 bg-white text-slate-900 shadow-sm">
           <FileText size={14} strokeWidth={2} aria-hidden="true" />
@@ -105,7 +105,7 @@ export function CalculatorContractDetailsSection({
               </p>
             )}
             {filteredClientSuggestions.length > 0 && clientSuggestionsOpen && (
-              <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-violet-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-2xl">
+              <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-violet-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-2xl">
                 {filteredClientSuggestions.map((name) => (
                   <button
                     key={name}
