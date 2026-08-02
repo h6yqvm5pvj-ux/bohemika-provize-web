@@ -1093,6 +1093,15 @@ const getCsobNasZivotPercent = (percent: number): number => {
   return CSOB_NAS_ZIVOT_TABLE[idx] ?? 0;
 };
 
+const getCsobForteMultiplier = (percent: number): number => {
+  const clamped = Math.min(100, Math.max(0, percent));
+  if (clamped <= 25) return 1;
+  if (clamped <= 50) return 2;
+  if (clamped <= 75) return 3;
+  if (clamped <= 95) return 4;
+  return 6;
+};
+
 const getGeneraliMujZivotPercent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return GENERALI_MUJ_ZIVOT_TABLE[idx] ?? 0;
@@ -1239,6 +1248,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
       sumInsuredValue * (normalizedPercent / 100) * (metlifeGarde6Percent / 100);
     const csobNasZivotPercent = getCsobNasZivotPercent(normalizedPercent);
     const payoutCsobNasZivot = sumInsuredValue * (csobNasZivotPercent / 100);
+    const csobForteMultiplier = getCsobForteMultiplier(normalizedPercent);
+    const payoutCsobForte =
+      sumInsuredValue * csobForteMultiplier * (normalizedPercent / 100);
     const generaliMujZivotPercent = getGeneraliMujZivotPercent(normalizedPercent);
     const payoutGeneraliMujZivot = sumInsuredValue * (generaliMujZivotPercent / 100);
     const nnOrangePercent = getNnOrangePercent(normalizedPercent);
@@ -1322,6 +1334,13 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["8× progrese"],
         payout: payoutCsobNasZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobNasZivotPercent}%.`,
+      },
+      {
+        key: "csob-forte",
+        insurer: "ČSOB Forte",
+        badges: ["6× progrese"],
+        payout: payoutCsobForte,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobForteMultiplier} × ${formatPercent(normalizedPercent)}.`,
       },
       {
         key: "generali-muj-zivot",

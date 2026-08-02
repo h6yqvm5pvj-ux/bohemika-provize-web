@@ -215,6 +215,24 @@ export type ContractDoc = {
   premiumUpdatedFromStatementAtMs?: number | null;
   premiumUpdatedFromStatementChronologyMs?: number | null;
   premiumUpdatedFromStatementId?: string | null;
+  initialCommissionBase?: {
+    paymentPremium?: number | null;
+    annualPremium?: number | null;
+    statementId?: string | null;
+    statementNumber?: string | null;
+    statementPeriod?: string | null;
+    statementDate?: string | null;
+    statementChronologyMs?: number | null;
+    commissionCode?: string | null;
+    productCode?: string | null;
+    rowId?: string | null;
+    resolvedAtMs?: number | null;
+    resolvedBy?: string | null;
+  } | null;
+  createdFromCommissionStatement?: boolean | null;
+  createdFromCommissionStatementAtMs?: number | null;
+  createdFromCommissionStatementChronologyMs?: number | null;
+  createdFromCommissionStatementId?: string | null;
 
   commissionMode?: CommissionMode | null;
 

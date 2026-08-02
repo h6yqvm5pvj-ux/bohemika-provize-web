@@ -9,6 +9,8 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import Image from "next/image";
@@ -22,11 +24,14 @@ import {
   CheckCircle2,
   ChevronDown,
   ExternalLink,
+  Grip,
   HandCoins,
   HeartPulse,
   House,
   ListChecks,
   Loader2,
+  Minus,
+  Move,
   Plane,
   Plus,
   Printer,
@@ -91,6 +96,7 @@ import {
 } from "@/app/lib/adminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
 import introStyles from "../cashflow/cashflowIntro.module.css";
+import { allowedFrequencies as calculatorAllowedFrequencies } from "../kalkulacka/calculatorHelpers";
 import { StatementPairingLoader } from "./StatementPairingLoader";
 import {
   downloadDiscrepancySummaryPdf,
@@ -231,6 +237,46 @@ type StatementProductMapResponse = {
   entries: StatementProductMapEntry[];
 } & Record<string, unknown>;
 
+const STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE = "bohemka:statement-contract-saved";
+const STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE =
+  "bohemka:statement-contract-save-completed";
+
+type StatementContractSavedMessage = {
+  type:
+    | typeof STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE
+    | typeof STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE;
+  contractNumber: string;
+  clientName?: string | null;
+  product?: Product | null;
+  ownerEmail?: string | null;
+  entryId?: string | null;
+  savedAtMs?: number | null;
+};
+
+const isStatementContractSavedMessage = (
+  value: unknown
+): value is StatementContractSavedMessage => {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.type === STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE &&
+    typeof record.contractNumber === "string" &&
+    normalizeContractNumberForMatch(record.contractNumber).length > 0
+  );
+};
+
+const isStatementContractSaveCompletedMessage = (
+  value: unknown
+): value is StatementContractSavedMessage => {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.type === STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE &&
+    typeof record.contractNumber === "string" &&
+    normalizeContractNumberForMatch(record.contractNumber).length > 0
+  );
+};
+
 const systemContractPositionRaw = (
   contract: MatchedSystemContract | null | undefined
 ): string | null => contract?.position ?? null;
@@ -258,6 +304,136 @@ const BohemkaContractDetailModalContext =
   createContext<Dispatch<SetStateAction<BohemkaContractDetailModalPayload | null>> | null>(
     null
   );
+
+type StatementCalculatorPrefill = {
+  product: Product;
+  productLabel: string;
+  sourceProductCode: string;
+  contractNumber: string;
+  clientName: string;
+  contractSignedDate: string;
+  policyStartDate: string;
+  amountText: string;
+  frequency: PaymentFrequency;
+  statementId: string | null;
+  statementNumber: string | null;
+  statementPeriod: string | null;
+  statementDate: string | null;
+  statementChronologyMs: number | null;
+};
+
+type StatementCalculatorPrefillSource = {
+  statementId?: string | null;
+  statementNumber?: string | null;
+  statementPeriod?: string | null;
+  statementDate?: string | null;
+  statementChronologyMs?: number | null;
+};
+
+const StatementCalculatorPrefillContext =
+  createContext<Dispatch<SetStateAction<StatementCalculatorPrefill | null>> | null>(
+    null
+  );
+
+const statementDateToIsoDay = (value: string | null | undefined): string => {
+  const date = parseLocalDate(value);
+  return date ? toDateInputValue(date) : "";
+};
+
+const statementClientNameForCalculator = (value: string | null | undefined): string => {
+  const name = normalizeText(value);
+  if (!name) return "";
+  if (
+    /\b(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?|spol\.|firma|obec|město|mesto|úřad|urad)\b/i.test(
+      name
+    )
+  ) {
+    return name;
+  }
+
+  const commaParts = name
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (commaParts.length === 2) return `${commaParts[1]} ${commaParts[0]}`;
+
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length < 2 || parts.length > 4) return name;
+  const [surname, ...givenNames] = parts;
+  return [...givenNames, surname].join(" ");
+};
+
+const statementCalculatorAmountText = (value: number): string => {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  const rounded = Math.round(value * 100) / 100;
+  return String(rounded);
+};
+
+const statementCalculatorAmountAndFrequency = (
+  product: StatementProductMeta,
+  statementBase: number
+): { amountText: string; frequency: PaymentFrequency } | null => {
+  if (!product.productKey) return null;
+  const allowedFrequencies = calculatorAllowedFrequencies(product.productKey);
+  const frequency =
+    product.usesAnnualPremiumBase && allowedFrequencies.includes("monthly")
+      ? "monthly"
+      : allowedFrequencies[0];
+  if (!frequency) return null;
+
+  const amount = product.usesAnnualPremiumBase
+    ? statementBase / periodsPerYear(frequency)
+    : statementBase;
+
+  return {
+    amountText: statementCalculatorAmountText(amount),
+    frequency,
+  };
+};
+
+const statementCalculatorPrefill = ({
+  product,
+  contractNumber,
+  clientName,
+  signedAt,
+  validFrom,
+  statementBase,
+  source,
+}: {
+  product: StatementProductMeta;
+  contractNumber: string | null | undefined;
+  clientName: string | null | undefined;
+  signedAt: string | null | undefined;
+  validFrom: string | null | undefined;
+  statementBase: number;
+  source?: StatementCalculatorPrefillSource;
+}): StatementCalculatorPrefill | null => {
+  if (!product.productKey || !PRODUCT_CATALOG[product.productKey]) return null;
+  const amountAndFrequency = statementCalculatorAmountAndFrequency(product, statementBase);
+  if (!amountAndFrequency) return null;
+  const statementChronologyMs =
+    typeof source?.statementChronologyMs === "number" &&
+    Number.isFinite(source.statementChronologyMs)
+      ? Math.round(source.statementChronologyMs)
+      : null;
+
+  return {
+    product: product.productKey,
+    productLabel: PRODUCT_CATALOG[product.productKey].label,
+    sourceProductCode: product.rawCode,
+    contractNumber: normalizeText(contractNumber),
+    clientName: statementClientNameForCalculator(clientName),
+    contractSignedDate: statementDateToIsoDay(signedAt),
+    policyStartDate: statementDateToIsoDay(validFrom),
+    amountText: amountAndFrequency.amountText,
+    frequency: amountAndFrequency.frequency,
+    statementId: normalizeText(source?.statementId),
+    statementNumber: normalizeText(source?.statementNumber),
+    statementPeriod: normalizeText(source?.statementPeriod),
+    statementDate: normalizeText(source?.statementDate),
+    statementChronologyMs,
+  };
+};
 
 type StatementProductLogoMeta = {
   src: string;
@@ -734,6 +910,8 @@ const sumProcessingResults = (
         summary.premiumHistoryBackfills + (result.premiumHistoryBackfills ?? 0),
       olderPremiumUpdatesSkipped:
         summary.olderPremiumUpdatesSkipped + (result.olderPremiumUpdatesSkipped ?? 0),
+      filteredContractsSkipped:
+        summary.filteredContractsSkipped + (result.filteredContractsSkipped ?? 0),
       accountingRepairDrafts:
         summary.accountingRepairDrafts + (result.accountingRepairDrafts ?? 0),
       externalUpdateTasks: summary.externalUpdateTasks + (result.externalUpdateTasks ?? 0),
@@ -764,6 +942,7 @@ const sumProcessingResults = (
       premiumUpdates: 0,
       premiumHistoryBackfills: 0,
       olderPremiumUpdatesSkipped: 0,
+      filteredContractsSkipped: 0,
       accountingRepairDrafts: 0,
       externalUpdateTasks: 0,
       contractsUpdated: 0,
@@ -793,9 +972,6 @@ const processedStatementLabel = (
     `Podklady pro MAXX/extranet: ${summary.externalUpdateTasks}.`,
   ];
   const warnings = [
-    summary.notFoundContracts.length > 0
-      ? `Nenalezené smlouvy: ${Array.from(new Set(summary.notFoundContracts)).slice(0, 8).join(", ")}.`
-      : null,
     summary.ambiguousContracts.length > 0
       ? `Duplicitní shody: ${Array.from(new Set(summary.ambiguousContracts)).slice(0, 8).join(", ")}.`
       : null,
@@ -815,7 +991,6 @@ const processedStatementLabel = (
 };
 
 function ProcessingAuditPanel({ summary }: { summary: StatementProcessingSummary }) {
-  const uniqueNotFoundContracts = Array.from(new Set(summary.notFoundContracts));
   const uniqueAmbiguousContracts = Array.from(new Set(summary.ambiguousContracts));
   const uniqueSkippedContracts = Array.from(new Set(summary.skippedContracts));
   const payoutChangeRecordCount = summary.payoutRecordsAdded + summary.payoutRecordsUpdated;
@@ -828,7 +1003,6 @@ function ProcessingAuditPanel({ summary }: { summary: StatementProcessingSummary
     summary.olderPremiumUpdatesSkipped +
     uniqueSkippedContracts.length;
   const manualReviewTotal =
-    uniqueNotFoundContracts.length +
     uniqueAmbiguousContracts.length +
     uniqueSkippedContracts.length +
     summary.accountingRepairDrafts +
@@ -848,9 +1022,6 @@ function ProcessingAuditPanel({ summary }: { summary: StatementProcessingSummary
     .filter(Boolean)
     .join(" · ");
   const manualReviewDetail = [
-    uniqueNotFoundContracts.length > 0
-      ? `${uniqueNotFoundContracts.length} nenalezených`
-      : null,
     uniqueAmbiguousContracts.length > 0
       ? `${uniqueAmbiguousContracts.length} duplicitních shod`
       : null,
@@ -868,7 +1039,8 @@ function ProcessingAuditPanel({ summary }: { summary: StatementProcessingSummary
     label: string;
     value: number;
     detail: string;
-    tone: string;
+    valueClass: string;
+    iconClass: string;
     icon: LucideIcon;
   }[] = [
     {
@@ -878,87 +1050,82 @@ function ProcessingAuditPanel({ summary }: { summary: StatementProcessingSummary
         payoutChangeRecordCount > 0
           ? `${payoutChangeRecordCount} výplatních položek`
           : "Bez nové výplaty",
-      tone: "border-emerald-200 bg-emerald-50/80 text-emerald-900",
+      valueClass: "text-slate-950",
+      iconClass: "text-violet-700",
       icon: WalletCards,
     },
     {
       label: "Zapsané položky",
       value: payoutChangeRecordCount,
       detail: `${summary.payoutRecordsAdded} nových · ${summary.payoutRecordsUpdated} aktualizovaných`,
-      tone: "border-sky-200 bg-sky-50/80 text-sky-950",
+      valueClass: "text-violet-700",
+      iconClass: "text-violet-700",
       icon: CheckCircle2,
     },
     {
       label: "Přeskočeno",
       value: skippedTotal,
       detail: skippedDetail || "Nic nepřeskočeno",
-      tone: "border-slate-200 bg-slate-50/90 text-slate-900",
+      valueClass: skippedTotal > 0 ? "text-violet-700" : "text-slate-950",
+      iconClass: skippedTotal > 0 ? "text-violet-700" : "text-slate-500",
       icon: ListChecks,
     },
     {
       label: "Ruční kontrola",
       value: manualReviewTotal,
       detail: manualReviewDetail || "Bez ruční kontroly",
-      tone:
-        manualReviewTotal > 0
-          ? "border-amber-200 bg-amber-50/80 text-amber-950"
-          : "border-emerald-200 bg-emerald-50/80 text-emerald-900",
-      icon: AlertTriangle,
+      valueClass: manualReviewTotal > 0 ? "text-violet-700" : "text-slate-950",
+      iconClass: manualReviewTotal > 0 ? "text-violet-700" : "text-slate-950",
+      icon: manualReviewTotal > 0 ? AlertTriangle : CheckCircle2,
     },
   ];
+  const hasReviewDetails =
+    uniqueAmbiguousContracts.length > 0 ||
+    uniqueSkippedContracts.length > 0 ||
+    summary.accountingRepairDrafts > 0 ||
+    summary.externalUpdateTasks > 0 ||
+    summary.errors.length > 0;
 
   return (
-    <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white/90 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
-      <div className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h3 className="text-base font-bold tracking-tight text-slate-950">
-            Audit po zápisu
-          </h3>
-          <p className="text-sm font-medium text-slate-600">
-            Co se propsalo, co se přeskočilo a co zůstává k ruční kontrole.
-          </p>
+    <section className="relative mt-4 overflow-hidden rounded-lg border border-white/70 bg-white/75 shadow-[0_18px_42px_rgba(15,23,42,0.08)] ring-1 ring-violet-100/70 backdrop-blur-xl">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/70" aria-hidden="true" />
+      <div className="flex flex-col gap-3 border-b border-violet-100/70 bg-white/45 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-violet-700" strokeWidth={2.2} aria-hidden="true" />
+          <h3 className="text-sm font-bold text-slate-950">Audit po zápisu</h3>
         </div>
-        <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-semibold text-slate-600">
+        <span className="inline-flex w-fit items-center rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)]">
           Upraveno {summary.contractsUpdated} smluv
-        </div>
+        </span>
       </div>
 
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid divide-y divide-violet-100/70 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
         {auditItems.map((item) => {
           const Icon = item.icon;
           return (
             <div
               key={item.label}
-              className={`flex min-h-32 flex-col justify-between rounded-2xl border px-4 py-3 ${item.tone}`}
+              className="flex min-h-24 items-center justify-between gap-4 bg-white/35 px-4 py-3"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-bold uppercase tracking-wide opacity-75">
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
                   {item.label}
                 </div>
-                <Icon className="h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+                <div className={`mt-1 text-2xl font-black tracking-tight ${item.valueClass}`}>
+                  {item.value}
+                </div>
+                <div className="mt-1 truncate text-sm font-semibold text-slate-600">
+                  {item.detail}
+                </div>
               </div>
-              <div className="mt-2 text-3xl font-black tracking-tight">{item.value}</div>
-              <div className="mt-2 text-sm font-semibold leading-snug opacity-80">
-                {item.detail}
-              </div>
+              <Icon className={`h-5 w-5 shrink-0 ${item.iconClass}`} strokeWidth={2.2} aria-hidden="true" />
             </div>
           );
         })}
       </div>
 
-      {(uniqueNotFoundContracts.length > 0 ||
-        uniqueAmbiguousContracts.length > 0 ||
-        uniqueSkippedContracts.length > 0 ||
-        summary.accountingRepairDrafts > 0 ||
-        summary.externalUpdateTasks > 0 ||
-        summary.errors.length > 0) && (
-        <div className="space-y-2 border-t border-slate-100 px-4 py-4 text-sm font-semibold text-slate-700">
-          {uniqueNotFoundContracts.length > 0 && (
-            <div>
-              Nenalezené smlouvy: {uniqueNotFoundContracts.slice(0, 12).join(", ")}
-              {uniqueNotFoundContracts.length > 12 ? "…" : ""}
-            </div>
-          )}
+      {hasReviewDetails && (
+        <div className="space-y-2 border-t border-violet-100 bg-violet-50/70 px-4 py-3 text-sm font-semibold text-slate-950">
           {uniqueAmbiguousContracts.length > 0 && (
             <div>
               Duplicitní shody smluv: {uniqueAmbiguousContracts.slice(0, 12).join(", ")}
@@ -982,7 +1149,7 @@ function ProcessingAuditPanel({ summary }: { summary: StatementProcessingSummary
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -1837,7 +2004,7 @@ const sortManagerCommissionRows = (
     })
     .map((item) => item.row);
 
-const CONTRACT_MATCH_BATCH_SIZE = 700;
+const CONTRACT_MATCH_BATCH_SIZE = 50;
 
 type SystemContractFindBulkResult =
   | {
@@ -3008,6 +3175,22 @@ const systemCommissionMonthlyBase = (
   return Number(systemContract?.inputAmount);
 };
 
+const systemCurrentPremiumPaymentBase = (
+  systemContract: MatchedSystemContract | null
+): number => {
+  if (isAutoProduct(systemContract?.productKey ?? null)) {
+    const effectiveInputAmount = Number(systemContract?.effectiveInputAmount);
+    if (Number.isFinite(effectiveInputAmount) && effectiveInputAmount > 0) {
+      return effectiveInputAmount;
+    }
+
+    const inputAmount = Number(systemContract?.inputAmount);
+    if (Number.isFinite(inputAmount) && inputAmount > 0) return inputAmount;
+  }
+
+  return systemCommissionMonthlyBase(systemContract);
+};
+
 const isNeonRefreshMissingOriginalInSystem = (
   systemContract: MatchedSystemContract | null
 ): boolean =>
@@ -3530,7 +3713,7 @@ const autoPremiumBaseForMismatch = (
     base: number,
     fallback: "annual" | "payment"
   ): "annual" | "payment" => {
-    const systemPaymentAmount = systemCommissionMonthlyBase(systemContract);
+    const systemPaymentAmount = systemCurrentPremiumPaymentBase(systemContract);
     if (
       base <= 0 ||
       !Number.isFinite(systemPaymentAmount) ||
@@ -3667,7 +3850,7 @@ const autoPremiumReferenceDate = (
 const autoCurrentPremiumBaseReference = (
   systemContract: MatchedSystemContract | null
 ): AutoPremiumBaseReference | null => {
-  const systemPaymentAmount = systemCommissionMonthlyBase(systemContract);
+  const systemPaymentAmount = systemCurrentPremiumPaymentBase(systemContract);
   if (!Number.isFinite(systemPaymentAmount) || systemPaymentAmount <= 0) return null;
 
   const paymentFrequency = normalizeText(systemContract?.frequencyRaw).toLowerCase();
@@ -6504,6 +6687,305 @@ function BohemkaContractDetailModal({
   );
 }
 
+const statementCalculatorPrefillHref = (
+  prefill: StatementCalculatorPrefill
+): string => {
+  const params = new URLSearchParams();
+  params.set("prefill", "commission-statement");
+  params.set("product", prefill.product);
+  params.set("productLabel", prefill.productLabel);
+  params.set("sourceProductCode", prefill.sourceProductCode);
+  if (prefill.contractNumber) params.set("contractNumber", prefill.contractNumber);
+  if (prefill.clientName) params.set("clientName", prefill.clientName);
+  if (prefill.contractSignedDate) params.set("contractSignedDate", prefill.contractSignedDate);
+  if (prefill.policyStartDate) params.set("policyStartDate", prefill.policyStartDate);
+  if (prefill.amountText) params.set("amount", prefill.amountText);
+  params.set("frequency", prefill.frequency);
+  if (prefill.statementId) params.set("sourceStatementId", prefill.statementId);
+  if (prefill.statementNumber) params.set("sourceStatementNumber", prefill.statementNumber);
+  if (prefill.statementPeriod) params.set("sourceStatementPeriod", prefill.statementPeriod);
+  if (prefill.statementDate) params.set("sourceStatementDate", prefill.statementDate);
+  if (prefill.statementChronologyMs != null) {
+    params.set("sourceStatementChronologyMs", String(prefill.statementChronologyMs));
+  }
+  return `/kalkulacka?${params.toString()}`;
+};
+
+function StatementCalculatorPrefillButton({
+  prefill,
+  compact = false,
+}: {
+  prefill: StatementCalculatorPrefill | null;
+  compact?: boolean;
+}) {
+  const openCalculatorPrefill = useContext(StatementCalculatorPrefillContext);
+  if (!prefill || !openCalculatorPrefill) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => openCalculatorPrefill(prefill)}
+      className={
+        compact
+          ? "inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800 hover:border-violet-300 hover:bg-violet-100"
+          : "inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:border-violet-300 hover:bg-violet-100"
+      }
+    >
+      <Plus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={2.2} aria-hidden="true" />
+      Přidat smlouvu
+    </button>
+  );
+}
+
+const clampStatementCalculatorPanelPosition = (
+  position: { x: number; y: number },
+  size: { width: number; height: number }
+): { x: number; y: number } => {
+  if (typeof window === "undefined") return position;
+  const maxX = Math.max(16, window.innerWidth - size.width - 16);
+  const maxY = Math.max(16, window.innerHeight - size.height - 16);
+  return {
+    x: Math.min(Math.max(16, position.x), maxX),
+    y: Math.min(Math.max(16, position.y), maxY),
+  };
+};
+
+const clampStatementCalculatorPanelSize = (
+  size: { width: number; height: number }
+): { width: number; height: number } => {
+  if (typeof window === "undefined") {
+    return {
+      width: Math.min(1120, Math.max(520, size.width)),
+      height: Math.min(760, Math.max(420, size.height)),
+    };
+  }
+
+  const maxWidth = Math.max(320, window.innerWidth - 32);
+  const maxHeight = Math.max(320, window.innerHeight - 96);
+  const minWidth = Math.min(520, maxWidth);
+  const minHeight = Math.min(420, maxHeight);
+
+  return {
+    width: Math.min(maxWidth, Math.max(minWidth, size.width)),
+    height: Math.min(maxHeight, Math.max(minHeight, size.height)),
+  };
+};
+
+const defaultStatementCalculatorPanelSize = (): { width: number; height: number } =>
+  clampStatementCalculatorPanelSize({ width: 1120, height: 760 });
+
+function StatementCalculatorIframePanel({
+  prefill,
+  onClose,
+}: {
+  prefill: StatementCalculatorPrefill;
+  onClose: () => void;
+}) {
+  const href = useMemo(() => statementCalculatorPrefillHref(prefill), [prefill]);
+  const [minimized, setMinimized] = useState(false);
+  const [size, setSize] = useState(defaultStatementCalculatorPanelSize);
+  const [position, setPosition] = useState(() =>
+    clampStatementCalculatorPanelPosition(
+      { x: 16, y: 72 },
+      defaultStatementCalculatorPanelSize()
+    )
+  );
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+  const resizeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originWidth: number;
+    originHeight: number;
+  } | null>(null);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button,a")) return;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: position.x,
+      originY: position.y,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setPosition(
+      clampStatementCalculatorPanelPosition({
+        x: drag.originX + event.clientX - drag.startX,
+        y: drag.originY + event.clientY - drag.startY,
+      }, size)
+    );
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
+  const handleResizePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    resizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originWidth: size.width,
+      originHeight: size.height,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleResizePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const nextSize = clampStatementCalculatorPanelSize({
+      width: resize.originWidth + event.clientX - resize.startX,
+      height: resize.originHeight + event.clientY - resize.startY,
+    });
+    setSize(nextSize);
+    setPosition((previous) => clampStatementCalculatorPanelPosition(previous, nextSize));
+  };
+
+  const handleResizePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (resizeRef.current?.pointerId !== event.pointerId) return;
+    resizeRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
+  return (
+    <>
+      {minimized && (
+      <div className="fixed bottom-4 right-4 z-[95] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-violet-200 bg-slate-950 px-3 py-2 text-white shadow-[0_22px_60px_rgba(15,23,42,0.34)]">
+        <button
+          type="button"
+          onClick={() => setMinimized(false)}
+          className="min-w-0 text-left"
+        >
+          <span className="block truncate text-xs font-black uppercase tracking-wide text-violet-200">
+            Kalkulačka
+          </span>
+          <span className="block truncate text-sm font-bold">
+            {prefill.contractNumber || prefill.productLabel}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMinimized(false)}
+          className="inline-flex h-9 items-center rounded-full bg-white px-3 text-sm font-bold text-slate-950 transition hover:bg-violet-50"
+        >
+          Otevřít
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 text-white transition hover:bg-white/10"
+          aria-label="Zavřít kalkulačku"
+        >
+          <X className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+        </button>
+      </div>
+      )}
+
+    <div
+      className={`fixed left-0 top-0 z-[95] flex overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.28)] ring-1 ring-white/75 transition-opacity ${
+        minimized ? "pointer-events-none opacity-0" : "opacity-100"
+      }`}
+      style={{
+        width: `${size.width}px`,
+        height: `${size.height}px`,
+        transform: `translate(${position.x}px, ${position.y}px)`,
+      }}
+      role="dialog"
+      aria-label="Přidat smlouvu z provizního výpisu"
+      aria-hidden={minimized}
+    >
+      <div className="relative flex min-h-0 w-full flex-col">
+        <div
+          className="flex cursor-move items-center justify-between gap-3 border-b border-violet-100 bg-white/95 px-4 py-3 backdrop-blur-xl"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
+              <Move className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-black text-slate-950">
+                Přidat smlouvu z výpisu
+              </div>
+              <div className="truncate text-xs font-semibold text-slate-500">
+                {prefill.contractNumber || "bez čísla"} · {prefill.clientName || prefill.productLabel}
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="hidden h-9 items-center gap-2 rounded-full border border-violet-100 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-violet-200 hover:text-violet-800 sm:inline-flex"
+            >
+              <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+              Nová karta
+            </a>
+            <button
+              type="button"
+              onClick={() => setMinimized(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100 bg-white text-slate-700 transition hover:border-violet-200 hover:text-violet-800"
+              aria-label="Minimalizovat kalkulačku"
+            >
+              <Minus className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white transition hover:bg-black"
+              aria-label="Zavřít kalkulačku"
+            >
+              <X className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <iframe
+          title={`Přidat smlouvu ${prefill.contractNumber || prefill.productLabel}`}
+          src={href}
+          className="min-h-0 flex-1 border-0"
+        />
+        <button
+          type="button"
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerUp}
+          onPointerCancel={handleResizePointerUp}
+          className="absolute bottom-1 right-1 z-10 inline-flex h-8 w-8 cursor-nwse-resize items-center justify-center rounded-lg border border-violet-100 bg-white/90 text-violet-700 shadow-[0_8px_18px_rgba(15,23,42,0.14)] backdrop-blur transition hover:border-violet-200 hover:bg-violet-50"
+          aria-label="Změnit velikost kalkulačky"
+        >
+          <Grip className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+    </>
+  );
+}
+
 function SjednatelExtranetLink({
   href,
   compact = false,
@@ -6922,17 +7404,7 @@ function SystemMatchPanel({
     );
   }
 
-  if (match.status === "not_found") {
-    return (
-      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
-        {scope === "team"
-          ? "Smlouva nebyla nalezena mezi týmovými smlouvami. Náhled výpisu je zatím bez zápisu."
-          : scope === "tip"
-            ? "Zdrojová smlouva nebyla nalezena přes TIP vazbu. Náhled výpisu je zatím bez zápisu."
-            : "Smlouva nebyla nalezena mezi mými uloženými smlouvami. Náhled výpisu je zatím bez zápisu."}
-      </div>
-    );
-  }
+  if (match.status === "not_found") return null;
 
   if (match.status === "error") {
     return (
@@ -7024,7 +7496,7 @@ function StornoSystemStatusBadge({
   if (systemContractIsStorno(contract)) {
     const stornoDate = toDate(contract.stornoDate);
     return (
-      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+      <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
         Storno v systému
         {stornoDate ? ` · ${formatLocalDate(stornoDate)}` : ""}
       </span>
@@ -7032,7 +7504,7 @@ function StornoSystemStatusBadge({
   }
 
   return (
-    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+    <span className="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
       V systému není storno
     </span>
   );
@@ -7062,21 +7534,21 @@ function StornoSystemActionPanel({
         : "navržené datum";
 
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-violet-100 bg-violet-50/70 px-3 py-2 text-sm text-slate-900 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" strokeWidth={2.2} aria-hidden="true" />
         <div>
           {inference ? (
             <>
               <div className="font-bold">
                 Pravděpodobně storno smlouvy do 2 měsíců od počátku
               </div>
-              <div className="mt-0.5 font-medium text-amber-900">
+              <div className="mt-0.5 font-medium text-slate-700">
                 Výpis vrací {formatMoney(inference.stornoAmount)} Kč z{" "}
                 {inference.commissionCode ?? "provize"} a {inferenceAmountSourceLabel}{" "}
                 {formatMoney(inference.matchedPaidAmount)} Kč.
               </div>
-              <div className="mt-1 text-xs font-medium text-amber-800">
+              <div className="mt-1 text-xs font-medium text-slate-500">
                 Čas: počátek {formatLocalDate(inference.policyStartDate)}, {inferenceDateSourceLabel}{" "}
                 {formatLocalDate(inference.suggestedDate)}, hranice 2 měsíců{" "}
                 {formatLocalDate(inference.fullStornoBoundaryDate)}. Výpis drží zápornou položku v
@@ -7086,10 +7558,10 @@ function StornoSystemActionPanel({
           ) : (
             <>
               <div className="font-bold">Výpis hlásí storno, systém ne</div>
-              <div className="mt-0.5 font-medium text-amber-900">
+              <div className="mt-0.5 font-medium text-slate-700">
                 Smlouva je v systému vedená jako {systemContractStatusLabel(target.contract)}.
               </div>
-              <div className="mt-1 text-xs font-medium text-amber-800">
+              <div className="mt-1 text-xs font-medium text-slate-500">
                 Datum storna před uložením ověř proklikem do MAXXu nebo Extranetu.
               </div>
             </>
@@ -7100,7 +7572,7 @@ function StornoSystemActionPanel({
         <button
           type="button"
           onClick={() => onRequestStorno(target)}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-900 transition hover:border-amber-400 hover:bg-amber-100"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-3 py-2 text-sm font-bold text-white shadow-[0_12px_26px_rgba(15,23,42,0.16)] transition hover:bg-black"
         >
           <CalendarX className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
           {inference ? "Označit podle výpisu" : "Označit jako stornovanou"}
@@ -7410,10 +7882,10 @@ function NeonRefreshConversionPromptModal({
 }
 
 const summaryIconToneClass: Record<"slate" | "emerald" | "sky" | "indigo", string> = {
-  slate: "border-slate-200 bg-slate-50 text-slate-600",
-  emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  sky: "border-sky-200 bg-sky-50 text-sky-700",
-  indigo: "border-indigo-200 bg-indigo-50 text-indigo-700",
+  slate: "text-slate-500",
+  emerald: "text-violet-700",
+  sky: "text-violet-700",
+  indigo: "text-violet-700",
 };
 
 function SummaryStatCard({
@@ -7428,18 +7900,16 @@ function SummaryStatCard({
   tone?: keyof typeof summaryIconToneClass;
 }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
-      <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${summaryIconToneClass[tone]}`}>
-        <Icon className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-      </span>
+    <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0">
-        <div className="text-[11px] font-bold uppercase text-slate-500">
+        <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
           {label}
         </div>
-        <div className="mt-0.5 truncate text-base font-bold text-slate-950">
+        <div className="mt-1 truncate text-base font-black text-slate-950">
           {value}
         </div>
       </div>
+      <Icon className={`h-5 w-5 shrink-0 ${summaryIconToneClass[tone]}`} strokeWidth={2.2} aria-hidden="true" />
     </div>
   );
 }
@@ -7463,41 +7933,43 @@ function StatementSummary({ statement }: { statement: ParsedStatement }) {
   );
 
   return (
-    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-      <SummaryStatCard
-        icon={CalendarDays}
-        label="Období"
-        value={statement.header.period ?? "—"}
-        tone="slate"
-      />
-      <SummaryStatCard
-        icon={Banknote}
-        label="Vyplaceno"
-        value={
-          statement.payoutTotal != null
-            ? `${formatMoney(statement.payoutTotal)} Kč`
-            : "—"
-        }
-        tone="emerald"
-      />
-      <SummaryStatCard
-        icon={HandCoins}
-        label="Záloha za smlouvy"
-        value={`${formatMoney(totalCommission)} Kč`}
-        tone="emerald"
-      />
-      <SummaryStatCard
-        icon={WalletCards}
-        label="Ostatní platby"
-        value={`${formatMoney(totalOtherPayments)} Kč`}
-        tone="sky"
-      />
-      <SummaryStatCard
-        icon={UsersRound}
-        label="Provize manažera"
-        value={`${formatMoney(totalManagerCommission)} Kč`}
-        tone="indigo"
-      />
+    <div className="overflow-hidden border-y border-violet-100 bg-white/35">
+      <div className="grid divide-y divide-violet-100 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-5">
+        <SummaryStatCard
+          icon={CalendarDays}
+          label="Období"
+          value={statement.header.period ?? "—"}
+          tone="slate"
+        />
+        <SummaryStatCard
+          icon={Banknote}
+          label="Vyplaceno"
+          value={
+            statement.payoutTotal != null
+              ? `${formatMoney(statement.payoutTotal)} Kč`
+              : "—"
+          }
+          tone="emerald"
+        />
+        <SummaryStatCard
+          icon={HandCoins}
+          label="Záloha za smlouvy"
+          value={`${formatMoney(totalCommission)} Kč`}
+          tone="emerald"
+        />
+        <SummaryStatCard
+          icon={WalletCards}
+          label="Ostatní platby"
+          value={`${formatMoney(totalOtherPayments)} Kč`}
+          tone="sky"
+        />
+        <SummaryStatCard
+          icon={UsersRound}
+          label="Provize manažera"
+          value={`${formatMoney(totalManagerCommission)} Kč`}
+          tone="indigo"
+        />
+      </div>
     </div>
   );
 }
@@ -7508,6 +7980,7 @@ function LifeSplitContractCard({
   deductionRows,
   statementId,
   statementPeriod,
+  statementPrefillSource,
   statementKey,
   correctionContext,
   markingControls,
@@ -7518,6 +7991,7 @@ function LifeSplitContractCard({
   deductionRows?: DeductionCommissionRow[];
   statementId?: string | null;
   statementPeriod?: string | null;
+  statementPrefillSource?: StatementCalculatorPrefillSource;
   statementKey?: string;
   correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
@@ -7545,7 +8019,8 @@ function LifeSplitContractCard({
     .find((base) => base > 0) ?? 0;
   const b36HalfLabel = b36HalfLabelForProduct(contract.productCode);
   const pairedB36PaymentIndexes = b36OffsetPairIndexes(contract.b36Payments);
-  const expectedProductKey = resolveStatementProduct(contract.productCode).productKey;
+  const contractProductMeta = resolveStatementProduct(contract.productCode);
+  const expectedProductKey = contractProductMeta.productKey;
   const reviewRows = statementKey
     ? rowsForStatementReview(statementKey, contract.rows, correctionContext)
     : contract.rows;
@@ -7634,6 +8109,18 @@ function LifeSplitContractCard({
   );
   const detailUrl = firstContractDetailUrl(contract.rows);
   const extranetUrl = firstSjednatelExtranetUrl(contract.rows, systemContract);
+  const calculatorPrefill =
+    isUnpairedContractMatch(match) && contractProductMeta.productKey
+      ? statementCalculatorPrefill({
+          product: contractProductMeta,
+          contractNumber: contract.contractNumber,
+          clientName: contract.client,
+          signedAt: contract.signedAt,
+          validFrom: contract.validFrom,
+          statementBase: contract.annualPremium,
+          source: statementPrefillSource,
+        })
+      : null;
   const [expanded, setExpanded] = useState(false);
   const [refreshConversionState, setRefreshConversionState] = useState<{
     status: "idle" | "saving" | "success" | "error";
@@ -7698,10 +8185,8 @@ function LifeSplitContractCard({
         ],
       }
     : null;
-  const contractProductMeta = resolveStatementProduct(contract.productCode);
-
   return (
-    <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+    <article className="relative overflow-hidden border-b border-violet-100 bg-white/35 px-4 py-3 last:border-b-0">
       {markedItem && (
         <div className="mb-3 flex justify-end">
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
@@ -7710,7 +8195,7 @@ function LifeSplitContractCard({
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-3 text-left lg:flex-row lg:items-start lg:justify-between"
+        className="grid w-full gap-3 text-left lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
         aria-expanded={expanded}
       >
         <div className="min-w-0">
@@ -7778,31 +8263,21 @@ function LifeSplitContractCard({
               </span>
             )}
           </div>
-          <div className="mt-1 text-[15px] font-semibold text-slate-800">
+          <div className="mt-1 text-lg font-black tracking-tight text-slate-950">
             {contract.client || "Klient se doplní po spárování se systémem"}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-            <span>Uzavřeno: {contract.signedAt || "—"}</span>
-            <span>Počátek: {contract.validFrom || "—"}</span>
-            <span>
-              Roční základna: {contract.annualPremium > 0 ? `${formatWholeMoney(contract.annualPremium)} Kč` : "—"}
-            </span>
-            <span>
-              Měsíčně: {monthlyPremium === null ? "—" : `${formatWholeMoney(monthlyPremium)} Kč`}
-            </span>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 self-start lg:self-auto">
-          <div className="rounded-xl bg-slate-950 px-3 py-2 text-right text-white ring-1 ring-slate-800">
-            <div className="text-[11px] font-black uppercase tracking-wide !text-white opacity-100">
-              Nalezeno celkem
+        <div className="flex shrink-0 items-center gap-3 self-start lg:self-auto lg:justify-self-end">
+          <div className="min-w-36 text-right">
+            <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+              Provize celkem
             </div>
-            <div className="mt-1 whitespace-nowrap text-lg font-bold text-emerald-200">
+            <div className="mt-1 whitespace-nowrap text-lg font-black text-violet-700">
               {formatMoney(total)} Kč
             </div>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-100 bg-white/80 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
             <ChevronDown
               className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`}
               strokeWidth={2.2}
@@ -7826,13 +8301,45 @@ function LifeSplitContractCard({
             selectedContract={systemContract}
             scope={matchScope}
           />
-          {(systemContract || detailUrl || extranetUrl) && (
+          {(systemContract || detailUrl || extranetUrl || calculatorPrefill) && (
             <div className="mt-3 flex flex-wrap gap-2">
               <BohemkaContractDetailLink contract={systemContract} />
               <ContractDetailLink href={detailUrl} />
               <SjednatelExtranetLink href={extranetUrl} />
+              <StatementCalculatorPrefillButton prefill={calculatorPrefill} />
             </div>
           )}
+
+          <div className="mt-3 grid divide-y divide-violet-100 border-y border-violet-100 text-xs font-semibold text-slate-600 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Uzavřeno
+              </div>
+              <div className="mt-0.5 text-slate-900">{contract.signedAt || "—"}</div>
+            </div>
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Počátek
+              </div>
+              <div className="mt-0.5 text-slate-900">{contract.validFrom || "—"}</div>
+            </div>
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Roční základna
+              </div>
+              <div className="mt-0.5 text-slate-900">
+                {contract.annualPremium > 0 ? `${formatWholeMoney(contract.annualPremium)} Kč` : "—"}
+              </div>
+            </div>
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Měsíčně
+              </div>
+              <div className="mt-0.5 text-slate-900">
+                {monthlyPremium === null ? "—" : `${formatWholeMoney(monthlyPremium)} Kč`}
+              </div>
+            </div>
+          </div>
 
           {(shouldShowStatementRefreshConversion || refreshConversionState.message) && (
             <div
@@ -8057,6 +8564,7 @@ function OtherProductContractCard({
   match,
   deductionRows,
   statementPeriod,
+  statementPrefillSource,
   statementKey,
   correctionContext,
   markingControls,
@@ -8065,6 +8573,7 @@ function OtherProductContractCard({
   match: ContractMatchState | null;
   deductionRows?: DeductionCommissionRow[];
   statementPeriod?: string | null;
+  statementPrefillSource?: StatementCalculatorPrefillSource;
   statementKey?: string;
   correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
@@ -8085,6 +8594,16 @@ function OtherProductContractCard({
   const monthlyBase = annualBase > 0 ? annualBase / 12 : null;
   const expectedProductKey =
     productMetas.length === 1 ? productMetas[0]?.productKey ?? null : null;
+  const calculatorPrefillProduct =
+    productMetas.length === 1 && productMetas[0]?.productKey ? productMetas[0] : null;
+  const calculatorPrefillBase =
+    calculatorPrefillProduct
+      ? contract.rows.find(
+          (row) =>
+            resolveStatementProduct(row.product).productKey ===
+              calculatorPrefillProduct.productKey && row.base > 0
+        )?.base ?? 0
+      : 0;
   const systemContract = matchedSystemContract(match);
   const reviewRows = statementKey
     ? rowsForStatementReview(statementKey, contract.rows, correctionContext)
@@ -8159,6 +8678,18 @@ function OtherProductContractCard({
   );
   const detailUrl = firstContractDetailUrl(contract.rows);
   const extranetUrl = firstSjednatelExtranetUrl(contract.rows, systemContract);
+  const calculatorPrefill =
+    isUnpairedContractMatch(match) && calculatorPrefillProduct
+      ? statementCalculatorPrefill({
+          product: calculatorPrefillProduct,
+          contractNumber: contract.contractNumber,
+          clientName: contract.client,
+          signedAt: contract.signedAt,
+          validFrom: contract.validFrom,
+          statementBase: calculatorPrefillBase,
+          source: statementPrefillSource,
+        })
+      : null;
   const [expanded, setExpanded] = useState(false);
   const markedItem: MarkedDiscrepancyItem | null = markingControls
     ? {
@@ -8189,7 +8720,7 @@ function OtherProductContractCard({
     : null;
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+    <article className="relative overflow-hidden border-b border-violet-100 bg-white/35 px-4 py-3 last:border-b-0">
       {markedItem && (
         <div className="mb-3 flex justify-end">
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
@@ -8198,7 +8729,7 @@ function OtherProductContractCard({
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-3 text-left lg:flex-row lg:items-start lg:justify-between"
+        className="grid w-full gap-3 text-left lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
         aria-expanded={expanded}
       >
         <div className="min-w-0">
@@ -8276,49 +8807,31 @@ function OtherProductContractCard({
               </span>
             )}
           </div>
-          <div className="mt-1 text-[15px] font-semibold text-slate-800">
+          <div className="mt-1 text-lg font-black tracking-tight text-slate-950">
             {contract.client || "Klient nezjištěn"}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-            <span>Uzavřeno: {contract.signedAt || "—"}</span>
-            <span>Platnost: {contract.validFrom || "—"}</span>
-            <span>{contract.rows.length} řádků</span>
-            {contract.b36Payments.length > 0 && (
-              <span>{contract.b36Payments.length} B36 z ostatních plateb</span>
-            )}
-            {productMetas.some((product) => product.usesAnnualPremiumBase) && (
-              <>
-                <span>
-                  Roční základna: {annualBase > 0 ? `${formatWholeMoney(annualBase)} Kč` : "—"}
-                </span>
-                <span>
-                  Měsíčně: {monthlyBase === null ? "—" : `${formatWholeMoney(monthlyBase)} Kč`}
-                </span>
-              </>
-            )}
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 self-start lg:self-auto">
-          <div className="grid grid-cols-2 gap-2 text-right">
-            <div className="rounded-xl bg-slate-950 px-3 py-2 text-white ring-1 ring-slate-800">
-              <div className="text-[11px] font-black uppercase tracking-wide !text-white opacity-100">
-                Provize
+        <div className="flex shrink-0 items-center gap-3 self-start lg:self-auto lg:justify-self-end">
+          <div className="grid grid-cols-2 gap-5 text-right">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                Provize celkem
               </div>
-              <div className="mt-1 whitespace-nowrap text-lg font-bold text-emerald-200">
+              <div className="mt-1 whitespace-nowrap text-lg font-black text-violet-700">
                 {formatMoney(totalCommission)} Kč
               </div>
             </div>
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-950">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-rose-700">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
                 Rez. fond
               </div>
-              <div className="mt-1 whitespace-nowrap text-lg font-bold text-rose-900">
+              <div className="mt-1 whitespace-nowrap text-lg font-black text-rose-700">
                 {formatMoney(totalReserve)} Kč
               </div>
             </div>
           </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-100 bg-white/80 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
             <ChevronDown
               className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`}
               strokeWidth={2.2}
@@ -8343,13 +8856,55 @@ function OtherProductContractCard({
             expectedProductKey={expectedProductKey}
             scope={matchScope}
           />
-          {(systemContract || detailUrl || extranetUrl) && (
+          {(systemContract || detailUrl || extranetUrl || calculatorPrefill) && (
             <div className="mt-3 flex flex-wrap gap-2">
               <BohemkaContractDetailLink contract={systemContract} />
               <ContractDetailLink href={detailUrl} />
               <SjednatelExtranetLink href={extranetUrl} />
+              <StatementCalculatorPrefillButton prefill={calculatorPrefill} />
             </div>
           )}
+
+          <div className="mt-3 grid divide-y divide-violet-100 border-y border-violet-100 text-xs font-semibold text-slate-600 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Uzavřeno
+              </div>
+              <div className="mt-0.5 text-slate-900">{contract.signedAt || "—"}</div>
+            </div>
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Platnost
+              </div>
+              <div className="mt-0.5 text-slate-900">{contract.validFrom || "—"}</div>
+            </div>
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Položky
+              </div>
+              <div className="mt-0.5 text-slate-900">
+                {contract.rows.length} řádků
+                {contract.b36Payments.length > 0
+                  ? ` · ${contract.b36Payments.length} B36`
+                  : ""}
+              </div>
+            </div>
+            <div className="px-3 py-2">
+              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Pojistné
+              </div>
+              <div className="mt-0.5 text-slate-900">
+                {productMetas.some((product) => product.usesAnnualPremiumBase)
+                  ? annualBase > 0
+                    ? `${formatWholeMoney(annualBase)} Kč ročně`
+                    : "—"
+                  : "Nesleduje se"}
+                {productMetas.some((product) => product.usesAnnualPremiumBase) && monthlyBase !== null
+                  ? ` · ${formatWholeMoney(monthlyBase)} Kč měsíčně`
+                  : ""}
+              </div>
+            </div>
+          </div>
 
           <StatementCorrectionWarning details={correctionDetails} label={correctionLabel} />
           <StatementCorrectionWarning
@@ -8524,6 +9079,7 @@ function LifeSplitProductsSection({
   deductionRows,
   statementId,
   statementPeriod,
+  statementPrefillSource,
   statementKey,
   correctionContext,
   markingControls,
@@ -8534,6 +9090,7 @@ function LifeSplitProductsSection({
   deductionRows?: DeductionCommissionRow[];
   statementId?: string | null;
   statementPeriod?: string | null;
+  statementPrefillSource?: StatementCalculatorPrefillSource;
   statementKey: string;
   correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
@@ -8558,24 +9115,26 @@ function LifeSplitProductsSection({
   );
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/35 shadow-[0_14px_32px_rgba(15,23,42,0.04)]">
-      <span className="pointer-events-none absolute inset-y-0 left-0 w-3 bg-emerald-500" />
+    <div className="relative overflow-hidden rounded-lg border border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl">
+      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/60" aria-hidden="true" />
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-2 py-4 pl-7 pr-4 text-left sm:flex-row sm:items-center sm:justify-between"
+        className="flex w-full flex-col gap-3 px-4 py-3 text-left transition hover:bg-violet-50/35 sm:flex-row sm:items-center sm:justify-between"
         aria-expanded={expanded}
       >
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
             <HeartPulse className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
           </span>
-          <h3 className="text-lg font-bold text-slate-950">Životní pojištění</h3>
+          <h3 className="text-base font-black tracking-tight text-slate-950">
+            Životní pojištění
+          </h3>
         </div>
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+        <span className="inline-flex flex-wrap items-center gap-3 text-sm font-bold text-slate-900">
           <span>{contracts.length} smluv · {formatMoney(totalPayout)} Kč</span>
           {uncertaintyCount > 0 && (
-            <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-black text-violet-800 ring-1 ring-violet-100">
               {uncertaintyCountLabel(uncertaintyCount)}
             </span>
           )}
@@ -8588,7 +9147,7 @@ function LifeSplitProductsSection({
       </button>
 
       {expanded && (
-        <div className="space-y-3 border-t border-emerald-100 py-4 pl-7 pr-4">
+        <div className="border-t border-violet-100 bg-white/45 py-2 pl-4 pr-3 sm:pl-5">
           {contracts.map((contract) => (
             <LifeSplitContractCard
               key={`${contract.productCode}-${contract.contractNumber}`}
@@ -8601,6 +9160,7 @@ function LifeSplitProductsSection({
               deductionRows={deductionRows}
               statementId={statementId}
               statementPeriod={statementPeriod}
+              statementPrefillSource={statementPrefillSource}
               statementKey={statementKey}
               correctionContext={correctionContext}
               markingControls={markingControls}
@@ -8618,93 +9178,76 @@ function UnpairedContractsSection({
   otherContracts,
   matchesByContractNumber,
   deductionRows,
+  statementPeriod,
+  statementPrefillSource,
+  statementKey,
+  correctionContext,
   markingControls,
 }: {
   lifeContracts: LifeSplitContractPreview[];
   otherContracts: OtherProductContractPreview[];
   matchesByContractNumber: ContractMatchesByNumber;
   deductionRows?: DeductionCommissionRow[];
+  statementPeriod?: string | null;
+  statementPrefillSource?: StatementCalculatorPrefillSource;
+  statementKey: string;
+  correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [otherLifeExpanded, setOtherLifeExpanded] = useState(false);
-  const [troyOunceExpanded, setTroyOunceExpanded] = useState(false);
-  const [investmentExpanded, setInvestmentExpanded] = useState(false);
-  const [propertyExpanded, setPropertyExpanded] = useState(false);
-  const [businessExpanded, setBusinessExpanded] = useState(false);
-  const [travelExpanded, setTravelExpanded] = useState(false);
   const totalContracts = lifeContracts.length + otherContracts.length;
   if (totalContracts === 0) return null;
 
-  const troyOunceContracts = otherContracts.filter(contractHasTroyOunceProduct);
-  const otherLifeContracts = otherContracts.filter(
-    (contract) =>
-      !contractHasTroyOunceProduct(contract) &&
-      !contractHasInvestmentSectionProduct(contract) &&
-      contractHasProductCategory(contract, "life")
+  const lifeProductContracts = otherContracts.filter((contract) =>
+    contractHasProductCategory(contract, "life")
   );
-  const investmentContracts = otherContracts.filter(
+  const autoProductContracts = otherContracts.filter(
     (contract) =>
-      !contractHasTroyOunceProduct(contract) &&
       !contractHasProductCategory(contract, "life") &&
-      contractHasInvestmentSectionProduct(contract)
+      contractHasProductCategory(contract, "auto")
   );
-  const propertyContracts = otherContracts.filter(
+  const propertyProductContracts = otherContracts.filter(
     (contract) =>
-      !contractHasTroyOunceProduct(contract) &&
       !contractHasProductCategory(contract, "life") &&
-      !contractHasInvestmentSectionProduct(contract) &&
+      !contractHasProductCategory(contract, "auto") &&
       contractHasProductCategory(contract, "property")
   );
-  const businessContracts = otherContracts.filter(
+  const businessProductContracts = otherContracts.filter(
     (contract) =>
-      !contractHasTroyOunceProduct(contract) &&
       !contractHasProductCategory(contract, "life") &&
-      !contractHasInvestmentSectionProduct(contract) &&
+      !contractHasProductCategory(contract, "auto") &&
       !contractHasProductCategory(contract, "property") &&
       contractHasProductCategory(contract, "business")
   );
-  const travelContracts = otherContracts.filter(
+  const travelProductContracts = otherContracts.filter(
     (contract) =>
-      !contractHasTroyOunceProduct(contract) &&
       !contractHasProductCategory(contract, "life") &&
-      !contractHasInvestmentSectionProduct(contract) &&
+      !contractHasProductCategory(contract, "auto") &&
       !contractHasProductCategory(contract, "property") &&
       !contractHasProductCategory(contract, "business") &&
       contractHasProductCategory(contract, "travel")
   );
-  const remainingOtherContracts = otherContracts.filter(
+  const investmentProductContracts = otherContracts.filter(
     (contract) =>
-      !contractHasTroyOunceProduct(contract) &&
       !contractHasProductCategory(contract, "life") &&
-      !contractHasInvestmentSectionProduct(contract) &&
+      !contractHasProductCategory(contract, "auto") &&
       !contractHasProductCategory(contract, "property") &&
       !contractHasProductCategory(contract, "business") &&
-      !contractHasProductCategory(contract, "travel")
+      !contractHasProductCategory(contract, "travel") &&
+      (contractHasProductCategory(contract, "investment") ||
+        contractHasInvestmentSectionProduct(contract) ||
+        contractHasTroyOunceProduct(contract))
   );
-  const troyOunceCommission = troyOunceContracts.reduce(
-    (sum, contract) => sum + otherProductContractTotal(contract),
-    0
-  );
-  const otherLifeCommission = otherLifeContracts.reduce(
-    (sum, contract) => sum + otherProductContractTotal(contract),
-    0
-  );
-  const investmentCommission = investmentContracts.reduce(
-    (sum, contract) => sum + otherProductContractTotal(contract),
-    0
-  );
-  const propertyCommission = propertyContracts.reduce(
-    (sum, contract) => sum + otherProductContractTotal(contract),
-    0
-  );
-  const businessCommission = businessContracts.reduce(
-    (sum, contract) => sum + otherProductContractTotal(contract),
-    0
-  );
-  const travelCommission = travelContracts.reduce(
-    (sum, contract) => sum + otherProductContractTotal(contract),
-    0
+  const remainingOtherProductContracts = otherContracts.filter(
+    (contract) =>
+      !contractHasProductCategory(contract, "life") &&
+      !contractHasProductCategory(contract, "auto") &&
+      !contractHasProductCategory(contract, "property") &&
+      !contractHasProductCategory(contract, "business") &&
+      !contractHasProductCategory(contract, "travel") &&
+      !contractHasProductCategory(contract, "investment") &&
+      !contractHasInvestmentSectionProduct(contract) &&
+      !contractHasTroyOunceProduct(contract)
   );
 
   const totalCommission =
@@ -8745,347 +9288,113 @@ function UnpairedContractsSection({
       </button>
 
       {expanded && (
-        <div className="space-y-4 border-t border-amber-200 py-4 pl-7 pr-4">
-          {lifeContracts.map((contract) => (
-            <LifeSplitContractCard
-              key={`unpaired-life-${contract.productCode}-${contract.contractNumber}`}
-              contract={contract}
-              match={contractMatchForNumber(
-                matchesByContractNumber,
-                contract.contractNumber,
-                lifeSplitContractMatchScope(contract)
-              )}
-              deductionRows={deductionRows}
-              markingControls={markingControls}
-            />
-          ))}
-          {otherLifeContracts.length > 0 && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60">
-              <button
-                type="button"
-                onClick={() => setOtherLifeExpanded((value) => !value)}
-                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                aria-expanded={otherLifeExpanded}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-700">
-                    <HeartPulse className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h4 className="text-base font-bold text-emerald-950">
-                      Životní pojištění
-                    </h4>
-                    <p className="text-sm text-emerald-900">
-                      Životní produkty mimo detailní rozpad jsou oddělené od ostatních nespárovaných smluv.
-                    </p>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-950">
-                  <span>
-                    {otherLifeContracts.length} smluv · {formatMoney(otherLifeCommission)} Kč
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      otherLifeExpanded ? "rotate-180" : ""
-                    }`}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                </span>
-              </button>
-              {otherLifeExpanded && (
-                <div className="space-y-3 border-t border-emerald-200 px-4 py-4">
-                  {otherLifeContracts.map((contract) => (
-                    <OtherProductContractCard
-                      key={`unpaired-other-life-${contract.key}`}
-                      contract={contract}
-                      match={contractMatchForNumber(
-                        matchesByContractNumber,
-                        contract.contractNumber,
-                        otherProductContractMatchScope(contract)
-                      )}
-                      deductionRows={deductionRows}
-                      markingControls={markingControls}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {troyOunceContracts.length > 0 && (
-            <div className="rounded-2xl border border-violet-200 bg-violet-50/60">
-              <button
-                type="button"
-                onClick={() => setTroyOunceExpanded((value) => !value)}
-                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                aria-expanded={troyOunceExpanded}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-white text-violet-700">
-                    <WalletCards className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h4 className="text-base font-bold text-violet-950">Troyská unce</h4>
-                    <p className="text-sm text-violet-900">
-                      Investiční položky z kódů TU_* jsou oddělené od ostatních nespárovaných smluv.
-                    </p>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-violet-950">
-                  <span>
-                    {troyOunceContracts.length} smluv · {formatMoney(troyOunceCommission)} Kč
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      troyOunceExpanded ? "rotate-180" : ""
-                    }`}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                </span>
-              </button>
-              {troyOunceExpanded && (
-                <div className="space-y-3 border-t border-violet-200 px-4 py-4">
-                  {troyOunceContracts.map((contract) => (
-                    <OtherProductContractCard
-                      key={`unpaired-troy-${contract.key}`}
-                      contract={contract}
-                      match={contractMatchForNumber(
-                        matchesByContractNumber,
-                        contract.contractNumber,
-                        otherProductContractMatchScope(contract)
-                      )}
-                      deductionRows={deductionRows}
-                      markingControls={markingControls}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {investmentContracts.length > 0 && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60">
-              <button
-                type="button"
-                onClick={() => setInvestmentExpanded((value) => !value)}
-                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                aria-expanded={investmentExpanded}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-700">
-                    <HandCoins className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h4 className="text-base font-bold text-emerald-950">Investice</h4>
-                    <p className="text-sm text-emerald-900">
-                      Nespárované smlouvy Investika, Efektika, Monetika a Conseq jsou oddělené od ostatních smluv.
-                    </p>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-950">
-                  <span>
-                    {investmentContracts.length} smluv · {formatMoney(investmentCommission)} Kč
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      investmentExpanded ? "rotate-180" : ""
-                    }`}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                </span>
-              </button>
-              {investmentExpanded && (
-                <div className="space-y-3 border-t border-emerald-200 px-4 py-4">
-                  {investmentContracts.map((contract) => (
-                    <OtherProductContractCard
-                      key={`unpaired-investment-${contract.key}`}
-                      contract={contract}
-                      match={contractMatchForNumber(
-                        matchesByContractNumber,
-                        contract.contractNumber,
-                        otherProductContractMatchScope(contract)
-                      )}
-                      deductionRows={deductionRows}
-                      markingControls={markingControls}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {propertyContracts.length > 0 && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/60">
-              <button
-                type="button"
-                onClick={() => setPropertyExpanded((value) => !value)}
-                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                aria-expanded={propertyExpanded}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-white text-amber-700">
-                    <House className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h4 className="text-base font-bold text-amber-950">
-                      Majetek a odpovědnost
-                    </h4>
-                    <p className="text-sm text-amber-900">
-                      Majetkové a odpovědnostní smlouvy jsou oddělené od ostatních nespárovaných smluv.
-                    </p>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-amber-950">
-                  <span>
-                    {propertyContracts.length} smluv · {formatMoney(propertyCommission)} Kč
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      propertyExpanded ? "rotate-180" : ""
-                    }`}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                </span>
-              </button>
-              {propertyExpanded && (
-                <div className="space-y-3 border-t border-amber-200 px-4 py-4">
-                  {propertyContracts.map((contract) => (
-                    <OtherProductContractCard
-                      key={`unpaired-property-${contract.key}`}
-                      contract={contract}
-                      match={contractMatchForNumber(
-                        matchesByContractNumber,
-                        contract.contractNumber,
-                        otherProductContractMatchScope(contract)
-                      )}
-                      deductionRows={deductionRows}
-                      markingControls={markingControls}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {businessContracts.length > 0 && (
-            <div className="rounded-2xl border border-orange-200 bg-orange-50/60">
-              <button
-                type="button"
-                onClick={() => setBusinessExpanded((value) => !value)}
-                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                aria-expanded={businessExpanded}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-orange-200 bg-white text-orange-700">
-                    <ReceiptText className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h4 className="text-base font-bold text-orange-950">
-                      Podnikatelé
-                    </h4>
-                    <p className="text-sm text-orange-900">
-                      Podnikatelské smlouvy jsou oddělené od ostatních nespárovaných smluv.
-                    </p>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-orange-950">
-                  <span>
-                    {businessContracts.length} smluv · {formatMoney(businessCommission)} Kč
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      businessExpanded ? "rotate-180" : ""
-                    }`}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                </span>
-              </button>
-              {businessExpanded && (
-                <div className="space-y-3 border-t border-orange-200 px-4 py-4">
-                  {businessContracts.map((contract) => (
-                    <OtherProductContractCard
-                      key={`unpaired-business-${contract.key}`}
-                      contract={contract}
-                      match={contractMatchForNumber(
-                        matchesByContractNumber,
-                        contract.contractNumber,
-                        otherProductContractMatchScope(contract)
-                      )}
-                      deductionRows={deductionRows}
-                      markingControls={markingControls}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {travelContracts.length > 0 && (
-            <div className="rounded-2xl border border-cyan-200 bg-cyan-50/60">
-              <button
-                type="button"
-                onClick={() => setTravelExpanded((value) => !value)}
-                className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                aria-expanded={travelExpanded}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-200 bg-white text-cyan-700">
-                    <Plane className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h4 className="text-base font-bold text-cyan-950">
-                      Cestovní pojištění
-                    </h4>
-                    <p className="text-sm text-cyan-900">
-                      Cestovní smlouvy jsou oddělené od ostatních nespárovaných smluv.
-                    </p>
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-950">
-                  <span>
-                    {travelContracts.length} smluv · {formatMoney(travelCommission)} Kč
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      travelExpanded ? "rotate-180" : ""
-                    }`}
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                </span>
-              </button>
-              {travelExpanded && (
-                <div className="space-y-3 border-t border-cyan-200 px-4 py-4">
-                  {travelContracts.map((contract) => (
-                    <OtherProductContractCard
-                      key={`unpaired-travel-${contract.key}`}
-                      contract={contract}
-                      match={contractMatchForNumber(
-                        matchesByContractNumber,
-                        contract.contractNumber,
-                        otherProductContractMatchScope(contract)
-                      )}
-                      deductionRows={deductionRows}
-                      markingControls={markingControls}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {remainingOtherContracts.map((contract) => (
-            <OtherProductContractCard
-              key={`unpaired-other-${contract.key}`}
-              contract={contract}
-              match={contractMatchForNumber(
-                matchesByContractNumber,
-                contract.contractNumber,
-                otherProductContractMatchScope(contract)
-              )}
-              deductionRows={deductionRows}
-              markingControls={markingControls}
-            />
-          ))}
+        <div className="space-y-3 border-t border-amber-200 bg-white/45 py-3 pl-4 pr-3 sm:pl-5">
+          <LifeSplitProductsSection
+            contracts={lifeContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
+
+          <OtherProductsSection
+            title="Životní pojištění"
+            description="Životní produkty mimo detailní rozpad jsou oddělené od ostatních smluv."
+            sectionKind="life"
+            contracts={lifeProductContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
+
+          <OtherProductsSection
+            title="Auta"
+            description="Auto produkty se párují primárně podle čísla smlouvy. Produkt z výpisu je doplňující kontrola."
+            sectionKind="auto"
+            contracts={autoProductContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
+
+          <OtherProductsSection
+            title="Majetek a odpovědnost"
+            description="Majetkové a odpovědnostní produkty jsou oddělené od ostatních smluv."
+            sectionKind="property"
+            contracts={propertyProductContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
+
+          <OtherProductsSection
+            title="Podnikatelé"
+            description="Podnikatelské produkty jsou oddělené od ostatních smluv."
+            sectionKind="business"
+            contracts={businessProductContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
+
+          <OtherProductsSection
+            title="Cestovní pojištění"
+            description="Cestovní produkty jsou oddělené od ostatních smluv."
+            sectionKind="travel"
+            contracts={travelProductContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
+
+          <OtherProductsSection
+            title="Investice"
+            description="Investiční produkty jsou oddělené od ostatních smluv."
+            sectionKind="investment"
+            contracts={investmentProductContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
+
+          <OtherProductsSection
+            title="Ostatní produkty"
+            contracts={remainingOtherProductContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
         </div>
       )}
     </div>
@@ -9903,14 +10212,14 @@ function StornoContractsSection({
       expanded: pairedExpanded,
       onToggle: () => setPairedExpanded((value) => !value),
       icon: CheckCircle2,
-      containerClass: "border-emerald-200 bg-emerald-50/60",
-      iconClass: "border-emerald-200 text-emerald-700",
-      textClass: "text-emerald-950",
-      descriptionClass: "text-emerald-900",
-      dividerClass: "border-emerald-200",
+      containerClass: "border-white/70 bg-white/65 ring-1 ring-violet-100/70",
+      iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+      textClass: "text-slate-950",
+      descriptionClass: "text-slate-600",
+      dividerClass: "border-violet-100",
       warningCount: pairedNeedsSystemStornoCount,
       warningLabel: "není storno v systému",
-      warningClass: "border-rose-200 bg-white text-rose-800",
+      warningClass: "bg-slate-950 text-white",
     },
     {
       key: "unpaired",
@@ -9920,41 +10229,41 @@ function StornoContractsSection({
       expanded: unpairedExpanded,
       onToggle: () => setUnpairedExpanded((value) => !value),
       icon: AlertTriangle,
-      containerClass: "border-amber-200 bg-amber-50/70",
-      iconClass: "border-amber-200 text-amber-700",
-      textClass: "text-amber-950",
-      descriptionClass: "text-amber-900",
-      dividerClass: "border-amber-200",
+      containerClass: "border-white/70 bg-white/65 ring-1 ring-violet-100/70",
+      iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+      textClass: "text-slate-950",
+      descriptionClass: "text-slate-600",
+      dividerClass: "border-violet-100",
       warningCount: unpairedStornoGroupEntries.length,
       warningLabel: "k ruční kontrole",
-      warningClass: "border-amber-200 bg-white text-amber-900",
+      warningClass: "bg-violet-50 text-violet-800 ring-1 ring-violet-100",
     },
   ].filter((section) => section.entries.length > 0);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-rose-200 bg-rose-50/70 shadow-[0_14px_32px_rgba(159,18,57,0.05)]">
-      <span className="pointer-events-none absolute inset-y-0 left-0 w-3 bg-rose-500" />
+    <div className="relative overflow-hidden rounded-lg border border-white/70 bg-white/75 shadow-[0_18px_42px_rgba(15,23,42,0.08)] ring-1 ring-violet-100/70 backdrop-blur-xl">
+      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/70" aria-hidden="true" />
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-2 py-4 pl-7 pr-4 text-left sm:flex-row sm:items-center sm:justify-between"
+        className="flex w-full flex-col gap-3 px-4 py-4 text-left sm:flex-row sm:items-center sm:justify-between"
         aria-expanded={expanded}
       >
-        <div className="flex items-start gap-3">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-700">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
             <AlertTriangle className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
           </span>
           <div>
-            <h3 className="text-lg font-bold text-rose-950">Stornované smlouvy</h3>
-            <p className="text-sm text-rose-900">
+            <h3 className="text-lg font-black tracking-tight text-slate-950">Stornované smlouvy</h3>
+            <p className="text-sm font-semibold text-slate-600">
               Storna z výpisu a vratky provizí z ostatních plateb.
             </p>
           </div>
         </div>
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-rose-950">
+        <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-950">
           <span>{combinedStornoGroups.length} smluv · {formatMoney(totalStorno)} Kč</span>
           {stornoUncertaintyCount > 0 && (
-            <span className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-800">
+            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
               {uncertaintyCountLabel(stornoUncertaintyCount)}
             </span>
           )}
@@ -9967,31 +10276,41 @@ function StornoContractsSection({
       </button>
 
       {expanded && (
-        <div className="space-y-4 border-t border-rose-200 py-4 pl-7 pr-4">
-          <div className="grid gap-2 md:grid-cols-3">
-            <div className="rounded-xl border border-rose-200 bg-white px-3 py-2">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-rose-700">
-                Storna z výpisu
+        <div className="space-y-4 border-t border-violet-100 px-4 py-4">
+          <div className="overflow-hidden rounded-lg border border-violet-100 bg-white/45">
+            <div className="grid divide-y divide-violet-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+              <div className="px-4 py-3">
+                <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">
+                  Storna z výpisu
+                </div>
+                <div className="mt-2 text-base font-black text-slate-950">
+                  {stornoStatementGroups.length} smluv · {statement.stornoRows.length} položek
+                </div>
+                <div className="mt-1 text-sm font-semibold text-slate-600">
+                  {formatMoney(statementStornoTotal)} Kč
+                </div>
               </div>
-              <div className="mt-1 text-sm font-semibold text-rose-950">
-                {stornoStatementGroups.length} smluv · {statement.stornoRows.length} položek ·{" "}
-                {formatMoney(statementStornoTotal)} Kč
+              <div className="px-4 py-3">
+                <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">
+                  Ostatní platby
+                </div>
+                <div className="mt-2 text-base font-black text-slate-950">
+                  {otherPaymentStornos.length} položek
+                </div>
+                <div className="mt-1 text-sm font-semibold text-slate-600">
+                  {formatMoney(otherPaymentStornoTotal)} Kč
+                </div>
               </div>
-            </div>
-            <div className="rounded-xl border border-rose-200 bg-white px-3 py-2">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-rose-700">
-                Ostatní platby
-              </div>
-              <div className="mt-1 text-sm font-semibold text-rose-950">
-                {otherPaymentStornos.length} položek · {formatMoney(otherPaymentStornoTotal)} Kč
-              </div>
-            </div>
-            <div className="rounded-xl border border-rose-900 bg-rose-950 px-3 py-2 shadow-sm">
-              <div className="text-[11px] font-bold uppercase tracking-wide !text-rose-100">
-                Celkem
-              </div>
-              <div className="mt-1 text-sm font-semibold !text-white">
-                {combinedStornoGroups.length} smluv · {formatMoney(totalStorno)} Kč
+              <div className="px-4 py-3">
+                <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">
+                  Celkem
+                </div>
+                <div className="mt-2 text-base font-black text-slate-950">
+                  {combinedStornoGroups.length} smluv
+                </div>
+                <div className="mt-1 text-sm font-semibold text-slate-600">
+                  {formatMoney(totalStorno)} Kč
+                </div>
               </div>
             </div>
           </div>
@@ -10002,17 +10321,17 @@ function StornoContractsSection({
               return (
                 <div
                   key={`storno-section-${section.key}`}
-                  className={`overflow-hidden rounded-2xl border ${section.containerClass}`}
+                  className={`overflow-hidden rounded-lg border shadow-[0_14px_32px_rgba(15,23,42,0.05)] ${section.containerClass}`}
                 >
                   <button
                     type="button"
                     onClick={section.onToggle}
-                    className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
+                    className="flex w-full flex-col gap-3 bg-white/35 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
                     aria-expanded={section.expanded}
                   >
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-center gap-3">
                       <span
-                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border bg-white ${section.iconClass}`}
+                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${section.iconClass}`}
                       >
                         <SectionIcon className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
                       </span>
@@ -10035,7 +10354,7 @@ function StornoContractsSection({
                       </span>
                       {section.warningCount > 0 && (
                         <span
-                          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${section.warningClass}`}
+                          className={`rounded-full px-2.5 py-1 text-xs font-bold ${section.warningClass}`}
                         >
                           {section.warningCount} {section.warningLabel}
                         </span>
@@ -10149,7 +10468,7 @@ function StornoContractsSection({
               return (
                 <article
                   key={`storno-contract-group-${group.key}-${groupIndex}`}
-                  className="rounded-xl border border-rose-200 bg-white px-3 py-3 text-sm"
+                  className="rounded-lg border border-white/80 bg-white/80 px-3 py-3 text-sm shadow-[0_12px_28px_rgba(15,23,42,0.05)] ring-1 ring-violet-100/60"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
@@ -10162,12 +10481,12 @@ function StornoContractsSection({
                         <SjednatelExtranetLink href={extranetUrl} compact />
                         <SystemMatchBadge match={match} />
                         {group.rows.length > 0 && (
-                          <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+                          <span className="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
                             Storno z výpisu
                           </span>
                         )}
                         {group.payments.length > 0 && (
-                          <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+                          <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
                             Ostatní platby
                           </span>
                         )}
@@ -10203,7 +10522,7 @@ function StornoContractsSection({
                           {statusCodes.map((statusCode) => (
                             <span
                               key={statusCode}
-                              className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-800"
+                              className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-xs font-bold text-violet-800 ring-1 ring-violet-100"
                             >
                               {statusCode}
                             </span>
@@ -10219,15 +10538,15 @@ function StornoContractsSection({
                         </div>
                       )}
                     </div>
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-right text-rose-950 lg:min-w-[178px]">
-                      <div className="text-[11px] font-bold uppercase tracking-wide text-rose-700">
+                    <div className="rounded-lg bg-slate-950 px-3 py-2 text-right text-white shadow-[0_12px_26px_rgba(15,23,42,0.15)] lg:min-w-[178px]">
+                      <div className="text-[11px] font-black uppercase tracking-wide text-violet-200">
                         Celkem
                       </div>
-                      <div className="mt-1 whitespace-nowrap text-lg font-bold text-rose-900">
+                      <div className="mt-1 whitespace-nowrap text-lg font-black text-white">
                         {formatMoney(group.totalAmount)} Kč
                       </div>
                       {group.rows.length > 0 && group.payments.length > 0 && (
-                        <div className="mt-1 text-[11px] font-semibold text-rose-700">
+                        <div className="mt-1 text-[11px] font-semibold text-white/70">
                           Výpis {formatMoney(group.totalCommission)} Kč · platby{" "}
                           {formatMoney(group.totalOtherPayments)} Kč
                         </div>
@@ -10236,14 +10555,14 @@ function StornoContractsSection({
                   </div>
 
                   {group.rows.length > 0 && (
-                    <div className="mt-3 overflow-x-auto rounded-xl border border-rose-100">
-                      <div className="grid min-w-[560px] grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-3 bg-rose-50/70 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-rose-700">
+                    <div className="mt-3 overflow-x-auto rounded-lg border border-violet-100">
+                      <div className="grid min-w-[560px] grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-3 bg-violet-50/70 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-violet-800">
                         <span>Storna z výpisu</span>
                         <span className="text-right">Základna</span>
                         <span className="text-right">Provize</span>
                         <span className="text-right">Rez. fond</span>
                       </div>
-                      <div className="min-w-[560px] divide-y divide-rose-100 bg-white">
+                      <div className="min-w-[560px] divide-y divide-violet-50 bg-white">
                         {group.rows.map((item) => {
                           const itemProduct = resolveStatementProduct(item.product);
                           const itemClassification = classifyGeneralCommissionCode(
@@ -10272,7 +10591,7 @@ function StornoContractsSection({
                               <span className="whitespace-nowrap text-right font-medium text-slate-600">
                                 {formatMoney(item.base)} Kč
                               </span>
-                              <span className="whitespace-nowrap text-right font-bold text-rose-900">
+                              <span className="whitespace-nowrap text-right font-bold text-slate-950">
                                 {formatMoney(item.commission)} Kč
                               </span>
                               <span className="whitespace-nowrap text-right font-medium text-slate-600">
@@ -10286,12 +10605,12 @@ function StornoContractsSection({
                   )}
 
                   {group.payments.length > 0 && (
-                    <div className="mt-3 overflow-x-auto rounded-xl border border-rose-100">
-                      <div className="grid min-w-[560px] grid-cols-[minmax(0,1fr)_auto] gap-3 bg-rose-50/70 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-rose-700">
+                    <div className="mt-3 overflow-x-auto rounded-lg border border-violet-100">
+                      <div className="grid min-w-[560px] grid-cols-[minmax(0,1fr)_auto] gap-3 bg-violet-50/70 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-violet-800">
                         <span>Storna z ostatních plateb</span>
                         <span className="text-right">Částka</span>
                       </div>
-                      <div className="min-w-[560px] divide-y divide-rose-100 bg-white">
+                      <div className="min-w-[560px] divide-y divide-violet-50 bg-white">
                         {group.payments.map((payment) => (
                           <div
                             key={`payment-${payment.index}-${
@@ -10307,7 +10626,7 @@ function StornoContractsSection({
                                 </span>
                               )}
                             </div>
-                            <span className="whitespace-nowrap text-right font-bold text-rose-900">
+                            <span className="whitespace-nowrap text-right font-bold text-slate-950">
                               {formatMoney(payment.amount)} Kč
                             </span>
                           </div>
@@ -10351,6 +10670,7 @@ function OtherProductsSection({
   matchesByContractNumber,
   deductionRows,
   statementPeriod,
+  statementPrefillSource,
   statementKey,
   correctionContext,
   markingControls,
@@ -10364,6 +10684,7 @@ function OtherProductsSection({
   matchesByContractNumber: ContractMatchesByNumber;
   deductionRows?: DeductionCommissionRow[];
   statementPeriod?: string | null;
+  statementPrefillSource?: StatementCalculatorPrefillSource;
   statementKey: string;
   correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
@@ -10388,112 +10709,112 @@ function OtherProductsSection({
       ),
     0
   );
-  const sectionMeta: {
-    icon: LucideIcon;
-    iconClass: string;
-    containerClass: string;
-    accentClass: string;
-    dividerClass: string;
-  } =
-    sectionKind === "life"
-      ? {
-          icon: HeartPulse,
-          iconClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-          containerClass:
-            "border-emerald-200 bg-emerald-50/35 shadow-[0_14px_32px_rgba(5,150,105,0.05)]",
-          accentClass: "bg-emerald-500",
-          dividerClass: "border-emerald-100",
-        }
-    : sectionKind === "auto"
-      ? {
-          icon: Car,
-          iconClass: "border-sky-200 bg-sky-50 text-sky-700",
-          containerClass:
-            "border-sky-200 bg-sky-50/35 shadow-[0_14px_32px_rgba(2,132,199,0.05)]",
-          accentClass: "bg-sky-500",
-          dividerClass: "border-sky-100",
-        }
-      : sectionKind === "property"
-        ? {
-            icon: House,
-            iconClass: "border-amber-200 bg-amber-50 text-amber-700",
-            containerClass:
-              "border-amber-200 bg-amber-50/35 shadow-[0_14px_32px_rgba(217,119,6,0.05)]",
-            accentClass: "bg-amber-500",
-            dividerClass: "border-amber-100",
-          }
-      : sectionKind === "business"
-        ? {
-            icon: ReceiptText,
-            iconClass: "border-orange-200 bg-orange-50 text-orange-700",
-            containerClass:
-              "border-orange-200 bg-orange-50/35 shadow-[0_14px_32px_rgba(234,88,12,0.05)]",
-            accentClass: "bg-orange-500",
-            dividerClass: "border-orange-100",
-          }
-      : sectionKind === "travel"
-        ? {
-            icon: Plane,
-            iconClass: "border-cyan-200 bg-cyan-50 text-cyan-700",
-            containerClass:
-              "border-cyan-200 bg-cyan-50/35 shadow-[0_14px_32px_rgba(8,145,178,0.05)]",
-            accentClass: "bg-cyan-500",
-            dividerClass: "border-cyan-100",
-          }
-      : sectionKind === "investment"
-        ? {
-            icon: HandCoins,
-            iconClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-            containerClass:
-              "border-emerald-200 bg-emerald-50/35 shadow-[0_14px_32px_rgba(5,150,105,0.05)]",
-            accentClass: "bg-emerald-500",
-            dividerClass: "border-emerald-100",
-          }
-      : {
-          icon: ReceiptText,
-          iconClass: "border-slate-200 bg-slate-50 text-slate-600",
-          containerClass:
-            "border-slate-200 bg-slate-50/45 shadow-[0_14px_32px_rgba(15,23,42,0.04)]",
-          accentClass: "bg-slate-500",
-          dividerClass: "border-slate-200",
-        };
+	  const sectionMeta: {
+	    icon: LucideIcon;
+	    iconClass: string;
+	    containerClass: string;
+	    accentClass: string;
+	    dividerClass: string;
+	  } =
+	    sectionKind === "life"
+	      ? {
+	          icon: HeartPulse,
+	          iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+	          containerClass:
+	            "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
+	          accentClass: "bg-violet-500/60",
+	          dividerClass: "border-violet-100",
+	        }
+	    : sectionKind === "auto"
+	      ? {
+	          icon: Car,
+	          iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+	          containerClass:
+	            "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
+	          accentClass: "bg-violet-500/60",
+	          dividerClass: "border-violet-100",
+	        }
+	      : sectionKind === "property"
+	        ? {
+	            icon: House,
+	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+	            containerClass:
+	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
+	            accentClass: "bg-violet-500/60",
+	            dividerClass: "border-violet-100",
+	          }
+	      : sectionKind === "business"
+	        ? {
+	            icon: ReceiptText,
+	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+	            containerClass:
+	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
+	            accentClass: "bg-violet-500/60",
+	            dividerClass: "border-violet-100",
+	          }
+	      : sectionKind === "travel"
+	        ? {
+	            icon: Plane,
+	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+	            containerClass:
+	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
+	            accentClass: "bg-violet-500/60",
+	            dividerClass: "border-violet-100",
+	          }
+	      : sectionKind === "investment"
+	        ? {
+	            icon: HandCoins,
+	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+	            containerClass:
+	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
+	            accentClass: "bg-violet-500/60",
+	            dividerClass: "border-violet-100",
+	          }
+	        : {
+	          icon: ReceiptText,
+	          iconClass: "bg-white text-slate-600 ring-1 ring-violet-100",
+	          containerClass:
+	            "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
+	          accentClass: "bg-slate-400/70",
+	          dividerClass: "border-violet-100",
+	        };
   const HeaderIcon = sectionMeta.icon;
 
-  return (
-    <div className={`relative overflow-hidden rounded-2xl border ${sectionMeta.containerClass}`}>
-      <span className={`pointer-events-none absolute inset-y-0 left-0 w-3 ${sectionMeta.accentClass}`} />
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className={`flex w-full py-4 pl-7 pr-4 text-left ${
-          showTitle
-            ? "flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-            : "justify-end"
-        }`}
-        aria-expanded={expanded}
-      >
-        {showTitle && (
-          <div className="flex items-start gap-3">
-            <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${sectionMeta.iconClass}`}>
-              <HeaderIcon className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-            </span>
-            <div>
-              <h3 className="text-lg font-bold text-slate-950">{title}</h3>
-              {showDescription && (
-                <p className="text-sm text-slate-600">
-                  {description}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <span>{safeContracts.length} smluv · {formatMoney(totalCommission)} Kč</span>
-          {uncertaintyCount > 0 && (
-            <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
-              {uncertaintyCountLabel(uncertaintyCount)}
-            </span>
-          )}
+	  return (
+	    <div className={`relative overflow-hidden rounded-lg border ${sectionMeta.containerClass}`}>
+	      <span className={`pointer-events-none absolute inset-x-0 top-0 h-px ${sectionMeta.accentClass}`} aria-hidden="true" />
+	      <button
+	        type="button"
+	        onClick={() => setExpanded((value) => !value)}
+	        className={`flex w-full px-4 py-3 text-left transition hover:bg-violet-50/35 ${
+	          showTitle
+	            ? "flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+	            : "justify-end"
+	        }`}
+	        aria-expanded={expanded}
+	      >
+	        {showTitle && (
+	          <div className="flex items-center gap-3">
+	            <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${sectionMeta.iconClass}`}>
+	              <HeaderIcon className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+	            </span>
+	            <div className="min-w-0">
+	              <h3 className="text-base font-black tracking-tight text-slate-950">{title}</h3>
+	              {showDescription && (
+	                <p className="mt-0.5 line-clamp-1 text-xs font-semibold text-slate-500">
+	                  {description}
+	                </p>
+	              )}
+	            </div>
+	          </div>
+	        )}
+	        <span className="inline-flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-slate-900">
+	          <span>{safeContracts.length} smluv · {formatMoney(totalCommission)} Kč</span>
+	          {uncertaintyCount > 0 && (
+	            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-black text-violet-800 ring-1 ring-violet-100">
+	              {uncertaintyCountLabel(uncertaintyCount)}
+	            </span>
+	          )}
           <ChevronDown
             className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
             strokeWidth={2.2}
@@ -10502,8 +10823,8 @@ function OtherProductsSection({
         </span>
       </button>
 
-      {expanded && (
-        <div className={`space-y-4 border-t ${sectionMeta.dividerClass} py-4 pl-7 pr-4`}>
+	      {expanded && (
+	        <div className={`border-t ${sectionMeta.dividerClass} bg-white/45 py-2 pl-4 pr-3 sm:pl-5`}>
           {safeContracts.map((contract) => (
             <OtherProductContractCard
               key={contract.key}
@@ -10515,6 +10836,7 @@ function OtherProductsSection({
               )}
               deductionRows={deductionRows}
               statementPeriod={statementPeriod}
+              statementPrefillSource={statementPrefillSource}
               statementKey={statementKey}
               correctionContext={correctionContext}
               markingControls={markingControls}
@@ -10548,13 +10870,85 @@ const commissionCodeRuleUsedCodes = (
   usedCodes: string[]
 ): string[] => usedCodes.filter((code) => commissionCodeRuleMatches(rule, code));
 
+function StatementLegendModal({
+  title,
+  description,
+  eyebrow,
+  children,
+  onClose,
+}: {
+  title: string;
+  description: string;
+  eyebrow: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-md"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/75 bg-white/90 shadow-[0_30px_90px_rgba(15,23,42,0.28)] ring-1 ring-violet-100/80 backdrop-blur-xl"
+      >
+        <div className="flex flex-col gap-4 border-b border-violet-100/80 bg-white/60 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">
+              {eyebrow}
+            </div>
+            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+              {title}
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
+              {description}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white shadow-[0_14px_30px_rgba(15,23,42,0.2)] transition hover:bg-black"
+            aria-label="Zavřít"
+          >
+            <X className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          {children}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function CommissionCodeRulesPanel({ statement }: { statement: ParsedStatement }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
   const usedCodes = statementCommissionCodeSet(statement);
   const groupedRules = COMMISSION_CODE_CATEGORY_ORDER.flatMap((category) => {
     const rules = COMMISSION_CODE_RULES.filter((rule) => rule.category === category);
     return rules.length > 0 ? [{ category, rules }] : [];
   });
+  const ruleCount = COMMISSION_CODE_RULES.length + TROY_OUNCE_COMMISSION_CODE_RULES.length;
   const usedRuleCount = COMMISSION_CODE_RULES.filter(
     (rule) => commissionCodeRuleUsedCodes(rule, usedCodes).length > 0
   ).length;
@@ -10569,40 +10963,64 @@ function CommissionCodeRulesPanel({ statement }: { statement: ParsedStatement })
   });
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white">
+    <>
       <button
         type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-2 px-4 py-4 text-left sm:flex-row sm:items-center sm:justify-between"
-        aria-expanded={expanded}
+        onClick={() => setOpen(true)}
+        className="group relative flex min-h-28 w-full items-center justify-between gap-4 overflow-hidden rounded-lg border border-white/70 bg-white/75 px-4 py-4 text-left shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_22px_48px_rgba(76,29,149,0.12)]"
       >
-        <div>
-          <h3 className="text-base font-bold text-slate-950">Kódy provizí</h3>
-          <p className="text-sm text-slate-600">
-            Legenda provizních položek. Kódy použité v tomto výpisu jsou zvýrazněné.
-          </p>
+        <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/60" aria-hidden="true" />
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
+            <ReceiptText className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-base font-black tracking-tight text-slate-950">
+              Kódy provizí
+            </h3>
+            <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-600">
+              Legenda provizních položek a zvýraznění kódů z tohoto výpisu.
+            </p>
+          </div>
         </div>
-        <span className="inline-flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
-          <span>{COMMISSION_CODE_RULES.length + TROY_OUNCE_COMMISSION_CODE_RULES.length} pravidel</span>
-          {usedCodes.length > 0 && <span>{usedCodes.length} ve výpisu</span>}
+        <span className="flex shrink-0 flex-col items-end gap-2">
+          <span className="text-sm font-black text-slate-950">{ruleCount} pravidel</span>
           {usedRuleCount > 0 && (
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-800">
+            <span className="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
               {usedRuleCount} nalezeno
             </span>
           )}
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
+          <ExternalLink className="h-4 w-4 text-violet-700 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={2.2} aria-hidden="true" />
         </span>
       </button>
 
-      {expanded && (
-        <div className="space-y-3 border-t border-slate-200 px-4 py-4">
+      {open && (
+        <StatementLegendModal
+          eyebrow="Legenda výpisu"
+          title="Kódy provizí"
+          description="Kódy použité v tomto výpisu jsou zvýrazněné. Troyská unce má vlastní odlišnosti významu kódů."
+          onClose={() => setOpen(false)}
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 text-sm font-bold text-slate-700">
+              <span className="rounded-full bg-violet-50 px-3 py-1 text-violet-800 ring-1 ring-violet-100">
+                {ruleCount} pravidel
+              </span>
+              {usedCodes.length > 0 && (
+                <span className="rounded-full bg-white px-3 py-1 text-slate-700 ring-1 ring-slate-200">
+                  {usedCodes.length} kódů ve výpisu
+                </span>
+              )}
+              {usedRuleCount > 0 && (
+                <span className="rounded-full bg-slate-950 px-3 py-1 text-white">
+                  {usedRuleCount} nalezeno
+                </span>
+              )}
+            </div>
+
           <div className="grid gap-3 xl:grid-cols-2">
             {groupedRules.map(({ category, rules }) => (
-              <div key={category} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div key={category} className="rounded-lg border border-white/80 bg-white/75 px-3 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.05)] ring-1 ring-violet-100/60">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${commissionCodeCategoryClass(category)}`}>
                     {commissionCodeCategoryLabel(category)}
@@ -10622,7 +11040,7 @@ function CommissionCodeRulesPanel({ statement }: { statement: ParsedStatement })
                             {rule.codes}
                           </span>
                           {usedRuleCodes.length > 0 && (
-                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-800 ring-1 ring-violet-100">
                               ve výpisu: {usedRuleCodes.join(", ")}
                             </span>
                           )}
@@ -10637,7 +11055,7 @@ function CommissionCodeRulesPanel({ statement }: { statement: ParsedStatement })
             ))}
           </div>
 
-          <div className="rounded-xl border border-purple-200 bg-purple-50 px-3 py-3">
+          <div className="rounded-lg border border-violet-100 bg-violet-50/70 px-3 py-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${commissionCodeCategoryClass("troyOunce")}`}>
                 Troyská unce - odlišnosti významu kódů
@@ -10651,13 +11069,13 @@ function CommissionCodeRulesPanel({ statement }: { statement: ParsedStatement })
                 const usedRuleCodes = commissionCodeRuleUsedCodes(rule, usedCodes);
 
                 return (
-                  <div key={`troy-${rule.codes}`} className="rounded-lg border border-purple-200 bg-white px-3 py-2">
+                  <div key={`troy-${rule.codes}`} className="rounded-lg border border-white/80 bg-white/80 px-3 py-2 ring-1 ring-violet-100/70">
                     <div className="flex flex-wrap items-baseline gap-2">
                       <span className="font-mono text-sm font-bold text-slate-950">
                         {rule.codes}
                       </span>
                       {usedRuleCodes.length > 0 && (
-                        <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-900">
+                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-900 ring-1 ring-violet-100">
                           ve výpisu
                         </span>
                       )}
@@ -10676,13 +11094,14 @@ function CommissionCodeRulesPanel({ statement }: { statement: ParsedStatement })
             </div>
           )}
         </div>
+        </StatementLegendModal>
       )}
-    </div>
+    </>
   );
 }
 
 function ContractStatusRulesPanel({ rules }: { rules?: ContractStatusRule[] }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
   const safeRules = rules ?? [];
   if (safeRules.length === 0) return null;
 
@@ -10707,57 +11126,75 @@ function ContractStatusRulesPanel({ rules }: { rules?: ContractStatusRule[] }) {
   ][];
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50">
+    <>
       <button
         type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-2 px-4 py-4 text-left sm:flex-row sm:items-center sm:justify-between"
-        aria-expanded={expanded}
+        onClick={() => setOpen(true)}
+        className="group relative flex min-h-28 w-full items-center justify-between gap-4 overflow-hidden rounded-lg border border-white/70 bg-white/75 px-4 py-4 text-left shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_22px_48px_rgba(76,29,149,0.12)]"
       >
-        <div>
-          <h3 className="text-base font-bold text-slate-950">Kódy stavů smluv</h3>
-          <p className="text-sm text-slate-600">
-            Obecná pravidla pro všechny produkty. Konkrétní stav smlouvy se při ostrém importu vezme z našeho systému nebo ČPP synchronizace.
-          </p>
+        <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/60" aria-hidden="true" />
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
+            <ListChecks className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-base font-black tracking-tight text-slate-950">
+              Kódy stavů smluv
+            </h3>
+            <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-600">
+              Obecná pravidla pro stav smlouvy při importu a ČPP synchronizaci.
+            </p>
+          </div>
         </div>
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-          {safeRules.length} kódů
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
+        <span className="flex shrink-0 flex-col items-end gap-2">
+          <span className="text-sm font-black text-slate-950">{safeRules.length} kódů</span>
+          <ExternalLink className="h-4 w-4 text-violet-700 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={2.2} aria-hidden="true" />
         </span>
       </button>
 
-      {expanded && (
-        <div className="grid gap-3 border-t border-slate-200 px-4 py-4 xl:grid-cols-2">
-        {visibleGroups.map(([category, groupRules]) => (
-          <div key={category} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${contractStatusCategoryClass(category)}`}>
-                {contractStatusCategoryLabel(category)}
-              </span>
-              <span className="text-xs font-semibold text-slate-500">
-                {groupRules.length} kódů
+      {open && (
+        <StatementLegendModal
+          eyebrow="Import a stav smlouvy"
+          title="Kódy stavů smluv"
+          description="Konkrétní stav smlouvy se při ostrém importu vezme z našeho systému nebo ČPP synchronizace. Tohle je obecná legenda pravidel."
+          onClose={() => setOpen(false)}
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 text-sm font-bold text-slate-700">
+              <span className="rounded-full bg-violet-50 px-3 py-1 text-violet-800 ring-1 ring-violet-100">
+                {safeRules.length} kódů celkem
               </span>
             </div>
-            <div className="space-y-2">
-              {groupRules.map((rule) => (
-                <div key={rule.code} className="grid gap-1 border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="font-mono text-sm font-bold text-slate-950">{rule.code}</span>
-                    <span className="text-sm text-slate-700">{rule.label}</span>
+
+            <div className="grid gap-3 xl:grid-cols-2">
+              {visibleGroups.map(([category, groupRules]) => (
+                <div key={category} className="rounded-lg border border-white/80 bg-white/75 px-3 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.05)] ring-1 ring-violet-100/60">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${contractStatusCategoryClass(category)}`}>
+                      {contractStatusCategoryLabel(category)}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-500">
+                      {groupRules.length} kódů
+                    </span>
                   </div>
-                  <div className="text-xs text-slate-500">{rule.importDecision}</div>
+                  <div className="space-y-2">
+                    {groupRules.map((rule) => (
+                      <div key={rule.code} className="grid gap-1 border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="font-mono text-sm font-bold text-slate-950">{rule.code}</span>
+                          <span className="text-sm text-slate-700">{rule.label}</span>
+                        </div>
+                        <div className="text-xs text-slate-500">{rule.importDecision}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        ))}
-        </div>
+        </StatementLegendModal>
       )}
-    </div>
+    </>
   );
 }
 
@@ -11365,6 +11802,16 @@ function StatementPreview({
   ) => Promise<ManualNeonRefreshConversionResponse>;
 }) {
   const statementKey = statementDiscrepancyKey(statement);
+  const statementPrefillSource: StatementCalculatorPrefillSource = {
+    statementId: selectedStatementId ?? null,
+    statementNumber: statement.header.statementNumber ?? null,
+    statementPeriod: statement.header.period ?? null,
+    statementDate: statement.header.statementDate ?? null,
+    statementChronologyMs:
+      parseLocalDate(statement.header.statementDate)?.getTime() ??
+      parsePeriodEndDate(statement.header.period)?.getTime() ??
+      null,
+  };
   const unpairedLifeSplitContracts = statement.lifeSplitContracts.filter((contract) =>
     isUnpairedContractMatch(
       contractMatchForNumber(
@@ -11431,8 +11878,8 @@ function StatementPreview({
       !contractHasProductCategory(contract, "investment")
   );
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white px-4 py-4">
-      <div className="flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className="space-y-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
             <ReceiptText className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
@@ -11472,6 +11919,7 @@ function StatementPreview({
         deductionRows={statement.deductionRows}
         statementId={selectedStatementId}
         statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
         statementKey={statementKey}
         correctionContext={correctionContext}
         markingControls={markingControls}
@@ -11486,6 +11934,7 @@ function StatementPreview({
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
         statementKey={statementKey}
         correctionContext={correctionContext}
         markingControls={markingControls}
@@ -11499,6 +11948,7 @@ function StatementPreview({
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
         statementKey={statementKey}
         correctionContext={correctionContext}
         markingControls={markingControls}
@@ -11512,6 +11962,7 @@ function StatementPreview({
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
         statementKey={statementKey}
         correctionContext={correctionContext}
         markingControls={markingControls}
@@ -11525,6 +11976,7 @@ function StatementPreview({
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
         statementKey={statementKey}
         correctionContext={correctionContext}
         markingControls={markingControls}
@@ -11538,6 +11990,7 @@ function StatementPreview({
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
         statementKey={statementKey}
         correctionContext={correctionContext}
         markingControls={markingControls}
@@ -11551,6 +12004,7 @@ function StatementPreview({
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
         statementKey={statementKey}
         correctionContext={correctionContext}
         markingControls={markingControls}
@@ -11562,6 +12016,7 @@ function StatementPreview({
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
         statementKey={statementKey}
         correctionContext={correctionContext}
         markingControls={markingControls}
@@ -11572,6 +12027,10 @@ function StatementPreview({
         otherContracts={unpairedOtherProductContracts}
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
+        statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
         markingControls={markingControls}
       />
 
@@ -11661,9 +12120,10 @@ function StatementPreview({
         onRequestSystemStorno={onRequestSystemStorno}
       />
 
-      <CommissionCodeRulesPanel statement={statement} />
-
-      <ContractStatusRulesPanel rules={statement.contractStatusRules} />
+      <div className="grid gap-3 lg:grid-cols-2">
+        <CommissionCodeRulesPanel statement={statement} />
+        <ContractStatusRulesPanel rules={statement.contractStatusRules} />
+      </div>
     </section>
   );
 }
@@ -11687,6 +12147,8 @@ export default function CommissionStatementsPage() {
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [contractDetailModal, setContractDetailModal] =
     useState<BohemkaContractDetailModalPayload | null>(null);
+  const [calculatorPrefillPanel, setCalculatorPrefillPanel] =
+    useState<StatementCalculatorPrefill | null>(null);
   const [pdfDownloading, setPdfDownloading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [matchingError, setMatchingError] = useState<string | null>(null);
@@ -12188,6 +12650,91 @@ export default function CommissionStatementsPage() {
       cancelled = true;
     };
   }, [effectiveUserEmail, statementContractMatchRequests, statements.length, user]);
+
+  useEffect(() => {
+    if (!user || statementContractMatchRequests.length === 0) return;
+    let cancelled = false;
+
+    const handleStatementContractSaved = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (!isStatementContractSavedMessage(event.data)) return;
+
+      const normalizedSavedContractNumber = normalizeContractNumberForMatch(
+        event.data.contractNumber
+      );
+      if (!normalizedSavedContractNumber) return;
+
+      const requests = statementContractMatchRequests.filter(
+        (request) =>
+          normalizeContractNumberForMatch(request.contractNumber) ===
+          normalizedSavedContractNumber
+      );
+      if (requests.length === 0) return;
+
+      setMatchesByContractNumber((previous) => {
+        const next = { ...previous };
+        for (const request of requests) {
+          const key = contractMatchKey(request.scope, request.contractNumber);
+          if (!key) continue;
+          next[key] = { status: "loading", contracts: [] };
+        }
+        return next;
+      });
+
+      void fetchSystemContractMatchBatch(user, requests)
+        .then((matches) => {
+          if (cancelled) return;
+          setMatchesByContractNumber((previous) => {
+            const next = { ...previous };
+            for (const request of requests) {
+              const key = contractMatchKey(request.scope, request.contractNumber);
+              if (!key) continue;
+              next[key] =
+                matches.get(key) ??
+                systemContractMatchError(
+                  "Párování po uložení smlouvy nevrátilo výsledek."
+                );
+            }
+            return next;
+          });
+        })
+        .catch((matchError) => {
+          if (cancelled) return;
+          const message =
+            matchError instanceof Error
+              ? matchError.message
+              : "Nepodařilo se znovu spárovat uloženou smlouvu.";
+          setMatchesByContractNumber((previous) => {
+            const next = { ...previous };
+            for (const request of requests) {
+              const key = contractMatchKey(request.scope, request.contractNumber);
+              if (!key) continue;
+              next[key] = systemContractMatchError(message);
+            }
+            return next;
+          });
+        });
+    };
+
+    window.addEventListener("message", handleStatementContractSaved);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("message", handleStatementContractSaved);
+    };
+  }, [statementContractMatchRequests, user]);
+
+  useEffect(() => {
+    const handleStatementContractSaveCompleted = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (!isStatementContractSaveCompletedMessage(event.data)) return;
+      setCalculatorPrefillPanel(null);
+    };
+
+    window.addEventListener("message", handleStatementContractSaveCompleted);
+    return () => {
+      window.removeEventListener("message", handleStatementContractSaveCompleted);
+    };
+  }, []);
 
   const matchStats = useMemo<ContractMatchStats>(() => {
     let matched = 0;
@@ -12712,13 +13259,15 @@ export default function CommissionStatementsPage() {
     statementFilesForProcessing.length === 0 &&
     Boolean(selectedHistoryStatementId);
   const visibleStatementSaveMessage =
-    freshUploadPairingInProgress && statementSaveState.status === "ready"
+    statementSaveState.status === "saved" ||
+    (freshUploadPairingInProgress && statementSaveState.status === "ready")
       ? null
       : statementSaveState.message;
 
   return (
     <BohemkaContractDetailModalContext.Provider value={setContractDetailModal}>
-      <AppLayout active="statements">
+      <StatementCalculatorPrefillContext.Provider value={setCalculatorPrefillPanel}>
+        <AppLayout active="statements">
       <div className="w-full max-w-7xl space-y-4">
         {!freshUploadPairingInProgress && (
           <section
@@ -12747,44 +13296,46 @@ export default function CommissionStatementsPage() {
 
             {statements.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMarkingMode((value) => !value)}
-                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                    markingMode
-                      ? "border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100"
-                      : "bg-slate-950 text-white hover:bg-slate-800"
-                  }`}
-                >
-                  <ListChecks className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                  {markingMode ? "Dokončit označení" : "Označit"}
-                </button>
-                {markedDiscrepancyItems.length > 0 && (
+                <div className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/75 p-1 shadow-[0_14px_36px_rgba(15,23,42,0.08)] ring-1 ring-violet-100/70 backdrop-blur-xl">
                   <button
                     type="button"
-                    onClick={() => {
-                      setPdfError(null);
-                      setReportModalOpen(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100"
+                    onClick={() => setMarkingMode((value) => !value)}
+                    className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-bold transition ${
+                      markingMode
+                        ? "bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+                        : "text-slate-800 hover:bg-violet-50 hover:text-violet-800"
+                    }`}
                   >
-                    <Printer className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    Stáhnout souhrn nesrovnalostí
+                    <ListChecks className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                    {markingMode ? "Dokončit" : "Označit"}
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={resetStatementWorkspace}
+                    className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-bold text-slate-700 transition hover:bg-violet-50 hover:text-violet-800"
+                  >
+                    <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                    Vymazat
+                  </button>
+                </div>
                 {markedDiscrepancyItems.length > 0 && (
-                  <span className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800">
-                    Označeno {markedDiscrepancyItems.length}
-                  </span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPdfError(null);
+                        setReportModalOpen(true);
+                      }}
+                      className="inline-flex h-10 items-center gap-2 rounded-full border border-violet-100 bg-white/75 px-4 text-sm font-bold text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] ring-1 ring-white/70 backdrop-blur-xl transition hover:border-violet-200 hover:text-violet-800"
+                    >
+                      <Printer className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                      Souhrn nesrovnalostí
+                    </button>
+                    <span className="inline-flex h-9 items-center rounded-full bg-violet-50 px-3 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
+                      Označeno {markedDiscrepancyItems.length}
+                    </span>
+                  </>
                 )}
-                <button
-                  type="button"
-                  onClick={resetStatementWorkspace}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100"
-                >
-                  <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                  Vymazat
-                </button>
               </div>
             )}
           </section>
@@ -12983,23 +13534,25 @@ export default function CommissionStatementsPage() {
               );
             })}
 
-            <section className="rounded-xl border border-slate-200 bg-white px-4 py-4 sm:px-5">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="inline-flex items-center gap-2 text-xs font-bold uppercase text-slate-500">
+            <section className="relative overflow-hidden rounded-lg border border-white/70 bg-white/75 px-4 py-3 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl sm:px-5">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/60" aria-hidden="true" />
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
                     <ReceiptText className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    Zápis výpisu
-                  </div>
-                  <h2 className="mt-2 text-lg font-bold tracking-tight text-slate-950">
-                    Zpracování výpisu
-                  </h2>
-                  <p className="mt-1 text-sm font-medium text-slate-600">
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-black tracking-tight text-slate-950">
+                      Zápis výpisu
+                    </h2>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-slate-600">
                     {statementRecordsProcessed
                       ? "Výpis byl zpracovaný."
                       : `${statements.length} ${
                           statements.length === 1 ? "výpis připravený" : "výpisů připraveno"
                         } ke zpracování.`}
-                  </p>
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -13010,7 +13563,7 @@ export default function CommissionStatementsPage() {
                         void reprocessSelectedHistoryStatement();
                       }}
                       disabled={statementRecordsProcessing}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-violet-100 bg-white/70 px-4 text-sm font-bold text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:border-violet-200 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {statementRecordsProcessing ? (
                         <Loader2
@@ -13026,29 +13579,31 @@ export default function CommissionStatementsPage() {
                         : "Zpracovat znovu podle aktuálních smluv"}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void processStatementRecords();
-                    }}
-                    disabled={
-                      statementRecordsProcessing ||
-                      statementRecordsProcessed ||
-                      statementFilesForProcessing.length === 0
-                    }
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {statementRecordsProcessing ? (
-                      <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-                    ) : (
+                  {statementRecordsProcessed && !statementRecordsProcessing ? (
+                    <span className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white shadow-[0_12px_28px_rgba(15,23,42,0.16)]">
                       <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    )}
-                    {statementRecordsProcessing
-                      ? "Zpracovávám…"
-                      : statementRecordsProcessed
-                        ? "Výpis zpracován"
-                        : "Zpracovat výpis"}
-                  </button>
+                      Zpracováno
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void processStatementRecords();
+                      }}
+                      disabled={
+                        statementRecordsProcessing ||
+                        statementFilesForProcessing.length === 0
+                      }
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {statementRecordsProcessing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+                      )}
+                      {statementRecordsProcessing ? "Zpracovávám…" : "Zpracovat výpis"}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -13093,6 +13648,13 @@ export default function CommissionStatementsPage() {
         />
       )}
 
+      {calculatorPrefillPanel && (
+        <StatementCalculatorIframePanel
+          prefill={calculatorPrefillPanel}
+          onClose={() => setCalculatorPrefillPanel(null)}
+        />
+      )}
+
       {stornoActionTarget && (
         <StornoStatementActionModal
           target={stornoActionTarget}
@@ -13119,7 +13681,8 @@ export default function CommissionStatementsPage() {
           }}
         />
       )}
-      </AppLayout>
+        </AppLayout>
+      </StatementCalculatorPrefillContext.Provider>
     </BohemkaContractDetailModalContext.Provider>
   );
 }

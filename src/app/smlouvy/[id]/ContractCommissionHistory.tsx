@@ -43,10 +43,32 @@ const statusClass = (status: ContractCommissionPayout["status"]): string => {
   }
 };
 
+const parseCzechDateMs = (value: unknown): number | null => {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const date = Date.UTC(year, month - 1, day);
+  return Number.isFinite(date) ? date : null;
+};
+
+const parseStatementPeriodStartMs = (value: unknown): number | null => {
+  if (typeof value !== "string") return null;
+  const match = value.match(/(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/);
+  return parseCzechDateMs(match?.[1]);
+};
+
 const payoutSortValue = (payout: ContractCommissionPayout): number =>
-  typeof payout.writtenAtMs === "number" && Number.isFinite(payout.writtenAtMs)
-    ? payout.writtenAtMs
-    : 0;
+  parseStatementPeriodStartMs(payout.statementPeriod) ??
+  parseCzechDateMs(payout.statementDate) ??
+  (typeof payout.statementChronologyMs === "number" &&
+  Number.isFinite(payout.statementChronologyMs)
+    ? payout.statementChronologyMs
+    : typeof payout.writtenAtMs === "number" && Number.isFinite(payout.writtenAtMs)
+      ? payout.writtenAtMs
+      : 0);
 
 const payoutStatementLabel = (payout: ContractCommissionPayout): string =>
   payout.statementPeriod ?? payout.payoutMonthKey ?? payout.statementDate ?? "Provizní výpis";
@@ -279,7 +301,12 @@ const groupPayoutsByWriter = ({
   return [...map.values()]
     .map((group) => ({
       ...group,
-      rows: [...group.rows].sort((a, b) => payoutSortValue(b) - payoutSortValue(a)),
+      rows: [...group.rows].sort(
+        (a, b) =>
+          payoutSortValue(a) - payoutSortValue(b) ||
+          String(a.statementNumber ?? "").localeCompare(String(b.statementNumber ?? ""), "cs") ||
+          String(a.code ?? a.title ?? "").localeCompare(String(b.code ?? b.title ?? ""), "cs")
+      ),
     }))
     .sort((a, b) => {
       if (a.rank !== b.rank) return a.rank - b.rank;
@@ -295,7 +322,12 @@ export function ContractCommissionHistory({
   statementPreviewLoadingId,
 }: ContractCommissionHistoryProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const rows = [...(payouts ?? [])].sort((a, b) => payoutSortValue(b) - payoutSortValue(a));
+  const rows = [...(payouts ?? [])].sort(
+    (a, b) =>
+      payoutSortValue(a) - payoutSortValue(b) ||
+      String(a.statementNumber ?? "").localeCompare(String(b.statementNumber ?? ""), "cs") ||
+      String(a.code ?? a.title ?? "").localeCompare(String(b.code ?? b.title ?? ""), "cs")
+  );
   const groups = groupPayoutsByWriter({
     rows,
     viewerEmail: normalizeEmail(viewerEmail),

@@ -48,6 +48,7 @@ import { SubscriptionGate } from "@/components/subscription/SubscriptionGate";
 interface AppLayoutProps {
   children: ReactNode;
   active: ActivePage;
+  embedded?: boolean;
 }
 
 const AUTO_LOGOUT_AFTER_MS = 12 * 60 * 60 * 1000;
@@ -139,7 +140,7 @@ function PreparationSectionGate() {
   );
 }
 
-export function AppLayout({ children, active }: AppLayoutProps) {
+export function AppLayout({ children, active, embedded = false }: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -653,6 +654,7 @@ export function AppLayout({ children, active }: AppLayoutProps) {
           timelineSetupGateActive={timelineSetupGateActive}
           mobileMenuOpen={mobileMenuOpen}
           shellFontClass={shellFontClass}
+          embedded={embedded}
           onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
           onCloseMobileMenu={() => setMobileMenuOpen(false)}
           onLogout={handleLogout}

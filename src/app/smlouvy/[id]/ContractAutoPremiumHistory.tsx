@@ -17,6 +17,7 @@ import {
   paymentsPerYear,
   toDate,
 } from "./contractDetailHelpers";
+import { anniversaryNumberFromInstallmentCommissionCode } from "@/app/lib/productFormulas/autoCommission";
 import {
   type ContractAutoPremiumStatementHistoryEntry,
   type ContractAutoPremiumStatementRow,
@@ -29,6 +30,8 @@ type ContractAutoPremiumHistoryProps = {
   contractNumber?: string | null;
   policyStartDate?: ContractDoc["policyStartDate"];
   signedAnnualPremium?: number | null;
+  statementInitialAnnualPremium?: number | null;
+  preferStatementInitialPremium?: boolean;
   systemAnnualPremium: number;
   paymentFrequency?: PaymentFrequency | null;
   contractPaymentFrequency?: PaymentFrequency | null;
@@ -36,11 +39,6 @@ type ContractAutoPremiumHistoryProps = {
   storedHistory?: ContractAutoPremiumStatementHistoryEntry[] | null;
   loading?: boolean;
   error?: string | null;
-};
-
-type AnniversaryHit = {
-  number: number;
-  date: Date;
 };
 
 type PremiumChangeStatus = "initial" | "increased" | "decreased" | "same" | "detected";
@@ -75,9 +73,6 @@ const ANNUAL_PREMIUM_TOLERANCE = 12;
 
 const normalizeContractNumber = (value: string | null | undefined): string =>
   String(value ?? "").replace(/\D+/g, "").trim();
-
-const endOfDay = (date: Date): Date =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 
 const formatDate = (date: Date | null | undefined): string =>
   date ? date.toLocaleDateString("cs-CZ") : "—";
@@ -157,6 +152,31 @@ const positivePremiumOrNull = (value: number | null | undefined): number | null 
   return amount != null && amount > 0 ? amount : null;
 };
 
+export const resolveAutoSignedAnnualPremiumValue = ({
+  signedAnnualPremium,
+  statementInitialAnnualPremium,
+  firstKnownPreviousAnnualPremium,
+  systemAnnualPremium,
+  preferStatementInitialPremium,
+}: {
+  signedAnnualPremium?: number | null;
+  statementInitialAnnualPremium?: number | null;
+  firstKnownPreviousAnnualPremium?: number | null;
+  systemAnnualPremium?: number | null;
+  preferStatementInitialPremium?: boolean;
+}): number | null => {
+  const signedPremium = positivePremiumOrNull(signedAnnualPremium);
+  const statementPremium = positivePremiumOrNull(statementInitialAnnualPremium);
+  const previousPremium = positivePremiumOrNull(firstKnownPreviousAnnualPremium);
+  const systemPremium = positivePremiumOrNull(systemAnnualPremium);
+
+  if (preferStatementInitialPremium) {
+    return statementPremium ?? signedPremium ?? previousPremium ?? systemPremium;
+  }
+
+  return signedPremium ?? statementPremium ?? previousPremium ?? systemPremium;
+};
+
 const annualPremiumFromRow = (
   row: PremiumHistoryRow,
   paymentFrequency: PaymentFrequency | null | undefined
@@ -203,12 +223,6 @@ const changeCountLabel = (count: number): string => {
   return `${count} změn`;
 };
 
-const statementPeriodDate = (value: number | null): Date | null => {
-  if (value == null) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
 const statementRowDate = (value: string | null | undefined): Date | null => {
   const match = String(value ?? "")
     .trim()
@@ -247,31 +261,21 @@ const storedHistoryDate = (value: string | null | undefined): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const anniversaryOnOrBeforePeriodEnd = (
-  policyStart: Date,
-  periodEnd: Date | null
-): AnniversaryHit | null => {
-  if (!periodEnd) return null;
-  const end = endOfDay(periodEnd);
-  const policyStartYear = policyStart.getFullYear();
-  let latest: AnniversaryHit | null = null;
-
-  for (let yearOffset = 1; yearOffset <= 80; yearOffset += 1) {
-    const anniversary = new Date(
-      policyStartYear + yearOffset,
-      policyStart.getMonth(),
-      policyStart.getDate()
-    );
-
-    if (anniversary > end) return latest;
-    latest = {
-      number: yearOffset,
-      date: anniversary,
-    };
-  }
-
-  return latest;
+const addYearsClamped = (date: Date, years: number): Date | null => {
+  if (!Number.isInteger(years) || years < 0) return null;
+  const targetYear = date.getFullYear() + years;
+  const targetMonth = date.getMonth();
+  const targetDay = date.getDate();
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const result = new Date(targetYear, targetMonth, Math.min(targetDay, lastDay));
+  return Number.isNaN(result.getTime()) ? null : result;
 };
+
+const scheduleFrequencyForStatementProduct = (
+  product: Product | null | undefined,
+  paymentFrequency: PaymentFrequency | null | undefined
+): PaymentFrequency | null | undefined =>
+  isAnnualAutoPayoutProduct(product) ? "annual" : paymentFrequency;
 
 const premiumStatus = (
   basePremium: number,
@@ -400,8 +404,6 @@ const buildPremiumHistoryRows = ({
   const rows = new Map<string, PremiumHistoryRow>();
 
   for (const statement of statements) {
-    const periodEnd = statementPeriodDate(statement.periodEndMs);
-
     for (const row of statement.autoPremiumRows ?? []) {
       if (normalizeContractNumber(row.contractNumber) !== normalizedContractNumber) continue;
 
@@ -409,10 +411,16 @@ const buildPremiumHistoryRows = ({
       const policyStart = statementPolicyStart ?? systemPolicyStart;
       if (!policyStart) continue;
 
-      const anniversary = anniversaryOnOrBeforePeriodEnd(policyStart, periodEnd);
-      if (!anniversary) continue;
-
       const statementProduct = row.productKey ?? product ?? null;
+      const anniversaryNumber = anniversaryNumberFromInstallmentCommissionCode(
+        row.commissionCode,
+        scheduleFrequencyForStatementProduct(statementProduct, paymentFrequency)
+      );
+      if (anniversaryNumber == null) continue;
+
+      const anniversaryDate = addYearsClamped(policyStart, anniversaryNumber);
+      if (!anniversaryDate) continue;
+
       const { annualPremium, basePremiumPeriod } = annualPremiumFromStatementBase(
         row.basePremium,
         statementProduct,
@@ -422,7 +430,7 @@ const buildPremiumHistoryRows = ({
       if (status === "same") continue;
       const key = [
         statement.id,
-        anniversary.number,
+        anniversaryNumber,
         normalizedContractNumber,
         row.productCode,
         annualPremium,
@@ -442,8 +450,8 @@ const buildPremiumHistoryRows = ({
         premiumKind: "auto_change",
         statementId: statement.id,
         rowId: row.rowId,
-        anniversaryNumber: anniversary.number,
-        anniversaryDate: anniversary.date,
+        anniversaryNumber,
+        anniversaryDate,
         policyStartDate: policyStart,
         policyStartSource: statementPolicyStart ? "statement" : "system",
         statementPeriod: statement.period,
@@ -597,6 +605,8 @@ export function ContractAutoPremiumHistory({
   contractNumber,
   policyStartDate,
   signedAnnualPremium,
+  statementInitialAnnualPremium,
+  preferStatementInitialPremium = false,
   systemAnnualPremium,
   paymentFrequency = null,
   contractPaymentFrequency = null,
@@ -644,15 +654,19 @@ export function ContractAutoPremiumHistory({
       .filter((row) => row.premiumKind === "auto_initial")
       .map((row) => annualPremiumFromRow(row, paymentFrequency))
       .find((amount) => amount != null && amount > 0) ?? null;
+  const resolvedStatementInitialAnnualPremium =
+    storedInitialAnnualPremium ?? positivePremiumOrNull(statementInitialAnnualPremium);
   const firstKnownPreviousAnnualPremium =
     rows
       .map((row) => previousAnnualPremiumFromRow(row, paymentFrequency))
       .find((amount) => amount != null && amount > 0) ?? null;
-  const signedAnnualPremiumValue =
-    positivePremiumOrNull(signedAnnualPremium) ??
-    storedInitialAnnualPremium ??
-    firstKnownPreviousAnnualPremium ??
-    positivePremiumOrNull(systemAnnualPremium);
+  const signedAnnualPremiumValue = resolveAutoSignedAnnualPremiumValue({
+    signedAnnualPremium,
+    statementInitialAnnualPremium: resolvedStatementInitialAnnualPremium,
+    firstKnownPreviousAnnualPremium,
+    systemAnnualPremium,
+    preferStatementInitialPremium,
+  });
   const latestAnnualPremium =
     rows.length > 0
       ? annualPremiumFromRow(rows[rows.length - 1], paymentFrequency)

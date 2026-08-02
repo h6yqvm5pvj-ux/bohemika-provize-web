@@ -100,9 +100,6 @@ import {
   calculateAxaCestovko,
   calculateKoopCestovko,
   calculateComfortCC,
-  isSlaviaAutoSupportedForSignedDate,
-  isSlaviaFlotilaSupportedForSignedDate,
-  SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
 } from "@/app/lib/productFormulas";
 import {
   normalizeCommissionCoefficientSet,
@@ -219,7 +216,7 @@ const CONTRACTS_MUTATION_RATE_LIMIT = 60;
 const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const CONTRACTS_GET_RATE_LIMIT = 180;
 const CONTRACTS_GET_RATE_LIMIT_WINDOW_MS = 60_000;
-const CONTRACTS_FIND_BULK_MAX_ITEMS = 750;
+const CONTRACTS_FIND_BULK_MAX_ITEMS = 1000;
 const CONTRACTS_FIND_BULK_WORKER_COUNT = 8;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const USER_TREE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -4903,25 +4900,6 @@ export async function handleContractsCreate(req: NextRequest) {
       : null;
 
     const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
-    if (
-      normalizedEntry.payload.productKey === "slaviaauto" &&
-      !isSlaviaAutoSupportedForSignedDate(signedDateIso)
-    ) {
-      return NextResponse.json(
-        { ok: false, error: SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE },
-        { status: 400 }
-      );
-    }
-    if (
-      normalizedEntry.payload.productKey === "slaviaflotila" &&
-      !isSlaviaFlotilaSupportedForSignedDate(signedDateIso)
-    ) {
-      return NextResponse.json(
-        { ok: false, error: SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE },
-        { status: 400 }
-      );
-    }
-
     const trustedPosition = resolveTimelinePositionForSignedDate(trustedProfile, signedDateIso);
     if (!trustedPosition) {
       return NextResponse.json(

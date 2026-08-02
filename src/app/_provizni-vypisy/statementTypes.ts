@@ -271,6 +271,7 @@ export type StatementProcessingResult = {
   premiumUpdates?: number;
   premiumHistoryBackfills?: number;
   olderPremiumUpdatesSkipped?: number;
+  filteredContractsSkipped?: number;
   accountingRepairDrafts?: number;
   externalUpdateTasks?: number;
   contractsUpdated?: number;
@@ -292,6 +293,7 @@ export type StatementProcessingSummary = {
   premiumUpdates: number;
   premiumHistoryBackfills: number;
   olderPremiumUpdatesSkipped: number;
+  filteredContractsSkipped: number;
   accountingRepairDrafts: number;
   externalUpdateTasks: number;
   contractsUpdated: number;
@@ -471,6 +473,13 @@ export type MatchedSystemContract = {
   cppExtranetEntityId?: string | number | null;
   lifePremiumChanges?: LifePremiumChangeSummary[] | null;
   premiumStatementHistory?: PremiumStatementHistoryEntry[] | null;
+  premiumUpdatedFromStatementAtMs?: number | null;
+  premiumUpdatedFromStatementChronologyMs?: number | null;
+  premiumUpdatedFromStatementId?: string | null;
+  createdFromCommissionStatement?: boolean | null;
+  createdFromCommissionStatementAtMs?: number | null;
+  createdFromCommissionStatementChronologyMs?: number | null;
+  createdFromCommissionStatementId?: string | null;
   commissionPayouts?: ContractCommissionPayoutRecord[] | null;
   managerOverrides?: ManagerOverrideSummary[] | null;
   tipContractTipsterEmail?: string | null;

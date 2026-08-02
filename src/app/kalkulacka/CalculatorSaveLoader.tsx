@@ -5,25 +5,44 @@ import { CheckCircle2, DatabaseZap, FileCheck2, ShieldCheck, UploadCloud } from 
 
 type CalculatorSaveLoaderProps = {
   message?: string | null;
+  hasPdfAttachment?: boolean;
 };
 
-const SAVE_STAGES = [
+const SAVE_STAGES_WITH_PDF = [
   "Kontroluji duplicity",
   "Připravuji záznam smlouvy",
   "Ukládám data do systému",
-  "Nahrávám přílohy",
+  "Nahrávám PDF",
   "Aktualizuji přehled smluv",
 ];
 
-const SAVE_CHECKS = [
+const SAVE_STAGES_WITHOUT_PDF = [
+  "Kontroluji duplicity",
+  "Připravuji záznam smlouvy",
+  "Ukládám data do systému",
+  "Aktualizuji přehled smluv",
+];
+
+const SAVE_CHECKS_WITH_PDF = [
   { label: "Duplicity", icon: ShieldCheck },
   { label: "Záznam", icon: DatabaseZap },
   { label: "PDF", icon: UploadCloud },
   { label: "Hotovo", icon: CheckCircle2 },
 ];
 
-export function CalculatorSaveLoader({ message }: CalculatorSaveLoaderProps) {
+const SAVE_CHECKS_WITHOUT_PDF = [
+  { label: "Duplicity", icon: ShieldCheck },
+  { label: "Záznam", icon: DatabaseZap },
+  { label: "Hotovo", icon: CheckCircle2 },
+];
+
+export function CalculatorSaveLoader({
+  message,
+  hasPdfAttachment = false,
+}: CalculatorSaveLoaderProps) {
   const [progress, setProgress] = useState(18);
+  const stages = hasPdfAttachment ? SAVE_STAGES_WITH_PDF : SAVE_STAGES_WITHOUT_PDF;
+  const checks = hasPdfAttachment ? SAVE_CHECKS_WITH_PDF : SAVE_CHECKS_WITHOUT_PDF;
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -40,10 +59,14 @@ export function CalculatorSaveLoader({ message }: CalculatorSaveLoaderProps) {
 
   const visibleProgress = Math.max(18, Math.min(96, Math.round(progress)));
   const stageIndex = Math.min(
-    SAVE_STAGES.length - 1,
-    Math.floor((visibleProgress / 100) * SAVE_STAGES.length)
+    stages.length - 1,
+    Math.floor((visibleProgress / 100) * stages.length)
   );
-  const stageText = SAVE_STAGES[stageIndex];
+  const stageText = stages[stageIndex];
+  const checkIndex = Math.min(
+    checks.length - 1,
+    Math.floor((visibleProgress / 100) * checks.length)
+  );
   const progressStyle = useMemo(
     () => ({ width: `${visibleProgress}%` }),
     [visibleProgress]
@@ -124,9 +147,9 @@ export function CalculatorSaveLoader({ message }: CalculatorSaveLoaderProps) {
             </div>
 
             <div className="relative z-10 mt-5 space-y-3">
-              {SAVE_CHECKS.map((item, index) => {
+              {checks.map((item, index) => {
                 const Icon = item.icon;
-                const active = index <= stageIndex;
+                const active = index <= checkIndex;
 
                 return (
                   <div

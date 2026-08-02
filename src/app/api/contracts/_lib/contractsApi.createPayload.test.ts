@@ -71,6 +71,62 @@ describe("contracts create payload parsing", () => {
     expect(payload.createdAt).toBeInstanceOf(Date);
   });
 
+  it("keeps a paid flag from an allowed create payload", () => {
+    const payload = normalizedPayload(baseEntry({ paid: true }));
+
+    expect(payload.paid).toBe(true);
+  });
+
+  it("keeps statement premium source metadata from commission statement prefill", () => {
+    const payload = normalizedPayload(
+      baseEntry({
+        premiumUpdatedFromStatementAtMs: 1_785_596_400_123,
+        premiumUpdatedFromStatementChronologyMs: 1_643_587_200_456,
+        premiumUpdatedFromStatementId: " statement-2022-01 ",
+        createdFromCommissionStatement: true,
+        createdFromCommissionStatementAtMs: 1_785_596_400_123,
+        createdFromCommissionStatementChronologyMs: 1_643_587_200_456,
+        createdFromCommissionStatementId: " statement-2022-01 ",
+      })
+    );
+
+    expect(payload.premiumUpdatedFromStatementAtMs).toBe(1_785_596_400_123);
+    expect(payload.premiumUpdatedFromStatementChronologyMs).toBe(1_643_587_200_456);
+    expect(payload.premiumUpdatedFromStatementId).toBe("statement-2022-01");
+    expect(payload.createdFromCommissionStatement).toBe(true);
+    expect(payload.createdFromCommissionStatementAtMs).toBe(1_785_596_400_123);
+    expect(payload.createdFromCommissionStatementChronologyMs).toBe(1_643_587_200_456);
+    expect(payload.createdFromCommissionStatementId).toBe("statement-2022-01");
+  });
+
+  it("normalizes an optional storno date on create", () => {
+    const payload = normalizedPayload(
+      baseEntry({
+        status: "storno",
+        stornoDate: "2026-08-15",
+      })
+    );
+
+    expect(payload.status).toBe("storno");
+    expect(payload.stornoDate?.toISOString().slice(0, 10)).toBe("2026-08-15");
+  });
+
+  it("rejects a storno date before policy start on create", () => {
+    expect(
+      normalizeCreateEntryPayload({
+        raw: baseEntry({
+          status: "storno",
+          stornoDate: "2026-01-31",
+        }),
+        ownerEmail,
+        ownerUid,
+      })
+    ).toEqual({
+      ok: false,
+      error: "Datum storna nesmí být před datem počátku smlouvy.",
+    });
+  });
+
   it("rejects unknown fields and invalid core values", () => {
     expect(
       normalizeCreateEntryPayload({
@@ -122,6 +178,56 @@ describe("contracts create payload parsing", () => {
     ).toEqual({
       ok: false,
       error: "Pole policyEndDate nemůže být dřív než policyStartDate.",
+    });
+  });
+
+  it("rejects contracts before the first known product coefficients", () => {
+    expect(
+      normalizeCreateEntryPayload({
+        raw: baseEntry({
+          contractSignedDate: "2019-09-30",
+          policyStartDate: "2019-10-01",
+        }),
+        ownerEmail,
+        ownerUid,
+      })
+    ).toEqual({
+      ok: false,
+      error:
+        "Smlouvu nelze uložit, protože pro datum sjednání 30. 09. 2019 nemáme v systému bohemka.app koeficienty pro tento produkt. Nejstarší dostupné koeficienty platí od 01. 10. 2019. Tohle pravidlo má zabránit uložení smlouvy se špatně zadaným datem sjednání.",
+    });
+  });
+
+  it("allows ČPP Auto contracts from 2018 with historical coefficients", () => {
+    const payload = normalizedPayload(
+      baseEntry({
+        productKey: "cppAuto",
+        contractSignedDate: "2018-01-01",
+        policyStartDate: "2018-01-02",
+      })
+    );
+
+    expect(payload.productKey).toBe("cppAuto");
+    expect(payload.contractSignedDate.toISOString().slice(0, 10)).toBe(
+      "2018-01-01"
+    );
+  });
+
+  it("rejects ČPP Auto contracts before 2018", () => {
+    expect(
+      normalizeCreateEntryPayload({
+        raw: baseEntry({
+          productKey: "cppAuto",
+          contractSignedDate: "2017-12-31",
+          policyStartDate: "2018-01-01",
+        }),
+        ownerEmail,
+        ownerUid,
+      })
+    ).toEqual({
+      ok: false,
+      error:
+        "Smlouvu nelze uložit, protože pro datum sjednání 31. 12. 2017 nemáme v systému bohemka.app koeficienty pro tento produkt. Nejstarší dostupné koeficienty platí od 01. 01. 2018. Tohle pravidlo má zabránit uložení smlouvy se špatně zadaným datem sjednání.",
     });
   });
 

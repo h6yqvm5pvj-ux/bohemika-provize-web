@@ -19,6 +19,7 @@ type CalculatorContractDetailsSectionProps = {
   pdfMatchedClientName: boolean;
   filteredClientSuggestions: string[];
   clientSuggestionsOpen: boolean;
+  clientSuggestionHint: string | null;
   contractSignedDate: string;
   contractNumber: string;
   contractNumberLiveCheckStatus: ContractNumberLiveCheckStatus;
@@ -29,6 +30,7 @@ type CalculatorContractDetailsSectionProps = {
   contractDateWarningText: string | null;
   showPolicyEndDateField: boolean;
   policyEndDate: string;
+  stornoDate: string;
   onClientNameChange: (value: string) => void;
   onClientNameFocus: () => void;
   onClientNameBlur: () => void;
@@ -37,6 +39,7 @@ type CalculatorContractDetailsSectionProps = {
   onContractNumberChange: (value: string) => void;
   onPolicyStartDateChange: (value: string) => void;
   onPolicyEndDateChange: (value: string) => void;
+  onStornoDateChange: (value: string) => void;
 };
 
 export function CalculatorContractDetailsSection({
@@ -47,6 +50,7 @@ export function CalculatorContractDetailsSection({
   pdfMatchedClientName,
   filteredClientSuggestions,
   clientSuggestionsOpen,
+  clientSuggestionHint,
   contractSignedDate,
   contractNumber,
   contractNumberLiveCheckStatus,
@@ -57,6 +61,7 @@ export function CalculatorContractDetailsSection({
   contractDateWarningText,
   showPolicyEndDateField,
   policyEndDate,
+  stornoDate,
   onClientNameChange,
   onClientNameFocus,
   onClientNameBlur,
@@ -65,6 +70,7 @@ export function CalculatorContractDetailsSection({
   onContractNumberChange,
   onPolicyStartDateChange,
   onPolicyEndDateChange,
+  onStornoDateChange,
 }: CalculatorContractDetailsSectionProps) {
   if (!isVisible) return null;
 
@@ -106,6 +112,11 @@ export function CalculatorContractDetailsSection({
             )}
             {filteredClientSuggestions.length > 0 && clientSuggestionsOpen && (
               <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-violet-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-2xl">
+                {clientSuggestionHint && (
+                  <div className="border-b border-violet-100 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
+                    {clientSuggestionHint}
+                  </div>
+                )}
                 {filteredClientSuggestions.map((name) => (
                   <button
                     key={name}
@@ -206,6 +217,21 @@ export function CalculatorContractDetailsSection({
               value={policyEndDate}
               onChange={(event) => onPolicyEndDateChange(event.target.value)}
             />
+          </div>
+        )}
+
+        {contractNumberLiveCheckMode !== "endorsement" && (
+          <div className="space-y-1">
+            <label className="block text-sm font-semibold text-slate-800">Datum storna (volitelné)</label>
+            <input
+              type="date"
+              className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
+              value={stornoDate}
+              onChange={(event) => onStornoDateChange(event.target.value)}
+            />
+            <p className="text-[11px] text-slate-500">
+              Vyplň jen u historicky stornované smlouvy.
+            </p>
           </div>
         )}
       </div>

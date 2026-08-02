@@ -266,6 +266,11 @@ export {
   calculateComfortCC,
 };
 
+export {
+  minimumSupportedContractSignedDateForProduct,
+  productCoefficientValidityError,
+} from "./productFormulas/coefficientSets";
+
 export const SUPPORTED_PRODUCTS: Product[] = [
   "neon",
   "flexi",

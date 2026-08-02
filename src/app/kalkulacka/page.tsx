@@ -62,9 +62,7 @@ import {
   isMaxEfekt5Period,
   isMaxEfekt7Period,
   isDomexHistoricalPeriod,
-  isSlaviaAutoSupportedForSignedDate,
-  isSlaviaFlotilaSupportedForSignedDate,
-  SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE,
+  productCoefficientValidityError,
 } from "../lib/productFormulas";
 import {
   calculateNeonDecreaseStornoBase,
@@ -312,6 +310,62 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   { id: "exclusiveStandard", label: "EXCLUSIVE / STANDARD" },
   { id: "premium", label: "PREMIUM" },
 ];
+const STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE = "bohemka:statement-contract-saved";
+const STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE =
+  "bohemka:statement-contract-save-completed";
+type StatementPremiumSource = {
+  statementId: string | null;
+  statementChronologyMs: number | null;
+  capturedAtMs: number;
+};
+const notifyStatementParentContractEvent = ({
+  type,
+  contractNumber,
+  clientName,
+  product,
+  ownerEmail,
+  entryId,
+}: {
+  type:
+    | typeof STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE
+    | typeof STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE;
+  contractNumber: string;
+  clientName: string;
+  product: Product;
+  ownerEmail: string;
+  entryId: string;
+}) => {
+  if (typeof window === "undefined" || window.parent === window) return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("prefill") !== "commission-statement") return;
+
+  window.parent.postMessage(
+    {
+      type,
+      contractNumber,
+      clientName,
+      product,
+      ownerEmail,
+      entryId,
+      savedAtMs: Date.now(),
+    },
+    window.location.origin
+  );
+};
+const notifyStatementParentContractSaved = (
+  payload: Omit<Parameters<typeof notifyStatementParentContractEvent>[0], "type">
+) =>
+  notifyStatementParentContractEvent({
+    type: STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE,
+    ...payload,
+  });
+const notifyStatementParentContractSaveCompleted = (
+  payload: Omit<Parameters<typeof notifyStatementParentContractEvent>[0], "type">
+) =>
+  notifyStatementParentContractEvent({
+    type: STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE,
+    ...payload,
+  });
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 const isKooperativaAutoDetailProduct = (product: Product): boolean =>
   product === "kooperativaAuto" || product === "koopflotila";
@@ -322,6 +376,200 @@ const isUniqaAutoDetailProduct = (product: Product): boolean =>
 const AUTO_HULL_USUAL_PRICE_TEXT = "Obvyklá cena vozidla";
 const CLIENT_SUGGESTIONS_PAGE_LIMIT = 50;
 const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
+const CLIENT_SUGGESTIONS_VISIBLE_LIMIT = 6;
+const AUTO_PAID_POLICY_START_MONTHS = 6;
+
+const parseIsoDayAsLocalDate = (value: string): Date | null => {
+  if (!isIsoDay(value)) return null;
+  const [yearRaw, monthRaw, dayRaw] = value.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!year || !month || !day) return null;
+
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
+const subtractMonthsClamped = (date: Date, months: number): Date => {
+  const targetYear = date.getFullYear();
+  const targetMonth = date.getMonth() - months;
+  const firstOfTargetMonth = new Date(targetYear, targetMonth, 1);
+  const lastDayOfTargetMonth = new Date(
+    firstOfTargetMonth.getFullYear(),
+    firstOfTargetMonth.getMonth() + 1,
+    0
+  ).getDate();
+  const result = new Date(
+    firstOfTargetMonth.getFullYear(),
+    firstOfTargetMonth.getMonth(),
+    Math.min(date.getDate(), lastDayOfTargetMonth)
+  );
+  result.setHours(0, 0, 0, 0);
+  return result;
+};
+
+const shouldAutoMarkPaidByPolicyStartDate = (policyStartDateIso: string): boolean => {
+  const policyStart = parseIsoDayAsLocalDate(policyStartDateIso.trim());
+  if (!policyStart) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cutoff = subtractMonthsClamped(today, AUTO_PAID_POLICY_START_MONTHS);
+  return policyStart.getTime() <= cutoff.getTime();
+};
+
+const normalizeClientSuggestionText = (value: string | null | undefined): string =>
+  normalizeClientNameForSystemMatch(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const clientNameTokens = (value: string | null | undefined): string[] =>
+  normalizeClientSuggestionText(value).split(" ").filter(Boolean);
+
+const clientNameSearchVariants = (value: string | null | undefined): string[] => {
+  const tokens = clientNameTokens(value);
+  const variants = new Set<string>();
+  const joined = tokens.join(" ");
+  if (joined) variants.add(joined);
+  if (tokens.length >= 2) {
+    variants.add([tokens[tokens.length - 1], ...tokens.slice(0, -1)].join(" "));
+  }
+  return [...variants];
+};
+
+const clientNameContainsTokenSequence = (
+  tokens: string[],
+  sequence: string[]
+): boolean =>
+  tokens.some((_, index) =>
+    sequence.every((token, offset) => tokens[index + offset] === token)
+  );
+
+const clientNameLooksLikeCompany = (value: string | null | undefined): boolean => {
+  const tokens = clientNameTokens(value);
+  if (
+    clientNameContainsTokenSequence(tokens, ["s", "r", "o"]) ||
+    clientNameContainsTokenSequence(tokens, ["a", "s"]) ||
+    clientNameContainsTokenSequence(tokens, ["z", "s"]) ||
+    clientNameContainsTokenSequence(tokens, ["o", "p", "s"])
+  ) {
+    return true;
+  }
+  return (
+    tokens.includes("sro") ||
+    tokens.includes("as") ||
+    tokens.includes("zs") ||
+    tokens.includes("ops") ||
+    tokens.includes("spol") ||
+    tokens.includes("druzstvo") ||
+    tokens.includes("nadace") ||
+    tokens.includes("ustav") ||
+    tokens.includes("obec") ||
+    tokens.includes("urad")
+  );
+};
+
+const clientNameLooksLikePersonQuery = (value: string | null | undefined): boolean => {
+  if (clientNameLooksLikeCompany(value)) return false;
+  const tokens = clientNameTokens(value).filter((token) => token.length > 1);
+  return tokens.length >= 2 && tokens.length <= 4;
+};
+
+const boundedLevenshteinDistance = (
+  left: string,
+  right: string,
+  maxDistance: number
+): number => {
+  if (left === right) return 0;
+  if (Math.abs(left.length - right.length) > maxDistance) return maxDistance + 1;
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    let rowBest = current[0] ?? 0;
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      const value = Math.min(
+        (previous[rightIndex] ?? 0) + 1,
+        (current[rightIndex - 1] ?? 0) + 1,
+        (previous[rightIndex - 1] ?? 0) + cost
+      );
+      current[rightIndex] = value;
+      rowBest = Math.min(rowBest, value);
+    }
+    if (rowBest > maxDistance) return maxDistance + 1;
+    previous = current;
+  }
+  return previous[right.length] ?? maxDistance + 1;
+};
+
+const clientNameTokenMatches = (queryToken: string, candidateToken: string): boolean => {
+  if (!queryToken || !candidateToken) return false;
+  if (queryToken === candidateToken) return true;
+  if (queryToken.length === 1) return candidateToken.length > 1 && candidateToken.startsWith(queryToken);
+  if (candidateToken.length === 1) return false;
+  if (
+    Math.min(queryToken.length, candidateToken.length) >= 3 &&
+    (candidateToken.startsWith(queryToken) || queryToken.startsWith(candidateToken))
+  ) {
+    return true;
+  }
+  if (Math.min(queryToken.length, candidateToken.length) < 3) return false;
+  const maxDistance = Math.max(queryToken.length, candidateToken.length) <= 4 ? 1 : 2;
+  return boundedLevenshteinDistance(queryToken, candidateToken, maxDistance) <= maxDistance;
+};
+
+const clientNameSuggestionScore = (query: string, candidate: string): number => {
+  const queryVariants = clientNameSearchVariants(query);
+  if (queryVariants.length === 0) return 0;
+
+  const candidateVariants = clientNameSearchVariants(candidate);
+  const candidateTokens = clientNameTokens(candidate);
+  let bestScore = 0;
+
+  for (const queryVariant of queryVariants) {
+    const queryTokens = queryVariant.split(" ").filter(Boolean);
+    for (const candidateVariant of candidateVariants) {
+      if (queryVariant === candidateVariant) bestScore = Math.max(bestScore, 1000);
+      if (candidateVariant.includes(queryVariant)) bestScore = Math.max(bestScore, 900);
+      if (queryVariant.includes(candidateVariant)) bestScore = Math.max(bestScore, 840);
+
+      const maxDistance = queryVariant.length <= 10 ? 2 : 3;
+      const wholeDistance = boundedLevenshteinDistance(
+        queryVariant,
+        candidateVariant,
+        maxDistance
+      );
+      if (wholeDistance <= maxDistance) {
+        bestScore = Math.max(bestScore, 760 - wholeDistance * 60);
+      }
+    }
+
+    if (
+      queryTokens.length > 0 &&
+      queryTokens.every((token) =>
+        candidateTokens.some((candidateToken) => clientNameTokenMatches(token, candidateToken))
+      )
+    ) {
+      const exactTokenMatches = queryTokens.filter((token) =>
+        candidateTokens.includes(token)
+      ).length;
+      bestScore = Math.max(bestScore, 700 + exactTokenMatches * 20);
+    }
+  }
+
+  return bestScore;
+};
 
 type CalculatorViewMode = "addContract" | "commissionOnly";
 type PrepareEndorsementOptions = {
@@ -628,9 +876,12 @@ export default function CalculatorPage() {
   const [clientName, setClientName] = useState<string>("");
   const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
   const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false);
+  const [statementClientNamePrefillActive, setStatementClientNamePrefillActive] =
+    useState(false);
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
   const [policyEndDate, setPolicyEndDate] = useState<string>("");
+  const [stornoDate, setStornoDate] = useState<string>("");
   const [contractNumber, setContractNumber] = useState<string>("");
   const [autoCarMake, setAutoCarMake] = useState<string>("");
   const [autoCarPlate, setAutoCarPlate] = useState<string>("");
@@ -717,10 +968,15 @@ export default function CalculatorPage() {
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const [addContractHelpOpen, setAddContractHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const statementPrefillAppliedRef = useRef(false);
+  const [statementEmbedMode, setStatementEmbedMode] = useState(false);
+  const [statementPremiumSource, setStatementPremiumSource] =
+    useState<StatementPremiumSource | null>(null);
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
   const [importedContractPdfFile, setImportedContractPdfFile] = useState<File | null>(null);
+  const [savingIncludesPdfAttachment, setSavingIncludesPdfAttachment] = useState(false);
   const [pdfClientNameLoaded, setPdfClientNameLoaded] = useState(false);
   const [pdfMatchedClientName, setPdfMatchedClientName] = useState(false);
   const {
@@ -746,6 +1002,83 @@ export default function CalculatorPage() {
       setPdfMatchedClientName(false);
     },
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const isStatementPrefill = params.get("prefill") === "commission-statement";
+    setStatementEmbedMode(isStatementPrefill);
+    if (!isStatementPrefill) {
+      setStatementPremiumSource(null);
+      return;
+    }
+    if (statementPrefillAppliedRef.current) return;
+
+    const productOption = PRODUCT_OPTIONS.find(
+      (option) => option.id === params.get("product")
+    );
+    if (!productOption) return;
+
+    statementPrefillAppliedRef.current = true;
+    const nextProduct = productOption.id;
+    const allowed = allowedFrequencies(nextProduct);
+    const defaultFrequency = allowed[0] ?? "annual";
+    const frequencyParam = params.get("frequency") as PaymentFrequency | null;
+    const nextFrequency =
+      frequencyParam && allowed.includes(frequencyParam) ? frequencyParam : defaultFrequency;
+    const amountParam = (params.get("amount") ?? "")
+      .replace(/[^\d.,-]/g, "")
+      .trim();
+    const clientNameParam = (params.get("clientName") ?? "").trim();
+    const contractNumberParam = (params.get("contractNumber") ?? "").trim();
+    const contractSignedDateParam = (params.get("contractSignedDate") ?? "").trim();
+    const policyStartDateParam = (params.get("policyStartDate") ?? "").trim();
+    const sourceStatementIdParam = (params.get("sourceStatementId") ?? "").trim();
+    const sourceStatementChronologyRaw = (
+      params.get("sourceStatementChronologyMs") ?? ""
+    ).trim();
+    const sourceStatementChronologyParam = sourceStatementChronologyRaw
+      ? Number(sourceStatementChronologyRaw)
+      : null;
+
+    setProduct(nextProduct);
+    setHasSelectedProduct(true);
+    setProductPickerSectionForProduct(nextProduct);
+    setProductSearchText("");
+    setCalculatorViewMode("addContract");
+    setFrequency(nextFrequency);
+    setTipsterModeEnabled(false);
+    setPdfClientNameLoaded(false);
+    setPdfMatchedClientName(false);
+    setImportedContractPdfFile(null);
+    setPdfImportStatus(null);
+    setPdfImportError(null);
+    setValidationError(null);
+    setSaveMessage(null);
+    setMissingFields([]);
+    setStatementPremiumSource({
+      statementId: sourceStatementIdParam || null,
+      statementChronologyMs:
+        sourceStatementChronologyParam != null &&
+        Number.isFinite(sourceStatementChronologyParam)
+        ? Math.round(sourceStatementChronologyParam)
+        : null,
+      capturedAtMs: Date.now(),
+    });
+
+    if (amountParam) setAmountText(amountParam);
+    if (clientNameParam) {
+      setClientName(clientNameParam);
+      setStatementClientNamePrefillActive(true);
+      setClientSuggestionsOpen(true);
+    } else {
+      setStatementClientNamePrefillActive(false);
+    }
+    if (contractNumberParam) setContractNumber(contractNumberParam);
+    if (isIsoDay(contractSignedDateParam)) setContractSignedDate(contractSignedDateParam);
+    if (isIsoDay(policyStartDateParam)) setPolicyStartDate(policyStartDateParam);
+  }, [setProductPickerSectionForProduct, setProductSearchText]);
 
   const [items, setItems] = useState<CommissionResultItemDTO[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -897,24 +1230,44 @@ export default function CalculatorPage() {
     return true;
   };
 
+  const validateOptionalStornoDateBeforeSave = (): boolean => {
+    const trimmedStornoDate = stornoDate.trim();
+    if (!trimmedStornoDate) return true;
+
+    const parsedStornoDate = parseIsoDayAsLocalDate(trimmedStornoDate);
+    if (!parsedStornoDate) {
+      const msg = "Datum storna má neplatný formát.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return false;
+    }
+
+    const parsedPolicyStartDate = parseIsoDayAsLocalDate(policyStartDate.trim());
+    const parsedSignedDate = parseIsoDayAsLocalDate(contractSignedDate.trim());
+    const boundaryDate = parsedPolicyStartDate ?? parsedSignedDate;
+    if (boundaryDate && parsedStornoDate.getTime() < boundaryDate.getTime()) {
+      const msg = parsedPolicyStartDate
+        ? "Datum storna nesmí být před datem počátku smlouvy."
+        : "Datum storna nesmí být před datem sjednání smlouvy.";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return false;
+    }
+
+    return true;
+  };
+
   const validateProductCoefficientPeriodBeforeSave = (
     targetProduct: Product | null,
     signedDateIsoRaw: string
   ): boolean => {
-    if (
-      targetProduct === "slaviaauto" &&
-      !isSlaviaAutoSupportedForSignedDate(signedDateIsoRaw)
-    ) {
-      setSaveMessage(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
-      setValidationError(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
-      return false;
-    }
-    if (
-      targetProduct === "slaviaflotila" &&
-      !isSlaviaFlotilaSupportedForSignedDate(signedDateIsoRaw)
-    ) {
-      setSaveMessage(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
-      setValidationError(SLAVIA_AUTO_UNSUPPORTED_SIGNED_DATE_MESSAGE);
+    const coefficientValidityError = productCoefficientValidityError(
+      targetProduct,
+      signedDateIsoRaw
+    );
+    if (coefficientValidityError) {
+      setSaveMessage(coefficientValidityError);
+      setValidationError(coefficientValidityError);
       return false;
     }
     return true;
@@ -1519,11 +1872,24 @@ export default function CalculatorPage() {
     }
   };
   const filteredClientSuggestions = useMemo(() => {
-    const q = normalizeClientNameForSystemMatch(clientName);
+    const q = normalizeClientSuggestionText(clientName);
     if (!q) return [];
+    const personQuery = clientNameLooksLikePersonQuery(q);
     return clientSuggestions
-      .filter((name) => normalizeClientNameForSystemMatch(name).includes(q))
-      .slice(0, 6);
+      .map((name) => ({
+        name,
+        score:
+          personQuery && clientNameLooksLikeCompany(name)
+            ? 0
+            : clientNameSuggestionScore(q, name),
+      }))
+      .filter((item) => item.score > 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return left.name.localeCompare(right.name, "cs-CZ");
+      })
+      .slice(0, CLIENT_SUGGESTIONS_VISIBLE_LIMIT)
+      .map((item) => item.name);
   }, [clientName, clientSuggestions]);
 
   useEffect(() => {
@@ -4174,6 +4540,7 @@ export default function CalculatorPage() {
     setContractSignedDate("");
     setPolicyStartDate("");
     setPolicyEndDate("");
+    setStornoDate("");
     setContractNumber("");
     setContractNumberLiveCheck({ status: "idle" });
 
@@ -4262,6 +4629,7 @@ export default function CalculatorPage() {
 
     setPdfClientNameLoaded(false);
     setPdfMatchedClientName(false);
+    setStatementClientNamePrefillActive(false);
     setPdfImportStatus(null);
     setPdfImportError(null);
     setImportedContractPdfFile(null);
@@ -4818,6 +5186,7 @@ export default function CalculatorPage() {
       return;
     }
 
+    setSavingIncludesPdfAttachment(Boolean(importedContractPdfFile));
     setSaving(true);
     setSaveMessage(null);
     setValidationError(null);
@@ -5100,6 +5469,7 @@ export default function CalculatorPage() {
       return;
     }
     if (!validateContractDatesBeforeSave()) return;
+    if (!validateOptionalStornoDateBeforeSave()) return;
     if (!validateProductCoefficientPeriodBeforeSave(product, signedDateIsoDay)) {
       return;
     }
@@ -5189,6 +5559,7 @@ export default function CalculatorPage() {
           }
         : null;
 
+    setSavingIncludesPdfAttachment(Boolean(importedContractPdfFile));
     setSaving(true);
     setSaveMessage("Kontroluji duplicity…");
     setValidationError(null);
@@ -5372,6 +5743,10 @@ export default function CalculatorPage() {
         shouldReplaceOriginalContract && product === "neon" && !isRefreshWithoutOriginalInSystem
           ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? value
           : value;
+      const autoPaidByPolicyStartDate = shouldAutoMarkPaidByPolicyStartDate(
+        policyStartDate
+      );
+      const trimmedStornoDate = stornoDate.trim();
 
       const contractEntryPayload = {
             productKey: product,
@@ -5392,6 +5767,8 @@ export default function CalculatorPage() {
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
             policyEndDate: policyEndDate.trim() || null,
+            status: trimmedStornoDate ? "storno" : "active",
+            stornoDate: trimmedStornoDate || null,
             durationYears: shouldShowDuration(product) ? durationYears : null,
             durationMonths:
               shouldShowDurationMonths(product) ? normalizedDurationMonths(product, durationMonths) : null,
@@ -5659,6 +6036,7 @@ export default function CalculatorPage() {
                     note: domexNote.trim() || null,
                   }
                 : null,
+            paid: autoPaidByPolicyStartDate,
             isRefresh: shouldReplaceOriginalContract,
             refreshOriginalMissingInSystem: isRefreshWithoutOriginalInSystem,
             requiresStatementRefresh: isRefreshWithoutOriginalInSystem,
@@ -5668,6 +6046,15 @@ export default function CalculatorPage() {
             commissionBaseSource: isRefreshWithoutOriginalInSystem
               ? "calculator_provisional"
               : null,
+            premiumUpdatedFromStatementAtMs: statementPremiumSource?.capturedAtMs ?? null,
+            premiumUpdatedFromStatementChronologyMs:
+              statementPremiumSource?.statementChronologyMs ?? null,
+            premiumUpdatedFromStatementId: statementPremiumSource?.statementId ?? null,
+            createdFromCommissionStatement: Boolean(statementPremiumSource),
+            createdFromCommissionStatementAtMs: statementPremiumSource?.capturedAtMs ?? null,
+            createdFromCommissionStatementChronologyMs:
+              statementPremiumSource?.statementChronologyMs ?? null,
+            createdFromCommissionStatementId: statementPremiumSource?.statementId ?? null,
             refreshOriginalContractNumber: shouldReplaceOriginalContract
               ? isRefreshWithoutOriginalInSystem
                 ? null
@@ -5714,9 +6101,17 @@ export default function CalculatorPage() {
           ownerEmail,
           entryId: createdEntryId,
         });
+        notifyStatementParentContractSaved({
+          contractNumber: trimmedContractNumber,
+          clientName: trimmedClientName,
+          product,
+          ownerEmail,
+          entryId: createdEntryId,
+        });
       }
 
       let pdfAttachmentMessage = "";
+      let pdfAttachmentFailed = false;
       if (createdEntryId && ownerEmail && importedContractPdfFile) {
         try {
           await uploadContractPdfAttachmentWithAuth({
@@ -5735,6 +6130,7 @@ export default function CalculatorPage() {
               ? pdfUploadErr.message.trim()
               : "PDF se nepodařilo přiložit.";
           pdfAttachmentMessage = ` PDF se nepodařilo přiložit: ${message}`;
+          pdfAttachmentFailed = true;
           setPdfImportError(`PDF se nepodařilo přiložit: ${message}`);
         }
       }
@@ -5764,6 +6160,15 @@ export default function CalculatorPage() {
         clientName: clientName.trim() || null,
       });
       setContractSaveCelebrationKey((prev) => prev + 1);
+      if (!pdfAttachmentFailed) {
+        notifyStatementParentContractSaveCompleted({
+          contractNumber: trimmedContractNumber,
+          clientName: trimmedClientName,
+          product,
+          ownerEmail,
+          entryId: createdEntryId,
+        });
+      }
       resetContractFormAfterSave();
     } catch (error) {
       const errorMessage =
@@ -7408,12 +7813,17 @@ export default function CalculatorPage() {
     );
   
     return (
-    <AppLayout active="calc">
+    <AppLayout active="calc" embedded={statementEmbedMode}>
       <ContractSaveSuccessOverlay
         visible={Boolean(saveSuccessFlash)}
         celebrationKey={contractSaveCelebrationKey}
       />
-      {saving ? <CalculatorSaveLoader message={saveMessage} /> : null}
+      {saving ? (
+        <CalculatorSaveLoader
+          message={saveMessage}
+          hasPdfAttachment={savingIncludesPdfAttachment}
+        />
+      ) : null}
       <div className="w-full bg-[linear-gradient(180deg,#ffffff_0%,#fbfaff_48%,#ffffff_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
       <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">
       <ValidationErrorModal
@@ -7847,6 +8257,11 @@ export default function CalculatorPage() {
               pdfMatchedClientName={pdfMatchedClientName}
               filteredClientSuggestions={filteredClientSuggestions}
               clientSuggestionsOpen={clientSuggestionsOpen}
+              clientSuggestionHint={
+                statementClientNamePrefillActive
+                  ? "Možná shoda v databázi podle jména bez diakritiky, obráceného pořadí nebo drobného překlepu."
+                  : null
+              }
               contractSignedDate={contractSignedDate}
               contractNumber={contractNumber}
               contractNumberLiveCheckStatus={contractNumberLiveCheck.status}
@@ -7864,10 +8279,12 @@ export default function CalculatorPage() {
               contractDateWarningText={contractDateWarningText}
               showPolicyEndDateField={showPolicyEndDateField}
               policyEndDate={policyEndDate}
+              stornoDate={stornoDate}
               onClientNameChange={(value) => {
                 setClientName(value);
                 setPdfClientNameLoaded(false);
                 setPdfMatchedClientName(false);
+                setStatementClientNamePrefillActive(false);
                 setClientSuggestionsOpen(true);
               }}
               onClientNameFocus={() => setClientSuggestionsOpen(true)}
@@ -7878,6 +8295,7 @@ export default function CalculatorPage() {
                 setClientName(name);
                 setPdfClientNameLoaded(false);
                 setPdfMatchedClientName(false);
+                setStatementClientNamePrefillActive(false);
                 setMissingFields((prev) => prev.filter((key) => key !== "jméno klienta"));
                 setClientSuggestionsOpen(false);
               }}
@@ -7885,6 +8303,7 @@ export default function CalculatorPage() {
               onContractNumberChange={setContractNumber}
               onPolicyStartDateChange={setPolicyStartDate}
               onPolicyEndDateChange={setPolicyEndDate}
+              onStornoDateChange={setStornoDate}
             />
 
             <CalculatorPositionModeSection

@@ -1,4 +1,5 @@
 import { toDate } from "@/app/lib/formatters";
+import { productCoefficientValidityError } from "@/app/lib/productFormulas/coefficientSets";
 import type {
   CommissionMode,
   CommissionResultItemDTO,
@@ -34,6 +35,8 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "contractSignedDate",
   "policyStartDate",
   "policyEndDate",
+  "status",
+  "stornoDate",
   "durationYears",
   "durationMonths",
   "maxCizinKomplexVariant",
@@ -95,6 +98,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "neonDetail",
   "domexDetail",
   "maxdomovDetail",
+  "paid",
   "isRefresh",
   "refreshOriginalContractNumber",
   "refreshOriginalMissingInSystem",
@@ -115,6 +119,13 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "premiumIncreaseAmount",
   "premiumDecreaseAmount",
   "changeType",
+  "premiumUpdatedFromStatementAtMs",
+  "premiumUpdatedFromStatementChronologyMs",
+  "premiumUpdatedFromStatementId",
+  "createdFromCommissionStatement",
+  "createdFromCommissionStatementAtMs",
+  "createdFromCommissionStatementChronologyMs",
+  "createdFromCommissionStatementId",
 ]);
 
 const SUPPORTED_ENTRY_TYPES = new Set(["contract", "endorsement"] as const);
@@ -455,6 +466,21 @@ export const parseOptionalMaxCizinKomplexVariant = (
   return { ok: true, value: normalized };
 };
 
+const parseOptionalContractStatus = (
+  value: unknown,
+  field: string
+): ParseResult<"active" | "storno" | null> => {
+  if (value == null || value === "") return { ok: true, value: null };
+  if (typeof value !== "string") {
+    return { ok: false, error: `Pole ${field} musí být text nebo null.` };
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized !== "active" && normalized !== "storno") {
+    return { ok: false, error: `Pole ${field} má nepodporovanou hodnotu.` };
+  }
+  return { ok: true, value: normalized as "active" | "storno" };
+};
+
 const parseRequiredDateField = (
   value: unknown,
   field: string
@@ -472,6 +498,13 @@ const parseOptionalDateField = (
 ): ParseResult<Date | null> => {
   if (value == null || value === "") return { ok: true, value: null };
   return parseRequiredDateField(value, field);
+};
+
+const toIsoDay = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
 export const sanitizeDetailObject = (
@@ -600,6 +633,8 @@ export type NormalizedCreateEntryPayload = {
   contractSignedDate: Date;
   policyStartDate: Date;
   policyEndDate: Date | null;
+  status: "active" | "storno";
+  stornoDate: Date | null;
   durationYears: number | null;
   durationMonths: number | null;
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
@@ -692,6 +727,13 @@ export type NormalizedCreateEntryPayload = {
   premiumIncreaseAmount: number | null;
   premiumDecreaseAmount: number | null;
   changeType: "increase" | "decrease" | "same" | null;
+  premiumUpdatedFromStatementAtMs: number | null;
+  premiumUpdatedFromStatementChronologyMs: number | null;
+  premiumUpdatedFromStatementId: string | null;
+  createdFromCommissionStatement: boolean | null;
+  createdFromCommissionStatementAtMs: number | null;
+  createdFromCommissionStatementChronologyMs: number | null;
+  createdFromCommissionStatementId: string | null;
 };
 
 export const normalizeCreateEntryPayload = ({
@@ -725,6 +767,8 @@ export const normalizeCreateEntryPayload = ({
   if (!commissionModeParsed.ok) return commissionModeParsed;
   const freqParsed = parseFrequencyField(raw.frequencyRaw);
   if (!freqParsed.ok) return freqParsed;
+  const paidParsed = parseOptionalBoolean(raw.paid, "paid");
+  if (!paidParsed.ok) return paidParsed;
 
   const clientNameParsed = parseRequiredTrimmedText(raw.clientName, "clientName", 200);
   if (!clientNameParsed.ok) return clientNameParsed;
@@ -1052,6 +1096,10 @@ export const normalizeCreateEntryPayload = ({
   if (!policyStartParsed.ok) return policyStartParsed;
   const policyEndParsed = parseOptionalDateField(raw.policyEndDate, "policyEndDate");
   if (!policyEndParsed.ok) return policyEndParsed;
+  const statusParsed = parseOptionalContractStatus(raw.status, "status");
+  if (!statusParsed.ok) return statusParsed;
+  const stornoDateParsed = parseOptionalDateField(raw.stornoDate, "stornoDate");
+  if (!stornoDateParsed.ok) return stornoDateParsed;
   if (policyStartParsed.value.getTime() < signedDateParsed.value.getTime()) {
     return {
       ok: false,
@@ -1066,6 +1114,31 @@ export const normalizeCreateEntryPayload = ({
       ok: false,
       error: "Pole policyEndDate nemůže být dřív než policyStartDate.",
     };
+  }
+  const lifecycleStatus =
+    statusParsed.value ?? (stornoDateParsed.value ? "storno" : "active");
+  if (lifecycleStatus === "storno" && !stornoDateParsed.value) {
+    return { ok: false, error: "Storno musí mít vyplněné datum storna." };
+  }
+  if (lifecycleStatus !== "storno" && stornoDateParsed.value) {
+    return {
+      ok: false,
+      error: "Datum storna lze uložit jen ke smlouvě se stavem storno.",
+    };
+  }
+  if (
+    lifecycleStatus === "storno" &&
+    stornoDateParsed.value &&
+    stornoDateParsed.value.getTime() < policyStartParsed.value.getTime()
+  ) {
+    return { ok: false, error: "Datum storna nesmí být před datem počátku smlouvy." };
+  }
+  const coefficientValidityError = productCoefficientValidityError(
+    productParsed.value,
+    toIsoDay(signedDateParsed.value)
+  );
+  if (coefficientValidityError) {
+    return { ok: false, error: coefficientValidityError };
   }
 
   const inputAmountParsed = parseOptionalFiniteNumber(raw.inputAmount, "inputAmount");
@@ -1219,6 +1292,57 @@ export const normalizeCreateEntryPayload = ({
     "premiumDecreaseAmount"
   );
   if (!premiumDecreaseParsed.ok) return premiumDecreaseParsed;
+  const premiumUpdatedFromStatementAtParsed = parseOptionalFiniteNumber(
+    raw.premiumUpdatedFromStatementAtMs,
+    "premiumUpdatedFromStatementAtMs",
+    { max: 8_640_000_000_000_000 }
+  );
+  if (!premiumUpdatedFromStatementAtParsed.ok) return premiumUpdatedFromStatementAtParsed;
+  const premiumUpdatedFromStatementChronologyParsed = parseOptionalFiniteNumber(
+    raw.premiumUpdatedFromStatementChronologyMs,
+    "premiumUpdatedFromStatementChronologyMs",
+    { max: 8_640_000_000_000_000 }
+  );
+  if (!premiumUpdatedFromStatementChronologyParsed.ok) {
+    return premiumUpdatedFromStatementChronologyParsed;
+  }
+  const premiumUpdatedFromStatementIdParsed = parseOptionalTrimmedText(
+    raw.premiumUpdatedFromStatementId,
+    "premiumUpdatedFromStatementId",
+    160
+  );
+  if (!premiumUpdatedFromStatementIdParsed.ok) return premiumUpdatedFromStatementIdParsed;
+  const createdFromCommissionStatementParsed = parseOptionalBoolean(
+    raw.createdFromCommissionStatement,
+    "createdFromCommissionStatement"
+  );
+  if (!createdFromCommissionStatementParsed.ok) {
+    return createdFromCommissionStatementParsed;
+  }
+  const createdFromCommissionStatementAtParsed = parseOptionalFiniteNumber(
+    raw.createdFromCommissionStatementAtMs,
+    "createdFromCommissionStatementAtMs",
+    { max: 8_640_000_000_000_000 }
+  );
+  if (!createdFromCommissionStatementAtParsed.ok) {
+    return createdFromCommissionStatementAtParsed;
+  }
+  const createdFromCommissionStatementChronologyParsed = parseOptionalFiniteNumber(
+    raw.createdFromCommissionStatementChronologyMs,
+    "createdFromCommissionStatementChronologyMs",
+    { max: 8_640_000_000_000_000 }
+  );
+  if (!createdFromCommissionStatementChronologyParsed.ok) {
+    return createdFromCommissionStatementChronologyParsed;
+  }
+  const createdFromCommissionStatementIdParsed = parseOptionalTrimmedText(
+    raw.createdFromCommissionStatementId,
+    "createdFromCommissionStatementId",
+    160
+  );
+  if (!createdFromCommissionStatementIdParsed.ok) {
+    return createdFromCommissionStatementIdParsed;
+  }
 
   let changeType: "increase" | "decrease" | "same" | null = null;
   if (raw.changeType != null && raw.changeType !== "") {
@@ -1275,6 +1399,8 @@ export const normalizeCreateEntryPayload = ({
       contractSignedDate: signedDateParsed.value,
       policyStartDate: policyStartParsed.value,
       policyEndDate: policyEndParsed.value,
+      status: lifecycleStatus,
+      stornoDate: stornoDateParsed.value,
       durationYears: durationYearsParsed.value,
       durationMonths:
         productParsed.value === "maxcizinkomplex"
@@ -1368,7 +1494,7 @@ export const normalizeCreateEntryPayload = ({
       domexDetail: productParsed.value === "domex" ? domexDetailParsed.value : null,
       maxdomovDetail:
         productParsed.value === "maxdomov" ? maxdomovDetailParsed.value : null,
-      paid: false,
+      paid: paidParsed.value === true,
       managerEmailSnapshot: null,
       managerPositionSnapshot: null,
       managerModeSnapshot: null,
@@ -1403,6 +1529,26 @@ export const normalizeCreateEntryPayload = ({
       premiumDecreaseAmount:
         entryTypeParsed.value === "endorsement" ? premiumDecreaseParsed.value : null,
       changeType: entryTypeParsed.value === "endorsement" ? changeType : null,
+      premiumUpdatedFromStatementAtMs:
+        premiumUpdatedFromStatementAtParsed.value == null
+          ? null
+          : Math.round(premiumUpdatedFromStatementAtParsed.value),
+      premiumUpdatedFromStatementChronologyMs:
+        premiumUpdatedFromStatementChronologyParsed.value == null
+          ? null
+          : Math.round(premiumUpdatedFromStatementChronologyParsed.value),
+      premiumUpdatedFromStatementId: premiumUpdatedFromStatementIdParsed.value,
+      createdFromCommissionStatement:
+        createdFromCommissionStatementParsed.value === true ? true : null,
+      createdFromCommissionStatementAtMs:
+        createdFromCommissionStatementAtParsed.value == null
+          ? null
+          : Math.round(createdFromCommissionStatementAtParsed.value),
+      createdFromCommissionStatementChronologyMs:
+        createdFromCommissionStatementChronologyParsed.value == null
+          ? null
+          : Math.round(createdFromCommissionStatementChronologyParsed.value),
+      createdFromCommissionStatementId: createdFromCommissionStatementIdParsed.value,
     },
   };
 };

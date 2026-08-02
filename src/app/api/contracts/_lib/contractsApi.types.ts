@@ -129,6 +129,10 @@ export type ContractDoc = {
   premiumUpdatedFromStatementAtMs?: number | null;
   premiumUpdatedFromStatementChronologyMs?: number | null;
   premiumUpdatedFromStatementId?: string | null;
+  createdFromCommissionStatement?: boolean | null;
+  createdFromCommissionStatementAtMs?: number | null;
+  createdFromCommissionStatementChronologyMs?: number | null;
+  createdFromCommissionStatementId?: string | null;
   comfortPayment?: number | null;
   frequencyRaw?: PaymentFrequency | null;
   durationYears?: number | null;

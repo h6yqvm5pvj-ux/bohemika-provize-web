@@ -1764,6 +1764,16 @@ export default function ContractDetailPage() {
     Number.isFinite(signedPremiumAmount) && signedPremiumAmount > 0
       ? Math.round(signedPremiumAmount * paymentsPerYear(signedPremiumFrequency) * 100) / 100
       : null;
+  const statementInitialAnnualPremiumRaw = Number(contract?.initialCommissionBase?.annualPremium);
+  const statementInitialAnnualPremium =
+    Number.isFinite(statementInitialAnnualPremiumRaw) && statementInitialAnnualPremiumRaw > 0
+      ? Math.round(statementInitialAnnualPremiumRaw * 100) / 100
+      : null;
+  const preferStatementInitialPremium =
+    isAutoCommissionProduct &&
+    (contract?.createdFromCommissionStatement === true ||
+      Boolean(String(contract?.createdFromCommissionStatementId ?? "").trim()) ||
+      contract?.commissionBaseSource === "commission_statement_auto_initial");
   const contractSignedDateIso = toDateInputValue(
     contract?.contractSignedDate ?? contract?.createdAt
   );
@@ -5916,6 +5926,8 @@ export default function ContractDetailPage() {
                 contractNumber={contract?.contractNumber ?? null}
                 policyStartDate={contract?.policyStartDate ?? null}
                 signedAnnualPremium={signedAnnualPremium}
+                statementInitialAnnualPremium={statementInitialAnnualPremium}
+                preferStatementInitialPremium={preferStatementInitialPremium}
                 systemAnnualPremium={premium * paymentsPerYear(freq)}
                 paymentFrequency={freq}
                 contractPaymentFrequency={freq}

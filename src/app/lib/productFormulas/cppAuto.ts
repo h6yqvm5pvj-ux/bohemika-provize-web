@@ -8,7 +8,7 @@ import { normalizeIsoDay, periodsPerYear } from "./shared";
 
 // ---------- ČPP Auto ----------
 
-export const CPP_AUTO_HISTORICAL_VALID_FROM = "2020-08-01";
+export const CPP_AUTO_HISTORICAL_VALID_FROM = "2018-01-01";
 export const CPP_AUTO_CURRENT_VALID_FROM = "2026-04-01";
 
 export function isCppAutoHistoricalPeriod(

@@ -66,6 +66,7 @@ interface AppNavigationProps {
   timelineSetupGateActive: boolean;
   mobileMenuOpen: boolean;
   shellFontClass: string;
+  embedded?: boolean;
   onToggleMobileMenu: () => void;
   onCloseMobileMenu: () => void;
   onLogout: () => void;
@@ -274,6 +275,7 @@ export function AppNavigation({
   timelineSetupGateActive,
   mobileMenuOpen,
   shellFontClass,
+  embedded = false,
   onToggleMobileMenu,
   onCloseMobileMenu,
   onLogout,
@@ -290,6 +292,14 @@ export function AppNavigation({
   const canAccessPreparationSections =
     canAccessPreparationSectionsForUser(userEmail);
   const BlockedPreparationIcon = blockedPreparationItem?.icon ?? ReceiptText;
+
+  if (embedded) {
+    return (
+      <div className={`flex min-w-0 flex-1 flex-col ${shellFontClass}`}>
+        {children}
+      </div>
+    );
+  }
 
   return (
     <>

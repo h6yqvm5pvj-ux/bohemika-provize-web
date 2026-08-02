@@ -6,6 +6,7 @@ import { validateContractCoreInvariants } from "./contractsApi.validation";
 const baseContract: ContractDoc = {
   clientName: "Jan Novak",
   contractNumber: "ABC123",
+  productKey: "neon",
   contractSignedDate: new Date("2026-01-01T00:00:00.000Z"),
   policyStartDate: new Date("2026-02-01T00:00:00.000Z"),
   status: "active",
@@ -43,6 +44,19 @@ describe("contracts API validation", () => {
     expect(result).toEqual({
       ok: false,
       error: "Datum storna lze uložit jen ke smlouvě se stavem storno.",
+    });
+  });
+
+  it("rejects core updates before the first known product coefficients", () => {
+    const result = validateContractCoreInvariants(baseContract, {
+      contractSignedDate: new Date("2019-09-30T00:00:00.000Z"),
+      policyStartDate: new Date("2019-10-01T00:00:00.000Z"),
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "Smlouvu nelze uložit, protože pro datum sjednání 30. 09. 2019 nemáme v systému bohemka.app koeficienty pro tento produkt. Nejstarší dostupné koeficienty platí od 01. 10. 2019. Tohle pravidlo má zabránit uložení smlouvy se špatně zadaným datem sjednání.",
     });
   });
 });

@@ -26,8 +26,14 @@ export function StatementPairingLoader({
 }: StatementPairingLoaderProps) {
   const [stageIndex, setStageIndex] = useState(0);
   const isComplete = stats.total > 0 && stats.completed >= stats.total;
-  const visibleProgress = Math.max(0, Math.min(100, stats.progress));
   const activeCount = stats.loading + stats.pending;
+  const rawProgress = Math.max(0, Math.min(100, stats.progress));
+  const hasActiveWork = hasUser && !isComplete && stats.total > 0 && activeCount > 0;
+  const visibleProgress = hasActiveWork && rawProgress === 0 ? 4 : rawProgress;
+  const completedText =
+    hasActiveWork && stats.completed === 0
+      ? "První dávka běží"
+      : `${stats.completed}/${stats.total} hotovo`;
   const pileSheetCount = Math.max(4, Math.min(12, Math.ceil(visibleProgress / 10) + 2));
 
   useEffect(() => {
@@ -89,7 +95,7 @@ export function StatementPairingLoader({
               {stageText}
             </h1>
             <div className="mt-3 flex flex-wrap gap-2 text-sm font-semibold text-black/55">
-              <span>{stats.completed}/{stats.total} hotovo</span>
+              <span>{completedText}</span>
               <span aria-hidden="true">·</span>
               <span>{activeCount > 0 ? `Páruji ${activeCount} smluv` : "Dokončuji kontrolu"}</span>
             </div>
