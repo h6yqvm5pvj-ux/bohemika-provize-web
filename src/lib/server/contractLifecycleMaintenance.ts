@@ -1,6 +1,7 @@
 import { FieldValue, type DocumentData, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 
 import { contractLifecycleStatus } from "../../app/lib/contractLifecycle";
+import { contractListIndexFieldsForContract } from "../../app/api/contracts/_lib/contractsApi.listFilters";
 import { toDate } from "../../app/lib/formatters";
 import { adminDb } from "./firebaseAdmin";
 
@@ -14,6 +15,8 @@ type ExpiredContractUpdate = {
   contractNumber: string | null;
   policyEndDate: string | null;
   ref: FirebaseFirestore.DocumentReference<DocumentData>;
+  indexFields: ReturnType<typeof contractListIndexFieldsForContract>;
+  paid: boolean;
 };
 
 export type MarkExpiredPolicyEndContractsOptions = {
@@ -92,6 +95,9 @@ const commitUpdates = async (updates: ExpiredContractUpdate[]): Promise<number> 
   for (const update of updates) {
     batch.update(update.ref, {
       status: DOZITA_STATUS_VALUE,
+      userEmail: update.ownerEmail,
+      paid: update.paid,
+      ...update.indexFields,
       updatedAt: FieldValue.serverTimestamp(),
     });
     inBatch += 1;
@@ -200,6 +206,14 @@ export async function markExpiredPolicyEndContractsDozita(
           contractNumber: normalizeContractNumber(data.contractNumber),
           policyEndDate: isoDayFromUnknown(data.policyEndDate),
           ref: doc.ref,
+          indexFields: contractListIndexFieldsForContract(
+            {
+              ...data,
+              status: DOZITA_STATUS_VALUE,
+            },
+            now
+          ),
+          paid: data.paid === true,
         });
       }
 

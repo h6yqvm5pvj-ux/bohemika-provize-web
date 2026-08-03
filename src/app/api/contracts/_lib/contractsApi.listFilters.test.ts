@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { ContractDoc, ContractListFilters } from "./contractsApi.types";
 import {
+  buildContractListIndexedQueryClauses,
+  contractListIndexFieldsForContract,
+  contractListProductCategoryForProduct,
   contractMatchesListFilters,
   contractMatchesListSearch,
   contractMatchesRefreshFilter,
@@ -13,6 +16,7 @@ import {
   normalizeSearchValue,
   parseContractListFilters,
   productMatchesListCategory,
+  productMatchesListInstitution,
 } from "./contractsApi.listFilters";
 
 const emptyFilters = (): ContractListFilters =>
@@ -105,11 +109,79 @@ describe("contracts API list filters", () => {
       true
     );
     expect(
+      productMatchesListCategory("cppsimplex", new Set(["property"]))
+    ).toBe(false);
+    expect(
+      productMatchesListCategory("cppsimplex", new Set(["business"]))
+    ).toBe(true);
+    expect(
       productMatchesListCategory("maxcizinkomplex", new Set(["travel"]))
     ).toBe(false);
     expect(
       productMatchesListCategory("maxcizinkomplex", new Set(["foreigners"]))
     ).toBe(true);
+  });
+
+  it("derives stored index fields from the same category rules as list filters", () => {
+    expect(contractListProductCategoryForProduct("cppsimplex")).toBe("business");
+    expect(contractListProductCategoryForProduct("zamex")).toBeNull();
+    expect(productMatchesListInstitution("neon", new Set(["cpp"]))).toBe(true);
+
+    expect(
+      contractListIndexFieldsForContract(
+        contract({
+          productKey: "cppsimplex",
+          status: "active",
+          policyEndDate: new Date("2026-07-31T00:00:00.000Z"),
+        }),
+        new Date("2026-08-03T00:00:00.000Z")
+      )
+    ).toEqual({
+      productCategory: "business",
+      institutionId: "cpp",
+      lifecycleStatus: "dozita",
+    });
+
+    expect(
+      contractListIndexFieldsForContract(
+        contract({ productKey: "neon", status: "storno" }),
+        new Date("2026-08-03T00:00:00.000Z")
+      ).lifecycleStatus
+    ).toBe("storno");
+  });
+
+  it("builds indexed query clauses with at most one multi-value in filter", () => {
+    const filters = parseContractListFilters(
+      new URLSearchParams({
+        categories: "life,auto",
+        institutions: "cpp,allianz",
+        stornoOnly: "1",
+        maturedOnly: "1",
+      })
+    );
+
+    expect(buildContractListIndexedQueryClauses(filters, { allowIn: true })).toEqual([
+      { field: "lifecycleStatus", op: "in", values: ["storno", "dozita"] },
+    ]);
+
+    expect(buildContractListIndexedQueryClauses(filters, { allowIn: false })).toEqual([]);
+
+    const singleValueFilters = parseContractListFilters(
+      new URLSearchParams({
+        categories: "auto",
+        institutions: "allianz",
+        unpaidOnly: "1",
+      })
+    );
+
+    expect(
+      buildContractListIndexedQueryClauses(singleValueFilters, { allowIn: false })
+    ).toEqual([
+      { field: "lifecycleStatus", op: "==", value: "active" },
+      { field: "paid", op: "==", value: false },
+      { field: "productCategory", op: "==", value: "auto" },
+      { field: "institutionId", op: "==", value: "allianz" },
+    ]);
   });
 
   it("matches full list filters for unpaid, refresh and product category", () => {

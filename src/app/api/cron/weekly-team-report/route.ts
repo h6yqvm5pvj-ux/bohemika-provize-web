@@ -25,7 +25,12 @@ const INVALID_TOKEN_CODES = new Set([
   "messaging/registration-token-not-registered",
   "messaging/invalid-registration-token",
 ]);
-const BUSINESS_PRODUCTS = new Set<Product>(["kooppmop", "cppPPRs", "cppPPRbez"]);
+const BUSINESS_PRODUCTS = new Set<Product>([
+  "cppsimplex",
+  "kooppmop",
+  "cppPPRs",
+  "cppPPRbez",
+]);
 const WEEKLY_REPORT_CATEGORIES = [
   "life",
   "auto",

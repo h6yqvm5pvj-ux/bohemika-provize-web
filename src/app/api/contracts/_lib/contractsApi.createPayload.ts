@@ -1,4 +1,5 @@
 import { toDate } from "@/app/lib/formatters";
+import type { ProductInstitutionId } from "@/app/lib/productCatalog";
 import { productCoefficientValidityError } from "@/app/lib/productFormulas/coefficientSets";
 import type {
   CommissionMode,
@@ -13,6 +14,7 @@ import {
   isReasonableContractDate,
   isValidContractNumber,
 } from "./contractsApi.validation";
+import type { ContractListProductCategory } from "./contractsApi.types";
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -703,6 +705,9 @@ export type NormalizedCreateEntryPayload = {
   domexDetail: Record<string, unknown> | null;
   maxdomovDetail: Record<string, unknown> | null;
   paid: boolean;
+  productCategory: ContractListProductCategory | null;
+  institutionId: ProductInstitutionId | null;
+  lifecycleStatus: "active" | "storno" | "dozita";
   managerEmailSnapshot: string | null;
   managerPositionSnapshot: Position | null;
   managerModeSnapshot: CommissionMode | null;
@@ -1499,6 +1504,9 @@ export const normalizeCreateEntryPayload = ({
       maxdomovDetail:
         productParsed.value === "maxdomov" ? maxdomovDetailParsed.value : null,
       paid: paidParsed.value === true,
+      productCategory: null,
+      institutionId: null,
+      lifecycleStatus: lifecycleStatus === "storno" ? "storno" : "active",
       managerEmailSnapshot: null,
       managerPositionSnapshot: null,
       managerModeSnapshot: null,

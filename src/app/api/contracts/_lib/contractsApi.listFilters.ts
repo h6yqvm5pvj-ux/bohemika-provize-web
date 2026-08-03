@@ -1,4 +1,5 @@
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
+import type { ContractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
   contractMatchesCommissionAuditFilter,
   isCommissionAuditFilterActive,
@@ -32,6 +33,7 @@ const uniqueProducts = (products: Product[]): Product[] =>
   Array.from(new Set(products));
 
 const CONTRACT_LIST_BUSINESS_PRODUCTS: Product[] = [
+  "cppsimplex",
   "kooppmop",
   "cppPPRs",
   "cppPPRbez",
@@ -74,6 +76,23 @@ const CONTRACT_LIST_INSTITUTION_SET = new Set<ProductInstitutionId>(
   Object.keys(INSTITUTION_CATALOG) as ProductInstitutionId[]
 );
 const ANNIVERSARY_WINDOW_DAYS = 90;
+
+export type ContractListIndexedQueryClause =
+  | {
+      field: "productCategory" | "institutionId" | "lifecycleStatus";
+      op: "==";
+      value: string;
+    }
+  | {
+      field: "productCategory" | "institutionId" | "lifecycleStatus";
+      op: "in";
+      values: string[];
+    }
+  | {
+      field: "paid";
+      op: "==";
+      value: boolean;
+    };
 
 const stripDiacritics = (value: string): string =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -175,6 +194,115 @@ export const hasContractListFilters = (filters: ContractListFilters): boolean =>
 
 export const contractSortDate = (data: ContractDoc): Date | null =>
   toDate(data.contractSignedDate) ?? toDate(data.createdAt);
+
+export function contractListProductCategoryForProduct(
+  product: Product | undefined | null
+): ContractListProductCategory | null {
+  if (!product) return null;
+  for (const category of CONTRACT_LIST_PRODUCT_CATEGORY_SET) {
+    if (CONTRACT_LIST_PRODUCT_CATEGORY_MAP[category].includes(product)) {
+      return category;
+    }
+  }
+  return null;
+}
+
+export function contractListIndexFieldsForContract(
+  contract: Pick<
+    ContractDoc,
+    | "productKey"
+    | "status"
+    | "stornoDate"
+    | "policyStartDate"
+    | "policyEndDate"
+    | "durationYears"
+    | "durationMonths"
+  >,
+  now?: Date
+): {
+  productCategory: ContractListProductCategory | null;
+  institutionId: ProductInstitutionId | null;
+  lifecycleStatus: ContractLifecycleStatus;
+} {
+  const product = contract.productKey as Product | undefined;
+  return {
+    productCategory: contractListProductCategoryForProduct(product),
+    institutionId: productInstitutionId(product),
+    lifecycleStatus: contractLifecycleStatus(contract, now),
+  };
+}
+
+const selectedLifecycleStatusesForFilters = (
+  filters: ContractListFilters
+): ContractLifecycleStatus[] => {
+  if (filters.unpaidOnly) return ["active"];
+  const statuses: ContractLifecycleStatus[] = [];
+  if (filters.stornoOnly) statuses.push("storno");
+  if (filters.maturedOnly) statuses.push("dozita");
+  return statuses;
+};
+
+const pushStringClause = ({
+  clauses,
+  field,
+  values,
+  allowIn,
+  multiValueUsed,
+}: {
+  clauses: ContractListIndexedQueryClause[];
+  field: "productCategory" | "institutionId" | "lifecycleStatus";
+  values: string[];
+  allowIn: boolean;
+  multiValueUsed: boolean;
+}): boolean => {
+  const uniqueValues = Array.from(new Set(values.filter(Boolean)));
+  if (uniqueValues.length === 0) return multiValueUsed;
+  if (uniqueValues.length === 1) {
+    clauses.push({ field, op: "==", value: uniqueValues[0]! });
+    return multiValueUsed;
+  }
+  if (!allowIn || multiValueUsed) return multiValueUsed;
+  clauses.push({ field, op: "in", values: uniqueValues });
+  return true;
+};
+
+export function buildContractListIndexedQueryClauses(
+  filters: ContractListFilters,
+  { allowIn }: { allowIn: boolean }
+): ContractListIndexedQueryClause[] {
+  const clauses: ContractListIndexedQueryClause[] = [];
+  let multiValueUsed = false;
+
+  multiValueUsed = pushStringClause({
+    clauses,
+    field: "lifecycleStatus",
+    values: selectedLifecycleStatusesForFilters(filters),
+    allowIn,
+    multiValueUsed,
+  });
+
+  if (filters.unpaidOnly) {
+    clauses.push({ field: "paid", op: "==", value: false });
+  }
+
+  multiValueUsed = pushStringClause({
+    clauses,
+    field: "productCategory",
+    values: Array.from(filters.categories),
+    allowIn,
+    multiValueUsed,
+  });
+
+  pushStringClause({
+    clauses,
+    field: "institutionId",
+    values: Array.from(filters.institutions),
+    allowIn,
+    multiValueUsed,
+  });
+
+  return clauses;
+}
 
 export function productMatchesListCategory(
   product: Product | undefined,

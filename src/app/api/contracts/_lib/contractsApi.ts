@@ -132,11 +132,14 @@ import {
   validateContractCoreInvariants,
 } from "./contractsApi.validation";
 import {
+  buildContractListIndexedQueryClauses,
+  contractListIndexFieldsForContract,
   contractMatchesListFilters,
   contractSortDate,
   hasContractListClientFilters,
   hasContractListFilters,
   parseContractListFilters,
+  type ContractListIndexedQueryClause,
 } from "./contractsApi.listFilters";
 import {
   DOMEX_DETAIL_ALLOWED_KEYS,
@@ -520,6 +523,23 @@ const cursorDocIdForOwner = (
   return docId || null;
 };
 
+const applyContractListIndexedQueryClauses = <
+  T extends FirebaseFirestore.Query<FirebaseFirestore.DocumentData>,
+>(
+  query: T,
+  clauses: ContractListIndexedQueryClause[]
+): FirebaseFirestore.Query<FirebaseFirestore.DocumentData> => {
+  return clauses.reduce<FirebaseFirestore.Query<FirebaseFirestore.DocumentData>>(
+    (current, clause) => {
+      if (clause.op === "in") {
+        return current.where(clause.field, "in", clause.values);
+      }
+      return current.where(clause.field, "==", clause.value);
+    },
+    query
+  );
+};
+
 const safeDecodeCursorKey = (value: string): string | null => {
   try {
     return decodeURIComponent(value);
@@ -685,6 +705,99 @@ const toContractListResponseItem = ({
       managerOverrides: Array.isArray(data.managerOverrides)
         ? data.managerOverrides
         : [],
+    };
+  }
+
+  if (shape === "contractList") {
+    const normalizedOwner = normalizeEmail(ownerEmail);
+    const items = Array.isArray(data.items)
+      ? data.items
+      : Array.isArray(data.result?.items)
+      ? data.result.items
+      : [];
+    const total =
+      typeof data.total === "number"
+        ? data.total
+        : typeof data.result?.total === "number"
+        ? data.result.total
+        : undefined;
+    const slimRefreshCommissionBase = data.refreshCommissionBase
+      ? {
+          calculationMonthlyPremium:
+            data.refreshCommissionBase.calculationMonthlyPremium ?? null,
+          calculationAnnualPremium:
+            data.refreshCommissionBase.calculationAnnualPremium ?? null,
+        }
+      : null;
+    const indexFields = contractListIndexFieldsForContract(data);
+
+    return {
+      id: docId,
+      adviserEmail: normalizedOwner,
+      adviserName: normalizedAdviserName,
+      userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      effectivePosition: timelinePosition ?? storedPosition ?? null,
+      timelinePosition,
+      ownerCurrentPosition: ownerContext?.position ?? null,
+      paid: data.paid ?? null,
+      status: data.status ?? null,
+      stornoDate: toMillis((data as any).stornoDate),
+      isRefresh: data.isRefresh ?? null,
+      refreshOriginalContractNumber: data.refreshOriginalContractNumber ?? null,
+      refreshCommissionBase: slimRefreshCommissionBase,
+      entryType: data.entryType ?? null,
+      rootContractEntryId: data.rootContractEntryId ?? null,
+      parentContractEntryId: data.parentContractEntryId ?? null,
+      productKey: data.productKey,
+      productCategory:
+        typeof data.productCategory === "string"
+          ? data.productCategory
+          : indexFields.productCategory,
+      institutionId:
+        typeof data.institutionId === "string"
+          ? data.institutionId
+          : indexFields.institutionId,
+      lifecycleStatus:
+        typeof data.lifecycleStatus === "string"
+          ? data.lifecycleStatus
+          : indexFields.lifecycleStatus,
+      position: data.position ?? null,
+      commissionMode: data.commissionMode ?? null,
+      inputAmount: data.inputAmount,
+      calculationInputAmount: data.calculationInputAmount ?? null,
+      effectiveInputAmount: data.effectiveInputAmount ?? null,
+      previousInputAmount: data.previousInputAmount ?? null,
+      newInputAmount: data.newInputAmount ?? null,
+      premiumDelta: data.premiumDelta ?? null,
+      comfortPayment: data.comfortPayment ?? null,
+      frequencyRaw: data.frequencyRaw ?? null,
+      durationYears: data.durationYears ?? null,
+      durationMonths: data.durationMonths ?? null,
+      maxCizinKomplexVariant: data.maxCizinKomplexVariant ?? null,
+      items,
+      total,
+      commissionPayouts: Array.isArray(data.commissionPayouts)
+        ? data.commissionPayouts
+        : [],
+      managerEmailSnapshot: data.managerEmailSnapshot ?? null,
+      managerPositionSnapshot: data.managerPositionSnapshot ?? null,
+      managerModeSnapshot: data.managerModeSnapshot ?? null,
+      managerOverrides: Array.isArray(data.managerOverrides)
+        ? data.managerOverrides.map((override) => ({
+            email: normalizeEmail(override?.email) || null,
+            position: normalizePositionValue(override?.position),
+            commissionMode:
+              typeof override?.commissionMode === "string"
+                ? override.commissionMode
+                : null,
+          }))
+        : [],
+      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      contractNumber: data.contractNumber ?? null,
+      contractSignedDate: toMillis(data.contractSignedDate),
+      policyStartDate: toMillis((data as any).policyStartDate),
+      policyEndDate: toMillis((data as any).policyEndDate),
+      createdAt: toMillis(data.createdAt),
     };
   }
 
@@ -3380,6 +3493,9 @@ async function fetchContractsForOwners(
   const shouldUseCollectionGroup = owners.length > 1;
   const cursorTs = cursor?.ts ?? null;
   const cursorKey = cursor?.key ?? null;
+  const singleOwnerIndexedClauses = filters
+    ? buildContractListIndexedQueryClauses(filters, { allowIn: true })
+    : [];
 
   const shouldIncludeByCursor = (
     data: ContractDoc,
@@ -3457,13 +3573,17 @@ async function fetchContractsForOwners(
       );
     };
 
-    if (!clientFiltersActive) {
+    if (!clientFiltersActive || singleOwnerIndexedClauses.length > 0) {
       try {
         const entriesRef = db.collection("users").doc(ownerEmail).collection("entries");
         const signedFrom = filters?.signedFrom ?? null;
         const cursorDocId = cursorDocIdForOwner(cursor, ownerEmail);
+        const signedBase = applyContractListIndexedQueryClauses(
+          entriesRef,
+          singleOwnerIndexedClauses
+        );
 
-        let qBySigned = entriesRef
+        let qBySigned = signedBase
           .orderBy("contractSignedDate", "desc")
           .orderBy(FieldPath.documentId(), "desc");
         let qByCreated = entriesRef
@@ -3553,13 +3673,22 @@ async function fetchContractsForOwners(
       const chunk = owners.slice(i, i + 10);
       try {
         const signedFrom = filters?.signedFrom ?? null;
-        let qBySigned = db
-          .collectionGroup("entries")
-          .where("userEmail", "in", chunk)
+        const ownerOperator = chunk.length === 1 ? "==" : "in";
+        const ownerValue = chunk.length === 1 ? chunk[0]! : chunk;
+        const indexedClauses = filters
+          ? buildContractListIndexedQueryClauses(filters, {
+              allowIn: chunk.length === 1,
+            })
+          : [];
+        const signedBase = applyContractListIndexedQueryClauses(
+          db.collectionGroup("entries").where("userEmail", ownerOperator, ownerValue),
+          indexedClauses
+        );
+        let qBySigned = signedBase
           .orderBy("contractSignedDate", "desc");
         let qByCreated = db
           .collectionGroup("entries")
-          .where("userEmail", "in", chunk)
+          .where("userEmail", ownerOperator, ownerValue)
           .orderBy("createdAt", "desc");
         if (signedFrom) {
           qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
@@ -3620,15 +3749,17 @@ async function fetchContractsForOwners(
         ownerChunk.map(async (owner) => {
           try {
             const signedFrom = filters?.signedFrom ?? null;
-            let qBySigned = db
-              .collection("users")
-              .doc(owner)
-              .collection("entries")
+            const entriesRef = db.collection("users").doc(owner).collection("entries");
+            const indexedClauses = filters
+              ? buildContractListIndexedQueryClauses(filters, { allowIn: true })
+              : [];
+            const signedBase = applyContractListIndexedQueryClauses(
+              entriesRef,
+              indexedClauses
+            );
+            let qBySigned = signedBase
               .orderBy("contractSignedDate", "desc");
-            let qByCreated = db
-              .collection("users")
-              .doc(owner)
-              .collection("entries")
+            let qByCreated = entriesRef
               .orderBy("createdAt", "desc");
             if (signedFrom) {
               qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
@@ -4173,6 +4304,8 @@ export async function handleContractsGet(
   const responseShape: ContractListResponseShape =
     shapeParam === "clientNames"
       ? "clientNames"
+      : shapeParam === "contractList"
+      ? "contractList"
       : shapeParam === "home"
       ? "home"
       : shapeParam === "cashflow"
@@ -5371,9 +5504,18 @@ export async function handleContractsCreate(req: NextRequest) {
       managerChain: trustedManagerChain,
       managerOverrides: trustedManagerOverrides,
     });
+    const trustedListIndexFields = contractListIndexFieldsForContract({
+      productKey: normalizedEntry.payload.productKey,
+      status: normalizedEntry.payload.status,
+      policyStartDate: normalizedEntry.payload.policyStartDate,
+      policyEndDate: normalizedEntry.payload.policyEndDate,
+      durationYears: normalizedEntry.payload.durationYears,
+      durationMonths: normalizedEntry.payload.durationMonths,
+    });
 
     const trustedPayload: NormalizedCreateEntryPayload = {
       ...normalizedEntry.payload,
+      ...trustedListIndexFields,
       calculationInputAmount: commissionInputAmount,
       refreshCommissionBase,
       position: trustedPosition,
@@ -5601,6 +5743,13 @@ export async function handleContractsCreate(req: NextRequest) {
                       status: "storno",
                       stornoDate: trustedPayload.policyStartDate,
                     }),
+                ...contractListIndexFieldsForContract({
+                  ...refreshOriginalData,
+                  status: "storno",
+                  stornoDate: trustedPayload.policyStartDate,
+                }),
+                paid: refreshOriginalData.paid === true,
+                userEmail: normalizeEmail(refreshOriginalData.userEmail) || targetOwnerEmail,
                 refreshReplacedByEntryId: createdRef.id,
                 refreshReplacedByOwnerEmail: targetOwnerEmail,
                 refreshReplacedBySignedDate: trustedPayload.contractSignedDate,
@@ -5835,7 +5984,16 @@ export async function handleContractsPatch(
           clientName: data.clientName,
           contractSignedDate: data.contractSignedDate,
         });
-        batch.set(entryRef, { duplicateLookupKey }, { merge: true });
+        batch.set(
+          entryRef,
+          {
+            duplicateLookupKey,
+            userEmail: normalizeEmail(data.userEmail) || ownerEmail,
+            paid: data.paid === true,
+            ...contractListIndexFieldsForContract(data),
+          },
+          { merge: true }
+        );
         applyContractRefToBatch({
           batch,
           ownerEmail,
@@ -6088,9 +6246,18 @@ export async function handleContractsPatch(
       for (const ref of filteredTargetRefs.values()) {
         const currentSnap = await ref.get();
         const currentData = (currentSnap.data() ?? {}) as ContractDoc;
+        const finalUpdatePayload = {
+          ...updatePayload,
+          paid: currentData.paid === true,
+          userEmail: normalizeEmail(currentData.userEmail) || ownerEmail,
+          ...contractListIndexFieldsForContract({
+            ...currentData,
+            ...updatePayload,
+          }),
+        };
         const lifecycleValidation = validateContractCoreInvariants(
           currentData,
-          updatePayload
+          finalUpdatePayload
         );
         if (!lifecycleValidation.ok) {
           return NextResponse.json(
@@ -6101,7 +6268,7 @@ export async function handleContractsPatch(
             { status: 400 }
           );
         }
-        await ref.set(updatePayload, { merge: true });
+        await ref.set(finalUpdatePayload, { merge: true });
         updated += 1;
       }
 
@@ -6295,6 +6462,15 @@ export async function handleContractsPatch(
           : currentData.contractSignedDate,
       });
       updatePayload.duplicateLookupKey = finalDuplicateLookupKey;
+      updatePayload.userEmail = normalizeEmail(currentData.userEmail) || ownerEmail;
+      updatePayload.paid = currentData.paid === true;
+      Object.assign(
+        updatePayload,
+        contractListIndexFieldsForContract({
+          ...currentData,
+          ...updatePayload,
+        })
+      );
 
       batch.update(ref, updatePayload);
       const hasContractNumberUpdate = Object.prototype.hasOwnProperty.call(
@@ -6358,12 +6534,24 @@ export async function handleContractsPatch(
     if (!owner || !entryId) continue;
     if (!allowedOwners.has(owner)) continue;
 
-    await adminDb
+    const entryRef = adminDb
       ?.collection("users")
       .doc(owner)
       .collection("entries")
-      .doc(entryId)
-      .set({ paid }, { merge: true });
+      .doc(entryId);
+    if (!entryRef) continue;
+    const entrySnap = await entryRef?.get();
+    if (!entrySnap?.exists) continue;
+    const currentData = (entrySnap?.data() ?? {}) as ContractDoc;
+
+    await entryRef.set(
+      {
+        paid,
+        userEmail: normalizeEmail(currentData.userEmail) || owner,
+        ...contractListIndexFieldsForContract(currentData),
+      },
+      { merge: true }
+    );
     updated += 1;
     updatedRefs.push({ owner, entryId });
   }

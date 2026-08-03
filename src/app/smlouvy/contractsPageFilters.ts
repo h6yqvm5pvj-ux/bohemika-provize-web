@@ -21,6 +21,7 @@ const uniqueProducts = (products: Product[]): Product[] =>
   Array.from(new Set(products));
 
 export const CONTRACT_BUSINESS_PRODUCTS: Product[] = [
+  "cppsimplex",
   "kooppmop",
   "cppPPRs",
   "cppPPRbez",

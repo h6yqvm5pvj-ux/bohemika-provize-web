@@ -668,6 +668,7 @@ function ContractsPageContent() {
         throw new Error("Nejsi přihlášený.");
       }
       const params = new URLSearchParams({ scope });
+      params.set("shape", "contractList");
       if (cursor) params.set("cursor", cursor);
       if (includeTeam) params.set("includeTeam", "1");
       if (filters) {

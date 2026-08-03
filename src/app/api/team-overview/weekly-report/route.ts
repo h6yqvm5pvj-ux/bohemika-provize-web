@@ -34,7 +34,12 @@ const WEEKLY_REPORT_DETAIL_CATEGORY_KEYS = [
   "foreigners",
   "travel",
 ] as const;
-const BUSINESS_PRODUCTS = new Set<Product>(["kooppmop", "cppPPRs", "cppPPRbez"]);
+const BUSINESS_PRODUCTS = new Set<Product>([
+  "cppsimplex",
+  "kooppmop",
+  "cppPPRs",
+  "cppPPRbez",
+]);
 
 type WeeklyReportCategory = (typeof WEEKLY_REPORT_CATEGORY_KEYS)[number];
 type WeeklyReportDetailCategory = (typeof WEEKLY_REPORT_DETAIL_CATEGORY_KEYS)[number];
@@ -280,8 +285,10 @@ const shouldHydrateDetailedCategories = (
   report: WeeklyReport
 ): boolean => {
   const aggregateNonLife = report.categories.nonLife;
-  if (!hasMetrics(aggregateNonLife)) return false;
   const detailedNonLife = detailedNonLifeMetrics(report.categories);
+  if (!hasMetrics(aggregateNonLife)) {
+    return hasMetrics(detailedNonLife);
+  }
   return (
     detailedNonLife.contracts < aggregateNonLife.contracts ||
     (aggregateNonLife.annualPremium > 0 &&

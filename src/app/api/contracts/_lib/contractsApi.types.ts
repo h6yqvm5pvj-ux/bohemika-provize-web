@@ -36,6 +36,7 @@ export type ContractDoc = {
   } | null;
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
+  lifecycleStatus?: "active" | "storno" | "dozita" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
@@ -97,6 +98,8 @@ export type ContractDoc = {
   parentContractEntryPath?: string | null;
 
   productKey?: Product;
+  productCategory?: ContractListProductCategory | string | null;
+  institutionId?: ProductInstitutionId | string | null;
   commissionCoefficientSetOverride?: CommissionCoefficientSet | string | null;
   commissionCoefficientSetOverrideSource?: string | null;
   commissionCoefficientSetOverrideStatementId?: string | null;
@@ -517,7 +520,12 @@ export type ContractsPrecheckResponse = {
 export type ErrorResponse = { ok: false; error: string };
 
 export type ContractListFilterMode = "latest" | "anniversary";
-export type ContractListResponseShape = "full" | "home" | "clientNames" | "cashflow";
+export type ContractListResponseShape =
+  | "full"
+  | "home"
+  | "clientNames"
+  | "contractList"
+  | "cashflow";
 export type ContractListProductCategory =
   | "life"
   | "auto"
