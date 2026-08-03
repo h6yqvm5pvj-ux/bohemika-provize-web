@@ -340,6 +340,24 @@ describe("contracts create payload parsing", () => {
       commissionCalculationStatus: "provisional_refresh_missing_original",
       commissionBaseSource: "calculator_provisional",
     });
+
+    const missingDomexOriginalPayload = normalizedPayload(
+      baseEntry({
+        productKey: "domex",
+        frequencyRaw: "annual",
+        isRefresh: true,
+        refreshOriginalMissingInSystem: true,
+      })
+    );
+
+    expect(missingDomexOriginalPayload).toMatchObject({
+      productKey: "domex",
+      refreshOriginalContractNumber: null,
+      refreshOriginalMissingInSystem: true,
+      requiresStatementRefresh: true,
+      commissionCalculationStatus: "provisional_refresh_missing_original",
+      commissionBaseSource: "calculator_provisional",
+    });
   });
 
   it("requires duration for MAXIMA Cizinci and defaults its variant", () => {

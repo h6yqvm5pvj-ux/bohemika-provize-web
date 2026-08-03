@@ -85,7 +85,7 @@ const extractInlineValueAfterColon = (value: string): string | null => {
 
 const looksLikeStandaloneLabelLine = (value: string): boolean =>
   /[:：]\s*$/.test(value) ||
-  /^(pojistnik|pojisteny|jmeno|prijmeni|datum|frekvence|pojistne|typ osoby|ico|adresa|email|mobil|platce dph)\s*$/i.test(
+  /^(pojistnik|pojisteny|nazev|jmeno|prijmeni|datum|frekvence|pojistne|typ osoby|ico|adresa|email|mobil|platce dph)\s*$/i.test(
     stripDiacritics(value).trim()
   ) ||
   stripDiacritics(value).toLowerCase().includes("nazev/jmeno a prijmeni") ||

@@ -4917,6 +4917,57 @@ export default function ContractDetailPage() {
     [contractSignedDateIsoForBreakdown, pushToast]
   );
 
+  const handleAllianzPaymentCheckClick = useCallback(() => {
+    const contractNumber = String(contract?.contractNumber ?? "").trim();
+    const openAllianzPaymentCheck = () => {
+      window.open(ALLIANZ_AUTO_PAYMENT_CHECK_URL, "_blank", "noopener,noreferrer");
+    };
+
+    if (!contractNumber) {
+      pushToast("Číslo smlouvy není vyplněné. Allianz otevřu za 3 sekundy.", "error");
+      window.setTimeout(openAllianzPaymentCheck, 3000);
+      return;
+    }
+
+    const notifyCopied = () => {
+      pushToast(
+        `Číslo smlouvy ${contractNumber} je zkopírované. Allianz otevřu za 3 sekundy.`,
+        "success"
+      );
+    };
+    const notifyCopyFailed = () => {
+      pushToast(
+        "Číslo smlouvy se nepodařilo zkopírovat. Allianz otevřu za 3 sekundy.",
+        "error"
+      );
+    };
+
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(contractNumber).then(notifyCopied, notifyCopyFailed);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = contractNumber;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        if (document.execCommand("copy")) {
+          notifyCopied();
+        } else {
+          notifyCopyFailed();
+        }
+      } catch {
+        notifyCopyFailed();
+      } finally {
+        textarea.remove();
+      }
+    }
+
+    window.setTimeout(openAllianzPaymentCheck, 3000);
+  }, [contract?.contractNumber, pushToast]);
+
   const renderProductPanelContent = () => (
     <>
       <div className="flex items-center justify-between gap-3">
@@ -5268,15 +5319,14 @@ export default function ContractDetailPage() {
                 </button>
 
                 {prod === "allianzAuto" && (
-                  <a
-                    href={ALLIANZ_AUTO_PAYMENT_CHECK_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={handleAllianzPaymentCheckClick}
                     className={headerActionButtonClass}
                   >
                     <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Ověřit zaplacení</span>
-                  </a>
+                  </button>
                 )}
 
                 {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (

@@ -1214,8 +1214,12 @@ export const normalizeCreateEntryPayload = ({
   if (isRefresh && !supportsOriginalReplacement) {
     return { ok: false, error: "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto." };
   }
-  if (refreshOriginalMissingInSystem && productParsed.value !== "neon") {
-    return { ok: false, error: "Refresh bez původní smlouvy v systému je podporovaný jen pro ČPP ŽP NEON." };
+  if (refreshOriginalMissingInSystem && !supportsOriginalReplacement) {
+    return {
+      ok: false,
+      error:
+        "Refresh/Náhrada bez původní smlouvy v systému je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto.",
+    };
   }
   if (refreshOriginalMissingInSystem && !isRefresh) {
     return { ok: false, error: "Při refreshOriginalMissingInSystem musí být isRefresh true." };

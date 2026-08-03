@@ -21,6 +21,13 @@ type DetectionRequirement = {
   wholeWord?: boolean;
 };
 
+type PositionedTextItem = {
+  str: string;
+  x: number;
+  y: number;
+  width: number;
+};
+
 const stripDiacritics = (text: string) =>
   text.normalize("NFD").replace(/\p{Diacritic}/gu, "");
 
@@ -245,6 +252,15 @@ const DETECTION_RULES: DetectionRule[] = [
   {
     product: "maxdomov",
     mustContain: [
+      { page: "any", text: normalizeText("MAXDOMOV 3") },
+      { page: "any", text: normalizeText("MAXIMA") },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „MAXDOMOV 3“ a „MAXIMA“.",
+  },
+  {
+    product: "maxdomov",
+    mustContain: [
       { page: "any", text: normalizeText("MAXDOMOV") },
       { page: "any", text: normalizeText("MAXIMA") },
     ],
@@ -381,6 +397,58 @@ const extractPageText = async (doc: any, pageNumber: number): Promise<string> =>
     .join(" ");
 };
 
+const extractPageItems = async (doc: any, pageNumber: number): Promise<PositionedTextItem[]> => {
+  const page = await doc.getPage(pageNumber);
+  const content = await page.getTextContent();
+  return (content.items ?? [])
+    .map((item: any) => ({
+      str: typeof item?.str === "string" ? item.str.replace(/\s+/g, " ").trim() : "",
+      x: item?.transform?.[4] ?? 0,
+      y: item?.transform?.[5] ?? 0,
+      width: item?.width ?? 0,
+    }))
+    .filter((item: PositionedTextItem) => item.str.length > 0);
+};
+
+const looksLikeOldMaxdomov3Layout = async (
+  doc: any,
+  ensurePageItems: (pageNumber: number) => Promise<PositionedTextItem[]>
+): Promise<boolean> => {
+  if (doc.numPages < 5) return false;
+
+  const firstPageItems = await ensurePageItems(1);
+  const fourthPageItems = await ensurePageItems(4);
+
+  const hasHeaderContractNumber = firstPageItems.some((item) => {
+    if (item.x < 80 || item.x > 190 || item.y < 720) return false;
+    return /^\d{6,14}$/.test(item.str.replace(/\D+/g, ""));
+  });
+  const hasPolicyholderName = firstPageItems.some((item) => {
+    if (item.x < 0 || item.x > 160 || item.y < 630 || item.y > 680) return false;
+    return /[A-Za-zÁ-Žá-ž]/.test(item.str) && item.str.trim().split(/\s+/).length >= 2;
+  });
+  const hasPolicyStartDate = fourthPageItems.some((item) => {
+    if (item.x < 70 || item.x > 170 || item.y < 175 || item.y > 220) return false;
+    return /\b\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\b/.test(item.str);
+  });
+  const hasPaymentFrequencyMark = fourthPageItems.some((item) => {
+    if (normalizeText(item.str) !== "X") return false;
+    return item.x >= 100 && item.x <= 340 && item.y >= 105 && item.y <= 145;
+  });
+  const hasPaymentAmount = fourthPageItems.some((item) => {
+    if (item.x < 520 || item.x > 585 || item.y < 15 || item.y > 60) return false;
+    return /\b\d{1,3}(?:\s\d{3})+\b|\b\d{3,8}\b/.test(item.str);
+  });
+
+  return (
+    hasHeaderContractNumber &&
+    hasPolicyholderName &&
+    hasPolicyStartDate &&
+    hasPaymentFrequencyMark &&
+    hasPaymentAmount
+  );
+};
+
 export async function detectProductFromPdf(file: File): Promise<PdfProductDetection | null> {
   if (!file) return null;
 
@@ -402,6 +470,7 @@ export async function detectProductFromPdf(file: File): Promise<PdfProductDetect
   if (doc.numPages < 1) return null;
 
   const pageTextByNumber = new Map<number, { strict: string; loose: string }>();
+  const pageItemsByNumber = new Map<number, PositionedTextItem[]>();
   const pageContainsText = (
     pageText: { strict: string; loose: string },
     text: string,
@@ -427,6 +496,14 @@ export async function detectProductFromPdf(file: File): Promise<PdfProductDetect
     };
     pageTextByNumber.set(pageNumber, normalized);
     return normalized;
+  };
+  const ensurePageItems = async (pageNumber: number) => {
+    if (pageItemsByNumber.has(pageNumber)) {
+      return pageItemsByNumber.get(pageNumber)!;
+    }
+    const pageItems = await extractPageItems(doc, pageNumber);
+    pageItemsByNumber.set(pageNumber, pageItems);
+    return pageItems;
   };
 
   for (const rule of DETECTION_RULES) {
@@ -487,6 +564,15 @@ export async function detectProductFromPdf(file: File): Promise<PdfProductDetect
         reason: rule.reason,
       };
     }
+  }
+
+  if (await looksLikeOldMaxdomov3Layout(doc, ensurePageItems)) {
+    return {
+      product: "maxdomov",
+      confidence: "high",
+      reason:
+        "PDF odpovídá staršímu formuláři MAXDOMOV 3 podle vyplněných polí.",
+    };
   }
 
   return null;

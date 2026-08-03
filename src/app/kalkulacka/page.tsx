@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CircleHelp, Users } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleHelp, Loader2, UploadCloud, Users } from "lucide-react";
 import { auth } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
@@ -256,8 +256,185 @@ const SETTINGS_KEYS = {
 const PDF_PRODUCT_DETECTION_TIMEOUT_MS = 8_000;
 const PDF_DATA_IMPORT_TIMEOUT_MS = 15_000;
 const PDF_IMPORT_TIMEOUT_ERROR_NAME = "PdfImportTimeoutError";
+const AUTO_BULK_IMPORT_MAX_FILES = 25;
+const DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE = "2025-01-01";
+const DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE_LABEL = "01.01.2025";
+const AUTO_BULK_IMPORT_PRODUCTS: readonly Product[] = [
+  "cppAuto",
+  "slaviaauto",
+  "allianzAuto",
+  "csobAuto",
+  "uniqaAuto",
+  "pillowAuto",
+  "kooperativaAuto",
+];
+const AUTO_BULK_IMPORT_PRODUCT_SET = new Set<Product>(AUTO_BULK_IMPORT_PRODUCTS);
+const BULK_IMPORT_PRODUCTS: readonly Product[] = [
+  ...AUTO_BULK_IMPORT_PRODUCTS,
+  "domex",
+];
+const BULK_IMPORT_PRODUCT_SET = new Set<Product>(BULK_IMPORT_PRODUCTS);
+const PAYMENT_FREQUENCIES: PaymentFrequency[] = [
+  "monthly",
+  "quarterly",
+  "semiannual",
+  "annual",
+];
 const profileModeStorageKey = (email: string | null | undefined) =>
   email ? `${SETTINGS_KEYS.mode}:${email}` : SETTINGS_KEYS.mode;
+
+const parsedPdfTextValue = (parsed: ParsedContractPdf, key: string): string => {
+  const value = parsed[key];
+  if (typeof value === "string") return value.trim();
+  if (value == null) return "";
+  return String(value).trim();
+};
+
+const parsedPdfNumberValue = (
+  parsed: ParsedContractPdf,
+  key: string
+): number | null => {
+  const value = parsed[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
+
+const parsedPdfRoundedNumberValue = (
+  parsed: ParsedContractPdf,
+  key: string
+): number | null => {
+  const value = parsedPdfNumberValue(parsed, key);
+  return value == null ? null : Math.round(value);
+};
+
+const parsedPdfBooleanValue = (parsed: ParsedContractPdf, key: string): boolean =>
+  parsed[key] === true;
+
+const parsedPdfFrequencyValue = (
+  parsed: ParsedContractPdf
+): PaymentFrequency | null => {
+  const value = parsed.frequency;
+  return typeof value === "string" &&
+    PAYMENT_FREQUENCIES.includes(value as PaymentFrequency)
+    ? (value as PaymentFrequency)
+    : null;
+};
+
+const isAutoBulkImportProduct = (
+  product: Product | null | undefined
+): product is Product => Boolean(product && AUTO_BULK_IMPORT_PRODUCT_SET.has(product));
+
+const isBulkImportProduct = (
+  product: Product | null | undefined
+): product is Product => Boolean(product && BULK_IMPORT_PRODUCT_SET.has(product));
+
+const isBulkImportProductAllowedForSelection = (
+  importProduct: Product,
+  selectedProduct: Product | null | undefined
+): boolean => {
+  if (selectedProduct === "domex") return importProduct === "domex";
+  if (isAutoBulkImportProduct(selectedProduct)) {
+    return isAutoBulkImportProduct(importProduct);
+  }
+  return false;
+};
+
+const parsedPdfBooleanOrNumberValue = (
+  parsed: ParsedContractPdf,
+  booleanKey: string,
+  numberKey: string
+): boolean =>
+  parsedPdfBooleanValue(parsed, booleanKey) ||
+  parsedPdfNumberValue(parsed, numberKey) != null;
+
+const hasParsedDomexDetail = (parsed: ParsedContractPdf): boolean =>
+  Boolean(
+    parsedPdfTextValue(parsed, "domexAddress") ||
+      parsedPdfTextValue(parsed, "domexPropertyType") ||
+      parsedPdfTextValue(parsed, "domexPropertyCoverage") ||
+      parsedPdfNumberValue(parsed, "domexPropertySumInsured") != null ||
+      parsedPdfNumberValue(parsed, "domexPropertyDeductible") != null ||
+      parsedPdfTextValue(parsed, "domexHouseholdType") ||
+      parsedPdfTextValue(parsed, "domexHouseholdCoverage") ||
+      parsedPdfNumberValue(parsed, "domexHouseholdSumInsured") != null ||
+      parsedPdfNumberValue(parsed, "domexHouseholdDeductible") != null ||
+      parsedPdfNumberValue(parsed, "domexOutbuildingSumInsured") != null ||
+      parsedPdfNumberValue(parsed, "domexLiabilitySumInsured") != null ||
+      parsedPdfNumberValue(parsed, "domexLiabilityDeductible") != null ||
+      parsedPdfBooleanValue(parsed, "domexLiabilityMobile") ||
+      parsedPdfBooleanValue(parsed, "domexLiabilityTenant") ||
+      parsedPdfBooleanValue(parsed, "domexLiabilityLandlord") ||
+      parsedPdfBooleanValue(parsed, "domexAssistancePlus")
+  );
+
+const buildAutoBulkImportWarnings = ({
+  product,
+  parsed,
+  productDetected,
+  detectionConfidence,
+}: {
+  product: Product;
+  parsed: ParsedContractPdf;
+  productDetected: boolean;
+  detectionConfidence: "high" | "medium" | null;
+}): string[] => {
+  const warnings: string[] = [];
+  if (!productDetected) {
+    warnings.push(
+      `produkt se nepodařilo rozpoznat, použil se vybraný produkt ${productLabel(product)}`
+    );
+  } else if (detectionConfidence === "medium") {
+    warnings.push(`produkt byl rozpoznán jen se střední jistotou jako ${productLabel(product)}`);
+  }
+  if (parsed.ocrTextUsed === true) {
+    warnings.push("PDF bylo načtené přes OCR");
+  }
+
+  const clientName = parsedPdfTextValue(parsed, "clientName");
+  if (clientName && clientName.split(/\s+/).filter(Boolean).length < 2) {
+    warnings.push("jméno klienta vypadá neúplně");
+  }
+
+  const contractNumber = parsedPdfTextValue(parsed, "contractNumber");
+  if (contractNumber && !/^\d{6,14}$/.test(contractNumber.replace(/\s+/g, ""))) {
+    warnings.push("číslo smlouvy má nezvyklý formát");
+  }
+
+  const signedDate = parsedPdfTextValue(parsed, "contractSignedDate");
+  if (signedDate && !isIsoDay(signedDate)) {
+    warnings.push("datum sjednání má nezvyklý formát");
+  }
+
+  const policyStartDate = parsedPdfTextValue(parsed, "policyStartDate");
+  if (policyStartDate && !isIsoDay(policyStartDate)) {
+    warnings.push("datum počátku má nezvyklý formát");
+  }
+
+  return warnings;
+};
+
+const formatAutoBulkImportWarnings = (warnings: string[]): string => {
+  const uniqueWarnings = Array.from(
+    new Set(warnings.map((warning) => warning.trim()).filter(Boolean))
+  );
+  return uniqueWarnings.length > 0
+    ? `Zkontroluj: ${uniqueWarnings.join("; ")}.`
+    : "";
+};
+
+const compactErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error && error.message.trim() ? error.message.trim() : fallback;
+
+const invalidateContractsCaches = () => {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem("contracts_cache_v2");
+    sessionStorage.removeItem("contracts_cache_v3");
+    localStorage.setItem("contracts_last_updated", String(Date.now()));
+    window.dispatchEvent(new Event("contracts:updated"));
+  } catch {
+    // best effort cache invalidation
+  }
+};
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
 const EMAIL_LOOKUP_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
@@ -607,6 +784,35 @@ type PrepareEndorsementOptions = {
   contractSignedDateOverride?: string | null;
   newPremiumAmountOverride?: number | null;
   source?: "manual" | "pdf";
+};
+
+type AutoBulkImportRowStatus =
+  | "queued"
+  | "processing"
+  | "success"
+  | "review"
+  | "warning"
+  | "skipped"
+  | "error";
+
+type AutoBulkReviewDraft = {
+  file: File;
+  product: Product;
+  parsed: ParsedContractPdf;
+  warnings: string[];
+  isReplacement: boolean;
+  replacementNumber: string;
+};
+
+type AutoBulkImportRow = {
+  id: string;
+  fileName: string;
+  status: AutoBulkImportRowStatus;
+  productLabel: string | null;
+  contractNumber: string | null;
+  clientName: string | null;
+  message: string;
+  reviewDraft?: AutoBulkReviewDraft | null;
 };
 
 type ContractsFindEntry = NonNullable<ContractsFindApiResponse["contracts"]>[number];
@@ -997,6 +1203,7 @@ export default function CalculatorPage() {
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const [addContractHelpOpen, setAddContractHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const autoBulkFileInputRef = useRef<HTMLInputElement | null>(null);
   const pdfImportRunIdRef = useRef(0);
   const statementPrefillAppliedRef = useRef(false);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
@@ -1005,6 +1212,12 @@ export default function CalculatorPage() {
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
+  const [autoBulkImporting, setAutoBulkImporting] = useState(false);
+  const [autoBulkImportStatus, setAutoBulkImportStatus] =
+    useState<string | null>(null);
+  const [autoBulkImportRows, setAutoBulkImportRows] = useState<
+    AutoBulkImportRow[]
+  >([]);
   const [importedContractPdfFile, setImportedContractPdfFile] = useState<File | null>(null);
   const [savingIncludesPdfAttachment, setSavingIncludesPdfAttachment] = useState(false);
   const [pdfClientNameLoaded, setPdfClientNameLoaded] = useState(false);
@@ -4226,6 +4439,1156 @@ export default function CalculatorPage() {
       setImportedContractPdfFile(null);
     },
   });
+
+  const updateAutoBulkRow = (
+    rows: AutoBulkImportRow[],
+    index: number,
+    patch: Partial<AutoBulkImportRow>
+  ): AutoBulkImportRow[] => {
+    const nextRows = rows.map((row, rowIndex) =>
+      rowIndex === index ? { ...row, ...patch } : row
+    );
+    setAutoBulkImportRows(nextRows);
+    return nextRows;
+  };
+
+  const loadAutoBulkReviewDraft = (rowId: string) => {
+    const row = autoBulkImportRows.find((item) => item.id === rowId);
+    const draft = row?.reviewDraft;
+    if (!row || !draft) return;
+
+    const reviewProduct = draft.product;
+    const parsed = draft.parsed;
+    const parsedFrequency = parsedPdfFrequencyValue(parsed);
+    const amount = parsedPdfNumberValue(parsed, "amount");
+    const liabilityLimit = parsedPdfRoundedNumberValue(parsed, "carLiabilityLimit");
+    const hullSumInsuredText = parsedPdfTextValue(parsed, "carHullSumInsuredText");
+    const hullSumInsured = parsedPdfRoundedNumberValue(parsed, "carHullSumInsured");
+    const hullDeductible = parsedPdfRoundedNumberValue(parsed, "carHullDeductible");
+    const hullDeductibleText = parsedPdfTextValue(parsed, "carHullDeductibleText");
+    const glassLimit = parsedPdfRoundedNumberValue(parsed, "carAddonGlassLimit");
+    const animalCollisionLimit = parsedPdfRoundedNumberValue(
+      parsed,
+      "carAddonAnimalCollisionLimit"
+    );
+    const animalDamageLimit = parsedPdfRoundedNumberValue(
+      parsed,
+      "carAddonAnimalDamageLimit"
+    );
+    const theftLimit = parsedPdfRoundedNumberValue(parsed, "carAddonTheftLimit");
+    const naturalLimit = parsedPdfRoundedNumberValue(parsed, "carAddonNaturalLimit");
+    const ownDamageLimit = parsedPdfRoundedNumberValue(parsed, "carAddonOwnDamageLimit");
+    const gapLimit = parsedPdfRoundedNumberValue(parsed, "carAddonGapLimit");
+    const cppPremiumLiabilityBundle =
+      reviewProduct === "cppAuto" && liabilityLimit === 200_000_000;
+
+    setCalculatorViewMode("addContract");
+    setProduct(reviewProduct);
+    setHasSelectedProduct(true);
+    setProductPickerSectionForProduct(reviewProduct);
+    setProductSearchText("");
+    setTipsterModeEnabled(false);
+    setTipContractConfig(null);
+    setStatementPremiumSource(null);
+    setEndorsementDraft(null);
+    setEndorsementDraftModalOpen(false);
+    setEndorsementWorkflowActive(false);
+
+    setImportedContractPdfFile(draft.file);
+    setPdfImporting(false);
+    setPdfClientNameLoaded(Boolean(parsedPdfTextValue(parsed, "clientName")));
+    setPdfMatchedClientName(false);
+    setPdfImportStatus(
+      `Načteno ke kontrole z hromadného importu: ${row.fileName}. PDF se při uložení přiloží ke smlouvě.`
+    );
+    setPdfImportError(formatAutoBulkImportWarnings(draft.warnings) || null);
+    setValidationError(null);
+    setMissingFields([]);
+    setSaveMessage("Zkontroluj načtená pole a pak smlouvu ulož ručně.");
+
+    setContractNumber(parsedPdfTextValue(parsed, "contractNumber"));
+    setClientName(parsedPdfTextValue(parsed, "clientName"));
+    setPolicyStartDate(parsedPdfTextValue(parsed, "policyStartDate"));
+    setPolicyEndDate(parsedPdfTextValue(parsed, "policyEndDate"));
+    setContractSignedDate(parsedPdfTextValue(parsed, "contractSignedDate"));
+    setStornoDate("");
+    setAmountText(amount != null ? String(amount) : "");
+    if (parsedFrequency && allowedFrequencies(reviewProduct).includes(parsedFrequency)) {
+      setFrequency(parsedFrequency);
+    } else {
+      setFrequency(allowedFrequencies(reviewProduct)[0] ?? "annual");
+    }
+
+    setRefreshOriginalOpen(draft.isReplacement);
+    setRefreshOriginalContractNumber(
+      draft.isReplacement ? draft.replacementNumber : ""
+    );
+    setRefreshOriginalMissingInSystem(false);
+    setRefreshOriginalPdfLookupNumber(null);
+    setRefreshOriginalLookup({
+      status: "idle",
+      progress: 0,
+      adviserName: null,
+      original: null,
+    });
+
+    setAutoCarMake(parsedPdfTextValue(parsed, "carMake"));
+    setAutoCarPlate(parsedPdfTextValue(parsed, "carPlate"));
+    setAutoCarVin(parsedPdfTextValue(parsed, "carVin"));
+    setAutoCarTp(parsedPdfTextValue(parsed, "carTp"));
+    setAutoCarOrv(parsedPdfTextValue(parsed, "carOrv"));
+    setAutoCarAnnualMileage(parsedPdfTextValue(parsed, "carAnnualMileage"));
+    setAutoCarAllianzScope(parsedPdfTextValue(parsed, "carAllianzScope"));
+    setAutoCarLiabilityLimit(liabilityLimit);
+    if (hullSumInsuredText) {
+      setAutoCarHullSumInsured(null);
+      setAutoCarHullSumInsuredText(hullSumInsuredText);
+    } else {
+      setAutoCarHullSumInsured(hullSumInsured);
+      setAutoCarHullSumInsuredText("");
+    }
+    setAutoCarHullSumInsuredDraft("");
+    setAutoCarHullDeductible(hullDeductible);
+    setAutoCarHullDeductibleText(hullDeductibleText);
+    setAutoCarHullRiskAccident(parsedPdfBooleanValue(parsed, "carHullRiskAccident"));
+    setAutoCarHullRiskTheft(parsedPdfBooleanValue(parsed, "carHullRiskTheft"));
+    setAutoCarHullRiskNatural(parsedPdfBooleanValue(parsed, "carHullRiskNatural"));
+    setAutoCarHullRiskVandalism(parsedPdfBooleanValue(parsed, "carHullRiskVandalism"));
+    setAutoCarHullRiskAnimalCollision(
+      parsedPdfBooleanValue(parsed, "carHullRiskAnimalCollision")
+    );
+    setAutoCarAssistancePlan(parsedPdfTextValue(parsed, "carAssistancePlan"));
+    setAutoCarAddonEso(parsedPdfBooleanValue(parsed, "carAddonEso"));
+    setAutoCarAddonNaturalRisks(parsedPdfBooleanValue(parsed, "carAddonNaturalRisks"));
+    setAutoCarAddonKlika(parsedPdfBooleanValue(parsed, "carAddonKlika"));
+    setAutoCarAddonGlass(
+      parsedPdfBooleanOrNumberValue(parsed, "carAddonGlass", "carAddonGlassLimit")
+    );
+    setAutoCarAddonGlassLimit(glassLimit);
+    setAutoCarAddonAnimalCollision(
+      parsedPdfBooleanOrNumberValue(
+        parsed,
+        "carAddonAnimalCollision",
+        "carAddonAnimalCollisionLimit"
+      )
+    );
+    setAutoCarAddonAnimalCollisionLimit(animalCollisionLimit);
+    setAutoCarAddonAnimalDamage(
+      parsedPdfBooleanOrNumberValue(
+        parsed,
+        "carAddonAnimalDamage",
+        "carAddonAnimalDamageLimit"
+      )
+    );
+    setAutoCarAddonAnimalDamageLimit(animalDamageLimit);
+    setAutoCarAddonVandalism(parsedPdfBooleanValue(parsed, "carAddonVandalism"));
+    setAutoCarAddonTheft(
+      parsedPdfBooleanOrNumberValue(parsed, "carAddonTheft", "carAddonTheftLimit")
+    );
+    setAutoCarAddonTheftLimit(theftLimit);
+    setAutoCarAddonNatural(
+      parsedPdfBooleanOrNumberValue(parsed, "carAddonNatural", "carAddonNaturalLimit")
+    );
+    setAutoCarAddonNaturalLimit(naturalLimit);
+    setAutoCarAddonOwnDamage(
+      parsedPdfBooleanOrNumberValue(
+        parsed,
+        "carAddonOwnDamage",
+        "carAddonOwnDamageLimit"
+      )
+    );
+    setAutoCarAddonOwnDamageLimit(ownDamageLimit);
+    setAutoCarAddonGap(
+      parsedPdfBooleanOrNumberValue(parsed, "carAddonGap", "carAddonGapLimit")
+    );
+    setAutoCarAddonGapLimit(gapLimit);
+    setAutoCarAddonSmartGap(
+      parsedPdfBooleanValue(parsed, "carAddonSmartGap") || cppPremiumLiabilityBundle
+    );
+    setAutoCarAddonServisPro(
+      parsedPdfBooleanValue(parsed, "carAddonServisPro") || cppPremiumLiabilityBundle
+    );
+    setAutoCarAddonFireExplosion(
+      parsedPdfBooleanValue(parsed, "carAddonFireExplosion")
+    );
+    setAutoCarAddonLegalAdvice(parsedPdfBooleanValue(parsed, "carAddonLegalAdvice"));
+    setAutoCarAddonReplacementCar(
+      parsedPdfBooleanValue(parsed, "carAddonReplacementCar")
+    );
+    setAutoCarAddonLuggage(parsedPdfBooleanValue(parsed, "carAddonLuggage"));
+    setAutoCarAddonTransportedGoods(
+      parsedPdfBooleanValue(parsed, "carAddonTransportedGoods")
+    );
+    setAutoCarAddonPothole(parsedPdfBooleanValue(parsed, "carAddonPothole"));
+    setAutoCarAddonNonFaultAccident(
+      parsedPdfBooleanValue(parsed, "carAddonNonFaultAccident")
+    );
+    setAutoCarAddonPassengerInjury(
+      parsedPdfBooleanValue(parsed, "carAddonPassengerInjury")
+    );
+    setAutoCarAddonKeyLossTheft(parsedPdfBooleanValue(parsed, "carAddonKeyLossTheft"));
+
+    setDomexAddress(parsedPdfTextValue(parsed, "domexAddress"));
+    setDomexPropertyType(parsedPdfTextValue(parsed, "domexPropertyType"));
+    setDomexPropertyCoverage(parsedPdfTextValue(parsed, "domexPropertyCoverage"));
+    setDomexPropertySumInsured(
+      parsedPdfRoundedNumberValue(parsed, "domexPropertySumInsured")
+    );
+    setDomexPropertyDeductible(
+      parsedPdfRoundedNumberValue(parsed, "domexPropertyDeductible")
+    );
+    setDomexHouseholdType(parsedPdfTextValue(parsed, "domexHouseholdType"));
+    setDomexHouseholdCoverage(parsedPdfTextValue(parsed, "domexHouseholdCoverage"));
+    setDomexHouseholdSumInsured(
+      parsedPdfRoundedNumberValue(parsed, "domexHouseholdSumInsured")
+    );
+    setDomexHouseholdDeductible(
+      parsedPdfRoundedNumberValue(parsed, "domexHouseholdDeductible")
+    );
+    setDomexOutbuildingSumInsured(
+      parsedPdfRoundedNumberValue(parsed, "domexOutbuildingSumInsured")
+    );
+    setDomexLiabilitySumInsured(
+      parsedPdfRoundedNumberValue(parsed, "domexLiabilitySumInsured")
+    );
+    setDomexLiabilityDeductible(
+      parsedPdfRoundedNumberValue(parsed, "domexLiabilityDeductible")
+    );
+    setDomexLiabilityMobile(parsedPdfBooleanValue(parsed, "domexLiabilityMobile"));
+    setDomexLiabilityTenant(parsedPdfBooleanValue(parsed, "domexLiabilityTenant"));
+    setDomexLiabilityLandlord(parsedPdfBooleanValue(parsed, "domexLiabilityLandlord"));
+    setDomexAssistancePlus(parsedPdfBooleanValue(parsed, "domexAssistancePlus"));
+    setDomexNote(parsedPdfTextValue(parsed, "domexNote"));
+
+    setAutoBulkImportRows((currentRows) =>
+      currentRows.map((item) =>
+        item.id === rowId
+          ? {
+              ...item,
+              message: "Načteno do formuláře ke kontrole.",
+            }
+          : item
+      )
+    );
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("auto-bulk-review-form-anchor")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  };
+
+  const handleAutoBulkImport = async (fileList: FileList | File[] | null) => {
+    const files = Array.from(fileList ?? []).filter(
+      (file) =>
+        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+    );
+
+    if (autoBulkFileInputRef.current) {
+      autoBulkFileInputRef.current.value = "";
+    }
+
+    if (files.length === 0) {
+      setAutoBulkImportStatus("Vyber alespoň jedno PDF smlouvy.");
+      setAutoBulkImportRows([]);
+      return;
+    }
+
+    if (files.length > AUTO_BULK_IMPORT_MAX_FILES) {
+      setAutoBulkImportStatus(
+        `Najednou lze nahrát maximálně ${AUTO_BULK_IMPORT_MAX_FILES} PDF.`
+      );
+      setAutoBulkImportRows([]);
+      return;
+    }
+
+    if (!user) {
+      setAutoBulkImportStatus("Nejdřív se prosím přihlas.");
+      return;
+    }
+
+    if (!isAddContractMode) {
+      setAutoBulkImportStatus("Hromadné nahrávání je dostupné jen při přidání smlouvy.");
+      return;
+    }
+
+    if (product && !isBulkImportProduct(product)) {
+      setAutoBulkImportStatus(
+        "Hromadné nahrávání podporuje auto produkty kromě flotil a ČPP DOMEX od 01.01.2025."
+      );
+      return;
+    }
+
+    if (tipsterModeEnabled || tipContractConfig) {
+      setAutoBulkImportStatus("Hromadné nahrávání zatím nepoužívá smlouvy z TIPU.");
+      return;
+    }
+
+    if (saving || pdfImporting) {
+      setAutoBulkImportStatus("Počkej prosím na dokončení aktuální akce.");
+      return;
+    }
+
+    const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
+    if (!targetOwnerEmail) {
+      setAutoBulkImportStatus("Chybí cílový vlastník smlouvy.");
+      return;
+    }
+
+    let rows: AutoBulkImportRow[] = files.map((file, index) => ({
+      id: `${file.name}-${file.lastModified}-${file.size}-${index}`,
+      fileName: file.name,
+      status: "queued",
+      productLabel: null,
+      contractNumber: null,
+      clientName: null,
+      message: "Čeká",
+    }));
+
+    setAutoBulkImportRows(rows);
+    setAutoBulkImporting(true);
+    setAutoBulkImportStatus(`Zpracovávám 0/${files.length}`);
+    setSaveMessage(null);
+    setValidationError(null);
+
+    const batchContractNumbers = new Set<string>();
+    let savedCount = 0;
+    let reviewCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+    let processedCount = 0;
+
+    const finishRow = (
+      index: number,
+      patch: Partial<AutoBulkImportRow>,
+      counter: "saved" | "review" | "skipped" | "failed"
+    ) => {
+      if (counter === "saved") savedCount += 1;
+      if (counter === "review") reviewCount += 1;
+      if (counter === "skipped") skippedCount += 1;
+      if (counter === "failed") failedCount += 1;
+      rows = updateAutoBulkRow(rows, index, patch);
+    };
+
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        rows = updateAutoBulkRow(rows, index, {
+          status: "processing",
+          message: "Čtu PDF",
+        });
+        setAutoBulkImportStatus(`Zpracovávám ${processedCount + 1}/${files.length}`);
+
+        try {
+          const detected = await withPdfImportTimeout(
+            detectProductFromPdfLazy(file),
+            PDF_PRODUCT_DETECTION_TIMEOUT_MS,
+            "Rozpoznání produktu z PDF trvá moc dlouho."
+          ).catch((detectErr) => {
+            console.warn("Batch import: detekce produktu selhala", detectErr);
+            return null;
+          });
+
+          const productDetected = Boolean(detected);
+          const detectionConfidence = detected?.confidence ?? null;
+          const importProduct = detected?.product ?? (isBulkImportProduct(product) ? product : null);
+          if (!importProduct) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: "Produkt se nepodařilo rozpoznat.",
+              },
+              "failed"
+            );
+            continue;
+          }
+
+          if (!isBulkImportProduct(importProduct)) {
+            finishRow(
+              index,
+              {
+                status: "skipped",
+                productLabel: productLabel(importProduct),
+                message: isAutoProduct(importProduct)
+                  ? "Flotilové auto produkty dávka nepodporuje."
+                  : `Rozpoznáno jako ${productLabel(importProduct)}.`,
+              },
+              "skipped"
+            );
+            continue;
+          }
+
+          if (!isBulkImportProductAllowedForSelection(importProduct, product)) {
+            finishRow(
+              index,
+              {
+                status: "skipped",
+                productLabel: productLabel(importProduct),
+                message:
+                  product === "domex"
+                    ? "DOMEX dávka ukládá jen ČPP DOMEX."
+                    : "Auto dávka ukládá jen auto produkty kromě flotil.",
+              },
+              "skipped"
+            );
+            continue;
+          }
+
+          rows = updateAutoBulkRow(rows, index, {
+            productLabel: productLabel(importProduct),
+            message: `Načítám ${productLabel(importProduct)}`,
+          });
+
+          const parsed = await withPdfImportTimeout(
+            parseContractPdfByProduct(importProduct, file),
+            PDF_DATA_IMPORT_TIMEOUT_MS,
+            "Automatické čtení dat z PDF trvá moc dlouho."
+          );
+
+          if (!parsed) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: "Parser nevrátil čitelná data.",
+              },
+              "failed"
+            );
+            continue;
+          }
+
+          const replacementNumber = parsedPdfTextValue(
+            parsed,
+            "refreshOriginalContractNumber"
+          );
+          const isReplacementPdf = parsed.isRefresh === true || Boolean(replacementNumber);
+          let replacementOriginalMissingInSystem = false;
+          if (isReplacementPdf && !replacementNumber) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: "PDF vypadá jako náhrada, ale chybí číslo původní smlouvy.",
+              },
+              "failed"
+            );
+            continue;
+          }
+          if (isReplacementPdf && !supportsOriginalContractReplacement(importProduct)) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: `Náhrada není pro ${productLabel(importProduct)} v dávce podporovaná.`,
+              },
+              "failed"
+            );
+            continue;
+          }
+
+          const parsedFrequency = parsedPdfFrequencyValue(parsed);
+          const parsedAmount = parsedPdfNumberValue(parsed, "amount");
+          const contractNumberFromPdf = parsedPdfTextValue(parsed, "contractNumber");
+          const clientNameFromPdf = parsedPdfTextValue(parsed, "clientName");
+          const signedDateIso = parsedPdfTextValue(parsed, "contractSignedDate");
+          const policyStartDateIso = parsedPdfTextValue(parsed, "policyStartDate");
+          rows = updateAutoBulkRow(rows, index, {
+            contractNumber: contractNumberFromPdf || null,
+            clientName: clientNameFromPdf || null,
+            message: "Kontroluji data",
+          });
+
+          const missing: string[] = [];
+          if (!contractNumberFromPdf) missing.push("číslo smlouvy");
+          if (!clientNameFromPdf) missing.push("klienta");
+          if (!signedDateIso) missing.push("datum sjednání");
+          if (!policyStartDateIso) missing.push("datum počátku");
+          if (parsedAmount == null || parsedAmount <= 0) missing.push("pojistné");
+          if (!parsedFrequency) missing.push("frekvenci");
+
+          if (missing.length > 0) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: `Chybí: ${missing.join(", ")}.`,
+              },
+              "failed"
+            );
+            continue;
+          }
+
+          const frequencyForSave = parsedFrequency;
+          const amountForSave = parsedAmount;
+          if (!frequencyForSave || amountForSave == null || amountForSave <= 0) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: "Chybí pojistné nebo frekvence.",
+              },
+              "failed"
+            );
+            continue;
+          }
+
+          if (!allowedFrequencies(importProduct).includes(frequencyForSave)) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: `Nepodporovaná frekvence: ${frequencyLabel(frequencyForSave)}.`,
+              },
+              "failed"
+            );
+            continue;
+          }
+
+          const dateIssues = collectContractDateIssues(
+            signedDateIso,
+            policyStartDateIso,
+            ""
+          );
+          const dateErrors = dateIssues.filter((issue) => issue.severity === "error");
+          const dateWarnings = dateIssues.filter((issue) => issue.severity === "warning");
+          const rowWarnings = buildAutoBulkImportWarnings({
+            product: importProduct,
+            parsed,
+            productDetected,
+            detectionConfidence,
+          });
+          if (dateErrors.length > 0) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: dateErrors.map((issue) => issue.message).join(" "),
+              },
+              "failed"
+            );
+            continue;
+          }
+
+          if (
+            importProduct === "domex" &&
+            signedDateIso < DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE
+          ) {
+            finishRow(
+              index,
+              {
+                status: "skipped",
+                message: `DOMEX dávka je zatím povolená jen pro smlouvy sjednané od ${DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE_LABEL}.`,
+              },
+              "skipped"
+            );
+            continue;
+          }
+
+          const coefficientError = productCoefficientValidityError(
+            importProduct,
+            signedDateIso
+          );
+          if (coefficientError) {
+            finishRow(
+              index,
+              {
+                status: "error",
+                message: coefficientError,
+              },
+              "failed"
+            );
+            continue;
+          }
+
+          const batchContractNumberKey = contractNumberFromPdf
+            .replace(/\s+/g, "")
+            .toLowerCase();
+          if (batchContractNumbers.has(batchContractNumberKey)) {
+            finishRow(
+              index,
+              {
+                status: "skipped",
+                message: "Duplicitní číslo v této dávce.",
+              },
+              "skipped"
+            );
+            continue;
+          }
+          batchContractNumbers.add(batchContractNumberKey);
+
+          rows = updateAutoBulkRow(rows, index, {
+            status: "processing",
+            message: "Kontroluji duplicity",
+          });
+
+          const findParams = new URLSearchParams({
+            scope: isSavingForSubordinate ? "team" : "my",
+            q: contractNumberFromPdf,
+          });
+          const findPayload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
+            user,
+            `/api/contracts/find?${findParams.toString()}`,
+            { method: "GET" }
+          );
+          const duplicateCount = (Array.isArray(findPayload.contracts)
+            ? findPayload.contracts
+            : []
+          ).filter((entry) => contractOwnerEmail(entry) === targetOwnerEmail).length;
+          if (duplicateCount > 0) {
+            finishRow(
+              index,
+              {
+                status: "skipped",
+                message: `Smlouva už existuje (${duplicateCount}x).`,
+              },
+              "skipped"
+            );
+            continue;
+          }
+
+          if (!isSavingForSubordinate) {
+            try {
+              const precheckParams = new URLSearchParams({
+                productKey: importProduct,
+                clientName: clientNameFromPdf,
+                signedDate: signedDateIso,
+                contractNumber: contractNumberFromPdf,
+              });
+              const precheckPayload =
+                await fetchAuthedJsonOrThrow<ContractsPrecheckApiResponse>(
+                  user,
+                  `/api/contracts/precheck?${precheckParams.toString()}`,
+                  { method: "GET" }
+                );
+              const similarCount = Array.isArray(precheckPayload?.similarContracts)
+                ? precheckPayload.similarContracts.length
+                : 0;
+              if (similarCount > 0) {
+                rowWarnings.push(
+                  `v systému je podobná smlouva stejného produktu a klienta (${similarCount}x)`
+                );
+              }
+            } catch (precheckErr) {
+              console.warn("Batch import: kontrola podobných smluv selhala", precheckErr);
+              rowWarnings.push("nepodařilo se ověřit podobné smlouvy");
+            }
+          }
+
+          if (isReplacementPdf && replacementNumber) {
+            try {
+              const originalFindParams = new URLSearchParams({
+                scope: isSavingForSubordinate ? "team" : "my",
+                q: replacementNumber,
+              });
+              const originalFindPayload =
+                await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
+                  user,
+                  `/api/contracts/find?${originalFindParams.toString()}`,
+                  { method: "GET" }
+                );
+              const normalizedReplacementNumber =
+                normalizeSearchTextValue(replacementNumber);
+              const originalFound = (Array.isArray(originalFindPayload.contracts)
+                ? originalFindPayload.contracts
+                : []
+              ).some((entry) => {
+                if (contractOwnerEmail(entry) !== targetOwnerEmail) return false;
+                const entryContractNumber =
+                  typeof entry.contractNumber === "string"
+                    ? entry.contractNumber
+                    : "";
+                return (
+                  normalizeSearchTextValue(entryContractNumber) ===
+                  normalizedReplacementNumber
+                );
+              });
+              if (!originalFound) {
+                if (importProduct === "domex") {
+                  replacementOriginalMissingInSystem = true;
+                } else {
+                  rowWarnings.push(
+                    "původní smlouva nebyla v systému nalezena, takže by se automaticky nestornovala"
+                  );
+                }
+              }
+            } catch (originalLookupErr) {
+              console.warn(
+                "Batch import: kontrola původní smlouvy náhrady selhala",
+                originalLookupErr
+              );
+              rowWarnings.push("nepodařilo se ověřit původní smlouvu náhrady");
+            }
+          }
+
+          if (importProduct === "domex" && !hasParsedDomexDetail(parsed)) {
+            rowWarnings.push("nenašel jsem detail majetku DOMEX");
+          }
+
+          const rowWarningMessages = [
+            ...dateWarnings.map((issue) => issue.message),
+            ...rowWarnings,
+          ];
+          const warningText = formatAutoBulkImportWarnings(rowWarningMessages);
+          if (warningText) {
+            finishRow(
+              index,
+              {
+                status: "review",
+                message: `Ke kontrole. ${warningText}`,
+                reviewDraft: {
+                  file,
+                  product: importProduct,
+                  parsed,
+                  warnings: rowWarningMessages,
+                  isReplacement: isReplacementPdf,
+                  replacementNumber,
+                },
+              },
+              "review"
+            );
+            continue;
+          }
+
+          rows = updateAutoBulkRow(rows, index, {
+            status: "processing",
+            message: isReplacementPdf ? "Ukládám náhradu" : "Ukládám smlouvu",
+          });
+
+          const carLiabilityLimit = parsedPdfRoundedNumberValue(
+            parsed,
+            "carLiabilityLimit"
+          );
+          const hullSumInsuredText = parsedPdfTextValue(parsed, "carHullSumInsuredText");
+          const hullSumInsuredNumber = parsedPdfRoundedNumberValue(
+            parsed,
+            "carHullSumInsured"
+          );
+          const hullDeductibleText = parsedPdfTextValue(parsed, "carHullDeductibleText");
+          const hullDeductible = parsedPdfRoundedNumberValue(
+            parsed,
+            "carHullDeductible"
+          );
+          const glassLimit = parsedPdfRoundedNumberValue(parsed, "carAddonGlassLimit");
+          const animalCollisionLimit = parsedPdfRoundedNumberValue(
+            parsed,
+            "carAddonAnimalCollisionLimit"
+          );
+          const animalDamageLimit = parsedPdfRoundedNumberValue(
+            parsed,
+            "carAddonAnimalDamageLimit"
+          );
+          const theftLimit = parsedPdfRoundedNumberValue(parsed, "carAddonTheftLimit");
+          const naturalLimit = parsedPdfRoundedNumberValue(parsed, "carAddonNaturalLimit");
+          const ownDamageLimit = parsedPdfRoundedNumberValue(
+            parsed,
+            "carAddonOwnDamageLimit"
+          );
+          const gapLimit = parsedPdfRoundedNumberValue(parsed, "carAddonGapLimit");
+          const canSaveTp =
+            importProduct === "slaviaauto" || importProduct === "uniqaAuto";
+          const canSaveAnnualMileage =
+            importProduct === "allianzAuto" || importProduct === "pillowAuto";
+          const canSaveAllianzScope = importProduct === "allianzAuto";
+          const canSaveHullSum =
+            importProduct === "kooperativaAuto" ||
+            importProduct === "uniqaAuto" ||
+            importProduct === "cppAuto" ||
+            importProduct === "allianzAuto" ||
+            importProduct === "pillowAuto" ||
+            importProduct === "csobAuto";
+          const canSaveHullText =
+            importProduct === "allianzAuto" || importProduct === "pillowAuto";
+          const canSaveHullRisks =
+            importProduct === "kooperativaAuto" ||
+            importProduct === "uniqaAuto" ||
+            importProduct === "cppAuto" ||
+            importProduct === "allianzAuto" ||
+            importProduct === "pillowAuto";
+          const canSaveAssistance =
+            importProduct === "kooperativaAuto" ||
+            importProduct === "uniqaAuto" ||
+            importProduct === "cppAuto" ||
+            importProduct === "allianzAuto" ||
+            importProduct === "csobAuto" ||
+            importProduct === "pillowAuto";
+          const cppPremiumLiabilityBundle =
+            importProduct === "cppAuto" && carLiabilityLimit === 200_000_000;
+          const carAddonGlass = parsedPdfBooleanOrNumberValue(
+            parsed,
+            "carAddonGlass",
+            "carAddonGlassLimit"
+          );
+          const carAddonAnimalCollision = parsedPdfBooleanOrNumberValue(
+            parsed,
+            "carAddonAnimalCollision",
+            "carAddonAnimalCollisionLimit"
+          );
+          const carAddonAnimalDamage = parsedPdfBooleanOrNumberValue(
+            parsed,
+            "carAddonAnimalDamage",
+            "carAddonAnimalDamageLimit"
+          );
+          const carAddonTheft = parsedPdfBooleanOrNumberValue(
+            parsed,
+            "carAddonTheft",
+            "carAddonTheftLimit"
+          );
+          const carAddonNatural = parsedPdfBooleanOrNumberValue(
+            parsed,
+            "carAddonNatural",
+            "carAddonNaturalLimit"
+          );
+          const carAddonOwnDamage = parsedPdfBooleanOrNumberValue(
+            parsed,
+            "carAddonOwnDamage",
+            "carAddonOwnDamageLimit"
+          );
+          const carAddonGap = parsedPdfBooleanOrNumberValue(
+            parsed,
+            "carAddonGap",
+            "carAddonGapLimit"
+          );
+          const carHullSumInsured =
+            canSaveHullText && hullSumInsuredText ? null : hullSumInsuredNumber;
+          const isAutoImportProduct = isAutoProduct(importProduct);
+          const domexDetailForSave =
+            importProduct === "domex"
+              ? {
+                  address: parsedPdfTextValue(parsed, "domexAddress") || null,
+                  propertyType: parsedPdfTextValue(parsed, "domexPropertyType") || null,
+                  propertyCoverage:
+                    parsedPdfTextValue(parsed, "domexPropertyCoverage") || null,
+                  sumInsured: parsedPdfRoundedNumberValue(
+                    parsed,
+                    "domexPropertySumInsured"
+                  ),
+                  deductible: parsedPdfRoundedNumberValue(
+                    parsed,
+                    "domexPropertyDeductible"
+                  ),
+                  householdType:
+                    parsedPdfTextValue(parsed, "domexHouseholdType") || null,
+                  householdCoverage:
+                    parsedPdfTextValue(parsed, "domexHouseholdCoverage") || null,
+                  householdSumInsured: parsedPdfRoundedNumberValue(
+                    parsed,
+                    "domexHouseholdSumInsured"
+                  ),
+                  householdDeductible: parsedPdfRoundedNumberValue(
+                    parsed,
+                    "domexHouseholdDeductible"
+                  ),
+                  outbuildingSumInsured: parsedPdfRoundedNumberValue(
+                    parsed,
+                    "domexOutbuildingSumInsured"
+                  ),
+                  liabilitySumInsured: parsedPdfRoundedNumberValue(
+                    parsed,
+                    "domexLiabilitySumInsured"
+                  ),
+                  liabilityDeductible: parsedPdfRoundedNumberValue(
+                    parsed,
+                    "domexLiabilityDeductible"
+                  ),
+                  liabilityMobile: parsedPdfBooleanValue(parsed, "domexLiabilityMobile")
+                    ? true
+                    : null,
+                  liabilityTenant: parsedPdfBooleanValue(parsed, "domexLiabilityTenant")
+                    ? true
+                    : null,
+                  liabilityLandlord: parsedPdfBooleanValue(
+                    parsed,
+                    "domexLiabilityLandlord"
+                  )
+                    ? true
+                    : null,
+                  assistancePlus: parsedPdfBooleanValue(parsed, "domexAssistancePlus")
+                    ? true
+                    : null,
+                  note: parsedPdfTextValue(parsed, "domexNote") || null,
+                }
+              : null;
+          const contractEntryPayload = {
+            productKey: importProduct,
+            entryType: "contract" as ContractEntryType,
+            commissionMode: null,
+            inputAmount: amountForSave,
+            calculationInputAmount: amountForSave,
+            effectiveInputAmount: amountForSave,
+            comfortPayment: null,
+            comfortGradual: null,
+            comfortTargetAmount: null,
+            frequencyRaw: frequencyForSave,
+            clientName: clientNameFromPdf,
+            contractSignedDate: signedDateIso,
+            policyStartDate: policyStartDateIso,
+            policyEndDate: null,
+            status: "active",
+            stornoDate: null,
+            durationYears: null,
+            durationMonths: null,
+            maxCizinKomplexVariant: null,
+            contractNumber: contractNumberFromPdf,
+            tipContractTipsterEmail: null,
+            tipContractTipsterPercent: null,
+            tipContractSourceTipId: null,
+            tipContractSourceTipTitle: null,
+            tipContractSourceTipProductLabel: null,
+            tipContractSourceTipClientName: null,
+            tipContractSourceTipCreatedAtMs: null,
+            carMake: isAutoImportProduct
+              ? parsedPdfTextValue(parsed, "carMake") || null
+              : null,
+            carPlate: isAutoImportProduct
+              ? parsedPdfTextValue(parsed, "carPlate") || null
+              : null,
+            carVin: isAutoImportProduct
+              ? parsedPdfTextValue(parsed, "carVin") || null
+              : null,
+            carTp:
+              isAutoImportProduct && canSaveTp
+                ? parsedPdfTextValue(parsed, "carTp") || null
+                : null,
+            carOrv: isAutoImportProduct
+              ? parsedPdfTextValue(parsed, "carOrv") || null
+              : null,
+            carAnnualMileage: isAutoImportProduct && canSaveAnnualMileage
+              ? parsedPdfTextValue(parsed, "carAnnualMileage") || null
+              : null,
+            carAllianzScope: isAutoImportProduct && canSaveAllianzScope
+              ? parsedPdfTextValue(parsed, "carAllianzScope") || null
+              : null,
+            carLiabilityLimit: isAutoImportProduct ? carLiabilityLimit : null,
+            carHullSumInsured:
+              isAutoImportProduct && canSaveHullSum ? carHullSumInsured : null,
+            carHullSumInsuredText:
+              isAutoImportProduct && canSaveHullText
+                ? hullSumInsuredText || null
+                : null,
+            carHullDeductible:
+              isAutoImportProduct && canSaveHullSum ? hullDeductible : null,
+            carHullDeductibleText:
+              isAutoImportProduct && canSaveHullSum
+                ? hullDeductibleText || null
+                : null,
+            carHullRiskAccident: isAutoImportProduct && canSaveHullRisks
+              ? parsedPdfBooleanValue(parsed, "carHullRiskAccident")
+              : null,
+            carHullRiskTheft: isAutoImportProduct && canSaveHullRisks
+              ? parsedPdfBooleanValue(parsed, "carHullRiskTheft")
+              : null,
+            carHullRiskNatural: isAutoImportProduct && canSaveHullRisks
+              ? parsedPdfBooleanValue(parsed, "carHullRiskNatural")
+              : null,
+            carHullRiskVandalism: isAutoImportProduct && canSaveHullRisks
+              ? parsedPdfBooleanValue(parsed, "carHullRiskVandalism")
+              : null,
+            carHullRiskAnimalCollision: isAutoImportProduct && canSaveHullRisks
+              ? parsedPdfBooleanValue(parsed, "carHullRiskAnimalCollision")
+              : null,
+            carAssistancePlan: isAutoImportProduct && canSaveAssistance
+              ? parsedPdfTextValue(parsed, "carAssistancePlan") || null
+              : null,
+            carAddonEso: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonEso")
+              : null,
+            carAddonNaturalRisks: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonNaturalRisks")
+              : null,
+            carAddonKlika: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonKlika")
+              : null,
+            carAddonGlass: isAutoImportProduct ? carAddonGlass : null,
+            carAddonGlassLimit: isAutoImportProduct ? glassLimit : null,
+            carAddonAnimalCollision: isAutoImportProduct
+              ? carAddonAnimalCollision
+              : null,
+            carAddonAnimalCollisionLimit: isAutoImportProduct
+              ? animalCollisionLimit
+              : null,
+            carAddonAnimalDamage: isAutoImportProduct ? carAddonAnimalDamage : null,
+            carAddonAnimalDamageLimit: isAutoImportProduct
+              ? animalDamageLimit
+              : null,
+            carAddonVandalism: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonVandalism")
+              : null,
+            carAddonTheft: isAutoImportProduct ? carAddonTheft : null,
+            carAddonTheftLimit: isAutoImportProduct ? theftLimit : null,
+            carAddonNatural: isAutoImportProduct ? carAddonNatural : null,
+            carAddonNaturalLimit: isAutoImportProduct ? naturalLimit : null,
+            carAddonOwnDamage: isAutoImportProduct ? carAddonOwnDamage : null,
+            carAddonOwnDamageLimit: isAutoImportProduct ? ownDamageLimit : null,
+            carAddonGap: isAutoImportProduct ? carAddonGap : null,
+            carAddonGapLimit: isAutoImportProduct ? gapLimit : null,
+            carAddonSmartGap: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonSmartGap") ||
+                cppPremiumLiabilityBundle
+              : null,
+            carAddonServisPro: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonServisPro") ||
+                cppPremiumLiabilityBundle
+              : null,
+            carAddonFireExplosion: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonFireExplosion")
+              : null,
+            carAddonLegalAdvice: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonLegalAdvice")
+              : null,
+            carAddonReplacementCar: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonReplacementCar")
+              : null,
+            carAddonLuggage: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonLuggage")
+              : null,
+            carAddonTransportedGoods: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonTransportedGoods")
+              : null,
+            carAddonPothole: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonPothole")
+              : null,
+            carAddonNonFaultAccident: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonNonFaultAccident")
+              : null,
+            carAddonPassengerInjury: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonPassengerInjury")
+              : null,
+            carAddonKeyLossTheft: isAutoImportProduct
+              ? parsedPdfBooleanValue(parsed, "carAddonKeyLossTheft")
+              : null,
+            neonDetail: null,
+            domexDetail: domexDetailForSave,
+            maxdomovDetail: null,
+            paid: shouldAutoMarkPaidByPolicyStartDate(policyStartDateIso),
+            isRefresh: isReplacementPdf,
+            refreshOriginalMissingInSystem: replacementOriginalMissingInSystem,
+            requiresStatementRefresh: replacementOriginalMissingInSystem,
+            commissionCalculationStatus: replacementOriginalMissingInSystem
+              ? "provisional_refresh_missing_original"
+              : null,
+            commissionBaseSource: replacementOriginalMissingInSystem
+              ? "calculator_provisional"
+              : null,
+            premiumUpdatedFromStatementAtMs: null,
+            premiumUpdatedFromStatementChronologyMs: null,
+            premiumUpdatedFromStatementId: null,
+            createdFromCommissionStatement: false,
+            createdFromCommissionStatementAtMs: null,
+            createdFromCommissionStatementChronologyMs: null,
+            createdFromCommissionStatementId: null,
+            refreshOriginalContractNumber: isReplacementPdf
+              ? replacementOriginalMissingInSystem
+                ? null
+                : replacementNumber
+              : null,
+          };
+
+          const { response, data } = await requestContractsMutationWithAuth({
+            user,
+            path: "/api/contracts",
+            method: "POST",
+            payload: {
+              ownerEmail: targetOwnerEmail,
+              entry: contractEntryPayload,
+            },
+            idempotencyKey: buildContractsCreateIdempotencyKey({
+              ownerEmail: targetOwnerEmail,
+              entry: contractEntryPayload,
+            }),
+          });
+          const apiError = getContractsMutationError({
+            response,
+            data,
+            fallback: "Uložení smlouvy selhalo.",
+          });
+          if (apiError) {
+            throw new Error(apiError);
+          }
+
+          const createdEntryId =
+            typeof data?.entryId === "string" ? data.entryId.trim() : "";
+          if (!createdEntryId) {
+            throw new Error("Server potvrdil uložení bez ID smlouvy.");
+          }
+
+          let rowStatus: AutoBulkImportRowStatus = "success";
+          const savedLabel = replacementOriginalMissingInSystem
+            ? "Uloženo jako náhrada bez původní smlouvy v systému"
+            : isReplacementPdf
+            ? `Uloženo jako náhrada ${replacementNumber}`
+            : "Uloženo";
+          let rowMessage = savedLabel;
+
+          rows = updateAutoBulkRow(rows, index, {
+            status: "processing",
+            message: "Přikládám PDF",
+          });
+
+          try {
+            await uploadContractPdfAttachmentWithAuth({
+              user,
+              ownerEmail: targetOwnerEmail,
+              entryId: createdEntryId,
+              file,
+            });
+          } catch (uploadErr) {
+            rowStatus = "warning";
+            const uploadErrorMessage = compactErrorMessage(
+              uploadErr,
+              "PDF se nepodařilo přiložit."
+            );
+            rowMessage = `${savedLabel} bez PDF přílohy: ${uploadErrorMessage}`;
+          }
+
+          setLastSavedContractRef({
+            ownerEmail: targetOwnerEmail,
+            entryId: createdEntryId,
+          });
+          setSaveSuccessFlash({
+            contractNumber: contractNumberFromPdf,
+            clientName: clientNameFromPdf,
+          });
+          setContractSaveCelebrationKey((prev) => prev + 1);
+          finishRow(
+            index,
+            {
+              status: rowStatus,
+              message: rowMessage,
+            },
+            "saved"
+          );
+        } catch (error) {
+          finishRow(
+            index,
+            {
+              status: "error",
+              message: compactErrorMessage(
+                error,
+                "Smlouvu se nepodařilo zpracovat."
+              ),
+            },
+            "failed"
+          );
+        } finally {
+          processedCount += 1;
+          setAutoBulkImportStatus(
+            `Zpracovávám ${Math.min(processedCount, files.length)}/${files.length}`
+          );
+        }
+      }
+    } finally {
+      setAutoBulkImporting(false);
+      if (savedCount > 0) {
+        invalidateContractsCaches();
+      }
+      setAutoBulkImportStatus(
+        `Hotovo: uloženo ${savedCount}, ke kontrole ${reviewCount}, přeskočeno ${skippedCount}, chyby ${failedCount}.`
+      );
+    }
+  };
 
   const recalc = () => {
     const val = parseNumber(amountText);
@@ -7883,6 +9246,178 @@ export default function CalculatorPage() {
       tipContractLookupState.email !== normalizedDraftEmail
     );
   })();
+  const showAutoBulkImport =
+    hasSelectedProduct && isBulkImportProduct(product) && isAddContractMode && canImportFromPdf;
+  const autoBulkImportCounts = autoBulkImportRows.reduce(
+    (acc, row) => {
+      if (row.status === "success" || row.status === "warning") acc.saved += 1;
+      if (row.status === "review") acc.review += 1;
+      if (row.status === "skipped") acc.skipped += 1;
+      if (row.status === "error") acc.failed += 1;
+      if (row.status === "processing") acc.processing += 1;
+      return acc;
+    },
+    { saved: 0, review: 0, skipped: 0, failed: 0, processing: 0 }
+  );
+  const autoBulkImportButtonDisabled =
+    autoBulkImporting ||
+    saving ||
+    pdfImporting ||
+    tipsterModeEnabled ||
+    Boolean(tipContractConfig);
+  const renderAutoBulkImportPanel = () => {
+    if (!showAutoBulkImport) return null;
+    const bulkImportPanelTitle =
+      product === "domex" ? "Hromadné nahrání DOMEX" : "Hromadné nahrání aut";
+
+    const rowTone = (status: AutoBulkImportRowStatus): string => {
+      switch (status) {
+        case "success":
+          return "border-emerald-200 bg-emerald-50 text-emerald-900";
+        case "review":
+        case "warning":
+          return "border-amber-200 bg-amber-50 text-amber-950";
+        case "skipped":
+          return "border-slate-200 bg-slate-50 text-slate-700";
+        case "error":
+          return "border-rose-200 bg-rose-50 text-rose-900";
+        case "processing":
+          return "border-violet-200 bg-violet-50 text-violet-950";
+        case "queued":
+        default:
+          return "border-slate-200 bg-white text-slate-700";
+      }
+    };
+
+    const rowIcon = (status: AutoBulkImportRowStatus) => {
+      if (status === "processing") {
+        return <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden="true" />;
+      }
+      if (status === "success") {
+        return <CheckCircle2 className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />;
+      }
+      if (status === "review" || status === "warning" || status === "error") {
+        return <AlertTriangle className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />;
+      }
+      return <span className="h-2.5 w-2.5 rounded-full bg-current opacity-45" aria-hidden="true" />;
+    };
+
+    return (
+      <section className="rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-white text-violet-800 shadow-sm">
+              <UploadCloud className="h-5 w-5" strokeWidth={2.3} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-black text-slate-950">
+                {bulkImportPanelTitle}
+              </h3>
+              {autoBulkImportStatus ? (
+                <p className="mt-1 text-xs font-semibold text-slate-600" aria-live="polite">
+                  {autoBulkImportStatus}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => autoBulkFileInputRef.current?.click()}
+            disabled={autoBulkImportButtonDisabled}
+            className="ui-focus inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full border border-violet-700 bg-violet-700 px-4 py-2 text-sm font-black !text-white shadow-[0_12px_28px_rgba(109,40,217,0.18)] transition hover:-translate-y-0.5 hover:bg-violet-800 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
+          >
+            {autoBulkImporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.3} aria-hidden="true" />
+            ) : (
+              <UploadCloud className="h-4 w-4" strokeWidth={2.3} aria-hidden="true" />
+            )}
+            {autoBulkImporting ? "Nahrávám…" : "Vybrat PDF"}
+          </button>
+          <input
+            ref={autoBulkFileInputRef}
+            type="file"
+            accept="application/pdf"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              void handleAutoBulkImport(event.target.files);
+            }}
+          />
+        </div>
+
+        {autoBulkImportRows.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <div className="flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.1em]">
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800">
+                Uloženo {autoBulkImportCounts.saved}
+              </span>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
+                Ke kontrole {autoBulkImportCounts.review}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-700">
+                Přeskočeno {autoBulkImportCounts.skipped}
+              </span>
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-800">
+                Chyby {autoBulkImportCounts.failed}
+              </span>
+              {autoBulkImportCounts.processing > 0 && (
+                <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-800">
+                  Běží {autoBulkImportCounts.processing}
+                </span>
+              )}
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {autoBulkImportRows.map((row) => (
+                <div
+                  key={row.id}
+                  className={`grid grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-xl border px-3 py-2 text-xs ${rowTone(
+                    row.status
+                  )}`}
+                >
+                  <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center">
+                    {rowIcon(row.status)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 font-bold">
+                      <span className="max-w-full truncate">{row.fileName}</span>
+                      {row.productLabel && (
+                        <span className="shrink-0 text-[11px] font-black">
+                          {row.productLabel}
+                        </span>
+                      )}
+                      {row.contractNumber && (
+                        <span className="shrink-0 text-[11px] font-black">
+                          {row.contractNumber}
+                        </span>
+                      )}
+                    </div>
+                    {row.clientName && (
+                      <p className="mt-0.5 truncate font-semibold opacity-80">
+                        {row.clientName}
+                      </p>
+                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="font-semibold opacity-80">{row.message}</p>
+                      {row.status === "review" && row.reviewDraft ? (
+                        <button
+                          type="button"
+                          onClick={() => loadAutoBulkReviewDraft(row.id)}
+                          disabled={autoBulkImporting || saving || pdfImporting}
+                          className="ui-focus inline-flex min-h-8 items-center justify-center rounded-full border border-amber-300 bg-white px-3 py-1 text-[11px] font-black text-amber-950 shadow-sm transition hover:border-amber-400 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Zkontrolovat
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  };
   const renderProductAndPdfSection = (large = false) => (
       <CalculatorProductAndPdfSection
         canImportFromPdf={canImportFromPdf && isAddContractMode}
@@ -8240,8 +9775,10 @@ export default function CalculatorPage() {
         ) : (
         <div className="grid gap-5 items-start lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-3.5 w-full lg:max-w-3xl">
+            <div id="auto-bulk-review-form-anchor" className="scroll-mt-28" />
             {/* Produkt + PDF import */}
             {renderProductAndPdfSection(false)}
+            {renderAutoBulkImportPanel()}
 
             <section className="space-y-3 rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
               {/* Doba trvání + platba */}
@@ -8515,6 +10052,7 @@ export default function CalculatorPage() {
               isAddContractMode &&
               hasSelectedProduct &&
               !saving &&
+              !autoBulkImporting &&
               parseNumber(amountText) > 0 &&
               !autoHullSumNeedsInput &&
               !effectivePositionTimelineLoading &&

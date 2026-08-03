@@ -83,6 +83,16 @@ const parseAmount = (value: string | null | undefined): number | null => {
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
 };
 
+const parsePlainAmount = (value: string | null | undefined): number | null => {
+  if (!value) return null;
+  const ascii = stripDiacritics(value).replace(/\u00A0/g, " ");
+  const matches = Array.from(ascii.matchAll(/\b\d{1,3}(?:\s\d{3})+\b|\b\d{3,8}\b/g));
+  const raw = matches[matches.length - 1]?.[0] ?? null;
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw.replace(/\s+/g, ""), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const mapFrequency = (value: string | null | undefined): PaymentFrequency | null => {
   if (!value) return null;
   const normalized = normalizeToken(value);
@@ -125,6 +135,16 @@ function parseClientNameFromSurnameNameTitle(value: string | null | undefined): 
   const surname = parts[0];
   const firstNames = parts.slice(1);
   return [...firstNames, surname].join(" ").trim() || null;
+}
+
+function parseClientNameAsWritten(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = normalizeSpaces(
+    value
+      .replace(/\b\d{6}\/?\d{3,4}\b/g, " ")
+      .replace(/\b\d{8,10}\b/g, " ")
+  );
+  return cleaned || null;
 }
 
 const itemMatchesPart = (item: PositionedTextItem, part: string): boolean => {
@@ -247,6 +267,17 @@ function findRowIndexContaining(rows: LayoutRow[], pattern: RegExp): number {
   return rows.findIndex((row) => pattern.test(normalizeToken(row.text)));
 }
 
+const findFirstItemMatching = (
+  rows: LayoutRow[],
+  predicate: (item: PositionedTextItem) => boolean
+): PositionedTextItem | null => {
+  for (const row of rows) {
+    const item = row.items.find(predicate);
+    if (item) return item;
+  }
+  return null;
+};
+
 function formatInsurancePlaceAddress(
   street: string | null,
   postalCode: string | null,
@@ -364,6 +395,95 @@ function findOutbuildingSumInsured(rows: LayoutRow[]): number | null {
   );
 }
 
+function findOldMaxdomov3ContractNumber(rows: LayoutRow[]): string | null {
+  const item = findFirstItemMatching(rows, (candidate) => {
+    if (candidate.x < 80 || candidate.x > 190 || candidate.y < 720) return false;
+    return /^\d{6,14}$/.test(candidate.str.replace(/\D+/g, ""));
+  });
+  return extractContractNumber(item?.str);
+}
+
+function findOldMaxdomov3ClientName(rows: LayoutRow[]): string | null {
+  const row = rows.find((candidate) => candidate.y >= 630 && candidate.y <= 680);
+  if (!row) return null;
+  return parseClientNameAsWritten(textInRange(row, 0, 330));
+}
+
+function findOldMaxdomov3PolicyStartDate(rows: LayoutRow[]): string | null {
+  const item = findFirstItemMatching(rows, (candidate) => {
+    if (candidate.x < 70 || candidate.x > 170 || candidate.y < 175 || candidate.y > 220) {
+      return false;
+    }
+    return /\b\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\b/.test(candidate.str);
+  });
+  return toDateInput(extractDateToken(item?.str));
+}
+
+function findOldMaxdomov3ContractSignedDate(rows: LayoutRow[]): string | null {
+  const item = findFirstItemMatching(rows, (candidate) => {
+    if (candidate.x < 380 || candidate.x > 480 || candidate.y < 90 || candidate.y > 150) {
+      return false;
+    }
+    return /\b\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\b/.test(candidate.str);
+  });
+  return toDateInput(extractDateToken(item?.str));
+}
+
+function findOldMaxdomov3Frequency(rows: LayoutRow[]): PaymentFrequency | null {
+  const selected = findFirstItemMatching(rows, (candidate) => {
+    if (normalizeToken(candidate.str) !== "x") return false;
+    return candidate.y >= 105 && candidate.y <= 145 && candidate.x >= 100 && candidate.x <= 340;
+  });
+  if (!selected) return null;
+  if (selected.x < 180) return "annual";
+  if (selected.x < 260) return "semiannual";
+  return "quarterly";
+}
+
+function findOldMaxdomov3Amount(rows: LayoutRow[]): number | null {
+  const amountItems = rows
+    .flatMap((row) => row.items)
+    .filter(
+      (candidate) =>
+        candidate.x >= 520 && candidate.x <= 585 && candidate.y >= 15 && candidate.y <= 60
+    )
+    .sort((a, b) => a.y - b.y);
+  for (const item of amountItems) {
+    const amount = parsePlainAmount(item.str);
+    if (amount != null) return amount;
+  }
+  return null;
+}
+
+function applyOldMaxdomov3Fallback(
+  result: MaxdomovPdfResult,
+  rows: {
+    firstPageRows: LayoutRow[];
+    fourthPageRows: LayoutRow[] | null;
+    lastPageRows: LayoutRow[];
+  }
+) {
+  if (!rows.fourthPageRows) return;
+
+  const contractNumber = findOldMaxdomov3ContractNumber(rows.firstPageRows);
+  const clientName = findOldMaxdomov3ClientName(rows.firstPageRows);
+  const policyStartDate = findOldMaxdomov3PolicyStartDate(rows.fourthPageRows);
+  const amount = findOldMaxdomov3Amount(rows.fourthPageRows);
+  const looksLikeOldMaxdomov3 =
+    Boolean(contractNumber && clientName) && Boolean(policyStartDate || amount != null);
+  if (!looksLikeOldMaxdomov3) return;
+
+  const contractSignedDate = findOldMaxdomov3ContractSignedDate(rows.lastPageRows);
+  const frequency = findOldMaxdomov3Frequency(rows.fourthPageRows);
+
+  result.contractNumber ??= contractNumber;
+  result.clientName ??= clientName;
+  result.policyStartDate ??= policyStartDate;
+  result.contractSignedDate ??= contractSignedDate;
+  result.frequency ??= frequency;
+  result.amount ??= amount;
+}
+
 export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
   const buffer = await file.arrayBuffer();
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -387,13 +507,18 @@ export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
   const firstPageRows = await extractLayoutRowsFromPage(firstPage);
   const firstPageText = rowsToText(firstPageRows);
   const firstPageAscii = stripDiacritics(firstPageText).toLowerCase();
+  const pageRowsByNumber = new Map<number, LayoutRow[]>([[1, firstPageRows]]);
+  const getPageRows = async (pageNumber: number): Promise<LayoutRow[]> => {
+    const existing = pageRowsByNumber.get(pageNumber);
+    if (existing) return existing;
+    const rows = await extractLayoutRowsFromPage(await doc.getPage(pageNumber));
+    pageRowsByNumber.set(pageNumber, rows);
+    return rows;
+  };
 
   if (/b\.\s+pojisteni\s+staveb/.test(firstPageAscii)) {
     for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-      const pageRows =
-        pageNumber === 1
-          ? firstPageRows
-          : await extractLayoutRowsFromPage(await doc.getPage(pageNumber));
+      const pageRows = await getPageRows(pageNumber);
       const propertyType = findMainBuildingPropertyType(pageRows);
       const sumInsured = findMainBuildingSumInsured(pageRows);
       const outbuildingSumInsured = findOutbuildingSumInsured(pageRows);
@@ -417,10 +542,7 @@ export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
   }
 
   for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-    const pageRows =
-      pageNumber === 1
-        ? firstPageRows
-        : await extractLayoutRowsFromPage(await doc.getPage(pageNumber));
+    const pageRows = await getPageRows(pageNumber);
     const householdType = findHouseholdType(pageRows);
     const householdSumInsured = findHouseholdSumInsured(pageRows);
     if (householdType) {
@@ -501,8 +623,7 @@ export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
   const amount = parseAmount(amountLabel ? findTextBelowLabel(firstPageRows, amountLabel) : null);
   if (amount != null) result.amount = amount;
 
-  const lastPage = await doc.getPage(doc.numPages);
-  const lastPageRows = await extractLayoutRowsFromPage(lastPage);
+  const lastPageRows = await getPageRows(doc.numPages);
   const lastPageText = rowsToText(lastPageRows);
   const lastPageAscii = stripDiacritics(lastPageText).toLowerCase();
 
@@ -511,13 +632,23 @@ export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
     ? findLabelBox(lastPageRows, ["dne"], signaturesLabel.rowIndex + 1)
     : findLabelBox(lastPageRows, ["dne"]);
   const contractSignedDate =
-    toDateInput(extractDateToken(signedDateLabel ? findTextBelowLabel(lastPageRows, signedDateLabel) : null)) ??
+    toDateInput(
+      extractDateToken(
+        signedDateLabel ? findTextBelowLabel(lastPageRows, signedDateLabel) : null
+      )
+    ) ??
     toDateInput(
       lastPageAscii.match(
         /podpisy\s+smluvnich\s+stran[\s\S]{0,80}?dne[\s\S]{0,50}?(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/
       )?.[1]
-    );
+  );
   if (contractSignedDate) result.contractSignedDate = contractSignedDate;
+
+  applyOldMaxdomov3Fallback(result, {
+    firstPageRows,
+    fourthPageRows: doc.numPages >= 4 ? await getPageRows(4) : null,
+    lastPageRows,
+  });
 
   return result;
 }

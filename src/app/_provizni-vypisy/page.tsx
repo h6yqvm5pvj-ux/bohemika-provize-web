@@ -479,6 +479,8 @@ const statementProductLogoMeta = (
       return { src: "/icons/icon_domex.webp", alt: "Majetek" };
     case "travel":
       return { src: "/icons/icon_cestovko.webp", alt: "Cestovní pojištění" };
+    case "foreigners":
+      return { src: "/icons/maxima.png", alt: "Cizinci" };
     default:
       return { src: "/icons/produkt.png", alt: product.label };
   }
@@ -1663,8 +1665,9 @@ const managerCommissionProductSortRank = (category: StatementProductCategory): n
   if (category === "property") return 2;
   if (category === "business") return 3;
   if (category === "travel") return 4;
-  if (category === "investment") return 5;
-  return 6;
+  if (category === "foreigners") return 5;
+  if (category === "investment") return 6;
+  return 7;
 };
 
 type ManagerCommissionRowSectionKey =
@@ -1673,6 +1676,7 @@ type ManagerCommissionRowSectionKey =
   | "unpairedProperty"
   | "unpairedBusiness"
   | "unpairedTravel"
+  | "unpairedForeigners"
   | "unpairedTroyOunce"
   | "unpairedInvestment"
   | "unpairedOther"
@@ -1681,6 +1685,7 @@ type ManagerCommissionRowSectionKey =
   | "property"
   | "business"
   | "travel"
+  | "foreigners"
   | "troyOunce"
   | "investment"
   | "other";
@@ -1715,6 +1720,7 @@ const MANAGER_COMMISSION_ROW_SECTION_ORDER: ManagerCommissionRowSectionKey[] = [
   "property",
   "business",
   "travel",
+  "foreigners",
   "investment",
   "troyOunce",
   "other",
@@ -1723,6 +1729,7 @@ const MANAGER_COMMISSION_ROW_SECTION_ORDER: ManagerCommissionRowSectionKey[] = [
   "unpairedProperty",
   "unpairedBusiness",
   "unpairedTravel",
+  "unpairedForeigners",
   "unpairedInvestment",
   "unpairedTroyOunce",
   "unpairedOther",
@@ -1760,6 +1767,12 @@ const managerCommissionRowSectionMeta = (
       return {
         label: "Nespárované / Cestovní pojištění",
         description: "Cestovní řádky bez jednoznačné shody v týmových smlouvách.",
+        className: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "unpairedForeigners":
+      return {
+        label: "Nespárované / Cizinci",
+        description: "Řádky zdravotního pojištění cizinců bez jednoznačné shody v týmových smlouvách.",
         className: "border-amber-200 bg-amber-50 text-amber-950",
       };
     case "unpairedTroyOunce":
@@ -1810,6 +1823,12 @@ const managerCommissionRowSectionMeta = (
         description: "Meziprovize z cestovního pojištění.",
         className: "border-cyan-200 bg-cyan-50 text-cyan-950",
       };
+    case "foreigners":
+      return {
+        label: "Cizinci",
+        description: "Meziprovize ze zdravotního pojištění cizinců.",
+        className: "border-indigo-200 bg-indigo-50 text-indigo-950",
+      };
     case "troyOunce":
       return {
         label: "Troyská unce / zlato",
@@ -1850,6 +1869,9 @@ const managerCommissionRowSectionIcon = (
     case "unpairedTravel":
     case "travel":
       return Plane;
+    case "unpairedForeigners":
+    case "foreigners":
+      return UsersRound;
     case "unpairedOther":
       return AlertTriangle;
     case "unpairedInvestment":
@@ -1886,6 +1908,7 @@ const managerCommissionRowSectionKey = (
     if (product.category === "property") return "unpairedProperty";
     if (product.category === "business") return "unpairedBusiness";
     if (product.category === "travel") return "unpairedTravel";
+    if (product.category === "foreigners") return "unpairedForeigners";
     if (rawCode.startsWith("TU_")) return "unpairedTroyOunce";
     if (product.category === "investment") return "unpairedInvestment";
     return "unpairedOther";
@@ -1896,6 +1919,7 @@ const managerCommissionRowSectionKey = (
   if (product.category === "property") return "property";
   if (product.category === "business") return "business";
   if (product.category === "travel") return "travel";
+  if (product.category === "foreigners") return "foreigners";
   if (rawCode.startsWith("TU_")) return "troyOunce";
   if (product.category === "investment") return "investment";
 
@@ -2541,6 +2565,7 @@ const otherProductContractPrimaryCategory = (
   if (contractHasProductCategory(contract, "auto")) return "auto";
   if (contractHasProductCategory(contract, "property")) return "property";
   if (contractHasProductCategory(contract, "business")) return "business";
+  if (contractHasProductCategory(contract, "foreigners")) return "foreigners";
   if (contractHasProductCategory(contract, "travel")) return "travel";
   if (contractHasProductCategory(contract, "investment")) return "investment";
   if (contractHasProductCategory(contract, "comfort")) return "comfort";
@@ -2560,6 +2585,8 @@ const otherProductContractCategoryLabel = (
       return "Podnikatelé";
     case "travel":
       return "Cestovní pojištění";
+    case "foreigners":
+      return "Cizinci";
     case "investment":
       return "Investice";
     case "comfort":
@@ -9232,7 +9259,16 @@ function UnpairedContractsSection({
       !contractHasProductCategory(contract, "auto") &&
       !contractHasProductCategory(contract, "property") &&
       !contractHasProductCategory(contract, "business") &&
+      !contractHasProductCategory(contract, "foreigners") &&
       contractHasProductCategory(contract, "travel")
+  );
+  const foreignerProductContracts = otherContracts.filter(
+    (contract) =>
+      !contractHasProductCategory(contract, "life") &&
+      !contractHasProductCategory(contract, "auto") &&
+      !contractHasProductCategory(contract, "property") &&
+      !contractHasProductCategory(contract, "business") &&
+      contractHasProductCategory(contract, "foreigners")
   );
   const investmentProductContracts = otherContracts.filter(
     (contract) =>
@@ -9241,6 +9277,7 @@ function UnpairedContractsSection({
       !contractHasProductCategory(contract, "property") &&
       !contractHasProductCategory(contract, "business") &&
       !contractHasProductCategory(contract, "travel") &&
+      !contractHasProductCategory(contract, "foreigners") &&
       (contractHasProductCategory(contract, "investment") ||
         contractHasInvestmentSectionProduct(contract) ||
         contractHasTroyOunceProduct(contract))
@@ -9252,6 +9289,7 @@ function UnpairedContractsSection({
       !contractHasProductCategory(contract, "property") &&
       !contractHasProductCategory(contract, "business") &&
       !contractHasProductCategory(contract, "travel") &&
+      !contractHasProductCategory(contract, "foreigners") &&
       !contractHasProductCategory(contract, "investment") &&
       !contractHasInvestmentSectionProduct(contract) &&
       !contractHasTroyOunceProduct(contract)
@@ -9370,6 +9408,20 @@ function UnpairedContractsSection({
             description="Cestovní produkty jsou oddělené od ostatních smluv."
             sectionKind="travel"
             contracts={travelProductContracts}
+            matchesByContractNumber={matchesByContractNumber}
+            deductionRows={deductionRows}
+            statementPeriod={statementPeriod}
+            statementPrefillSource={statementPrefillSource}
+            statementKey={statementKey}
+            correctionContext={correctionContext}
+            markingControls={markingControls}
+          />
+
+          <OtherProductsSection
+            title="Cizinci"
+            description="Zdravotní pojištění cizinců je oddělené od cestovního pojištění."
+            sectionKind="foreigners"
+            contracts={foreignerProductContracts}
             matchesByContractNumber={matchesByContractNumber}
             deductionRows={deductionRows}
             statementPeriod={statementPeriod}
@@ -10689,7 +10741,7 @@ function OtherProductsSection({
   description?: string;
   showTitle?: boolean;
   showDescription?: boolean;
-  sectionKind?: "life" | "auto" | "property" | "business" | "travel" | "investment" | "other";
+  sectionKind?: "life" | "auto" | "property" | "business" | "travel" | "foreigners" | "investment" | "other";
   enableA101Filter?: boolean;
   contracts?: OtherProductContractPreview[];
   matchesByContractNumber: ContractMatchesByNumber;
@@ -10770,6 +10822,15 @@ function OtherProductsSection({
 	      : sectionKind === "travel"
 	        ? {
 	            icon: Plane,
+	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
+	            containerClass:
+	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
+	            accentClass: "bg-violet-500/60",
+	            dividerClass: "border-violet-100",
+	          }
+	      : sectionKind === "foreigners"
+	        ? {
+	            icon: UsersRound,
 	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
 	            containerClass:
 	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
@@ -11902,8 +11963,13 @@ function StatementPreview({
   const businessProductContracts = pairedOtherProductContracts.filter((contract) =>
     contractHasProductCategory(contract, "business")
   );
-  const travelProductContracts = pairedOtherProductContracts.filter((contract) =>
-    contractHasProductCategory(contract, "travel")
+  const travelProductContracts = pairedOtherProductContracts.filter(
+    (contract) =>
+      !contractHasProductCategory(contract, "foreigners") &&
+      contractHasProductCategory(contract, "travel")
+  );
+  const foreignerProductContracts = pairedOtherProductContracts.filter((contract) =>
+    contractHasProductCategory(contract, "foreigners")
   );
   const investmentProductContracts = pairedOtherProductContracts.filter((contract) =>
     contractHasProductCategory(contract, "investment")
@@ -11915,6 +11981,7 @@ function StatementPreview({
       !contractHasProductCategory(contract, "property") &&
       !contractHasProductCategory(contract, "business") &&
       !contractHasProductCategory(contract, "travel") &&
+      !contractHasProductCategory(contract, "foreigners") &&
       !contractHasProductCategory(contract, "investment")
   );
   return (
@@ -12027,6 +12094,20 @@ function StatementPreview({
         description="Cestovní produkty jsou oddělené od ostatních smluv."
         sectionKind="travel"
         contracts={travelProductContracts}
+        matchesByContractNumber={matchesByContractNumber}
+        deductionRows={statement.deductionRows}
+        statementPeriod={statement.header.period}
+        statementPrefillSource={statementPrefillSource}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
+        markingControls={markingControls}
+      />
+
+      <OtherProductsSection
+        title="Cizinci"
+        description="Zdravotní pojištění cizinců je oddělené od cestovního pojištění."
+        sectionKind="foreigners"
+        contracts={foreignerProductContracts}
         matchesByContractNumber={matchesByContractNumber}
         deductionRows={statement.deductionRows}
         statementPeriod={statement.header.period}

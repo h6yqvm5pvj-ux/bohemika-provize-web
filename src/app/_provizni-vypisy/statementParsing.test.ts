@@ -90,6 +90,13 @@ describe("commission statement parsing helpers", () => {
       productKey: "axacestovko",
       category: "travel",
     });
+    expect(resolveStatementProduct("MAX_CIZIN")).toMatchObject({
+      productKey: "maxcizinkomplex",
+      category: "foreigners",
+    });
+    expect(resolveStatementProduct("MAX_CIZIN_TEST")).toMatchObject({
+      category: "foreigners",
+    });
     expect(resolveStatementProduct("SOBP_AU_Z")).toMatchObject({
       productKey: "csobAuto",
       category: "auto",

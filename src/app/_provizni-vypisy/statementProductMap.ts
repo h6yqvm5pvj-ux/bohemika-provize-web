@@ -59,6 +59,7 @@ export const STATEMENT_PRODUCT_CATEGORY_OPTIONS: Array<{
   { value: "property", label: "Majetek a odpovědnost" },
   { value: "business", label: "Podnikatelé" },
   { value: "travel", label: "Cestovní pojištění" },
+  { value: "foreigners", label: "Cizinci" },
   { value: "comfort", label: "Comfort" },
   { value: "investment", label: "Investice" },
   { value: "unknown", label: "Nezařazeno" },
@@ -95,9 +96,18 @@ export const inferStatementProductCategory = (
   if (/AUTO|AU_|ACP|PIL_AUTO|MOJEAUT|AUTOZ|NAMIRU/.test(rawCode)) return "auto";
   if (/SIMPLE|PPR|PPD|KP_/.test(rawCode)) return "business";
   if (/DOM|BYTEX|ZAMEX|HAFAN|OBCAN|OD_ZAM/.test(rawCode)) return "property";
-  if (/CEST|CIZIN|_CS/.test(rawCode)) return "travel";
+  if (/CIZIN/.test(rawCode)) return "foreigners";
+  if (/CEST|_CS/.test(rawCode)) return "travel";
   if (/COMFORT|CC/.test(rawCode)) return "comfort";
   return "unknown";
+};
+
+const statementCategoryForProductKey = (
+  productKey: Product | null
+): StatementProductCategory | null => {
+  if (!productKey) return null;
+  if (productKey === "maxcizinkomplex") return "foreigners";
+  return PRODUCT_CATALOG[productKey]?.category ?? null;
 };
 
 const normalizeProductKey = (value: unknown): Product | null => {
@@ -157,7 +167,8 @@ export const normalizeStatementProductMapEntry = (
 
   const productKey = normalizeProductKey(raw.productKey ?? raw.product);
   const catalogMeta = productKey ? PRODUCT_CATALOG[productKey] : null;
-  const inferredCategory = catalogMeta?.category ?? inferStatementProductCategory(code);
+  const inferredCategory =
+    statementCategoryForProductKey(productKey) ?? inferStatementProductCategory(code);
   const category = normalizeCategory(raw.category, inferredCategory);
   const label =
     normalizeText(raw.label) ||
@@ -329,7 +340,11 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
     label: "Kooperativa PMOP",
     category: "property",
   }),
-  defaultEntry({ code: "MAX_CIZIN", productKey: "maxcizinkomplex" }),
+  defaultEntry({
+    code: "MAX_CIZIN",
+    productKey: "maxcizinkomplex",
+    category: "foreigners",
+  }),
   defaultEntry({
     code: "MAX_DOM3",
     productKey: "maxdomov",
