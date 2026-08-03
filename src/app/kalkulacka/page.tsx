@@ -5106,13 +5106,7 @@ export default function CalculatorPage() {
                 );
               });
               if (!originalFound) {
-                if (importProduct === "domex") {
-                  replacementOriginalMissingInSystem = true;
-                } else {
-                  rowWarnings.push(
-                    "původní smlouva nebyla v systému nalezena, takže by se automaticky nestornovala"
-                  );
-                }
+                replacementOriginalMissingInSystem = true;
               }
             } catch (originalLookupErr) {
               console.warn(
