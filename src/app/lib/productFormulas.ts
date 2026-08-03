@@ -44,9 +44,11 @@ import {
 import {
   calculateDomex,
   DOMEX_CURRENT_VALID_FROM,
+  DOMEX_EARLY_HISTORICAL_VALID_FROM,
   DOMEX_HISTORICAL_VALID_FROM,
   domexCoefficient,
   domexSubsequentCoefficient,
+  isDomexEarlyHistoricalPeriod,
   isDomexHistoricalPeriod,
 } from "./productFormulas/domex";
 import {
@@ -208,10 +210,12 @@ export {
   MAXEFEKT7_VALID_FROM,
   PILLOW_INJURY_COEFFICIENT_VALID_FROM,
   DOMEX_CURRENT_VALID_FROM,
+  DOMEX_EARLY_HISTORICAL_VALID_FROM,
   DOMEX_HISTORICAL_VALID_FROM,
   calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
+  isDomexEarlyHistoricalPeriod,
   isDomexHistoricalPeriod,
   calculateCppHafan,
   calculatePillowMajetek,
@@ -437,9 +441,16 @@ export function getCoefficientSummary(
       ];
     }
     case "domex": {
+      const earlyHistorical = isDomexEarlyHistoricalPeriod(contractSignedDateIso);
       const historical = isDomexHistoricalPeriod(contractSignedDateIso);
       const validFrom = new Date(
-        `${historical ? DOMEX_HISTORICAL_VALID_FROM : DOMEX_CURRENT_VALID_FROM}T00:00:00`
+        `${
+          earlyHistorical
+            ? DOMEX_EARLY_HISTORICAL_VALID_FROM
+            : historical
+              ? DOMEX_HISTORICAL_VALID_FROM
+              : DOMEX_CURRENT_VALID_FROM
+        }T00:00:00`
       ).toLocaleDateString("cs-CZ");
       return [
         {

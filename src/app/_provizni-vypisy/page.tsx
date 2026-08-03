@@ -2705,6 +2705,13 @@ const hasCommissionType = (rows: CommissionRow[], type: string): boolean => {
   );
 };
 
+const contractRowsHaveA101Commission = (rows: CommissionRow[]): boolean =>
+  hasCommissionType(rows, "A101");
+
+const otherProductContractHasA101Commission = (
+  contract: OtherProductContractPreview
+): boolean => contractRowsHaveA101Commission(contract.rows);
+
 const missingAcceleratedB36Warning = (
   rows: CommissionRow[],
   b36Payments: OtherPayment[],
@@ -9318,6 +9325,7 @@ function UnpairedContractsSection({
             title="Auta"
             description="Auto produkty se párují primárně podle čísla smlouvy. Produkt z výpisu je doplňující kontrola."
             sectionKind="auto"
+            enableA101Filter
             contracts={autoProductContracts}
             matchesByContractNumber={matchesByContractNumber}
             deductionRows={deductionRows}
@@ -9332,6 +9340,7 @@ function UnpairedContractsSection({
             title="Majetek a odpovědnost"
             description="Majetkové a odpovědnostní produkty jsou oddělené od ostatních smluv."
             sectionKind="property"
+            enableA101Filter
             contracts={propertyProductContracts}
             matchesByContractNumber={matchesByContractNumber}
             deductionRows={deductionRows}
@@ -10666,6 +10675,7 @@ function OtherProductsSection({
   showTitle = true,
   showDescription = false,
   sectionKind = "other",
+  enableA101Filter = false,
   contracts,
   matchesByContractNumber,
   deductionRows,
@@ -10680,6 +10690,7 @@ function OtherProductsSection({
   showTitle?: boolean;
   showDescription?: boolean;
   sectionKind?: "life" | "auto" | "property" | "business" | "travel" | "investment" | "other";
+  enableA101Filter?: boolean;
   contracts?: OtherProductContractPreview[];
   matchesByContractNumber: ContractMatchesByNumber;
   deductionRows?: DeductionCommissionRow[];
@@ -10690,14 +10701,18 @@ function OtherProductsSection({
   markingControls?: MarkingControls;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [showOnlyA101, setShowOnlyA101] = useState(false);
   const safeContracts = contracts ?? [];
+  const a101Contracts = safeContracts.filter(otherProductContractHasA101Commission);
+  const a101FilterActive = enableA101Filter && showOnlyA101 && a101Contracts.length > 0;
+  const displayedContracts = a101FilterActive ? a101Contracts : safeContracts;
   if (safeContracts.length === 0) return null;
 
-  const totalCommission = safeContracts.reduce(
+  const totalCommission = displayedContracts.reduce(
     (sum, contract) => sum + otherProductContractTotal(contract),
     0
   );
-  const uncertaintyCount = safeContracts.reduce(
+  const uncertaintyCount = displayedContracts.reduce(
     (sum, contract) =>
       sum +
       otherProductContractUncertaintyCount(
@@ -10809,7 +10824,12 @@ function OtherProductsSection({
 	          </div>
 	        )}
 	        <span className="inline-flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-slate-900">
-	          <span>{safeContracts.length} smluv · {formatMoney(totalCommission)} Kč</span>
+	          <span>{displayedContracts.length} smluv · {formatMoney(totalCommission)} Kč</span>
+	          {a101FilterActive && (
+	            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-800 ring-1 ring-emerald-100">
+	              Pouze A101
+	            </span>
+	          )}
 	          {uncertaintyCount > 0 && (
 	            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-black text-violet-800 ring-1 ring-violet-100">
 	              {uncertaintyCountLabel(uncertaintyCount)}
@@ -10825,7 +10845,27 @@ function OtherProductsSection({
 
 	      {expanded && (
 	        <div className={`border-t ${sectionMeta.dividerClass} bg-white/45 py-2 pl-4 pr-3 sm:pl-5`}>
-          {safeContracts.map((contract) => (
+          {enableA101Filter && (
+            <div className="mb-2 flex flex-col gap-2 rounded-lg border border-violet-100 bg-white/75 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs font-bold text-slate-600">
+                A101: {a101Contracts.length} / {safeContracts.length} smluv
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOnlyA101((value) => !value)}
+                disabled={a101Contracts.length === 0}
+                className={`inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  a101FilterActive
+                    ? "bg-emerald-600 text-white shadow-[0_8px_18px_rgba(5,150,105,0.24)]"
+                    : "bg-violet-50 text-violet-800 ring-1 ring-violet-100 hover:bg-violet-100"
+                }`}
+              >
+                <ListChecks className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden="true" />
+                Pouze A101
+              </button>
+            </div>
+          )}
+          {displayedContracts.map((contract) => (
             <OtherProductContractCard
               key={contract.key}
               contract={contract}

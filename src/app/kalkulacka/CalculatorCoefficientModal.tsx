@@ -67,6 +67,7 @@ type CalculatorCoefficientModalProps = {
   isUniqaFlotilaHistorical: boolean;
   isPillowAutoHistorical: boolean;
   isKooperativaAutoHistorical: boolean;
+  isDomexEarlyHistorical: boolean;
   isDomexHistorical: boolean;
   isMaxEfekt5: boolean;
   isMaxEfekt7: boolean;
@@ -265,6 +266,7 @@ export function CalculatorCoefficientModal({
   isUniqaFlotilaHistorical,
   isPillowAutoHistorical,
   isKooperativaAutoHistorical,
+  isDomexEarlyHistorical,
   isDomexHistorical,
   isMaxEfekt5,
   isMaxEfekt7,
@@ -335,7 +337,9 @@ export function CalculatorCoefficientModal({
       : product === "pillowmajetek"
       ? "Pillow Majetek – koeficienty platné od 01.10.2023"
       : product === "domex"
-      ? isDomexHistorical
+      ? isDomexEarlyHistorical
+        ? "ČPP DOMEX – historické koeficienty – platnost 01.06.2017 až 31.05.2023"
+        : isDomexHistorical
         ? "ČPP DOMEX – historické koeficienty – platnost 01.06.2023 až 31.08.2024"
         : "ČPP DOMEX – aktuální koeficienty – platnost od 01.09.2024"
       : product === "cpphafan"
@@ -386,6 +390,10 @@ export function CalculatorCoefficientModal({
         isUniqaFlotilaHistorical ||
         isPillowAutoHistorical ||
         isKooperativaAutoHistorical
+        ? "historické podmínky"
+        : "aktuální podmínky"
+      : product === "domex"
+      ? isDomexHistorical
         ? "historické podmínky"
         : "aktuální podmínky"
       : `režim ${mode}`;
@@ -459,9 +467,11 @@ export function CalculatorCoefficientModal({
               >
                 {product === "uniqaAuto" || product === "uniqaflotila"
                   ? "Hist. 2024"
+                  : product === "domex"
+                  ? "Hist. 2023"
                   : "Historické"}
               </button>
-              {product === "uniqaAuto" && (
+              {(product === "uniqaAuto" || product === "domex") && (
                 <button
                   type="button"
                   onClick={() => onCoefficientViewChange("olderHistorical")}
@@ -471,7 +481,7 @@ export function CalculatorCoefficientModal({
                       : "text-slate-600 hover:bg-white"
                   }`}
                 >
-                  Hist. 2023
+                  {product === "domex" ? "Hist. 2017" : "Hist. 2023"}
                 </button>
               )}
             </div>

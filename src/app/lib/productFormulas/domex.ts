@@ -4,10 +4,11 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { commissionInstallmentCodeRange } from "./shared";
+import { commissionInstallmentCodeRange, normalizeIsoDay, pct, periodsPerYear } from "./shared";
 
 // ---------- DOMEX ----------
 
+export const DOMEX_EARLY_HISTORICAL_VALID_FROM = "2017-06-01";
 export const DOMEX_HISTORICAL_VALID_FROM = "2023-06-01";
 export const DOMEX_CURRENT_VALID_FROM = "2024-09-01";
 export const DOMEX_HISTORICAL_SUBSEQUENT_PAYOUT_YEARS = 4;
@@ -52,20 +53,72 @@ const DOMEX_CURRENT_SUBSEQUENT_COEFFICIENTS: Record<Position, number> = {
   manazer10: 0.084,
 };
 
+const DOMEX_EARLY_HISTORICAL_IMMEDIATE_COEFFICIENTS: Record<Position, number> = {
+  poradce1: pct(16),
+  poradce2: pct(16),
+  poradce3: pct(16),
+  poradce4: pct(20.8),
+  poradce5: pct(21.2),
+  poradce6: pct(21.6),
+  poradce7: pct(22.4),
+  poradce8: pct(23.2),
+  poradce9: pct(23.6),
+  poradce10: pct(23.8),
+  manazer4: pct(22),
+  manazer5: pct(22.8),
+  manazer6: pct(24),
+  manazer7: pct(25.4),
+  manazer8: pct(25.6),
+  manazer9: pct(25.8),
+  manazer10: pct(26),
+};
+
+const DOMEX_EARLY_HISTORICAL_SUBSEQUENT_COEFFICIENTS: Record<Position, number> = {
+  poradce1: pct(3),
+  poradce2: pct(3),
+  poradce3: pct(3),
+  poradce4: pct(5.2),
+  poradce5: pct(5.3),
+  poradce6: pct(5.4),
+  poradce7: pct(5.6),
+  poradce8: pct(5.8),
+  poradce9: pct(5.9),
+  poradce10: pct(5.95),
+  manazer4: pct(5.5),
+  manazer5: pct(5.6),
+  manazer6: pct(6),
+  manazer7: pct(6.35),
+  manazer8: pct(6.4),
+  manazer9: pct(6.45),
+  manazer10: pct(6.5),
+};
+
 const DOMEX_HISTORICAL_IMMEDIATE_COEFFICIENTS = DOMEX_CURRENT_IMMEDIATE_COEFFICIENTS;
 const DOMEX_HISTORICAL_SUBSEQUENT_COEFFICIENTS = DOMEX_CURRENT_SUBSEQUENT_COEFFICIENTS;
 
-function normalizeIsoDay(value?: string | null): string | null {
-  if (!value) return null;
-  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
+export function isDomexEarlyHistoricalPeriod(contractSignedDateIso?: string | null): boolean {
+  const isoDay = normalizeIsoDay(contractSignedDateIso);
+  return (
+    isoDay != null &&
+    isoDay >= DOMEX_EARLY_HISTORICAL_VALID_FROM &&
+    isoDay < DOMEX_HISTORICAL_VALID_FROM
+  );
+}
+
+function isDomexLaterHistoricalPeriod(contractSignedDateIso?: string | null): boolean {
+  const isoDay = normalizeIsoDay(contractSignedDateIso);
+  return (
+    isoDay != null &&
+    isoDay >= DOMEX_HISTORICAL_VALID_FROM &&
+    isoDay < DOMEX_CURRENT_VALID_FROM
+  );
 }
 
 export function isDomexHistoricalPeriod(contractSignedDateIso?: string | null): boolean {
   const isoDay = normalizeIsoDay(contractSignedDateIso);
   return (
     isoDay != null &&
-    isoDay >= DOMEX_HISTORICAL_VALID_FROM &&
+    isoDay >= DOMEX_EARLY_HISTORICAL_VALID_FROM &&
     isoDay < DOMEX_CURRENT_VALID_FROM
   );
 }
@@ -82,9 +135,11 @@ export function domexCoefficient(
   position: Position,
   contractSignedDateIso?: string | null
 ): number {
-  const coefficients = isDomexHistoricalPeriod(contractSignedDateIso)
-    ? DOMEX_HISTORICAL_IMMEDIATE_COEFFICIENTS
-    : DOMEX_CURRENT_IMMEDIATE_COEFFICIENTS;
+  const coefficients = isDomexEarlyHistoricalPeriod(contractSignedDateIso)
+    ? DOMEX_EARLY_HISTORICAL_IMMEDIATE_COEFFICIENTS
+    : isDomexLaterHistoricalPeriod(contractSignedDateIso)
+      ? DOMEX_HISTORICAL_IMMEDIATE_COEFFICIENTS
+      : DOMEX_CURRENT_IMMEDIATE_COEFFICIENTS;
   return coefficients[position];
 }
 
@@ -92,9 +147,11 @@ export function domexSubsequentCoefficient(
   position: Position,
   contractSignedDateIso?: string | null
 ): number {
-  const coefficients = isDomexHistoricalPeriod(contractSignedDateIso)
-    ? DOMEX_HISTORICAL_SUBSEQUENT_COEFFICIENTS
-    : DOMEX_CURRENT_SUBSEQUENT_COEFFICIENTS;
+  const coefficients = isDomexEarlyHistoricalPeriod(contractSignedDateIso)
+    ? DOMEX_EARLY_HISTORICAL_SUBSEQUENT_COEFFICIENTS
+    : isDomexLaterHistoricalPeriod(contractSignedDateIso)
+      ? DOMEX_HISTORICAL_SUBSEQUENT_COEFFICIENTS
+      : DOMEX_CURRENT_SUBSEQUENT_COEFFICIENTS;
   return coefficients[position];
 }
 
@@ -109,14 +166,7 @@ export function calculateDomex(
   const historical = isDomexHistoricalPeriod(contractSignedDateIso);
 
   // ČPP vyplácí provizi dle platby, částka v kalkulačce je částka platby
-  const multiplier =
-    frequency === "monthly"
-      ? 12
-      : frequency === "quarterly"
-      ? 4
-      : frequency === "semiannual"
-      ? 2
-      : 1;
+  const multiplier = periodsPerYear(frequency);
 
   const okamzitaPlatba = amount * coef;
   const naslednaPlatba = amount * coefSub;

@@ -131,6 +131,8 @@ import { isSlaviaAutoSupportedForSignedDate } from "@/app/lib/productFormulas/sl
 
 const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
+const ALLIANZ_AUTO_PAYMENT_CHECK_URL =
+  "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
 const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = true;
 
 function originalReplacementLabel(product?: Product | null): string {
@@ -800,6 +802,7 @@ export default function ContractDetailPage() {
     useState<ContractCommissionStatementDetail | null>(null);
   const [statementPreviewLoadingId, setStatementPreviewLoadingId] =
     useState<string | null>(null);
+  const [rebuildingFromStatements, setRebuildingFromStatements] = useState(false);
 
   const [overrideItems, setOverrideItems] = useState<
     CommissionResultItemDTO[] | null
@@ -1853,6 +1856,140 @@ export default function ContractDetailPage() {
   const canManageContract = isOwnContract || serverCanManageContract;
   const canViewContract =
     canManageContract || isManagerOnChain || isManagerOnCurrentChain;
+
+  const refreshContractDetail = useCallback(async (): Promise<ContractDoc> => {
+    if (!ownerEmail || !entryId) {
+      throw new Error("Chybí identifikace smlouvy.");
+    }
+
+    const params = new URLSearchParams({
+      ownerEmail,
+      entryId,
+    });
+    const payload = await requestContractsApi<ContractDetailApiResponse>(
+      `/api/contracts/detail?${params.toString()}`
+    );
+    if (!payload.contract) {
+      throw new Error("Smlouva nebyla nalezena.");
+    }
+
+    setContract(payload.contract);
+    setServerCanManageContract(payload.canManageContract === true);
+    const loadedNote = (payload.contract.note as string | undefined) ?? "";
+    setNoteDraft(loadedNote);
+    setNoteExpanded(loadedNote.trim().length > 0);
+    const timeline =
+      Array.isArray(payload.timeline) && payload.timeline.length > 0
+        ? payload.timeline
+        : [payload.contract];
+    setContractTimeline(timeline);
+    setOwnerPosition((payload.ownerMeta?.position as Position | null | undefined) ?? null);
+    setOwnerManagerEmail(normalizeEmail(payload.ownerMeta?.managerEmail ?? null) || null);
+    setOwnerManagerPosition(
+      (payload.ownerMeta?.managerPosition as Position | null | undefined) ?? null
+    );
+    setCurrentChainEmails(
+      Array.isArray(payload.ownerMeta?.currentChainEmails)
+        ? payload.ownerMeta?.currentChainEmails
+            .map((item) => normalizeEmail(item))
+            .filter((item): item is string => Boolean(item))
+        : []
+    );
+    setManagerPosition((payload.position as Position | null | undefined) ?? null);
+
+    return payload.contract;
+  }, [entryId, ownerEmail, requestContractsApi]);
+
+  const handleRebuildContractFromStatements = useCallback(async () => {
+    const contractNumber = String(contract?.contractNumber ?? "").trim();
+    if (!canManageContract || !ownerEmail || !entryId || !contractNumber) return;
+
+    setRebuildingFromStatements(true);
+
+    try {
+      const payload = await requestContractsApi<
+        ContractsApiResponseBase & {
+          matchedStatements?: number;
+          processedStatements?: number;
+          processingResult?: {
+            contractsUpdated?: number;
+            contractsWithPayoutChanges?: number;
+            payoutRecordsAdded?: number;
+            payoutRecordsUpdated?: number;
+            premiumUpdates?: number;
+            premiumHistoryBackfills?: number;
+            errors?: string[];
+          };
+        }
+      >("/api/commission-statements", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "rebuild-contract-from-statements",
+          ownerEmail,
+          entryId,
+          contractNumber,
+        }),
+      });
+
+      await refreshContractDetail();
+
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("contracts_cache_v3");
+          localStorage.setItem("contracts_last_updated", String(Date.now()));
+          window.dispatchEvent(new Event("contracts:updated"));
+        } catch {
+          // best effort cache invalidation
+        }
+      }
+
+      const matchedStatements = Number(payload.matchedStatements ?? 0);
+      const result = payload.processingResult ?? {};
+      const changedCount =
+        Number(result.payoutRecordsAdded ?? 0) +
+        Number(result.payoutRecordsUpdated ?? 0) +
+        Number(result.premiumUpdates ?? 0) +
+        Number(result.premiumHistoryBackfills ?? 0);
+      const errorCount = Array.isArray(result.errors) ? result.errors.length : 0;
+
+      if (matchedStatements === 0) {
+        pushToast("Pro tuto smlouvu jsem v uložených výpisech nenašel žádný řádek.", "success");
+      } else if (errorCount > 0) {
+        pushToast(
+          `Přepočet doběhl přes ${matchedStatements} výpisů, ale ${errorCount} řádků vyžaduje kontrolu.`,
+          "error"
+        );
+      } else if (changedCount === 0) {
+        pushToast(`Přepočet z ${matchedStatements} výpisů doběhl bez nových změn.`, "success");
+      } else {
+        pushToast(
+          `Přepočet hotový: ${matchedStatements} výpisů, ${changedCount} změn.`,
+          "success"
+        );
+      }
+    } catch (rebuildError) {
+      console.error("Přepočet smlouvy z výpisů selhal:", rebuildError);
+      pushToast(
+        rebuildError instanceof Error
+          ? rebuildError.message
+          : "Smlouvu se nepodařilo přepočítat z výpisů.",
+        "error"
+      );
+    } finally {
+      setRebuildingFromStatements(false);
+    }
+  }, [
+    canManageContract,
+    contract?.contractNumber,
+    entryId,
+    ownerEmail,
+    pushToast,
+    refreshContractDetail,
+    requestContractsApi,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5130,6 +5267,18 @@ export default function ContractDetailPage() {
                   <span>{showProductPanel ? "Skrýt detail" : "Detail produktu"}</span>
                 </button>
 
+                {prod === "allianzAuto" && (
+                  <a
+                    href={ALLIANZ_AUTO_PAYMENT_CHECK_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={headerActionButtonClass}
+                  >
+                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+                    <span>Ověřit zaplacení</span>
+                  </a>
+                )}
+
                 {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
                   <div className="relative">
                     <button
@@ -5943,6 +6092,11 @@ export default function ContractDetailPage() {
                 contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
                 onOpenStatement={handleOpenCommissionStatementPreview}
                 statementPreviewLoadingId={statementPreviewLoadingId}
+                onRebuildFromStatements={handleRebuildContractFromStatements}
+                rebuildingFromStatements={rebuildingFromStatements}
+                canRebuildFromStatements={Boolean(
+                  canManageContract && contract?.contractNumber
+                )}
               />
 
               {/* POZNÁMKA */}

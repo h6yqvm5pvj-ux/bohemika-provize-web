@@ -61,6 +61,7 @@ import {
   isKooperativaAutoHistoricalPeriod,
   isMaxEfekt5Period,
   isMaxEfekt7Period,
+  isDomexEarlyHistoricalPeriod,
   isDomexHistoricalPeriod,
   productCoefficientValidityError,
 } from "../lib/productFormulas";
@@ -252,6 +253,9 @@ const SETTINGS_KEYS = {
   tipsterMode: "settings.tipsterMode",
   tipsterPercent: "settings.tipsterPercent",
 };
+const PDF_PRODUCT_DETECTION_TIMEOUT_MS = 8_000;
+const PDF_DATA_IMPORT_TIMEOUT_MS = 15_000;
+const PDF_IMPORT_TIMEOUT_ERROR_NAME = "PdfImportTimeoutError";
 const profileModeStorageKey = (email: string | null | undefined) =>
   email ? `${SETTINGS_KEYS.mode}:${email}` : SETTINGS_KEYS.mode;
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
@@ -302,6 +306,7 @@ const CPP_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
 const KOOPERATIVA_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
   "/provize/koophistoricke.jpg";
 const MAXEFEKT5_TERMS_PREVIEW_URL = "/provize/maxefekt5.pdf";
+const DOMEX_EARLY_HISTORICAL_TERMS_PREVIEW_URL = "/provize/domexPLUS.pdf";
 const DOMEX_HISTORICAL_TERMS_PREVIEW_URL = "/provize/domex2023.pdf";
 const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   id: MaxCizinKomplexVariant;
@@ -352,6 +357,30 @@ const notifyStatementParentContractEvent = ({
     window.location.origin
   );
 };
+
+const withPdfImportTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(timeoutMessage);
+      error.name = PDF_IMPORT_TIMEOUT_ERROR_NAME;
+      reject(error);
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
+const isPdfImportTimeoutError = (error: unknown): boolean =>
+  error instanceof Error && error.name === PDF_IMPORT_TIMEOUT_ERROR_NAME;
 const notifyStatementParentContractSaved = (
   payload: Omit<Parameters<typeof notifyStatementParentContractEvent>[0], "type">
 ) =>
@@ -968,6 +997,7 @@ export default function CalculatorPage() {
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const [addContractHelpOpen, setAddContractHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pdfImportRunIdRef = useRef(0);
   const statementPrefillAppliedRef = useRef(false);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
   const [statementPremiumSource, setStatementPremiumSource] =
@@ -1489,6 +1519,18 @@ export default function CalculatorPage() {
       isMaxEfekt5Period(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
+  const isDomexEarlyHistoricalBySignedDate = useMemo(
+    () =>
+      product === "domex" &&
+      isDomexEarlyHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
+  const isDomexHistoricalBySignedDate = useMemo(
+    () =>
+      product === "domex" &&
+      isDomexHistoricalPeriod(contractSignedDateForNeon),
+    [product, contractSignedDateForNeon]
+  );
   const neonCoefficientDateForView = useMemo(() => {
     if (neonCoefficientView === "historical") return "2024-06-30";
     return "2024-07-01";
@@ -1527,6 +1569,7 @@ export default function CalculatorPage() {
     return "2026-04-23";
   }, [neonCoefficientView]);
   const domexCoefficientDateForView = useMemo(() => {
+    if (neonCoefficientView === "olderHistorical") return "2017-06-01";
     if (neonCoefficientView === "historical") return "2023-06-01";
     return "2024-09-01";
   }, [neonCoefficientView]);
@@ -1570,6 +1613,12 @@ export default function CalculatorPage() {
   );
   const isDomexHistoricalInCoefModal = useMemo(
     () => product === "domex" && isDomexHistoricalPeriod(coefficientDateForView),
+    [product, coefficientDateForView]
+  );
+  const isDomexEarlyHistoricalInCoefModal = useMemo(
+    () =>
+      product === "domex" &&
+      isDomexEarlyHistoricalPeriod(coefficientDateForView),
     [product, coefficientDateForView]
   );
   const isNeonHistoricalInCoefModal = useMemo(
@@ -1773,6 +1822,9 @@ export default function CalculatorPage() {
     if (product === "maximaMaxEfekt" && !isMaxEfekt7InCoefModal) {
       return null;
     }
+    if (product === "domex" && isDomexEarlyHistoricalInCoefModal) {
+      return DOMEX_EARLY_HISTORICAL_TERMS_PREVIEW_URL;
+    }
     if (product === "domex" && isDomexHistoricalInCoefModal) {
       return DOMEX_HISTORICAL_TERMS_PREVIEW_URL;
     }
@@ -1789,6 +1841,7 @@ export default function CalculatorPage() {
     isUniqaFlotilaHistoricalInCoefModal,
     isPillowAutoHistoricalInCoefModal,
     isKooperativaAutoHistoricalInCoefModal,
+    isDomexEarlyHistoricalInCoefModal,
     isDomexHistoricalInCoefModal,
   ]);
   const showAutoTermsPreview = Boolean(autoTermsPreviewUrl);
@@ -3319,16 +3372,28 @@ export default function CalculatorPage() {
 
   const handlePdfImport = async (file: File | null) => {
     if (!file) return;
+    const importRunId = pdfImportRunIdRef.current + 1;
+    pdfImportRunIdRef.current = importRunId;
+    const isCurrentPdfImport = () => pdfImportRunIdRef.current === importRunId;
+    let allowPdfImportProgress = true;
+
     setPdfImporting(true);
     setPdfImportError(null);
-    setPdfImportStatus("Načítám PDF…");
-    setImportedContractPdfFile(null);
+    setPdfImportStatus(
+      "PDF je připravené k přiložení. Zkouším z něj načíst data…"
+    );
+    setImportedContractPdfFile(file);
     setPdfClientNameLoaded(false);
     setPdfMatchedClientName(false);
     let importProduct: Product | null = hasSelectedProduct ? product : null;
     let productDetected = false;
     try {
-      const detected = await detectProductFromPdfLazy(file);
+      const detected = await withPdfImportTimeout(
+        detectProductFromPdfLazy(file),
+        PDF_PRODUCT_DETECTION_TIMEOUT_MS,
+        "Automatické rozpoznání produktu z PDF trvá moc dlouho."
+      );
+      if (!isCurrentPdfImport()) return;
       if (detected) {
         productDetected = true;
         if (detected.product !== product) {
@@ -3352,9 +3417,12 @@ export default function CalculatorPage() {
       }
     } catch (detectErr) {
       console.warn("Auto-detekce produktu z PDF selhala", detectErr);
+      if (!isCurrentPdfImport()) return;
       if (importProduct) {
         setPdfImportStatus(
-          `Produkt z PDF se nepodařilo rozpoznat. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
+          isPdfImportTimeoutError(detectErr)
+            ? `PDF je připravené k přiložení. Rozpoznání produktu trvalo moc dlouho, zkouším vybraný produkt ${productLabel(importProduct)}…`
+            : `Produkt z PDF se nepodařilo rozpoznat. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
         );
       } else {
         setPdfImportStatus(
@@ -3465,22 +3533,30 @@ export default function CalculatorPage() {
         return;
       }
 
-      const parsed = await parseContractPdfByProduct(importProduct, file, {
-        onOcrStart: () => {
-          setPdfImportStatus("PDF vypadá jako sken. Spouštím OCR…");
-        },
-        onOcrProgress: (progress) => {
-          const pagePart =
-            progress.page > 0
-              ? `strana ${progress.page}/${progress.totalPages}`
-              : "připravuji OCR";
-          const percent =
-            progress.progress > 0
-              ? ` (${Math.round(progress.progress * 100)} %)`
-              : "";
-          setPdfImportStatus(`PDF je sken, OCR ${pagePart}${percent}…`);
-        },
-      });
+      const parsed = await withPdfImportTimeout(
+        parseContractPdfByProduct(importProduct, file, {
+          onOcrStart: () => {
+            if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
+            setPdfImportStatus("PDF vypadá jako sken. Spouštím OCR…");
+          },
+          onOcrProgress: (progress) => {
+            if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
+            const pagePart =
+              progress.page > 0
+                ? `strana ${progress.page}/${progress.totalPages}`
+                : "připravuji OCR";
+            const percent =
+              progress.progress > 0
+                ? ` (${Math.round(progress.progress * 100)} %)`
+                : "";
+            setPdfImportStatus(`PDF je sken, OCR ${pagePart}${percent}…`);
+          },
+        }),
+        PDF_DATA_IMPORT_TIMEOUT_MS,
+        "Automatické čtení dat z PDF trvá moc dlouho."
+      );
+      if (!isCurrentPdfImport()) return;
+      allowPdfImportProgress = false;
       if (!parsed) {
         setImportedContractPdfFile(file);
         setPdfImportStatus(
@@ -4052,7 +4128,12 @@ export default function CalculatorPage() {
 
       if (applied === 0 && importProduct !== "maxcizinkomplex") {
         try {
-          const maxCizinParsed = await parseMaxCizinKomplexPdfLazy(file);
+          const maxCizinParsed = await withPdfImportTimeout(
+            parseMaxCizinKomplexPdfLazy(file),
+            5_000,
+            "Fallback rozpoznání MAXIMA Cizinci trvá moc dlouho."
+          );
+          if (!isCurrentPdfImport()) return;
           if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
             showMaxCizinKomplexHint();
             return;
@@ -4084,9 +4165,17 @@ export default function CalculatorPage() {
       setPdfImportError(importIssueMessage);
     } catch (err) {
       console.error("PDF import selhal", err);
-      if (importProduct !== "maxcizinkomplex") {
+      if (!isCurrentPdfImport()) return;
+      const importTimedOut = isPdfImportTimeoutError(err);
+      allowPdfImportProgress = false;
+      if (!importTimedOut && importProduct !== "maxcizinkomplex") {
         try {
-          const maxCizinParsed = await parseMaxCizinKomplexPdfLazy(file);
+          const maxCizinParsed = await withPdfImportTimeout(
+            parseMaxCizinKomplexPdfLazy(file),
+            5_000,
+            "Fallback rozpoznání MAXIMA Cizinci trvá moc dlouho."
+          );
+          if (!isCurrentPdfImport()) return;
           if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
             showMaxCizinKomplexHint();
             return;
@@ -4097,14 +4186,23 @@ export default function CalculatorPage() {
       }
       setImportedContractPdfFile(file);
       setPdfImportError(
-        importProduct
-          ? failedPdfImportMessage(importProduct, productDetected)
-          : "Produkt z PDF se nepodařilo rozpoznat. Vyber produkt ručně."
+        importTimedOut
+          ? "Automatické čtení PDF trvalo příliš dlouho, takže jsem ho odblokoval. PDF zůstává připravené jako příloha."
+          : importProduct
+            ? failedPdfImportMessage(importProduct, productDetected)
+            : "Produkt z PDF se nepodařilo rozpoznat. Vyber produkt ručně."
       );
-      setPdfImportStatus(null);
+      setPdfImportStatus(
+        importTimedOut
+          ? "PDF se při uložení přiloží k detailu smlouvy. Údaje doplň ručně a můžeš pokračovat bez čekání na parser."
+          : null
+      );
     } finally {
-      setPdfImporting(false);
-      if (fileInputRef.current) {
+      allowPdfImportProgress = false;
+      if (isCurrentPdfImport()) {
+        setPdfImporting(false);
+      }
+      if (isCurrentPdfImport() && fileInputRef.current) {
         fileInputRef.current.value = "";
       }
     }
@@ -6282,6 +6380,16 @@ export default function CalculatorPage() {
     }
     if (product === "maximaMaxEfekt") {
       setNeonCoefficientView(isMaxEfekt5BySignedDate ? "historical" : "current");
+      return;
+    }
+    if (product === "domex") {
+      setNeonCoefficientView(
+        isDomexEarlyHistoricalBySignedDate
+          ? "olderHistorical"
+          : isDomexHistoricalBySignedDate
+            ? "historical"
+            : "current"
+      );
     }
   }, [
     showCoefModal,
@@ -6296,6 +6404,8 @@ export default function CalculatorPage() {
     isPillowAutoHistoricalBySignedDate,
     isKooperativaAutoHistoricalBySignedDate,
     isMaxEfekt5BySignedDate,
+    isDomexEarlyHistoricalBySignedDate,
+    isDomexHistoricalBySignedDate,
   ]);
 
   useEffect(() => {
@@ -8449,6 +8559,7 @@ export default function CalculatorPage() {
         isUniqaFlotilaHistorical={isUniqaFlotilaHistoricalInCoefModal}
         isPillowAutoHistorical={isPillowAutoHistoricalInCoefModal}
         isKooperativaAutoHistorical={isKooperativaAutoHistoricalInCoefModal}
+        isDomexEarlyHistorical={isDomexEarlyHistoricalInCoefModal}
         isDomexHistorical={isDomexHistoricalInCoefModal}
         isMaxEfekt5={isMaxEfekt5InCoefModal}
         isMaxEfekt7={isMaxEfekt7InCoefModal}

@@ -1106,17 +1106,6 @@ const parseCzechDate = (value: string | null | undefined): number | null => {
   return Date.UTC(year, month - 1, day);
 };
 
-const parseIsoDayMs = (value: string | null | undefined): number | null => {
-  const match = value?.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  return Date.UTC(year, month - 1, day);
-};
-
 const parsePeriodRange = (period: string | null) => {
   const match = period?.match(
     /(\d{1,2}\.\d{1,2}\.\d{4})\s*-\s*(\d{1,2}\.\d{1,2}\.\d{4})/
@@ -1165,6 +1154,12 @@ const resolvePayoutMonthKey = ({
 const safeStatementId = (value: string | null): string | null => {
   const id = normalizeText(value, 80);
   if (!id || !/^[a-zA-Z0-9_-]{12,80}$/.test(id)) return null;
+  return id;
+};
+
+const safeEntryId = (value: string | null): string | null => {
+  const id = normalizeText(value, 180);
+  if (!id || id.includes("/") || id.includes("..")) return null;
   return id;
 };
 
@@ -1349,6 +1344,28 @@ const emptyProcessingResult = (): ProcessingResult => ({
   errors: [],
 });
 
+const addProcessingResult = (target: ProcessingResult, source: ProcessingResult): void => {
+  target.payoutRows += source.payoutRows;
+  target.contractsMatched += source.contractsMatched;
+  target.contractsUpdated += source.contractsUpdated;
+  target.contractsWithPayoutChanges += source.contractsWithPayoutChanges;
+  target.payoutRecordsAdded += source.payoutRecordsAdded;
+  target.payoutRecordsExisting += source.payoutRecordsExisting;
+  target.payoutRecordsUpdated += source.payoutRecordsUpdated;
+  target.coefficientOverridesApplied += source.coefficientOverridesApplied;
+  target.duplicatePayoutRowsSkipped += source.duplicatePayoutRowsSkipped;
+  target.premiumUpdates += source.premiumUpdates;
+  target.premiumHistoryBackfills += source.premiumHistoryBackfills;
+  target.olderPremiumUpdatesSkipped += source.olderPremiumUpdatesSkipped;
+  target.filteredContractsSkipped += source.filteredContractsSkipped;
+  target.accountingRepairDrafts += source.accountingRepairDrafts;
+  target.externalUpdateTasks += source.externalUpdateTasks;
+  target.notFoundContracts.push(...source.notFoundContracts);
+  target.ambiguousContracts.push(...source.ambiguousContracts);
+  target.skippedContracts.push(...source.skippedContracts);
+  target.errors.push(...source.errors);
+};
+
 const normalizeCommissionTitle = (value: unknown): string =>
   String(value ?? "")
     .normalize("NFD")
@@ -1455,6 +1472,91 @@ const contractPremiumHistoryArray = (
       )
     : [];
 
+type ContractStatementRebuildResetSummary = {
+  payoutRecordsRemoved: number;
+  payoutRecordsKept: number;
+  premiumHistoryRemoved: number;
+  premiumHistoryKept: number;
+  initialCommissionBaseCleared: boolean;
+  statementPremiumPointerCleared: boolean;
+  statementCreatedFlagPersisted: boolean;
+};
+
+const resetContractStatementDerivedFields = async ({
+  ref,
+  contract,
+  ctxEmail,
+  nowMs,
+}: {
+  ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
+  contract: ContractDoc;
+  ctxEmail: string;
+  nowMs: number;
+}): Promise<ContractStatementRebuildResetSummary> => {
+  const existingPayouts = contractPayoutArray(contract);
+  const keptPayouts = existingPayouts.filter((payout) => !normalizeText(payout.statementId, 80));
+  const existingPremiumHistory = contractPremiumHistoryArray(contract);
+  const keptPremiumHistory = existingPremiumHistory.filter(
+    (entry) => !normalizeText(entry.statementId, 80)
+  );
+  const initialCommissionBase =
+    (contract as { initialCommissionBase?: { statementId?: unknown } | null })
+      .initialCommissionBase ?? null;
+  const initialCommissionBaseCleared = Boolean(
+    initialCommissionBase && normalizeText(initialCommissionBase.statementId, 80)
+  );
+  const statementPremiumPointerCleared = Boolean(
+    normalizeText(
+      (contract as { premiumUpdatedFromStatementId?: unknown }).premiumUpdatedFromStatementId,
+      80
+    ) ||
+      toMillis(
+        (contract as { premiumUpdatedFromStatementChronologyMs?: unknown })
+          .premiumUpdatedFromStatementChronologyMs
+      ) != null ||
+      toMillis(
+        (contract as { premiumUpdatedFromStatementAtMs?: unknown }).premiumUpdatedFromStatementAtMs
+      ) != null
+  );
+  const wasCreatedFromStatement = autoContractWasCreatedFromCommissionStatement(contract);
+  const statementCreatedFlagPersisted =
+    wasCreatedFromStatement && contract.createdFromCommissionStatement !== true;
+  const patch: Record<string, unknown> = {
+    commissionPayouts: keptPayouts,
+    commissionStornoSummary: commissionStornoSummaryFromPayouts({
+      payouts: keptPayouts,
+      nowMs,
+      writtenBy: ctxEmail,
+    }),
+    premiumStatementHistory: keptPremiumHistory,
+    premiumUpdatedFromStatementAtMs: null,
+    premiumUpdatedFromStatementChronologyMs: null,
+    premiumUpdatedFromStatementId: null,
+    commissionStatementRebuiltAtMs: nowMs,
+    commissionStatementRebuiltBy: ctxEmail,
+    updatedAt: new Date(nowMs),
+  };
+
+  if (initialCommissionBaseCleared) {
+    patch.initialCommissionBase = null;
+  }
+  if (statementCreatedFlagPersisted) {
+    patch.createdFromCommissionStatement = true;
+  }
+
+  await ref.set(patch, { merge: true });
+
+  return {
+    payoutRecordsRemoved: existingPayouts.length - keptPayouts.length,
+    payoutRecordsKept: keptPayouts.length,
+    premiumHistoryRemoved: existingPremiumHistory.length - keptPremiumHistory.length,
+    premiumHistoryKept: keptPremiumHistory.length,
+    initialCommissionBaseCleared,
+    statementPremiumPointerCleared,
+    statementCreatedFlagPersisted,
+  };
+};
+
 const statementChronologyMsFromParts = ({
   statementDate,
   statementDateMs,
@@ -1474,6 +1576,59 @@ const statementChronologyMsFromParts = ({
   if (periodEndMs != null) return periodEndMs;
   const parsedPeriod = parsePeriodRange(statementPeriod ?? null);
   return parsedPeriod.periodEndMs ?? periodStartMs ?? parsedPeriod.periodStartMs ?? null;
+};
+
+type SavedStatementReprocessItem = {
+  id: string;
+  ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
+  html: string;
+  statementNumber: string | null;
+  statementPeriod: string | null;
+  statementDate: string | null;
+  periodEndMs: number | null;
+  statementChronologyMs: number | null;
+  payoutMonthKey: string | null;
+};
+
+const savedStatementReprocessItemFromDoc = (
+  docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
+): SavedStatementReprocessItem | null => {
+  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const html = normalizeText(data.html, MAX_HTML_LENGTH);
+  if (!html) return null;
+
+  const statementDate = normalizeText(data.statementDate, 32);
+  const statementDateMs = toMillis(data.statementDateMs) ?? parseCzechDate(statementDate);
+  const statementPeriod = normalizeText(data.period, 80);
+  const storedPeriodStartMs = toMillis(data.periodStartMs);
+  const storedPeriodEndMs = toMillis(data.periodEndMs);
+  const parsedPeriod = parsePeriodRange(statementPeriod);
+  const periodStartMs = storedPeriodStartMs ?? parsedPeriod.periodStartMs;
+  const periodEndMs = storedPeriodEndMs ?? parsedPeriod.periodEndMs;
+  const statementChronologyMs =
+    toMillis(data.statementChronologyMs) ??
+    statementChronologyMsFromParts({
+      statementDate,
+      statementDateMs,
+      statementPeriod,
+      periodEndMs,
+      periodStartMs,
+    });
+  const payoutMonthKey =
+    normalizeText(data.payoutMonthKey, 16) ??
+    resolvePayoutMonthKey({ statementDateMs, periodEndMs, periodStartMs });
+
+  return {
+    id: docSnap.id,
+    ref: docSnap.ref,
+    html,
+    statementNumber: normalizeText(data.statementNumber, 64),
+    statementPeriod,
+    statementDate,
+    periodEndMs,
+    statementChronologyMs,
+    payoutMonthKey,
+  };
 };
 
 const refreshStatementResolvedChronologyMs = (contract: ContractDoc): number | null =>
@@ -3369,6 +3524,9 @@ const processStatementWrites = async ({
   nowMs,
   onlyContractNumber,
   onlyContractNumbers,
+  forcedContractRef,
+  forcedContractOwnerEmail,
+  forcedContractEntryId,
 }: {
   docId: string;
   docRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
@@ -3384,6 +3542,9 @@ const processStatementWrites = async ({
   nowMs: number;
   onlyContractNumber?: string | null;
   onlyContractNumbers?: string[] | null;
+  forcedContractRef?: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData> | null;
+  forcedContractOwnerEmail?: string | null;
+  forcedContractEntryId?: string | null;
 }): Promise<ProcessingResult> => {
   const result = emptyProcessingResult();
   const normalizedOnlyContractNumber = normalizeContractNumber(onlyContractNumber);
@@ -3435,13 +3596,49 @@ const processStatementWrites = async ({
     const contractPremiumRows = premiumRowsByContract.get(contractNumber) ?? [];
     let resolution: AccessibleContractResolution;
     try {
-      resolution = await resolveAccessibleContract({
-        contractNumber,
-        viewerEmail: ctxEmail,
-        teamEmails,
-        payoutRows: contractPayoutRows,
-        premiumRows: contractPremiumRows,
-      });
+      if (
+        forcedContractRef &&
+        forcedContractOwnerEmail &&
+        normalizeContractNumber(onlyContractNumber) === contractNumber
+      ) {
+        const forcedSnap = await forcedContractRef.get();
+        if (!forcedSnap.exists) {
+          resolution = { status: "not_found", contractNumber };
+        } else {
+          const forcedContract = (forcedSnap.data() ?? {}) as ContractDoc;
+          const forcedContractNumber = normalizeContractNumber(
+            forcedContract.contractNumber ?? null
+          );
+          if (forcedContractNumber !== contractNumber) {
+            resolution = { status: "skipped", contractNumber };
+          } else if (
+            !hasContractAccess({
+              viewerEmail: ctxEmail,
+              teamEmails,
+              ownerEmail: forcedContractOwnerEmail,
+              contract: forcedContract,
+            })
+          ) {
+            resolution = { status: "skipped", contractNumber };
+          } else {
+            resolution = {
+              status: "matched",
+              ref: forcedContractRef,
+              ownerEmail: forcedContractOwnerEmail,
+              entryId: forcedContractEntryId ?? forcedContractRef.id,
+              contract: forcedContract,
+            };
+          }
+        }
+      } else {
+        resolution = await resolveAccessibleContract({
+          contractNumber,
+          viewerEmail: ctxEmail,
+          teamEmails,
+          payoutRows: contractPayoutRows,
+          premiumRows: contractPremiumRows,
+        });
+      }
     } catch (error) {
       result.errors.push(`Smlouva ${contractNumber}: nepodařilo se dohledat (${String(error)})`);
       continue;
@@ -4250,6 +4447,134 @@ const handleSavedStatementReprocess = async ({
   );
 };
 
+const handleContractStatementRebuild = async ({
+  body,
+  ctxEmail,
+  teamEmails,
+  withRateLimit,
+}: {
+  body: Record<string, unknown>;
+  ctxEmail: string;
+  teamEmails: string[];
+  withRateLimit: (response: NextResponse) => NextResponse;
+}): Promise<NextResponse> => {
+  const ownerEmail = normalizeEmail(body.ownerEmail);
+  const entryId = safeEntryId(normalizeText(body.entryId, 180));
+  const contractNumber = normalizeContractNumber(normalizeText(body.contractNumber, 80));
+
+  if (!ownerEmail || !entryId || !contractNumber) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Chybí smlouva pro přepočet z výpisů." },
+        { status: 400 }
+      )
+    );
+  }
+
+  const entryRef = adminDb!.doc(entryRefPath(ownerEmail, entryId));
+  const entrySnap = await entryRef.get();
+  if (!entrySnap.exists) {
+    return withRateLimit(
+      NextResponse.json({ ok: false, error: "Smlouva nebyla nalezena." }, { status: 404 })
+    );
+  }
+
+  const contract = (entrySnap.data() ?? {}) as ContractDoc;
+  const storedContractNumber = normalizeContractNumber(contract.contractNumber ?? null);
+  if (storedContractNumber !== contractNumber) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Číslo smlouvy neodpovídá uloženému záznamu." },
+        { status: 400 }
+      )
+    );
+  }
+  if (!hasContractAccess({ viewerEmail: ctxEmail, teamEmails, ownerEmail, contract })) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Nemáš oprávnění přepočítat tuto smlouvu." },
+        { status: 403 }
+      )
+    );
+  }
+
+  const statementsSnap = await statementCollection(ctxEmail).get();
+  const statementItems = statementsSnap.docs
+    .map(savedStatementReprocessItemFromDoc)
+    .filter((item): item is SavedStatementReprocessItem => {
+      if (!item) return false;
+      const rows = [
+        ...extractCommissionPayoutRowsFromStoredHtml(item.html),
+        ...extractAutoPremiumRowsFromStoredHtml(item.html),
+        ...extractLifePremiumIncreaseRowsFromStoredHtml(item.html),
+      ];
+      return rows.some((row) => normalizeContractNumber(row.contractNumber) === contractNumber);
+    })
+    .sort(
+      (a, b) =>
+        (a.statementChronologyMs ?? 0) - (b.statementChronologyMs ?? 0) ||
+        String(a.statementNumber ?? "").localeCompare(String(b.statementNumber ?? ""), "cs") ||
+        a.id.localeCompare(b.id, "cs")
+    );
+
+  if (statementItems.length === 0) {
+    return withRateLimit(
+      NextResponse.json({
+        ok: true,
+        contractNumber,
+        matchedStatements: 0,
+        processedStatements: 0,
+        reset: null,
+        processingResult: emptyProcessingResult(),
+      })
+    );
+  }
+
+  const nowMs = Date.now();
+  const reset = await resetContractStatementDerivedFields({
+    ref: entryRef,
+    contract,
+    ctxEmail,
+    nowMs,
+  });
+  const processingResult = emptyProcessingResult();
+  let processedStatements = 0;
+
+  for (const statement of statementItems) {
+    const result = await processStatementWrites({
+      docId: statement.id,
+      docRef: statement.ref,
+      html: statement.html,
+      ctxEmail,
+      teamEmails,
+      statementNumber: statement.statementNumber,
+      statementPeriod: statement.statementPeriod,
+      statementDate: statement.statementDate,
+      periodEndMs: statement.periodEndMs,
+      statementChronologyMs: statement.statementChronologyMs,
+      payoutMonthKey: statement.payoutMonthKey,
+      nowMs,
+      onlyContractNumber: contractNumber,
+      forcedContractRef: entryRef,
+      forcedContractOwnerEmail: ownerEmail,
+      forcedContractEntryId: entryId,
+    });
+    addProcessingResult(processingResult, result);
+    processedStatements += 1;
+  }
+
+  return withRateLimit(
+    NextResponse.json({
+      ok: true,
+      contractNumber,
+      matchedStatements: statementItems.length,
+      processedStatements,
+      reset,
+      processingResult,
+    })
+  );
+};
+
 export async function GET(req: NextRequest) {
   const guard = await requireAuthedRateLimited(req, {
     namespace: "api:commission-statements:get",
@@ -4374,6 +4699,24 @@ export async function POST(req: NextRequest) {
       return withRateLimit(
         NextResponse.json(
           { ok: false, error: "Zpracovaný výpis se nepodařilo spustit znovu." },
+          { status: 500 }
+        )
+      );
+    }
+  }
+  if (action === "rebuild-contract-from-statements") {
+    try {
+      return await handleContractStatementRebuild({
+        body,
+        ctxEmail: ctx.email,
+        teamEmails: ctx.teamEmails,
+        withRateLimit,
+      });
+    } catch (error) {
+      console.error("Commission statements contract rebuild failed:", error);
+      return withRateLimit(
+        NextResponse.json(
+          { ok: false, error: "Smlouvu se nepodařilo přepočítat z výpisů." },
           { status: 500 }
         )
       );

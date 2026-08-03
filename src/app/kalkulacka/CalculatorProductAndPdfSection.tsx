@@ -234,7 +234,14 @@ export function CalculatorProductAndPdfSection({
         {(pdfImporting || pdfImportStatus || pdfImportError) && (
           <div className="space-y-2 border-t border-violet-100 bg-white/80 px-6 py-4 sm:px-7">
             {pdfImporting ? (
-              <PdfImportProgressBar large />
+              <>
+                <PdfImportProgressBar large />
+                {pdfImportStatus && (
+                  <p className="rounded-2xl border border-violet-100 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700">
+                    {pdfImportStatus}
+                  </p>
+                )}
+              </>
             ) : pdfImportStatus ? (
               <p className="rounded-2xl border border-violet-100 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700">
                 {pdfImportStatus}
@@ -400,7 +407,10 @@ export function CalculatorProductAndPdfSection({
             />
           </div>
           {pdfImporting ? (
-            <PdfImportProgressBar />
+            <>
+              <PdfImportProgressBar />
+              {pdfImportStatus && <p className="text-[12px] text-slate-700">{pdfImportStatus}</p>}
+            </>
           ) : (
             pdfImportStatus && <p className="text-[12px] text-slate-700">{pdfImportStatus}</p>
           )}

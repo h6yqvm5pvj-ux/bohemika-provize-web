@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { ChevronDown, Eye, FileText } from "lucide-react";
+import { ChevronDown, Eye, FileText, RefreshCw } from "lucide-react";
 
 import { formatMoney, nameFromEmail } from "./contractDetailHelpers";
 import { type ContractCommissionPayout } from "./contractDetailTypes";
@@ -12,6 +12,9 @@ type ContractCommissionHistoryProps = {
   contractOwnerEmail?: string | null;
   onOpenStatement?: (statementId: string) => void;
   statementPreviewLoadingId?: string | null;
+  onRebuildFromStatements?: () => void;
+  rebuildingFromStatements?: boolean;
+  canRebuildFromStatements?: boolean;
 };
 
 const normalizeStatus = (
@@ -320,6 +323,9 @@ export function ContractCommissionHistory({
   contractOwnerEmail = null,
   onOpenStatement,
   statementPreviewLoadingId,
+  onRebuildFromStatements,
+  rebuildingFromStatements = false,
+  canRebuildFromStatements = false,
 }: ContractCommissionHistoryProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const rows = [...(payouts ?? [])].sort(
@@ -346,6 +352,23 @@ export function ContractCommissionHistory({
           Provizní výpisy u smlouvy
         </h3>
         <div className="flex shrink-0 items-center gap-2">
+          {canRebuildFromStatements && onRebuildFromStatements && (
+            <button
+              type="button"
+              onClick={onRebuildFromStatements}
+              disabled={rebuildingFromStatements}
+              className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"
+              title="Znovu složit provize a historii pojistného této smlouvy z uložených výpisů"
+            >
+              <RefreshCw
+                size={13}
+                strokeWidth={2.2}
+                aria-hidden="true"
+                className={rebuildingFromStatements ? "animate-spin" : ""}
+              />
+              <span>{rebuildingFromStatements ? "Přepočítávám" : "Přepočítat z výpisů"}</span>
+            </button>
+          )}
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
             {payoutCountLabel(rows.length)}
           </span>

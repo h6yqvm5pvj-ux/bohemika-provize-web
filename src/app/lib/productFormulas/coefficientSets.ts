@@ -37,7 +37,9 @@ import {
 } from "./csobAuto";
 import {
   DOMEX_CURRENT_VALID_FROM,
+  DOMEX_EARLY_HISTORICAL_VALID_FROM,
   DOMEX_HISTORICAL_VALID_FROM,
+  isDomexEarlyHistoricalPeriod,
   isDomexHistoricalPeriod,
 } from "./domex";
 import {
@@ -96,7 +98,7 @@ const PRODUCT_MINIMUM_COEFFICIENT_VALID_FROM: Partial<Record<Product, string>> =
   neon: NEON_HISTORICAL_VALID_FROM,
   maximaMaxEfekt: MAXEFEKT5_VALID_FROM,
   pillowInjury: PILLOW_INJURY_COEFFICIENT_VALID_FROM,
-  domex: DOMEX_HISTORICAL_VALID_FROM,
+  domex: DOMEX_EARLY_HISTORICAL_VALID_FROM,
   pillowmajetek: PILLOW_MAJETEK_COEFFICIENT_VALID_FROM,
   kooppmop: KOOP_PMOP_COEFFICIENT_VALID_FROM,
   cppsimplex: CPP_SIMPLEX_COEFFICIENT_VALID_FROM,
@@ -203,6 +205,7 @@ export function defaultCoefficientSetForProduct(
         ? "historical"
         : "current";
     case "domex":
+      if (isDomexEarlyHistoricalPeriod(contractSignedDateIso)) return "earlyHistorical";
       return isDomexHistoricalPeriod(contractSignedDateIso) ? "historical" : "current";
     default:
       return null;
@@ -252,6 +255,7 @@ export function coefficientSetSignedDateForProduct(
       if (coefficientSet === "current") return KOOPERATIVA_AUTO_CURRENT_VALID_FROM;
       return null;
     case "domex":
+      if (coefficientSet === "earlyHistorical") return DOMEX_EARLY_HISTORICAL_VALID_FROM;
       if (coefficientSet === "historical") return DOMEX_HISTORICAL_VALID_FROM;
       if (coefficientSet === "current") return DOMEX_CURRENT_VALID_FROM;
       return null;
