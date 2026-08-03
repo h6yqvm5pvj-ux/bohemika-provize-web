@@ -110,6 +110,17 @@ const normalizeNamePart = (value: string | null | undefined): string | null => {
   return cleaned;
 };
 
+const normalizeLegalEntityName = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const cleaned = normalizeSpaces(value)
+    .replace(/^\d{6,10}\s+/, "")
+    .replace(/^[\s:;,\-–—]+|[\s:;,\-–—]+$/g, "")
+    .trim();
+  if (!cleaned || cleaned.length < 3) return null;
+  if (!/[A-Za-zÀ-ž]/.test(cleaned)) return null;
+  return cleaned;
+};
+
 const normalizeContractNumber = (value: string | null | undefined): string | null => {
   if (!value) return null;
   const digits = value.replace(/\D+/g, "");
@@ -357,6 +368,21 @@ const extractClientName = (lines: string[], asciiLines: string[]): string | null
     /\bpojistna\s+doba\b/,
   ]);
   if (sectionEnd < sectionStart) return null;
+
+  for (let idx = sectionStart; idx <= Math.min(sectionEnd, sectionStart + 20); idx++) {
+    const ascii = asciiLines[idx] ?? "";
+    if (
+      !ascii.includes("nazev pravnicke osoby") &&
+      !ascii.includes("obchodni firma pravnicke osoby") &&
+      !ascii.includes("oznaceni fyzicke osoby podnikatele")
+    ) {
+      continue;
+    }
+
+    const row = findNextNonEmptyLine(lines, asciiLines, idx + 1, Math.min(sectionEnd, idx + 4));
+    const legalEntityName = normalizeLegalEntityName(row);
+    if (legalEntityName) return legalEntityName;
+  }
 
   for (let idx = sectionStart; idx <= Math.min(sectionEnd, sectionStart + 20); idx++) {
     const ascii = asciiLines[idx] ?? "";

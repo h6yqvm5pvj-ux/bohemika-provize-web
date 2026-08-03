@@ -8,6 +8,7 @@ import {
   ChevronDown,
   CircleOff,
   Download,
+  Eye,
   ExternalLink,
   Flame,
   Loader2,
@@ -28,6 +29,11 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 import introStyles from "@/app/cashflow/cashflowIntro.module.css";
 import { AnimatedNumber } from "@/app/home/components/AnimatedNumbers";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  ADMIN_IMPERSONATION_EVENT,
+  readAdminImpersonationState,
+  type AdminImpersonationState,
+} from "@/app/lib/adminImpersonation";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
   productCategory,
@@ -770,6 +776,10 @@ function RadarAnniversaryLoader() {
 
 export default function RadarVyrociPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [adminImpersonation, setAdminImpersonation] =
+    useState<AdminImpersonationState | null>(() =>
+      typeof window === "undefined" ? null : readAdminImpersonationState()
+    );
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
@@ -798,8 +808,23 @@ export default function RadarVyrociPage() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncImpersonation = () => {
+      setAdminImpersonation(readAdminImpersonationState());
+    };
+    syncImpersonation();
+    window.addEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    return () => {
+      window.removeEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    };
+  }, []);
+
+  const effectiveUserEmail =
+    normalizeEmail(adminImpersonation?.email) || normalizeEmail(user?.email);
+
   const loadData = useCallback(async () => {
-    if (!user) return;
+    if (!user || !effectiveUserEmail) return;
     setLoading(true);
     setLoadedOnce(false);
     setError(null);
@@ -846,11 +871,11 @@ export default function RadarVyrociPage() {
       setLoading(false);
       setLoadedOnce(true);
     }
-  }, [user]);
+  }, [effectiveUserEmail, user]);
 
   useEffect(() => {
-    if (user) void loadData();
-  }, [user, loadData]);
+    if (user && effectiveUserEmail) void loadData();
+  }, [effectiveUserEmail, user, loadData]);
 
   const closeContractDetailWindow = useCallback(() => {
     setContractDetailWindow(null);
@@ -919,7 +944,7 @@ export default function RadarVyrociPage() {
 
       const ownerEmail = contractOwnerEmail(contract);
       if (!ownerEmail) continue;
-      if (!showTeam && ownerEmail !== normalizeEmail(user?.email)) continue;
+      if (!showTeam && ownerEmail !== effectiveUserEmail) continue;
 
       const start = getAnniversaryStartDate(contract);
       const info = isAnniversarySoon(start, windowDays);
@@ -953,7 +978,7 @@ export default function RadarVyrociPage() {
     }
     items.sort((a, b) => a.daysLeft - b.daysLeft);
     return items;
-  }, [contracts, showTeam, windowDays, user?.email]);
+  }, [contracts, effectiveUserEmail, showTeam, windowDays]);
 
   const visibleItems = useMemo(() => {
     if (!hideReviewed) return radarItems;
@@ -1441,7 +1466,7 @@ export default function RadarVyrociPage() {
                                 {productInstitutionLabel(item.product)
                                   ? ` · ${productInstitutionLabel(item.product)}`
                                   : ""}
-                                {showTeam && item.ownerEmail !== normalizeEmail(user?.email)
+                                {showTeam && item.ownerEmail !== effectiveUserEmail
                                   ? ` · ${item.ownerEmail}`
                                   : ""}
                               </div>
@@ -1502,11 +1527,12 @@ export default function RadarVyrociPage() {
                               <button
                                 type="button"
                                 onClick={() => openContractDetailWindow(item)}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
-                                title="Otevřít smlouvu"
+                                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.06)] transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 hover:shadow-[0_8px_18px_rgba(109,40,217,0.12)]"
+                                title="Zobrazit smlouvu"
                                 aria-label={`Otevřít smlouvu ${item.contractNumber ?? item.clientName}`}
                               >
-                                <ExternalLink className="h-3.5 w-3.5" />
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>Smlouva</span>
                               </button>
                               <button
                                 type="button"

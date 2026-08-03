@@ -78,6 +78,21 @@ const normalizeVehicleMakeModel = (value: string | null | undefined): string | n
   return cleaned;
 };
 
+const normalizePolicyholderCompanyName = (
+  value: string | null | undefined
+): string | null => {
+  if (!value) return null;
+  const cleaned = value
+    .replace(/\s+/g, " ")
+    .replace(/\bpl[aá]tce\s+dph\s*:?\s*(?:ano|ne)?\b.*$/i, "")
+    .replace(/\bIČ(?:O)?\s*:?\s*\d+.*$/i, "")
+    .replace(/^[\s:;,\-–—]+|[\s:;,\-–—]+$/g, "")
+    .trim();
+  if (!cleaned || cleaned.length < 3) return null;
+  if (!/[A-Za-zÀ-ž]/.test(cleaned)) return null;
+  return cleaned;
+};
+
 const normalizePlate = (value: string | null | undefined): string | null => {
   if (!value) return null;
   const cleaned = value.replace(/\s+/g, "").trim().toUpperCase();
@@ -144,7 +159,7 @@ const normalizeLiabilityLimit = (value: string | null | undefined): number | nul
 
 const looksLikeStandaloneLabelLine = (value: string): boolean =>
   /[:：]\s*$/.test(value) ||
-  /^(tovarni|obchodni|vin|registracni|serie|limit|pojistne|datum|rozsah|spoluucast|havarijni)\b/i.test(
+  /^(tovarni|obchodni|vin|registracni|serie|limit|pojistne|datum|rozsah|spoluucast|havarijni|nazev|jmeno|prijmeni|titul|platce|ico|ic|adresa|email|telefon)\b/i.test(
     stripDiacritics(value).trim()
   );
 
@@ -439,6 +454,27 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
     }
   }
 
+  // Jméno klienta: u právnické osoby má v sekci Pojistník přednost pole Název.
+  const policyholderStart = layoutAsciiLines.findIndex((line) =>
+    /^pojistnik\b/i.test(line)
+  );
+  const policyholderCompanyName =
+    policyholderStart >= 0
+      ? normalizePolicyholderCompanyName(
+          readSectionValue(
+            layoutLines,
+            layoutAsciiLines,
+            policyholderStart,
+            /^nazev\b/i,
+            5,
+            25
+          )
+        )
+      : null;
+  if (policyholderCompanyName) {
+    result.clientName = policyholderCompanyName;
+  }
+
   // Jméno + příjmení
   const firstName =
     pageOne.match(/Jm[eé]no:\s*([^\n]+)/i)?.[1]?.trim() ??
@@ -446,7 +482,7 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
   const lastName =
     pageOne.match(/Př[ií]jmen[ií]:\s*([^\n]+)/i)?.[1]?.trim() ??
     pageOne.match(/Prijmeni:\s*([^\n]+)/i)?.[1]?.trim();
-  if (firstName || lastName) {
+  if (!result.clientName && (firstName || lastName)) {
     result.clientName = [firstName, lastName].filter(Boolean).join(" ").trim() || null;
   }
 
