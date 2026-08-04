@@ -1113,9 +1113,10 @@ export default function ContractDetailPage() {
   }, [entryId, ownerEmail, requestContractsApi, user]);
 
   useEffect(() => {
+    const contractNumber = contract?.contractNumber?.trim() ?? "";
     const shouldLoadStatements =
       Boolean(user) &&
-      Boolean(contract?.contractNumber) &&
+      Boolean(contractNumber) &&
       isAutoProduct(contract?.productKey ?? null);
 
     if (!shouldLoadStatements || !user) {
@@ -1133,7 +1134,12 @@ export default function ContractDetailPage() {
 
       try {
         const token = await user.getIdToken();
-        const response = await fetch("/api/commission-statements?limit=240", {
+        const params = new URLSearchParams({
+          shape: "premiumHistory",
+          contractNumber,
+          limit: "240",
+        });
+        const response = await fetch(`/api/commission-statements?${params.toString()}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

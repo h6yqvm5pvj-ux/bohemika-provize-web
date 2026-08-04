@@ -57,6 +57,13 @@ import {
   premiumHistoryEntryDateMs as premiumHistoryEntryDateMsForStatement,
   premiumHistoryEntryFromStatementRow as premiumHistoryEntryFromStatementRowRecord,
 } from "./premiumHistory";
+import {
+  autoPremiumContractNumbersForRows,
+  filterAutoPremiumRowsForContract,
+  normalizePremiumHistoryContractNumber,
+  normalizeStoredAutoPremiumRows,
+  type StoredAutoPremiumStatementRow,
+} from "./premiumHistoryStatements";
 import { statementChronologyCanOverwrite } from "./statementChronologyGuards";
 
 export const runtime = "nodejs";
@@ -102,21 +109,7 @@ type FirestoreTimestamp = {
   toDate?: () => Date;
 };
 
-type AutoPremiumStatementRow = {
-  premiumKind: "auto_initial" | "auto_change" | "life_increase";
-  rowId: string;
-  detailUrl: string | null;
-  contractNumber: string;
-  client: string | null;
-  productCode: string;
-  productKey: Product | null;
-  commissionCode: string;
-  basePremium: number;
-  commission: number | null;
-  signedAt: string | null;
-  validFrom: string | null;
-  source: "own" | "manager";
-};
+type AutoPremiumStatementRow = StoredAutoPremiumStatementRow;
 
 type CommissionStatementPayoutStatus = "paid" | "storno";
 type CommissionStatementPayoutRowLayout =
@@ -979,6 +972,14 @@ const extractAutoPremiumRowsFromStoredHtml = (html: string | null): AutoPremiumS
   });
 };
 
+const autoPremiumRowsFromStatementData = (
+  data: Record<string, unknown>,
+  html: string | null
+): AutoPremiumStatementRow[] => {
+  const storedRows = normalizeStoredAutoPremiumRows(data.autoPremiumRows);
+  return storedRows ?? extractAutoPremiumRowsFromStoredHtml(html);
+};
+
 const lifePremiumIncreaseRowFromPayoutRow = (
   row: CommissionStatementPayoutRow
 ): AutoPremiumStatementRow | null => {
@@ -1282,7 +1283,7 @@ const serializeStatementDoc = (
     normalizeNullableNumber(data.payoutTotal) ?? extractPayoutTotalFromStoredHtml(html);
   const paidContractNumbers = extractPaidContractNumbersFromStoredHtml(html);
   const paidCommissionKeys = extractPaidCommissionKeysFromStoredHtml(html);
-  const autoPremiumRows = extractAutoPremiumRowsFromStoredHtml(html);
+  const autoPremiumRows = autoPremiumRowsFromStatementData(data, html);
 
   return {
     id: docSnap.id,
@@ -1319,6 +1320,48 @@ const serializeStatementDoc = (
         ? (data.processingResult as Record<string, unknown>)
         : null,
     ...(includeHtml ? { html: html ?? "" } : {}),
+  };
+};
+
+const serializePremiumHistoryStatementDoc = (
+  docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>,
+  contractNumber: string
+) => {
+  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const html = normalizeText(data.html, MAX_HTML_LENGTH);
+  const autoPremiumRows = filterAutoPremiumRowsForContract(
+    autoPremiumRowsFromStatementData(data, html),
+    contractNumber
+  );
+  if (autoPremiumRows.length === 0) return null;
+
+  const periodStartMs = toMillis(data.periodStartMs);
+  const periodEndMs = toMillis(data.periodEndMs);
+  const statementDateMs = toMillis(data.statementDateMs);
+  const statementChronologyMs =
+    toMillis(data.statementChronologyMs) ??
+    statementChronologyMsFromParts({
+      statementDate: normalizeText(data.statementDate, 32),
+      statementDateMs,
+      statementPeriod: normalizeText(data.period, 80),
+      periodEndMs,
+      periodStartMs,
+    });
+  const payoutMonthKey =
+    normalizeText(data.payoutMonthKey, 16) ??
+    resolvePayoutMonthKey({ statementDateMs, periodEndMs, periodStartMs });
+
+  return {
+    id: docSnap.id,
+    fileName: normalizeText(data.fileName) ?? "Provizní výpis",
+    statementNumber: normalizeText(data.statementNumber, 64),
+    statementDate: normalizeText(data.statementDate, 32),
+    period: normalizeText(data.period, 80),
+    periodStartMs,
+    periodEndMs,
+    payoutMonthKey,
+    autoPremiumRows,
+    statementChronologyMs,
   };
 };
 
@@ -4112,6 +4155,8 @@ const processStatementWrites = async ({
   batchWriter.set(
     docRef,
     {
+      autoPremiumRows,
+      autoPremiumContractNumbers: autoPremiumContractNumbersForRows(autoPremiumRows),
       processedAtMs: nowMs,
       processedBy: ctxEmail,
       processingResult: {
@@ -4575,6 +4620,62 @@ const handleContractStatementRebuild = async ({
   );
 };
 
+const listPremiumHistoryStatementsForContract = async ({
+  email,
+  contractNumber,
+  limit,
+}: {
+  email: string;
+  contractNumber: string;
+  limit: number;
+}) => {
+  const byId = new Map<string, ReturnType<typeof serializePremiumHistoryStatementDoc>>();
+  let source: "indexed" | "fallback" = "indexed";
+
+  const addDocs = (
+    docs: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[]
+  ) => {
+    for (const docSnap of docs) {
+      const item = serializePremiumHistoryStatementDoc(docSnap, contractNumber);
+      if (item) byId.set(docSnap.id, item);
+    }
+  };
+
+  try {
+    const indexedSnap = await statementCollection(email)
+      .where("autoPremiumContractNumbers", "array-contains", contractNumber)
+      .limit(limit)
+      .get();
+    addDocs(indexedSnap.docs);
+  } catch (error) {
+    console.warn(
+      "commission-statements premium history indexed query failed, falling back to recent scan",
+      error
+    );
+  }
+
+  if (byId.size === 0) {
+    source = "fallback";
+    const fallbackSnap = await statementCollection(email)
+      .orderBy("periodStartMs", "desc")
+      .limit(limit)
+      .get();
+    addDocs(fallbackSnap.docs);
+  }
+
+  const items = [...byId.values()]
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort(
+      (a, b) =>
+        (b.statementChronologyMs ?? b.periodStartMs ?? 0) -
+          (a.statementChronologyMs ?? a.periodStartMs ?? 0) ||
+        String(b.statementNumber ?? "").localeCompare(String(a.statementNumber ?? ""), "cs") ||
+        b.id.localeCompare(a.id, "cs")
+    );
+
+  return { items, source };
+};
+
 export async function GET(req: NextRequest) {
   const guard = await requireAuthedRateLimited(req, {
     namespace: "api:commission-statements:get",
@@ -4596,6 +4697,32 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const requestedShape = normalizeText(req.nextUrl.searchParams.get("shape"), 40);
+    const requestedContractNumber = normalizePremiumHistoryContractNumber(
+      req.nextUrl.searchParams.get("contractNumber")
+    );
+    if (
+      requestedContractNumber &&
+      (requestedShape === "premiumHistory" || requestedShape === "premium-history")
+    ) {
+      const limit = parseLimit(req.nextUrl.searchParams.get("limit"));
+      const { items, source } = await listPremiumHistoryStatementsForContract({
+        email: ctx.email,
+        contractNumber: requestedContractNumber,
+        limit,
+      });
+
+      return withRateLimitHeaders(
+        NextResponse.json({
+          ok: true,
+          contractNumber: requestedContractNumber,
+          items,
+          source,
+        }),
+        ctx
+      );
+    }
+
     const id = safeStatementId(req.nextUrl.searchParams.get("id"));
     const includeHtml = req.nextUrl.searchParams.get("includeHtml") === "1";
 

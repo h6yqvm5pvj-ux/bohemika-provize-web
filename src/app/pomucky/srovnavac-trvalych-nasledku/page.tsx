@@ -7,7 +7,9 @@ import { useState } from "react";
 import {
   Calculator,
   ChartNoAxesColumn,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileDown,
@@ -51,6 +53,29 @@ type ComparisonCard = {
   badges: string[];
   payout: number;
   info: string;
+  tablePreview?: InfoTablePreview;
+};
+
+type InfoTablePreview = {
+  title: string;
+  columns: string[];
+  rows: InfoTablePreviewRow[];
+};
+
+type InfoTablePreviewRow = {
+  cells: string[];
+  active?: boolean;
+};
+
+type InsurerFilterOption = {
+  value: string;
+  productName: string;
+  badges: string[];
+};
+
+type InsurerFilterGroup = {
+  insurerName: string;
+  options: InsurerFilterOption[];
 };
 
 const parseNumber = (val: string): number => {
@@ -68,6 +93,132 @@ const parsePercentInput = (raw: string): number => {
 
 const formatPercent = (value: number): string =>
   `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 1 })} %`;
+
+const formatTablePercent = (value: number): string =>
+  `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 3 })} %`;
+
+const roundedPercentIndex = (value: number): number =>
+  Math.min(100, Math.max(0, Math.round(value)));
+
+const percentValueRows = (
+  table: number[],
+  currentPercent: number
+): InfoTablePreviewRow[] => {
+  const activeIndex = roundedPercentIndex(currentPercent);
+
+  return table.slice(1).map((payoutPercent, index) => {
+    const percent = index + 1;
+    return {
+      cells: [formatTablePercent(percent), formatTablePercent(payoutPercent)],
+      active: activeIndex === percent,
+    };
+  });
+};
+
+const buildPercentValueTablePreview = (
+  title: string,
+  table: number[],
+  currentPercent: number
+): InfoTablePreview => ({
+  title,
+  columns: ["TN", "Plnění z pojistné částky"],
+  rows: percentValueRows(table, currentPercent),
+});
+
+const buildMultiPercentValueTablePreview = (
+  title: string,
+  columns: string[],
+  tables: number[][],
+  currentPercent: number
+): InfoTablePreview => {
+  const activeIndex = roundedPercentIndex(currentPercent);
+
+  return {
+    title,
+    columns: ["TN", ...columns],
+    rows: Array.from({ length: 100 }, (_, index) => {
+      const percent = index + 1;
+      return {
+        cells: [
+          formatTablePercent(percent),
+          ...tables.map((table) => formatTablePercent(table[percent] ?? 0)),
+        ],
+        active: activeIndex === percent,
+      };
+    }),
+  };
+};
+
+const buildRangeTablePreview = (
+  title: string,
+  columns: string[],
+  rows: InfoTablePreviewRow[]
+): InfoTablePreview => ({
+  title,
+  columns,
+  rows,
+});
+
+const buildHalfStepValueTablePreview = (
+  title: string,
+  rows: Array<{ p: number; c: number }>,
+  currentPercent: number
+): InfoTablePreview => {
+  const activePercent = Math.round(clampPercent(currentPercent) * 2) / 2;
+
+  return {
+    title,
+    columns: ["TN", "Plnění z pojistné částky"],
+    rows: rows.map((row) => ({
+      cells: [formatTablePercent(row.p), formatTablePercent(row.c)],
+      active: row.p === activePercent,
+    })),
+  };
+};
+
+const buildAnchorValueTablePreview = (
+  title: string,
+  anchors: Array<{ p: number; v: number }>,
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return {
+    title,
+    columns: ["TN", "Plnění z pojistné částky"],
+    rows: anchors.map((anchor, index) => {
+      const next = anchors[index + 1];
+      return {
+        cells: [formatTablePercent(anchor.p), formatTablePercent(anchor.v)],
+        active:
+          clamped === anchor.p ||
+          (next ? clamped > anchor.p && clamped < next.p : clamped > anchor.p),
+      };
+    }),
+  };
+};
+
+const buildAnchorMultiplierTablePreview = (
+  title: string,
+  anchors: Array<{ p: number; m: number }>,
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return {
+    title,
+    columns: ["TN", "Násobek"],
+    rows: anchors.map((anchor, index) => {
+      const next = anchors[index + 1];
+      return {
+        cells: [formatTablePercent(anchor.p), `${anchor.m.toLocaleString("cs-CZ")}×`],
+        active:
+          clamped === anchor.p ||
+          (next ? clamped > anchor.p && clamped < next.p : clamped > anchor.p),
+      };
+    }),
+  };
+};
 
 const stripUnsupportedColorFunctions = (input: string): string =>
   input.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
@@ -146,6 +297,42 @@ const getMultiplierForRange5x = (percent: number): number => {
   return 5;
 };
 
+const CPP_EVOLUCE_5X_TABLE: Array<{ from: number; payoutPercent: number }> = [
+  { from: 0.001, payoutPercent: 1 },
+  { from: 5, payoutPercent: 5 },
+  { from: 10, payoutPercent: 10 },
+  { from: 15, payoutPercent: 15 },
+  { from: 20, payoutPercent: 20 },
+  { from: 25, payoutPercent: 25 },
+  { from: 30, payoutPercent: 50 },
+  { from: 35, payoutPercent: 70 },
+  { from: 40, payoutPercent: 90 },
+  { from: 45, payoutPercent: 120 },
+  { from: 50, payoutPercent: 140 },
+  { from: 55, payoutPercent: 160 },
+  { from: 60, payoutPercent: 180 },
+  { from: 65, payoutPercent: 220 },
+  { from: 70, payoutPercent: 260 },
+  { from: 75, payoutPercent: 290 },
+  { from: 80, payoutPercent: 320 },
+  { from: 85, payoutPercent: 380 },
+  { from: 90, payoutPercent: 420 },
+  { from: 95, payoutPercent: 460 },
+  { from: 100, payoutPercent: 500 },
+];
+
+const getCppEvoluce5xPayoutPercent = (percent: number): number => {
+  const clamped = clampPercent(percent);
+  let payoutPercent = 0;
+
+  for (const row of CPP_EVOLUCE_5X_TABLE) {
+    if (clamped < row.from) break;
+    payoutPercent = row.payoutPercent;
+  }
+
+  return payoutPercent;
+};
+
 const getMultiplierUniqaDomino = (percent: number): number => {
   if (percent <= 20) return 1;
   if (percent <= 30) return 2;
@@ -157,6 +344,47 @@ const getMultiplierUniqaDomino = (percent: number): number => {
   if (percent <= 90) return 8;
   if (percent < 100) return 9; // 90,1 % až 99,9 %
   return 10; // přesně 100 %
+};
+
+const getUniqaLogika2019Multiplier = (percent: number): number => {
+  if (percent <= 25) return 1;
+  if (percent <= 50) return 2;
+  if (percent <= 75) return 3;
+  return 4;
+};
+
+const getUniqaLogika2019Multiplier6x = (percent: number): number => {
+  if (percent <= 25) return 1;
+  if (percent <= 50) return 2;
+  if (percent <= 75) return 3;
+  if (percent <= 95) return 4;
+  return 6;
+};
+
+const getUniqaLogika2019Multiplier10x = (percent: number): number => {
+  if (percent <= 25) return 1;
+  if (percent <= 40) return 2;
+  if (percent <= 50) return 3;
+  if (percent <= 60) return 4;
+  if (percent <= 70) return 5;
+  if (percent <= 80) return 6;
+  if (percent <= 90) return 7;
+  if (percent <= 95) return 8;
+  if (percent < 100) return 9;
+  return 10;
+};
+
+const getUniqaLogika2020Multiplier10x = (percent: number): number => {
+  if (percent <= 20) return 1;
+  if (percent <= 30) return 2;
+  if (percent <= 40) return 3;
+  if (percent <= 50) return 4;
+  if (percent <= 60) return 5;
+  if (percent <= 70) return 6;
+  if (percent <= 80) return 7;
+  if (percent <= 90) return 8;
+  if (percent < 100) return 9;
+  return 10;
 };
 
 const KOOP_FLEXI_TN10: Array<{ p: number; c: number }> = [
@@ -467,9 +695,47 @@ const UNIQA_ZIVOT_RADOST_TABLE: number[] = [
   1000, // 100 %
 ];
 
+const UNIQA_ACTIVELIFE_2019_324_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 6, 7, 8, 9, 10, 15,
+  16, 18, 19, 21, 22, 24, 25, 27, 28, 30,
+  31, 33, 34, 36, 37, 41, 44, 48, 51, 55,
+  58, 62, 65, 69, 72, 76, 79, 83, 86, 90,
+  93, 97, 100, 104, 107, 111, 114, 118, 121, 175,
+  180, 186, 191, 197, 202, 208, 213, 219, 224, 230,
+  235, 241, 246, 252, 257, 263, 268, 274, 279, 285,
+  290, 296, 301, 307, 312, 320, 327, 335, 342, 350,
+  357, 365, 372, 380, 387, 395, 402, 410, 417, 425,
+  432, 440, 447, 455, 462, 470, 477, 485, 492, 500,
+];
+
+const UNIQA_ACTIVELIFE_2019_325_TABLE: number[] = [
+  0,
+  0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5,
+  16, 18, 19, 21, 22, 24, 25, 27, 28, 30,
+  31, 33, 34, 36, 37, 41, 44, 48, 51, 55,
+  58, 62, 65, 69, 72, 76, 79, 83, 86, 90,
+  93, 97, 100, 104, 107, 111, 114, 118, 121, 175,
+  180, 186, 191, 197, 202, 208, 213, 219, 224, 230,
+  235, 241, 246, 252, 257, 263, 268, 274, 279, 285,
+  290, 296, 301, 307, 312, 320, 327, 335, 342, 350,
+  357, 365, 372, 380, 387, 395, 402, 410, 417, 425,
+  432, 440, 447, 455, 462, 470, 477, 485, 492, 500,
+];
+
 const getUniqaZivotRadostPercent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return UNIQA_ZIVOT_RADOST_TABLE[idx] ?? 0;
+};
+
+const getUniqaActiveLife2019324Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return UNIQA_ACTIVELIFE_2019_324_TABLE[idx] ?? 0;
+};
+
+const getUniqaActiveLife2019325Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return UNIQA_ACTIVELIFE_2019_325_TABLE[idx] ?? 0;
 };
 
 const getKooperativaFlexiPercent = (percent: number): number => {
@@ -486,6 +752,47 @@ const getKooperativaFlexi4Percent = (percent: number): number => {
   if (p <= 50) return p * 2; // 2×
   if (p <= 75) return p * 3; // 3×
   return p * 4; // 4×
+};
+
+const KOOPERATIVA_NA_PRANI_TN4_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  21, 22, 23, 24, 25, 28, 31, 34, 37, 40,
+  43, 46, 49, 52, 55, 58, 61, 64, 67, 70,
+  73, 76, 79, 82, 85, 88, 91, 94, 97, 100,
+  105, 110, 115, 120, 125, 130, 135, 140, 145, 150,
+  155, 160, 165, 170, 175, 180, 185, 190, 195, 200,
+  205, 210, 215, 220, 225, 231, 237, 243, 249, 255,
+  262, 269, 276, 283, 290, 297, 304, 311, 318, 325,
+  332, 339, 346, 353, 360, 368, 376, 384, 392, 400,
+];
+
+const KOOPERATIVA_NA_PRANI_TN8_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  21, 22, 23, 24, 25, 28, 31, 34, 37, 40,
+  43, 46, 49, 52, 55, 58, 61, 64, 67, 70,
+  73, 76, 79, 82, 85, 88, 91, 94, 97, 100,
+  107, 114, 121, 128, 135, 144, 153, 162, 171, 180,
+  189, 198, 207, 216, 225, 234, 243, 252, 261, 270,
+  280, 290, 300, 310, 320, 330, 340, 350, 360, 370,
+  382, 394, 406, 418, 430, 448, 466, 484, 502, 520,
+  546, 572, 598, 624, 650, 680, 710, 740, 770, 800,
+];
+
+const getKooperativaNaPraniPercent = (
+  percent: number,
+  variant: "tn4" | "tn8"
+): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  const table =
+    variant === "tn4"
+      ? KOOPERATIVA_NA_PRANI_TN4_TABLE
+      : KOOPERATIVA_NA_PRANI_TN8_TABLE;
+
+  return table[idx] ?? 0;
 };
 
 const getMetlifeOneGuardPercent = (percent: number): number => {
@@ -856,6 +1163,20 @@ const NN_ORANGE_10X_TABLE: number[] = [
   1000, // 100 %
 ];
 
+const NN_ZIVOT_2019_06_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  32, 34, 37, 40, 43, 46, 49, 52, 55, 60,
+  63, 66, 69, 72, 75, 78, 81, 84, 87, 90,
+  93, 96, 99, 102, 108, 114, 120, 126, 132, 138,
+  145, 152, 159, 166, 173, 180, 187, 194, 201, 208,
+  215, 222, 229, 236, 243, 253, 263, 273, 283, 293,
+  303, 313, 323, 333, 343, 355, 367, 379, 391, 403,
+  418, 433, 448, 463, 478, 499, 520, 541, 562, 583,
+  604, 625, 646, 667, 688, 709, 730, 751, 775, 800,
+];
+
 const GENERALI_BEL_MONDO_20_TABLE: number[] = [
   0, // 0 %
   1, // 1 %
@@ -1117,6 +1438,11 @@ const getNnOrange10xPercent = (percent: number): number => {
   return NN_ORANGE_10X_TABLE[idx] ?? 0;
 };
 
+const getNnZivot201906Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return NN_ZIVOT_2019_06_TABLE[idx] ?? 0;
+};
+
 const getGeneraliBelMondo20Percent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return GENERALI_BEL_MONDO_20_TABLE[idx] ?? 0;
@@ -1205,6 +1531,472 @@ const getPillowMultiplier = (percent: number): number => {
   return Number((lower.m + (upper.m - lower.m) * ratio).toFixed(2));
 };
 
+const buildCppEvoluceTop5xTablePreview = (
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return {
+    title: "Tabulka TOP progrese 5×",
+    columns: ["Rozsah TN", "Násobek"],
+    rows: [
+      { cells: ["do 20 % včetně", "1×"], active: clamped <= 20 },
+      {
+        cells: ["nad 20 % do 40 % včetně", "2×"],
+        active: clamped > 20 && clamped <= 40,
+      },
+      {
+        cells: ["nad 40 % do 60 % včetně", "3×"],
+        active: clamped > 40 && clamped <= 60,
+      },
+      {
+        cells: ["nad 60 % do 80 % včetně", "4×"],
+        active: clamped > 60 && clamped <= 80,
+      },
+      {
+        cells: ["nad 80 % do 100 % včetně", "5×"],
+        active: clamped > 80,
+      },
+    ],
+  };
+};
+
+const buildCppEvoluce5xTablePreview = (
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return {
+    title: "Tabulka plnění 5× progrese",
+    columns: ["TN od", "Plnění z pojistné částky"],
+    rows: CPP_EVOLUCE_5X_TABLE.map((row, index) => {
+      const nextFrom = CPP_EVOLUCE_5X_TABLE[index + 1]?.from ?? Infinity;
+      return {
+        cells: [formatTablePercent(row.from), formatTablePercent(row.payoutPercent)],
+        active: clamped >= row.from && clamped < nextFrom,
+      };
+    }),
+  };
+};
+
+const buildUniqaLogika20194xTablePreview = (
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return {
+    title: "Tabulka UNIQA Logika 2019 4×",
+    columns: ["Rozsah TN", "Násobek"],
+    rows: [
+      { cells: ["do 25 % včetně", "1×"], active: clamped <= 25 },
+      {
+        cells: ["nad 25 % do 50 % včetně", "2×"],
+        active: clamped > 25 && clamped <= 50,
+      },
+      {
+        cells: ["nad 50 % do 75 % včetně", "3×"],
+        active: clamped > 50 && clamped <= 75,
+      },
+      {
+        cells: ["nad 75 % do 100 % včetně", "4×"],
+        active: clamped > 75,
+      },
+    ],
+  };
+};
+
+const buildUniqaLogika20196xTablePreview = (
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return {
+    title: "Tabulka UNIQA Logika 2019 6×",
+    columns: ["Rozsah TN", "Násobek"],
+    rows: [
+      { cells: ["do 25 % včetně", "1×"], active: clamped <= 25 },
+      {
+        cells: ["nad 25 % do 50 % včetně", "2×"],
+        active: clamped > 25 && clamped <= 50,
+      },
+      {
+        cells: ["nad 50 % do 75 % včetně", "3×"],
+        active: clamped > 50 && clamped <= 75,
+      },
+      {
+        cells: ["nad 75 % do 95 % včetně", "4×"],
+        active: clamped > 75 && clamped <= 95,
+      },
+      {
+        cells: ["nad 95 % do 100 % včetně", "6×"],
+        active: clamped > 95,
+      },
+    ],
+  };
+};
+
+const buildUniqaLogika201910xTablePreview = (
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return {
+    title: "Tabulka UNIQA Logika 2019 10×",
+    columns: ["Rozsah TN", "Násobek"],
+    rows: [
+      { cells: ["do 25 % včetně", "1×"], active: clamped <= 25 },
+      {
+        cells: ["nad 25 % do 40 % včetně", "2×"],
+        active: clamped > 25 && clamped <= 40,
+      },
+      {
+        cells: ["nad 40 % do 50 % včetně", "3×"],
+        active: clamped > 40 && clamped <= 50,
+      },
+      {
+        cells: ["nad 50 % do 60 % včetně", "4×"],
+        active: clamped > 50 && clamped <= 60,
+      },
+      {
+        cells: ["nad 60 % do 70 % včetně", "5×"],
+        active: clamped > 60 && clamped <= 70,
+      },
+      {
+        cells: ["nad 70 % do 80 % včetně", "6×"],
+        active: clamped > 70 && clamped <= 80,
+      },
+      {
+        cells: ["nad 80 % do 90 % včetně", "7×"],
+        active: clamped > 80 && clamped <= 90,
+      },
+      {
+        cells: ["nad 90 % do 95 % včetně", "8×"],
+        active: clamped > 90 && clamped <= 95,
+      },
+      {
+        cells: ["nad 95 % do 99,99 % včetně", "9×"],
+        active: clamped > 95 && clamped < 100,
+      },
+      { cells: ["100 %", "10×"], active: clamped === 100 },
+    ],
+  };
+};
+
+const buildUniqaLogika202010xTablePreview = (
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return {
+    title: "Tabulka UNIQA Logika 2020 10×",
+    columns: ["Rozsah TN", "Násobek"],
+    rows: [
+      { cells: ["do 20 % včetně", "1×"], active: clamped <= 20 },
+      {
+        cells: ["nad 20 % do 30 % včetně", "2×"],
+        active: clamped > 20 && clamped <= 30,
+      },
+      {
+        cells: ["nad 30 % do 40 % včetně", "3×"],
+        active: clamped > 30 && clamped <= 40,
+      },
+      {
+        cells: ["nad 40 % do 50 % včetně", "4×"],
+        active: clamped > 40 && clamped <= 50,
+      },
+      {
+        cells: ["nad 50 % do 60 % včetně", "5×"],
+        active: clamped > 50 && clamped <= 60,
+      },
+      {
+        cells: ["nad 60 % do 70 % včetně", "6×"],
+        active: clamped > 60 && clamped <= 70,
+      },
+      {
+        cells: ["nad 70 % do 80 % včetně", "7×"],
+        active: clamped > 70 && clamped <= 80,
+      },
+      {
+        cells: ["nad 80 % do 90 % včetně", "8×"],
+        active: clamped > 80 && clamped <= 90,
+      },
+      {
+        cells: ["nad 90 % do 99,99 % včetně", "9×"],
+        active: clamped > 90 && clamped < 100,
+      },
+      { cells: ["100 %", "10×"], active: clamped === 100 },
+    ],
+  };
+};
+
+const buildKooperativaNaPraniTablePreview = (
+  currentPercent: number
+): InfoTablePreview =>
+  buildMultiPercentValueTablePreview(
+    "Tabulka Kooperativa NA PŘÁNÍ",
+    ["TN4", "TN8"],
+    [KOOPERATIVA_NA_PRANI_TN4_TABLE, KOOPERATIVA_NA_PRANI_TN8_TABLE],
+    currentPercent
+  );
+
+const buildCppNeon10xTablePreview = (currentPercent: number): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return buildRangeTablePreview("Tabulka ČPP Neon 10×", ["Rozsah TN", "Násobek"], [
+    { cells: ["do 10 % včetně", "1×"], active: clamped <= 10 },
+    {
+      cells: ["nad 10 % do 20 % včetně", "2×"],
+      active: clamped > 10 && clamped <= 20,
+    },
+    {
+      cells: ["nad 20 % do 30 % včetně", "3×"],
+      active: clamped > 20 && clamped <= 30,
+    },
+    {
+      cells: ["nad 30 % do 40 % včetně", "4×"],
+      active: clamped > 30 && clamped <= 40,
+    },
+    {
+      cells: ["nad 40 % do 50 % včetně", "5×"],
+      active: clamped > 40 && clamped <= 50,
+    },
+    {
+      cells: ["nad 50 % do 60 % včetně", "6×"],
+      active: clamped > 50 && clamped <= 60,
+    },
+    {
+      cells: ["nad 60 % do 70 % včetně", "7×"],
+      active: clamped > 60 && clamped <= 70,
+    },
+    {
+      cells: ["nad 70 % do 80 % včetně", "8×"],
+      active: clamped > 70 && clamped <= 80,
+    },
+    {
+      cells: ["nad 80 % do 90 % včetně", "9×"],
+      active: clamped > 80 && clamped <= 90,
+    },
+    {
+      cells: ["nad 90 % do 100 % včetně", "10×"],
+      active: clamped > 90,
+    },
+  ]);
+};
+
+const buildGeneric5xMultiplierTablePreview = (
+  title: string,
+  currentPercent: number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return buildRangeTablePreview(title, ["Rozsah TN", "Násobek"], [
+    { cells: ["do 20 % včetně", "1×"], active: clamped <= 20 },
+    {
+      cells: ["nad 20 % do 40 % včetně", "2×"],
+      active: clamped > 20 && clamped <= 40,
+    },
+    {
+      cells: ["nad 40 % do 60 % včetně", "3×"],
+      active: clamped > 40 && clamped <= 60,
+    },
+    {
+      cells: ["nad 60 % do 80 % včetně", "4×"],
+      active: clamped > 60 && clamped <= 80,
+    },
+    {
+      cells: ["nad 80 % do 100 % včetně", "5×"],
+      active: clamped > 80,
+    },
+  ]);
+};
+
+const buildUniqaDominoTablePreview = (currentPercent: number): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return buildRangeTablePreview("Tabulka UNIQA Domino 10×", ["Rozsah TN", "Násobek"], [
+    { cells: ["do 20 % včetně", "1×"], active: clamped <= 20 },
+    {
+      cells: ["nad 20 % do 30 % včetně", "2×"],
+      active: clamped > 20 && clamped <= 30,
+    },
+    {
+      cells: ["nad 30 % do 40 % včetně", "3×"],
+      active: clamped > 30 && clamped <= 40,
+    },
+    {
+      cells: ["nad 40 % do 50 % včetně", "4×"],
+      active: clamped > 40 && clamped <= 50,
+    },
+    {
+      cells: ["nad 50 % do 60 % včetně", "5×"],
+      active: clamped > 50 && clamped <= 60,
+    },
+    {
+      cells: ["nad 60 % do 70 % včetně", "6×"],
+      active: clamped > 60 && clamped <= 70,
+    },
+    {
+      cells: ["nad 70 % do 80 % včetně", "7×"],
+      active: clamped > 70 && clamped <= 80,
+    },
+    {
+      cells: ["nad 80 % do 90 % včetně", "8×"],
+      active: clamped > 80 && clamped <= 90,
+    },
+    {
+      cells: ["nad 90 % do 99,99 % včetně", "9×"],
+      active: clamped > 90 && clamped < 100,
+    },
+    { cells: ["100 %", "10×"], active: clamped === 100 },
+  ]);
+};
+
+const buildKooperativaFlexi4xTablePreview = (
+  currentPercent: number
+): InfoTablePreview => {
+  const rows = Array.from({ length: 201 }, (_, index) => {
+    const p = index / 2;
+    return { p, c: getKooperativaFlexi4Percent(p) };
+  });
+
+  return buildHalfStepValueTablePreview(
+    "Tabulka Kooperativa FLEXI 4×",
+    rows,
+    currentPercent
+  );
+};
+
+const buildMetlifeCoefficientTablePreview = (
+  title: string,
+  currentPercent: number,
+  getCoefficient: (percent: number) => number
+): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+  const maxes = [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 99, 100];
+
+  return buildRangeTablePreview(title, ["Rozsah TN", "Koeficient"], maxes.map((max, index) => {
+    const previous = index === 0 ? 0 : maxes[index - 1];
+    const label = index === 0 ? "do 15 % včetně" : `nad ${previous} % do ${max} % včetně`;
+
+    return {
+      cells: [label, formatTablePercent(getCoefficient(max))],
+      active: index === 0 ? clamped <= max : clamped > previous && clamped <= max,
+    };
+  }));
+};
+
+const buildCsobForteTablePreview = (currentPercent: number): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return buildRangeTablePreview("Tabulka ČSOB Forte 2016-2019", ["Rozsah TN", "Násobek"], [
+    { cells: ["do 25 % včetně", "1×"], active: clamped <= 25 },
+    {
+      cells: ["nad 25 % do 50 % včetně", "2×"],
+      active: clamped > 25 && clamped <= 50,
+    },
+    {
+      cells: ["nad 50 % do 75 % včetně", "3×"],
+      active: clamped > 50 && clamped <= 75,
+    },
+    {
+      cells: ["nad 75 % do 95 % včetně", "4×"],
+      active: clamped > 75 && clamped <= 95,
+    },
+    {
+      cells: ["nad 95 % do 100 % včetně", "6×"],
+      active: clamped > 95,
+    },
+  ]);
+};
+
+const buildMaximaMaxefektTablePreview = (currentPercent: number): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return buildRangeTablePreview("Tabulka Maxima MAXEFEKT 6.0", ["Rozsah TN", "Násobek"], [
+    { cells: ["do 20 % včetně", "1×"], active: clamped <= 20 },
+    {
+      cells: ["nad 20 % do 40 % včetně", "2×"],
+      active: clamped > 20 && clamped <= 40,
+    },
+    {
+      cells: ["nad 40 % do 55 % včetně", "3×"],
+      active: clamped > 40 && clamped <= 55,
+    },
+    {
+      cells: ["nad 55 % do 65 % včetně", "4×"],
+      active: clamped > 55 && clamped <= 65,
+    },
+    {
+      cells: ["nad 65 % do 75 % včetně", "5×"],
+      active: clamped > 65 && clamped <= 75,
+    },
+    {
+      cells: ["nad 75 % do 85 % včetně", "6×"],
+      active: clamped > 75 && clamped <= 85,
+    },
+    {
+      cells: ["nad 85 % do 90 % včetně", "7×"],
+      active: clamped > 85 && clamped <= 90,
+    },
+    {
+      cells: ["nad 90 % do 95 % včetně", "8×"],
+      active: clamped > 90 && clamped <= 95,
+    },
+    {
+      cells: ["nad 95 % do 98 % včetně", "9×"],
+      active: clamped > 95 && clamped <= 98,
+    },
+    {
+      cells: ["nad 98 % do 100 % včetně", "10×"],
+      active: clamped > 98,
+    },
+  ]);
+};
+
+const buildSimpleaTablePreview = (currentPercent: number): InfoTablePreview => {
+  const clamped = clampPercent(currentPercent);
+
+  return buildRangeTablePreview("Tabulka Simplea 2.0", ["Rozsah TN", "Násobek"], [
+    { cells: ["do 15 % včetně", "1×"], active: clamped <= 15 },
+    {
+      cells: ["nad 15 % do 20 % včetně", "1,5×"],
+      active: clamped > 15 && clamped <= 20,
+    },
+    {
+      cells: ["nad 20 % do 30 % včetně", "2×"],
+      active: clamped > 20 && clamped <= 30,
+    },
+    {
+      cells: ["nad 30 % do 40 % včetně", "3×"],
+      active: clamped > 30 && clamped <= 40,
+    },
+    {
+      cells: ["nad 40 % do 50 % včetně", "4×"],
+      active: clamped > 40 && clamped <= 50,
+    },
+    {
+      cells: ["nad 50 % do 60 % včetně", "5×"],
+      active: clamped > 50 && clamped <= 60,
+    },
+    {
+      cells: ["nad 60 % do 70 % včetně", "6×"],
+      active: clamped > 60 && clamped <= 70,
+    },
+    {
+      cells: ["nad 70 % do 80 % včetně", "7×"],
+      active: clamped > 70 && clamped <= 80,
+    },
+    {
+      cells: ["nad 80 % do 90 % včetně", "8×"],
+      active: clamped > 80 && clamped <= 90,
+    },
+    {
+      cells: ["nad 90 % do 100 % včetně", "10×"],
+      active: clamped > 90,
+    },
+  ]);
+};
+
 export default function SrovnavacTrvalychNasledkuPage() {
   const [sumInsuredInput, setSumInsuredInput] = useState("500000");
   const [rangePercentInput, setRangePercentInput] = useState("50");
@@ -1232,14 +2024,53 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const payout = sumInsuredValue * multiplier * (normalizedPercent / 100);
     const multiplier5x = getMultiplierForRange5x(normalizedPercent);
     const payout5x = sumInsuredValue * multiplier5x * (normalizedPercent / 100);
+    const cppEvoluce5xPayoutPercent =
+      getCppEvoluce5xPayoutPercent(normalizedPercent);
+    const payoutCppEvoluce5x =
+      sumInsuredValue * (cppEvoluce5xPayoutPercent / 100);
     const multiplierUniqa = getMultiplierUniqaDomino(normalizedPercent);
     const payoutUniqa = sumInsuredValue * multiplierUniqa * (normalizedPercent / 100);
+    const uniqaLogika2019Multiplier = getUniqaLogika2019Multiplier(normalizedPercent);
+    const payoutUniqaLogika2019 =
+      sumInsuredValue * uniqaLogika2019Multiplier * (normalizedPercent / 100);
+    const uniqaLogika2019Multiplier6x =
+      getUniqaLogika2019Multiplier6x(normalizedPercent);
+    const payoutUniqaLogika20196x =
+      sumInsuredValue * uniqaLogika2019Multiplier6x * (normalizedPercent / 100);
+    const uniqaLogika2019Multiplier10x =
+      getUniqaLogika2019Multiplier10x(normalizedPercent);
+    const payoutUniqaLogika201910x =
+      sumInsuredValue * uniqaLogika2019Multiplier10x * (normalizedPercent / 100);
+    const uniqaLogika2020Multiplier10x =
+      getUniqaLogika2020Multiplier10x(normalizedPercent);
+    const payoutUniqaLogika202010x =
+      sumInsuredValue * uniqaLogika2020Multiplier10x * (normalizedPercent / 100);
+    const uniqaActiveLife2019324Percent =
+      getUniqaActiveLife2019324Percent(normalizedPercent);
+    const payoutUniqaActiveLife2019324 =
+      sumInsuredValue * (uniqaActiveLife2019324Percent / 100);
+    const uniqaActiveLife2019325Percent =
+      getUniqaActiveLife2019325Percent(normalizedPercent);
+    const payoutUniqaActiveLife2019325 =
+      sumInsuredValue * (uniqaActiveLife2019325Percent / 100);
     const uniqaZivotPercent = getUniqaZivotRadostPercent(normalizedPercent);
     const payoutUniqaZivot = sumInsuredValue * (uniqaZivotPercent / 100);
     const kooperativaFlexiPercent = getKooperativaFlexiPercent(normalizedPercent);
     const payoutKooperativaFlexi = sumInsuredValue * (kooperativaFlexiPercent / 100);
     const kooperativaFlexi4Percent = getKooperativaFlexi4Percent(normalizedPercent);
     const payoutKooperativaFlexi4 = sumInsuredValue * (kooperativaFlexi4Percent / 100);
+    const kooperativaNaPraniTn4Percent = getKooperativaNaPraniPercent(
+      normalizedPercent,
+      "tn4"
+    );
+    const payoutKooperativaNaPraniTn4 =
+      sumInsuredValue * (kooperativaNaPraniTn4Percent / 100);
+    const kooperativaNaPraniTn8Percent = getKooperativaNaPraniPercent(
+      normalizedPercent,
+      "tn8"
+    );
+    const payoutKooperativaNaPraniTn8 =
+      sumInsuredValue * (kooperativaNaPraniTn8Percent / 100);
     const metlifeOneGuardPercent = getMetlifeOneGuardPercent(normalizedPercent);
     const payoutMetlifeOneGuard =
       sumInsuredValue * (normalizedPercent / 100) * (metlifeOneGuardPercent / 100);
@@ -1257,6 +2088,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const payoutNnOrange = sumInsuredValue * (nnOrangePercent / 100);
     const nnOrange10xPercent = getNnOrange10xPercent(normalizedPercent);
     const payoutNnOrange10x = sumInsuredValue * (nnOrange10xPercent / 100);
+    const nnZivot201906Percent = getNnZivot201906Percent(normalizedPercent);
+    const payoutNnZivot201906 = sumInsuredValue * (nnZivot201906Percent / 100);
     const generaliBelMondo20Percent = getGeneraliBelMondo20Percent(normalizedPercent);
     const payoutGeneraliBelMondo20 = sumInsuredValue * (generaliBelMondo20Percent / 100);
     const maximaMaxefektMultiplier = getMaximaMaxefektMultiplier(normalizedPercent);
@@ -1278,6 +2111,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payout,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildCppNeon10xTablePreview(normalizedPercent),
       },
       {
         key: "cpp-5x",
@@ -1285,6 +2119,26 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["5× progrese"],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildGeneric5xMultiplierTablePreview(
+          "Tabulka ČPP Neon 5×",
+          normalizedPercent
+        ),
+      },
+      {
+        key: "cpp-evoluce-top-5x",
+        insurer: "ČPP Evoluce",
+        badges: ["TOP progrese 5×"],
+        payout: payout5x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildCppEvoluceTop5xTablePreview(normalizedPercent),
+      },
+      {
+        key: "cpp-evoluce-5x",
+        insurer: "ČPP Evoluce",
+        badges: ["5× progrese"],
+        payout: payoutCppEvoluce5x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${cppEvoluce5xPayoutPercent}%.`,
+        tablePreview: buildCppEvoluce5xTablePreview(normalizedPercent),
       },
       {
         key: "uniqa-domino",
@@ -1292,6 +2146,63 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutUniqa,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplierUniqa} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildUniqaDominoTablePreview(normalizedPercent),
+      },
+      {
+        key: "uniqa-logika-2019",
+        insurer: "UNIQA Logika 2019",
+        badges: ["4× progrese"],
+        payout: payoutUniqaLogika2019,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildUniqaLogika20194xTablePreview(normalizedPercent),
+      },
+      {
+        key: "uniqa-logika-2019-6x",
+        insurer: "UNIQA Logika 2019",
+        badges: ["6× progrese"],
+        payout: payoutUniqaLogika20196x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier6x} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildUniqaLogika20196xTablePreview(normalizedPercent),
+      },
+      {
+        key: "uniqa-logika-2019-10x",
+        insurer: "UNIQA Logika 2019",
+        badges: ["10× progrese"],
+        payout: payoutUniqaLogika201910x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier10x} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildUniqaLogika201910xTablePreview(normalizedPercent),
+      },
+      {
+        key: "uniqa-logika-2020-10x",
+        insurer: "UNIQA Logika 2020",
+        badges: ["10× progrese"],
+        payout: payoutUniqaLogika202010x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2020Multiplier10x} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildUniqaLogika202010xTablePreview(normalizedPercent),
+      },
+      {
+        key: "uniqa-activelife-2019-324-324u",
+        insurer: "UNIQA ActiveLife 2019",
+        badges: ["Tarify 324/324U", "5× progrese"],
+        payout: payoutUniqaActiveLife2019324,
+        info: `Tarify 324/324U: ${formatMoney(sumInsuredValue)} × ${uniqaActiveLife2019324Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka ActiveLife 2019 tarify 324/324U",
+          UNIQA_ACTIVELIFE_2019_324_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "uniqa-activelife-2019-325-325u",
+        insurer: "UNIQA ActiveLife 2019",
+        badges: ["Tarify 325/325U", "5× progrese"],
+        payout: payoutUniqaActiveLife2019325,
+        info: `Tarify 325/325U: ${formatMoney(sumInsuredValue)} × ${uniqaActiveLife2019325Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka ActiveLife 2019 tarify 325/325U",
+          UNIQA_ACTIVELIFE_2019_325_TABLE,
+          normalizedPercent
+        ),
       },
       {
         key: "uniqa-zivot-radost",
@@ -1299,6 +2210,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutUniqaZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaZivotPercent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka UNIQA Život & radost",
+          UNIQA_ZIVOT_RADOST_TABLE,
+          normalizedPercent
+        ),
       },
       {
         key: "koop-flexi",
@@ -1306,6 +2222,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutKooperativaFlexi,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexiPercent}%.`,
+        tablePreview: buildHalfStepValueTablePreview(
+          "Tabulka Kooperativa FLEXI 10×",
+          KOOP_FLEXI_TN10,
+          normalizedPercent
+        ),
       },
       {
         key: "koop-flexi-4x",
@@ -1313,6 +2234,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["4× progrese"],
         payout: payoutKooperativaFlexi4,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexi4Percent}%.`,
+        tablePreview: buildKooperativaFlexi4xTablePreview(normalizedPercent),
+      },
+      {
+        key: "koop-na-prani-tn4",
+        insurer: "Kooperativa NA PŘÁNÍ",
+        badges: ["4× progrese"],
+        payout: payoutKooperativaNaPraniTn4,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaNaPraniTn4Percent}% (TN4).`,
+        tablePreview: buildKooperativaNaPraniTablePreview(normalizedPercent),
+      },
+      {
+        key: "koop-na-prani-tn8",
+        insurer: "Kooperativa NA PŘÁNÍ",
+        badges: ["8× progrese"],
+        payout: payoutKooperativaNaPraniTn8,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaNaPraniTn8Percent}% (TN8).`,
+        tablePreview: buildKooperativaNaPraniTablePreview(normalizedPercent),
       },
       {
         key: "metlife-oneguard",
@@ -1320,6 +2258,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutMetlifeOneGuard,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeOneGuardPercent}%.`,
+        tablePreview: buildMetlifeCoefficientTablePreview(
+          "Tabulka MetLife OneGuard",
+          normalizedPercent,
+          getMetlifeOneGuardPercent
+        ),
       },
       {
         key: "metlife-garde6",
@@ -1327,6 +2270,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutMetlifeGarde6,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeGarde6Percent}%.`,
+        tablePreview: buildMetlifeCoefficientTablePreview(
+          "Tabulka MetLife Garde 6.0",
+          normalizedPercent,
+          getMetlifeGarde6Percent
+        ),
       },
       {
         key: "csob-nas-zivot",
@@ -1334,13 +2282,19 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["8× progrese"],
         payout: payoutCsobNasZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobNasZivotPercent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka ČSOB Náš Život",
+          CSOB_NAS_ZIVOT_TABLE,
+          normalizedPercent
+        ),
       },
       {
         key: "csob-forte",
-        insurer: "ČSOB Forte",
+        insurer: "ČSOB Forte 2016-2019",
         badges: ["6× progrese"],
         payout: payoutCsobForte,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobForteMultiplier} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildCsobForteTablePreview(normalizedPercent),
       },
       {
         key: "generali-muj-zivot",
@@ -1348,6 +2302,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutGeneraliMujZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliMujZivotPercent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka Generali Můj Život",
+          GENERALI_MUJ_ZIVOT_TABLE,
+          normalizedPercent
+        ),
       },
       {
         key: "generali-bel-mondo-20",
@@ -1355,6 +2314,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutGeneraliBelMondo20,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka Generali Bel Mondo 20",
+          GENERALI_BEL_MONDO_20_TABLE,
+          normalizedPercent
+        ),
       },
       {
         key: "nn-orange",
@@ -1362,6 +2326,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["5× progrese"],
         payout: payoutNnOrange,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka NN Orange 5×",
+          NN_ORANGE_TABLE,
+          normalizedPercent
+        ),
       },
       {
         key: "nn-orange-10x",
@@ -1369,6 +2338,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutNnOrange10x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10xPercent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka NN Orange 10×",
+          NN_ORANGE_10X_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "nn-zivot-2019-06",
+        insurer: "NN Život 6/2019",
+        badges: ["8× progrese"],
+        payout: payoutNnZivot201906,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnZivot201906Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka NN Život 6/2019",
+          NN_ZIVOT_2019_06_TABLE,
+          normalizedPercent
+        ),
       },
       {
         key: "maxima-maxefekt",
@@ -1376,6 +2362,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutMaximaMaxefekt,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${maximaMaxefektMultiplier} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildMaximaMaxefektTablePreview(normalizedPercent),
       },
       {
         key: "allianz-zivot",
@@ -1383,6 +2370,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["8× progrese"],
         payout: payoutAllianzZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivotPercent}%.`,
+        tablePreview: buildAnchorValueTablePreview(
+          "Tabulka Allianz Život",
+          ALLIANZ_ZIVOT_ANCHORS,
+          normalizedPercent
+        ),
       },
       {
         key: "simplea-2",
@@ -1390,6 +2382,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutSimplea,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${simpleaMultiplier} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildSimpleaTablePreview(normalizedPercent),
       },
       {
         key: "pillow-uraz-nemoc",
@@ -1397,6 +2390,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         badges: ["10× progrese"],
         payout: payoutPillow,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${pillowMultiplier}.`,
+        tablePreview: buildAnchorMultiplierTablePreview(
+          "Tabulka Pillow Úraz Nemoc",
+          PILLOW_ANCHORS,
+          normalizedPercent
+        ),
       },
     ];
   };
@@ -1411,9 +2409,82 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [currentExporting, setCurrentExporting] = useState(false);
   const [scenarioExporting, setScenarioExporting] = useState(false);
   const [scenarioExportError, setScenarioExportError] = useState<string | null>(null);
+  const [expandedFilterInsurers, setExpandedFilterInsurers] = useState<string[]>([
+    "ČPP",
+    "UNIQA",
+    "Kooperativa",
+    "MetLife",
+    "ČSOB",
+    "Generali",
+    "NN",
+    "Maxima",
+    "Allianz",
+    "Simplea",
+    "Pillow",
+  ]);
   const cards = buildCardsForPercent(rangePercentValue);
 
-  const insurerOptions = Array.from(new Set(cards.map((card) => card.insurer)));
+  const insurerFilterGroups = cards.reduce<InsurerFilterGroup[]>((groups, card) => {
+    const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+    let group = groups.find((item) => item.insurerName === insurerName);
+
+    if (!group) {
+      group = { insurerName, options: [] };
+      groups.push(group);
+    }
+
+    let option = group.options.find((item) => item.value === card.insurer);
+    if (!option) {
+      option = { value: card.insurer, productName, badges: [] };
+      group.options.push(option);
+    }
+
+    for (const badge of card.badges) {
+      if (!option.badges.includes(badge)) option.badges.push(badge);
+    }
+
+    return groups;
+  }, []);
+  const allFilterGroupsExpanded =
+    insurerFilterGroups.length > 0 &&
+    insurerFilterGroups.every((group) =>
+      expandedFilterInsurers.includes(group.insurerName)
+    );
+
+  const toggleFilterGroupExpanded = (insurerName: string) => {
+    setExpandedFilterInsurers((current) =>
+      current.includes(insurerName)
+        ? current.filter((item) => item !== insurerName)
+        : [...current, insurerName]
+    );
+  };
+
+  const toggleAllFilterGroupsExpanded = () => {
+    setExpandedFilterInsurers(
+      allFilterGroupsExpanded
+        ? []
+        : insurerFilterGroups.map((group) => group.insurerName)
+    );
+  };
+
+  const toggleFilterOption = (value: string) => {
+    setSelectedInsurers((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value]
+    );
+  };
+
+  const toggleFilterGroupSelection = (values: string[]) => {
+    setSelectedInsurers((current) => {
+      const allSelected = values.every((value) => current.includes(value));
+      if (allSelected) {
+        return current.filter((item) => !values.includes(item));
+      }
+
+      return Array.from(new Set([...current, ...values]));
+    });
+  };
 
   const applyCardFilters = (sourceCards: ComparisonCard[]): ComparisonCard[] =>
     sourceCards.filter((card) => {
@@ -2316,7 +3387,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 )}
                 {selectedInsurers.length > 0 && (
                   <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
-                    Pojišťovny: {selectedInsurers.length}
+                    Produkty: {selectedInsurers.length}
                   </span>
                 )}
                 {compactList && (
@@ -2550,7 +3621,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
             onClick={() => setFiltersOpen(false)}
           >
             <div
-              className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-violet-100 bg-white px-5 py-5 shadow-[0_34px_90px_rgba(15,23,42,0.28)]"
+              className="relative max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-[28px] border border-violet-100 bg-white px-5 py-5 shadow-[0_34px_90px_rgba(15,23,42,0.28)]"
               onClick={(e) => e.stopPropagation()}
             >
               <span
@@ -2604,7 +3675,24 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Pojišťovny</div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Pojišťovny a produkty
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleAllFilterGroupsExpanded}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50"
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition ${
+                          allFilterGroupsExpanded ? "rotate-180" : ""
+                        }`}
+                      />
+                      {allFilterGroupsExpanded ? "Sbalit vše" : "Rozbalit vše"}
+                    </button>
+                  </div>
+
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -2615,31 +3703,153 @@ export default function SrovnavacTrvalychNasledkuPage() {
                           : TN_INACTIVE_CHIP_CLASS
                       }`}
                     >
-                      Všechny
+                      Všechny produkty
                     </button>
-                    {insurerOptions.map((insurer) => {
-                      const active = selectedInsurers.includes(insurer);
+                    <span className="text-xs font-semibold text-slate-500">
+                      {selectedInsurers.length === 0
+                        ? "Bez omezení produktů"
+                        : `${selectedInsurers.length} vybraných produktů`}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 pt-1 md:grid-cols-2">
+                    {insurerFilterGroups.map((group) => {
+                      const values = group.options.map((option) => option.value);
+                      const selectedCount = values.filter((value) =>
+                        selectedInsurers.includes(value)
+                      ).length;
+                      const groupFullySelected =
+                        selectedCount === group.options.length && selectedCount > 0;
+                      const groupPartlySelected =
+                        selectedCount > 0 && selectedCount < group.options.length;
+                      const isExpanded = expandedFilterInsurers.includes(
+                        group.insurerName
+                      );
+                      const logoPath = getInsurerLogoPath(group.insurerName);
+                      const logoKey = institutionLogoKeyFromInsurerName(
+                        group.insurerName
+                      );
 
                       return (
-                        <button
-                          key={insurer}
-                          type="button"
-                          onClick={() =>
-                            setSelectedInsurers((current) =>
-                              current.includes(insurer)
-                                ? current.filter((item) => item !== insurer)
-                                : [...current, insurer]
-                            )
-                          }
-                          className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
-                            active
-                              ? TN_ACTIVE_VIOLET_CLASS
-                              : TN_INACTIVE_CHIP_CLASS
-                          }`}
-                          aria-pressed={active}
+                        <section
+                          key={group.insurerName}
+                          className="overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-sm"
                         >
-                          {insurer}
-                        </button>
+                          <div className="flex items-center gap-2 px-3 py-2.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleFilterGroupSelection(values)}
+                              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1.5 py-1 text-left transition hover:bg-violet-50/80"
+                              aria-pressed={groupFullySelected}
+                            >
+                              <span
+                                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${
+                                  groupFullySelected || groupPartlySelected
+                                    ? "border-fuchsia-500 bg-fuchsia-600 text-white"
+                                    : "border-sky-300 bg-white text-white"
+                                }`}
+                                aria-hidden="true"
+                              >
+                                {groupFullySelected ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : groupPartlySelected ? (
+                                  <span className="h-0.5 w-2.5 rounded-full bg-white" />
+                                ) : null}
+                              </span>
+                              <span
+                                className={`relative inline-flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm ${institutionLogoFrameClass(
+                                  logoKey,
+                                  "compact"
+                                )}`}
+                              >
+                                {logoPath ? (
+                                  <Image
+                                    src={logoPath}
+                                    alt={group.insurerName}
+                                    fill
+                                    sizes="48px"
+                                    className={institutionLogoImageClass(logoKey)}
+                                  />
+                                ) : (
+                                  <span className="text-[10px] font-semibold text-slate-400">
+                                    LOGO
+                                  </span>
+                                )}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block break-words text-sm font-black leading-tight text-slate-950">
+                                  {group.insurerName}
+                                </span>
+                                <span className="mt-0.5 block text-xs font-semibold text-slate-500">
+                                  {selectedCount}/{group.options.length} produktů
+                                </span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleFilterGroupExpanded(group.insurerName)}
+                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-100 bg-white text-slate-500 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                              aria-label={`${isExpanded ? "Sbalit" : "Rozbalit"} ${group.insurerName}`}
+                              aria-expanded={isExpanded}
+                            >
+                              <ChevronDown
+                                className={`h-4 w-4 transition ${
+                                  isExpanded ? "" : "-rotate-90"
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          {isExpanded ? (
+                            <div className="border-t border-violet-100 bg-violet-50/25 p-2">
+                              <div className="grid gap-2">
+                                {group.options.map((option) => {
+                                  const active = selectedInsurers.includes(option.value);
+
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      onClick={() => toggleFilterOption(option.value)}
+                                      className={`flex w-full items-start gap-2 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ${
+                                        active
+                                          ? "border-violet-500 bg-white text-slate-950 shadow-sm"
+                                          : "border-violet-100 bg-white/85 text-slate-600 hover:border-violet-300 hover:bg-white"
+                                      }`}
+                                      aria-pressed={active}
+                                    >
+                                      <span
+                                        className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                                          active
+                                            ? "border-violet-600 bg-violet-600 text-white"
+                                            : "border-sky-300 bg-white text-white"
+                                        }`}
+                                        aria-hidden="true"
+                                      >
+                                        {active ? <Check className="h-3 w-3" /> : null}
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block break-words leading-snug">
+                                          {option.productName}
+                                        </span>
+                                        <span className="mt-1 flex flex-wrap gap-1">
+                                          {option.badges.map((badge) => (
+                                            <span
+                                              key={badge}
+                                              className="rounded-full border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700"
+                                            >
+                                              {badge}
+                                            </span>
+                                          ))}
+                                        </span>
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+                        </section>
                       );
                     })}
                   </div>
@@ -2789,7 +3999,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     </button>
 
                     {infoOpen === card.key && (
-                      <div className="absolute right-3 top-[calc(100%-4px)] z-20 w-72 rounded-2xl border border-violet-200 bg-white px-3 py-2 text-slate-900 shadow-[0_18px_40px_rgba(76,29,149,0.22)]">
+                      <div className="absolute right-3 top-[calc(100%-4px)] z-20 max-h-[72vh] w-[calc(100vw-2rem)] max-w-[30rem] overflow-y-auto rounded-2xl border border-violet-200 bg-white px-3 py-2 text-slate-900 shadow-[0_18px_40px_rgba(76,29,149,0.22)] sm:max-h-[540px] sm:w-[30rem]">
                         <div className="mb-1 flex items-center justify-between gap-2">
                           <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
                             Výpočet
@@ -2804,6 +4014,58 @@ export default function SrovnavacTrvalychNasledkuPage() {
                           </button>
                         </div>
                         <p className="text-[12px] leading-snug text-slate-700">{card.info}</p>
+                        {card.tablePreview ? (
+                          <div className="mt-3">
+                            <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                              {card.tablePreview.title}
+                            </div>
+                            <div className="max-h-64 overflow-auto rounded-xl border border-violet-100 bg-white">
+                              <table className="w-full border-collapse text-left text-[11px]">
+                                <thead className="sticky top-0 z-10 bg-violet-50 text-slate-700">
+                                  <tr>
+                                    {card.tablePreview.columns.map((column) => (
+                                      <th
+                                        key={column}
+                                        className="border-b border-violet-100 px-2 py-1.5 font-black"
+                                      >
+                                        {column}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {card.tablePreview.rows.map((row, rowIndex) => (
+                                    <tr
+                                      key={`${row.cells.join("|")}-${rowIndex}`}
+                                      className={
+                                        row.active
+                                          ? "bg-fuchsia-50 text-slate-950"
+                                          : rowIndex % 2 === 0
+                                            ? "bg-white"
+                                            : "bg-slate-50/70"
+                                      }
+                                    >
+                                      {row.cells.map((cell, cellIndex) => (
+                                        <td
+                                          key={`${cell}-${cellIndex}`}
+                                          className={`border-b border-violet-50 px-2 py-1.5 ${
+                                            row.active
+                                              ? "font-black text-fuchsia-800"
+                                              : cellIndex === 0
+                                                ? "font-semibold text-slate-700"
+                                                : "font-semibold text-slate-600"
+                                          }`}
+                                        >
+                                          {cell}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </div>
