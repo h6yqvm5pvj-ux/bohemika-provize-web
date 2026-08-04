@@ -3,7 +3,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type PointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Calculator,
   ChartNoAxesColumn,
@@ -55,7 +61,11 @@ type ComparisonCard = {
   info: string;
   infoSections?: InfoSection[];
   tablePreview?: InfoTablePreview;
+  diagnosisExamples?: DiagnosisExample[];
+  curve: PayoutCurvePoint[];
 };
+
+type ComparisonCardBase = Omit<ComparisonCard, "curve">;
 
 type InfoSection = {
   title: string;
@@ -73,6 +83,17 @@ type InfoTablePreview = {
 type InfoTablePreviewRow = {
   cells: string[];
   active?: boolean;
+};
+
+type PayoutCurvePoint = {
+  percent: number;
+  payoutPercent: number;
+};
+
+type DiagnosisExample = {
+  percent: number;
+  title: string;
+  note: string;
 };
 
 type InsurerFilterOption = {
@@ -107,6 +128,471 @@ const formatTablePercent = (value: number): string =>
 
 const roundedPercentIndex = (value: number): number =>
   Math.min(100, Math.max(0, Math.round(value)));
+
+const CPP_NEON_DIAGNOSIS_EXAMPLES: DiagnosisExample[] = [
+  {
+    percent: 15,
+    title: "Traumatická ztráta čočky v jednom oku",
+    note: "Položka 20, rozsah 15 %",
+  },
+  {
+    percent: 30,
+    title: "Ztráta mluvy následkem poškození ústrojí mluvy",
+    note: "Položka 64, rozsah 30 %",
+  },
+  {
+    percent: 70,
+    title: "Ztráta jedné ledviny při nefunkčnosti druhé ledviny",
+    note: "Položka 86, rozsah 70 %",
+  },
+];
+
+const buildPayoutCurve = (
+  getPayoutPercent: (percent: number) => number
+): PayoutCurvePoint[] =>
+  Array.from({ length: 101 }, (_, percent) => ({
+    percent,
+    payoutPercent: Math.max(0, getPayoutPercent(percent)),
+  }));
+
+const getNearestCurvePoint = (
+  points: PayoutCurvePoint[],
+  percent: number
+): PayoutCurvePoint => {
+  const index = roundedPercentIndex(percent);
+  return points[index] ?? points[points.length - 1] ?? { percent: 0, payoutPercent: 0 };
+};
+
+const getChartAxisMax = (maxValue: number) => {
+  const baseMax = Math.max(100, maxValue);
+  const step = baseMax <= 500 ? 100 : 200;
+  return Math.ceil(baseMax / step) * step;
+};
+
+function PayoutCurveChart({
+  points,
+  currentPercent,
+  maxPayoutPercent,
+  diagnosisExamples = [],
+}: {
+  points: PayoutCurvePoint[];
+  currentPercent: number;
+  maxPayoutPercent: number;
+  diagnosisExamples?: DiagnosisExample[];
+}) {
+  const width = 860;
+  const height = 380;
+  const paddingLeft = 62;
+  const paddingRight = 28;
+  const paddingTop = 30;
+  const paddingBottom = 52;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [inspectedPercent, setInspectedPercent] = useState<number | null>(null);
+  const safeMax = getChartAxisMax(maxPayoutPercent);
+  const currentPoint = getNearestCurvePoint(points, currentPercent);
+  const activePoint =
+    inspectedPercent === null
+      ? currentPoint
+      : getNearestCurvePoint(points, inspectedPercent);
+  const isInspecting = inspectedPercent !== null;
+  const maxPoint = points.reduce<PayoutCurvePoint>(
+    (highest, point) =>
+      point.payoutPercent > highest.payoutPercent ? point : highest,
+    points[0] ?? { percent: 0, payoutPercent: 0 }
+  );
+  const toX = (percent: number) =>
+    paddingLeft +
+    (clampPercent(percent) / 100) * (width - paddingLeft - paddingRight);
+  const toY = (payoutPercent: number) =>
+    height -
+    paddingBottom -
+    (Math.min(safeMax, Math.max(0, payoutPercent)) / safeMax) *
+      (height - paddingTop - paddingBottom);
+  const pathPoints = points.map((point) => ({
+    x: toX(point.percent),
+    y: toY(point.payoutPercent),
+  }));
+  const linePath = pathPoints
+    .map((point, index) =>
+      `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
+    )
+    .join(" ");
+  const areaPath =
+    pathPoints.length > 0
+      ? `${linePath} L ${pathPoints[pathPoints.length - 1].x.toFixed(2)} ${(height - paddingBottom).toFixed(2)} L ${pathPoints[0].x.toFixed(2)} ${(height - paddingBottom).toFixed(2)} Z`
+      : "";
+  const activeX = toX(activePoint.percent);
+  const activeY = toY(activePoint.payoutPercent);
+  const currentX = toX(currentPoint.percent);
+  const currentY = toY(currentPoint.payoutPercent);
+  const maxX = toX(maxPoint.percent);
+  const maxY = toY(maxPoint.payoutPercent);
+  const labelWidth = 126;
+  const labelHeight = 44;
+  const labelX =
+    activeX + labelWidth + 18 > width - paddingRight
+      ? Math.max(paddingLeft + 8, activeX - labelWidth - 16)
+      : activeX + 16;
+  const labelY = Math.min(
+    height - paddingBottom - labelHeight - 6,
+    Math.max(paddingTop + 6, activeY - labelHeight - 14)
+  );
+  const yTicks = Array.from({ length: 5 }, (_, index) =>
+    Math.round((safeMax / 4) * index)
+  );
+  const xTicks = [0, 25, 50, 75, 100];
+  const diagnosisPoints = diagnosisExamples.map((example, index) => {
+    const point = getNearestCurvePoint(points, example.percent);
+    return {
+      ...example,
+      index,
+      point,
+      x: toX(point.percent),
+      y: toY(point.payoutPercent),
+    };
+  });
+  const getPercentFromPointer = (event: PointerEvent<SVGSVGElement>) => {
+    const bounds = svgRef.current?.getBoundingClientRect();
+    if (!bounds || bounds.width <= 0) return currentPoint.percent;
+
+    const svgX = ((event.clientX - bounds.left) / bounds.width) * width;
+    const ratio =
+      (svgX - paddingLeft) / (width - paddingLeft - paddingRight);
+    return roundedPercentIndex(ratio * 100);
+  };
+  const updateInspectedPercentFromPointer = (
+    event: PointerEvent<SVGSVGElement>
+  ) => {
+    setInspectedPercent(getPercentFromPointer(event));
+  };
+  const handleChartKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    const basePercent = inspectedPercent ?? currentPoint.percent;
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setInspectedPercent(roundedPercentIndex(basePercent - 1));
+      return;
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setInspectedPercent(roundedPercentIndex(basePercent + 1));
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      setInspectedPercent(0);
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      setInspectedPercent(100);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setInspectedPercent(null);
+    }
+  };
+
+  return (
+    <div className="rounded-3xl border border-violet-100 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_100%)] p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+            Průběh plnění
+          </div>
+          <div className="mt-1 text-base font-black text-slate-950">
+            Křivka podle rozsahu trvalých následků
+          </div>
+          <div className="mt-1 text-xs font-semibold text-slate-500">
+            Osa X = rozsah TN, osa Y = plnění z pojistné částky.
+          </div>
+        </div>
+        <div className="rounded-2xl border border-fuchsia-200 bg-white px-3 py-2 text-right shadow-sm">
+          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-600">
+            {isInspecting ? "Vybraný bod" : "Aktuálně"}
+          </div>
+          <div className="mt-1 text-base font-black leading-none text-fuchsia-950">
+            {formatTablePercent(activePoint.payoutPercent)}
+          </div>
+          <div className="mt-1 text-[11px] font-bold text-fuchsia-700">
+            při {formatPercent(activePoint.percent)} TN
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[24px] border border-violet-100 bg-white p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${width} ${height}`}
+          className="h-[21rem] w-full cursor-crosshair touch-none focus:outline-none focus:ring-2 focus:ring-fuchsia-300 sm:h-[24rem]"
+          role="img"
+          aria-label={`Graf plnění při ${formatPercent(activePoint.percent)}: ${formatTablePercent(activePoint.payoutPercent)}`}
+          tabIndex={0}
+          onPointerDown={updateInspectedPercentFromPointer}
+          onPointerMove={updateInspectedPercentFromPointer}
+          onPointerLeave={() => setInspectedPercent(null)}
+          onKeyDown={handleChartKeyDown}
+        >
+          <title>{`Graf plnění při ${formatPercent(activePoint.percent)}: ${formatTablePercent(activePoint.payoutPercent)}`}</title>
+          <defs>
+            <linearGradient id="tnPayoutAreaGradient" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#d946ef" stopOpacity="0.3" />
+              <stop offset="58%" stopColor="#a855f7" stopOpacity="0.12" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.03" />
+            </linearGradient>
+            <linearGradient id="tnPayoutLineGradient" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stopColor="#7c3aed" />
+              <stop offset="54%" stopColor="#a855f7" />
+              <stop offset="100%" stopColor="#db2777" />
+            </linearGradient>
+          </defs>
+          <rect
+            x={paddingLeft}
+            y={paddingTop}
+            width={width - paddingLeft - paddingRight}
+            height={height - paddingTop - paddingBottom}
+            rx="18"
+            className="fill-violet-50/45"
+          />
+          {yTicks.map((tick) => {
+            const y = toY(tick);
+            return (
+              <g key={tick}>
+                <line
+                  x1={paddingLeft}
+                  y1={y}
+                  x2={width - paddingRight}
+                  y2={y}
+                  className="stroke-white"
+                  strokeWidth="1"
+                />
+                <text
+                  x={paddingLeft - 10}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="fill-slate-400 text-[11px] font-bold"
+                >
+                  {tick} %
+                </text>
+              </g>
+            );
+          })}
+          {xTicks.map((tick) => {
+            const x = toX(tick);
+            return (
+              <g key={tick}>
+                <line
+                  x1={x}
+                  y1={paddingTop}
+                  x2={x}
+                  y2={height - paddingBottom}
+                  className="stroke-white"
+                  strokeWidth="1"
+                />
+                <text
+                  x={x}
+                  y={height - 16}
+                  textAnchor="middle"
+                  className="fill-slate-400 text-[11px] font-bold"
+                >
+                  {tick} %
+                </text>
+              </g>
+            );
+          })}
+          <line
+            x1={paddingLeft}
+            y1={height - paddingBottom}
+            x2={width - paddingRight}
+            y2={height - paddingBottom}
+            className="stroke-slate-200"
+            strokeWidth="1.5"
+          />
+          <line
+            x1={paddingLeft}
+            y1={paddingTop}
+            x2={paddingLeft}
+            y2={height - paddingBottom}
+            className="stroke-slate-200"
+            strokeWidth="1.5"
+          />
+          <path d={areaPath} fill="url(#tnPayoutAreaGradient)" />
+          <path
+            d={linePath}
+            fill="none"
+            stroke="url(#tnPayoutLineGradient)"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="4"
+          />
+          <circle
+            cx={maxX}
+            cy={maxY}
+            r="4.5"
+            className="fill-white stroke-violet-500"
+            strokeWidth="2.5"
+          />
+          {diagnosisPoints.map((example) => {
+            const badgeY = Math.max(paddingTop + 12, example.y - 15);
+            return (
+              <g key={`${example.percent}-${example.title}`}>
+                <line
+                  x1={example.x}
+                  y1={example.y}
+                  x2={example.x}
+                  y2={height - paddingBottom}
+                  className="stroke-violet-300"
+                  strokeDasharray="3 5"
+                  strokeWidth="1.5"
+                />
+                <circle
+                  cx={example.x}
+                  cy={example.y}
+                  r="6"
+                  className="fill-white stroke-violet-600"
+                  strokeWidth="3"
+                />
+                <circle
+                  cx={example.x}
+                  cy={example.y}
+                  r="3"
+                  className="fill-violet-600"
+                />
+                <rect
+                  x={example.x - 8}
+                  y={badgeY - 10}
+                  width="16"
+                  height="16"
+                  rx="8"
+                  className="fill-slate-950"
+                />
+                <text
+                  x={example.x}
+                  y={badgeY + 2}
+                  textAnchor="middle"
+                  className="fill-white text-[9px] font-black"
+                >
+                  {example.index + 1}
+                </text>
+              </g>
+            );
+          })}
+          {isInspecting && activePoint.percent !== currentPoint.percent ? (
+            <g>
+              <line
+                x1={currentX}
+                y1={paddingTop}
+                x2={currentX}
+                y2={height - paddingBottom}
+                className="stroke-fuchsia-200"
+                strokeDasharray="2 6"
+                strokeWidth="1.5"
+              />
+              <circle
+                cx={currentX}
+                cy={currentY}
+                r="4.5"
+                className="fill-white stroke-fuchsia-300"
+                strokeWidth="2"
+              />
+            </g>
+          ) : null}
+          <line
+            x1={activeX}
+            y1={paddingTop}
+            x2={activeX}
+            y2={height - paddingBottom}
+            className="stroke-fuchsia-300"
+            strokeDasharray="6 6"
+            strokeWidth="2"
+          />
+          <circle
+            cx={activeX}
+            cy={activeY}
+            r="7"
+            className="fill-fuchsia-500 stroke-white"
+            strokeWidth="3"
+          />
+          <rect
+            x={labelX}
+            y={labelY}
+            width={labelWidth}
+            height={labelHeight}
+            rx="14"
+            className="fill-white stroke-fuchsia-200"
+            strokeWidth="1.5"
+          />
+          <text
+            x={labelX + 12}
+            y={labelY + 18}
+            className="fill-fuchsia-600 text-[10px] font-black uppercase tracking-[0.1em]"
+          >
+            {isInspecting ? "Vybraný bod" : "Aktuální bod"}
+          </text>
+          <text
+            x={labelX + 12}
+            y={labelY + 34}
+            className="fill-slate-950 text-[12px] font-black"
+          >
+            {formatPercent(activePoint.percent)} / {formatTablePercent(activePoint.payoutPercent)}
+          </text>
+        </svg>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] font-bold text-slate-500">
+          <span>Rozsah TN 0-100 %</span>
+          <span>Maximum varianty: {formatTablePercent(maxPoint.payoutPercent)}</span>
+        </div>
+        {diagnosisPoints.length > 0 ? (
+          <div className="mt-3 rounded-2xl border border-violet-100 bg-violet-50/55 p-3">
+            <div className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">
+              Příklady diagnóz ČPP Neon
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {diagnosisPoints.map((example) => {
+                const selected = activePoint.percent === example.point.percent;
+
+                return (
+                  <button
+                    key={`${example.percent}-${example.title}-legend`}
+                    type="button"
+                    onClick={() => setInspectedPercent(example.point.percent)}
+                    className={`rounded-xl border px-3 py-2 text-left shadow-sm transition hover:border-fuchsia-200 hover:bg-fuchsia-50/70 ${
+                      selected
+                        ? "border-fuchsia-300 bg-fuchsia-50 ring-1 ring-fuchsia-200"
+                        : "border-white bg-white"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-950 text-[10px] font-black text-white">
+                        {example.index + 1}
+                      </span>
+                      <span className="text-[11px] font-black text-fuchsia-700">
+                        {formatPercent(example.point.percent)} TN
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs font-black leading-snug text-slate-950">
+                      {example.title}
+                    </div>
+                    <div className="mt-1 text-[11px] font-semibold leading-snug text-slate-500">
+                      {example.note}
+                    </div>
+                    <div className="mt-1 text-[11px] font-black text-violet-700">
+                      Plnění {formatTablePercent(example.point.payoutPercent)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 const percentValueRows = (
   table: number[],
@@ -244,6 +730,7 @@ const getInsurerLogoPath = (insurer: string): string | null => {
   if (normalized.includes("generali")) return "/icons/generali.png";
   if (normalized.includes("metlife")) return "/icons/metlife.png";
   if (normalized.includes("allianz")) return "/icons/allianz.png";
+  if (normalized.includes("axa")) return "/icons/axalogo.png";
   if (normalized.includes("slavia")) return "/icons/slavialogo.png";
   if (normalized.includes("comfort") || normalized.includes("commodity")) {
     return "/icons/cclogo.png";
@@ -265,6 +752,7 @@ const splitInsurerAndProduct = (value: string): { insurerName: string; productNa
     "NN",
     "Maxima",
     "Allianz",
+    "AXA",
     "Slavia",
     "Comfort Commodity",
     "Simplea",
@@ -748,6 +1236,21 @@ const getUniqaActiveLife2019324Percent = (percent: number): number => {
 const getUniqaActiveLife2019325Percent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return UNIQA_ACTIVELIFE_2019_325_TABLE[idx] ?? 0;
+};
+
+const AXA_ACTIVE_LIFE_2016_2021_324_324U_TABLE =
+  UNIQA_ACTIVELIFE_2019_324_TABLE;
+const AXA_ACTIVE_LIFE_2016_2021_325_325U_TABLE =
+  UNIQA_ACTIVELIFE_2019_325_TABLE;
+
+const getAxaActiveLife20162021Tarif324Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return AXA_ACTIVE_LIFE_2016_2021_324_324U_TABLE[idx] ?? 0;
+};
+
+const getAxaActiveLife20162021Tarif325Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return AXA_ACTIVE_LIFE_2016_2021_325_325U_TABLE[idx] ?? 0;
 };
 
 const getKooperativaFlexiPercent = (percent: number): number => {
@@ -1255,7 +1758,7 @@ const YOU_PLUS_4U_2020_INFO_SECTIONS: InfoSection[] = [
   },
 ];
 
-const GENERALI_BEL_MONDO_20_TABLE: number[] = [
+const GENERALI_BEL_MONDO_20_2023_2024_TABLE: number[] = [
   0, // 0 %
   1, // 1 %
   2, // 2 %
@@ -1358,6 +1861,26 @@ const GENERALI_BEL_MONDO_20_TABLE: number[] = [
   964, // 99 %
   1000, // 100 %
 ];
+
+const GENERALI_ALLEGRO_20_2023_2024_TABLE =
+  GENERALI_BEL_MONDO_20_2023_2024_TABLE;
+
+const GENERALI_BEL_MONDO_20_2020_2022_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  21, 22, 23, 24, 25, 30, 35, 40, 45, 50,
+  55, 60, 65, 70, 75, 80, 85, 90, 95, 100,
+  105, 110, 115, 120, 125, 130, 135, 140, 145, 150,
+  155, 160, 165, 170, 175, 180, 185, 190, 195, 200,
+  205, 210, 215, 220, 225, 230, 235, 240, 245, 250,
+  255, 260, 265, 270, 275, 280, 285, 290, 295, 300,
+  325, 350, 375, 400, 425, 450, 475, 500, 525, 550,
+  575, 600, 625, 650, 675, 700, 725, 750, 775, 800,
+];
+
+const GENERALI_ALLEGRO_20_2020_2022_TABLE =
+  GENERALI_BEL_MONDO_20_2020_2022_TABLE;
 
 const ALLIANZ_ZIVOT_ANCHORS: Array<{ p: number; v: number }> = [
   { p: 0, v: 0 },
@@ -1596,9 +2119,24 @@ const getYouPlus4u2020Percent = (percent: number): number => {
   return YOU_PLUS_4U_2020_TABLE[idx] ?? 0;
 };
 
-const getGeneraliBelMondo20Percent = (percent: number): number => {
+const getGeneraliBelMondo20232024Percent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
-  return GENERALI_BEL_MONDO_20_TABLE[idx] ?? 0;
+  return GENERALI_BEL_MONDO_20_2023_2024_TABLE[idx] ?? 0;
+};
+
+const getGeneraliBelMondo20202022Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return GENERALI_BEL_MONDO_20_2020_2022_TABLE[idx] ?? 0;
+};
+
+const getGeneraliAllegro20232024Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return GENERALI_ALLEGRO_20_2023_2024_TABLE[idx] ?? 0;
+};
+
+const getGeneraliAllegro20202022Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return GENERALI_ALLEGRO_20_2020_2022_TABLE[idx] ?? 0;
 };
 
 const getAllianzZivotPercent = (percent: number): number => {
@@ -1917,7 +2455,7 @@ const buildKooperativaNaPraniTablePreview = (
 const buildCppNeon10xTablePreview = (currentPercent: number): InfoTablePreview => {
   const clamped = clampPercent(currentPercent);
 
-  return buildRangeTablePreview("Tabulka ČPP Neon 10×", ["Rozsah TN", "Násobek"], [
+  return buildRangeTablePreview("Tabulka ČPP Neon 2026 10×", ["Rozsah TN", "Násobek"], [
     { cells: ["do 10 % včetně", "1×"], active: clamped <= 10 },
     {
       cells: ["nad 10 % do 20 % včetně", "2×"],
@@ -2035,7 +2573,7 @@ const buildKooperativaFlexi4xTablePreview = (
   });
 
   return buildHalfStepValueTablePreview(
-    "Tabulka Kooperativa FLEXI 4×",
+    "Tabulka Kooperativa FLEXI 2026 4×",
     rows,
     currentPercent
   );
@@ -2181,6 +2719,53 @@ const buildAllianzPartners2026TablePreview = (
     currentPercent
   );
 
+const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = {
+  "cpp-10x": (percent) => getMultiplierForRange(percent) * percent,
+  "cpp-5x": (percent) => getMultiplierForRange5x(percent) * percent,
+  "cpp-evoluce-top-5x": (percent) => getMultiplierForRange5x(percent) * percent,
+  "cpp-evoluce-5x": getCppEvoluce5xPayoutPercent,
+  "uniqa-domino": (percent) => getMultiplierUniqaDomino(percent) * percent,
+  "uniqa-logika-2019": (percent) => getUniqaLogika2019Multiplier(percent) * percent,
+  "uniqa-logika-2019-6x": (percent) =>
+    getUniqaLogika2019Multiplier6x(percent) * percent,
+  "uniqa-logika-2019-10x": (percent) =>
+    getUniqaLogika2019Multiplier10x(percent) * percent,
+  "uniqa-logika-2020-10x": (percent) =>
+    getUniqaLogika2020Multiplier10x(percent) * percent,
+  "uniqa-activelife-2019-324-324u": getUniqaActiveLife2019324Percent,
+  "uniqa-activelife-2019-325-325u": getUniqaActiveLife2019325Percent,
+  "axa-active-life-2016-2021-324-324u":
+    getAxaActiveLife20162021Tarif324Percent,
+  "axa-active-life-2016-2021-325-325u":
+    getAxaActiveLife20162021Tarif325Percent,
+  "uniqa-zivot-radost": getUniqaZivotRadostPercent,
+  "koop-flexi": getKooperativaFlexiPercent,
+  "koop-flexi-4x": getKooperativaFlexi4Percent,
+  "koop-na-prani-tn4": (percent) => getKooperativaNaPraniPercent(percent, "tn4"),
+  "koop-na-prani-tn8": (percent) => getKooperativaNaPraniPercent(percent, "tn8"),
+  "metlife-oneguard": (percent) =>
+    percent * (getMetlifeOneGuardPercent(percent) / 100),
+  "metlife-garde6": (percent) => percent * (getMetlifeGarde6Percent(percent) / 100),
+  "csob-nas-zivot": getCsobNasZivotPercent,
+  "csob-forte": (percent) => getCsobForteMultiplier(percent) * percent,
+  "generali-muj-zivot": getGeneraliMujZivotPercent,
+  "generali-bel-mondo-20-2023-2024": getGeneraliBelMondo20232024Percent,
+  "generali-bel-mondo-20-2020-2022": getGeneraliBelMondo20202022Percent,
+  "generali-allegro-20-2023-2024": getGeneraliAllegro20232024Percent,
+  "generali-allegro-20-2020-2022": getGeneraliAllegro20202022Percent,
+  "nn-orange": getNnOrangePercent,
+  "nn-orange-10x": getNnOrange10xPercent,
+  "nn-zivot-2019-06": getNnZivot201906Percent,
+  "you-plus-4u-2025": getYouPlus4u2025Percent,
+  "you-plus-4u-2025-t3k": getYouPlus4u2025T3kPercent,
+  "you-plus-4u-2020": getYouPlus4u2020Percent,
+  "maxima-maxefekt": (percent) => getMaximaMaxefektMultiplier(percent) * percent,
+  "allianz-zivot": getAllianzZivotPercent,
+  "allianz-partners-2026": getAllianzPartners2026Percent,
+  "simplea-2": (percent) => getSimpleaMultiplier(percent) * percent,
+  "pillow-uraz-nemoc": (percent) => getPillowMultiplier(percent) * percent,
+};
+
 export default function SrovnavacTrvalychNasledkuPage() {
   const [sumInsuredInput, setSumInsuredInput] = useState("500000");
   const [rangePercentInput, setRangePercentInput] = useState("50");
@@ -2237,6 +2822,14 @@ export default function SrovnavacTrvalychNasledkuPage() {
       getUniqaActiveLife2019325Percent(normalizedPercent);
     const payoutUniqaActiveLife2019325 =
       sumInsuredValue * (uniqaActiveLife2019325Percent / 100);
+    const axaActiveLife324324uPercent =
+      getAxaActiveLife20162021Tarif324Percent(normalizedPercent);
+    const payoutAxaActiveLife324324u =
+      sumInsuredValue * (axaActiveLife324324uPercent / 100);
+    const axaActiveLife325325uPercent =
+      getAxaActiveLife20162021Tarif325Percent(normalizedPercent);
+    const payoutAxaActiveLife325325u =
+      sumInsuredValue * (axaActiveLife325325uPercent / 100);
     const uniqaZivotPercent = getUniqaZivotRadostPercent(normalizedPercent);
     const payoutUniqaZivot = sumInsuredValue * (uniqaZivotPercent / 100);
     const kooperativaFlexiPercent = getKooperativaFlexiPercent(normalizedPercent);
@@ -2281,8 +2874,22 @@ export default function SrovnavacTrvalychNasledkuPage() {
       sumInsuredValue * (youPlus4u2025T3kPercent / 100);
     const youPlus4u2020Percent = getYouPlus4u2020Percent(normalizedPercent);
     const payoutYouPlus4u2020 = sumInsuredValue * (youPlus4u2020Percent / 100);
-    const generaliBelMondo20Percent = getGeneraliBelMondo20Percent(normalizedPercent);
-    const payoutGeneraliBelMondo20 = sumInsuredValue * (generaliBelMondo20Percent / 100);
+    const generaliBelMondo20232024Percent =
+      getGeneraliBelMondo20232024Percent(normalizedPercent);
+    const payoutGeneraliBelMondo20232024 =
+      sumInsuredValue * (generaliBelMondo20232024Percent / 100);
+    const generaliBelMondo20202022Percent =
+      getGeneraliBelMondo20202022Percent(normalizedPercent);
+    const payoutGeneraliBelMondo20202022 =
+      sumInsuredValue * (generaliBelMondo20202022Percent / 100);
+    const generaliAllegro20232024Percent =
+      getGeneraliAllegro20232024Percent(normalizedPercent);
+    const payoutGeneraliAllegro20232024 =
+      sumInsuredValue * (generaliAllegro20232024Percent / 100);
+    const generaliAllegro20202022Percent =
+      getGeneraliAllegro20202022Percent(normalizedPercent);
+    const payoutGeneraliAllegro20202022 =
+      sumInsuredValue * (generaliAllegro20202022Percent / 100);
     const maximaMaxefektMultiplier = getMaximaMaxefektMultiplier(normalizedPercent);
     const payoutMaximaMaxefekt =
       sumInsuredValue * maximaMaxefektMultiplier * (normalizedPercent / 100);
@@ -2299,25 +2906,27 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const payoutPillow =
       sumInsuredValue * pillowMultiplier * (normalizedPercent / 100);
 
-    return [
+    const cardsWithoutCurves: ComparisonCardBase[] = [
       {
         key: "cpp-10x",
-        insurer: "ČPP Neon",
+        insurer: "ČPP Neon 2026",
         badges: ["10× progrese"],
         payout: payout,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildCppNeon10xTablePreview(normalizedPercent),
+        diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
       },
       {
         key: "cpp-5x",
-        insurer: "ČPP Neon",
+        insurer: "ČPP Neon 2026",
         badges: ["5× progrese"],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildGeneric5xMultiplierTablePreview(
-          "Tabulka ČPP Neon 5×",
+          "Tabulka ČPP Neon 2026 5×",
           normalizedPercent
         ),
+        diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
       },
       {
         key: "cpp-evoluce-top-5x",
@@ -2400,32 +3009,56 @@ export default function SrovnavacTrvalychNasledkuPage() {
         ),
       },
       {
+        key: "axa-active-life-2016-2021-324-324u",
+        insurer: "AXA Active Life 2016-2021",
+        badges: ["Tarify 324/324U", "5× progrese"],
+        payout: payoutAxaActiveLife324324u,
+        info: `Tarify 324/324U: ${formatMoney(sumInsuredValue)} × ${axaActiveLife324324uPercent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka AXA Active Life 2016-2021 tarify 324/324U",
+          AXA_ACTIVE_LIFE_2016_2021_324_324U_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "axa-active-life-2016-2021-325-325u",
+        insurer: "AXA Active Life 2016-2021",
+        badges: ["Tarify 325/325U", "5× progrese"],
+        payout: payoutAxaActiveLife325325u,
+        info: `Tarify 325/325U: ${formatMoney(sumInsuredValue)} × ${axaActiveLife325325uPercent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka AXA Active Life 2016-2021 tarify 325/325U",
+          AXA_ACTIVE_LIFE_2016_2021_325_325U_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
         key: "uniqa-zivot-radost",
-        insurer: "UNIQA Život & radost",
+        insurer: "UNIQA Život & radost 2026",
         badges: ["10× progrese"],
         payout: payoutUniqaZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaZivotPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
-          "Tabulka UNIQA Život & radost",
+          "Tabulka UNIQA Život & radost 2026",
           UNIQA_ZIVOT_RADOST_TABLE,
           normalizedPercent
         ),
       },
       {
         key: "koop-flexi",
-        insurer: "Kooperativa FLEXI",
+        insurer: "Kooperativa FLEXI 2026",
         badges: ["10× progrese"],
         payout: payoutKooperativaFlexi,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexiPercent}%.`,
         tablePreview: buildHalfStepValueTablePreview(
-          "Tabulka Kooperativa FLEXI 10×",
+          "Tabulka Kooperativa FLEXI 2026 10×",
           KOOP_FLEXI_TN10,
           normalizedPercent
         ),
       },
       {
         key: "koop-flexi-4x",
-        insurer: "Kooperativa FLEXI",
+        insurer: "Kooperativa FLEXI 2026",
         badges: ["4× progrese"],
         payout: payoutKooperativaFlexi4,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexi4Percent}%.`,
@@ -2493,25 +3126,61 @@ export default function SrovnavacTrvalychNasledkuPage() {
       },
       {
         key: "generali-muj-zivot",
-        insurer: "Generali Můj Život",
+        insurer: "Generali Můj Život 2 2024",
         badges: ["10× progrese"],
         payout: payoutGeneraliMujZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliMujZivotPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
-          "Tabulka Generali Můj Život",
+          "Tabulka Generali Můj Život 2 2024",
           GENERALI_MUJ_ZIVOT_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "generali-bel-mondo-20",
-        insurer: "Generali Bel Mondo 20",
+        key: "generali-bel-mondo-20-2023-2024",
+        insurer: "Generali Bel Mondo 20 2023-2024",
         badges: ["10× progrese"],
-        payout: payoutGeneraliBelMondo20,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20Percent}%.`,
+        payout: payoutGeneraliBelMondo20232024,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20232024Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
-          "Tabulka Generali Bel Mondo 20",
-          GENERALI_BEL_MONDO_20_TABLE,
+          "Tabulka Generali Bel Mondo 20 2023-2024",
+          GENERALI_BEL_MONDO_20_2023_2024_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "generali-bel-mondo-20-2020-2022",
+        insurer: "Generali Bel Mondo 20 2020-2022",
+        badges: ["8× progrese"],
+        payout: payoutGeneraliBelMondo20202022,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20202022Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka Generali Bel Mondo 20 2020-2022",
+          GENERALI_BEL_MONDO_20_2020_2022_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "generali-allegro-20-2023-2024",
+        insurer: "Generali Allegro 20 2023-2024",
+        badges: ["10× progrese"],
+        payout: payoutGeneraliAllegro20232024,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliAllegro20232024Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka Generali Allegro 20 2023-2024",
+          GENERALI_ALLEGRO_20_2023_2024_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "generali-allegro-20-2020-2022",
+        insurer: "Generali Allegro 20 2020-2022",
+        badges: ["8× progrese"],
+        payout: payoutGeneraliAllegro20202022,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliAllegro20202022Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka Generali Allegro 20 2020-2022",
+          GENERALI_ALLEGRO_20_2020_2022_TABLE,
           normalizedPercent
         ),
       },
@@ -2640,6 +3309,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
         ),
       },
     ];
+
+    return cardsWithoutCurves.map((card) => ({
+      ...card,
+      curve: buildPayoutCurve(PAYOUT_PERCENT_BY_CARD_KEY[card.key] ?? (() => 0)),
+    }));
   };
 
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -2663,6 +3337,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     "NN",
     "Maxima",
     "Allianz",
+    "AXA",
     "Simplea",
     "Pillow",
     "YOU PLUS",
@@ -3451,6 +4126,14 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const selectedInfoCardParts = selectedInfoCard
     ? splitInsurerAndProduct(selectedInfoCard.insurer)
     : null;
+  const selectedInfoActiveRow =
+    selectedInfoCard?.tablePreview?.rows.find((row) => row.active) ?? null;
+  const selectedInfoChartMaxPayoutPercent = selectedInfoCard
+    ? Math.max(
+        100,
+        ...selectedInfoCard.curve.map((point) => point.payoutPercent)
+      )
+    : 100;
 
   useEffect(() => {
     if (!infoOpen || !selectedInfoCard?.tablePreview) return;
@@ -4272,19 +4955,19 @@ export default function SrovnavacTrvalychNasledkuPage() {
             onClick={() => setInfoOpen(null)}
           >
             <div
-              className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_34px_100px_rgba(15,23,42,0.34)]"
+              className="flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[30px] border border-violet-100 bg-white shadow-[0_34px_100px_rgba(15,23,42,0.34)]"
               role="dialog"
               aria-modal="true"
               aria-label={`Detail výpočtu pro ${selectedInfoCard.insurer}`}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex flex-col gap-3 border-b border-violet-100 bg-white px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+              <div className="flex flex-col gap-2 border-b border-violet-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-fuchsia-700">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-700">
                     Výpočet
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <h3 className="break-words text-xl font-black leading-tight text-slate-950 sm:text-2xl">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <h3 className="break-words text-lg font-black leading-tight text-slate-950 sm:text-xl">
                       {selectedInfoCardParts.insurerName}
                     </h3>
                     {selectedInfoCard.badges.map((badge) => (
@@ -4296,24 +4979,24 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       </span>
                     ))}
                   </div>
-                  <div className="mt-1 break-words text-sm font-semibold text-slate-500">
+                  <div className="mt-0.5 break-words text-sm font-semibold text-slate-500">
                     {selectedInfoCardParts.productName}
                   </div>
                 </div>
 
-                <div className="flex items-start justify-between gap-4 sm:justify-end">
+                <div className="flex items-center justify-between gap-4 sm:justify-end">
                   <div className="text-left sm:text-right">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700">
                       Plnění
                     </div>
-                    <div className="mt-1 whitespace-nowrap text-xl font-black leading-none text-slate-950">
+                    <div className="mt-0.5 whitespace-nowrap text-lg font-black leading-none text-slate-950 sm:text-xl">
                       {formatMoney(selectedInfoCard.payout)}
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setInfoOpen(null)}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-950 bg-slate-950 text-white transition hover:bg-black"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-950 bg-slate-950 text-white transition hover:bg-black"
                     aria-label="Zavřít detail výpočtu"
                   >
                     <X className="h-4 w-4" />
@@ -4321,122 +5004,150 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 </div>
               </div>
 
-              <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:overflow-hidden lg:p-6">
-                <div className="min-h-0 overflow-y-auto rounded-2xl border border-violet-100 bg-slate-50/60 p-4 lg:max-h-[66vh]">
-                  <div className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                    Detail výpočtu
-                  </div>
-                  <p className="whitespace-pre-line text-[13px] font-semibold leading-relaxed text-slate-700">
-                    {selectedInfoCard.info}
-                  </p>
-                  {selectedInfoCard.infoSections ? (
-                      <div className="mt-4 space-y-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-700">
-                          Přehled ze znění PP
-                        </div>
-                      {selectedInfoCard.infoSections.map((section) => (
-                        <section
-                          key={section.title}
-                          className={`rounded-2xl border p-3 ${
-                            section.emphasis
-                              ? "border-fuchsia-200 bg-fuchsia-50/80"
-                              : "border-violet-100 bg-white"
+              <div
+                className={`grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:overflow-hidden lg:p-5 ${
+                  selectedInfoCard.infoSections
+                    ? "lg:grid-cols-[minmax(0,0.72fr)_minmax(680px,1.28fr)]"
+                    : "lg:grid-cols-1"
+                }`}
+              >
+                {selectedInfoCard.infoSections ? (
+                  <div className="min-h-0 space-y-3 overflow-y-auto lg:max-h-[72vh]">
+                    <div className="text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-700">
+                      Přehled ze znění PP
+                    </div>
+                    {selectedInfoCard.infoSections.map((section) => (
+                      <section
+                        key={section.title}
+                        className={`rounded-2xl border p-3 ${
+                          section.emphasis
+                            ? "border-fuchsia-200 bg-fuchsia-50/80"
+                            : "border-violet-100 bg-white"
+                        }`}
+                      >
+                        <h4
+                          className={`text-sm font-black leading-snug ${
+                            section.emphasis ? "text-fuchsia-800" : "text-slate-950"
                           }`}
                         >
-                          <h4
-                            className={`text-sm font-black leading-snug ${
-                              section.emphasis ? "text-fuchsia-800" : "text-slate-950"
-                            }`}
-                          >
-                            {section.title}
-                          </h4>
-                          {section.body ? (
-                            <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-slate-700">
-                              {section.body}
-                            </p>
-                          ) : null}
-                          {section.items ? (
-                            <ul className="mt-2 space-y-1.5 text-[13px] font-semibold leading-relaxed text-slate-700">
-                              {section.items.map((item) => (
-                                <li key={item} className="flex gap-2">
-                                  <span
-                                    className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
-                                      section.emphasis ? "bg-fuchsia-600" : "bg-violet-500"
-                                    }`}
-                                  />
-                                  <span>{item}</span>
-                                </li>
+                          {section.title}
+                        </h4>
+                        {section.body ? (
+                          <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-slate-700">
+                            {section.body}
+                          </p>
+                        ) : null}
+                        {section.items ? (
+                          <ul className="mt-2 space-y-1.5 text-[13px] font-semibold leading-relaxed text-slate-700">
+                            {section.items.map((item) => (
+                              <li key={item} className="flex gap-2">
+                                <span
+                                  className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                                    section.emphasis ? "bg-fuchsia-600" : "bg-violet-500"
+                                  }`}
+                                />
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </section>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="min-h-0 space-y-4 overflow-y-auto lg:max-h-[72vh]">
+                  <PayoutCurveChart
+                    points={selectedInfoCard.curve}
+                    currentPercent={rangePercentValue}
+                    maxPayoutPercent={selectedInfoChartMaxPayoutPercent}
+                    diagnosisExamples={selectedInfoCard.diagnosisExamples}
+                  />
+
+                  {selectedInfoCard.tablePreview ? (
+                    <div className="min-h-0 overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-sm">
+                      <div className="space-y-3 border-b border-violet-100 bg-white px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                            {selectedInfoCard.tablePreview.title}
+                          </div>
+                          <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-700">
+                            Aktuální řádek
+                          </span>
+                        </div>
+                        {selectedInfoActiveRow ? (
+                          <div className="rounded-2xl border border-fuchsia-200 bg-[linear-gradient(135deg,#fdf2f8_0%,#fae8ff_100%)] p-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {selectedInfoCard.tablePreview.columns.map((column, index) => (
+                                <div key={column} className="min-w-0">
+                                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-600">
+                                    {column}
+                                  </div>
+                                  <div className="mt-0.5 break-words text-sm font-black text-fuchsia-950">
+                                    {selectedInfoActiveRow.cells[index]}
+                                  </div>
+                                </div>
                               ))}
-                            </ul>
-                          ) : null}
-                        </section>
-                      ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div
+                        ref={infoTableScrollRef}
+                        className="max-h-[34vh] overflow-auto lg:max-h-[36vh]"
+                      >
+                        <table className="w-full min-w-[420px] border-collapse text-left text-xs">
+                          <thead className="sticky top-0 z-10 bg-violet-50 text-slate-700">
+                            <tr>
+                              {selectedInfoCard.tablePreview.columns.map((column) => (
+                                <th
+                                  key={column}
+                                  className="border-b border-violet-100 px-3 py-2 font-black"
+                                >
+                                  {column}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedInfoCard.tablePreview.rows.map((row, rowIndex) => (
+                              <tr
+                                key={`${row.cells.join("|")}-${rowIndex}`}
+                                data-active-row={row.active ? "true" : undefined}
+                                className={
+                                  row.active
+                                    ? "bg-fuchsia-50 text-slate-950"
+                                    : rowIndex % 2 === 0
+                                      ? "bg-white"
+                                      : "bg-slate-50/70"
+                                }
+                              >
+                                {row.cells.map((cell, cellIndex) => (
+                                  <td
+                                    key={`${cell}-${cellIndex}`}
+                                    className={`border-b border-violet-50 px-3 py-2 ${
+                                      row.active
+                                        ? `bg-fuchsia-50 font-black text-fuchsia-900 ${
+                                            cellIndex === 0
+                                              ? "border-l-4 border-l-fuchsia-500"
+                                              : ""
+                                          }`
+                                        : cellIndex === 0
+                                          ? "font-semibold text-slate-700"
+                                          : "font-semibold text-slate-600"
+                                    }`}
+                                  >
+                                    {cell}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   ) : null}
                 </div>
-
-                {selectedInfoCard.tablePreview ? (
-                  <div className="min-h-0 rounded-2xl border border-violet-100 bg-white">
-                    <div className="border-b border-violet-100 px-4 py-3">
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                        {selectedInfoCard.tablePreview.title}
-                      </div>
-                    </div>
-                    <div
-                      ref={infoTableScrollRef}
-                      className="max-h-[58vh] overflow-auto lg:max-h-[66vh]"
-                    >
-                      <table className="w-full min-w-[420px] border-collapse text-left text-xs">
-                        <thead className="sticky top-0 z-10 bg-violet-50 text-slate-700">
-                          <tr>
-                            {selectedInfoCard.tablePreview.columns.map((column) => (
-                              <th
-                                key={column}
-                                className="border-b border-violet-100 px-3 py-2 font-black"
-                              >
-                                {column}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedInfoCard.tablePreview.rows.map((row, rowIndex) => (
-                            <tr
-                              key={`${row.cells.join("|")}-${rowIndex}`}
-                              data-active-row={row.active ? "true" : undefined}
-                              className={
-                                row.active
-                                  ? "bg-fuchsia-100 text-slate-950 ring-1 ring-inset ring-fuchsia-300"
-                                  : rowIndex % 2 === 0
-                                    ? "bg-white"
-                                    : "bg-slate-50/70"
-                              }
-                            >
-                              {row.cells.map((cell, cellIndex) => (
-                                <td
-                                  key={`${cell}-${cellIndex}`}
-                                  className={`border-b border-violet-50 px-3 py-2 ${
-                                    row.active
-                                      ? `bg-fuchsia-100 font-black text-fuchsia-900 ${
-                                          cellIndex === 0
-                                            ? "border-l-4 border-l-fuchsia-500"
-                                            : ""
-                                        }`
-                                      : cellIndex === 0
-                                        ? "font-semibold text-slate-700"
-                                        : "font-semibold text-slate-600"
-                                  }`}
-                                >
-                                  {cell}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>
