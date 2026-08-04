@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Calculator,
   ChartNoAxesColumn,
@@ -53,7 +53,15 @@ type ComparisonCard = {
   badges: string[];
   payout: number;
   info: string;
+  infoSections?: InfoSection[];
   tablePreview?: InfoTablePreview;
+};
+
+type InfoSection = {
+  title: string;
+  body?: string;
+  items?: string[];
+  emphasis?: boolean;
 };
 
 type InfoTablePreview = {
@@ -225,6 +233,9 @@ const stripUnsupportedColorFunctions = (input: string): string =>
 
 const getInsurerLogoPath = (insurer: string): string | null => {
   const normalized = insurer.toLowerCase();
+  if (normalized.includes("you plus") || normalized.includes("youplus")) {
+    return "/icons/youplus.png";
+  }
   if (normalized.includes("čpp") || normalized.includes("cpp")) return "/icons/cpp.png";
   if (normalized.includes("uniqa")) return "/icons/uniqa.png";
   if (normalized.includes("nn")) return "/icons/nn.png";
@@ -258,6 +269,7 @@ const splitInsurerAndProduct = (value: string): { insurerName: string; productNa
     "Comfort Commodity",
     "Simplea",
     "Pillow",
+    "YOU PLUS",
   ];
 
   const lower = value.toLowerCase();
@@ -1177,6 +1189,72 @@ const NN_ZIVOT_2019_06_TABLE: number[] = [
   604, 625, 646, 667, 688, 709, 730, 751, 775, 800,
 ];
 
+const YOU_PLUS_4U_2025_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 6, 7, 8, 9, 10, 15,
+  16, 17, 18, 20, 22, 24, 26, 28, 30, 32,
+  34, 36, 38, 41, 44, 47, 50, 53, 56, 59,
+  62, 65, 68, 71, 75, 79, 83, 87, 91, 97,
+  103, 109, 115, 121, 127, 133, 139, 145, 151, 158,
+  165, 172, 179, 186, 193, 200, 207, 214, 221, 228,
+  235, 242, 249, 256, 263, 270, 277, 284, 291, 298,
+  305, 312, 319, 326, 333, 340, 350, 360, 370, 385,
+  400, 415, 430, 445, 460, 475, 490, 505, 525, 550,
+  575, 600, 630, 660, 690, 720, 750, 780, 810, 850,
+];
+
+const YOU_PLUS_4U_2025_T3K_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  22, 24, 26, 28, 30, 33, 36, 39, 42, 45,
+  48, 51, 54, 57, 60, 63, 66, 69, 72, 75,
+  79, 83, 87, 91, 95, 100, 105, 110, 115, 120,
+  130, 140, 150, 160, 170, 180, 190, 200, 210, 220,
+  235, 250, 265, 280, 295, 310, 325, 340, 355, 370,
+  385, 400, 415, 430, 450, 470, 490, 510, 530, 550,
+  570, 590, 610, 630, 650, 670, 690, 710, 730, 750,
+  770, 790, 810, 830, 850, 875, 900, 925, 950, 1000,
+];
+
+const YOU_PLUS_4U_2020_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 6, 7, 8, 9, 10, 15,
+  16, 17, 18, 20, 22, 24, 26, 28, 30, 32,
+  34, 36, 38, 41, 44, 47, 50, 53, 56, 58,
+  60, 62, 66, 70, 74, 78, 82, 86, 90, 95,
+  100, 105, 110, 115, 120, 126, 132, 138, 144, 150,
+  156, 162, 168, 174, 180, 187, 194, 201, 208, 215,
+  222, 229, 236, 243, 250, 257, 264, 271, 278, 285,
+  292, 299, 306, 313, 320, 330, 340, 350, 360, 370,
+  380, 390, 400, 410, 420, 430, 440, 450, 460, 470,
+  480, 490, 500, 510, 525, 540, 555, 570, 585, 600,
+];
+
+const YOU_PLUS_4U_2025_T2K_INFO_SECTIONS: InfoSection[] = [
+  {
+    title: "Pojistné podmínky tarifu T2K",
+    body: "Koeficienty pro progresivní plnění 8,5× podle tabulky YOU PLUS 4U 2021-2025.",
+    emphasis: true,
+  },
+];
+
+const YOU_PLUS_4U_2025_T3K_INFO_SECTIONS: InfoSection[] = [
+  {
+    title: "Pojistné podmínky tarifu T3K",
+    body: "Koeficienty pro progresivní plnění 10× podle tabulky YOU PLUS 4U 2021-2025.",
+    emphasis: true,
+  },
+];
+
+const YOU_PLUS_4U_2020_INFO_SECTIONS: InfoSection[] = [
+  {
+    title: "Pojistné podmínky tarifu T1K",
+    body: "Koeficienty pro progresivní plnění 6× podle tabulky YOU PLUS 4U 2020.",
+    emphasis: true,
+  },
+];
+
 const GENERALI_BEL_MONDO_20_TABLE: number[] = [
   0, // 0 %
   1, // 1 %
@@ -1303,6 +1381,66 @@ const ALLIANZ_ZIVOT_ANCHORS: Array<{ p: number; v: number }> = [
   { p: 90, v: 570 },
   { p: 95, v: 680 },
   { p: 100, v: 800 },
+];
+
+const ALLIANZ_PARTNERS_2026_ANCHORS: Array<{ p: number; v: number }> = [
+  { p: 0, v: 0 },
+  { p: 5, v: 5 },
+  { p: 10, v: 10 },
+  { p: 15, v: 15 },
+  { p: 20, v: 35 },
+  { p: 25, v: 55 },
+  { p: 30, v: 75 },
+  { p: 35, v: 95 },
+  { p: 40, v: 115 },
+  { p: 45, v: 135 },
+  { p: 50, v: 155 },
+  { p: 55, v: 185 },
+  { p: 60, v: 215 },
+  { p: 65, v: 255 },
+  { p: 70, v: 295 },
+  { p: 75, v: 345 },
+  { p: 80, v: 395 },
+  { p: 85, v: 470 },
+  { p: 90, v: 570 },
+  { p: 95, v: 680 },
+  { p: 100, v: 800 },
+];
+
+const ALLIANZ_PARTNERS_2026_INFO_SECTIONS: InfoSection[] = [
+  {
+    title: "Garance nejvyššího plnění",
+    body: "Pokud některá konkurenční pojišťovna u srovnatelného produktu plní více, Allianz při splnění podmínek navýší vlastní pojistné plnění.",
+    emphasis: true,
+  },
+  {
+    title: "Kdy vzniká nárok",
+    items: [
+      "alespoň jeden trvalý následek úrazu uvedený v Tabulce závažných poškození je pojistnou událostí",
+      "upravené pojistné plnění podle konkurenčních produktů je vyšší než plnění Allianz",
+    ],
+  },
+  {
+    title: "Jak se určí konkurenční plnění",
+    items: [
+      "pokud konkurenční produkt uvádí konkrétní hodnotu pro rozsah trvalého následku, použije se tato hodnota",
+      "plnění se stanoví podle koeficientu progrese konkurenčního produktu a oceňovací tabulky trvalých následků daného pojistitele",
+      "nezohledňují se časově omezené nabídky ani bonusy pro omezený okruh klientů",
+    ],
+  },
+  {
+    title: "Časové omezení",
+    body: "Nárok na navýšení se vztahuje pouze na události vzniklé nejpozději do 10 let od počátku připojištění.",
+    emphasis: true,
+  },
+  {
+    title: "Rozhodné tabulky",
+    body: "Při stanovení plnění se vychází z oceňovacích tabulek konkurenčních produktů zveřejněných v den oznámení škodní události.",
+  },
+  {
+    title: "Výluky, omezení a zhoršení poškození",
+    body: "Výluky, omezení, krácení plnění a další práva a povinnosti ze smlouvy tím nejsou dotčeny. Pokud po vzniku práva na plnění dojde ke zhoršení poškození a pojištěný žádá o přehodnocení, postupuje se obdobně.",
+  },
 ];
 
 const CSOB_NAS_ZIVOT_TABLE: number[] = [
@@ -1443,6 +1581,21 @@ const getNnZivot201906Percent = (percent: number): number => {
   return NN_ZIVOT_2019_06_TABLE[idx] ?? 0;
 };
 
+const getYouPlus4u2025Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return YOU_PLUS_4U_2025_TABLE[idx] ?? 0;
+};
+
+const getYouPlus4u2025T3kPercent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return YOU_PLUS_4U_2025_T3K_TABLE[idx] ?? 0;
+};
+
+const getYouPlus4u2020Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return YOU_PLUS_4U_2020_TABLE[idx] ?? 0;
+};
+
 const getGeneraliBelMondo20Percent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return GENERALI_BEL_MONDO_20_TABLE[idx] ?? 0;
@@ -1455,6 +1608,28 @@ const getAllianzZivotPercent = (percent: number): number => {
 
   for (let i = 0; i < ALLIANZ_ZIVOT_ANCHORS.length; i++) {
     const current = ALLIANZ_ZIVOT_ANCHORS[i];
+    if (current.p === clamped) return current.v;
+    if (current.p < clamped) lower = current;
+    if (current.p > clamped) {
+      upper = current;
+      break;
+    }
+  }
+
+  if (upper.p === lower.p) return lower.v;
+
+  const ratio = (clamped - lower.p) / (upper.p - lower.p);
+  return Math.round(lower.v + (upper.v - lower.v) * ratio);
+};
+
+const getAllianzPartners2026Percent = (percent: number): number => {
+  const clamped = Math.min(100, Math.max(0, percent));
+  let lower = ALLIANZ_PARTNERS_2026_ANCHORS[0];
+  let upper =
+    ALLIANZ_PARTNERS_2026_ANCHORS[ALLIANZ_PARTNERS_2026_ANCHORS.length - 1];
+
+  for (let i = 0; i < ALLIANZ_PARTNERS_2026_ANCHORS.length; i++) {
+    const current = ALLIANZ_PARTNERS_2026_ANCHORS[i];
     if (current.p === clamped) return current.v;
     if (current.p < clamped) lower = current;
     if (current.p > clamped) {
@@ -1997,6 +2172,15 @@ const buildSimpleaTablePreview = (currentPercent: number): InfoTablePreview => {
   ]);
 };
 
+const buildAllianzPartners2026TablePreview = (
+  currentPercent: number
+): InfoTablePreview =>
+  buildAnchorValueTablePreview(
+    "Tabulka Allianz Partners 2026",
+    ALLIANZ_PARTNERS_2026_ANCHORS,
+    currentPercent
+  );
+
 export default function SrovnavacTrvalychNasledkuPage() {
   const [sumInsuredInput, setSumInsuredInput] = useState("500000");
   const [rangePercentInput, setRangePercentInput] = useState("50");
@@ -2090,6 +2274,13 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const payoutNnOrange10x = sumInsuredValue * (nnOrange10xPercent / 100);
     const nnZivot201906Percent = getNnZivot201906Percent(normalizedPercent);
     const payoutNnZivot201906 = sumInsuredValue * (nnZivot201906Percent / 100);
+    const youPlus4u2025Percent = getYouPlus4u2025Percent(normalizedPercent);
+    const payoutYouPlus4u2025 = sumInsuredValue * (youPlus4u2025Percent / 100);
+    const youPlus4u2025T3kPercent = getYouPlus4u2025T3kPercent(normalizedPercent);
+    const payoutYouPlus4u2025T3k =
+      sumInsuredValue * (youPlus4u2025T3kPercent / 100);
+    const youPlus4u2020Percent = getYouPlus4u2020Percent(normalizedPercent);
+    const payoutYouPlus4u2020 = sumInsuredValue * (youPlus4u2020Percent / 100);
     const generaliBelMondo20Percent = getGeneraliBelMondo20Percent(normalizedPercent);
     const payoutGeneraliBelMondo20 = sumInsuredValue * (generaliBelMondo20Percent / 100);
     const maximaMaxefektMultiplier = getMaximaMaxefektMultiplier(normalizedPercent);
@@ -2097,6 +2288,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
       sumInsuredValue * maximaMaxefektMultiplier * (normalizedPercent / 100);
     const allianzZivotPercent = getAllianzZivotPercent(normalizedPercent);
     const payoutAllianzZivot = sumInsuredValue * (allianzZivotPercent / 100);
+    const allianzPartners2026Percent =
+      getAllianzPartners2026Percent(normalizedPercent);
+    const payoutAllianzPartners2026 =
+      sumInsuredValue * (allianzPartners2026Percent / 100);
     const simpleaMultiplier = getSimpleaMultiplier(normalizedPercent);
     const payoutSimplea =
       sumInsuredValue * simpleaMultiplier * (normalizedPercent / 100);
@@ -2357,6 +2552,45 @@ export default function SrovnavacTrvalychNasledkuPage() {
         ),
       },
       {
+        key: "you-plus-4u-2025",
+        insurer: "YOU PLUS 4U 2021-2025",
+        badges: ["8,5× progrese"],
+        payout: payoutYouPlus4u2025,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2025Percent}%.`,
+        infoSections: YOU_PLUS_4U_2025_T2K_INFO_SECTIONS,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka YOU PLUS 4U 2021-2025 T2K",
+          YOU_PLUS_4U_2025_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "you-plus-4u-2025-t3k",
+        insurer: "YOU PLUS 4U 2021-2025",
+        badges: ["10× progrese"],
+        payout: payoutYouPlus4u2025T3k,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2025T3kPercent}%.`,
+        infoSections: YOU_PLUS_4U_2025_T3K_INFO_SECTIONS,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka YOU PLUS 4U 2021-2025 T3K",
+          YOU_PLUS_4U_2025_T3K_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "you-plus-4u-2020",
+        insurer: "YOU PLUS 4U 2020",
+        badges: ["6× progrese"],
+        payout: payoutYouPlus4u2020,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2020Percent}%.`,
+        infoSections: YOU_PLUS_4U_2020_INFO_SECTIONS,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka YOU PLUS 4U 2020",
+          YOU_PLUS_4U_2020_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
         key: "maxima-maxefekt",
         insurer: "Maxima MAXEFEKT 6.0",
         badges: ["10× progrese"],
@@ -2375,6 +2609,15 @@ export default function SrovnavacTrvalychNasledkuPage() {
           ALLIANZ_ZIVOT_ANCHORS,
           normalizedPercent
         ),
+      },
+      {
+        key: "allianz-partners-2026",
+        insurer: "Allianz Partners 2026",
+        badges: ["8× progrese"],
+        payout: payoutAllianzPartners2026,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzPartners2026Percent}%.`,
+        infoSections: ALLIANZ_PARTNERS_2026_INFO_SECTIONS,
+        tablePreview: buildAllianzPartners2026TablePreview(normalizedPercent),
       },
       {
         key: "simplea-2",
@@ -2409,6 +2652,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [currentExporting, setCurrentExporting] = useState(false);
   const [scenarioExporting, setScenarioExporting] = useState(false);
   const [scenarioExportError, setScenarioExportError] = useState<string | null>(null);
+  const infoTableScrollRef = useRef<HTMLDivElement | null>(null);
   const [expandedFilterInsurers, setExpandedFilterInsurers] = useState<string[]>([
     "ČPP",
     "UNIQA",
@@ -2421,6 +2665,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     "Allianz",
     "Simplea",
     "Pillow",
+    "YOU PLUS",
   ]);
   const cards = buildCardsForPercent(rangePercentValue);
 
@@ -3202,6 +3447,22 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const visibleCards = applyCardFilters(cards);
 
   const sortedCards = [...visibleCards].sort((a, b) => b.payout - a.payout);
+  const selectedInfoCard = cards.find((card) => card.key === infoOpen) ?? null;
+  const selectedInfoCardParts = selectedInfoCard
+    ? splitInsurerAndProduct(selectedInfoCard.insurer)
+    : null;
+
+  useEffect(() => {
+    if (!infoOpen || !selectedInfoCard?.tablePreview) return;
+
+    window.requestAnimationFrame(() => {
+      const activeRow = infoTableScrollRef.current?.querySelector<HTMLElement>(
+        "[data-active-row='true']"
+      );
+      activeRow?.scrollIntoView({ block: "center" });
+    });
+  }, [infoOpen, rangePercentValue, selectedInfoCard?.tablePreview]);
+
   const activeFilterCount =
     (showOnly10x ? 1 : 0) +
     (compactList ? 1 : 0) +
@@ -3993,87 +4254,193 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-white text-xs font-black text-violet-700 transition hover:border-fuchsia-300 hover:bg-fuchsia-50"
                       aria-label={`Zobrazit výpočet pro ${card.insurer}`}
                       aria-expanded={infoOpen === card.key}
+                      aria-haspopup="dialog"
                       title="Výpočet"
                     >
                       i
                     </button>
-
-                    {infoOpen === card.key && (
-                      <div className="absolute right-3 top-[calc(100%-4px)] z-20 max-h-[72vh] w-[calc(100vw-2rem)] max-w-[30rem] overflow-y-auto rounded-2xl border border-violet-200 bg-white px-3 py-2 text-slate-900 shadow-[0_18px_40px_rgba(76,29,149,0.22)] sm:max-h-[540px] sm:w-[30rem]">
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
-                            Výpočet
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setInfoOpen(null)}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-950 bg-slate-950 text-[11px] text-white hover:bg-black"
-                            aria-label="Zavřít detail výpočtu"
-                          >
-                            ×
-                          </button>
-                        </div>
-                        <p className="text-[12px] leading-snug text-slate-700">{card.info}</p>
-                        {card.tablePreview ? (
-                          <div className="mt-3">
-                            <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                              {card.tablePreview.title}
-                            </div>
-                            <div className="max-h-64 overflow-auto rounded-xl border border-violet-100 bg-white">
-                              <table className="w-full border-collapse text-left text-[11px]">
-                                <thead className="sticky top-0 z-10 bg-violet-50 text-slate-700">
-                                  <tr>
-                                    {card.tablePreview.columns.map((column) => (
-                                      <th
-                                        key={column}
-                                        className="border-b border-violet-100 px-2 py-1.5 font-black"
-                                      >
-                                        {column}
-                                      </th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {card.tablePreview.rows.map((row, rowIndex) => (
-                                    <tr
-                                      key={`${row.cells.join("|")}-${rowIndex}`}
-                                      className={
-                                        row.active
-                                          ? "bg-fuchsia-50 text-slate-950"
-                                          : rowIndex % 2 === 0
-                                            ? "bg-white"
-                                            : "bg-slate-50/70"
-                                      }
-                                    >
-                                      {row.cells.map((cell, cellIndex) => (
-                                        <td
-                                          key={`${cell}-${cellIndex}`}
-                                          className={`border-b border-violet-50 px-2 py-1.5 ${
-                                            row.active
-                                              ? "font-black text-fuchsia-800"
-                                              : cellIndex === 0
-                                                ? "font-semibold text-slate-700"
-                                                : "font-semibold text-slate-600"
-                                          }`}
-                                        >
-                                          {cell}
-                                        </td>
-                                      ))}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
                   </div>
                 );
               })
             )}
           </div>
         </section>
+
+        {selectedInfoCard && selectedInfoCardParts ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
+            onClick={() => setInfoOpen(null)}
+          >
+            <div
+              className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_34px_100px_rgba(15,23,42,0.34)]"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Detail výpočtu pro ${selectedInfoCard.insurer}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex flex-col gap-3 border-b border-violet-100 bg-white px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-fuchsia-700">
+                    Výpočet
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <h3 className="break-words text-xl font-black leading-tight text-slate-950 sm:text-2xl">
+                      {selectedInfoCardParts.insurerName}
+                    </h3>
+                    {selectedInfoCard.badges.map((badge) => (
+                      <span
+                        key={badge}
+                        className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700"
+                      >
+                        {badge}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-1 break-words text-sm font-semibold text-slate-500">
+                    {selectedInfoCardParts.productName}
+                  </div>
+                </div>
+
+                <div className="flex items-start justify-between gap-4 sm:justify-end">
+                  <div className="text-left sm:text-right">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700">
+                      Plnění
+                    </div>
+                    <div className="mt-1 whitespace-nowrap text-xl font-black leading-none text-slate-950">
+                      {formatMoney(selectedInfoCard.payout)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInfoOpen(null)}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-950 bg-slate-950 text-white transition hover:bg-black"
+                    aria-label="Zavřít detail výpočtu"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:overflow-hidden lg:p-6">
+                <div className="min-h-0 overflow-y-auto rounded-2xl border border-violet-100 bg-slate-50/60 p-4 lg:max-h-[66vh]">
+                  <div className="mb-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    Detail výpočtu
+                  </div>
+                  <p className="whitespace-pre-line text-[13px] font-semibold leading-relaxed text-slate-700">
+                    {selectedInfoCard.info}
+                  </p>
+                  {selectedInfoCard.infoSections ? (
+                      <div className="mt-4 space-y-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-700">
+                          Přehled ze znění PP
+                        </div>
+                      {selectedInfoCard.infoSections.map((section) => (
+                        <section
+                          key={section.title}
+                          className={`rounded-2xl border p-3 ${
+                            section.emphasis
+                              ? "border-fuchsia-200 bg-fuchsia-50/80"
+                              : "border-violet-100 bg-white"
+                          }`}
+                        >
+                          <h4
+                            className={`text-sm font-black leading-snug ${
+                              section.emphasis ? "text-fuchsia-800" : "text-slate-950"
+                            }`}
+                          >
+                            {section.title}
+                          </h4>
+                          {section.body ? (
+                            <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-slate-700">
+                              {section.body}
+                            </p>
+                          ) : null}
+                          {section.items ? (
+                            <ul className="mt-2 space-y-1.5 text-[13px] font-semibold leading-relaxed text-slate-700">
+                              {section.items.map((item) => (
+                                <li key={item} className="flex gap-2">
+                                  <span
+                                    className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                                      section.emphasis ? "bg-fuchsia-600" : "bg-violet-500"
+                                    }`}
+                                  />
+                                  <span>{item}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </section>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                {selectedInfoCard.tablePreview ? (
+                  <div className="min-h-0 rounded-2xl border border-violet-100 bg-white">
+                    <div className="border-b border-violet-100 px-4 py-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                        {selectedInfoCard.tablePreview.title}
+                      </div>
+                    </div>
+                    <div
+                      ref={infoTableScrollRef}
+                      className="max-h-[58vh] overflow-auto lg:max-h-[66vh]"
+                    >
+                      <table className="w-full min-w-[420px] border-collapse text-left text-xs">
+                        <thead className="sticky top-0 z-10 bg-violet-50 text-slate-700">
+                          <tr>
+                            {selectedInfoCard.tablePreview.columns.map((column) => (
+                              <th
+                                key={column}
+                                className="border-b border-violet-100 px-3 py-2 font-black"
+                              >
+                                {column}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedInfoCard.tablePreview.rows.map((row, rowIndex) => (
+                            <tr
+                              key={`${row.cells.join("|")}-${rowIndex}`}
+                              data-active-row={row.active ? "true" : undefined}
+                              className={
+                                row.active
+                                  ? "bg-fuchsia-100 text-slate-950 ring-1 ring-inset ring-fuchsia-300"
+                                  : rowIndex % 2 === 0
+                                    ? "bg-white"
+                                    : "bg-slate-50/70"
+                              }
+                            >
+                              {row.cells.map((cell, cellIndex) => (
+                                <td
+                                  key={`${cell}-${cellIndex}`}
+                                  className={`border-b border-violet-50 px-3 py-2 ${
+                                    row.active
+                                      ? `bg-fuchsia-100 font-black text-fuchsia-900 ${
+                                          cellIndex === 0
+                                            ? "border-l-4 border-l-fuchsia-500"
+                                            : ""
+                                        }`
+                                      : cellIndex === 0
+                                        ? "font-semibold text-slate-700"
+                                        : "font-semibold text-slate-600"
+                                  }`}
+                                >
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
     </AppLayout>

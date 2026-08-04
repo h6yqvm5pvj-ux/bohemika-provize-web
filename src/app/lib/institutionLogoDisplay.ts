@@ -6,6 +6,7 @@ export type InstitutionLogoKey =
   | "metlife"
   | "nn"
   | "simplea"
+  | "youplus"
   | "unknown";
 
 export type InstitutionLogoSize = "card" | "compact" | "chip";
@@ -26,6 +27,7 @@ const LOGO_KEY_BY_PATH: Record<string, InstitutionLogoKey> = {
   "/icons/metlife.png": "metlife",
   "/icons/nn.png": "nn",
   "/icons/simplea.png": "simplea",
+  "/icons/youplus.png": "youplus",
 };
 
 export function institutionLogoKeyFromPath(path?: string | null): InstitutionLogoKey {
@@ -52,6 +54,9 @@ export function institutionLogoKeyFromInsurerName(
   if (normalized.includes("generali")) return "generali";
   if (normalized.includes("metlife")) return "metlife";
   if (normalized.includes("simplea")) return "simplea";
+  if (normalized.includes("you plus") || normalized.includes("youplus")) {
+    return "youplus";
+  }
   if (normalized.includes("nn")) return "nn";
   return "unknown";
 }
@@ -65,6 +70,7 @@ export function institutionLogoFrameClass(
   if (size === "chip") {
     if (key === "slavia") return "h-7 w-7";
     if (key === "nn") return "h-7 w-8";
+    if (key === "youplus") return "h-7 w-9";
     if (key === "uniqa" || key === "csob") return "h-7 w-10";
     return "h-7 w-9";
   }
@@ -72,12 +78,14 @@ export function institutionLogoFrameClass(
   if (size === "compact") {
     if (key === "slavia") return "h-9 w-12";
     if (key === "nn") return "h-9 w-12";
+    if (key === "youplus") return "h-9 w-14";
     if (key === "uniqa" || key === "csob") return "h-9 w-14";
     return "h-9 w-16";
   }
 
   if (key === "slavia") return "h-10 w-14";
   if (key === "nn") return "h-10 w-14";
+  if (key === "youplus") return "h-10 w-16";
   if (key === "uniqa" || key === "csob") return "h-10 w-16";
   return "h-10 w-[4.5rem]";
 }
@@ -101,6 +109,8 @@ export function institutionLogoImageClass(
     case "csob":
     case "uniqa":
       return "object-contain object-center scale-[1.05]";
+    case "youplus":
+      return "object-contain object-center scale-[1.16]";
     case "simplea":
       return "object-contain object-center scale-[1.34]";
     default:
