@@ -4,6 +4,10 @@ import { type PaymentFrequency } from "../types/domain";
 export type KooperativaAutoPdfResult = {
   contractNumber?: string | null;
   clientName?: string | null;
+  birthNumber?: string | null;
+  policyholderBirthDate?: string | null;
+  companyId?: string | null;
+  policyholderType?: "legal_entity" | "natural_person" | null;
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
@@ -63,6 +67,96 @@ const normalizeContractNumber = (value: string | null | undefined): string | nul
   const digits = value.replace(/\D+/g, "");
   if (digits.length < 6) return null;
   return digits;
+};
+
+export const normalizeCzechBirthNumber = (
+  value: string | null | undefined
+): string | null => {
+  if (!value) return null;
+  const digits = value.replace(/\D+/g, "");
+  return digits.length === 9 || digits.length === 10 ? digits : null;
+};
+
+export const normalizeCzechCompanyId = (
+  value: string | null | undefined
+): string | null => {
+  if (!value) return null;
+  const digits = value.replace(/\D+/g, "");
+  return digits.length === 8 ? digits : null;
+};
+
+type PositionedTextItem = {
+  page: number;
+  text: string;
+  x: number;
+  y: number;
+};
+
+const readValueToRightOfLabel = (
+  items: PositionedTextItem[],
+  label: RegExp,
+  normalize: (value: string | null | undefined) => string | null
+): string | null => {
+  const labels = items.filter((item) =>
+    label.test(stripDiacritics(item.text).toLowerCase().trim())
+  );
+
+  for (const labelItem of labels) {
+    const candidates = items
+      .filter(
+        (item) =>
+          item.page === labelItem.page &&
+          item.x > labelItem.x &&
+          Math.abs(item.y - labelItem.y) <= 4
+      )
+      .sort((left, right) => left.x - right.x);
+    for (const candidate of candidates) {
+      const normalized = normalize(candidate.text);
+      if (normalized) return normalized;
+    }
+  }
+
+  return null;
+};
+
+export const birthDateFromCzechBirthNumber = (
+  value: string | null | undefined
+): string | null => {
+  const birthNumber = normalizeCzechBirthNumber(value);
+  if (!birthNumber) return null;
+
+  const yearSuffix = Number(birthNumber.slice(0, 2));
+  const rawMonth = Number(birthNumber.slice(2, 4));
+  const day = Number(birthNumber.slice(4, 6));
+  if (!Number.isInteger(yearSuffix) || !Number.isInteger(day) || day < 1) return null;
+
+  let month = rawMonth;
+  if (rawMonth >= 71 && rawMonth <= 82) {
+    month -= 70;
+  } else if (rawMonth >= 51 && rawMonth <= 62) {
+    month -= 50;
+  } else if (rawMonth >= 21 && rawMonth <= 32) {
+    month -= 20;
+  }
+  if (month < 1 || month > 12) return null;
+
+  const currentYearSuffix = new Date().getFullYear() % 100;
+  const year =
+    birthNumber.length === 9
+      ? 1900 + yearSuffix
+      : yearSuffix <= currentYearSuffix
+        ? 2000 + yearSuffix
+        : 1900 + yearSuffix;
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${String(day).padStart(2, "0")}.${String(month).padStart(2, "0")}.${year}`;
 };
 
 const pickBestContractNumber = (candidates: string[]): string | null => {
@@ -448,10 +542,20 @@ export async function parseKooperativaAutoPdf(
 
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
   const pagesText: string[] = [];
+  const positionedTextItems: PositionedTextItem[] = [];
 
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
+    content.items.forEach((item: any) => {
+      if (typeof item?.str !== "string" || !item.str.trim()) return;
+      positionedTextItems.push({
+        page: i,
+        text: item.str.trim(),
+        x: Number(item.transform?.[4] ?? 0),
+        y: Number(item.transform?.[5] ?? 0),
+      });
+    });
     const text = content.items
       .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
       .filter(Boolean)
@@ -497,6 +601,46 @@ export async function parseKooperativaAutoPdf(
     contractCandidates.push(...ranked);
   }
   result.contractNumber = pickBestContractNumber(contractCandidates);
+
+  const birthNumberByLabel =
+    readNearestValueByLabel(lines, asciiLines, /rodne\s+cislo/i, 3) ??
+    fullText.match(/Rodn[eé]\s+č[ií]slo\s*[:\-]?\s*(\d{6}\s*\/?\s*\d{3,4})/i)?.[1] ??
+    null;
+  const birthNumber = normalizeCzechBirthNumber(birthNumberByLabel);
+  if (birthNumber) result.birthNumber = birthNumber;
+
+  const policyholderTypeRaw = readNearestValueByLabel(
+    lines,
+    asciiLines,
+    /typ\s+osoby/i,
+    3
+  );
+  const policyholderType = stripDiacritics(policyholderTypeRaw ?? "").toLowerCase();
+  if (/pravnicka\s+osoba/.test(policyholderType)) {
+    result.policyholderType = "legal_entity";
+  } else if (/fyzicka\s+osoba|obcan/.test(policyholderType)) {
+    result.policyholderType = "natural_person";
+  }
+
+  const companyId =
+    readValueToRightOfLabel(
+      positionedTextItems,
+      /^ic(?:o)?$/i,
+      normalizeCzechCompanyId
+    ) ??
+    normalizeCzechCompanyId(
+      readNearestValueByLabel(lines, asciiLines, /\bic(?:o)?\b/i, 3)
+    );
+  if (companyId) result.companyId = companyId;
+
+  const policyholderBirthDate =
+    readValueToRightOfLabel(
+      positionedTextItems,
+      /^datum\s+narozeni$/i,
+      toDateInput
+    ) ??
+    toDateInput(readNearestValueByLabel(lines, asciiLines, /datum\s+narozeni/i, 3));
+  if (policyholderBirthDate) result.policyholderBirthDate = policyholderBirthDate;
 
   const fullName =
     normalizeName(

@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   CalendarDays,
   ChevronDown,
+  Copy,
   Download,
   Eye,
   ExternalLink,
@@ -119,7 +120,10 @@ import { parseCppSimplexPdf } from "@/app/lib/parseCppSimplexPdf";
 import { parseCsobAutoPdf } from "@/app/lib/parseCsobAutoPdf";
 import { parseDomexPdf } from "@/app/lib/parseDomexPdf";
 import { parseFlexiPdf } from "@/app/lib/parseFlexiPdf";
-import { parseKooperativaAutoPdf } from "@/app/lib/parseKooperativaAutoPdf";
+import {
+  birthDateFromCzechBirthNumber,
+  parseKooperativaAutoPdf,
+} from "@/app/lib/parseKooperativaAutoPdf";
 import { parseKoopOdzamPdf } from "@/app/lib/parseKoopOdzamPdf";
 import { parseMaxCizinKomplexPdf } from "@/app/lib/parseMaxCizinKomplexPdf";
 import { parseMaxdomovPdf } from "@/app/lib/parseMaxdomovPdf";
@@ -133,6 +137,8 @@ const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
 const ALLIANZ_AUTO_PAYMENT_CHECK_URL =
   "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
+const KOOPERATIVA_CONTRACT_STATUS_URL =
+  "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
 const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = true;
 
 function originalReplacementLabel(product?: Product | null): string {
@@ -841,6 +847,16 @@ export default function ContractDetailPage() {
   const [stornoDateInput, setStornoDateInput] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showStornoModal, setShowStornoModal] = useState(false);
+  const [showKooperativaStatusModal, setShowKooperativaStatusModal] = useState(false);
+  const [kooperativaBirthNumber, setKooperativaBirthNumber] = useState<string | null>(null);
+  const [kooperativaDirectBirthDate, setKooperativaDirectBirthDate] = useState<string | null>(null);
+  const [kooperativaCompanyId, setKooperativaCompanyId] = useState<string | null>(null);
+  const [kooperativaLegalEntity, setKooperativaLegalEntity] = useState(false);
+  const [kooperativaBirthNumberLoading, setKooperativaBirthNumberLoading] = useState(false);
+  const [kooperativaBirthNumberError, setKooperativaBirthNumberError] = useState<string | null>(null);
+  const [kooperativaStatusCountdown, setKooperativaStatusCountdown] = useState(3);
+  const [kooperativaStatusRedirected, setKooperativaStatusRedirected] = useState(false);
+  const [kooperativaStatusRedirectError, setKooperativaStatusRedirectError] = useState<string | null>(null);
   const [showContractPdfModal, setShowContractPdfModal] = useState(false);
   const [showContractPdfOptions, setShowContractPdfOptions] = useState(false);
   const [selectedContractPdf, setSelectedContractPdf] =
@@ -852,6 +868,8 @@ export default function ContractDetailPage() {
   const [openContractPdfExternally, setOpenContractPdfExternally] = useState(false);
   const contractPdfObjectUrlRef = useRef<string | null>(null);
   const contractPdfCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
+  const kooperativaStatusRedirectTimerRef = useRef<number | null>(null);
+  const kooperativaBirthNumberRequestRef = useRef(0);
   const [neonImmediateBreakdown, setNeonImmediateBreakdown] =
     useState<NeonImmediateBreakdown | null>(null);
   const [canOpenRefreshReplacement, setCanOpenRefreshReplacement] = useState(false);
@@ -860,6 +878,34 @@ export default function ContractDetailPage() {
   const [serverCanManageContract, setServerCanManageContract] = useState(false);
   const isNeonImmediateBreakdownOpen = neonImmediateBreakdown != null;
   const isStatementPreviewOpen = statementPreview != null;
+
+  const clearKooperativaStatusRedirect = useCallback(() => {
+    if (kooperativaStatusRedirectTimerRef.current != null) {
+      window.clearInterval(kooperativaStatusRedirectTimerRef.current);
+      kooperativaStatusRedirectTimerRef.current = null;
+    }
+  }, []);
+
+  const closeKooperativaStatusModal = useCallback(() => {
+    clearKooperativaStatusRedirect();
+    kooperativaBirthNumberRequestRef.current += 1;
+    setKooperativaBirthNumber(null);
+    setKooperativaDirectBirthDate(null);
+    setKooperativaCompanyId(null);
+    setKooperativaLegalEntity(false);
+    setKooperativaBirthNumberLoading(false);
+    setKooperativaBirthNumberError(null);
+    setKooperativaStatusRedirectError(null);
+    setShowKooperativaStatusModal(false);
+  }, [clearKooperativaStatusRedirect]);
+
+  useEffect(() => {
+    return () => {
+      if (kooperativaStatusRedirectTimerRef.current != null) {
+        window.clearInterval(kooperativaStatusRedirectTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isEmbedded) return;
@@ -890,6 +936,7 @@ export default function ContractDetailPage() {
       if (e.key === "Escape") {
         setShowDeleteModal(false);
         setShowStornoModal(false);
+        closeKooperativaStatusModal();
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
         setSelectedContractPdf(null);
@@ -900,6 +947,7 @@ export default function ContractDetailPage() {
     if (
       showDeleteModal ||
       showStornoModal ||
+      showKooperativaStatusModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
       isNeonImmediateBreakdownOpen ||
@@ -913,10 +961,12 @@ export default function ContractDetailPage() {
   }, [
     showDeleteModal,
     showStornoModal,
+    showKooperativaStatusModal,
     showContractPdfModal,
     showContractPdfOptions,
     isNeonImmediateBreakdownOpen,
     isStatementPreviewOpen,
+    closeKooperativaStatusModal,
   ]);
 
   // auth
@@ -4974,6 +5024,156 @@ export default function ContractDetailPage() {
     window.setTimeout(openAllianzPaymentCheck, 3000);
   }, [contract?.contractNumber, pushToast]);
 
+  const startKooperativaStatusRedirect = useCallback(() => {
+    clearKooperativaStatusRedirect();
+    setKooperativaStatusCountdown(3);
+    setKooperativaStatusRedirected(false);
+    setKooperativaStatusRedirectError(null);
+
+    const redirectAt = Date.now() + 3000;
+    const updateRedirectCountdown = () => {
+      const remainingMs = redirectAt - Date.now();
+      setKooperativaStatusCountdown(Math.max(0, Math.ceil(remainingMs / 1000)));
+      if (remainingMs > 0) return;
+
+      clearKooperativaStatusRedirect();
+      const popup = window.open(KOOPERATIVA_CONTRACT_STATUS_URL, "_blank");
+      if (popup) {
+        popup.opener = null;
+        setKooperativaStatusRedirected(true);
+      } else {
+        setKooperativaStatusRedirectError(
+          "Prohlížeč automatické otevření zablokoval. Otevři Kooperativu tlačítkem vpravo."
+        );
+      }
+    };
+
+    updateRedirectCountdown();
+    kooperativaStatusRedirectTimerRef.current = window.setInterval(
+      updateRedirectCountdown,
+      100
+    );
+  }, [clearKooperativaStatusRedirect]);
+
+  const handleKooperativaStatusCheckClick = useCallback(() => {
+    if (prod !== "kooperativaAuto") return;
+
+    clearKooperativaStatusRedirect();
+    const requestId = kooperativaBirthNumberRequestRef.current + 1;
+    kooperativaBirthNumberRequestRef.current = requestId;
+    setKooperativaBirthNumber(null);
+    setKooperativaDirectBirthDate(null);
+    setKooperativaCompanyId(null);
+    setKooperativaLegalEntity(false);
+    setKooperativaBirthNumberError(null);
+    setKooperativaBirthNumberLoading(true);
+    setKooperativaStatusCountdown(3);
+    setKooperativaStatusRedirected(false);
+    setKooperativaStatusRedirectError(null);
+    setShowKooperativaStatusModal(true);
+
+    if (!user || !ownerEmail || !entryId || !hasContractPdfAttachment) {
+      setKooperativaBirthNumberLoading(false);
+      setKooperativaBirthNumberError(
+        "Potřebný identifikační údaj lze automaticky načíst jen z originálního PDF smlouvy uloženého u této smlouvy."
+      );
+      startKooperativaStatusRedirect();
+      return;
+    }
+
+    void (async () => {
+      try {
+        const pdfBlob = await downloadContractPdfBlob({
+          ownerEmail,
+          entryId,
+          fileName: contractPdfFileName,
+          label: "Původní smlouva",
+          meta: contractPdfFileName,
+          isCurrent: true,
+        });
+        const parsed = await parseKooperativaAutoPdf(
+          new File([pdfBlob], contractPdfFileName, { type: "application/pdf" })
+        );
+        if (kooperativaBirthNumberRequestRef.current !== requestId) return;
+
+        const isLegalEntity = parsed.policyholderType === "legal_entity";
+        setKooperativaLegalEntity(isLegalEntity);
+        if (isLegalEntity) {
+          if (!parsed.companyId) {
+            setKooperativaBirthNumberError(
+              "IČO se z originálního PDF nepodařilo načíst."
+            );
+            return;
+          }
+          setKooperativaCompanyId(parsed.companyId);
+          return;
+        }
+
+        if (parsed.policyholderBirthDate) {
+          setKooperativaDirectBirthDate(parsed.policyholderBirthDate);
+          return;
+        }
+
+        if (!parsed.birthNumber) {
+          setKooperativaBirthNumberError(
+            "Datum narození se z originálního PDF nepodařilo určit."
+          );
+          return;
+        }
+        setKooperativaBirthNumber(parsed.birthNumber);
+      } catch (error) {
+        if (kooperativaBirthNumberRequestRef.current !== requestId) return;
+        setKooperativaBirthNumberError(
+          error instanceof Error && error.message.trim()
+            ? error.message.trim()
+            : "Datum narození se z PDF nepodařilo určit."
+        );
+      } finally {
+        if (kooperativaBirthNumberRequestRef.current === requestId) {
+          setKooperativaBirthNumberLoading(false);
+          startKooperativaStatusRedirect();
+        }
+      }
+    })();
+  }, [
+    clearKooperativaStatusRedirect,
+    contractPdfFileName,
+    downloadContractPdfBlob,
+    entryId,
+    hasContractPdfAttachment,
+    ownerEmail,
+    prod,
+    startKooperativaStatusRedirect,
+    user,
+  ]);
+
+  const kooperativaBirthDate = useMemo(
+    () => {
+      if (kooperativaDirectBirthDate) {
+        const [year, month, day] = kooperativaDirectBirthDate.split("-");
+        if (year && month && day) return `${day}.${month}.${year}`;
+      }
+      return birthDateFromCzechBirthNumber(kooperativaBirthNumber);
+    },
+    [kooperativaBirthNumber, kooperativaDirectBirthDate]
+  );
+
+  const copyKooperativaStatusValue = useCallback(
+    (value: string | null | undefined, label: string) => {
+      const text = String(value ?? "").trim();
+      if (!text) return;
+      if (!navigator.clipboard?.writeText) {
+        pushToast(`${label} se nepodařilo zkopírovat.`, "error");
+        return;
+      }
+      void navigator.clipboard.writeText(text).then(
+        () => pushToast(`${label} je zkopírované.`, "success"),
+        () => pushToast(`${label} se nepodařilo zkopírovat.`, "error")
+      );
+    },
+    [pushToast]
+  );
+
   const renderProductPanelContent = () => (
     <>
       <div className="flex items-center justify-between gap-3">
@@ -5332,6 +5532,17 @@ export default function ContractDetailPage() {
                   >
                     <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Ověřit zaplacení</span>
+                  </button>
+                )}
+
+                {prod === "kooperativaAuto" && (
+                  <button
+                    type="button"
+                    onClick={handleKooperativaStatusCheckClick}
+                    className={headerActionButtonClass}
+                  >
+                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+                    <span>Ověření stavu smlouvy</span>
                   </button>
                 )}
 
@@ -6526,6 +6737,138 @@ export default function ContractDetailPage() {
                 )}
                 <span>{isStornoContract ? "Uložit storno" : "Potvrdit storno"}</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showKooperativaStatusModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            aria-label="Zavřít ověření stavu smlouvy"
+            onClick={closeKooperativaStatusModal}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kooperativa-status-title"
+            className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40 sm:p-7"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                  <IdCard size={14} strokeWidth={2.2} aria-hidden="true" />
+                  Kooperativa Auto
+                </div>
+                <h3
+                  id="kooperativa-status-title"
+                  className="mt-3 text-xl font-semibold tracking-tight text-slate-900"
+                >
+                  Ověření stavu smlouvy
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeKooperativaStatusModal}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
+                aria-label="Zavřít ověření stavu smlouvy"
+              >
+                <X size={18} strokeWidth={2.4} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                    Číslo smlouvy
+                  </p>
+                  <p className="mt-1 break-all font-mono text-base font-semibold text-slate-900">
+                    {contract?.contractNumber?.trim() || "Není uvedeno"}
+                  </p>
+                </div>
+                {contract?.contractNumber?.trim() && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyKooperativaStatusValue(contract.contractNumber, "Číslo smlouvy")
+                    }
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                    aria-label="Kopírovat číslo smlouvy"
+                    title="Kopírovat číslo smlouvy"
+                  >
+                    <Copy size={16} strokeWidth={2.2} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                    {kooperativaLegalEntity ? "IČO" : "Datum narození"}
+                  </p>
+                  <p className="mt-1 font-mono text-base font-semibold text-slate-900">
+                    {kooperativaBirthNumberLoading
+                      ? "Načítám..."
+                      : kooperativaLegalEntity
+                        ? kooperativaCompanyId ?? "Nepodařilo se načíst"
+                        : kooperativaBirthDate ?? "Nepodařilo se určit"}
+                  </p>
+                </div>
+                {(kooperativaLegalEntity ? kooperativaCompanyId : kooperativaBirthDate) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyKooperativaStatusValue(
+                        kooperativaLegalEntity ? kooperativaCompanyId : kooperativaBirthDate,
+                        kooperativaLegalEntity ? "IČO" : "Datum narození"
+                      )
+                    }
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                    aria-label={kooperativaLegalEntity ? "Kopírovat IČO" : "Kopírovat datum narození"}
+                    title={kooperativaLegalEntity ? "Kopírovat IČO" : "Kopírovat datum narození"}
+                  >
+                    <Copy size={16} strokeWidth={2.2} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              {kooperativaBirthNumberError && (
+                <p className="text-sm text-rose-700">{kooperativaBirthNumberError}</p>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+              <p>
+                {kooperativaLegalEntity
+                  ? "IČO dokážeme automaticky zobrazit pouze z originálního PDF smlouvy uloženého u této smlouvy."
+                  : "Datum narození dokážeme automaticky zobrazit pouze z originálního PDF smlouvy uloženého u této smlouvy."}
+              </p>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+              <p className="text-sm font-medium text-slate-700" aria-live="polite">
+                {kooperativaBirthNumberLoading
+                  ? "Načítám údaje z originálního PDF..."
+                  : kooperativaStatusRedirectError
+                    ? kooperativaStatusRedirectError
+                    : kooperativaStatusRedirected
+                      ? "Kooperativa je otevřená v nové záložce."
+                      : `Kooperativa se otevře za ${kooperativaStatusCountdown} s.`}
+              </p>
+              {!kooperativaBirthNumberLoading && (
+                <a
+                  href={KOOPERATIVA_CONTRACT_STATUS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+                >
+                  <ExternalLink size={15} strokeWidth={2.2} aria-hidden="true" />
+                  <span>Otevřít nyní</span>
+                </a>
+              )}
             </div>
           </div>
         </div>
