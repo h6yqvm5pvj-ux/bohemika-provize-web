@@ -2696,7 +2696,7 @@ const buildKooperativaNaPraniTablePreview = (
 const buildCppNeon10xTablePreview = (currentPercent: number): InfoTablePreview => {
   const clamped = clampPercent(currentPercent);
 
-  return buildRangeTablePreview("Tabulka ČPP Neon 2026 10×", ["Rozsah TN", "Násobek"], [
+  return buildRangeTablePreview("Tabulka ČPP Neon 2023–2026 10×", ["Rozsah TN", "Násobek"], [
     { cells: ["do 10 % včetně", "1×"], active: clamped <= 10 },
     {
       cells: ["nad 10 % do 20 % včetně", "2×"],
@@ -2964,6 +2964,7 @@ const buildAllianzPartners2026TablePreview = (
 const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = {
   "cpp-10x": (percent) => getMultiplierForRange(percent) * percent,
   "cpp-5x": (percent) => getMultiplierForRange5x(percent) * percent,
+  "cpp-neon-top-2022-06": (percent) => getMultiplierForRange5x(percent) * percent,
   "cpp-evoluce-top-5x": (percent) => getMultiplierForRange5x(percent) * percent,
   "cpp-evoluce-5x": getCppEvoluce5xPayoutPercent,
   "uniqa-domino": (percent) => getMultiplierUniqaDomino(percent) * percent,
@@ -3166,7 +3167,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const cardsWithoutCurves: ComparisonCardBase[] = [
       {
         key: "cpp-10x",
-        insurer: "ČPP Neon 2026",
+        insurer: "ČPP Neon 2023–2026",
         badges: ["10× progrese"],
         payout: payout,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${formatPercent(normalizedPercent)}.`,
@@ -3175,12 +3176,24 @@ export default function SrovnavacTrvalychNasledkuPage() {
       },
       {
         key: "cpp-5x",
-        insurer: "ČPP Neon 2026",
+        insurer: "ČPP Neon 2023–2026",
         badges: ["5× progrese"],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildGeneric5xMultiplierTablePreview(
-          "Tabulka ČPP Neon 2026 5×",
+          "Tabulka ČPP Neon 2023–2026 5×",
+          normalizedPercent
+        ),
+        diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
+      },
+      {
+        key: "cpp-neon-top-2022-06",
+        insurer: "ČPP Neon",
+        badges: ["2019–01.06.2022", "TOP progrese 5×"],
+        payout: payout5x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildGeneric5xMultiplierTablePreview(
+          "Tabulka ČPP Neon 2019–01.06.2022 TOP progrese 5×",
           normalizedPercent
         ),
         diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
