@@ -62,6 +62,7 @@ type ComparisonCard = {
   infoSections?: InfoSection[];
   tablePreview?: InfoTablePreview;
   diagnosisExamples?: DiagnosisExample[];
+  filterYears?: string[];
   curve: PayoutCurvePoint[];
 };
 
@@ -173,11 +174,13 @@ function PayoutCurveChart({
   points,
   currentPercent,
   maxPayoutPercent,
+  sumInsured,
   diagnosisExamples = [],
 }: {
   points: PayoutCurvePoint[];
   currentPercent: number;
   maxPayoutPercent: number;
+  sumInsured: number;
   diagnosisExamples?: DiagnosisExample[];
 }) {
   const width = 860;
@@ -195,6 +198,7 @@ function PayoutCurveChart({
       ? currentPoint
       : getNearestCurvePoint(points, inspectedPercent);
   const isInspecting = inspectedPercent !== null;
+  const activePayout = sumInsured * (activePoint.payoutPercent / 100);
   const maxPoint = points.reduce<PayoutCurvePoint>(
     (highest, point) =>
       point.payoutPercent > highest.payoutPercent ? point : highest,
@@ -227,8 +231,8 @@ function PayoutCurveChart({
   const currentY = toY(currentPoint.payoutPercent);
   const maxX = toX(maxPoint.percent);
   const maxY = toY(maxPoint.payoutPercent);
-  const labelWidth = 126;
-  const labelHeight = 44;
+  const labelWidth = 154;
+  const labelHeight = 62;
   const labelX =
     activeX + labelWidth + 18 > width - paddingRight
       ? Math.max(paddingLeft + 8, activeX - labelWidth - 16)
@@ -255,7 +259,10 @@ function PayoutCurveChart({
     const bounds = svgRef.current?.getBoundingClientRect();
     if (!bounds || bounds.width <= 0) return currentPoint.percent;
 
-    const svgX = ((event.clientX - bounds.left) / bounds.width) * width;
+    const scale = Math.min(bounds.width / width, bounds.height / height);
+    const renderedWidth = width * scale;
+    const horizontalOffset = (bounds.width - renderedWidth) / 2;
+    const svgX = ((event.clientX - bounds.left - horizontalOffset) / renderedWidth) * width;
     const ratio =
       (svgX - paddingLeft) / (width - paddingLeft - paddingRight);
     return roundedPercentIndex(ratio * 100);
@@ -319,6 +326,9 @@ function PayoutCurveChart({
           <div className="mt-1 text-base font-black leading-none text-fuchsia-950">
             {formatTablePercent(activePoint.payoutPercent)}
           </div>
+          <div className="mt-1 text-sm font-black leading-none text-slate-950">
+            {formatMoney(activePayout)}
+          </div>
           <div className="mt-1 text-[11px] font-bold text-fuchsia-700">
             při {formatPercent(activePoint.percent)} TN
           </div>
@@ -331,14 +341,14 @@ function PayoutCurveChart({
           viewBox={`0 0 ${width} ${height}`}
           className="h-[21rem] w-full cursor-crosshair touch-none focus:outline-none focus:ring-2 focus:ring-fuchsia-300 sm:h-[24rem]"
           role="img"
-          aria-label={`Graf plnění při ${formatPercent(activePoint.percent)}: ${formatTablePercent(activePoint.payoutPercent)}`}
+          aria-label={`Graf plnění při ${formatPercent(activePoint.percent)}: ${formatTablePercent(activePoint.payoutPercent)}, ${formatMoney(activePayout)}`}
           tabIndex={0}
           onPointerDown={updateInspectedPercentFromPointer}
           onPointerMove={updateInspectedPercentFromPointer}
           onPointerLeave={() => setInspectedPercent(null)}
           onKeyDown={handleChartKeyDown}
         >
-          <title>{`Graf plnění při ${formatPercent(activePoint.percent)}: ${formatTablePercent(activePoint.payoutPercent)}`}</title>
+          <title>{`Graf plnění při ${formatPercent(activePoint.percent)}: ${formatTablePercent(activePoint.payoutPercent)}, ${formatMoney(activePayout)}`}</title>
           <defs>
             <linearGradient id="tnPayoutAreaGradient" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="#d946ef" stopOpacity="0.3" />
@@ -482,42 +492,44 @@ function PayoutCurveChart({
               </g>
             );
           })}
+          <g>
+            <line
+              x1={currentX}
+              y1={paddingTop}
+              x2={currentX}
+              y2={height - paddingBottom}
+              className="stroke-fuchsia-300"
+              strokeDasharray="6 6"
+              strokeWidth="2"
+            />
+            <circle
+              cx={currentX}
+              cy={currentY}
+              r="6"
+              className="fill-white stroke-fuchsia-500"
+              strokeWidth="3"
+            />
+          </g>
           {isInspecting && activePoint.percent !== currentPoint.percent ? (
             <g>
               <line
-                x1={currentX}
+                x1={activeX}
                 y1={paddingTop}
-                x2={currentX}
+                x2={activeX}
                 y2={height - paddingBottom}
-                className="stroke-fuchsia-200"
-                strokeDasharray="2 6"
-                strokeWidth="1.5"
+                className="stroke-violet-400"
+                strokeDasharray="4 4"
+                strokeWidth="2"
               />
               <circle
-                cx={currentX}
-                cy={currentY}
-                r="4.5"
-                className="fill-white stroke-fuchsia-300"
-                strokeWidth="2"
+                cx={activeX}
+                cy={activeY}
+                r="7"
+                className="fill-violet-600 stroke-white"
+                strokeWidth="3"
               />
             </g>
           ) : null}
-          <line
-            x1={activeX}
-            y1={paddingTop}
-            x2={activeX}
-            y2={height - paddingBottom}
-            className="stroke-fuchsia-300"
-            strokeDasharray="6 6"
-            strokeWidth="2"
-          />
-          <circle
-            cx={activeX}
-            cy={activeY}
-            r="7"
-            className="fill-fuchsia-500 stroke-white"
-            strokeWidth="3"
-          />
           <rect
             x={labelX}
             y={labelY}
@@ -540,6 +552,13 @@ function PayoutCurveChart({
             className="fill-slate-950 text-[12px] font-black"
           >
             {formatPercent(activePoint.percent)} / {formatTablePercent(activePoint.payoutPercent)}
+          </text>
+          <text
+            x={labelX + 12}
+            y={labelY + 50}
+            className="fill-slate-700 text-[11px] font-black"
+          >
+            {formatMoney(activePayout)}
           </text>
         </svg>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] font-bold text-slate-500">
@@ -771,6 +790,46 @@ const splitInsurerAndProduct = (value: string): { insurerName: string; productNa
     insurerName: matched,
     productName: productName || value,
   };
+};
+
+const splitProductYearBadge = (value: string): { productName: string; yearBadge: string | null } => {
+  const match = value.match(/^(.*\S)\s+(\d{4}(?:[-–]\d{4})?|\d{1,2}\/\d{4})$/);
+  if (!match) return { productName: value, yearBadge: null };
+
+  return {
+    productName: match[1],
+    yearBadge: match[2].replace("-", "–"),
+  };
+};
+
+const isYearBadge = (value: string): boolean =>
+  /^\d{4}(?:[-–](?:\d{4}|\d{1,2}\.\d{1,2}\.\d{4}))?$/.test(value) ||
+  /^\d{1,2}\/\d{4}$/.test(value) ||
+  /^\d{1,2}\.\d{1,2}\.\d{4}(?:[-–](?:\d{4}|\d{1,2}\.\d{1,2}\.\d{4}))?$/.test(value);
+
+const normalizeYearBadge = (value: string): string => value.replaceAll("-", "–");
+
+const getCardFilterYearBadges = (card: Pick<ComparisonCard, "badges" | "filterYears">): string[] => {
+  const years = card.filterYears?.length
+    ? card.filterYears
+    : card.badges.filter(isYearBadge);
+
+  return Array.from(new Set(years.map(normalizeYearBadge)));
+};
+
+const getCardFilterOptions = (
+  card: Pick<ComparisonCard, "insurer" | "badges" | "filterYears">
+): Array<{ value: string; badges: string[] }> => {
+  const yearBadges = getCardFilterYearBadges(card);
+
+  if (yearBadges.length === 0) {
+    return [{ value: `${card.insurer}::without-year`, badges: [] }];
+  }
+
+  return yearBadges.map((yearBadge) => ({
+    value: `${card.insurer}::${yearBadge}`,
+    badges: [yearBadge],
+  }));
 };
 
 const formatKcInput = (value: number): string =>
@@ -1366,6 +1425,33 @@ const getMetlifeGarde6Percent = (percent: number): number => {
   return found?.value ?? 0;
 };
 
+const getMetlifeGarde5Percent = (percent: number): number => {
+  const clamped = Math.min(100, Math.max(0, percent));
+  const ranges = [
+    { max: 20, value: 100 },
+    { max: 25, value: 150 },
+    { max: 30, value: 200 },
+    { max: 35, value: 250 },
+    { max: 40, value: 300 },
+    { max: 45, value: 350 },
+    { max: 50, value: 400 },
+    { max: 55, value: 450 },
+    { max: 60, value: 500 },
+    { max: 65, value: 550 },
+    { max: 70, value: 600 },
+    { max: 75, value: 650 },
+    { max: 80, value: 700 },
+    { max: 85, value: 750 },
+    { max: 90, value: 800 },
+    { max: 95, value: 850 },
+    { max: 99, value: 900 },
+    { max: 100, value: 1000 },
+  ];
+
+  const found = ranges.find((r) => clamped <= r.max);
+  return found?.value ?? 0;
+};
+
 const GENERALI_MUJ_ZIVOT_TABLE: number[] = [
   0, // 0 %
   1, // 1 %
@@ -1548,29 +1634,29 @@ const NN_ORANGE_TABLE: number[] = [
   220, // 74 %
   225, // 75 %
   236, // 76 %
-  248, // 77 %
-  260, // 78 %
+  247, // 77 %
+  258, // 78 %
   269, // 79 %
-  275, // 80 %
-  290, // 81 %
-  295, // 82 %
-  310, // 83 %
-  315, // 84 %
-  320, // 85 %
-  330, // 86 %
-  335, // 87 %
-  345, // 88 %
-  350, // 89 %
-  360, // 90 %
-  375, // 91 %
-  380, // 92 %
-  395, // 93 %
-  400, // 94 %
-  415, // 95 %
-  420, // 96 %
-  435, // 97 %
-  440, // 98 %
-  455, // 99 %
+  280, // 80 %
+  291, // 81 %
+  302, // 82 %
+  313, // 83 %
+  324, // 84 %
+  335, // 85 %
+  346, // 86 %
+  357, // 87 %
+  368, // 88 %
+  379, // 89 %
+  390, // 90 %
+  401, // 91 %
+  412, // 92 %
+  423, // 93 %
+  434, // 94 %
+  445, // 95 %
+  458, // 96 %
+  467, // 97 %
+  479, // 98 %
+  489, // 99 %
   500, // 100 %
 ];
 
@@ -1675,6 +1761,110 @@ const NN_ORANGE_10X_TABLE: number[] = [
   945, // 97 %
   966, // 98 %
   987, // 99 %
+  1000, // 100 %
+];
+
+const NN_ORANGE_10X_2025_03_TABLE: number[] = [
+  0, // 0 %
+  1, // 1 %
+  2, // 2 %
+  3, // 3 %
+  4, // 4 %
+  5, // 5 %
+  6, // 6 %
+  7, // 7 %
+  8, // 8 %
+  9, // 9 %
+  10, // 10 %
+  11, // 11 %
+  12, // 12 %
+  13, // 13 %
+  14, // 14 %
+  16, // 15 %
+  18, // 16 %
+  20, // 17 %
+  22, // 18 %
+  24, // 19 %
+  26, // 20 %
+  28, // 21 %
+  30, // 22 %
+  32, // 23 %
+  34, // 24 %
+  36, // 25 %
+  40, // 26 %
+  43, // 27 %
+  47, // 28 %
+  51, // 29 %
+  55, // 30 %
+  59, // 31 %
+  63, // 32 %
+  67, // 33 %
+  72, // 34 %
+  76, // 35 %
+  81, // 36 %
+  86, // 37 %
+  91, // 38 %
+  96, // 39 %
+  101, // 40 %
+  107, // 41 %
+  112, // 42 %
+  118, // 43 %
+  124, // 44 %
+  130, // 45 %
+  137, // 46 %
+  143, // 47 %
+  150, // 48 %
+  157, // 49 %
+  164, // 50 %
+  171, // 51 %
+  179, // 52 %
+  187, // 53 %
+  195, // 54 %
+  203, // 55 %
+  212, // 56 %
+  221, // 57 %
+  230, // 58 %
+  239, // 59 %
+  249, // 60 %
+  259, // 61 %
+  269, // 62 %
+  279, // 63 %
+  290, // 64 %
+  301, // 65 %
+  313, // 66 %
+  325, // 67 %
+  337, // 68 %
+  349, // 69 %
+  362, // 70 %
+  376, // 71 %
+  390, // 72 %
+  404, // 73 %
+  418, // 74 %
+  433, // 75 %
+  449, // 76 %
+  465, // 77 %
+  481, // 78 %
+  498, // 79 %
+  516, // 80 %
+  534, // 81 %
+  552, // 82 %
+  571, // 83 %
+  591, // 84 %
+  611, // 85 %
+  632, // 86 %
+  654, // 87 %
+  676, // 88 %
+  699, // 89 %
+  722, // 90 %
+  746, // 91 %
+  771, // 92 %
+  797, // 93 %
+  823, // 94 %
+  851, // 95 %
+  879, // 96 %
+  908, // 97 %
+  938, // 98 %
+  968, // 99 %
   1000, // 100 %
 ];
 
@@ -1906,6 +2096,30 @@ const ALLIANZ_ZIVOT_ANCHORS: Array<{ p: number; v: number }> = [
   { p: 100, v: 800 },
 ];
 
+const ALLIANZ_ZIVOT_2021_06_ANCHORS: Array<{ p: number; v: number }> = [
+  { p: 0, v: 0 },
+  { p: 5, v: 5 },
+  { p: 10, v: 10 },
+  { p: 15, v: 15 },
+  { p: 20, v: 20 },
+  { p: 25, v: 25 },
+  { p: 30, v: 45 },
+  { p: 35, v: 65 },
+  { p: 40, v: 85 },
+  { p: 45, v: 105 },
+  { p: 50, v: 125 },
+  { p: 55, v: 155 },
+  { p: 60, v: 185 },
+  { p: 65, v: 225 },
+  { p: 70, v: 265 },
+  { p: 75, v: 315 },
+  { p: 80, v: 365 },
+  { p: 85, v: 440 },
+  { p: 90, v: 540 },
+  { p: 95, v: 665 },
+  { p: 100, v: 800 },
+];
+
 const ALLIANZ_PARTNERS_2026_ANCHORS: Array<{ p: number; v: number }> = [
   { p: 0, v: 0 },
   { p: 5, v: 5 },
@@ -2099,6 +2313,11 @@ const getNnOrange10xPercent = (percent: number): number => {
   return NN_ORANGE_10X_TABLE[idx] ?? 0;
 };
 
+const getNnOrange10x202503Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return NN_ORANGE_10X_2025_03_TABLE[idx] ?? 0;
+};
+
 const getNnZivot201906Percent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return NN_ZIVOT_2019_06_TABLE[idx] ?? 0;
@@ -2146,6 +2365,28 @@ const getAllianzZivotPercent = (percent: number): number => {
 
   for (let i = 0; i < ALLIANZ_ZIVOT_ANCHORS.length; i++) {
     const current = ALLIANZ_ZIVOT_ANCHORS[i];
+    if (current.p === clamped) return current.v;
+    if (current.p < clamped) lower = current;
+    if (current.p > clamped) {
+      upper = current;
+      break;
+    }
+  }
+
+  if (upper.p === lower.p) return lower.v;
+
+  const ratio = (clamped - lower.p) / (upper.p - lower.p);
+  return Math.round(lower.v + (upper.v - lower.v) * ratio);
+};
+
+const getAllianzZivot202106Percent = (percent: number): number => {
+  const clamped = Math.min(100, Math.max(0, percent));
+  let lower = ALLIANZ_ZIVOT_2021_06_ANCHORS[0];
+  let upper =
+    ALLIANZ_ZIVOT_2021_06_ANCHORS[ALLIANZ_ZIVOT_2021_06_ANCHORS.length - 1];
+
+  for (let i = 0; i < ALLIANZ_ZIVOT_2021_06_ANCHORS.length; i++) {
+    const current = ALLIANZ_ZIVOT_2021_06_ANCHORS[i];
     if (current.p === clamped) return current.v;
     if (current.p < clamped) lower = current;
     if (current.p > clamped) {
@@ -2582,14 +2823,15 @@ const buildKooperativaFlexi4xTablePreview = (
 const buildMetlifeCoefficientTablePreview = (
   title: string,
   currentPercent: number,
-  getCoefficient: (percent: number) => number
+  getCoefficient: (percent: number) => number,
+  maxes = [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 99, 100]
 ): InfoTablePreview => {
   const clamped = clampPercent(currentPercent);
-  const maxes = [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 99, 100];
 
   return buildRangeTablePreview(title, ["Rozsah TN", "Koeficient"], maxes.map((max, index) => {
     const previous = index === 0 ? 0 : maxes[index - 1];
-    const label = index === 0 ? "do 15 % včetně" : `nad ${previous} % do ${max} % včetně`;
+    const label =
+      index === 0 ? `do ${max} % včetně` : `nad ${previous} % do ${max} % včetně`;
 
     return {
       cells: [label, formatTablePercent(getCoefficient(max))],
@@ -2714,7 +2956,7 @@ const buildAllianzPartners2026TablePreview = (
   currentPercent: number
 ): InfoTablePreview =>
   buildAnchorValueTablePreview(
-    "Tabulka Allianz Partners 2026",
+    "Tabulka Allianz Partners 2025–2026",
     ALLIANZ_PARTNERS_2026_ANCHORS,
     currentPercent
   );
@@ -2745,6 +2987,7 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
   "koop-na-prani-tn8": (percent) => getKooperativaNaPraniPercent(percent, "tn8"),
   "metlife-oneguard": (percent) =>
     percent * (getMetlifeOneGuardPercent(percent) / 100),
+  "metlife-garde5": (percent) => percent * (getMetlifeGarde5Percent(percent) / 100),
   "metlife-garde6": (percent) => percent * (getMetlifeGarde6Percent(percent) / 100),
   "csob-nas-zivot": getCsobNasZivotPercent,
   "csob-forte": (percent) => getCsobForteMultiplier(percent) * percent,
@@ -2754,13 +2997,16 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
   "generali-allegro-20-2023-2024": getGeneraliAllegro20232024Percent,
   "generali-allegro-20-2020-2022": getGeneraliAllegro20202022Percent,
   "nn-orange": getNnOrangePercent,
+  "nn-orange-2025-09": getNnOrangePercent,
   "nn-orange-10x": getNnOrange10xPercent,
+  "nn-orange-10x-2025-03": getNnOrange10x202503Percent,
   "nn-zivot-2019-06": getNnZivot201906Percent,
   "you-plus-4u-2025": getYouPlus4u2025Percent,
   "you-plus-4u-2025-t3k": getYouPlus4u2025T3kPercent,
   "you-plus-4u-2020": getYouPlus4u2020Percent,
   "maxima-maxefekt": (percent) => getMaximaMaxefektMultiplier(percent) * percent,
   "allianz-zivot": getAllianzZivotPercent,
+  "allianz-zivot-2021-06": getAllianzZivot202106Percent,
   "allianz-partners-2026": getAllianzPartners2026Percent,
   "simplea-2": (percent) => getSimpleaMultiplier(percent) * percent,
   "pillow-uraz-nemoc": (percent) => getPillowMultiplier(percent) * percent,
@@ -2851,6 +3097,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const metlifeOneGuardPercent = getMetlifeOneGuardPercent(normalizedPercent);
     const payoutMetlifeOneGuard =
       sumInsuredValue * (normalizedPercent / 100) * (metlifeOneGuardPercent / 100);
+    const metlifeGarde5Percent = getMetlifeGarde5Percent(normalizedPercent);
+    const payoutMetlifeGarde5 =
+      sumInsuredValue * (normalizedPercent / 100) * (metlifeGarde5Percent / 100);
     const metlifeGarde6Percent = getMetlifeGarde6Percent(normalizedPercent);
     const payoutMetlifeGarde6 =
       sumInsuredValue * (normalizedPercent / 100) * (metlifeGarde6Percent / 100);
@@ -2865,6 +3114,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const payoutNnOrange = sumInsuredValue * (nnOrangePercent / 100);
     const nnOrange10xPercent = getNnOrange10xPercent(normalizedPercent);
     const payoutNnOrange10x = sumInsuredValue * (nnOrange10xPercent / 100);
+    const nnOrange10x202503Percent =
+      getNnOrange10x202503Percent(normalizedPercent);
+    const payoutNnOrange10x202503 =
+      sumInsuredValue * (nnOrange10x202503Percent / 100);
     const nnZivot201906Percent = getNnZivot201906Percent(normalizedPercent);
     const payoutNnZivot201906 = sumInsuredValue * (nnZivot201906Percent / 100);
     const youPlus4u2025Percent = getYouPlus4u2025Percent(normalizedPercent);
@@ -2895,6 +3148,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
       sumInsuredValue * maximaMaxefektMultiplier * (normalizedPercent / 100);
     const allianzZivotPercent = getAllianzZivotPercent(normalizedPercent);
     const payoutAllianzZivot = sumInsuredValue * (allianzZivotPercent / 100);
+    const allianzZivot202106Percent =
+      getAllianzZivot202106Percent(normalizedPercent);
+    const payoutAllianzZivot202106 =
+      sumInsuredValue * (allianzZivot202106Percent / 100);
     const allianzPartners2026Percent =
       getAllianzPartners2026Percent(normalizedPercent);
     const payoutAllianzPartners2026 =
@@ -3093,9 +3350,22 @@ export default function SrovnavacTrvalychNasledkuPage() {
         ),
       },
       {
+        key: "metlife-garde5",
+        insurer: "MetLife Garde 5.0",
+        badges: ["2018", "10× progrese"],
+        payout: payoutMetlifeGarde5,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeGarde5Percent}%.`,
+        tablePreview: buildMetlifeCoefficientTablePreview(
+          "Tabulka MetLife Garde 5.0 2018",
+          normalizedPercent,
+          getMetlifeGarde5Percent,
+          [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 99, 100]
+        ),
+      },
+      {
         key: "metlife-garde6",
         insurer: "MetLife Garde 6.0",
-        badges: ["10× progrese"],
+        badges: ["2021–2024", "10× progrese"],
         payout: payoutMetlifeGarde6,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeGarde6Percent}%.`,
         tablePreview: buildMetlifeCoefficientTablePreview(
@@ -3186,25 +3456,49 @@ export default function SrovnavacTrvalychNasledkuPage() {
       },
       {
         key: "nn-orange",
-        insurer: "NN Orange",
-        badges: ["5× progrese"],
+        insurer: "NN Orange RISK",
+        badges: ["2023–18.03.2025", "5× progrese"],
         payout: payoutNnOrange,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
         tablePreview: buildPercentValueTablePreview(
-          "Tabulka NN Orange 5×",
+          "Tabulka progresivního plnění pro připojištění trvalých následků úrazu (TN01-P1R, TN10-P1R) a připojištění trvalých následků úrazu dítěte (JT01-P1R, JT10-P1R)",
+          NN_ORANGE_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "nn-orange-2025-09",
+        insurer: "NN Orange RISK",
+        badges: ["02.09.2025–2026", "5× progrese"],
+        payout: payoutNnOrange,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka progresivního plnění pro připojištění trvalých následků úrazu (TN01-P1R, TN10-P1R) a připojištění trvalých následků úrazu dítěte (JT01-P1R, JT10-P1R)",
           NN_ORANGE_TABLE,
           normalizedPercent
         ),
       },
       {
         key: "nn-orange-10x",
-        insurer: "NN Orange",
-        badges: ["10× progrese"],
+        insurer: "NN Orange RISK",
+        badges: ["02.09.2025–2026", "10× progrese"],
         payout: payoutNnOrange10x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10xPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
-          "Tabulka NN Orange 10×",
+          "Tabulka progresivního plnění pro připojištění trvalých následků úrazu „PREMIUM“ (TNX1-P1R, JTX1-P1R)",
           NN_ORANGE_10X_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "nn-orange-10x-2025-03",
+        insurer: "NN Orange RISK",
+        badges: ["2023–18.03.2025", "10× progrese"],
+        payout: payoutNnOrange10x202503,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10x202503Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka progresivního plnění NN Orange RISK 2023–18.03.2025 - 10× progrese",
+          NN_ORANGE_10X_2025_03_TABLE,
           normalizedPercent
         ),
       },
@@ -3270,18 +3564,30 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "allianz-zivot",
         insurer: "Allianz Život",
-        badges: ["8× progrese"],
+        badges: ["27.05.2022–28.11.2025", "8× progrese"],
         payout: payoutAllianzZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivotPercent}%.`,
         tablePreview: buildAnchorValueTablePreview(
-          "Tabulka Allianz Život",
+          "Tabulka Allianz Život (TNU6, TNU7, TNU8, TNU9), (VTU4, VTU5)",
           ALLIANZ_ZIVOT_ANCHORS,
           normalizedPercent
         ),
       },
       {
+        key: "allianz-zivot-2021-06",
+        insurer: "Allianz Život",
+        badges: ["01.01.2017–18.06.2021", "8× progrese"],
+        payout: payoutAllianzZivot202106,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivot202106Percent}%.`,
+        tablePreview: buildAnchorValueTablePreview(
+          "Tabulka Allianz Život (TNU6, TNU7, TNU8, TNU9, TNU1-S, TNU2-S)",
+          ALLIANZ_ZIVOT_2021_06_ANCHORS,
+          normalizedPercent
+        ),
+      },
+      {
         key: "allianz-partners-2026",
-        insurer: "Allianz Partners 2026",
+        insurer: "Allianz Partners 2025–2026",
         badges: ["8× progrese"],
         payout: payoutAllianzPartners2026,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzPartners2026Percent}%.`,
@@ -3310,10 +3616,19 @@ export default function SrovnavacTrvalychNasledkuPage() {
       },
     ];
 
-    return cardsWithoutCurves.map((card) => ({
-      ...card,
-      curve: buildPayoutCurve(PAYOUT_PERCENT_BY_CARD_KEY[card.key] ?? (() => 0)),
-    }));
+    return cardsWithoutCurves.map((card) => {
+      const { productName, yearBadge } = splitProductYearBadge(card.insurer);
+
+      return {
+        ...card,
+        insurer: productName,
+        badges:
+          yearBadge && !card.badges.includes(yearBadge)
+            ? [yearBadge, ...card.badges]
+            : card.badges,
+        curve: buildPayoutCurve(PAYOUT_PERCENT_BY_CARD_KEY[card.key] ?? (() => 0)),
+      };
+    });
   };
 
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -3353,18 +3668,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
       groups.push(group);
     }
 
-    let option = group.options.find((item) => item.value === card.insurer);
-    if (!option) {
-      option = { value: card.insurer, productName, badges: [] };
-      group.options.push(option);
-    }
+    for (const filterOption of getCardFilterOptions(card)) {
+      let option = group.options.find((item) => item.value === filterOption.value);
+      if (!option) {
+        option = { value: filterOption.value, productName, badges: [] };
+        group.options.push(option);
+      }
 
-    for (const badge of card.badges) {
-      if (!option.badges.includes(badge)) option.badges.push(badge);
+      for (const badge of filterOption.badges) {
+        if (!option.badges.includes(badge)) option.badges.push(badge);
+      }
     }
 
     return groups;
   }, []);
+  const filterValueSignature = insurerFilterGroups
+    .flatMap((group) => group.options.map((option) => option.value))
+    .join("|");
   const allFilterGroupsExpanded =
     insurerFilterGroups.length > 0 &&
     insurerFilterGroups.every((group) =>
@@ -3411,7 +3731,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
       const matchesProgression =
         !showOnly10x || card.badges.some((badge) => badge.includes("10× progrese"));
       const matchesInsurer =
-        selectedInsurers.length === 0 || selectedInsurers.includes(card.insurer);
+        selectedInsurers.length === 0 ||
+        getCardFilterOptions(card).some((option) =>
+          selectedInsurers.includes(option.value)
+        );
 
       return matchesProgression && matchesInsurer;
     });
@@ -4146,6 +4469,17 @@ export default function SrovnavacTrvalychNasledkuPage() {
     });
   }, [infoOpen, rangePercentValue, selectedInfoCard?.tablePreview]);
 
+  useEffect(() => {
+    const validFilterValues = new Set(filterValueSignature.split("|").filter(Boolean));
+
+    setSelectedInsurers((current) => {
+      if (current.length === 0) return current;
+
+      const next = current.filter((value) => validFilterValues.has(value));
+      return next.length === current.length ? current : next;
+    });
+  }, [filterValueSignature]);
+
   const activeFilterCount =
     (showOnly10x ? 1 : 0) +
     (compactList ? 1 : 0) +
@@ -4331,7 +4665,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 )}
                 {selectedInsurers.length > 0 && (
                   <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
-                    Produkty: {selectedInsurers.length}
+                    Ročníky: {selectedInsurers.length}
                   </span>
                 )}
                 {compactList && (
@@ -4621,7 +4955,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                      Pojišťovny a produkty
+                      Pojišťovny a ročníky
                     </div>
                     <button
                       type="button"
@@ -4647,12 +4981,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                           : TN_INACTIVE_CHIP_CLASS
                       }`}
                     >
-                      Všechny produkty
+                      Všechny ročníky
                     </button>
                     <span className="text-xs font-semibold text-slate-500">
                       {selectedInsurers.length === 0
-                        ? "Bez omezení produktů"
-                        : `${selectedInsurers.length} vybraných produktů`}
+                        ? "Bez omezení ročníků"
+                        : `Vybrané ročníky: ${selectedInsurers.length}`}
                     </span>
                   </div>
 
@@ -4725,7 +5059,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                   {group.insurerName}
                                 </span>
                                 <span className="mt-0.5 block text-xs font-semibold text-slate-500">
-                                  {selectedCount}/{group.options.length} produktů
+                                  {selectedCount}/{group.options.length} ročníků
                                 </span>
                               </span>
                             </button>
@@ -4776,16 +5110,18 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                         <span className="block break-words leading-snug">
                                           {option.productName}
                                         </span>
-                                        <span className="mt-1 flex flex-wrap gap-1">
-                                          {option.badges.map((badge) => (
-                                            <span
-                                              key={badge}
-                                              className="rounded-full border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700"
-                                            >
-                                              {badge}
-                                            </span>
-                                          ))}
-                                        </span>
+                                        {option.badges.length > 0 ? (
+                                          <span className="mt-1 flex flex-wrap gap-1">
+                                            {option.badges.map((badge) => (
+                                              <span
+                                                key={badge}
+                                                className="rounded-full border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700"
+                                              >
+                                                {badge}
+                                              </span>
+                                            ))}
+                                          </span>
+                                        ) : null}
                                       </span>
                                     </button>
                                   );
@@ -5061,6 +5397,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     points={selectedInfoCard.curve}
                     currentPercent={rangePercentValue}
                     maxPayoutPercent={selectedInfoChartMaxPayoutPercent}
+                    sumInsured={sumInsuredValue}
                     diagnosisExamples={selectedInfoCard.diagnosisExamples}
                   />
 

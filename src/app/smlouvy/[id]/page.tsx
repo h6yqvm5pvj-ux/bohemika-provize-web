@@ -854,6 +854,7 @@ export default function ContractDetailPage() {
   const [kooperativaLegalEntity, setKooperativaLegalEntity] = useState(false);
   const [kooperativaBirthNumberLoading, setKooperativaBirthNumberLoading] = useState(false);
   const [kooperativaBirthNumberError, setKooperativaBirthNumberError] = useState<string | null>(null);
+  const [kooperativaPdfTemplateIssue, setKooperativaPdfTemplateIssue] = useState(false);
   const [kooperativaStatusCountdown, setKooperativaStatusCountdown] = useState(3);
   const [kooperativaStatusRedirected, setKooperativaStatusRedirected] = useState(false);
   const [kooperativaStatusRedirectError, setKooperativaStatusRedirectError] = useState<string | null>(null);
@@ -895,6 +896,7 @@ export default function ContractDetailPage() {
     setKooperativaLegalEntity(false);
     setKooperativaBirthNumberLoading(false);
     setKooperativaBirthNumberError(null);
+    setKooperativaPdfTemplateIssue(false);
     setKooperativaStatusRedirectError(null);
     setShowKooperativaStatusModal(false);
   }, [clearKooperativaStatusRedirect]);
@@ -5066,6 +5068,7 @@ export default function ContractDetailPage() {
     setKooperativaCompanyId(null);
     setKooperativaLegalEntity(false);
     setKooperativaBirthNumberError(null);
+    setKooperativaPdfTemplateIssue(false);
     setKooperativaBirthNumberLoading(true);
     setKooperativaStatusCountdown(3);
     setKooperativaStatusRedirected(false);
@@ -5103,6 +5106,7 @@ export default function ContractDetailPage() {
             setKooperativaBirthNumberError(
               "IČO se z originálního PDF nepodařilo načíst."
             );
+            setKooperativaPdfTemplateIssue(true);
             return;
           }
           setKooperativaCompanyId(parsed.companyId);
@@ -5118,6 +5122,7 @@ export default function ContractDetailPage() {
           setKooperativaBirthNumberError(
             "Datum narození se z originálního PDF nepodařilo určit."
           );
+          setKooperativaPdfTemplateIssue(true);
           return;
         }
         setKooperativaBirthNumber(parsed.birthNumber);
@@ -6836,6 +6841,22 @@ export default function ContractDetailPage() {
               </div>
               {kooperativaBirthNumberError && (
                 <p className="text-sm text-rose-700">{kooperativaBirthNumberError}</p>
+              )}
+              {kooperativaPdfTemplateIssue && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900"
+                >
+                  <AlertTriangle
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                  <p>
+                    Identifikátor se v PDF nepodařilo najít. Může jít o novou šablonu;
+                    pro doplnění parseru předej originální PDF a číslo smlouvy.
+                  </p>
+                </div>
               )}
             </div>
 
