@@ -9,6 +9,7 @@ import {
   PremiumOnlineCardPreview,
   type PremiumOnlineCardValue,
 } from "@/components/PremiumOnlineCardPreview";
+import type { OnlineCardLocale, OnlineCardTranslatedFields } from "@/lib/onlineCardI18n";
 
 type OnlineCardSettingsPanelProps = {
   className: string;
@@ -64,6 +65,23 @@ export function OnlineCardSettingsPanel({
     location: draft.location,
     officeLabel: draft.officeLabel,
     officePhotos: draft.officePhotos,
+    translations: draft.translations,
+  };
+  const updateTranslation = (
+    locale: Exclude<OnlineCardLocale, "cs">,
+    field: keyof OnlineCardTranslatedFields,
+    value: string
+  ) => {
+    const maxLength = field === "bio" ? 1_000 : field === "officeLabel" ? 160 : 120;
+    onDraftPatch({
+      translations: {
+        ...draft.translations,
+        [locale]: {
+          ...draft.translations?.[locale],
+          [field]: value.slice(0, maxLength),
+        },
+      },
+    });
   };
 
   return (
@@ -118,6 +136,74 @@ export function OnlineCardSettingsPanel({
             {officeSection}
             {contactSection}
           </div>
+
+          <details className="rounded-[20px] border border-violet-100 bg-violet-50/45 px-4 py-3 text-slate-900">
+            <summary className="cursor-pointer text-sm font-bold marker:text-violet-700">
+              Anglická a ukrajinská verze obsahu
+            </summary>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-600">
+              Tyto texty se zobrazí po přepnutí jazyka na veřejné vizitce. Nevyplněné
+              položky bezpečně použijí českou variantu.
+            </p>
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              {([
+                { id: "en", label: "English", title: "Role / position", bio: "About me", location: "Location", office: "Office name or address" },
+                { id: "uk", label: "Українська", title: "Посада / роль", bio: "Про мене", location: "Місто", office: "Назва або адреса офісу" },
+              ] as const).map((language) => {
+                const translation = draft.translations?.[language.id] ?? {};
+                return (
+                  <fieldset
+                    key={language.id}
+                    className="space-y-3 rounded-2xl border border-violet-100 bg-white p-3"
+                  >
+                    <legend className="px-1 text-sm font-bold text-violet-900">{language.label}</legend>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      {language.title}
+                      <input
+                        type="text"
+                        value={translation.title ?? ""}
+                        onChange={(event) => updateTranslation(language.id, "title", event.target.value)}
+                        maxLength={120}
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      {language.bio}
+                      <textarea
+                        value={translation.bio ?? ""}
+                        onChange={(event) => updateTranslation(language.id, "bio", event.target.value)}
+                        maxLength={1000}
+                        rows={4}
+                        className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      />
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        {language.location}
+                        <input
+                          type="text"
+                          value={translation.location ?? ""}
+                          onChange={(event) => updateTranslation(language.id, "location", event.target.value)}
+                          maxLength={120}
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-slate-700">
+                        {language.office}
+                        <input
+                          type="text"
+                          value={translation.officeLabel ?? ""}
+                          onChange={(event) => updateTranslation(language.id, "officeLabel", event.target.value)}
+                          maxLength={160}
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                        />
+                      </label>
+                    </div>
+                  </fieldset>
+                );
+              })}
+            </div>
+          </details>
         </div>
       </div>
 

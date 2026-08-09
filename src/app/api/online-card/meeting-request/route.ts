@@ -55,6 +55,7 @@ type IncomingBody = {
   message?: unknown;
   topics?: unknown;
   company?: unknown;
+  locale?: unknown;
 };
 
 type AntiSpamCheck = {
@@ -66,6 +67,9 @@ type AntiSpamCheck = {
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const normalizeLocale = (value: unknown): "cs" | "en" | "uk" =>
+  value === "en" || value === "uk" ? value : "cs";
 
 const sanitizeText = (value: unknown, maxLen: number): string => {
   if (typeof value !== "string") return "";
@@ -440,6 +444,7 @@ export async function POST(req: NextRequest) {
     const messageRaw = sanitizeText(body.message, 1200);
     const topicsRaw = sanitizeMeetingTopics(body.topics);
     const honeypot = sanitizeText(body.company, 120);
+    const locale = normalizeLocale(body.locale);
     const parsedLegacy = splitTopicsAndNoteFromMessage(messageRaw);
     const topics = topicsRaw.length > 0 ? topicsRaw : parsedLegacy.topics;
     const message = topicsRaw.length > 0 ? messageRaw : parsedLegacy.note;
@@ -539,6 +544,7 @@ export async function POST(req: NextRequest) {
         email,
         topics,
         message,
+        locale,
         ip,
         userAgent: req.headers.get("user-agent")?.slice(0, 240) || "",
       },
@@ -572,6 +578,7 @@ export async function POST(req: NextRequest) {
         requesterEmail: email,
         requesterTopics: topics.join("||"),
         requesterMessage: message,
+        requesterLocale: locale,
         meetingOwnerName: owner.ownerName,
       },
     });

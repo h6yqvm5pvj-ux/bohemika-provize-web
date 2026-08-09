@@ -66,6 +66,10 @@ import { AccountSecurityPanel } from "./components/AccountSecurityPanel";
 import { CareerTimelinePanel } from "./components/CareerTimelinePanel";
 import { NotificationsSettingsPanel } from "./components/NotificationsSettingsPanel";
 import { OnlineCardSettingsPanel } from "./components/OnlineCardSettingsPanel";
+import {
+  resolveOnlineCardTranslations,
+  type OnlineCardTranslations,
+} from "@/lib/onlineCardI18n";
 import { ProfileSettingsPanel } from "./components/ProfileSettingsPanel";
 import { SubscriptionSettingsPanel } from "./components/SubscriptionSettingsPanel";
 import { UserRequestsPanel } from "./components/UserRequestsPanel";
@@ -265,6 +269,7 @@ type OnlineCardDraft = {
   location: string;
   officeLabel: string;
   officePhotos: string[];
+  translations: OnlineCardTranslations;
 };
 
 const ONLINE_CARD_SLUG_MAX_LEN = 64;
@@ -465,6 +470,7 @@ const defaultOnlineCardFromUser = (
     location: "",
     officeLabel: "",
     officePhotos: [],
+    translations: {},
   };
 };
 
@@ -525,6 +531,7 @@ const normalizeOnlineCardDraft = (
         ? row.officeLabel.trim().slice(0, ONLINE_CARD_OFFICE_MAX_LEN)
         : "",
     officePhotos: normalizeOnlineCardOfficePhotos(row.officePhotos),
+    translations: resolveOnlineCardTranslations(row.translations),
   };
 };
 
@@ -541,6 +548,7 @@ const EMPTY_ONLINE_CARD_DRAFT: OnlineCardDraft = {
   location: "",
   officeLabel: "",
   officePhotos: [],
+  translations: {},
 };
 
 type InlineStatus = {
@@ -1905,6 +1913,7 @@ export default function SettingsPage() {
       location: onlineCardDraft.location.trim().slice(0, 120),
       officeLabel: onlineCardDraft.officeLabel.trim().slice(0, ONLINE_CARD_OFFICE_MAX_LEN),
       officePhotos: normalizeOnlineCardOfficePhotos(onlineCardDraft.officePhotos),
+      translations: resolveOnlineCardTranslations(onlineCardDraft.translations),
     };
 
     const saved = await saveUserFields({ onlineCard: payload });

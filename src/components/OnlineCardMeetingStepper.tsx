@@ -14,6 +14,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
+import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 
 type MeetingFormDraft = {
   fullName: string;
@@ -30,6 +31,7 @@ type MeetingApiResponse = {
 
 type OnlineCardMeetingStepperProps = {
   slug: string;
+  locale?: OnlineCardLocale;
   onSubmitted?: () => void;
 };
 
@@ -42,18 +44,16 @@ const EMPTY_FORM: MeetingFormDraft = {
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const FORM_STEPS = ["Oblast řešení", "Kontakt", "Zpráva"] as const;
-
 const MEETING_TOPICS = [
-  { id: "vehicle", label: "Pojištění vozidel", icon: CarFront },
-  { id: "property", label: "Pojištění majetku", icon: House },
-  { id: "liability", label: "Pojištění odpovědnosti", icon: ShieldCheck },
-  { id: "life-accident", label: "Životní a úrazové pojištění", icon: HeartPulse },
-  { id: "foreign-health", label: "Zdravotní pojištění cizinců", icon: Stethoscope },
-  { id: "loans-mortgage", label: "Úvěry a hypotéky", icon: Building2 },
-  { id: "investments", label: "Investice", icon: TrendingUp },
-  { id: "precious-metals", label: "Drahé kovy", icon: BrickWall },
-  { id: "other", label: "Jiné", icon: Sparkles },
+  { id: "vehicle", icon: CarFront },
+  { id: "property", icon: House },
+  { id: "liability", icon: ShieldCheck },
+  { id: "life-accident", icon: HeartPulse },
+  { id: "foreign-health", icon: Stethoscope },
+  { id: "loans-mortgage", icon: Building2 },
+  { id: "investments", icon: TrendingUp },
+  { id: "precious-metals", icon: BrickWall },
+  { id: "other", icon: Sparkles },
 ] as const;
 
 type MeetingTopicId = (typeof MEETING_TOPICS)[number]["id"];
@@ -63,8 +63,11 @@ const fieldClass =
 
 export function OnlineCardMeetingStepper({
   slug,
+  locale = "cs",
   onSubmitted,
 }: OnlineCardMeetingStepperProps) {
+  const copy = ONLINE_CARD_COPY[locale].meeting;
+  const formSteps = copy.steps;
   const [form, setForm] = useState<MeetingFormDraft>(EMPTY_FORM);
   const [selectedTopics, setSelectedTopics] = useState<MeetingTopicId[]>([]);
   const [step, setStep] = useState(0);
@@ -79,14 +82,14 @@ export function OnlineCardMeetingStepper({
   }, [form.email, form.fullName, form.phone]);
   const selectedTopicLabels = useMemo(
     () =>
-      MEETING_TOPICS.filter((topic) => selectedTopics.includes(topic.id)).map(
-        (topic) => topic.label
+      MEETING_TOPICS.flatMap((topic, index) =>
+        selectedTopics.includes(topic.id) ? [copy.topics[index] ?? ""] : []
       ),
-    [selectedTopics]
+    [copy.topics, selectedTopics]
   );
   const hasSelectedTopics = selectedTopics.length > 0;
   const canSubmit = hasSelectedTopics && hasValidContact;
-  const lastStep = FORM_STEPS.length - 1;
+  const lastStep = formSteps.length - 1;
 
   const toggleTopic = (topicId: MeetingTopicId) => {
     setFormError(null);
@@ -99,11 +102,11 @@ export function OnlineCardMeetingStepper({
 
   const goToNextStep = () => {
     if (step === 0 && !hasSelectedTopics) {
-      setFormError("Vyberte prosím alespoň jednu oblast, kterou chcete řešit.");
+      setFormError(copy.chooseTopicError);
       return;
     }
     if (step === 1 && !hasValidContact) {
-      setFormError("Vyplň prosím jméno, telefon a platný e-mail.");
+      setFormError(copy.contactError);
       return;
     }
 
@@ -120,13 +123,13 @@ export function OnlineCardMeetingStepper({
     if (submitting) return;
 
     if (!hasSelectedTopics) {
-      setFormError("Vyberte prosím alespoň jednu oblast, kterou chcete řešit.");
+      setFormError(copy.chooseTopicError);
       setStep(0);
       return;
     }
 
     if (!hasValidContact) {
-      setFormError("Vyplň prosím jméno, telefon a platný e-mail.");
+      setFormError(copy.contactError);
       setStep(1);
       return;
     }
@@ -139,6 +142,7 @@ export function OnlineCardMeetingStepper({
       message: form.message.trim().slice(0, 1200),
       topics: selectedTopicLabels,
       company: form.company.trim(),
+      locale,
     };
 
     setSubmitting(true);
@@ -166,7 +170,7 @@ export function OnlineCardMeetingStepper({
       setFormError(
         error instanceof Error && error.message.trim().length > 0
           ? error.message
-          : "Žádost se nepodařilo odeslat."
+          : copy.genericError
       );
     } finally {
       setSubmitting(false);
@@ -186,7 +190,7 @@ export function OnlineCardMeetingStepper({
     <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
       <div className="rounded-2xl border border-white/14 bg-white/[0.04] px-3 py-3">
         <div className="grid grid-cols-3 gap-2">
-          {FORM_STEPS.map((stepLabel, index) => {
+          {formSteps.map((stepLabel, index) => {
             const stepDone = step > index;
             const stepActive = step === index;
 
@@ -217,7 +221,7 @@ export function OnlineCardMeetingStepper({
         <div className="mt-3 h-1.5 rounded-full bg-white/10">
           <div
             className="h-full rounded-full bg-[linear-gradient(90deg,#8b5cf6_0%,#a855f7_55%,#c084fc_100%)] transition-[width] duration-300"
-            style={{ width: `${((step + 1) / FORM_STEPS.length) * 100}%` }}
+            style={{ width: `${((step + 1) / formSteps.length) * 100}%` }}
           />
         </div>
       </div>
@@ -225,10 +229,10 @@ export function OnlineCardMeetingStepper({
       {step === 0 ? (
         <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-            Co chcete řešit
+            {copy.chooseTopic}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
-            {MEETING_TOPICS.map((topic) => {
+            {MEETING_TOPICS.map((topic, index) => {
               const Icon = topic.icon;
               const selected = selectedTopics.includes(topic.id);
 
@@ -252,7 +256,7 @@ export function OnlineCardMeetingStepper({
                   >
                     <Icon className="h-4 w-4" />
                   </span>
-                  <span className="text-sm font-medium leading-tight">{topic.label}</span>
+                  <span className="text-sm font-medium leading-tight">{copy.topics[index]}</span>
                 </button>
               );
             })}
@@ -264,7 +268,7 @@ export function OnlineCardMeetingStepper({
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-              Jméno a příjmení
+              {copy.name}
             </label>
             <input
               type="text"
@@ -274,7 +278,7 @@ export function OnlineCardMeetingStepper({
                 setForm((prev) => ({ ...prev, fullName: event.target.value.slice(0, 120) }));
               }}
               className={fieldClass}
-              placeholder="Jan Novák"
+              placeholder={copy.namePlaceholder}
               maxLength={120}
               required
             />
@@ -283,7 +287,7 @@ export function OnlineCardMeetingStepper({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                Telefon
+                {copy.phone}
               </label>
               <input
                 type="text"
@@ -301,7 +305,7 @@ export function OnlineCardMeetingStepper({
 
             <div className="space-y-1">
               <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                E-mail
+                {copy.email}
               </label>
               <input
                 type="email"
@@ -324,7 +328,7 @@ export function OnlineCardMeetingStepper({
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-              Vybrané oblasti
+              {copy.selectedTopics}
             </label>
             <div className="flex flex-wrap gap-1.5 rounded-2xl border border-white/12 bg-white/[0.03] p-2">
               {selectedTopicLabels.map((label) => (
@@ -340,7 +344,7 @@ export function OnlineCardMeetingStepper({
 
           <div className="space-y-1">
             <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-              Zpráva (volitelné)
+              {copy.message}
             </label>
             <textarea
               value={form.message}
@@ -349,7 +353,7 @@ export function OnlineCardMeetingStepper({
                 setForm((prev) => ({ ...prev, message: event.target.value.slice(0, 1200) }));
               }}
               className={`${fieldClass} min-h-[120px] resize-y`}
-              placeholder="Napište preferovaný termín nebo stručný důvod schůzky."
+              placeholder={copy.messagePlaceholder}
               maxLength={1200}
             />
           </div>
@@ -358,7 +362,7 @@ export function OnlineCardMeetingStepper({
 
       <div className="hidden" aria-hidden="true">
         <label>
-          Společnost
+          {copy.company}
           <input
             type="text"
             tabIndex={-1}
@@ -380,10 +384,10 @@ export function OnlineCardMeetingStepper({
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <p className="text-xs text-violet-100/70">
           {step === 0
-            ? `Vybráno: ${selectedTopics.length}`
+            ? `${copy.selected}: ${selectedTopics.length}`
             : step === 2
-              ? `${form.message.length}/1200 znaků`
-              : "Vyplňte kontaktní údaje."}
+              ? `${form.message.length}/1200 ${copy.characters}`
+              : copy.fillContact}
         </p>
         <div className="ml-auto flex items-center gap-2">
           {step > 0 ? (
@@ -393,7 +397,7 @@ export function OnlineCardMeetingStepper({
               disabled={submitting}
               className="inline-flex items-center rounded-full border border-white/22 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Zpět
+              {copy.back}
             </button>
           ) : null}
 
@@ -403,7 +407,7 @@ export function OnlineCardMeetingStepper({
               disabled={submitting}
               className="inline-flex items-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-65 vizitka-cta-glow"
             >
-              Pokračovat
+              {copy.continue}
             </button>
           ) : (
             <button
@@ -412,7 +416,7 @@ export function OnlineCardMeetingStepper({
               className="inline-flex items-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-65 vizitka-cta-glow"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {submitting ? "Odesílám..." : "Odeslat"}
+              {submitting ? copy.submitting : copy.submit}
             </button>
           )}
         </div>

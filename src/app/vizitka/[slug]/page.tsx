@@ -5,6 +5,7 @@ import {
   normalizeOnlineCardSlug,
   ONLINE_CARD_SLUG_RE,
 } from "@/lib/server/onlineCard";
+import { resolveOnlineCardLocale } from "@/lib/onlineCardI18n";
 import OnlineCardPublicClient from "./OnlineCardPublicClient";
 
 export const runtime = "nodejs";
@@ -12,10 +13,13 @@ export const dynamic = "force-dynamic";
 
 export default async function OnlineCardPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ lang?: string | string[] }>;
 }) {
   const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
   const requestedSlug = normalizeOnlineCardSlug(resolvedParams.slug);
   if (!requestedSlug || requestedSlug.length < 3 || !ONLINE_CARD_SLUG_RE.test(requestedSlug)) {
     notFound();
@@ -23,6 +27,9 @@ export default async function OnlineCardPage({
 
   const card = await loadOnlineCardBySlug(requestedSlug);
   if (!card) notFound();
+  const requestedLocale = Array.isArray(resolvedSearchParams.lang)
+    ? resolvedSearchParams.lang[0]
+    : resolvedSearchParams.lang;
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_12%,#271245_0%,#110a21_36%,#080715_72%,#05040f_100%)]">
@@ -33,7 +40,11 @@ export default async function OnlineCardPage({
 
       <div className="relative w-full px-0 pb-0 pt-0 sm:px-8 sm:pb-12 sm:pt-8 lg:px-12">
         <div>
-          <OnlineCardPublicClient slug={requestedSlug} card={card} />
+          <OnlineCardPublicClient
+            slug={requestedSlug}
+            card={card}
+            initialLocale={resolveOnlineCardLocale(requestedLocale)}
+          />
         </div>
       </div>
     </main>

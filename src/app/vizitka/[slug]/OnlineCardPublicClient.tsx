@@ -24,6 +24,12 @@ import {
   PremiumOnlineCardPreview,
   type PremiumOnlineCardValue,
 } from "@/components/PremiumOnlineCardPreview";
+import {
+  ONLINE_CARD_COPY,
+  ONLINE_CARD_LANGUAGE_OPTIONS,
+  onlineCardLanguageMeta,
+  type OnlineCardLocale,
+} from "@/lib/onlineCardI18n";
 
 type OfficePhotoMeta = {
   width: number;
@@ -33,6 +39,7 @@ type OfficePhotoMeta = {
 type OnlineCardPublicClientProps = {
   slug: string;
   card: PremiumOnlineCardValue;
+  initialLocale: OnlineCardLocale;
 };
 
 const sanitizeWebsite = (value: string): string => {
@@ -104,21 +111,40 @@ const sanitizeVCardFilename = (value: string): string => {
   return normalized || "kontakt";
 };
 
-export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicClientProps) {
+export default function OnlineCardPublicClient({
+  slug,
+  card,
+  initialLocale,
+}: OnlineCardPublicClientProps) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [locale, setLocale] = useState<OnlineCardLocale>(initialLocale);
   const [officePhotoIndex, setOfficePhotoIndex] = useState(0);
   const [officePhotoMetaByUrl, setOfficePhotoMetaByUrl] = useState<Record<string, OfficePhotoMeta>>({});
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(
     null
   );
 
-  const cardWebsiteLink = useMemo(() => sanitizeWebsite(card.website), [card.website]);
-  const cardWebsiteLabel = cardWebsiteLink ? normalizeWebsiteLabel(cardWebsiteLink) : card.website.trim();
-  const cardPhoneLink = card.phone ? normalizePhoneHref(card.phone) : "";
-  const officeLabel = card.officeLabel.trim();
-  const officePhotos = card.officePhotos;
+  const copy = ONLINE_CARD_COPY[locale];
+  const localizedCard = useMemo(() => {
+    const translation = locale === "cs" ? null : card.translations?.[locale];
+    return {
+      ...card,
+      title: translation?.title || card.title,
+      bio: translation?.bio || card.bio,
+      location: translation?.location || card.location,
+      officeLabel: translation?.officeLabel || card.officeLabel,
+    };
+  }, [card, locale]);
+  const cardWebsiteLink = useMemo(
+    () => sanitizeWebsite(localizedCard.website),
+    [localizedCard.website]
+  );
+  const cardWebsiteLabel = cardWebsiteLink ? normalizeWebsiteLabel(cardWebsiteLink) : localizedCard.website.trim();
+  const cardPhoneLink = localizedCard.phone ? normalizePhoneHref(localizedCard.phone) : "";
+  const officeLabel = localizedCard.officeLabel.trim();
+  const officePhotos = localizedCard.officePhotos;
   const hasOfficeSection = officeLabel.length > 0 || officePhotos.length > 0;
   const officePhotoCount = officePhotos.length;
   const safeOfficePhotoIndex =
@@ -131,12 +157,27 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
   const activeOfficePhotoIsLandscape = activeOfficePhotoMeta
     ? activeOfficePhotoMeta.width > activeOfficePhotoMeta.height * 1.05
     : false;
-  const officeAddressText = officeLabel || card.location.trim();
+  const officeAddressText = officeLabel || localizedCard.location.trim();
   const officeMapsQuery = normalizeMapsAddressQuery(officeAddressText);
   const officeMapsLink = officeAddressText
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(officeMapsQuery)}`
     : "";
   const lightMode = theme === "light";
+
+  useEffect(() => {
+    document.documentElement.lang = onlineCardLanguageMeta(locale).htmlLang;
+  }, [locale]);
+
+  const selectLocale = (nextLocale: OnlineCardLocale) => {
+    setLocale(nextLocale);
+    const url = new URL(window.location.href);
+    if (nextLocale === "cs") {
+      url.searchParams.delete("lang");
+    } else {
+      url.searchParams.set("lang", nextLocale);
+    }
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  };
 
   useEffect(() => {
     const root = shellRef.current;
@@ -196,14 +237,14 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
   const handleDownloadContactVCard = () => {
     if (typeof document === "undefined" || typeof URL === "undefined") return;
 
-    const fullName = card.fullName.trim();
+    const fullName = localizedCard.fullName.trim();
     const { firstName, lastName } = splitFullNameForVCard(fullName);
-    const title = card.title.trim();
-    const phone = card.phone.trim();
-    const email = card.email.trim();
-    const website = cardWebsiteLink || sanitizeWebsite(card.website);
-    const address = officeAddressText || card.location.trim();
-    const note = card.bio.trim();
+    const title = localizedCard.title.trim();
+    const phone = localizedCard.phone.trim();
+    const email = localizedCard.email.trim();
+    const website = cardWebsiteLink || sanitizeWebsite(localizedCard.website);
+    const address = officeAddressText || localizedCard.location.trim();
+    const note = localizedCard.bio.trim();
 
     const lines = [
       "BEGIN:VCARD",
@@ -239,18 +280,18 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
     if (typeof window === "undefined") return;
 
     const shareUrl = window.location.href;
-    const shareTitle = card.fullName.trim()
-      ? `${card.fullName.trim()} | Bohemika`
-      : "Online vizitka Bohemika";
-    const shareText = card.title.trim()
-      ? `${card.fullName.trim()} - ${card.title.trim()}`
-      : card.fullName.trim();
+    const shareTitle = localizedCard.fullName.trim()
+      ? `${localizedCard.fullName.trim()} | Bohemika`
+      : copy.public.onlineCardTitle;
+    const shareText = localizedCard.title.trim()
+      ? `${localizedCard.fullName.trim()} - ${localizedCard.title.trim()}`
+      : localizedCard.fullName.trim();
 
     try {
       if (navigator.share) {
         await navigator.share({
           title: shareTitle,
-          text: shareText || "Online vizitka",
+          text: shareText || copy.public.onlineCardTitle,
           url: shareUrl,
         });
         return;
@@ -259,13 +300,13 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
       await navigator.clipboard.writeText(shareUrl);
       setStatus({
         type: "success",
-        message: "Odkaz na vizitku byl zkopírován do schránky.",
+        message: copy.public.shareSuccess,
       });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStatus({
         type: "error",
-        message: "Odkaz se nepodařilo sdílet. Zkopírujte ho prosím z adresního řádku.",
+        message: copy.public.shareError,
       });
     }
   };
@@ -312,8 +353,8 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800"
           >
             <Share2 className="h-3.5 w-3.5" />
-            <span className="sm:hidden">Sdílet</span>
-            <span className="hidden sm:inline">Sdílet vizitku</span>
+            <span className="sm:hidden">{copy.public.shareShort}</span>
+            <span className="hidden sm:inline">{copy.public.share}</span>
           </button>
           <button
             type="button"
@@ -321,7 +362,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             className="hidden items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800 sm:inline-flex"
           >
             <Download className="h-3.5 w-3.5" />
-            Uložit kontakt
+            {copy.public.saveContact}
           </button>
           <div
             className={`inline-flex items-center rounded-full border p-0.5 text-[11px] font-bold shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur sm:p-1 sm:text-xs ${
@@ -329,7 +370,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                 ? "border-violet-200 bg-white/90 text-slate-700"
                 : "border-white/16 bg-slate-950/42 text-violet-100"
             }`}
-            aria-label="Režim zobrazení vizitky"
+            aria-label={copy.public.displayMode}
           >
             <button
               type="button"
@@ -340,7 +381,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
               }`}
             >
               <Moon className="h-3.5 w-3.5" />
-              Tmavý
+              {copy.public.dark}
             </button>
             <button
               type="button"
@@ -351,19 +392,45 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
               }`}
             >
               <Sun className="h-3.5 w-3.5" />
-              Světlý
+              {copy.public.light}
             </button>
+          </div>
+          <div
+            className={`inline-flex items-center rounded-full border p-0.5 text-[11px] font-bold shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur sm:p-1 sm:text-xs ${
+              lightMode
+                ? "border-violet-200 bg-white/90 text-slate-700"
+                : "border-white/16 bg-slate-950/42 text-violet-100"
+            }`}
+            aria-label={copy.public.language}
+          >
+            {ONLINE_CARD_LANGUAGE_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => selectLocale(option.id)}
+                aria-pressed={locale === option.id}
+                aria-label={option.label}
+                className={`rounded-full px-2.5 py-1.5 transition sm:px-3 ${
+                  locale === option.id
+                    ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]"
+                    : "hover:bg-white/10"
+                }`}
+              >
+                {option.shortLabel}
+              </button>
+            ))}
           </div>
         </div>
 
         <PremiumOnlineCardPreview
-          value={card}
+          value={localizedCard}
           layout="fullWidth"
           surface="seamless"
           theme={theme}
+          locale={locale}
           showContactSection={false}
           meetingCta={{
-            label: "Sjednat schůzku",
+            label: copy.preview.scheduleMeeting,
             onClick: openModal,
             disabled: false,
           }}
@@ -381,7 +448,13 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             {status.message}
           </p>
         ) : null}
-        <AdvisorProfileSections flush reveal theme={theme} />
+        <AdvisorProfileSections
+          flush
+          reveal
+          theme={theme}
+          locale={locale}
+          onScheduleMeeting={openModal}
+        />
         {hasOfficeSection ? (
           <section
             data-vizitka-reveal
@@ -421,7 +494,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                     >
                       <Image
                         src={activeOfficePhoto}
-                        alt={`Fotka kanceláře ${safeOfficePhotoIndex + 1}`}
+                        alt={`${copy.public.office} ${safeOfficePhotoIndex + 1}`}
                         fill
                         sizes={
                           activeOfficePhotoIsPortrait
@@ -444,7 +517,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                             type="button"
                             onClick={() => handleOfficePhotoShift(-1)}
                             className="absolute left-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-slate-950/45 text-white transition hover:bg-slate-950/65"
-                            aria-label="Předchozí fotka kanceláře"
+                            aria-label={copy.public.previousOfficePhoto}
                           >
                             <ChevronLeft className="h-5 w-5" />
                           </button>
@@ -452,7 +525,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                             type="button"
                             onClick={() => handleOfficePhotoShift(1)}
                             className="absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-slate-950/45 text-white transition hover:bg-slate-950/65"
-                            aria-label="Další fotka kanceláře"
+                            aria-label={copy.public.nextOfficePhoto}
                           >
                             <ChevronRight className="h-5 w-5" />
                           </button>
@@ -462,7 +535,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                   </div>
                 ) : (
                   <div className="flex h-[230px] items-center justify-center rounded-2xl border border-white/14 bg-slate-950/45 text-center text-xs text-violet-100/70 sm:h-[320px] lg:h-[360px]">
-                    Bez nahraných fotek kanceláře.
+                    {copy.public.noOfficePhotos}
                   </div>
                 )}
 
@@ -476,7 +549,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                         className={`h-2.5 rounded-full transition ${
                           index === safeOfficePhotoIndex ? "w-6 bg-violet-200" : "w-2.5 bg-white/35 hover:bg-white/60"
                         }`}
-                        aria-label={`Zobrazit fotku kanceláře ${index + 1}`}
+                        aria-label={`${copy.public.showOfficePhoto} ${index + 1}`}
                       />
                     ))}
                   </div>
@@ -487,7 +560,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                 <div className="w-full max-w-[580px] space-y-4 border-l border-violet-300/18 pl-5 sm:pl-6">
                   <p className="inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
                     <Building2 className="h-3.5 w-3.5" />
-                    Kancelář
+                    {copy.public.office}
                   </p>
 
                   {officeAddressText ? (
@@ -495,7 +568,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                       {officeAddressText}
                     </p>
                   ) : (
-                    <p className="text-sm text-violet-100/70">Adresa kanceláře není vyplněná.</p>
+                    <p className="text-sm text-violet-100/70">{copy.public.noOfficeAddress}</p>
                   )}
 
                   {officeMapsLink ? (
@@ -506,7 +579,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                       className="inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12]"
                     >
                       <MapPin className="h-4 w-4" />
-                      Otevřít v Google mapách
+                      {copy.public.openMaps}
                     </a>
                   ) : null}
                 </div>
@@ -527,7 +600,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             <div className="text-center">
               <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
                 <Mail className="h-3.5 w-3.5" />
-                Kontakt
+                {copy.public.contact}
               </p>
             </div>
 
@@ -535,36 +608,36 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
               {[
                 {
                   key: "phone",
-                  label: "Telefon",
+                  label: copy.preview.phone,
                   icon: PhoneCall,
-                  value: card.phone.trim(),
+                  value: localizedCard.phone.trim(),
                   href: cardPhoneLink || undefined,
                 },
                 {
                   key: "email",
-                  label: "E-mail",
+                  label: copy.meeting.email,
                   icon: Mail,
-                  value: card.email.trim(),
-                  href: card.email.trim() ? `mailto:${card.email.trim()}` : undefined,
+                  value: localizedCard.email.trim(),
+                  href: localizedCard.email.trim() ? `mailto:${localizedCard.email.trim()}` : undefined,
                 },
                 {
                   key: "web",
-                  label: "Web",
+                  label: copy.preview.website,
                   icon: Globe2,
                   value: cardWebsiteLabel,
                   href: cardWebsiteLink || undefined,
                 },
                 {
                   key: "ico",
-                  label: "IČO",
+                  label: copy.preview.companyId,
                   icon: Building2,
-                  value: card.ico.trim(),
+                  value: localizedCard.ico.trim(),
                 },
                 {
                   key: "location",
-                  label: "Lokalita",
+                  label: copy.preview.location,
                   icon: MapPin,
-                  value: card.location.trim(),
+                  value: localizedCard.location.trim(),
                 },
               ].map((item) => (
                 <div key={item.key} className="group space-y-2">
@@ -599,7 +672,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                         item.value
                       )
                     ) : (
-                      <span className="text-white/35">Nevyplněno</span>
+                      <span className="text-white/35">{copy.public.notFilled}</span>
                     )}
                   </div>
                 </div>
@@ -612,7 +685,7 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
                 onClick={handleDownloadContactVCard}
                 className="inline-flex w-full items-center justify-center rounded-[18px] border border-violet-300/25 bg-violet-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(124,58,237,0.34)] transition hover:bg-violet-800 sm:w-auto"
               >
-                Uložit do kontaktů
+                {copy.public.saveContact}
               </button>
             </div>
           </div>
@@ -625,20 +698,20 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
-                  Sjednat schůzku
+                  {copy.public.scheduleKicker}
                 </p>
                 <h2 className="mt-1 text-xl font-bold tracking-[-0.02em] text-white">
-                  Domluvte si termín
+                  {copy.public.scheduleTitle}
                 </h2>
                 <p className="mt-1 text-sm text-violet-100/75">
-                  Vyplňte kontakt a zprávu. V nejbližší době vás budu kontaktovat.
+                  {copy.public.scheduleDescription}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={closeModal}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-violet-100 transition hover:bg-white/18"
-                aria-label="Zavřít formulář"
+                aria-label={copy.public.closeForm}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -646,10 +719,11 @@ export default function OnlineCardPublicClient({ slug, card }: OnlineCardPublicC
 
             <OnlineCardMeetingStepper
               slug={slug}
+              locale={locale}
               onSubmitted={() => {
                 setStatus({
                   type: "success",
-                  message: "Žádost byla odeslána. Brzy se ti ozveme.",
+                  message: copy.public.submitted,
                 });
                 setOpen(false);
               }}

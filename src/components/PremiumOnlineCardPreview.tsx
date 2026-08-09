@@ -14,6 +14,11 @@ import {
 import Image from "next/image";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import type { ComponentType } from "react";
+import {
+  ONLINE_CARD_COPY,
+  type OnlineCardLocale,
+  type OnlineCardTranslations,
+} from "@/lib/onlineCardI18n";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin-ext"],
@@ -32,6 +37,7 @@ export type PremiumOnlineCardValue = {
   location: string;
   officeLabel: string;
   officePhotos: string[];
+  translations?: OnlineCardTranslations;
 };
 
 type PremiumOnlineCardPreviewProps = {
@@ -44,6 +50,7 @@ type PremiumOnlineCardPreviewProps = {
   surface?: "card" | "seamless";
   theme?: "dark" | "light";
   showContactSection?: boolean;
+  locale?: OnlineCardLocale;
   meetingCta?: {
     label?: string;
     onClick?: () => void;
@@ -177,8 +184,10 @@ export function PremiumOnlineCardPreview({
   surface = "card",
   theme = "dark",
   showContactSection = true,
+  locale = "cs",
   meetingCta,
 }: PremiumOnlineCardPreviewProps) {
+  const copy = ONLINE_CARD_COPY[locale].preview;
   const fullWidthLayout = layout === "fullWidth";
   const compact = fullWidthLayout && density === "compact";
   const seamless = fullWidthLayout && surface === "seamless";
@@ -186,7 +195,7 @@ export function PremiumOnlineCardPreview({
   const websiteLink = sanitizeWebsite(value.website);
   const websiteLabel = websiteLink ? normalizeWebsiteLabel(websiteLink) : value.website;
   const phoneLink = value.phone ? normalizePhoneHref(value.phone) : "";
-  const meetingCtaLabel = meetingCta?.label?.trim() || "Sjednat schůzku";
+  const meetingCtaLabel = meetingCta?.label?.trim() || copy.scheduleMeeting;
   const showHeaderCta = !fullWidthLayout && !!meetingCta;
   const editableFieldFrameClass = fullWidthLayout
     ? compact
@@ -241,18 +250,18 @@ export function PremiumOnlineCardPreview({
           }`}
         >
           <UserRound className={compact ? "h-3 w-3 text-fuchsia-300" : "h-3.5 w-3.5 text-fuchsia-300"} />
-          Profil poradce
+          {copy.advisorProfile}
         </p>
       ) : null}
 
       {editable ? (
         <div className={editableFieldFrameClass}>
-          <p className={editableFieldLabelClass}>Jméno a příjmení</p>
+          <p className={editableFieldLabelClass}>{copy.fullName}</p>
           <input
             type="text"
             value={value.fullName}
             onChange={(event) => onPatch?.({ fullName: event.target.value.slice(0, 120) })}
-            placeholder="Jméno a příjmení"
+            placeholder={copy.fullNamePlaceholder}
             className={`${fullNameInputClass} mt-1`}
           />
         </div>
@@ -272,12 +281,12 @@ export function PremiumOnlineCardPreview({
             <BriefcaseBusiness className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
           </span>
           <div className={`flex-1 ${editableFieldFrameClass}`}>
-            <p className={editableFieldLabelClass}>Pozice</p>
+            <p className={editableFieldLabelClass}>{copy.title}</p>
             <input
               type="text"
               value={value.title}
               onChange={(event) => onPatch?.({ title: event.target.value.slice(0, 120) })}
-              placeholder="Pozice / role"
+              placeholder={copy.titlePlaceholder}
               className={`${titleInputClass} mt-1`}
             />
           </div>
@@ -317,15 +326,15 @@ export function PremiumOnlineCardPreview({
         }`}
       >
         <MessageSquareQuote className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
-        O mně
+        {copy.about}
       </h2>
       {editable ? (
         <div className={`${editableFieldFrameClass} ${compact ? "mt-2" : "mt-3"}`}>
-          <p className={editableFieldLabelClass}>O mně</p>
+          <p className={editableFieldLabelClass}>{copy.about}</p>
           <textarea
             value={value.bio}
             onChange={(event) => onPatch?.({ bio: event.target.value.slice(0, 1_000) })}
-            placeholder="Krátké představení pro veřejnou vizitku."
+            placeholder={copy.bioPlaceholder}
             className={`mt-1 w-full resize-y bg-transparent leading-relaxed outline-none ${
               compact ? "min-h-[86px] text-xs sm:text-sm" : "min-h-[130px] text-sm sm:text-base"
             } ${
@@ -343,7 +352,7 @@ export function PremiumOnlineCardPreview({
         </p>
       ) : (
         <p className={`mt-3 text-sm sm:text-base ${fullWidthLayout ? "text-white/42" : "text-slate-400"}`}>
-          Bez doplněného představení.
+          {copy.noBio}
         </p>
       )}
     </section>
@@ -360,7 +369,7 @@ export function PremiumOnlineCardPreview({
           {[
             {
               key: "phone",
-              label: "Telefon",
+              label: copy.phone,
               icon: PhoneCall,
               value: value.phone,
               placeholder: "+420 777 000 111",
@@ -378,7 +387,7 @@ export function PremiumOnlineCardPreview({
             },
             {
               key: "web",
-              label: "Web",
+              label: copy.website,
               value: editable ? value.website : websiteLabel,
               icon: Globe2,
               placeholder: "https://...",
@@ -387,7 +396,7 @@ export function PremiumOnlineCardPreview({
             },
             {
               key: "ico",
-              label: "IČO",
+              label: copy.companyId,
               icon: BriefcaseBusiness,
               value: value.ico,
               placeholder: "12345678",
@@ -395,7 +404,7 @@ export function PremiumOnlineCardPreview({
             },
             {
               key: "location",
-              label: "Lokalita",
+              label: copy.location,
               icon: MapPin,
               value: value.location,
               placeholder: "Město",
@@ -415,7 +424,7 @@ export function PremiumOnlineCardPreview({
 	              <div className="min-h-[28px] break-words pl-[42px] text-[18px] font-semibold leading-tight text-white/92 sm:text-[22px]">
 	                {editable ? (
 	                  <div className={editableFieldFrameClass}>
-	                    <p className={editableFieldLabelClass}>Kontakt</p>
+	                    <p className={editableFieldLabelClass}>{copy.contact}</p>
 	                    <input
 	                      type="text"
 	                      value={item.value}

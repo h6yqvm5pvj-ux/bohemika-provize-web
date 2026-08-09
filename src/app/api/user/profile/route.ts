@@ -18,6 +18,10 @@ import {
   type IntranetSectionKey,
 } from "@/app/intranet/sections";
 import { isFontTheme } from "@/lib/fontTheme";
+import {
+  resolveOnlineCardTranslations,
+  type OnlineCardTranslations,
+} from "@/lib/onlineCardI18n";
 
 export const runtime = "nodejs";
 
@@ -379,6 +383,7 @@ type OnlineCardPayload = {
   location: string;
   officeLabel: string;
   officePhotos: string[];
+  translations: OnlineCardTranslations;
   updatedAt: string;
 };
 
@@ -456,6 +461,7 @@ function sanitizeOnlineCard(value: unknown, ownerEmail: string): OnlineCardPaylo
   const location = normalizeOptionalText(value.location, 120);
   const officeLabel = normalizeOptionalText(value.officeLabel, ONLINE_CARD_OFFICE_MAX_LEN);
   const officePhotos = sanitizeOnlineCardPhotos(value.officePhotos);
+  const translations = resolveOnlineCardTranslations(value.translations);
 
   if (
     fullName == null ||
@@ -503,6 +509,7 @@ function sanitizeOnlineCard(value: unknown, ownerEmail: string): OnlineCardPaylo
     location,
     officeLabel,
     officePhotos,
+    translations,
     updatedAt: new Date().toISOString(),
   };
 }

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { LogoLoop, type LogoLoopItem } from "@/components/LogoLoop";
+import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 
 type PartnerInsurer = {
   label: string;
@@ -28,6 +29,7 @@ type AdvisorProfileSectionsProps = {
   flush?: boolean;
   reveal?: boolean;
   theme?: "dark" | "light";
+  locale?: OnlineCardLocale;
 };
 
 const PARTNER_INSURERS: PartnerInsurer[] = [
@@ -124,15 +126,6 @@ const ADVISOR_SERVICES = [
   },
 ];
 
-const COMPANY_LEAD =
-  "Využíváme více než dvacetileté zkušenosti z finančně-poradenského trhu. Díky tomu vždy vyhledáme účinné řešení vašich potřeb a požadavků.";
-
-const COMPANY_PARAGRAPHS = [
-  "Profesionální jednání poradců společnosti Bohemika je naprostou a nezbytnou samozřejmostí. Spokojenost klientů je pro nás na prvním místě a jednáme vždy pouze v jejich zájmu.",
-  "Samozřejmostí je pro nás zvyšování odborné kvalifikace, dodržování důvěrnosti zpracovaných informací a dat našich klientů. Netolerujeme jakékoli porušení zákonů, legislativy či nečestné jednání.",
-  "Vše pečlivě vysvětlíme, dbáme na vzájemné porozumění a klientům poskytujeme komplexní informace a služby v celé šíři finančního portfolia. Objektivní analýza aktuální individuální situace klienta a přesná definice realistického cíle jsou základem úspěšného splnění našeho úkolu.",
-];
-
 const COMPANY_PILLARS = [
   {
     title: "Klient na prvním místě",
@@ -170,7 +163,9 @@ export function AdvisorProfileSections({
   flush = false,
   reveal = false,
   theme = "dark",
+  locale = "cs",
 }: AdvisorProfileSectionsProps) {
+  const copy = ONLINE_CARD_COPY[locale];
   const light = theme === "light";
   const revealAttrs = reveal
     ? {
@@ -204,29 +199,19 @@ export function AdvisorProfileSections({
         <div className="relative z-10 space-y-7 text-left sm:space-y-8 sm:text-center">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-white/[0.06] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Co pro vás zajistím
+            {copy.advisor.serviceKicker}
           </p>
           <h2 className="text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl">
-            Poradenství, které nekončí sjednáním
+            {copy.advisor.serviceTitle}
           </h2>
           <p className="mx-auto max-w-3xl text-base leading-relaxed text-violet-100/80 sm:text-lg">
-            Cílem není pouze uzavřít smlouvu, ale budovat dlouhodobý vztah založený na důvěře.
-            Každému klientovi věnuji individuální péči a čas, abych opravdu porozuměl jeho
-            situaci, plánům i obavám. Hledám řešení, které je optimální nejen cenou, ale především
-            kvalitou, stabilitou a skutečným přínosem pro klienta v každodenním životě. Společně
-            nastavíme pojištění, investice i finanční plán tak, aby dávaly smysl dnes a obstály i
-            v budoucnu při změně zaměstnání, podnikání, rodinné situace nebo bydlení. Pravidelně
-            smlouvy reviduji, vysvětluji možné varianty a doporučuji konkrétní kroky, které klienta
-            chrání před zbytečnými riziky. Neřeším jen podpis smlouvy, ale dlouhodobý servis,
-            dostupnost a aktivní péči, na kterou se můžete spolehnout, když ji opravdu potřebujete.
-            Protože dobré poradenství nezačíná ani nekončí podpisem - začíná důvěrou a pokračuje
-            dlouhodobou péčí.
+            {copy.advisor.serviceLead}
           </p>
 
           <div className="mx-auto grid w-full max-w-5xl gap-3 pt-1 sm:grid-cols-2 lg:grid-cols-3">
             {ADVISOR_SERVICES.map((service, index) => (
               <div
-                key={service.label}
+                key={copy.advisor.services[index]}
                 className="group inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-violet-50 sm:text-[15px] vizitka-anim-up"
                 style={{ animationDelay: `${300 + index * 75}ms` }}
               >
@@ -240,7 +225,7 @@ export function AdvisorProfileSections({
                     aria-hidden="true"
                   />
                 </span>
-                <span>{service.label}</span>
+                <span>{copy.advisor.services[index]}</span>
               </div>
             ))}
           </div>
@@ -253,7 +238,7 @@ export function AdvisorProfileSections({
                 className="inline-flex items-center gap-2 rounded-[20px] border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_56%,#c084fc_100%)] px-7 py-3 text-base font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.42)] transition hover:brightness-110 vizitka-cta-glow"
               >
                 <Sparkles className="h-4 w-4" />
-                Sjednat schůzku
+                {copy.preview.scheduleMeeting}
               </button>
             </div>
           ) : null}
@@ -269,7 +254,7 @@ export function AdvisorProfileSections({
           <div className="text-left sm:text-center">
             <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-sky-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-100">
               <Building2 className="h-3.5 w-3.5" />
-              O firmě
+              {copy.advisor.aboutKicker}
             </p>
             <h2 className="mt-4 text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl">Bohemika a.s.</h2>
           </div>
@@ -277,11 +262,11 @@ export function AdvisorProfileSections({
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1.22fr)_minmax(0,0.78fr)]">
             <div className="space-y-5">
               <p className="text-lg leading-relaxed text-violet-50 sm:text-2xl sm:leading-tight">
-                {COMPANY_LEAD}
+                {copy.advisor.companyLead}
               </p>
 
               <div className="space-y-4">
-                {COMPANY_PARAGRAPHS.map((paragraph) => (
+                {copy.advisor.companyParagraphs.map((paragraph) => (
                   <p
                     key={paragraph}
                     className="max-w-3xl text-sm leading-relaxed text-violet-100/78 sm:text-base"
@@ -294,11 +279,11 @@ export function AdvisorProfileSections({
 
             <aside className="space-y-5 lg:border-l lg:border-violet-300/16 lg:pl-7">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-200/90">
-                Na čem stavíme spolupráci
+                {copy.advisor.pillarsKicker}
               </p>
               <div className="space-y-3">
-                {COMPANY_PILLARS.map((pillar) => (
-                  <div key={pillar.title} className="group flex items-start gap-3">
+                {COMPANY_PILLARS.map((pillar, index) => (
+                  <div key={copy.advisor.pillars[index]?.[0]} className="group flex items-start gap-3">
                     <span className="relative mt-0.5 inline-flex h-9 w-8 shrink-0 items-center justify-center">
                       <pillar.icon
                         className={`h-5 w-5 ${pillar.iconClass} drop-shadow-[0_8px_18px_rgba(196,181,253,0.22)] transition duration-300 group-hover:-translate-y-0.5 group-hover:scale-110`}
@@ -310,9 +295,9 @@ export function AdvisorProfileSections({
                       />
                     </span>
                     <div>
-                      <p className="text-sm font-semibold text-white sm:text-[15px]">{pillar.title}</p>
+                      <p className="text-sm font-semibold text-white sm:text-[15px]">{copy.advisor.pillars[index]?.[0]}</p>
                       <p className="mt-1 text-xs leading-relaxed text-violet-100/72 sm:text-sm">
-                        {pillar.detail}
+                        {copy.advisor.pillars[index]?.[1]}
                       </p>
                     </div>
                   </div>
@@ -324,8 +309,7 @@ export function AdvisorProfileSections({
                   Vienna Insurance Group
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-violet-50">
-                  Bohemika je součástí koncernu VIG, který patří mezi největší evropské pojišťovací
-                  skupiny.
+                  {copy.advisor.vig}
                 </p>
               </div>
             </aside>
@@ -341,13 +325,13 @@ export function AdvisorProfileSections({
           <div>
             <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
               <Handshake className="h-3.5 w-3.5" />
-              Partnerské pojišťovny
+              {copy.advisor.partnersKicker}
             </p>
             <h2 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl">
-              Spolupracujeme s předními značkami
+              {copy.advisor.partnersTitle}
             </h2>
             <p className="mx-auto mt-2 max-w-2xl text-sm text-violet-100/75 sm:text-base">
-              Výběr řešení stavíme podle klienta, ne podle jedné pojišťovny.
+              {copy.advisor.partnersLead}
             </p>
           </div>
 
