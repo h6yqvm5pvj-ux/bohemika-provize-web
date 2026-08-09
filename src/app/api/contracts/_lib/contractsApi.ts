@@ -70,51 +70,14 @@ import type {
   UserProfileSnapshot,
   UserTreeResult,
 } from "./contractsApi.types";
-import {
-  calculateNeon,
-  calculateFlexi,
-  calculateMaxEfekt,
-  calculatePillowInjury,
-  calculateDomex,
-  calculateCppBytex,
-  calculatePillowMajetek,
-  calculateKoopMajetekObcan,
-  calculateKoopOdzam,
-  calculateKoopPmop,
-  calculateMaxdomov,
-  calculateCppAuto,
-  calculateSlaviaAuto,
-  calculateSlaviaFlotila,
-  calculateCppSimplex,
-  calculateCppPPRbez,
-  calculateCppPPRs,
-  calculateAllianzAuto,
-  calculateCsobAuto,
-  calculateUniqaAuto,
-  calculateUniqaFlotila,
-  calculatePillowAuto,
-  calculateKooperativaAuto,
-  calculateKoopFlotila,
-  calculateZamex,
-  calculateCppCestovko,
-  calculateAxaCestovko,
-  calculateKoopCestovko,
-  calculateComfortCC,
-} from "@/app/lib/productFormulas";
-import {
-  normalizeCommissionCoefficientSet,
-  signedDateForCoefficientSetOverride,
-} from "@/app/lib/productFormulas/coefficientSets";
+import { calculateCommission } from "@/app/lib/calculateCommission";
+import { normalizeCommissionCoefficientSet } from "@/app/lib/productFormulas/coefficientSets";
 import {
   calculateNeonDecreaseStornoBase,
   calculateNeonRefreshCommissionBase,
   isNeonHistoricalPeriod,
   NEON_REFRESH_STORNO_MONTHS,
-  normalizeNeonDurationYears,
 } from "@/app/lib/productFormulas/neon";
-import { calculateMaxCizinKomplex } from "@/app/lib/productFormulas/maxcizinkomplex";
-import { calculateCppHafan } from "@/app/lib/productFormulas/cpphafan";
-import { calculateAllianzMujDomov } from "@/app/lib/productFormulas/allianzMujDomov";
 import {
   evaluateSubscriptionAccess,
   normalizeIsoDay,
@@ -1709,112 +1672,6 @@ const paymentsPerYear = (frequency: PaymentFrequency): number =>
     ? 2
     : 1;
 
-const durationRange = (product: Product): [number, number] => {
-  switch (product) {
-    case "neon":
-      return [1, 99];
-    case "flexi":
-      return [1, 80];
-    case "maximaMaxEfekt":
-      return [1, 80];
-    default:
-      return [1, 1];
-  }
-};
-
-const durationFallback = (product: Product): number => {
-  switch (product) {
-    case "neon":
-      return 15;
-    case "flexi":
-      return 30;
-    case "maximaMaxEfekt":
-      return 30;
-    default:
-      return 1;
-  }
-};
-
-const normalizedDurationYears = (
-  product: Product,
-  years: number | null | undefined
-): number => {
-  const [min, max] = durationRange(product);
-  const raw =
-    typeof years === "number" && Number.isFinite(years)
-      ? years
-      : durationFallback(product);
-  const wholeYears = Math.floor(raw);
-  return Math.min(max, Math.max(min, wholeYears));
-};
-
-const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
-  switch (product) {
-    case "neon":
-    case "flexi":
-    case "pillowInjury":
-    case "maximaMaxEfekt":
-      return ["monthly"];
-    case "domex":
-    case "cppbytex":
-    case "cpphafan":
-      return ["quarterly", "semiannual", "annual"];
-    case "pillowmajetek":
-    case "koopmajetekobcan":
-    case "koopfit":
-    case "koopodzam":
-    case "kooppmop":
-    case "pillowAuto":
-    case "maxdomov":
-    case "allianzmujdomov":
-    case "kooperativaAuto":
-    case "koopflotila":
-    case "allianzAuto":
-    case "slaviaflotila":
-      return ["monthly", "quarterly", "semiannual", "annual"];
-    case "cppAuto":
-    case "slaviaauto":
-    case "csobAuto":
-    case "uniqaAuto":
-    case "uniqaflotila":
-    case "zamex":
-    case "cppsimplex":
-    case "cppPPRbez":
-    case "cppPPRs":
-      return ["quarterly", "semiannual", "annual"];
-    case "cppcestovko":
-    case "axacestovko":
-    case "koopcestovko":
-    case "maxcizinkomplex":
-    case "comfortcc":
-      return ["annual"];
-    default:
-      return ["annual"];
-  }
-};
-
-const paymentBasedTotals = (
-  items: CommissionResultItemDTO[],
-  multiplier: number
-): { immediate: number; subsequent: number } => {
-  let immediate = 0;
-  let subsequent = 0;
-
-  items.forEach((it) => {
-    const title = (it.title ?? "").toLowerCase();
-    if (title.includes("okamžitá")) {
-      immediate += it.amount ?? 0;
-    } else if (title.includes("následná")) {
-      subsequent += it.amount ?? 0;
-    }
-  });
-
-  return {
-    immediate: immediate * multiplier,
-    subsequent: subsequent * multiplier,
-  };
-};
-
 const normalizeTitleKey = (title: string): string => {
   const normalized = title.toLowerCase();
   if (normalized.includes("z platby")) return `payment-${normalized}`;
@@ -2359,248 +2216,6 @@ const markLinkedAdvisorTipAsContracted = async ({
   await batch.commit();
 };
 
-const computeItemsForProductPositionAndMode = ({
-  productKey,
-  position,
-  commissionMode,
-  contractSignedDateIso,
-  commissionCoefficientSetOverride,
-  neonCoefficientSetOverride,
-  inputAmount,
-  frequencyRaw,
-  durationYears,
-  durationMonths,
-  maxCizinKomplexVariant,
-  comfortPayment,
-  comfortGradual,
-  comfortTargetAmount,
-}: {
-  productKey: Product;
-  position: Position;
-  commissionMode: CommissionMode;
-  contractSignedDateIso: string | null;
-  commissionCoefficientSetOverride?: CommissionCoefficientSet | null;
-  neonCoefficientSetOverride?: NeonCoefficientSet | null;
-  inputAmount: number;
-  frequencyRaw: PaymentFrequency;
-  durationYears: number | null;
-  durationMonths: number | null;
-  maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
-  comfortPayment: number | null;
-  comfortGradual: boolean | null;
-  comfortTargetAmount: number | null;
-}): { items: CommissionResultItemDTO[]; total: number } | null => {
-  const safeAmount = Number.isFinite(inputAmount) ? Math.max(0, inputAmount) : 0;
-  const allowedFrequencies = allowedFrequenciesForProduct(productKey);
-  const usedFrequency = allowedFrequencies.includes(frequencyRaw)
-    ? frequencyRaw
-    : allowedFrequencies[0];
-  const normalizedCoefficientSetOverride =
-    normalizeCommissionCoefficientSet(commissionCoefficientSetOverride);
-  const normalizedNeonCoefficientSetOverride =
-    neonCoefficientSetOverride === "historical" || neonCoefficientSetOverride === "current"
-      ? neonCoefficientSetOverride
-      : normalizedCoefficientSetOverride === "historical" ||
-          normalizedCoefficientSetOverride === "current"
-        ? normalizedCoefficientSetOverride
-        : null;
-  const coefficientSignedDateIso = signedDateForCoefficientSetOverride({
-    product: productKey,
-    contractSignedDateIso,
-    coefficientSetOverride: normalizedCoefficientSetOverride,
-  });
-
-  switch (productKey) {
-    case "neon": {
-      const years = normalizeNeonDurationYears(
-        durationYears,
-        contractSignedDateIso,
-        normalizedNeonCoefficientSetOverride
-      );
-      return calculateNeon(
-        safeAmount,
-        position,
-        years,
-        commissionMode,
-        contractSignedDateIso,
-        normalizedNeonCoefficientSetOverride
-      );
-    }
-    case "flexi": {
-      const years = normalizedDurationYears("flexi", durationYears);
-      return calculateFlexi(safeAmount, position, commissionMode, years);
-    }
-    case "maximaMaxEfekt": {
-      const years = normalizedDurationYears("maximaMaxEfekt", durationYears);
-      return calculateMaxEfekt(
-        safeAmount,
-        years,
-        position,
-        commissionMode,
-        coefficientSignedDateIso
-      );
-    }
-    case "maxcizinkomplex": {
-      const normalizedMonths =
-        typeof durationMonths === "number" && Number.isFinite(durationMonths)
-          ? Math.max(1, Math.floor(durationMonths))
-          : null;
-      void normalizedMonths;
-      const variant = maxCizinKomplexVariant ?? "exclusiveStandard";
-      return calculateMaxCizinKomplex(safeAmount, position, variant);
-    }
-    case "pillowInjury":
-      return calculatePillowInjury(safeAmount, position, commissionMode);
-    case "domex":
-    case "cppbytex":
-    case "cpphafan":
-    case "koopmajetekobcan":
-    case "koopfit":
-    case "koopodzam":
-    case "kooppmop":
-    case "zamex": {
-      const dto =
-        productKey === "domex"
-          ? calculateDomex(safeAmount, usedFrequency, position, coefficientSignedDateIso)
-          : productKey === "cppbytex"
-          ? calculateCppBytex(safeAmount, usedFrequency, position)
-          : productKey === "cpphafan"
-          ? calculateCppHafan(safeAmount, usedFrequency, position)
-          : productKey === "koopodzam"
-          ? calculateKoopOdzam(safeAmount, usedFrequency, position)
-          : productKey === "kooppmop"
-          ? calculateKoopPmop(safeAmount, usedFrequency, position)
-          : productKey === "zamex"
-          ? calculateZamex(safeAmount, usedFrequency, position)
-          : calculateKoopMajetekObcan(safeAmount, usedFrequency, position);
-      const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
-        (item.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
-      return {
-        items: filtered,
-        total: totals.immediate,
-      };
-    }
-    case "pillowmajetek":
-      return calculatePillowMajetek(safeAmount, usedFrequency, position);
-    case "maxdomov": {
-      const dto = calculateMaxdomov(safeAmount, usedFrequency, position);
-      const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
-        (item.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
-      return { items: filtered, total: totals.immediate };
-    }
-    case "allianzmujdomov":
-      return calculateAllianzMujDomov(safeAmount, usedFrequency, position);
-    case "cppsimplex": {
-      const dto = calculateCppSimplex(safeAmount, usedFrequency, position);
-      const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
-        (item.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
-      return { items: filtered, total: totals.immediate };
-    }
-    case "cppAuto":
-      return calculateCppAuto(
-        safeAmount,
-        usedFrequency,
-        position,
-        coefficientSignedDateIso
-      );
-    case "slaviaauto":
-      return calculateSlaviaAuto(safeAmount, usedFrequency, position);
-    case "slaviaflotila":
-      return calculateSlaviaFlotila(safeAmount, usedFrequency, position);
-    case "cppPPRbez": {
-      const dto = calculateCppPPRbez(safeAmount, usedFrequency, position);
-      const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
-        (item.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
-      return { items: filtered, total: totals.immediate };
-    }
-    case "cppPPRs": {
-      const dto = calculateCppPPRs(safeAmount, usedFrequency, position);
-      const filtered = dto.items.filter((item: CommissionResultItemDTO) =>
-        (item.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(usedFrequency));
-      return { items: filtered, total: totals.immediate };
-    }
-    case "allianzAuto":
-      return calculateAllianzAuto(
-        safeAmount,
-        usedFrequency,
-        position,
-        coefficientSignedDateIso
-      );
-    case "csobAuto":
-      return calculateCsobAuto(
-        safeAmount,
-        usedFrequency,
-        position,
-        coefficientSignedDateIso
-      );
-    case "uniqaAuto":
-      return calculateUniqaAuto(
-        safeAmount,
-        usedFrequency,
-        position,
-        coefficientSignedDateIso
-      );
-    case "uniqaflotila":
-      return calculateUniqaFlotila(
-        safeAmount,
-        usedFrequency,
-        position,
-        coefficientSignedDateIso
-      );
-    case "pillowAuto":
-      return calculatePillowAuto(
-        safeAmount,
-        usedFrequency,
-        position,
-        coefficientSignedDateIso
-      );
-    case "kooperativaAuto":
-      return calculateKooperativaAuto(
-        safeAmount,
-        usedFrequency,
-        position,
-        coefficientSignedDateIso
-      );
-    case "koopflotila":
-      return calculateKoopFlotila(safeAmount, usedFrequency, position);
-    case "cppcestovko":
-      return calculateCppCestovko(safeAmount, position);
-    case "axacestovko":
-      return calculateAxaCestovko(safeAmount, position);
-    case "koopcestovko":
-      return calculateKoopCestovko(safeAmount, position);
-    case "comfortcc":
-      return calculateComfortCC({
-        fee: safeAmount,
-        payment:
-          typeof comfortPayment === "number" && Number.isFinite(comfortPayment)
-            ? Math.max(0, comfortPayment)
-            : 0,
-        targetAmount:
-          comfortGradual &&
-          typeof comfortTargetAmount === "number" &&
-          Number.isFinite(comfortTargetAmount)
-            ? Math.max(0, comfortTargetAmount)
-            : 0,
-        isSavings: Boolean(comfortGradual),
-        isGradualFee: Boolean(comfortGradual),
-        position,
-      });
-    default:
-      return null;
-  }
-};
-
 const effectiveCommissionModeForStoredProduct = (
   productKey: Product,
   mode: CommissionMode,
@@ -2691,7 +2306,7 @@ const computeManagerOverridesForChain = ({
       neonCoefficientSetOverride
     );
 
-    const managerResult = computeItemsForProductPositionAndMode({
+    const managerResult = calculateCommission({
       productKey,
       position: manager.position,
       commissionMode: managerMode,
@@ -2708,7 +2323,7 @@ const computeManagerOverridesForChain = ({
       comfortTargetAmount,
     });
     const baselineResult = childPositionForBaseline
-      ? computeItemsForProductPositionAndMode({
+      ? calculateCommission({
           productKey,
           position: childPositionForBaseline,
           commissionMode: managerMode,
@@ -5358,7 +4973,7 @@ export async function handleContractsCreate(req: NextRequest) {
       commissionInputAmount = decreaseBase.calculationMonthlyPremium;
     }
 
-    const trustedResult = computeItemsForProductPositionAndMode({
+    const trustedResult = calculateCommission({
       productKey: normalizedEntry.payload.productKey,
       position: trustedPosition,
       commissionMode: effectiveTrustedMode,
@@ -5409,7 +5024,7 @@ export async function handleContractsCreate(req: NextRequest) {
       const fallbackDecreaseBaseResult =
         sourceDecreaseResult || !neonDecreaseFallbackPosition
           ? null
-          : computeItemsForProductPositionAndMode({
+          : calculateCommission({
               productKey: normalizedEntry.payload.productKey,
               position: neonDecreaseFallbackPosition,
               commissionMode: neonDecreaseFallbackMode ?? effectiveTrustedMode,

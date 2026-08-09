@@ -17,38 +17,6 @@ import {
 } from "../types/domain";
 
 import {
-  calculateNeon,
-  calculateFlexi,
-  calculateMaxEfekt,
-  calculateMaxCizinKomplex,
-  calculatePillowInjury,
-  calculateDomex,
-  calculateCppBytex,
-  calculateCppHafan,
-  calculatePillowMajetek,
-  calculateKoopMajetekObcan,
-  calculateKoopOdzam,
-  calculateKoopPmop,
-  calculateMaxdomov,
-  calculateCppAuto,
-  calculateSlaviaAuto,
-  calculateSlaviaFlotila,
-  calculateCppPPRbez,
-  calculateCppPPRs,
-  calculateCppSimplex,
-  calculateAllianzAuto,
-  calculateAllianzMujDomov,
-  calculateCsobAuto,
-  calculateUniqaAuto,
-  calculateUniqaFlotila,
-  calculatePillowAuto,
-  calculateKooperativaAuto,
-  calculateKoopFlotila,
-  calculateZamex,
-  calculateCppCestovko,
-  calculateAxaCestovko,
-  calculateKoopCestovko,
-  calculateComfortCC,
   getCoefficientSummary,
   isNeonHistoricalPeriod,
   isCppAutoHistoricalPeriod,
@@ -65,6 +33,7 @@ import {
   isDomexHistoricalPeriod,
   productCoefficientValidityError,
 } from "../lib/productFormulas";
+import { calculateCommission } from "../lib/calculateCommission";
 import {
   calculateNeonDecreaseStornoBase,
   calculateNeonRefreshCommissionBase,
@@ -92,7 +61,7 @@ import {
   readAdminImpersonationState,
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
-import { formatMoney, positionLabel, toDate } from "@/app/lib/formatters";
+import { formatMoney, positionLabel } from "@/app/lib/formatters";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
@@ -126,7 +95,6 @@ import {
   roundToCents,
   SUPPORTED_LABEL,
   paymentBasedTotals,
-  isImmediateCommissionTitle,
   supportsOriginalContractReplacement,
   supportsPolicyEndDate,
   originalReplacementLabel,
@@ -144,10 +112,20 @@ import {
   type EndorsementSourceEntry,
   type EndorsementDraft,
   toNonNegativeNumber,
-  compareSourceEntriesByRecency,
-  resolveEffectivePremium,
   normalizeClientNameForSystemMatch,
 } from "./calculatorHelpers";
+import {
+  buildEndorsementSourceEntries,
+  contractOwnerEmail,
+  dateToIsoDay,
+  durationYearsLabel,
+  negativeImmediateCommissionResult,
+  negativeImmediateCommissionResultFromSourceItems,
+  resolveRemainingEndorsementDurationMonths,
+  resolveRemainingEndorsementDurationYears,
+} from "./endorsementCalculation";
+import { useEndorsementPreparation } from "./useEndorsementPreparation";
+import { useContractSave } from "./useContractSave";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
 import { CalculatorProductPickerModal } from "./CalculatorProductPickerModal";
 import { CalculatorProductAndPdfSection } from "./CalculatorProductAndPdfSection";
@@ -217,6 +195,7 @@ import {
   type UserSearchApiResponse,
 } from "./tipContractSettings";
 import {
+  BULK_PDF_PRODUCTS,
   buildPdfImportIssueMessage,
   detectProductFromPdfLazy,
   failedPdfImportMessage,
@@ -259,20 +238,7 @@ const PDF_IMPORT_TIMEOUT_ERROR_NAME = "PdfImportTimeoutError";
 const AUTO_BULK_IMPORT_MAX_FILES = 25;
 const DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE = "2025-01-01";
 const DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE_LABEL = "01.01.2025";
-const AUTO_BULK_IMPORT_PRODUCTS: readonly Product[] = [
-  "cppAuto",
-  "slaviaauto",
-  "allianzAuto",
-  "csobAuto",
-  "uniqaAuto",
-  "pillowAuto",
-  "kooperativaAuto",
-];
-const AUTO_BULK_IMPORT_PRODUCT_SET = new Set<Product>(AUTO_BULK_IMPORT_PRODUCTS);
-const BULK_IMPORT_PRODUCTS: readonly Product[] = [
-  ...AUTO_BULK_IMPORT_PRODUCTS,
-  "domex",
-];
+const BULK_IMPORT_PRODUCTS = BULK_PDF_PRODUCTS;
 const BULK_IMPORT_PRODUCT_SET = new Set<Product>(BULK_IMPORT_PRODUCTS);
 const PAYMENT_FREQUENCIES: PaymentFrequency[] = [
   "monthly",
@@ -319,10 +285,6 @@ const parsedPdfFrequencyValue = (
     : null;
 };
 
-const isAutoBulkImportProduct = (
-  product: Product | null | undefined
-): product is Product => Boolean(product && AUTO_BULK_IMPORT_PRODUCT_SET.has(product));
-
 const isBulkImportProduct = (
   product: Product | null | undefined
 ): product is Product => Boolean(product && BULK_IMPORT_PRODUCT_SET.has(product));
@@ -330,13 +292,8 @@ const isBulkImportProduct = (
 const isBulkImportProductAllowedForSelection = (
   importProduct: Product,
   selectedProduct: Product | null | undefined
-): boolean => {
-  if (selectedProduct === "domex") return importProduct === "domex";
-  if (isAutoBulkImportProduct(selectedProduct)) {
-    return isAutoBulkImportProduct(importProduct);
-  }
-  return false;
-};
+): boolean =>
+  isBulkImportProduct(importProduct) && isBulkImportProduct(selectedProduct);
 
 const parsedPdfBooleanOrNumberValue = (
   parsed: ParsedContractPdf,
@@ -778,13 +735,6 @@ const clientNameSuggestionScore = (query: string, candidate: string): number => 
 };
 
 type CalculatorViewMode = "addContract" | "commissionOnly";
-type PrepareEndorsementOptions = {
-  productOverride?: Product;
-  contractNumberOverride?: string | null;
-  contractSignedDateOverride?: string | null;
-  newPremiumAmountOverride?: number | null;
-  source?: "manual" | "pdf";
-};
 
 type AutoBulkImportRowStatus =
   | "queued"
@@ -813,252 +763,6 @@ type AutoBulkImportRow = {
   clientName: string | null;
   message: string;
   reviewDraft?: AutoBulkReviewDraft | null;
-};
-
-type ContractsFindEntry = NonNullable<ContractsFindApiResponse["contracts"]>[number];
-
-const contractOwnerEmail = (entry: ContractsFindEntry): string =>
-  normalizeEmailValue(entry.userEmail) || normalizeEmailValue(entry.adviserEmail);
-
-const buildEndorsementSourceEntries = (
-  contracts: ContractsFindEntry[],
-  targetProduct: Product
-): EndorsementSourceEntry[] =>
-  contracts
-    .map((entry) => {
-      const entryId = typeof entry.id === "string" ? entry.id.trim() : "";
-      if (!entryId) return null;
-      const ownerEmail = contractOwnerEmail(entry);
-      const policyStartDate = toDate(entry?.policyStartDate);
-      const policyEndDate = toDate(entry?.policyEndDate);
-      const storedDurationYears = finitePositiveDuration(entry?.durationYears);
-      return {
-        id: entryId,
-        path: entryPathFromContractOwner(ownerEmail, entryId),
-        productKey: (entry?.productKey as Product | undefined) ?? null,
-        position: POSITION_ORDER.includes(entry?.position as Position)
-          ? (entry?.position as Position)
-          : null,
-        commissionMode:
-          entry?.commissionMode === "standard" || entry?.commissionMode === "accelerated"
-            ? entry.commissionMode
-            : null,
-        rootContractEntryId:
-          (typeof entry?.rootContractEntryId === "string"
-            ? entry.rootContractEntryId
-            : null) ?? null,
-        effectiveInputAmount: resolveEffectivePremium(entry),
-        durationYears:
-          storedDurationYears ??
-          durationYearsFromDates(policyStartDate, policyEndDate),
-        durationMonths: finitePositiveDuration(entry?.durationMonths),
-        policyStartDate,
-        policyEndDate,
-        contractSignedDate: toDate(entry?.contractSignedDate),
-        createdAt: toDate(entry?.createdAt),
-        items: Array.isArray(entry?.result?.items)
-          ? entry.result.items
-          : Array.isArray(entry?.items)
-            ? entry.items
-            : [],
-      };
-    })
-    .filter((entry): entry is EndorsementSourceEntry => Boolean(entry))
-    .filter((entry) => entry.productKey === targetProduct)
-    .sort(compareSourceEntriesByRecency);
-
-const dateToIsoDay = (date: Date | null | undefined): string | null => {
-  if (!date || Number.isNaN(date.getTime())) return null;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const isoDayToLocalDate = (value: string | null | undefined): Date | null => {
-  if (typeof value !== "string") return null;
-  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const completedCalendarMonthsBetween = (
-  startDate: Date | null | undefined,
-  endDate: Date | null | undefined
-): number | null => {
-  if (
-    !startDate ||
-    !endDate ||
-    Number.isNaN(startDate.getTime()) ||
-    Number.isNaN(endDate.getTime()) ||
-    endDate.getTime() <= startDate.getTime()
-  ) {
-    return null;
-  }
-  let months =
-    (endDate.getFullYear() - startDate.getFullYear()) * 12 +
-    (endDate.getMonth() - startDate.getMonth());
-  if (endDate.getDate() < startDate.getDate()) {
-    months -= 1;
-  }
-  return Math.max(0, months);
-};
-
-const durationYearsFromDates = (
-  startDate: Date | null | undefined,
-  endDate: Date | null | undefined
-): number | null => {
-  if (
-    !startDate ||
-    !endDate ||
-    Number.isNaN(startDate.getTime()) ||
-    Number.isNaN(endDate.getTime()) ||
-    endDate.getTime() <= startDate.getTime()
-  ) {
-    return null;
-  }
-  const diffYears =
-    (endDate.getTime() - startDate.getTime()) / (365.2425 * 24 * 60 * 60 * 1000);
-  if (!Number.isFinite(diffYears) || diffYears <= 0) return null;
-  return Math.max(1, Math.ceil(diffYears));
-};
-
-const finitePositiveDuration = (value: unknown): number | null => {
-  const num = Number(value);
-  if (!Number.isFinite(num) || num <= 0) return null;
-  return Math.floor(num);
-};
-
-const durationYearsLabel = (years: number | null | undefined): string | null => {
-  if (years == null) return null;
-  if (years === 1) return "1 rok";
-  if (years >= 2 && years <= 4) return `${years} roky`;
-  return `${years} let`;
-};
-
-const resolveRemainingEndorsementDurationYears = (
-  source: EndorsementSourceEntry | null,
-  targetProduct: Product,
-  endorsementPolicyStartDateIso: string
-): number | null => {
-  if (!source || !shouldShowDuration(targetProduct)) return null;
-  const effectiveDate =
-    isoDayToLocalDate(endorsementPolicyStartDateIso) ??
-    toDate(endorsementPolicyStartDateIso);
-  if (!effectiveDate) return null;
-
-  const remainingByEndDate = durationYearsFromDates(
-    effectiveDate,
-    source.policyEndDate
-  );
-  if (remainingByEndDate != null) {
-    return normalizedDurationYears(targetProduct, remainingByEndDate);
-  }
-
-  const sourceDurationYears = finitePositiveDuration(source.durationYears);
-  const sourceStartDate = source.policyStartDate ?? source.contractSignedDate;
-  const elapsedMonths = completedCalendarMonthsBetween(
-    sourceStartDate,
-    effectiveDate
-  );
-  if (sourceDurationYears != null && elapsedMonths != null) {
-    const remainingMonths = sourceDurationYears * 12 - elapsedMonths;
-    if (remainingMonths > 0) {
-      return normalizedDurationYears(
-        targetProduct,
-        Math.max(1, Math.ceil(remainingMonths / 12))
-      );
-    }
-    return null;
-  }
-
-  return sourceDurationYears == null
-    ? null
-    : normalizedDurationYears(targetProduct, sourceDurationYears);
-};
-
-const resolveRemainingEndorsementDurationMonths = (
-  source: EndorsementSourceEntry | null,
-  targetProduct: Product,
-  endorsementPolicyStartDateIso: string
-): number | null => {
-  if (!source || !shouldShowDurationMonths(targetProduct)) return null;
-  const sourceDurationMonths = finitePositiveDuration(source.durationMonths);
-  const effectiveDate =
-    isoDayToLocalDate(endorsementPolicyStartDateIso) ??
-    toDate(endorsementPolicyStartDateIso);
-  if (!effectiveDate) return null;
-  const sourceStartDate = source.policyStartDate ?? source.contractSignedDate;
-  const elapsedMonths = completedCalendarMonthsBetween(
-    sourceStartDate,
-    effectiveDate
-  );
-  if (sourceDurationMonths != null && elapsedMonths != null) {
-    const remainingMonths = sourceDurationMonths - elapsedMonths;
-    if (remainingMonths > 0) {
-      return normalizedDurationMonths(targetProduct, remainingMonths);
-    }
-    return null;
-  }
-  return sourceDurationMonths == null
-    ? null
-    : normalizedDurationMonths(targetProduct, sourceDurationMonths);
-};
-
-const negativeImmediateCommissionResult = (
-  result: { items: CommissionResultItemDTO[]; total: number } | null
-): { items: CommissionResultItemDTO[]; total: number } | null => {
-  if (!result) return null;
-  const items = result.items
-    .filter((item) => isImmediateCommissionTitle(item.title ?? ""))
-    .map((item) => ({
-      ...item,
-      amount: -Math.abs(roundToCents(item.amount ?? 0)),
-    }))
-    .filter((item) => Math.abs(item.amount ?? 0) > 0);
-  return {
-    items,
-    total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
-  };
-};
-
-const negativeImmediateCommissionResultFromSourceItems = ({
-  sourceItems,
-  previousPremiumAmount,
-  calculationAmount,
-}: {
-  sourceItems: CommissionResultItemDTO[];
-  previousPremiumAmount: number;
-  calculationAmount: number;
-}): { items: CommissionResultItemDTO[]; total: number } | null => {
-  if (
-    sourceItems.length === 0 ||
-    previousPremiumAmount <= 0 ||
-    calculationAmount <= 0
-  ) {
-    return null;
-  }
-
-  const ratio = calculationAmount / previousPremiumAmount;
-  if (!Number.isFinite(ratio) || ratio <= 0) return null;
-
-  const items = sourceItems
-    .filter((item) => isImmediateCommissionTitle(item.title ?? ""))
-    .map((item) => ({
-      ...item,
-      amount: -Math.abs(roundToCents((item.amount ?? 0) * ratio)),
-    }))
-    .filter((item) => Math.abs(item.amount ?? 0) > 0);
-  if (items.length === 0) return null;
-
-  return {
-    items,
-    total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
-  };
 };
 
 // ---------- Kalkulačka ----------
@@ -4827,10 +4531,7 @@ export default function CalculatorPage() {
               {
                 status: "skipped",
                 productLabel: productLabel(importProduct),
-                message:
-                  product === "domex"
-                    ? "DOMEX dávka ukládá jen ČPP DOMEX."
-                    : "Auto dávka ukládá jen auto produkty kromě flotil.",
+                message: "Pro tento produkt není hromadný PDF import dostupný.",
               },
               "skipped"
             );
@@ -4895,6 +4596,21 @@ export default function CalculatorPage() {
           const clientNameFromPdf = parsedPdfTextValue(parsed, "clientName");
           const signedDateIso = parsedPdfTextValue(parsed, "contractSignedDate");
           const policyStartDateIso = parsedPdfTextValue(parsed, "policyStartDate");
+          const policyEndDateIso = parsedPdfTextValue(parsed, "policyEndDate");
+          const parsedDurationYears = parsedPdfRoundedNumberValue(
+            parsed,
+            "durationYears"
+          );
+          const parsedDurationMonths = parsedPdfRoundedNumberValue(
+            parsed,
+            "durationMonths"
+          );
+          const parsedMaxCizinKomplexVariant =
+            parsed.maxCizinKomplexVariant === "exclusiveStandard" ||
+            parsed.maxCizinKomplexVariant === "premium"
+              ? parsed.maxCizinKomplexVariant
+              : null;
+          const parsedComfortPayment = parsedPdfNumberValue(parsed, "comfortPayment");
           rows = updateAutoBulkRow(rows, index, {
             contractNumber: contractNumberFromPdf || null,
             clientName: clientNameFromPdf || null,
@@ -4950,7 +4666,7 @@ export default function CalculatorPage() {
           const dateIssues = collectContractDateIssues(
             signedDateIso,
             policyStartDateIso,
-            ""
+            policyEndDateIso
           );
           const dateErrors = dateIssues.filter((issue) => issue.severity === "error");
           const dateWarnings = dateIssues.filter((issue) => issue.severity === "warning");
@@ -5248,8 +4964,8 @@ export default function CalculatorPage() {
           const carHullSumInsured =
             canSaveHullText && hullSumInsuredText ? null : hullSumInsuredNumber;
           const isAutoImportProduct = isAutoProduct(importProduct);
-          const domexDetailForSave =
-            importProduct === "domex"
+          const propertyDetailForSave =
+            importProduct === "domex" || importProduct === "maxdomov"
               ? {
                   address: parsedPdfTextValue(parsed, "domexAddress") || null,
                   propertyType: parsedPdfTextValue(parsed, "domexPropertyType") || null,
@@ -5312,19 +5028,37 @@ export default function CalculatorPage() {
             inputAmount: amountForSave,
             calculationInputAmount: amountForSave,
             effectiveInputAmount: amountForSave,
-            comfortPayment: null,
-            comfortGradual: null,
+            comfortPayment:
+              importProduct === "comfortcc" &&
+              parsedComfortPayment != null &&
+              parsedComfortPayment > 0
+                ? parsedComfortPayment
+                : null,
+            comfortGradual: importProduct === "comfortcc" ? false : null,
             comfortTargetAmount: null,
             frequencyRaw: frequencyForSave,
             clientName: clientNameFromPdf,
             contractSignedDate: signedDateIso,
             policyStartDate: policyStartDateIso,
-            policyEndDate: null,
+            policyEndDate: policyEndDateIso || null,
             status: "active",
             stornoDate: null,
-            durationYears: null,
-            durationMonths: null,
-            maxCizinKomplexVariant: null,
+            durationYears:
+              shouldShowDuration(importProduct) &&
+              parsedDurationYears != null &&
+              parsedDurationYears > 0
+                ? parsedDurationYears
+                : null,
+            durationMonths:
+              shouldShowDurationMonths(importProduct) &&
+              parsedDurationMonths != null &&
+              parsedDurationMonths > 0
+                ? normalizedDurationMonths(importProduct, parsedDurationMonths)
+                : null,
+            maxCizinKomplexVariant:
+              importProduct === "maxcizinkomplex"
+                ? parsedMaxCizinKomplexVariant
+                : null,
             contractNumber: contractNumberFromPdf,
             tipContractTipsterEmail: null,
             tipContractTipsterPercent: null,
@@ -5454,8 +5188,9 @@ export default function CalculatorPage() {
               ? parsedPdfBooleanValue(parsed, "carAddonKeyLossTheft")
               : null,
             neonDetail: null,
-            domexDetail: domexDetailForSave,
-            maxdomovDetail: null,
+            domexDetail: importProduct === "domex" ? propertyDetailForSave : null,
+            maxdomovDetail:
+              importProduct === "maxdomov" ? propertyDetailForSave : null,
             paid: shouldAutoMarkPaidByPolicyStartDate(policyStartDateIso),
             isRefresh: isReplacementPdf,
             refreshOriginalMissingInSystem: replacementOriginalMissingInSystem,
@@ -5586,347 +5321,54 @@ export default function CalculatorPage() {
 
   const recalc = () => {
     const val = parseNumber(amountText);
-    const comfortPayment = parseNumber(comfortPaymentText);
-    const comfortTargetAmount = parseNumber(comfortTargetAmountText);
-    const positionForCalc = calculatorViewMode === "commissionOnly"
-      ? position
-      : timelineMatchedPosition?.position ??
-        (!effectivePositionTimelineLoading && effectivePositionTimeline.length > 0
-          ? position
-          : null);
-
-    if (!hasSelectedProduct) {
-      setItems([]);
-      setTotal(0);
-      setUnsupported(false);
-      return;
-    }
-
-    if (val <= 0) {
-      setItems([]);
-      setTotal(0);
-      setUnsupported(false);
-      return;
-    }
-    if (!positionForCalc) {
-      setItems([]);
-      setTotal(0);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "neon") {
-      const neonCalculationAmount =
-        neonRefreshCommissionBase?.calculationMonthlyPremium ?? val;
-      const dto = calculateNeon(
-        neonCalculationAmount,
-        positionForCalc,
-        durationYears,
-        mode,
-        contractSignedDateForNeon
-      );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "flexi") {
-      const y = normalizedDurationYears("flexi", durationYears);
-      const dto = calculateFlexi(val, positionForCalc, mode, y);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "maximaMaxEfekt") {
-      if (durationYears == null) {
-        setItems([]);
-        setTotal(0);
-        setUnsupported(false);
-        return;
-      }
-      const y = normalizedDurationYears("maximaMaxEfekt", durationYears);
-      const dto = calculateMaxEfekt(
-        val,
-        y,
-        positionForCalc,
-        mode,
-        contractSignedDateForNeon
-      );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "maxcizinkomplex") {
-      const dto = calculateMaxCizinKomplex(val, positionForCalc, maxCizinKomplexVariant);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "pillowInjury") {
-      const dto = calculatePillowInjury(val, positionForCalc, mode);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
+    const positionForCalc =
+      calculatorViewMode === "commissionOnly"
+        ? position
+        : timelineMatchedPosition?.position ??
+          (!effectivePositionTimelineLoading && effectivePositionTimeline.length > 0
+            ? position
+            : null);
 
     if (
-      product === "domex" ||
-      product === "cppbytex" ||
-      product === "cpphafan" ||
-      product === "koopmajetekobcan" ||
-      product === "koopfit" ||
-      product === "koopodzam" ||
-      product === "kooppmop" ||
-      product === "zamex"
+      !hasSelectedProduct ||
+      val <= 0 ||
+      !positionForCalc ||
+      (product === "maximaMaxEfekt" && durationYears == null)
     ) {
-      const dto =
-        product === "domex"
-          ? calculateDomex(val, frequency, positionForCalc, contractSignedDateForNeon)
-          : product === "cppbytex"
-          ? calculateCppBytex(val, frequency, positionForCalc)
-          : product === "cpphafan"
-          ? calculateCppHafan(val, frequency, positionForCalc)
-          : product === "koopodzam"
-          ? calculateKoopOdzam(val, frequency, positionForCalc)
-          : product === "kooppmop"
-          ? calculateKoopPmop(val, frequency, positionForCalc)
-          : product === "zamex"
-          ? calculateZamex(val, frequency, positionForCalc)
-          : calculateKoopMajetekObcan(val, frequency, positionForCalc);
-      const filtered = dto.items.filter((i) =>
-        (i.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
-      setItems(filtered);
-      setTotal(totals.immediate);
+      setItems([]);
+      setTotal(0);
       setUnsupported(false);
       return;
     }
 
-    if (product === "pillowmajetek") {
-      const dto = calculatePillowMajetek(val, frequency, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
+    const result = calculateCommission({
+      productKey: product,
+      position: positionForCalc,
+      commissionMode: mode,
+      contractSignedDateIso: contractSignedDateForNeon,
+      inputAmount:
+        product === "neon"
+          ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? val
+          : val,
+      frequencyRaw: frequency,
+      durationYears,
+      durationMonths,
+      maxCizinKomplexVariant,
+      comfortPayment: parseNumber(comfortPaymentText),
+      comfortGradual,
+      comfortTargetAmount: parseNumber(comfortTargetAmountText),
+    });
+
+    if (!result) {
+      setItems([]);
+      setTotal(0);
+      setUnsupported(true);
       return;
     }
 
-    if (product === "maxdomov") {
-      const dto = calculateMaxdomov(val, frequency, positionForCalc);
-      const filtered = dto.items.filter((i) =>
-        (i.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
-      setItems(filtered);
-      setTotal(totals.immediate);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "allianzmujdomov") {
-      const dto = calculateAllianzMujDomov(val, frequency, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "cppAuto") {
-      const dto = calculateCppAuto(
-        val,
-        frequency,
-        positionForCalc,
-        contractSignedDateForNeon
-      );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "slaviaauto") {
-      const dto = calculateSlaviaAuto(val, frequency, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "slaviaflotila") {
-      const dto = calculateSlaviaFlotila(val, frequency, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "cppsimplex") {
-      const dto = calculateCppSimplex(val, frequency, positionForCalc);
-      const filtered = dto.items.filter((i) =>
-        (i.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
-      setItems(filtered);
-      setTotal(totals.immediate);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "cppPPRbez") {
-      const dto = calculateCppPPRbez(val, frequency, positionForCalc);
-      const filtered = dto.items.filter((i) =>
-        (i.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
-      setItems(filtered);
-      setTotal(totals.immediate);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "cppPPRs") {
-      const dto = calculateCppPPRs(val, frequency, positionForCalc);
-      const filtered = dto.items.filter((i) =>
-        (i.title ?? "").toLowerCase().includes("(z platby)")
-      );
-      const totals = paymentBasedTotals(filtered, paymentsPerYear(frequency));
-      setItems(filtered);
-      setTotal(totals.immediate);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "allianzAuto") {
-      const dto = calculateAllianzAuto(
-        val,
-        frequency,
-        positionForCalc,
-        contractSignedDateForNeon
-      );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "csobAuto") {
-      const dto = calculateCsobAuto(
-        val,
-        frequency,
-        positionForCalc,
-        contractSignedDateForNeon
-      );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "uniqaAuto" || product === "uniqaflotila") {
-      const dto =
-        product === "uniqaAuto"
-          ? calculateUniqaAuto(
-              val,
-              frequency,
-              positionForCalc,
-              contractSignedDateForNeon
-            )
-          : calculateUniqaFlotila(
-              val,
-              frequency,
-              positionForCalc,
-              contractSignedDateForNeon
-            );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "pillowAuto") {
-      const dto = calculatePillowAuto(
-        val,
-        frequency,
-        positionForCalc,
-        contractSignedDateForNeon
-      );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "kooperativaAuto") {
-      const dto = calculateKooperativaAuto(
-        val,
-        frequency,
-        positionForCalc,
-        contractSignedDateForNeon
-      );
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "koopflotila") {
-      const dto = calculateKoopFlotila(val, frequency, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "cppcestovko") {
-      const dto = calculateCppCestovko(val, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "axacestovko") {
-      const dto = calculateAxaCestovko(val, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "koopcestovko") {
-      const dto = calculateKoopCestovko(val, positionForCalc);
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    if (product === "comfortcc") {
-      const dto = calculateComfortCC({
-        fee: val,
-        payment: comfortPayment,
-        targetAmount: comfortGradual ? comfortTargetAmount : 0,
-        isSavings: comfortGradual,
-        isGradualFee: comfortGradual,
-        position: positionForCalc,
-      });
-      setItems(dto.items);
-      setTotal(dto.total);
-      setUnsupported(false);
-      return;
-    }
-
-    setItems([]);
-    setTotal(0);
-    setUnsupported(true);
+    setItems(result.items);
+    setTotal(result.total);
+    setUnsupported(false);
   };
 
   useEffect(() => {
@@ -6313,241 +5755,39 @@ export default function CalculatorPage() {
     return match.position;
   };
 
-  const handlePrepareEndorsement = async (
-    options: PrepareEndorsementOptions = {}
-  ): Promise<boolean> => {
-    if (!user) {
-      setValidationError("Nejdřív se prosím přihlas.");
-      return false;
-    }
-    const targetProduct = options.productOverride ?? (hasSelectedProduct ? product : null);
-    const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
-    if (!targetOwnerEmail) {
-      setValidationError("Chybí cílový vlastník smlouvy.");
-      return false;
-    }
+  const handlePrepareEndorsement = useEndorsementPreparation({
+    user,
+    hasSelectedProduct,
+    product,
+    effectiveSaveOwnerEmail,
+    tipsterModeEnabled,
+    contractNumber,
+    contractSignedDate,
+    policyStartDate,
+    amountText,
+    durationYears,
+    durationMonths,
+    endorsementDurationManualOverride,
+    mode,
+    frequency,
+    maxCizinKomplexVariant,
+    comfortPaymentText,
+    comfortGradual,
+    comfortTargetAmountText,
+    isSavingForSubordinate,
+    resolveEndorsementPositionForSignedDate,
+    setEndorsementWorkflowActive,
+    setEndorsementPreviewSource,
+    setEndorsementDraft,
+    setEndorsementDraftModalOpen,
+    setDurationYears,
+    setDurationMonths,
+    setValidationError,
+    setSaveMessage,
+    setMissingFields,
+  });
 
-    if (tipsterModeEnabled) {
-      setSaveMessage("V režimu TIPAŘSKÉ spolupráce se smlouvy neukládají.");
-      return false;
-    }
-
-    if (!targetProduct) {
-      setValidationError("Nejdřív vyber produkt.");
-      return false;
-    }
-
-    if (!LIFE_PRODUCTS.includes(targetProduct)) {
-      setValidationError("Změnu zatím umíme jen pro ŽP produkty.");
-      return false;
-    }
-
-    const trimmedContractNumber = (
-      options.contractNumberOverride ?? contractNumber
-    ).trim();
-    const signedDateIso = (
-      options.contractSignedDateOverride ?? contractSignedDate
-    ).trim();
-    const endorsementPolicyStartDateIso = policyStartDate.trim();
-    const newPremiumAmount =
-      options.newPremiumAmountOverride == null
-        ? parseNumber(amountText)
-        : toNonNegativeNumber(options.newPremiumAmountOverride);
-
-    const missing: string[] = [];
-    if (!trimmedContractNumber) missing.push("číslo smlouvy");
-    if (!signedDateIso) missing.push("datum sjednání");
-    if (!endorsementPolicyStartDateIso) missing.push("datum počátku");
-    if (newPremiumAmount <= 0) missing.push("částku");
-    if (
-      targetProduct === "maximaMaxEfekt" &&
-      durationYears == null &&
-      endorsementDurationManualOverride
-    ) {
-      missing.push("dobu trvání smlouvy");
-    }
-
-    if (missing.length > 0) {
-      const msg = `Pro změnu doplň: ${missing.join(", ")}.`;
-      setSaveMessage(msg);
-      setValidationError(msg);
-      setMissingFields((prev) => Array.from(new Set([...prev, ...missing])));
-      return false;
-    }
-
-    setEndorsementWorkflowActive(true);
-    const positionForEndorsement = resolveEndorsementPositionForSignedDate(signedDateIso);
-    if (!positionForEndorsement) return false;
-
-    try {
-      const params = new URLSearchParams({
-        scope: isSavingForSubordinate ? "team" : "my",
-        q: trimmedContractNumber,
-      });
-      const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
-        user,
-        `/api/contracts/find?${params.toString()}`,
-        { method: "GET" }
-      );
-      const contracts = (Array.isArray(payload?.contracts) ? payload.contracts : []).filter(
-        (entry) => contractOwnerEmail(entry) === targetOwnerEmail
-      );
-
-      if (contracts.length === 0) {
-        setValidationError(
-          `Smlouvu č. ${trimmedContractNumber} jsem u vybraného poradce nenašel. Nejdřív musí být uložená jako původní smlouva.`
-        );
-        return false;
-      }
-
-      const productMatches = buildEndorsementSourceEntries(contracts, targetProduct);
-      if (productMatches.length === 0) {
-        setValidationError(
-          `Pro smlouvu č. ${trimmedContractNumber} není uložený produkt ${productLabel(targetProduct)}.`
-        );
-        return false;
-      }
-
-      const latestEntry = productMatches[0];
-      setEndorsementPreviewSource(latestEntry);
-      const previousPremiumAmount = latestEntry.effectiveInputAmount;
-      const deltaAmount = newPremiumAmount - previousPremiumAmount;
-      const sourceDurationYears = resolveRemainingEndorsementDurationYears(
-        latestEntry,
-        targetProduct,
-        endorsementPolicyStartDateIso
-      );
-      const sourceDurationMonths = resolveRemainingEndorsementDurationMonths(
-        latestEntry,
-        targetProduct,
-        endorsementPolicyStartDateIso
-      );
-      const endorsementDurationYears =
-        shouldShowDuration(targetProduct) && !endorsementDurationManualOverride
-          ? sourceDurationYears ?? durationYears ?? null
-          : durationYears ?? null;
-      const endorsementDurationMonths =
-        shouldShowDurationMonths(targetProduct) && !endorsementDurationManualOverride
-          ? sourceDurationMonths ?? durationMonths ?? null
-          : durationMonths ?? null;
-
-      if (shouldShowDuration(targetProduct) && endorsementDurationYears != null) {
-        setDurationYears(normalizedDurationYears(targetProduct, endorsementDurationYears));
-      }
-      if (shouldShowDurationMonths(targetProduct) && endorsementDurationMonths != null) {
-        setDurationMonths(
-          normalizedDurationMonths(targetProduct, endorsementDurationMonths)
-        );
-      }
-
-      if (targetProduct === "maximaMaxEfekt" && endorsementDurationYears == null) {
-        const msg =
-          "Původní smlouva nemá uloženou dobu trvání. Klikni u doby trvání na Upravit a doplň ji ručně.";
-        setValidationError(msg);
-        setSaveMessage(msg);
-        return false;
-      }
-
-      if (Math.abs(deltaAmount) < 0.01) {
-        setValidationError(
-          `Nové pojistné je stejné jako poslední uložená hodnota (${formatMoney(previousPremiumAmount)}).`
-        );
-        return false;
-      }
-
-      const changeType: EndorsementChangeType =
-        deltaAmount > 0 ? "increase" : deltaAmount < 0 ? "decrease" : "same";
-      let calculationAmount = Math.abs(deltaAmount);
-
-      let endorsementItems: CommissionResultItemDTO[] = [];
-      let endorsementTotal = 0;
-      if (changeType === "decrease" && targetProduct === "neon") {
-        const originalStornoStartDateIso =
-          dateToIsoDay(latestEntry.policyStartDate) ??
-          dateToIsoDay(latestEntry.contractSignedDate);
-        const decreaseBase = calculateNeonDecreaseStornoBase({
-          previousMonthlyPremium: previousPremiumAmount,
-          newMonthlyPremium: newPremiumAmount,
-          originalStornoStartDateIso,
-          endorsementPolicyStartDateIso,
-        });
-        if (!decreaseBase || !originalStornoStartDateIso || !isIsoDay(endorsementPolicyStartDateIso)) {
-          const msg =
-            "Nepodařilo se spočítat storno základnu pro snížení NEON dodatku. Zkontroluj počátek původní smlouvy a účinnost dodatku.";
-          setValidationError(msg);
-          setSaveMessage(msg);
-          return false;
-        }
-        calculationAmount = decreaseBase.calculationMonthlyPremium;
-        if (calculationAmount > 0) {
-          const sourceResult = negativeImmediateCommissionResultFromSourceItems({
-            sourceItems: latestEntry.items,
-            previousPremiumAmount,
-            calculationAmount,
-          });
-          const fallbackPosition = latestEntry.position ?? positionForEndorsement;
-          const fallbackMode = latestEntry.commissionMode ?? mode;
-          const fallbackSignedDateIso =
-            dateToIsoDay(latestEntry.contractSignedDate) ?? signedDateIso;
-          const result =
-            sourceResult ??
-            negativeImmediateCommissionResult(
-              computeItemsForPositionAndMode(
-                fallbackPosition,
-                fallbackMode,
-                calculationAmount,
-                targetProduct,
-                fallbackSignedDateIso,
-                endorsementDurationYears
-              )
-            );
-          endorsementItems = result?.items ?? [];
-          endorsementTotal = result?.total ?? 0;
-        }
-      } else if (changeType === "decrease") {
-        calculationAmount = 0;
-      } else if (calculationAmount > 0) {
-        const result = computeItemsForPositionAndMode(
-          positionForEndorsement,
-          mode,
-          calculationAmount,
-          targetProduct,
-          signedDateIso,
-          endorsementDurationYears
-        );
-        endorsementItems = result?.items ?? [];
-        endorsementTotal = result?.total ?? 0;
-      }
-
-      setEndorsementDraft({
-        productKey: targetProduct,
-        contractNumber: trimmedContractNumber,
-        contractSignedDate: signedDateIso,
-        sourceEntryId: latestEntry.id,
-        sourceEntryPath: latestEntry.path,
-        rootContractEntryId: latestEntry.rootContractEntryId ?? latestEntry.id,
-        position: positionForEndorsement,
-        commissionMode: mode,
-        durationYears: endorsementDurationYears,
-        durationMonths: endorsementDurationMonths,
-        previousPremiumAmount,
-        newPremiumAmount,
-        deltaAmount,
-        calculationAmount,
-        changeType,
-        items: endorsementItems,
-        total: endorsementTotal,
-      });
-      setValidationError(null);
-      setSaveMessage("Změna je připravená. Uloží se až po kliknutí na Uložit jako sepsáno.");
-      setEndorsementDraftModalOpen(targetProduct !== "neon");
-      return true;
-    } catch (error) {
-      console.error("Chyba při přípravě dodatku", error);
-      setValidationError("Nepodařilo se připravit změnu smlouvy. Zkus to prosím znovu.");
-      return false;
-    }
-  };
+  const saveContractEntry = useContractSave();
 
   const handleSaveEndorsement = async () => {
     if (!user || !endorsementDraft) return;
@@ -6725,75 +5965,34 @@ export default function CalculatorPage() {
         contractNumber: endorsementDraft.contractNumber,
       };
 
-      const { response, data } = await requestContractsMutationWithAuth({
+      const saved = await saveContractEntry({
         user,
-        path: "/api/contracts",
-        method: "POST",
-        payload: {
-          ownerEmail: targetOwnerEmail,
-          entry: endorsementEntryPayload,
-        },
-        idempotencyKey: buildContractsCreateIdempotencyKey({
-          ownerEmail: targetOwnerEmail,
-          entry: endorsementEntryPayload,
-        }),
+        ownerEmail: targetOwnerEmail,
+        entry: endorsementEntryPayload,
+        fallbackError: "Uložení dodatku selhalo.",
+        pdfFile: importedContractPdfFile,
       });
-      const apiError = getContractsMutationError({
-        response,
-        data,
-        fallback: "Uložení dodatku selhalo.",
-      });
-      if (apiError) {
-        setSaveMessage(apiError);
+      if (!saved.ok) {
+        setSaveMessage(saved.error);
         return;
       }
 
-      const createdEntryId =
-        typeof data?.entryId === "string" ? data.entryId.trim() : "";
-      if (!createdEntryId) {
-        setSaveMessage("Server potvrdil uložení bez ID smlouvy. Zkus to prosím znovu.");
-        return;
-      }
+      const createdEntryId = saved.entryId;
       const ownerEmail = targetOwnerEmail;
-      if (createdEntryId && ownerEmail) {
-        setLastSavedContractRef({
-          ownerEmail,
-          entryId: createdEntryId,
-        });
-      }
+      setLastSavedContractRef({
+        ownerEmail,
+        entryId: createdEntryId,
+      });
 
       let pdfAttachmentMessage = "";
-      if (createdEntryId && ownerEmail && importedContractPdfFile) {
-        try {
-          await uploadContractPdfAttachmentWithAuth({
-            user,
-            ownerEmail,
-            entryId: createdEntryId,
-            file: importedContractPdfFile,
-          });
-          pdfAttachmentMessage = " PDF bylo přiloženo k detailu dodatku.";
-          setPdfImportStatus("PDF bylo bezpečně přiloženo k uloženému dodatku.");
-          setPdfImportError(null);
-          setImportedContractPdfFile(null);
-        } catch (pdfUploadErr) {
-          const message =
-            pdfUploadErr instanceof Error && pdfUploadErr.message.trim()
-              ? pdfUploadErr.message.trim()
-              : "PDF se nepodařilo přiložit.";
-          pdfAttachmentMessage = ` PDF se nepodařilo přiložit: ${message}`;
-          setPdfImportError(`PDF se nepodařilo přiložit: ${message}`);
-        }
-      }
-
-      if (typeof window !== "undefined") {
-        try {
-          sessionStorage.removeItem("contracts_cache_v2");
-          sessionStorage.removeItem("contracts_cache_v3");
-          localStorage.setItem("contracts_last_updated", String(Date.now()));
-          window.dispatchEvent(new Event("contracts:updated"));
-        } catch {
-          // best effort cache invalidation
-        }
+      if (saved.pdfAttachment.status === "uploaded") {
+        pdfAttachmentMessage = " PDF bylo přiloženo k detailu dodatku.";
+        setPdfImportStatus("PDF bylo bezpečně přiloženo k uloženému dodatku.");
+        setPdfImportError(null);
+        setImportedContractPdfFile(null);
+      } else if (saved.pdfAttachment.status === "failed") {
+        pdfAttachmentMessage = ` PDF se nepodařilo přiložit: ${saved.pdfAttachment.message}`;
+        setPdfImportError(`PDF se nepodařilo přiložit: ${saved.pdfAttachment.message}`);
       }
 
       const savedMessage =
@@ -7517,91 +6716,47 @@ export default function CalculatorPage() {
               : null,
       };
 
-      const { response, data } = await requestContractsMutationWithAuth({
+      const saved = await saveContractEntry({
         user,
-        path: "/api/contracts",
-        method: "POST",
-        payload: {
-          ownerEmail: targetOwnerEmail,
-          entry: contractEntryPayload,
-        },
-        idempotencyKey: buildContractsCreateIdempotencyKey({
-          ownerEmail: targetOwnerEmail,
-          entry: contractEntryPayload,
-        }),
+        ownerEmail: targetOwnerEmail,
+        entry: contractEntryPayload,
+        fallbackError: "Uložení smlouvy selhalo.",
+        pdfFile: importedContractPdfFile,
       });
-      const apiError = getContractsMutationError({
-        response,
-        data,
-        fallback: "Uložení smlouvy selhalo.",
-      });
-      if (apiError) {
-        setSaveMessage(apiError);
+      if (!saved.ok) {
+        setSaveMessage(saved.error);
         return;
       }
 
-      const createdEntryId =
-        typeof data?.entryId === "string" ? data.entryId.trim() : "";
-      if (!createdEntryId) {
-        setSaveMessage("Server potvrdil uložení bez ID smlouvy. Zkus to prosím znovu.");
-        return;
-      }
-      const linkedRefreshOriginalEntryId =
-        typeof data?.refreshOriginalEntryId === "string"
-          ? data.refreshOriginalEntryId.trim()
-          : "";
+      const createdEntryId = saved.entryId;
+      const linkedRefreshOriginalEntryId = saved.linkedRefreshOriginalEntryId;
       const ownerEmail = targetOwnerEmail;
-      if (createdEntryId && ownerEmail) {
-        setLastSavedContractRef({
-          ownerEmail,
-          entryId: createdEntryId,
-        });
-        notifyStatementParentContractSaved({
-          contractNumber: trimmedContractNumber,
-          clientName: trimmedClientName,
-          product,
-          ownerEmail,
-          entryId: createdEntryId,
-        });
-      }
+      setLastSavedContractRef({
+        ownerEmail,
+        entryId: createdEntryId,
+      });
+      notifyStatementParentContractSaved({
+        contractNumber: trimmedContractNumber,
+        clientName: trimmedClientName,
+        product,
+        ownerEmail,
+        entryId: createdEntryId,
+      });
 
       let pdfAttachmentMessage = "";
       let pdfAttachmentFailed = false;
-      if (createdEntryId && ownerEmail && importedContractPdfFile) {
-        try {
-          await uploadContractPdfAttachmentWithAuth({
-            user,
-            ownerEmail,
-            entryId: createdEntryId,
-            file: importedContractPdfFile,
-          });
-          pdfAttachmentMessage = " PDF bylo přiloženo k detailu smlouvy.";
-          setPdfImportStatus("PDF bylo bezpečně přiloženo k uložené smlouvě.");
-          setPdfImportError(null);
-          setImportedContractPdfFile(null);
-        } catch (pdfUploadErr) {
-          const message =
-            pdfUploadErr instanceof Error && pdfUploadErr.message.trim()
-              ? pdfUploadErr.message.trim()
-              : "PDF se nepodařilo přiložit.";
-          pdfAttachmentMessage = ` PDF se nepodařilo přiložit: ${message}`;
-          pdfAttachmentFailed = true;
-          setPdfImportError(`PDF se nepodařilo přiložit: ${message}`);
-        }
+      if (saved.pdfAttachment.status === "uploaded") {
+        pdfAttachmentMessage = " PDF bylo přiloženo k detailu smlouvy.";
+        setPdfImportStatus("PDF bylo bezpečně přiloženo k uložené smlouvě.");
+        setPdfImportError(null);
+        setImportedContractPdfFile(null);
+      } else if (saved.pdfAttachment.status === "failed") {
+        pdfAttachmentMessage = ` PDF se nepodařilo přiložit: ${saved.pdfAttachment.message}`;
+        pdfAttachmentFailed = true;
+        setPdfImportError(`PDF se nepodařilo přiložit: ${saved.pdfAttachment.message}`);
       }
 
-      if (typeof window !== "undefined") {
-        try {
-          sessionStorage.removeItem("contracts_cache_v2");
-          sessionStorage.removeItem("contracts_cache_v3");
-          localStorage.setItem("contracts_last_updated", String(Date.now()));
-          window.dispatchEvent(new Event("contracts:updated"));
-        } catch {
-          // best effort cache invalidation
-        }
-      }
-
-      const linkedRefreshOriginal = linkedRefreshOriginalEntryId.length > 0;
+      const linkedRefreshOriginal = Boolean(linkedRefreshOriginalEntryId);
       const savedMessage = isRefreshWithoutOriginalInSystem
         ? "Smlouva byla uložena jako REFRESH bez původní smlouvy v systému. Výpočet provize je orientační a musí se sladit podle provizního výpisu."
         : shouldReplaceOriginalContract
@@ -8929,148 +8084,32 @@ export default function CalculatorPage() {
     contractSignedDateOverride?: string | null,
     durationYearsOverride?: number | null
   ): { items: CommissionResultItemDTO[]; total: number } | null => {
-    if (!pos) return null;
     const val =
       amountOverride == null ? parseNumber(amountText) : toNonNegativeNumber(amountOverride);
-    const freq = frequency;
     const years = durationYearsOverride ?? durationYears;
     const usedMode = (customMode ?? mode) as CommissionMode;
     const targetProduct = productOverride ?? product;
     const signedDateForCalculation =
       contractSignedDateOverride ?? contractSignedDateForNeon;
+    const inputAmount =
+      targetProduct === "neon" && amountOverride == null
+        ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? val
+        : val;
 
-    switch (targetProduct) {
-      case "neon": {
-        const neonVal =
-          amountOverride == null
-            ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? val
-            : val;
-        return calculateNeon(
-          neonVal,
-          pos,
-          years,
-          usedMode,
-          signedDateForCalculation
-        );
-      }
-      case "flexi":
-      {
-        const y = normalizedDurationYears("flexi", years);
-        return calculateFlexi(val, pos, usedMode, y);
-      }
-      case "maximaMaxEfekt": {
-        const y = normalizedDurationYears("maximaMaxEfekt", years);
-        return calculateMaxEfekt(val, y, pos, usedMode, signedDateForCalculation);
-      }
-      case "maxcizinkomplex":
-        return calculateMaxCizinKomplex(val, pos, maxCizinKomplexVariant);
-      case "pillowInjury":
-        return calculatePillowInjury(val, pos, usedMode);
-      case "domex":
-      case "cppbytex":
-      case "cpphafan":
-      case "koopmajetekobcan":
-      case "koopfit":
-      case "koopodzam":
-      case "kooppmop":
-      case "zamex": {
-        const dto =
-          targetProduct === "domex"
-            ? calculateDomex(val, freq, pos, signedDateForCalculation)
-            : targetProduct === "cppbytex"
-            ? calculateCppBytex(val, freq, pos)
-            : targetProduct === "cpphafan"
-            ? calculateCppHafan(val, freq, pos)
-            : targetProduct === "koopodzam"
-            ? calculateKoopOdzam(val, freq, pos)
-            : targetProduct === "kooppmop"
-            ? calculateKoopPmop(val, freq, pos)
-            : targetProduct === "zamex"
-            ? calculateZamex(val, freq, pos)
-            : calculateKoopMajetekObcan(val, freq, pos);
-        const filtered = dto.items.filter((i) =>
-          (i.title ?? "").toLowerCase().includes("(z platby)")
-        );
-        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-        return {
-          items: filtered,
-          total: totals.immediate,
-        };
-      }
-      case "pillowmajetek":
-        return calculatePillowMajetek(val, freq, pos);
-      case "maxdomov": {
-        const dto = calculateMaxdomov(val, freq, pos);
-        const filtered = dto.items.filter((i) =>
-          (i.title ?? "").toLowerCase().includes("(z platby)")
-        );
-        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-        return { items: filtered, total: totals.immediate };
-      }
-      case "allianzmujdomov":
-        return calculateAllianzMujDomov(val, freq, pos);
-      case "cppAuto":
-        return calculateCppAuto(val, freq, pos, signedDateForCalculation);
-      case "slaviaauto":
-        return calculateSlaviaAuto(val, freq, pos);
-      case "slaviaflotila":
-        return calculateSlaviaFlotila(val, freq, pos);
-      case "cppsimplex": {
-        const dto = calculateCppSimplex(val, freq, pos);
-        const filtered = dto.items.filter((i) =>
-          (i.title ?? "").toLowerCase().includes("(z platby)")
-        );
-        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-        return { items: filtered, total: totals.immediate };
-      }
-      case "cppPPRbez": {
-        const dto = calculateCppPPRbez(val, freq, pos);
-        const filtered = dto.items.filter((i) =>
-          (i.title ?? "").toLowerCase().includes("(z platby)")
-        );
-        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-        return { items: filtered, total: totals.immediate };
-      }
-      case "cppPPRs": {
-        const dto = calculateCppPPRs(val, freq, pos);
-        const filtered = dto.items.filter((i) =>
-          (i.title ?? "").toLowerCase().includes("(z platby)")
-        );
-        const totals = paymentBasedTotals(filtered, paymentsPerYear(freq));
-        return { items: filtered, total: totals.immediate };
-      }
-      case "allianzAuto":
-        return calculateAllianzAuto(val, freq, pos, signedDateForCalculation);
-      case "csobAuto":
-        return calculateCsobAuto(val, freq, pos, signedDateForCalculation);
-      case "uniqaAuto":
-        return calculateUniqaAuto(val, freq, pos, signedDateForCalculation);
-      case "uniqaflotila":
-        return calculateUniqaFlotila(val, freq, pos, signedDateForCalculation);
-      case "pillowAuto":
-        return calculatePillowAuto(val, freq, pos, signedDateForCalculation);
-      case "kooperativaAuto":
-        return calculateKooperativaAuto(val, freq, pos, signedDateForCalculation);
-      case "koopflotila":
-        return calculateKoopFlotila(val, freq, pos);
-      case "cppcestovko":
-        return calculateCppCestovko(val, pos);
-      case "axacestovko":
-        return calculateAxaCestovko(val, pos);
-      case "koopcestovko":
-        return calculateKoopCestovko(val, pos);
-      case "comfortcc":
-        return calculateComfortCC({
-          fee: val,
-          payment: parseNumber(comfortPaymentText),
-          targetAmount: comfortGradual ? parseNumber(comfortTargetAmountText) : 0,
-          isSavings: comfortGradual,
-          isGradualFee: comfortGradual,
-          position: pos,
-        });
-      default:
-        return null;
-    }
+    return calculateCommission({
+      productKey: targetProduct,
+      position: pos,
+      commissionMode: usedMode,
+      contractSignedDateIso: signedDateForCalculation,
+      inputAmount,
+      frequencyRaw: frequency,
+      durationYears: years,
+      durationMonths,
+      maxCizinKomplexVariant,
+      comfortPayment: parseNumber(comfortPaymentText),
+      comfortGradual,
+      comfortTargetAmount: parseNumber(comfortTargetAmountText),
+    });
   };
 
   const liveEndorsementPreview = (() => {
@@ -9261,8 +8300,7 @@ export default function CalculatorPage() {
     Boolean(tipContractConfig);
   const renderAutoBulkImportPanel = () => {
     if (!showAutoBulkImport) return null;
-    const bulkImportPanelTitle =
-      product === "domex" ? "Hromadné nahrání DOMEX" : "Hromadné nahrání aut";
+    const bulkImportPanelTitle = "Hromadné nahrání smluv z PDF";
 
     const rowTone = (status: AutoBulkImportRowStatus): string => {
       switch (status) {

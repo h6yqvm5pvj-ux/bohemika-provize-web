@@ -2,7 +2,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import {
   type KeyboardEvent,
   type PointerEvent,
@@ -45,13 +44,6 @@ async function getHtml2Pdf() {
   }
   return html2pdfPromise;
 }
-
-const TN_ACTIVE_DARK_CLASS =
-  "border-slate-950 bg-[linear-gradient(135deg,#111827_0%,#211442_54%,#090d1c_100%)] text-[#f8fafc] shadow-[0_12px_26px_rgba(18,12,43,0.24)]";
-const TN_ACTIVE_VIOLET_CLASS =
-  "border-violet-500 bg-[linear-gradient(135deg,#7c3aed_0%,#a855f7_56%,#c084fc_100%)] text-[#f8fafc] shadow-[0_12px_26px_rgba(124,58,237,0.28)]";
-const TN_INACTIVE_CHIP_CLASS =
-  "border-violet-100 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50/80";
 
 type ComparisonCard = {
   key: string;
@@ -808,6 +800,10 @@ const isYearBadge = (value: string): boolean =>
   /^\d{1,2}\.\d{1,2}\.\d{4}(?:[-–](?:\d{4}|\d{1,2}\.\d{1,2}\.\d{4}))?$/.test(value);
 
 const normalizeYearBadge = (value: string): string => value.replaceAll("-", "–");
+
+const getCardProgressionBadges = (
+  card: Pick<ComparisonCard, "badges">
+): string[] => card.badges.filter((badge) => badge.toLowerCase().includes("progrese"));
 
 const getCardFilterYearBadges = (card: Pick<ComparisonCard, "badges" | "filterYears">): string[] => {
   const years = card.filterYears?.length
@@ -2965,8 +2961,11 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
   "cpp-10x": (percent) => getMultiplierForRange(percent) * percent,
   "cpp-5x": (percent) => getMultiplierForRange5x(percent) * percent,
   "cpp-neon-top-2022-06": (percent) => getMultiplierForRange5x(percent) * percent,
+  "cpp-evoluce-plus-2020-top-5x": (percent) =>
+    getMultiplierForRange5x(percent) * percent,
   "cpp-evoluce-top-5x": (percent) => getMultiplierForRange5x(percent) * percent,
   "cpp-evoluce-5x": getCppEvoluce5xPayoutPercent,
+  "cpp-evoluce-2015-5x": getCppEvoluce5xPayoutPercent,
   "uniqa-domino": (percent) => getMultiplierUniqaDomino(percent) * percent,
   "uniqa-logika-2019": (percent) => getUniqaLogika2019Multiplier(percent) * percent,
   "uniqa-logika-2019-6x": (percent) =>
@@ -3016,9 +3015,10 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
 export default function SrovnavacTrvalychNasledkuPage() {
   const [sumInsuredInput, setSumInsuredInput] = useState("500000");
   const [rangePercentInput, setRangePercentInput] = useState("50");
-  const [showOnly10x, setShowOnly10x] = useState(false);
   const [compactList, setCompactList] = useState(false);
   const [selectedInsurers, setSelectedInsurers] = useState<string[]>([]);
+  const [selectedProgressions, setSelectedProgressions] = useState<string[]>([]);
+  const [productPickerConfirmed, setProductPickerConfirmed] = useState(false);
 
   const sumInsuredValue = (() => {
     const parsed = parseNumber(sumInsuredInput);
@@ -3201,7 +3201,15 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-evoluce-top-5x",
         insurer: "ČPP Evoluce",
-        badges: ["TOP progrese 5×"],
+        badges: ["16.07.2015–2016", "TOP progrese 5×"],
+        payout: payout5x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
+        tablePreview: buildCppEvoluceTop5xTablePreview(normalizedPercent),
+      },
+      {
+        key: "cpp-evoluce-plus-2020-top-5x",
+        insurer: "ČPP Evoluce PLUS",
+        badges: ["2016–2020", "TOP progrese 5×"],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildCppEvoluceTop5xTablePreview(normalizedPercent),
@@ -3209,7 +3217,15 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-evoluce-5x",
         insurer: "ČPP Evoluce",
-        badges: ["5× progrese"],
+        badges: ["16.07.2015–2016", "5× progrese"],
+        payout: payoutCppEvoluce5x,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${cppEvoluce5xPayoutPercent}%.`,
+        tablePreview: buildCppEvoluce5xTablePreview(normalizedPercent),
+      },
+      {
+        key: "cpp-evoluce-2015-5x",
+        insurer: "ČPP Evoluce",
+        badges: ["01.01.2014–01.01.2015", "5× progrese"],
         payout: payoutCppEvoluce5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${cppEvoluce5xPayoutPercent}%.`,
         tablePreview: buildCppEvoluce5xTablePreview(normalizedPercent),
@@ -3695,9 +3711,28 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
     return groups;
   }, []);
-  const filterValueSignature = insurerFilterGroups
-    .flatMap((group) => group.options.map((option) => option.value))
-    .join("|");
+  const allFilterOptionValues = insurerFilterGroups.flatMap((group) =>
+    group.options.map((option) => option.value)
+  );
+  const allFilterOptionsSelected =
+    allFilterOptionValues.length > 0 &&
+    allFilterOptionValues.every((value) => selectedInsurers.includes(value));
+  const filterValueSignature = allFilterOptionValues.join("|");
+  const productFilteredCardsForProgressions = cards.filter(
+    (card) =>
+      selectedInsurers.length === 0 ||
+      getCardFilterOptions(card).some((option) =>
+        selectedInsurers.includes(option.value)
+      )
+  );
+  const progressionOptions = Array.from(
+    new Set(
+      productFilteredCardsForProgressions.flatMap((card) =>
+        getCardProgressionBadges(card)
+      )
+    )
+  );
+  const progressionValueSignature = progressionOptions.join("|");
   const allFilterGroupsExpanded =
     insurerFilterGroups.length > 0 &&
     insurerFilterGroups.every((group) =>
@@ -3739,10 +3774,21 @@ export default function SrovnavacTrvalychNasledkuPage() {
     });
   };
 
+  const toggleProgressionFilter = (value: string) => {
+    setSelectedProgressions((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value]
+    );
+  };
+
   const applyCardFilters = (sourceCards: ComparisonCard[]): ComparisonCard[] =>
     sourceCards.filter((card) => {
       const matchesProgression =
-        !showOnly10x || card.badges.some((badge) => badge.includes("10× progrese"));
+        selectedProgressions.length === 0 ||
+        getCardProgressionBadges(card).some((badge) =>
+          selectedProgressions.includes(badge)
+        );
       const matchesInsurer =
         selectedInsurers.length === 0 ||
         getCardFilterOptions(card).some((option) =>
@@ -4493,8 +4539,21 @@ export default function SrovnavacTrvalychNasledkuPage() {
     });
   }, [filterValueSignature]);
 
+  useEffect(() => {
+    const validProgressions = new Set(
+      progressionValueSignature.split("|").filter(Boolean)
+    );
+
+    setSelectedProgressions((current) => {
+      if (current.length === 0) return current;
+
+      const next = current.filter((value) => validProgressions.has(value));
+      return next.length === current.length ? current : next;
+    });
+  }, [progressionValueSignature]);
+
   const activeFilterCount =
-    (showOnly10x ? 1 : 0) +
+    (selectedProgressions.length > 0 ? 1 : 0) +
     (compactList ? 1 : 0) +
     (selectedInsurers.length > 0 ? 1 : 0);
 
@@ -4511,15 +4570,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     <AppLayout active="tools">
       <div className="relative w-full max-w-[1500px] space-y-3 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-0 pb-8 sm:space-y-4 sm:px-3">
         <header className="flex flex-col gap-3 px-0 pt-0 sm:gap-4 sm:px-2 sm:pt-2">
-          <Link
-            href="/pomucky"
-            className="inline-flex w-fit items-center gap-1.5 rounded-full border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_18px_rgba(76,29,149,0.07)] transition hover:border-violet-300 hover:bg-violet-50 sm:gap-2 sm:py-2 sm:shadow-[0_10px_24px_rgba(76,29,149,0.08)]"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Zpět na pomůcky
-          </Link>
-
-          <div className="flex flex-col gap-4 min-[560px]:flex-row min-[560px]:items-end min-[560px]:justify-between">
+          <div className="flex flex-col gap-4">
             <div className="space-y-2 sm:space-y-3">
               <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200 bg-white/92 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 shadow-[0_8px_18px_rgba(217,70,239,0.08)] sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.18em] sm:shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
                 <ChartNoAxesColumn className="h-3.5 w-3.5" />
@@ -4534,22 +4585,209 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 </p>
               </div>
             </div>
-
-            <div className="hidden shrink-0 min-[560px]:block">
-              <Image
-                src="/icons/nasledna.webp"
-                alt="Trvalé následky"
-                width={260}
-                height={260}
-                className="h-28 w-auto object-contain grayscale opacity-90 sm:h-36"
-                priority
-              />
-            </div>
           </div>
         </header>
 
-        <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(330px,430px)_1fr]">
-          <section className="relative w-full space-y-3 overflow-hidden rounded-[22px] border border-violet-100 bg-white p-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:space-y-4 sm:rounded-[28px] sm:p-4 sm:shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
+        {!productPickerConfirmed ? (
+          <section className="space-y-3">
+            <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700">
+                    Výběr produktů
+                  </div>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">
+                    Zaklikej produkty a ročníky, které chceš porovnat.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                    {allFilterOptionsSelected
+                      ? `Vybráno vše: ${selectedInsurers.length}`
+                      : selectedInsurers.length === 0
+                      ? "Bez omezení"
+                      : `Vybráno: ${selectedInsurers.length}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedInsurers(
+                        allFilterOptionsSelected ? [] : allFilterOptionValues
+                      )
+                    }
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      allFilterOptionsSelected
+                        ? "border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] !text-white shadow-[0_10px_22px_rgba(76,29,149,0.22)]"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                    }`}
+                  >
+                    {allFilterOptionsSelected ? "Zrušit vše" : "Všechny produkty"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleAllFilterGroupsExpanded}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50"
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition ${
+                        allFilterGroupsExpanded ? "rotate-180" : ""
+                      }`}
+                    />
+                    {allFilterGroupsExpanded ? "Sbalit vše" : "Rozbalit vše"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProductPickerConfirmed(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-4 py-2 text-xs font-black !text-white shadow-[0_12px_26px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 sm:px-5"
+                  >
+                    <span>Pokračovat</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid items-start gap-3 lg:grid-cols-2">
+              {insurerFilterGroups.map((group) => {
+                const values = group.options.map((option) => option.value);
+                const selectedCount = values.filter((value) =>
+                  selectedInsurers.includes(value)
+                ).length;
+                const groupFullySelected =
+                  selectedCount === group.options.length && selectedCount > 0;
+                const groupPartlySelected =
+                  selectedCount > 0 && selectedCount < group.options.length;
+                const isExpanded = expandedFilterInsurers.includes(group.insurerName);
+                const logoPath = getInsurerLogoPath(group.insurerName);
+                const logoKey = institutionLogoKeyFromInsurerName(group.insurerName);
+
+                return (
+                  <section
+                    key={group.insurerName}
+                    className={`rounded-[18px] border bg-white px-4 py-4 transition ${
+                      groupFullySelected || groupPartlySelected
+                        ? "border-sky-400 shadow-[0_12px_30px_rgba(14,165,233,0.10)]"
+                        : "border-slate-300 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={() => toggleFilterGroupSelection(values)}
+                        className="flex min-w-0 flex-1 items-center gap-4 rounded-xl text-left transition"
+                        aria-pressed={groupFullySelected}
+                      >
+                        <span
+                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 transition ${
+                            groupFullySelected || groupPartlySelected
+                              ? "border-sky-400 bg-sky-50 text-sky-600"
+                              : "border-sky-300 bg-white text-white"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {groupFullySelected ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : groupPartlySelected ? (
+                            <span className="h-1 w-4 rounded-full bg-sky-500" />
+                          ) : null}
+                        </span>
+                        <span
+                          className={`relative inline-flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-transparent bg-white ${institutionLogoFrameClass(
+                            logoKey,
+                            "compact"
+                          )}`}
+                        >
+                          {logoPath ? (
+                            <Image
+                              src={logoPath}
+                              alt={group.insurerName}
+                              fill
+                              sizes="64px"
+                              className={institutionLogoImageClass(logoKey)}
+                            />
+                          ) : (
+                            <span className="text-[10px] font-semibold text-slate-400">
+                              LOGO
+                            </span>
+                          )}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block break-words text-xl font-medium leading-tight text-slate-950 sm:text-[1.7rem]">
+                            {group.insurerName} ({selectedCount}/{group.options.length})
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleFilterGroupExpanded(group.insurerName)}
+                        className="ml-auto inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
+                        aria-label={`${isExpanded ? "Sbalit" : "Rozbalit"} ${group.insurerName}`}
+                        aria-expanded={isExpanded}
+                      >
+                        <ChevronDown
+                          className={`h-7 w-7 stroke-[2.5] transition ${
+                            isExpanded ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {isExpanded ? (
+                      <div className="mt-6 space-y-4 pl-12 sm:pl-[76px]">
+                        <div className="space-y-4">
+                          {group.options.map((option) => {
+                            const active = selectedInsurers.includes(option.value);
+                            const optionYear = option.badges.join(", ");
+
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => toggleFilterOption(option.value)}
+                                className={`flex w-full items-center gap-5 rounded-xl text-left transition ${
+                                  active
+                                    ? "bg-sky-50/70 text-slate-950"
+                                    : "text-slate-950 hover:bg-slate-50"
+                                }`}
+                                aria-pressed={active}
+                              >
+                                <span
+                                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 ${
+                                    active
+                                      ? "border-sky-400 bg-sky-50 text-sky-600"
+                                      : "border-sky-300 bg-white text-white"
+                                  }`}
+                                  aria-hidden="true"
+                                >
+                                  {active ? <Check className="h-4 w-4" /> : null}
+                                </span>
+                                <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-5 gap-y-1">
+                                  <span className="break-words text-lg font-normal leading-snug text-slate-950 sm:text-2xl">
+                                    {option.productName}
+                                  </span>
+                                  {optionYear ? (
+                                    <span className="whitespace-nowrap text-lg font-normal leading-snug text-slate-400 sm:text-2xl">
+                                      {optionYear}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {productPickerConfirmed ? (
+          <>
+        <div className="grid items-start gap-3 sm:gap-4 lg:grid-cols-[minmax(330px,520px)_minmax(360px,620px)]">
+          <section className="relative w-full max-w-[520px] space-y-4 overflow-hidden rounded-[22px] border border-violet-100 bg-white px-4 py-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:rounded-[24px] sm:px-5 sm:py-4">
             <span
               aria-hidden="true"
               className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
@@ -4561,59 +4799,63 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </h2>
             </div>
 
-            <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-              <label className="rounded-[18px] border border-violet-100 bg-white/85 p-3 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10 sm:rounded-2xl sm:p-3.5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="min-w-0">
                 <div>
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] text-fuchsia-700">
                       Pojistná částka
                     </span>
-                    <span className="rounded-lg border border-violet-100 bg-violet-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-violet-700">
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 border-b border-violet-200 pb-1 transition focus-within:border-fuchsia-500">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      min={0}
+                      value={sumInsuredInput}
+                      onChange={(e) => {
+                        setSumInsuredInput(e.target.value);
+                      }}
+                      onBlur={() => {
+                        const parsed = parseNumber(sumInsuredInput);
+                        if (Number.isFinite(parsed) && parsed > 0) {
+                          setSumInsuredInput(formatKcInput(parsed));
+                        }
+                      }}
+                      className="min-w-0 flex-1 bg-transparent px-0 py-1.5 text-xl font-black leading-none text-slate-950 outline-none placeholder:text-slate-300"
+                    />
+                    <span className="text-xs font-black uppercase tracking-[0.08em] text-violet-700">
                       Kč
                     </span>
                   </div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    min={0}
-                    value={sumInsuredInput}
-                    onChange={(e) => {
-                      setSumInsuredInput(e.target.value);
-                    }}
-                    onBlur={() => {
-                      const parsed = parseNumber(sumInsuredInput);
-                      if (Number.isFinite(parsed) && parsed > 0) {
-                        setSumInsuredInput(formatKcInput(parsed));
-                      }
-                    }}
-                    className="mt-2.5 w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-base font-semibold leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0 sm:mt-3 sm:text-lg"
-                  />
                 </div>
               </label>
 
-              <label className="rounded-[18px] border border-violet-100 bg-white/85 p-3 shadow-sm transition focus-within:border-fuchsia-300 focus-within:ring-2 focus-within:ring-fuchsia-500/10 sm:rounded-2xl sm:p-3.5">
+              <label className="min-w-0">
                 <div>
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] text-fuchsia-700">
                       Rozsah trvalých následků
                     </span>
-                    <span className="rounded-lg border border-violet-100 bg-violet-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-violet-700">
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 border-b border-violet-200 pb-1 transition focus-within:border-fuchsia-500">
+                    <input
+                      type="number"
+                      max={100}
+                      value={rangePercentInput}
+                      onChange={(e) => setRangePercentInput(e.target.value)}
+                      onBlur={() => {
+                        const parsed = parseNumber(rangePercentInput);
+                        if (!Number.isFinite(parsed)) return;
+                        const limited = Math.min(100, Math.max(0, parsed));
+                        setRangePercentInput(formatKcInput(limited));
+                      }}
+                      className="min-w-0 flex-1 bg-transparent px-0 py-1.5 text-xl font-black leading-none text-slate-950 outline-none placeholder:text-slate-300"
+                    />
+                    <span className="text-xs font-black uppercase tracking-[0.08em] text-violet-700">
                       %
                     </span>
                   </div>
-                  <input
-                    type="number"
-                    max={100}
-                    value={rangePercentInput}
-                    onChange={(e) => setRangePercentInput(e.target.value)}
-                    onBlur={() => {
-                      const parsed = parseNumber(rangePercentInput);
-                      if (!Number.isFinite(parsed)) return;
-                      const limited = Math.min(100, Math.max(0, parsed));
-                      setRangePercentInput(formatKcInput(limited));
-                    }}
-                    className="mt-2.5 w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-base font-semibold leading-none text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-fuchsia-300 focus:ring-0 sm:mt-3 sm:text-lg"
-                  />
                   {Number.isFinite(rangePercentRaw) && rangePercentRaw > 100 && (
                     <p className="mt-2 text-[11px] font-semibold text-fuchsia-700">
                       Max 100 %. Počítám s {rangePercentValue}%.
@@ -4624,7 +4866,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
             </div>
           </section>
 
-          <section className="relative w-full space-y-3 overflow-hidden rounded-[22px] border border-violet-100 bg-white p-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:space-y-4 sm:rounded-[28px] sm:p-4 sm:shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
+          <section className="relative w-full max-w-[620px] space-y-3 overflow-hidden rounded-[22px] border border-violet-100 bg-white px-4 py-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:rounded-[24px] sm:px-5 sm:py-4">
             <span
               aria-hidden="true"
               className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
@@ -4664,16 +4906,16 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-violet-100 bg-white/85 px-3 py-2.5 shadow-sm sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-violet-100 pt-3">
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                 <span className="font-semibold text-slate-700">
                   {activeFilterCount === 0
                     ? "Bez aktivních filtrů"
                     : `Aktivní filtry: ${activeFilterCount}`}
                 </span>
-                {showOnly10x && (
+                {selectedProgressions.length > 0 && (
                   <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
-                    10× progrese
+                    Progrese: {selectedProgressions.join(", ")}
                   </span>
                 )}
                 {selectedInsurers.length > 0 && (
@@ -4912,18 +5154,22 @@ export default function SrovnavacTrvalychNasledkuPage() {
             onClick={() => setFiltersOpen(false)}
           >
             <div
-              className="relative max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-[28px] border border-violet-100 bg-white px-5 py-5 shadow-[0_34px_90px_rgba(15,23,42,0.28)]"
+              className="relative max-h-[92vh] w-full max-w-7xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_34px_90px_rgba(15,23,42,0.28)] sm:p-5"
               onClick={(e) => e.stopPropagation()}
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
+                className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#4c1d95_0%,#6d28d9_58%,#a855f7_100%)]"
               />
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  <span>Filtry a zobrazení</span>
-                </h3>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700">
+                    Filtry a zobrazení
+                  </div>
+                  <h3 className="mt-1 text-2xl font-black leading-tight text-slate-950">
+                    Produkty, ročníky a progrese
+                  </h3>
+                </div>
                 <button
                   type="button"
                   onClick={() => setFiltersOpen(false)}
@@ -4935,75 +5181,119 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Filtr</div>
-                  <button
-                    type="button"
-                    onClick={() => setShowOnly10x((v) => !v)}
-                    className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
-                      showOnly10x
-                        ? TN_ACTIVE_DARK_CLASS
-                        : TN_INACTIVE_CHIP_CLASS
-                    }`}
-                  >
-                    Pouze 10× progrese
-                  </button>
-                </div>
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
+                  <section className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                      Progrese podle vybraných produktů
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProgressions([])}
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                          selectedProgressions.length === 0
+                            ? "border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] !text-white shadow-[0_10px_22px_rgba(76,29,149,0.22)]"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                        }`}
+                      >
+                        Všechny progrese
+                      </button>
+                      {progressionOptions.map((progression) => {
+                        const active = selectedProgressions.includes(progression);
 
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Zobrazení</div>
-                  <button
-                    type="button"
-                    onClick={() => setCompactList((v) => !v)}
-                    className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
-                      compactList
-                        ? TN_ACTIVE_VIOLET_CLASS
-                        : TN_INACTIVE_CHIP_CLASS
-                    }`}
-                  >
-                    {compactList ? "Hustší řádky" : "Standardní řádky"}
-                  </button>
-                </div>
+                        return (
+                          <button
+                            key={progression}
+                            type="button"
+                            onClick={() => toggleProgressionFilter(progression)}
+                            className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                              active
+                                ? "border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] !text-white shadow-[0_10px_22px_rgba(76,29,149,0.22)]"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                            }`}
+                            aria-pressed={active}
+                          >
+                            {progression}
+                          </button>
+                        );
+                      })}
+                      {progressionOptions.length === 0 ? (
+                        <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+                          Vybrané produkty nemají badge progrese.
+                        </span>
+                      ) : null}
+                    </div>
+                  </section>
 
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                      Pojišťovny a ročníky
+                  <section className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                      Zobrazení
                     </div>
                     <button
                       type="button"
-                      onClick={toggleAllFilterGroupsExpanded}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-violet-100 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50"
-                    >
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 transition ${
-                          allFilterGroupsExpanded ? "rotate-180" : ""
-                        }`}
-                      />
-                      {allFilterGroupsExpanded ? "Sbalit vše" : "Rozbalit vše"}
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedInsurers([])}
-                      className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
-                        selectedInsurers.length === 0
-                          ? TN_ACTIVE_DARK_CLASS
-                          : TN_INACTIVE_CHIP_CLASS
+                      onClick={() => setCompactList((v) => !v)}
+                      className={`mt-3 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                        compactList
+                          ? "border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] !text-white shadow-[0_10px_22px_rgba(76,29,149,0.22)]"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
                       }`}
                     >
-                      Všechny ročníky
+                      {compactList ? "Hustší řádky" : "Standardní řádky"}
                     </button>
-                    <span className="text-xs font-semibold text-slate-500">
-                      {selectedInsurers.length === 0
-                        ? "Bez omezení ročníků"
-                        : `Vybrané ročníky: ${selectedInsurers.length}`}
-                    </span>
+                  </section>
+                </div>
+
+                <section className="space-y-3">
+                  <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700">
+                          Pojišťovny a ročníky
+                        </div>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">
+                          Výběr produktů určuje i dostupné progrese nahoře.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                          {allFilterOptionsSelected
+                            ? `Vybráno vše: ${selectedInsurers.length}`
+                            : selectedInsurers.length === 0
+                              ? "Bez omezení"
+                              : `Vybráno: ${selectedInsurers.length}`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedInsurers(
+                              allFilterOptionsSelected ? [] : allFilterOptionValues
+                            )
+                          }
+                          className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                            allFilterOptionsSelected
+                              ? "border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] !text-white shadow-[0_10px_22px_rgba(76,29,149,0.22)]"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                          }`}
+                        >
+                          {allFilterOptionsSelected ? "Zrušit vše" : "Všechny produkty"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={toggleAllFilterGroupsExpanded}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50"
+                        >
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 transition ${
+                              allFilterGroupsExpanded ? "rotate-180" : ""
+                            }`}
+                          />
+                          {allFilterGroupsExpanded ? "Sbalit vše" : "Rozbalit vše"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid gap-3 pt-1 md:grid-cols-2">
+                  <div className="grid items-start gap-3 lg:grid-cols-2">
                     {insurerFilterGroups.map((group) => {
                       const values = group.options.map((option) => option.value);
                       const selectedCount = values.filter((value) =>
@@ -5024,19 +5314,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       return (
                         <section
                           key={group.insurerName}
-                          className="overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-sm"
+                          className={`rounded-[18px] border bg-white px-4 py-4 transition ${
+                            groupFullySelected || groupPartlySelected
+                              ? "border-sky-400 shadow-[0_12px_30px_rgba(14,165,233,0.10)]"
+                              : "border-slate-300 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
+                          }`}
                         >
-                          <div className="flex items-center gap-2 px-3 py-2.5">
+                          <div className="flex items-center gap-4">
                             <button
                               type="button"
                               onClick={() => toggleFilterGroupSelection(values)}
-                              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1.5 py-1 text-left transition hover:bg-violet-50/80"
+                              className="flex min-w-0 flex-1 items-center gap-4 rounded-xl text-left transition"
                               aria-pressed={groupFullySelected}
                             >
                               <span
-                                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${
+                                className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 transition ${
                                   groupFullySelected || groupPartlySelected
-                                    ? "border-fuchsia-500 bg-fuchsia-600 text-white"
+                                    ? "border-sky-400 bg-sky-50 text-sky-600"
                                     : "border-sky-300 bg-white text-white"
                                 }`}
                                 aria-hidden="true"
@@ -5044,11 +5338,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                 {groupFullySelected ? (
                                   <Check className="h-3.5 w-3.5" />
                                 ) : groupPartlySelected ? (
-                                  <span className="h-0.5 w-2.5 rounded-full bg-white" />
+                                  <span className="h-1 w-4 rounded-full bg-sky-500" />
                                 ) : null}
                               </span>
                               <span
-                                className={`relative inline-flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm ${institutionLogoFrameClass(
+                                className={`relative inline-flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-transparent bg-white ${institutionLogoFrameClass(
                                   logoKey,
                                   "compact"
                                 )}`}
@@ -5058,7 +5352,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                     src={logoPath}
                                     alt={group.insurerName}
                                     fill
-                                    sizes="48px"
+                                    sizes="64px"
                                     className={institutionLogoImageClass(logoKey)}
                                   />
                                 ) : (
@@ -5068,71 +5362,62 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                 )}
                               </span>
                               <span className="min-w-0">
-                                <span className="block break-words text-sm font-black leading-tight text-slate-950">
-                                  {group.insurerName}
-                                </span>
-                                <span className="mt-0.5 block text-xs font-semibold text-slate-500">
-                                  {selectedCount}/{group.options.length} ročníků
+                                <span className="block break-words text-xl font-medium leading-tight text-slate-950 sm:text-[1.7rem]">
+                                  {group.insurerName} ({selectedCount}/{group.options.length})
                                 </span>
                               </span>
                             </button>
                             <button
                               type="button"
                               onClick={() => toggleFilterGroupExpanded(group.insurerName)}
-                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-100 bg-white text-slate-500 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                              className="ml-auto inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
                               aria-label={`${isExpanded ? "Sbalit" : "Rozbalit"} ${group.insurerName}`}
                               aria-expanded={isExpanded}
                             >
                               <ChevronDown
-                                className={`h-4 w-4 transition ${
-                                  isExpanded ? "" : "-rotate-90"
+                                className={`h-7 w-7 stroke-[2.5] transition ${
+                                  isExpanded ? "rotate-180" : ""
                                 }`}
                               />
                             </button>
                           </div>
 
                           {isExpanded ? (
-                            <div className="border-t border-violet-100 bg-violet-50/25 p-2">
-                              <div className="grid gap-2">
+                            <div className="mt-6 space-y-4 pl-12 sm:pl-[76px]">
+                              <div className="space-y-4">
                                 {group.options.map((option) => {
                                   const active = selectedInsurers.includes(option.value);
+                                  const optionYear = option.badges.join(", ");
 
                                   return (
                                     <button
                                       key={option.value}
                                       type="button"
                                       onClick={() => toggleFilterOption(option.value)}
-                                      className={`flex w-full items-start gap-2 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ${
+                                      className={`flex w-full items-center gap-5 rounded-xl text-left transition ${
                                         active
-                                          ? "border-violet-500 bg-white text-slate-950 shadow-sm"
-                                          : "border-violet-100 bg-white/85 text-slate-600 hover:border-violet-300 hover:bg-white"
+                                          ? "bg-sky-50/70 text-slate-950"
+                                          : "text-slate-950 hover:bg-slate-50"
                                       }`}
                                       aria-pressed={active}
                                     >
                                       <span
-                                        className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 ${
                                           active
-                                            ? "border-violet-600 bg-violet-600 text-white"
+                                            ? "border-sky-400 bg-sky-50 text-sky-600"
                                             : "border-sky-300 bg-white text-white"
                                         }`}
                                         aria-hidden="true"
                                       >
-                                        {active ? <Check className="h-3 w-3" /> : null}
+                                        {active ? <Check className="h-4 w-4" /> : null}
                                       </span>
-                                      <span className="min-w-0 flex-1">
-                                        <span className="block break-words leading-snug">
+                                      <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-5 gap-y-1">
+                                        <span className="break-words text-lg font-normal leading-snug text-slate-950 sm:text-2xl">
                                           {option.productName}
                                         </span>
-                                        {option.badges.length > 0 ? (
-                                          <span className="mt-1 flex flex-wrap gap-1">
-                                            {option.badges.map((badge) => (
-                                              <span
-                                                key={badge}
-                                                className="rounded-full border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700"
-                                              >
-                                                {badge}
-                                              </span>
-                                            ))}
+                                        {optionYear ? (
+                                          <span className="whitespace-nowrap text-lg font-normal leading-snug text-slate-400 sm:text-2xl">
+                                            {optionYear}
                                           </span>
                                         ) : null}
                                       </span>
@@ -5146,9 +5431,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       );
                     })}
                   </div>
-                </div>
+                </section>
 
-                <div className="flex justify-end pt-2">
+                <div className="flex justify-end pt-1">
                   <button
                     type="button"
                     onClick={() => setFiltersOpen(false)}
@@ -5199,11 +5484,16 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 const logoPath = getInsurerLogoPath(card.insurer);
                 const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
                 const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+                const progressionBadges = getCardProgressionBadges(card);
+                const progressionBadgeSet = new Set(progressionBadges);
+                const metaBadges = card.badges.filter(
+                  (badge) => !progressionBadgeSet.has(badge)
+                );
 
                 return (
                   <div
                     key={card.key}
-                    className={`group relative grid gap-3 border-t border-violet-100 px-4 first:border-t-0 hover:bg-violet-50/40 sm:grid-cols-[44px_minmax(0,1fr)_minmax(120px,0.42fr)_minmax(132px,auto)_36px] sm:items-center ${
+                    className={`group relative grid gap-3 border-t border-violet-100 px-4 first:border-t-0 hover:bg-violet-50/40 sm:grid-cols-[44px_minmax(0,1fr)_minmax(130px,0.32fr)_minmax(132px,0.28fr)_minmax(132px,auto)_36px] sm:items-center ${
                       compactList ? "py-2" : "py-3"
                     }`}
                   >
@@ -5260,11 +5550,22 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {card.badges.map((badge) => (
+                    <div className="flex max-w-full flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {metaBadges.map((badge) => (
                         <span
                           key={badge}
-                          className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700"
+                          className="shrink-0 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="flex max-w-full flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {progressionBadges.map((badge) => (
+                        <span
+                          key={badge}
+                          className="shrink-0 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700"
                         >
                           {badge}
                         </span>
@@ -5501,6 +5802,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </div>
             </div>
           </div>
+        ) : null}
+          </>
         ) : null}
       </div>
 

@@ -1,18 +1,7 @@
 import type {
   DiscrepancyPdfItem,
-  PrintableDiscrepancyItem,
   StatementDiscrepancyIssue,
 } from "./statementTypes";
-
-type PrintableStatement = {
-  fileName: string;
-  header: {
-    advisorNumber: string | null;
-    period: string | null;
-    statementNumber: string | null;
-    statementDate: string | null;
-  };
-};
 
 type DiscrepancyPdfIcon =
   | "alert"
@@ -42,14 +31,6 @@ const DISCREPANCY_PDF_FONTS = {
     style: "bold",
   },
 } as const;
-
-const HTML_ESCAPE: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
 
 let discrepancyPdfFontDataPromise: Promise<
   Record<keyof typeof DISCREPANCY_PDF_FONTS, string>
@@ -90,9 +71,6 @@ const discrepancyScopeLabel = (
   if (scope === "my") return "Vlastní smlouva";
   return "Výpis";
 };
-
-const escapeHtml = (value: unknown): string =>
-  String(value ?? "").replace(/[&<>"']/g, (char) => HTML_ESCAPE[char] ?? char);
 
 const safePdfFileNamePart = (value: string): string =>
   normalizeCommissionTitle(value)
@@ -638,181 +616,4 @@ export const downloadDiscrepancySummaryPdf = async (
   const fileBase =
     statementLabels.length === 1 ? safePdfFileNamePart(statementLabels[0]) : "vice-vypisu";
   doc.save(`souhrn-nesrovnalosti-${fileBase}.pdf`);
-};
-
-export const printDiscrepancyReport = (
-  statement: PrintableStatement,
-  items: PrintableDiscrepancyItem[]
-) => {
-  if (items.length === 0 || typeof window === "undefined") return;
-
-  const totalDifference = items.reduce(
-    (sum, item) => sum + (hasFiniteNumber(item.difference) ? item.difference : 0),
-    0
-  );
-  const title = `Souhrn nesrovnalostí - výpis ${statement.header.statementNumber ?? "bez čísla"}`;
-  const metaRows = [
-    ["Soubor", statement.fileName],
-    ["Číslo výpisu", statement.header.statementNumber ?? "—"],
-    ["Období", statement.header.period ?? "—"],
-    ["Vystaveno", statement.header.statementDate ?? "—"],
-    ["Číslo poradce", statement.header.advisorNumber ?? "—"],
-  ];
-  const tableRows = items
-    .map((item, index) => {
-      const amountLines = [
-        hasFiniteNumber(item.statementAmount) ? `Výpis: ${formatMoney(item.statementAmount)} Kč` : null,
-        hasFiniteNumber(item.expectedAmount) ? `Systém: ${formatMoney(item.expectedAmount)} Kč` : null,
-        hasFiniteNumber(item.difference) ? `Rozdíl: ${formatMoney(item.difference)} Kč` : null,
-        item.manualAmountText ? item.manualAmountText : null,
-      ].filter(Boolean);
-
-      return `
-        <tr>
-          <td>${index + 1}</td>
-          <td>
-            <strong>${escapeHtml(item.contractNumber || "—")}</strong><br>
-            <span>${escapeHtml(discrepancyScopeLabel(item.scope))}</span>
-          </td>
-          <td>${escapeHtml(item.client || "—")}</td>
-          <td>
-            <strong>${escapeHtml(item.category)}</strong><br>
-            <span>${escapeHtml(item.product || "—")}</span>
-          </td>
-          <td>
-            <strong>${escapeHtml(item.title)}</strong>
-            ${
-              item.details.length > 0
-                ? `<ul>${item.details.map((detail) => `<li>${escapeHtml(detail)}</li>`).join("")}</ul>`
-                : ""
-            }
-          </td>
-          <td>${amountLines.map((line) => escapeHtml(line)).join("<br>") || "—"}</td>
-          <td>${escapeHtml(item.note || "—")}</td>
-          <td>${item.source === "manual" ? "Ručně" : "Automaticky"}</td>
-        </tr>`;
-    })
-    .join("");
-  const metaHtml = metaRows
-    .map(
-      ([label, value]) =>
-        `<div class="meta-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`
-    )
-    .join("");
-  const reportHtml = `<!doctype html>
-<html lang="cs">
-<head>
-  <meta charset="utf-8">
-  <title>${escapeHtml(title)}</title>
-  <style>
-    @page { size: A4; margin: 12mm; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      color: #111827;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 11px;
-      line-height: 1.4;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    .report { padding: 8px; }
-    h1 { margin: 0 0 8px; font-size: 22px; }
-    .subtitle { margin: 0 0 16px; color: #4b5563; }
-    .meta {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 6px;
-      margin-bottom: 14px;
-    }
-    .meta-item {
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      padding: 7px 9px;
-      break-inside: avoid;
-    }
-    .meta-item span {
-      display: block;
-      color: #6b7280;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-    }
-    .meta-item strong { display: block; margin-top: 2px; }
-    .summary {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
-      margin-bottom: 16px;
-    }
-    .summary div {
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      padding: 8px 9px;
-      background: #f9fafb;
-    }
-    .summary span {
-      display: block;
-      color: #6b7280;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-    }
-    .summary strong { display: block; margin-top: 3px; font-size: 15px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td {
-      border: 1px solid #d1d5db;
-      padding: 6px;
-      vertical-align: top;
-      text-align: left;
-    }
-    th { background: #f3f4f6; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
-    td ul { margin: 4px 0 0 16px; padding: 0; }
-    td span { color: #4b5563; }
-    tr { break-inside: avoid; }
-    .footer { margin-top: 14px; color: #6b7280; font-size: 10px; }
-  </style>
-</head>
-<body>
-  <main class="report">
-    <h1>${escapeHtml(title)}</h1>
-    <p class="subtitle">Podklad pro kontrolu a opravu provizního výpisu.</p>
-    <section class="meta">${metaHtml}</section>
-    <section class="summary">
-      <div><span>Vybrané položky</span><strong>${items.length}</strong></div>
-      <div><span>Ručně označeno</span><strong>${items.filter((item) => item.source === "manual").length}</strong></div>
-      <div><span>Součet rozdílů</span><strong>${formatMoney(totalDifference)} Kč</strong></div>
-    </section>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Smlouva</th>
-          <th>Klient</th>
-          <th>Oblast</th>
-          <th>Nález</th>
-          <th>Částka</th>
-          <th>Poznámka</th>
-          <th>Zdroj</th>
-        </tr>
-      </thead>
-      <tbody>${tableRows}</tbody>
-    </table>
-    <p class="footer">Vygenerováno z kontroly provizního výpisu v Bohemika provize.</p>
-  </main>
-</body>
-</html>`;
-
-  const printWindow = window.open("", "_blank", "width=980,height=1200");
-  if (!printWindow) return;
-
-  printWindow.document.open();
-  printWindow.document.write(reportHtml);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.setTimeout(() => {
-    printWindow.print();
-  }, 250);
 };

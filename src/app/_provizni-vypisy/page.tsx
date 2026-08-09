@@ -1,56 +1,35 @@
 "use client";
 
 import {
-  createContext,
   Fragment,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type Dispatch,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-  type SetStateAction,
 } from "react";
-import Image from "next/image";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
   AlertTriangle,
-  Banknote,
   CalendarDays,
-  CalendarX,
   Car,
   CheckCircle2,
   ChevronDown,
-  ExternalLink,
-  Grip,
   HandCoins,
   HeartPulse,
   House,
   ListChecks,
   Loader2,
-  Minus,
-  Move,
   Plane,
-  Plus,
   Printer,
   ReceiptText,
   RotateCcw,
-  Trash2,
   UploadCloud,
   UsersRound,
   WalletCards,
-  X,
   type LucideIcon,
 } from "lucide-react";
 
-import {
-  PRODUCT_CATALOG,
-  isAutoProduct,
-} from "@/app/lib/productCatalog";
-import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
-import { toDate } from "@/app/lib/formatters";
+import { isAutoProduct } from "@/app/lib/productCatalog";
 import {
   type CommissionMode,
   type CommissionCoefficientSet,
@@ -95,34 +74,135 @@ import {
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
-import introStyles from "../cashflow/cashflowIntro.module.css";
-import { allowedFrequencies as calculatorAllowedFrequencies } from "../kalkulacka/calculatorHelpers";
 import { StatementPairingLoader } from "./StatementPairingLoader";
 import {
+  NeonRefreshConversionPromptModal,
+  StornoStatementActionModal,
+} from "./statementActionModals";
+import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
+import {
+  contractMatchKey,
+  fetchSystemContractMatchBatch,
+  fetchSystemContractMatches,
+  systemContractMatchError,
+} from "./statementContractMatching";
+import {
+  DiscrepancyPdfNotesModal,
+  MarkedDiscrepancyToggle,
+} from "./statementDiscrepancyUi";
+import {
+  CommissionCodeRulesPanel,
+  ContractStatusRulesPanel,
+} from "./statementRulePanels";
+import {
+  BohemkaContractDetailLink,
+  BohemkaContractDetailModal,
+  ContractDetailLink,
+  firstContractDetailUrl,
+  firstSjednatelExtranetUrl,
+  SjednatelExtranetLink,
+  StatementCalculatorIframePanel,
+  StatementCalculatorPrefillButton,
+} from "./statementLinksAndCalculator";
+import {
+  BohemkaContractDetailModalContext,
+  StatementCalculatorPrefillContext,
+  StatementProductLogo,
+  statementCalculatorPrefill,
+  type StatementCalculatorPrefill,
+  type StatementCalculatorPrefillSource,
+} from "./statementPresentation";
+import { StatementSummary } from "./statementSummary";
+import {
+  LifeSplitProductsSectionPanel,
+  OtherProductsSectionPanel,
+  type StatementProductSectionKind,
+} from "./statementProductSections";
+import {
+  LifeSplitCommissionTable,
+  OtherProductCommissionTable,
+} from "./statementContractTables";
+import {
+  lifeSplitCardSummary,
+  otherProductCardSummary,
+} from "./statementCardMath";
+import {
+  LifeSplitCardMetadata,
+  StatementRefreshConversionPanel,
+  type StatementRefreshConversionStatus,
+} from "./statementLifeCardPanels";
+import {
+  AcceleratedB36WarningNotice,
+  LifeClientCardCommissionNotice,
+  LifeCoefficientOverrideNotice,
+  LifePremiumBaseNotice,
+  LifePremiumIncreaseNotice,
+  lifePremiumBaseNoticeKind,
+} from "./statementLifeCardNotices";
+import { groupStatementPreviewContracts } from "./statementPreviewGrouping";
+import {
+  StatementParseWarnings,
+  StatementPreviewHeader,
+} from "./statementPreviewPanels";
+import {
+  SystemMatchBadge,
+  SystemMatchPanel,
+  type SystemMatchPresentation,
+} from "./statementSystemMatchUi";
+import {
+  StornoContractsSectionPanel,
+  StornoSystemActionPanel,
+  StornoSystemStatusBadge,
+} from "./statementStornoPanels";
+import { suggestedStornoDateForStatement } from "./statementStorno";
+import {
+  contractMatchForNumber,
+  dedupeEquivalentSystemContracts,
+  isUnpairedContractMatch,
+  matchContractsRepresentSingleFamily,
+  matchedSystemContract,
+  normalizeCommissionModeValue,
+  normalizePositionValue,
+  primarySystemContractForFamily,
+  sortSystemContractTimeline,
+  statementProductMatchesSystemProduct,
+  systemCommissionMonthlyBase,
+  systemContractAnnualPremiumBase,
+  systemContractIsEndorsement,
+  systemContractIsStorno,
+  systemContractPosition,
+  systemContractPositionRaw,
+  systemContractStatusLabel,
+  systemContractTimelinePositionMismatch,
+  systemMatchHasSingleFamilyHistory,
+  systemMatchHistoryLabel,
+} from "./statementSystemContracts";
+import {
+  CareerMismatchWarning,
+  ContractTimelinePositionWarning,
+  StatementCorrectionWarning,
+} from "./statementWarnings";
+import {
+  PROCESSING_CAPTIONS,
+  ProcessingAuditPanel,
+  ProcessedStatementHistoryModal,
+  StatementProcessingOverlay,
+} from "./statementProcessingPanels";
+import {
   downloadDiscrepancySummaryPdf,
-  printDiscrepancyReport,
 } from "./statementDiscrepancyReport";
 import {
-  buildPrintableDiscrepancyItems,
   discrepancyIssueKey,
-  discrepancyScopeLabel,
-  discrepancySeverityClass,
-  discrepancySeverityLabel,
-  hasFiniteNumber,
-  manualDiscrepancyToIssue,
   markedDiscrepancyKey,
   matchingAutoIssuesForMarkedItem,
   statementDiscrepancyKey,
   statementDiscrepancyLabel,
 } from "./statementDiscrepancies";
-import { detectFullAutoCommissionStorno } from "./stornoInference";
 import {
   ANNUAL_PREMIUM_TOLERANCE,
   AUTO_PREMIUM_ANNIVERSARY_TOLERANCE_MONTHS,
   COMMISSION_AMOUNT_TOLERANCE,
-  COMMISSION_CODE_RULES,
   MANAGER_COMMISSION_AMOUNT_TOLERANCE,
-  TROY_OUNCE_COMMISSION_CODE_RULES,
   addMonthsToLocalDate,
   addMonthsToMonthKey,
   addYearsToLocalDate,
@@ -141,7 +221,6 @@ import {
   formatMonthKey,
   formatSystemDate,
   formatWholeMoney,
-  hasSjednatelExtranetFromDetailLink,
   isInvestmentSectionProductCode,
   isLifeSplitProductCode,
   isNeonInitialCommissionCode,
@@ -151,14 +230,12 @@ import {
   monthKeyIndex,
   normalizeCommissionTitle,
   normalizeContractNumberForMatch,
-  normalizeExternalHref,
   normalizeProductCode,
   normalizeStatementCommissionCode,
   normalizeText,
   normalizedRowText,
   parseLocalDate,
   parsePeriodEndDate,
-  parsePeriodStartDate,
   parseStatementHtml,
   paymentAmountWithFrequencyLabel,
   paymentsPerYearForFrequency,
@@ -176,8 +253,6 @@ import type {
   CoefficientOverrideInfo,
   CommissionAmountComparison,
   CommissionAmountComparisonStatus,
-  CommissionCodeCategory,
-  CommissionCodeRule,
   CommissionRow,
   ContractCommissionPayoutRecord,
   ContractMatchRequest,
@@ -185,14 +260,9 @@ import type {
   ContractMatchState,
   ContractMatchStats,
   ContractMatchesByNumber,
-  ContractStatusCategory,
-  ContractStatusRule,
-  ContractTimelinePositionMismatch,
   ContractsMutationResponse,
   DeductionCommissionRow,
   DiscrepancyPdfItem,
-  DiscrepancyReviewState,
-  DiscrepancyReviewStateItem,
   GeneralCommissionKind,
   LifePremiumChangeSummary,
   LifeSplitCommissionKind,
@@ -200,7 +270,6 @@ import type {
   ManagerCommissionAdvisor,
   ManagerCommissionRow,
   ManagerOverrideSummary,
-  ManualDiscrepancyItem,
   ManualNeonRefreshConversionResponse,
   ManualNeonRefreshConversionTarget,
   MarkedDiscrepancies,
@@ -219,16 +288,11 @@ import type {
   StatementDiscrepancyIssue,
   StatementDiscrepancySeverity,
   StatementFileRead,
-  StatementHeader,
   StatementProcessingResult,
   StatementProcessingSummary,
   StatementProductCategory,
   StatementProductMeta,
   StatementSaveState,
-  StornoCommissionGroup,
-  StornoCommissionRow,
-  StornoContractGroup,
-  StornoStatementInference,
   StornoStatementActionTarget,
 } from "./statementTypes";
 
@@ -275,343 +339,6 @@ const isStatementContractSaveCompletedMessage = (
     typeof record.contractNumber === "string" &&
     normalizeContractNumberForMatch(record.contractNumber).length > 0
   );
-};
-
-const systemContractPositionRaw = (
-  contract: MatchedSystemContract | null | undefined
-): string | null => contract?.position ?? null;
-
-const systemContractPosition = (
-  contract: MatchedSystemContract | null | undefined
-): Position | null => normalizePositionValue(systemContractPositionRaw(contract));
-
-
-const systemContractTimelinePositionMismatch = (
-  contract: MatchedSystemContract | null | undefined
-): ContractTimelinePositionMismatch | null => {
-  if (!contract) return null;
-  const storedPosition = normalizePositionValue(contract.position);
-  const timelinePosition = normalizePositionValue(contract.timelinePosition);
-  if (!timelinePosition || storedPosition === timelinePosition) return null;
-  return {
-    storedPosition,
-    timelinePosition,
-    signedDateLabel: formatSystemDate(contract.contractSignedDate),
-  };
-};
-
-const BohemkaContractDetailModalContext =
-  createContext<Dispatch<SetStateAction<BohemkaContractDetailModalPayload | null>> | null>(
-    null
-  );
-
-type StatementCalculatorPrefill = {
-  product: Product;
-  productLabel: string;
-  sourceProductCode: string;
-  contractNumber: string;
-  clientName: string;
-  contractSignedDate: string;
-  policyStartDate: string;
-  amountText: string;
-  frequency: PaymentFrequency;
-  statementId: string | null;
-  statementNumber: string | null;
-  statementPeriod: string | null;
-  statementDate: string | null;
-  statementChronologyMs: number | null;
-};
-
-type StatementCalculatorPrefillSource = {
-  statementId?: string | null;
-  statementNumber?: string | null;
-  statementPeriod?: string | null;
-  statementDate?: string | null;
-  statementChronologyMs?: number | null;
-};
-
-const StatementCalculatorPrefillContext =
-  createContext<Dispatch<SetStateAction<StatementCalculatorPrefill | null>> | null>(
-    null
-  );
-
-const statementDateToIsoDay = (value: string | null | undefined): string => {
-  const date = parseLocalDate(value);
-  return date ? toDateInputValue(date) : "";
-};
-
-const statementClientNameForCalculator = (value: string | null | undefined): string => {
-  const name = normalizeText(value);
-  if (!name) return "";
-  if (
-    /\b(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?|spol\.|firma|obec|město|mesto|úřad|urad)\b/i.test(
-      name
-    )
-  ) {
-    return name;
-  }
-
-  const commaParts = name
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (commaParts.length === 2) return `${commaParts[1]} ${commaParts[0]}`;
-
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length < 2 || parts.length > 4) return name;
-  const [surname, ...givenNames] = parts;
-  return [...givenNames, surname].join(" ");
-};
-
-const statementCalculatorAmountText = (value: number): string => {
-  if (!Number.isFinite(value) || value <= 0) return "";
-  const rounded = Math.round(value * 100) / 100;
-  return String(rounded);
-};
-
-const statementCalculatorAmountAndFrequency = (
-  product: StatementProductMeta,
-  statementBase: number
-): { amountText: string; frequency: PaymentFrequency } | null => {
-  if (!product.productKey) return null;
-  const allowedFrequencies = calculatorAllowedFrequencies(product.productKey);
-  const frequency =
-    product.usesAnnualPremiumBase && allowedFrequencies.includes("monthly")
-      ? "monthly"
-      : allowedFrequencies[0];
-  if (!frequency) return null;
-
-  const amount = product.usesAnnualPremiumBase
-    ? statementBase / periodsPerYear(frequency)
-    : statementBase;
-
-  return {
-    amountText: statementCalculatorAmountText(amount),
-    frequency,
-  };
-};
-
-const statementCalculatorPrefill = ({
-  product,
-  contractNumber,
-  clientName,
-  signedAt,
-  validFrom,
-  statementBase,
-  source,
-}: {
-  product: StatementProductMeta;
-  contractNumber: string | null | undefined;
-  clientName: string | null | undefined;
-  signedAt: string | null | undefined;
-  validFrom: string | null | undefined;
-  statementBase: number;
-  source?: StatementCalculatorPrefillSource;
-}): StatementCalculatorPrefill | null => {
-  if (!product.productKey || !PRODUCT_CATALOG[product.productKey]) return null;
-  const amountAndFrequency = statementCalculatorAmountAndFrequency(product, statementBase);
-  if (!amountAndFrequency) return null;
-  const statementChronologyMs =
-    typeof source?.statementChronologyMs === "number" &&
-    Number.isFinite(source.statementChronologyMs)
-      ? Math.round(source.statementChronologyMs)
-      : null;
-
-  return {
-    product: product.productKey,
-    productLabel: PRODUCT_CATALOG[product.productKey].label,
-    sourceProductCode: product.rawCode,
-    contractNumber: normalizeText(contractNumber),
-    clientName: statementClientNameForCalculator(clientName),
-    contractSignedDate: statementDateToIsoDay(signedAt),
-    policyStartDate: statementDateToIsoDay(validFrom),
-    amountText: amountAndFrequency.amountText,
-    frequency: amountAndFrequency.frequency,
-    statementId: normalizeText(source?.statementId),
-    statementNumber: normalizeText(source?.statementNumber),
-    statementPeriod: normalizeText(source?.statementPeriod),
-    statementDate: normalizeText(source?.statementDate),
-    statementChronologyMs,
-  };
-};
-
-type StatementProductLogoMeta = {
-  src: string;
-  alt: string;
-};
-
-const statementProductLogoMeta = (
-  product: StatementProductMeta
-): StatementProductLogoMeta => {
-  const catalogMeta = product.productKey ? PRODUCT_CATALOG[product.productKey] : null;
-  if (catalogMeta?.institutionLogo) {
-    return {
-      src: catalogMeta.institutionLogo,
-      alt: catalogMeta.institutionLabel,
-    };
-  }
-
-  const rawCode = normalizeProductCode(product.rawCode);
-  if (rawCode.startsWith("TU_")) return { src: "/icons/gold.png", alt: "Troyská unce" };
-  if (rawCode.startsWith("CON_")) return { src: "/icons/conseq.png", alt: "Conseq" };
-  if (rawCode === "INVESTIKA" || rawCode === "EFEKTIKA" || rawCode === "MONETIKA") {
-    return { src: "/icons/invstk.png", alt: product.label };
-  }
-  if (rawCode.startsWith("CPP")) return { src: "/icons/cpp.png", alt: "ČPP" };
-  if (rawCode.startsWith("KOO")) return { src: "/icons/koop-v2.png", alt: "Kooperativa" };
-  if (rawCode.startsWith("UNIQA")) return { src: "/icons/uniqa.png", alt: "UNIQA" };
-  if (rawCode.startsWith("CSOB") || rawCode.startsWith("ČSOB")) {
-    return { src: "/icons/csob.png", alt: "ČSOB" };
-  }
-  if (rawCode.startsWith("ALL")) return { src: "/icons/allianz.png", alt: "Allianz" };
-  if (rawCode.startsWith("PIL")) return { src: "/icons/pillow.png", alt: "Pillow" };
-  if (rawCode.startsWith("SLA")) return { src: "/icons/slavialogo.png", alt: "SLAVIA" };
-  if (rawCode.includes("COMFORT") || rawCode === "CC") {
-    return { src: "/icons/cclogo.png", alt: "Comfort Commodity" };
-  }
-
-  switch (product.category) {
-    case "life":
-      return { src: "/icons/zivot.webp", alt: "Životní pojištění" };
-    case "auto":
-      return { src: "/icons/icon_auto.webp", alt: "Auto" };
-    case "property":
-      return { src: "/icons/icon_domex.webp", alt: "Majetek" };
-    case "travel":
-      return { src: "/icons/icon_cestovko.webp", alt: "Cestovní pojištění" };
-    case "foreigners":
-      return { src: "/icons/maxima.png", alt: "Cizinci" };
-    default:
-      return { src: "/icons/produkt.png", alt: product.label };
-  }
-};
-
-function StatementProductLogo({
-  product,
-  size = "sm",
-}: {
-  product: StatementProductMeta;
-  size?: "xs" | "sm";
-}) {
-  const logo = statementProductLogoMeta(product);
-  const boxClass = size === "xs" ? "h-5 w-5" : "h-6 w-6";
-  const imageClass = size === "xs" ? "h-3.5 w-3.5" : "h-4 w-4";
-
-  return (
-    <span
-      className={`inline-flex ${boxClass} shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white`}
-      title={logo.alt}
-    >
-      <Image
-        src={logo.src}
-        alt=""
-        width={24}
-        height={24}
-        className={`${imageClass} object-contain`}
-      />
-    </span>
-  );
-}
-
-const systemContractIsStorno = (
-  contract: MatchedSystemContract | null | undefined
-): boolean => contractLifecycleStatus(contract) === "storno";
-
-const systemContractStatusLabel = (
-  contract: MatchedSystemContract | null | undefined
-): string => {
-  const status = contractLifecycleStatus(contract);
-  if (status === "storno") {
-    const date = toDate(contract?.stornoDate);
-    return date ? `storno od ${formatLocalDate(date)}` : "storno bez data";
-  }
-  if (status === "dozita") return "dožitá";
-  return "aktivní";
-};
-
-const matchNeedsSystemStorno = (match: ContractMatchState | null): boolean => {
-  const contract = matchedSystemContract(match);
-  return Boolean(contract && !systemContractIsStorno(contract));
-};
-
-const stornoSystemUncertainty = (match: ContractMatchState | null): boolean =>
-  isUnpairedContractMatch(match) || matchNeedsSystemStorno(match);
-
-const suggestedStornoDateForStatement = (
-  header: StatementHeader
-): Date | null =>
-  parseLocalDate(header.statementDate) ??
-  parsePeriodEndDate(header.period) ??
-  new Date();
-
-const fullAutoStornoInferenceForGroup = ({
-  statement,
-  statementId,
-  group,
-  systemContract,
-  currentUserEmail,
-}: {
-  statement: ParsedStatement;
-  statementId?: string | null;
-  group: StornoContractGroup;
-  systemContract: MatchedSystemContract | null;
-  currentUserEmail?: string | null;
-}): StornoStatementInference | null => {
-  if (!systemContract || group.rows.length === 0) return null;
-  const statementHasAutoProduct = group.rows.some(
-    (row) => resolveStatementProduct(row.product).category === "auto"
-  );
-  const contractHasAutoProduct = Boolean(
-    systemContract.productKey && isAutoProduct(systemContract.productKey)
-  );
-  if (!statementHasAutoProduct && !contractHasAutoProduct) return null;
-
-  const policyStart = toDate(systemContract.policyStartDate);
-  if (!policyStart) return null;
-  const fallbackStornoDate = suggestedStornoDateForStatement(statement.header);
-  const statementPeriodStart = parsePeriodStartDate(statement.header.period);
-  const statementPeriodEnd = parsePeriodEndDate(statement.header.period);
-  const detection = detectFullAutoCommissionStorno({
-    isAutoProduct: true,
-    contractStatus: systemContract.status,
-    policyStartMs: policyStart.getTime(),
-    currentRows: group.rows.map((row) => ({
-      rowId: row.id,
-      productCode: row.product,
-      commissionCode: row.type,
-      commission: row.commission,
-      signedAt: row.signedAt,
-      source: "own",
-      status: "storno",
-    })),
-    existingPayouts: systemContract.commissionPayouts ?? [],
-    contractItems: systemContract.items ?? [],
-    currentStatementId: statementId || statementDiscrepancyKey(statement),
-    statementPeriodStartMs: statementPeriodStart?.getTime() ?? null,
-    statementPeriodEndMs: statementPeriodEnd?.getTime() ?? null,
-    writtenBy: currentUserEmail ?? systemContract.adviserEmail ?? null,
-    fallbackStornoDateMs: fallbackStornoDate?.getTime() ?? null,
-  });
-  if (!detection) return null;
-
-  return {
-    kind: "full_auto_storno_within_2_months",
-    suggestedDate: new Date(detection.stornoDateMs),
-    policyStartDate: new Date(detection.policyStartMs),
-    fullStornoBoundaryDate: new Date(detection.fullStornoBoundaryMs),
-    referenceDateSource: detection.referenceDateSource,
-    commissionCode: detection.commissionCode,
-    stornoAmount: detection.stornoAmount,
-    matchedPaidAmount: detection.matchedPaidAmount,
-    matchedSource: detection.matchedSource,
-    matchedTitle: detection.matchedTitle,
-    rowId: detection.rowId,
-    productCode: detection.productCode,
-    matchedPayoutKey: detection.matchedPayoutKey,
-    matchedStatementId: detection.matchedStatementId,
-    matchedStatementNumber: detection.matchedStatementNumber,
-    matchedStatementPeriod: detection.matchedStatementPeriod,
-  };
 };
 
 const stornoUpdateEntryIds = (contract: MatchedSystemContract): string[] =>
@@ -992,533 +719,6 @@ const processedStatementLabel = (
   return [...base, ...warnings].join(" ");
 };
 
-function ProcessingAuditPanel({ summary }: { summary: StatementProcessingSummary }) {
-  const uniqueAmbiguousContracts = Array.from(new Set(summary.ambiguousContracts));
-  const uniqueSkippedContracts = Array.from(new Set(summary.skippedContracts));
-  const payoutChangeRecordCount = summary.payoutRecordsAdded + summary.payoutRecordsUpdated;
-  const contractsWithPayoutChanges =
-    summary.contractsWithPayoutChanges > 0 || payoutChangeRecordCount === 0
-      ? summary.contractsWithPayoutChanges
-      : summary.contractsUpdated;
-  const skippedTotal =
-    summary.duplicatePayoutRowsSkipped +
-    summary.olderPremiumUpdatesSkipped +
-    uniqueSkippedContracts.length;
-  const manualReviewTotal =
-    uniqueAmbiguousContracts.length +
-    uniqueSkippedContracts.length +
-    summary.accountingRepairDrafts +
-    summary.externalUpdateTasks +
-    summary.errors.length;
-  const skippedDetail = [
-    summary.duplicatePayoutRowsSkipped > 0
-      ? `${summary.duplicatePayoutRowsSkipped} duplicitních položek`
-      : null,
-    summary.olderPremiumUpdatesSkipped > 0
-      ? `${summary.olderPremiumUpdatesSkipped} starších změn pojistného`
-      : null,
-    uniqueSkippedContracts.length > 0
-      ? `${uniqueSkippedContracts.length} smluv bez zápisu`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const manualReviewDetail = [
-    uniqueAmbiguousContracts.length > 0
-      ? `${uniqueAmbiguousContracts.length} duplicitních shod`
-      : null,
-    summary.accountingRepairDrafts > 0
-      ? `${summary.accountingRepairDrafts} účetních oprav`
-      : null,
-    summary.externalUpdateTasks > 0
-      ? `${summary.externalUpdateTasks} MAXX/extranet`
-      : null,
-    summary.errors.length > 0 ? `${summary.errors.length} chyb` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const auditItems: {
-    label: string;
-    value: number;
-    detail: string;
-    valueClass: string;
-    iconClass: string;
-    icon: LucideIcon;
-  }[] = [
-    {
-      label: "Smlouvy s výplatou",
-      value: contractsWithPayoutChanges,
-      detail:
-        payoutChangeRecordCount > 0
-          ? `${payoutChangeRecordCount} výplatních položek`
-          : "Bez nové výplaty",
-      valueClass: "text-slate-950",
-      iconClass: "text-violet-700",
-      icon: WalletCards,
-    },
-    {
-      label: "Zapsané položky",
-      value: payoutChangeRecordCount,
-      detail: `${summary.payoutRecordsAdded} nových · ${summary.payoutRecordsUpdated} aktualizovaných`,
-      valueClass: "text-violet-700",
-      iconClass: "text-violet-700",
-      icon: CheckCircle2,
-    },
-    {
-      label: "Přeskočeno",
-      value: skippedTotal,
-      detail: skippedDetail || "Nic nepřeskočeno",
-      valueClass: skippedTotal > 0 ? "text-violet-700" : "text-slate-950",
-      iconClass: skippedTotal > 0 ? "text-violet-700" : "text-slate-500",
-      icon: ListChecks,
-    },
-    {
-      label: "Ruční kontrola",
-      value: manualReviewTotal,
-      detail: manualReviewDetail || "Bez ruční kontroly",
-      valueClass: manualReviewTotal > 0 ? "text-violet-700" : "text-slate-950",
-      iconClass: manualReviewTotal > 0 ? "text-violet-700" : "text-slate-950",
-      icon: manualReviewTotal > 0 ? AlertTriangle : CheckCircle2,
-    },
-  ];
-  const hasReviewDetails =
-    uniqueAmbiguousContracts.length > 0 ||
-    uniqueSkippedContracts.length > 0 ||
-    summary.accountingRepairDrafts > 0 ||
-    summary.externalUpdateTasks > 0 ||
-    summary.errors.length > 0;
-
-  return (
-    <section className="relative mt-4 overflow-hidden rounded-lg border border-white/70 bg-white/75 shadow-[0_18px_42px_rgba(15,23,42,0.08)] ring-1 ring-violet-100/70 backdrop-blur-xl">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/70" aria-hidden="true" />
-      <div className="flex flex-col gap-3 border-b border-violet-100/70 bg-white/45 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-violet-700" strokeWidth={2.2} aria-hidden="true" />
-          <h3 className="text-sm font-bold text-slate-950">Audit po zápisu</h3>
-        </div>
-        <span className="inline-flex w-fit items-center rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)]">
-          Upraveno {summary.contractsUpdated} smluv
-        </span>
-      </div>
-
-      <div className="grid divide-y divide-violet-100/70 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
-        {auditItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <div
-              key={item.label}
-              className="flex min-h-24 items-center justify-between gap-4 bg-white/35 px-4 py-3"
-            >
-              <div className="min-w-0">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                  {item.label}
-                </div>
-                <div className={`mt-1 text-2xl font-black tracking-tight ${item.valueClass}`}>
-                  {item.value}
-                </div>
-                <div className="mt-1 truncate text-sm font-semibold text-slate-600">
-                  {item.detail}
-                </div>
-              </div>
-              <Icon className={`h-5 w-5 shrink-0 ${item.iconClass}`} strokeWidth={2.2} aria-hidden="true" />
-            </div>
-          );
-        })}
-      </div>
-
-      {hasReviewDetails && (
-        <div className="space-y-2 border-t border-violet-100 bg-violet-50/70 px-4 py-3 text-sm font-semibold text-slate-950">
-          {uniqueAmbiguousContracts.length > 0 && (
-            <div>
-              Duplicitní shody smluv: {uniqueAmbiguousContracts.slice(0, 12).join(", ")}
-              {uniqueAmbiguousContracts.length > 12 ? "…" : ""}
-            </div>
-          )}
-          {uniqueSkippedContracts.length > 0 && (
-            <div>
-              Přeskočené smlouvy: {uniqueSkippedContracts.slice(0, 12).join(", ")}
-              {uniqueSkippedContracts.length > 12 ? "…" : ""}
-            </div>
-          )}
-          {summary.accountingRepairDrafts > 0 && (
-            <div>Návrhy účetních oprav: {summary.accountingRepairDrafts}</div>
-          )}
-          {summary.externalUpdateTasks > 0 && (
-            <div>Podklady pro MAXX/extranet: {summary.externalUpdateTasks}</div>
-          )}
-          {summary.errors.length > 0 && (
-            <div>Chyby: {summary.errors.slice(0, 3).join(" | ")}</div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-type ProcessedStatementHistoryPanelProps = {
-  statements: SavedCommissionStatement[];
-  loading: boolean;
-  error: string | null;
-  selectedId: string | null;
-  openingId: string | null;
-  onClose?: () => void;
-  onRefresh: () => void;
-  onOpen: (statementId: string) => void;
-};
-
-function ProcessedStatementHistoryPanel({
-  statements,
-  loading,
-  error,
-  selectedId,
-  openingId,
-  onClose,
-  onRefresh,
-  onOpen,
-}: ProcessedStatementHistoryPanelProps) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-[0_18px_42px_rgba(15,23,42,0.05)] sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-            <CalendarDays className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            Historie
-          </div>
-          <h2 className="mt-3 text-lg font-black text-slate-950">
-            Zpracované výpisy
-          </h2>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            Uložené výstupy po zpracování výpisu.
-          </p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-            ) : (
-              <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            )}
-            Obnovit
-          </button>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-              aria-label="Zavřít historii"
-            >
-              <X className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {error && (
-        <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
-          {error}
-        </div>
-      )}
-
-      {loading && statements.length === 0 ? (
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-          Načítám historii zpracovaných výpisů…
-        </div>
-      ) : statements.length === 0 ? (
-        <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-5 text-sm font-semibold text-slate-500">
-          Zatím tu není žádný zpracovaný výpis.
-        </div>
-      ) : (
-        <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
-          {statements.map((statement) => {
-            const selected = selectedId === statement.id;
-            const opening = openingId === statement.id;
-            const title = statement.statementNumber
-              ? `Výpis ${statement.statementNumber}`
-              : statement.fileName || "Provizní výpis";
-            const period = statement.period || statement.payoutMonthKey || "Bez období";
-
-            return (
-              <button
-                key={statement.id}
-                type="button"
-                onClick={() => onOpen(statement.id)}
-                disabled={opening}
-                className={`w-full rounded-xl border px-4 py-3 text-left transition disabled:cursor-wait ${
-                  selected
-                    ? "border-slate-950 bg-slate-950 text-white shadow-sm"
-                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-black">{title}</span>
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                          selected
-                            ? "border-white/25 bg-white/10 text-white"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                        }`}
-                      >
-                        Zpracováno
-                      </span>
-                    </div>
-                    <div
-                      className={`mt-1 text-sm font-semibold ${
-                        selected ? "text-slate-200" : "text-slate-600"
-                      }`}
-                    >
-                      {period}
-                    </div>
-                    <div
-                      className={`mt-1 text-xs font-semibold ${
-                        selected ? "text-slate-300" : "text-slate-500"
-                      }`}
-                    >
-                      Vystaveno {statement.statementDate || "—"} · zpracováno{" "}
-                      {formatSystemDate(statement.processedAtMs)}
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-3">
-                    <div className="text-right">
-                      <div
-                        className={`text-xs font-bold uppercase ${
-                          selected ? "text-slate-300" : "text-slate-500"
-                        }`}
-                      >
-                        Vyplaceno
-                      </div>
-                      <div className="text-base font-black">
-                        {typeof statement.payoutTotal === "number" &&
-                        Number.isFinite(statement.payoutTotal)
-                          ? `${formatMoney(statement.payoutTotal)} Kč`
-                          : "—"}
-                      </div>
-                    </div>
-                    {opening ? (
-                      <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-                    ) : (
-                      <ChevronDown className="-rotate-90 h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ProcessedStatementHistoryModal({
-  onClose,
-  ...panelProps
-}: ProcessedStatementHistoryPanelProps & { onClose: () => void }) {
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Historie zpracovaných provizních výpisů"
-        className="w-full max-w-3xl"
-      >
-        <ProcessedStatementHistoryPanel {...panelProps} onClose={onClose} />
-      </div>
-    </div>
-  );
-}
-
-const PROCESSING_CAPTIONS = [
-  "Ukládám výpis do provizního kalendáře",
-  "Páruju smlouvy podle čísel smluv",
-  "Zapisuju vyplacené provizní položky",
-  "Kontroluju výročí aut a změny pojistného",
-  "Připravuju účetní opravy",
-  "Chystám podklady pro MAXX a extranet",
-  "Čekám na potvrzení zápisu",
-] as const;
-
-function StatementProcessingOverlay({
-  caption,
-  progress,
-  stepIndex,
-  statementCount,
-}: {
-  caption: string;
-  progress: number;
-  stepIndex: number;
-  statementCount: number;
-}) {
-  const visibleProgress = Math.max(0, Math.min(100, progress));
-  const pileSheetCount = Math.max(4, Math.min(10, Math.ceil(visibleProgress / 12) + 2));
-  const progressStyle = useMemo(
-    () => ({ width: `${visibleProgress}%` }),
-    [visibleProgress]
-  );
-  const documentStackStyle = useMemo(
-    () => ({
-      ["--statement-pile-height" as string]: `${70 + visibleProgress * 0.48}px`,
-      minHeight: "18rem",
-    }),
-    [visibleProgress]
-  );
-
-  return (
-    <div
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-md"
-      aria-busy="true"
-      aria-live="polite"
-    >
-      <section
-        className={`${introStyles.initialLoaderShell} relative w-full max-w-5xl overflow-hidden rounded-[28px] border border-white/80 px-5 py-5 shadow-[0_32px_96px_rgba(15,23,42,0.28)] sm:px-7 sm:py-7`}
-        role="status"
-      >
-        <span className={introStyles.initialLoaderBeam} aria-hidden="true" />
-
-        <div className="relative z-10 grid items-center gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="space-y-6">
-            <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-fuchsia-200 bg-white text-fuchsia-700 shadow-[0_14px_30px_rgba(162,28,175,0.13)]">
-                <ReceiptText className="h-6 w-6" strokeWidth={2.2} aria-hidden="true" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-black">Zpracování výpisu</p>
-                <p className="text-sm text-black/55">
-                  {statementCount === 1
-                    ? "Zapisuji 1 provizní výpis"
-                    : `Zapisuji ${statementCount} provizní výpisy`}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-end gap-2 font-mono text-6xl font-semibold leading-none text-black sm:text-7xl">
-                <span>{visibleProgress}</span>
-                <span className="pb-1.5 text-2xl text-fuchsia-700 sm:text-3xl">%</span>
-              </div>
-              <h2
-                key={caption}
-                className={`${introStyles.initialLoaderStage} mt-4 min-h-10 text-2xl font-semibold leading-tight text-black sm:text-3xl`}
-              >
-                {caption}
-              </h2>
-              <div className="mt-3 flex flex-wrap gap-2 text-sm font-semibold text-black/55">
-                <span>Zápis do historie smluv</span>
-                <span aria-hidden="true">·</span>
-                <span>Provizní kalendář</span>
-              </div>
-            </div>
-
-            <div
-              className={introStyles.initialLoaderProgress}
-              role="progressbar"
-              aria-label="Průběh zpracování provizního výpisu"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={visibleProgress}
-            >
-              <span className={introStyles.initialLoaderProgressFill} style={progressStyle} />
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {PROCESSING_CAPTIONS.map((stage, index) => (
-                <span
-                  key={stage}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    index <= stepIndex ? "w-9 bg-slate-950" : "w-3 bg-white/80"
-                  }`}
-                  aria-hidden="true"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div
-            className={introStyles.initialLoaderConsole}
-            style={documentStackStyle}
-            aria-hidden="true"
-          >
-            <div className="relative z-10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-black">
-                <Loader2 className="h-5 w-5 animate-spin text-fuchsia-700" strokeWidth={2.2} />
-                Zápis položek
-              </div>
-              <div className="text-sm font-semibold text-black/50">probíhá</div>
-            </div>
-
-            <div
-              className={introStyles.statementLoaderDropZone}
-              style={{ minHeight: "13rem" }}
-            >
-              {[0, 1, 2, 3, 4].map((paperIndex) => (
-                <span
-                  key={paperIndex}
-                  className={introStyles.statementLoaderPaper}
-                  style={{ ["--paper-index" as string]: paperIndex }}
-                >
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              ))}
-
-              <div className={introStyles.statementLoaderPile}>
-                {Array.from({ length: pileSheetCount }, (_, sheetIndex) => {
-                  const xOffset = ((sheetIndex % 5) - 2) * 6;
-                  const rotation = ((sheetIndex % 6) - 2.5) * 1.4;
-
-                  return (
-                    <span
-                      key={sheetIndex}
-                      style={{
-                        bottom: `${sheetIndex * 6}px`,
-                        transform: `translateX(${xOffset}px) rotate(${rotation}deg)`,
-                        zIndex: sheetIndex + 1,
-                      }}
-                    >
-                      <span />
-                      <span />
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 const buildStatementSavePayload = ({ statement, html }: StatementFileRead) => {
   const managerRows = statement.managerCommissions.flatMap((advisor) => advisor.rows);
 
@@ -1540,14 +740,6 @@ const buildStatementSavePayload = ({ statement, html }: StatementFileRead) => {
       stornoTotal: sumAmounts(statement.stornoRows, (row) => row.commission),
     },
   };
-};
-
-const contractMatchKey = (
-  scope: ContractMatchScope,
-  contractNumber: string | null | undefined
-): string | null => {
-  const normalized = normalizeContractNumberForMatch(contractNumber);
-  return normalized ? `${scope}:${normalized}` : null;
 };
 
 const collectStatementContractMatchRequests = (
@@ -1583,20 +775,6 @@ const collectStatementContractMatchRequests = (
 
   return [...requests.values()];
 };
-
-const contractMatchForNumber = (
-  matches: ContractMatchesByNumber,
-  contractNumber: string | null | undefined,
-  scope: ContractMatchScope = "my"
-): ContractMatchState | null => {
-  const key = contractMatchKey(scope, contractNumber);
-  return key ? matches[key] ?? null : null;
-};
-
-const isUnpairedContractMatch = (match: ContractMatchState | null): boolean =>
-  match?.status === "not_found" ||
-  match?.status === "error" ||
-  (match?.status === "matched" && !matchedSystemContract(match));
 
 type ManagerCommissionMatchNotice = {
   title: string;
@@ -2028,136 +1206,6 @@ const sortManagerCommissionRows = (
     })
     .map((item) => item.row);
 
-const CONTRACT_MATCH_BATCH_SIZE = 50;
-
-type SystemContractFindBulkResult =
-  | {
-      ok?: true;
-      key?: string;
-      scope?: ContractMatchScope;
-      query?: string;
-      contracts?: MatchedSystemContract[];
-    }
-  | {
-      ok: false;
-      key?: string;
-      scope?: ContractMatchScope;
-      query?: string;
-      error?: string;
-    };
-
-const systemContractMatchStateFromContracts = (
-  contractsRaw: MatchedSystemContract[] | undefined
-): ContractMatchState => {
-  const contracts = dedupeEquivalentSystemContracts(Array.isArray(contractsRaw) ? contractsRaw : []);
-  if (contracts.length === 0) return { status: "not_found", contracts: [] };
-  return { status: "matched", contracts };
-};
-
-const systemContractMatchError = (error: string): ContractMatchState => ({
-  status: "error",
-  contracts: [],
-  error,
-});
-
-const fetchSystemContractMatchBatch = async (
-  user: FirebaseUser,
-  requests: ContractMatchRequest[]
-): Promise<Map<string, ContractMatchState>> => {
-  const payloadRequests = requests.map((request, index) => ({
-    key: contractMatchKey(request.scope, request.contractNumber) ?? `${request.scope}:${index}`,
-    scope: request.scope,
-    q: request.contractNumber,
-  }));
-
-  const sendRequest = async (token: string) =>
-    fetch("/api/contracts/find", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ requests: payloadRequests }),
-    });
-
-  let token = await user.getIdToken();
-  let response = await sendRequest(token);
-  if (response.status === 401) {
-    token = await user.getIdToken(true);
-    response = await sendRequest(token);
-  }
-
-  const payload = (await response.json().catch(() => null)) as
-    | {
-        ok?: boolean;
-        error?: string;
-        results?: SystemContractFindBulkResult[];
-      }
-    | null;
-
-  if (!response.ok || payload?.ok === false) {
-    const message =
-      payload?.error ?? `Nepodařilo se dohledat smlouvy (HTTP ${response.status}).`;
-    return new Map(
-      payloadRequests.map((request) => [request.key, systemContractMatchError(message)])
-    );
-  }
-
-  if (!Array.isArray(payload?.results)) {
-    return new Map(
-      payloadRequests.map((request) => [
-        request.key,
-        systemContractMatchError("Párování vrátilo neočekávanou odpověď."),
-      ])
-    );
-  }
-
-  const matches = new Map<string, ContractMatchState>();
-  for (const result of payload.results) {
-    const key = typeof result.key === "string" ? result.key : null;
-    if (!key) continue;
-    if (result.ok === false) {
-      matches.set(
-        key,
-        systemContractMatchError(result.error || "Nepodařilo se dohledat smlouvu v systému.")
-      );
-    } else {
-      matches.set(key, systemContractMatchStateFromContracts(result.contracts));
-    }
-  }
-  return matches;
-};
-
-const fetchSystemContractMatches = async (
-  user: FirebaseUser,
-  requests: ContractMatchRequest[],
-  onMatch: (request: ContractMatchRequest, match: ContractMatchState) => void
-) => {
-  for (let index = 0; index < requests.length; index += CONTRACT_MATCH_BATCH_SIZE) {
-    const batch = requests.slice(index, index + CONTRACT_MATCH_BATCH_SIZE);
-    const matches = await fetchSystemContractMatchBatch(user, batch).catch((err) => {
-      const message =
-        err instanceof Error ? err.message : "Nepodařilo se dohledat smlouvy v systému.";
-      return new Map(
-        batch.map((request) => [
-          contractMatchKey(request.scope, request.contractNumber) ?? request.contractNumber,
-          systemContractMatchError(message),
-        ])
-      );
-    });
-
-    for (const request of batch) {
-      const key = contractMatchKey(request.scope, request.contractNumber);
-      if (!key) continue;
-      onMatch(
-        request,
-        matches.get(key) ??
-          systemContractMatchError("Párování nevrátilo výsledek pro tuto smlouvu.")
-      );
-    }
-  }
-};
-
 const sumRows = (rows: CommissionRow[]): number =>
   rows.reduce((sum, row) => sum + row.commission, 0);
 
@@ -2394,113 +1442,6 @@ const statusClass = (tone: "ok" | "warn" | "info" | "tip"): string => {
   return "border-sky-200 bg-sky-50 text-sky-800";
 };
 
-const contractStatusCategoryLabel = (category: ContractStatusCategory): string => {
-  switch (category) {
-    case "active":
-      return "Aktivní";
-    case "pending":
-      return "Nová / čekárna";
-    case "matured":
-      return "Dožitá";
-    case "transferred":
-      return "Převedená";
-    case "storno":
-      return "Storno";
-    case "invalid":
-      return "Chybná";
-    default:
-      return "Neznámá";
-  }
-};
-
-const contractStatusCategoryClass = (category: ContractStatusCategory): string => {
-  switch (category) {
-    case "active":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
-    case "pending":
-    case "transferred":
-      return "border-sky-200 bg-sky-50 text-sky-800";
-    case "matured":
-      return "border-slate-200 bg-slate-100 text-slate-700";
-    case "storno":
-    case "invalid":
-      return "border-rose-200 bg-rose-50 text-rose-800";
-    default:
-      return "border-amber-200 bg-amber-50 text-amber-900";
-  }
-};
-
-const COMMISSION_CODE_CATEGORY_ORDER: CommissionCodeCategory[] = [
-  "closing",
-  "closingRole",
-  "subsequent",
-  "installment",
-  "unexpected",
-  "increase",
-  "tip",
-  "adjustment",
-  "office",
-  "other",
-];
-
-const commissionCodeCategoryLabel = (category: CommissionCodeCategory): string => {
-  switch (category) {
-    case "closing":
-      return "Uzavření";
-    case "closingRole":
-      return "Uzavření / role";
-    case "subsequent":
-      return "Následné provize";
-    case "installment":
-      return "Splátky provize";
-    case "unexpected":
-      return "Neočekávané provize";
-    case "increase":
-      return "Navýšení";
-    case "tip":
-      return "TIP";
-    case "adjustment":
-      return "Korekce";
-    case "office":
-      return "Ostatní platby";
-    case "troyOunce":
-      return "Troyská unce";
-    default:
-      return "Ostatní";
-  }
-};
-
-const commissionCodeCategoryClass = (category: CommissionCodeCategory): string => {
-  switch (category) {
-    case "closing":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
-    case "closingRole":
-      return "border-teal-200 bg-teal-50 text-teal-800";
-    case "subsequent":
-      return "border-blue-200 bg-blue-50 text-blue-800";
-    case "installment":
-      return "border-cyan-200 bg-cyan-50 text-cyan-800";
-    case "unexpected":
-      return "border-amber-200 bg-amber-50 text-amber-900";
-    case "increase":
-      return "border-sky-200 bg-sky-50 text-sky-800";
-    case "tip":
-      return "border-violet-200 bg-violet-50 text-violet-800";
-    case "adjustment":
-    case "office":
-      return "border-orange-200 bg-orange-50 text-orange-900";
-    case "troyOunce":
-      return "border-purple-200 bg-purple-50 text-purple-900";
-    default:
-      return "border-slate-200 bg-slate-100 text-slate-700";
-  }
-};
-
-const commissionCodeRuleMatches = (
-  rule: Pick<CommissionCodeRule, "matchers">,
-  code: string
-): boolean => rule.matchers.some((matcher) => matcher.test(code));
-
 const generalCommissionKindClass = (kind: GeneralCommissionKind): string => {
   switch (kind) {
     case "closing":
@@ -2598,30 +1539,6 @@ const otherProductContractCategoryLabel = (
   }
 };
 
-const POSITION_VALUES: Position[] = [
-  "poradce1",
-  "poradce2",
-  "poradce3",
-  "poradce4",
-  "poradce5",
-  "poradce6",
-  "poradce7",
-  "poradce8",
-  "poradce9",
-  "poradce10",
-  "manazer4",
-  "manazer5",
-  "manazer6",
-  "manazer7",
-  "manazer8",
-  "manazer9",
-  "manazer10",
-];
-const POSITION_SET = new Set<string>(POSITION_VALUES);
-
-const normalizePositionValue = (value: unknown): Position | null =>
-  typeof value === "string" && POSITION_SET.has(value) ? (value as Position) : null;
-
 const positionLabel = (position: Position | null | undefined): string => {
   if (!position) return "—";
   const advisorMatch = position.match(/^poradce(\d+)$/);
@@ -2709,9 +1626,6 @@ const statementCareerIssueCount = (
   );
   return careers.length > 0 && (!systemPosition || mismatched) ? 1 : 0;
 };
-
-const normalizeCommissionModeValue = (value: unknown): CommissionMode =>
-  value === "accelerated" || value === "standard" ? value : "standard";
 
 const normalizePaymentFrequencyValue = (value: unknown): PaymentFrequency =>
   value === "monthly" ||
@@ -2811,176 +1725,6 @@ const systemContractExpectsImmediateB36 = (
   }
 
   return false;
-};
-
-const systemContractEntryType = (
-  contract: MatchedSystemContract | null | undefined
-): string => normalizeText(contract?.entryType).toLowerCase();
-
-const systemContractIsEndorsement = (
-  contract: MatchedSystemContract | null | undefined
-): boolean =>
-  systemContractEntryType(contract) === "endorsement" ||
-  Boolean(normalizeText(contract?.rootContractEntryId) && normalizeText(contract?.parentContractEntryId));
-
-const systemContractFamilyRootId = (
-  contract: MatchedSystemContract | null | undefined
-): string => {
-  const rootId = normalizeText(contract?.rootContractEntryId);
-  if (rootId) return rootId;
-
-  const parentId = normalizeText(contract?.parentContractEntryId);
-  if (systemContractIsEndorsement(contract) && parentId) return parentId;
-
-  return normalizeText(contract?.id);
-};
-
-const systemContractFamilyKey = (
-  contract: MatchedSystemContract | null | undefined
-): string => {
-  const owner = normalizeText(contract?.adviserEmail).toLowerCase();
-  const rootId = systemContractFamilyRootId(contract);
-  return owner && rootId ? `${owner}::${rootId}` : "";
-};
-
-const matchContractsRepresentSingleFamily = (
-  contracts: MatchedSystemContract[]
-): boolean => {
-  const uniqueContracts = dedupeEquivalentSystemContracts(contracts);
-  if (uniqueContracts.length <= 1) return true;
-  const keys = uniqueContracts.map(systemContractFamilyKey);
-  return keys.every(Boolean) && new Set(keys).size === 1;
-};
-
-const systemContractTimelineTime = (contract: MatchedSystemContract): number => {
-  const date =
-    parseLocalDate(contract.policyStartDate) ??
-    parseLocalDate(contract.contractSignedDate) ??
-    parseLocalDate(contract.createdAt);
-  return date?.getTime() ?? Number.POSITIVE_INFINITY;
-};
-
-const normalizedComparableText = (value: string | null | undefined): string =>
-  normalizeCommissionTitle(value);
-
-const systemContractEquivalentSignature = (
-  contract: MatchedSystemContract
-): string => {
-  if (systemContractIsEndorsement(contract)) {
-    return `${normalizeText(contract.adviserEmail).toLowerCase()}::entry::${contract.id}`;
-  }
-
-  return [
-    normalizeText(contract.adviserEmail).toLowerCase(),
-    normalizeContractNumberForMatch(contract.contractNumber),
-    contract.productKey ?? "",
-    normalizedComparableText(contract.clientName),
-    toDateInputValue(parseLocalDate(contract.contractSignedDate)),
-    toDateInputValue(parseLocalDate(contract.policyStartDate)),
-    Math.round((systemContractAnnualPremiumBase(contract) ?? 0) * 100) / 100,
-    systemContractPosition(contract) ?? "",
-    normalizeCommissionModeValue(contract.commissionMode),
-  ].join("::");
-};
-
-const systemContractCompletenessScore = (contract: MatchedSystemContract): number => {
-  let score = 0;
-  if (normalizeText(contract.entryType)) score += 20;
-  if (Number.isFinite(Number(contract.effectiveInputAmount))) score += 10;
-  if (Number.isFinite(Number(contract.calculationInputAmount))) score += 8;
-  if (contract.maxxContractDetailUrl) score += 5;
-  if (contract.cppExtranetEntityId || contract.cppExtranetEntityTypeId) score += 5;
-  if ((contract.items ?? []).length > 0) score += 3;
-  const updatedTime =
-    parseLocalDate(contract.updatedAt)?.getTime() ??
-    parseLocalDate(contract.createdAt)?.getTime() ??
-    0;
-  return score + updatedTime / 1_000_000_000_000;
-};
-
-const preferredSystemContract = (
-  left: MatchedSystemContract,
-  right: MatchedSystemContract
-): MatchedSystemContract =>
-  systemContractCompletenessScore(right) > systemContractCompletenessScore(left) ? right : left;
-
-const dedupeEquivalentSystemContracts = (
-  contracts: MatchedSystemContract[]
-): MatchedSystemContract[] => {
-  const bySignature = new Map<string, MatchedSystemContract>();
-  const order: string[] = [];
-
-  for (const contract of contracts) {
-    const signature = systemContractEquivalentSignature(contract) || `entry::${contract.id}`;
-    const existing = bySignature.get(signature);
-    if (!existing) {
-      bySignature.set(signature, contract);
-      order.push(signature);
-      continue;
-    }
-
-    bySignature.set(signature, preferredSystemContract(existing, contract));
-  }
-
-  return order
-    .map((key) => bySignature.get(key))
-    .filter((item): item is MatchedSystemContract => Boolean(item));
-};
-
-const sortSystemContractTimeline = (
-  contracts: MatchedSystemContract[]
-): MatchedSystemContract[] =>
-  [...contracts].sort((left, right) => {
-    const dateDiff = systemContractTimelineTime(left) - systemContractTimelineTime(right);
-    if (dateDiff !== 0) return dateDiff;
-    const leftEndorsement = systemContractIsEndorsement(left) ? 1 : 0;
-    const rightEndorsement = systemContractIsEndorsement(right) ? 1 : 0;
-    if (leftEndorsement !== rightEndorsement) return leftEndorsement - rightEndorsement;
-    return left.id.localeCompare(right.id, "cs");
-  });
-
-const primarySystemContractForFamily = (
-  contracts: MatchedSystemContract[]
-): MatchedSystemContract | null => {
-  const timeline = sortSystemContractTimeline(contracts);
-  return timeline.find((contract) => !systemContractIsEndorsement(contract)) ?? timeline[0] ?? null;
-};
-
-const matchedSystemContract = (match: ContractMatchState | null): MatchedSystemContract | null => {
-  if (match?.status !== "matched") return null;
-  const contracts = dedupeEquivalentSystemContracts(match.contracts);
-  if (contracts.length === 1) return contracts[0];
-  if (!matchContractsRepresentSingleFamily(contracts)) return null;
-  return primarySystemContractForFamily(contracts);
-};
-
-const systemMatchHasSingleFamilyHistory = (match: ContractMatchState | null): boolean => {
-  if (match?.status !== "matched") return false;
-  const contracts = dedupeEquivalentSystemContracts(match.contracts);
-  return contracts.length > 1 && matchContractsRepresentSingleFamily(contracts);
-};
-
-const endorsementCountLabel = (count: number): string => {
-  if (count === 1) return "1 dodatek";
-  if (count >= 2 && count <= 4) return `${count} dodatky`;
-  return `${count} dodatků`;
-};
-
-const systemMatchHistoryLabel = (match: ContractMatchState | null): string => {
-  if (!systemMatchHasSingleFamilyHistory(match) || match?.status !== "matched") return "";
-  const contracts = dedupeEquivalentSystemContracts(match.contracts);
-  const endorsementCount =
-    contracts.filter(systemContractIsEndorsement).length || Math.max(0, contracts.length - 1);
-  return endorsementCountLabel(endorsementCount);
-};
-
-const systemContractAnnualPremiumBase = (
-  contract: MatchedSystemContract | null | undefined
-): number | null => {
-  const monthlyPremium = systemCommissionMonthlyBase(contract ?? null);
-  return Number.isFinite(monthlyPremium) && monthlyPremium > 0
-    ? Math.round(monthlyPremium * 12 * 100) / 100
-    : null;
 };
 
 const systemContractAnnualPremiumDelta = (
@@ -3091,21 +1835,17 @@ const lifePremiumBaseComparisonForContract = (
   });
 };
 
-const KOOPERATIVA_OBCAN_STATEMENT_PRODUCTS = new Set<Product>([
-  "koopmajetekobcan",
-  "koopfit",
-]);
-
-const statementProductMatchesSystemProduct = (
-  expectedProductKey: Product | null | undefined,
-  systemProductKey: Product | null | undefined
-): boolean => {
-  if (!expectedProductKey || !systemProductKey) return false;
-  if (expectedProductKey === systemProductKey) return true;
-  return (
-    KOOPERATIVA_OBCAN_STATEMENT_PRODUCTS.has(expectedProductKey) &&
-    KOOPERATIVA_OBCAN_STATEMENT_PRODUCTS.has(systemProductKey)
-  );
+const systemMatchPresentation: SystemMatchPresentation = {
+  matchedSystemContract,
+  systemMatchHistoryLabel,
+  dedupeEquivalentSystemContracts,
+  systemMatchHasSingleFamilyHistory,
+  sortSystemContractTimeline,
+  statementProductMatchesSystemProduct,
+  systemContractTimelinePositionMismatch,
+  systemContractIsEndorsement,
+  positionLabel,
+  systemContractPosition,
 };
 
 const hasProductMismatch = (
@@ -3191,22 +1931,6 @@ const matchingEndorsementPremiumChange = (
       );
     }) ?? null
   );
-};
-
-const systemCommissionMonthlyBase = (
-  systemContract: MatchedSystemContract | null
-): number => {
-  const refreshMonthly = Number(
-    systemContract?.refreshCommissionBase?.calculationMonthlyPremium
-  );
-  if (Number.isFinite(refreshMonthly) && refreshMonthly > 0) return refreshMonthly;
-
-  const calculationInputAmount = Number(systemContract?.calculationInputAmount);
-  if (Number.isFinite(calculationInputAmount) && calculationInputAmount > 0) {
-    return calculationInputAmount;
-  }
-
-  return Number(systemContract?.inputAmount);
 };
 
 const systemCurrentPremiumPaymentBase = (
@@ -5478,141 +4202,10 @@ const amountComparisonStatusLabel = (status: CommissionAmountComparisonStatus): 
   }
 };
 
-const amountComparisonStatusClass = (status: CommissionAmountComparisonStatus): string => {
-  switch (status) {
-    case "ok":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
-    case "missing_statement":
-    case "missing_expected":
-    case "diff":
-      return "border-rose-200 bg-rose-50 text-rose-800";
-  }
-};
-
 const amountIssueCountLabel = (count: number): string => {
   if (count === 1) return "1 rozdíl";
   if (count >= 2 && count <= 4) return `${count} rozdíly`;
   return `${count} rozdílů`;
-};
-
-const groupStornoRowsByContract = (
-  rows: StornoCommissionRow[]
-): StornoCommissionGroup[] => {
-  const groups = new Map<string, StornoCommissionGroup>();
-
-  rows.forEach((row, index) => {
-    const normalizedContractNumber = normalizeContractNumberForMatch(row.contractNumber);
-    const key = normalizedContractNumber || `bez-cisla-${index}`;
-    const previous = groups.get(key);
-    if (previous) {
-      previous.rows.push(row);
-      previous.totalCommission += row.commission;
-      previous.totalReserveFund += row.reserveFund;
-      return;
-    }
-
-    groups.set(key, {
-      key,
-      contractNumber: row.contractNumber,
-      rows: [row],
-      totalCommission: row.commission,
-      totalReserveFund: row.reserveFund,
-    });
-  });
-
-  return [...groups.values()].map((group) => ({
-    ...group,
-    totalCommission: Math.round(group.totalCommission * 100) / 100,
-    totalReserveFund: Math.round(group.totalReserveFund * 100) / 100,
-  }));
-};
-
-const stornoContractGroupKey = (
-  contractNumber: string | null | undefined,
-  client: string | null | undefined,
-  fallback: string
-): string => {
-  const normalizedContractNumber = normalizeContractNumberForMatch(contractNumber);
-  if (normalizedContractNumber) return `contract-${normalizedContractNumber}`;
-
-  const normalizedClient = normalizeText(client).toLocaleLowerCase("cs-CZ");
-  if (normalizedClient) return `client-${normalizedClient}-${fallback}`;
-
-  return `without-contract-${fallback}`;
-};
-
-const groupStornoItemsByContract = (
-  rows: StornoCommissionRow[],
-  payments: OtherPayment[]
-): StornoContractGroup[] => {
-  const groups = new Map<string, StornoContractGroup>();
-
-  const ensureGroup = ({
-    key,
-    contractNumber,
-    client,
-  }: {
-    key: string;
-    contractNumber: string | null;
-    client: string;
-  }): StornoContractGroup => {
-    const existing = groups.get(key);
-    if (existing) {
-      if (!existing.contractNumber && contractNumber) existing.contractNumber = contractNumber;
-      if (!existing.client && client) existing.client = client;
-      return existing;
-    }
-
-    const group: StornoContractGroup = {
-      key,
-      contractNumber,
-      client,
-      rows: [],
-      payments: [],
-      totalCommission: 0,
-      totalReserveFund: 0,
-      totalOtherPayments: 0,
-      totalAmount: 0,
-    };
-    groups.set(key, group);
-    return group;
-  };
-
-  rows.forEach((row, index) => {
-    const key = stornoContractGroupKey(row.contractNumber, row.client, `row-${index}`);
-    const group = ensureGroup({
-      key,
-      contractNumber: row.contractNumber || null,
-      client: row.client || "",
-    });
-    group.rows.push(row);
-    group.totalCommission += row.commission;
-    group.totalReserveFund += row.reserveFund;
-  });
-
-  payments.forEach((payment, index) => {
-    const key = stornoContractGroupKey(payment.contractNumber, null, `payment-${index}`);
-    const group = ensureGroup({
-      key,
-      contractNumber: payment.contractNumber,
-      client: "",
-    });
-    group.payments.push({ ...payment, index });
-    group.totalOtherPayments += payment.amount;
-  });
-
-  return [...groups.values()].map((group) => {
-    const totalCommission = Math.round(group.totalCommission * 100) / 100;
-    const totalReserveFund = Math.round(group.totalReserveFund * 100) / 100;
-    const totalOtherPayments = Math.round(group.totalOtherPayments * 100) / 100;
-    return {
-      ...group,
-      totalCommission,
-      totalReserveFund,
-      totalOtherPayments,
-      totalAmount: Math.round((totalCommission + totalOtherPayments) * 100) / 100,
-    };
-  });
 };
 
 const uncertaintyCountLabel = (count: number): string => {
@@ -6523,1491 +5116,6 @@ const formatSignedWholeMoney = (value: number): string => {
   return sign + formatWholeMoney(Math.abs(value)) + " Kč";
 };
 
-const SJEDNATEL_EXTRANET_REDIRECT_URL =
-  "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
-const SJEDNATEL_EXTRANET_DEFAULT_ENTITY_TYPE_ID = "43";
-
-const firstContractDetailUrl = (
-  rows: Array<{ detailUrl?: string | null }>
-): string | null => rows.find((row) => row.detailUrl)?.detailUrl ?? null;
-
-const normalizeSjednatelExtranetParam = (
-  value: string | number | null | undefined
-): string | null => {
-  const normalized = String(value ?? "").trim();
-  return /^\d+$/.test(normalized) ? normalized : null;
-};
-
-const buildSjednatelExtranetDetailUrl = (
-  entityId: string | number | null | undefined,
-  entityTypeId: string | number | null | undefined = SJEDNATEL_EXTRANET_DEFAULT_ENTITY_TYPE_ID
-): string | null => {
-  const normalizedEntityId = normalizeSjednatelExtranetParam(entityId);
-  const normalizedEntityTypeId =
-    normalizeSjednatelExtranetParam(entityTypeId) ?? SJEDNATEL_EXTRANET_DEFAULT_ENTITY_TYPE_ID;
-  if (!normalizedEntityId || !normalizedEntityTypeId) return null;
-
-  const params = new URLSearchParams({
-    type: "detail",
-    p_EntityTypeID: normalizedEntityTypeId,
-    p_EntityID: normalizedEntityId,
-  });
-  return `${SJEDNATEL_EXTRANET_REDIRECT_URL}?${params.toString()}`;
-};
-
-const extranetEntityIdFromContractDetailUrl = (
-  detailUrl: string | null | undefined
-): string | null => {
-  const normalizedUrl = normalizeExternalHref(detailUrl);
-  if (!normalizedUrl) return null;
-
-  try {
-    return normalizeSjednatelExtranetParam(
-      new URL(normalizedUrl).searchParams.get("sml")
-    );
-  } catch {
-    return null;
-  }
-};
-
-const firstSjednatelExtranetUrl = (
-  rows: Array<{ detailUrl?: string | null; product?: string | null }>,
-  systemContract: MatchedSystemContract | null = null
-): string | null => {
-  const statementRow = rows.find((row) => hasSjednatelExtranetFromDetailLink(row.product));
-  const statementUrl = buildSjednatelExtranetDetailUrl(
-    extranetEntityIdFromContractDetailUrl(statementRow?.detailUrl)
-  );
-  if (statementUrl) return statementUrl;
-
-  return buildSjednatelExtranetDetailUrl(
-    systemContract?.cppExtranetEntityId,
-    systemContract?.cppExtranetEntityTypeId
-  );
-};
-
-function ContractDetailLink({
-  href,
-  compact = false,
-}: {
-  href: string | null | undefined;
-  compact?: boolean;
-}) {
-  if (!href) return null;
-
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className={
-        compact
-          ? "inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-          : "inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:border-slate-300 hover:bg-slate-50"
-      }
-    >
-      <ExternalLink className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={2.2} aria-hidden="true" />
-      {compact ? "MAXX" : "Otevřít smlouvu v MAXX"}
-    </a>
-  );
-}
-
-const bohemkaContractDetailHref = (
-  contract: MatchedSystemContract | null | undefined
-): string | null => {
-  const ownerEmail = normalizeText(contract?.adviserEmail);
-  const entryId = normalizeText(contract?.id);
-  if (!ownerEmail || !entryId) return null;
-  return `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}?from=commission-statements`;
-};
-
-function BohemkaContractDetailLink({
-  contract,
-  compact = false,
-}: {
-  contract: MatchedSystemContract | null | undefined;
-  compact?: boolean;
-}) {
-  const href = bohemkaContractDetailHref(contract);
-  const openDetailModal = useContext(BohemkaContractDetailModalContext);
-  if (!href) return null;
-
-  const contractNumber = normalizeText(contract?.contractNumber);
-  const clientName = normalizeText(contract?.clientName);
-  const openModal = () => {
-    openDetailModal?.({
-      href,
-      title: contractNumber ? `Smlouva ${contractNumber}` : "Detail smlouvy",
-      subtitle: clientName || null,
-    });
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={openModal}
-      className={
-        compact
-          ? "inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800 hover:border-violet-300 hover:bg-violet-100"
-          : "inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:border-violet-300 hover:bg-violet-100"
-      }
-    >
-      <ExternalLink className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={2.2} aria-hidden="true" />
-      {compact ? "Detail" : "Detail smlouvy"}
-    </button>
-  );
-}
-
-function BohemkaContractDetailModal({
-  detail,
-  onClose,
-}: {
-  detail: BohemkaContractDetailModalPayload;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-[90] bg-slate-950/55 px-3 py-4 backdrop-blur-sm sm:px-6 sm:py-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={detail.title}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="mx-auto flex h-full max-h-[92vh] max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
-          <div className="min-w-0">
-            <div className="truncate text-base font-black text-slate-950">
-              {detail.title}
-            </div>
-            {detail.subtitle && (
-              <div className="mt-0.5 truncate text-sm font-semibold text-slate-500">
-                {detail.subtitle}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-            aria-label="Zavřít detail smlouvy"
-          >
-            <X className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </button>
-        </div>
-        <iframe
-          title={detail.title}
-          src={detail.href}
-          className="min-h-0 flex-1 border-0"
-        />
-      </div>
-    </div>
-  );
-}
-
-const statementCalculatorPrefillHref = (
-  prefill: StatementCalculatorPrefill
-): string => {
-  const params = new URLSearchParams();
-  params.set("prefill", "commission-statement");
-  params.set("product", prefill.product);
-  params.set("productLabel", prefill.productLabel);
-  params.set("sourceProductCode", prefill.sourceProductCode);
-  if (prefill.contractNumber) params.set("contractNumber", prefill.contractNumber);
-  if (prefill.clientName) params.set("clientName", prefill.clientName);
-  if (prefill.contractSignedDate) params.set("contractSignedDate", prefill.contractSignedDate);
-  if (prefill.policyStartDate) params.set("policyStartDate", prefill.policyStartDate);
-  if (prefill.amountText) params.set("amount", prefill.amountText);
-  params.set("frequency", prefill.frequency);
-  if (prefill.statementId) params.set("sourceStatementId", prefill.statementId);
-  if (prefill.statementNumber) params.set("sourceStatementNumber", prefill.statementNumber);
-  if (prefill.statementPeriod) params.set("sourceStatementPeriod", prefill.statementPeriod);
-  if (prefill.statementDate) params.set("sourceStatementDate", prefill.statementDate);
-  if (prefill.statementChronologyMs != null) {
-    params.set("sourceStatementChronologyMs", String(prefill.statementChronologyMs));
-  }
-  return `/kalkulacka?${params.toString()}`;
-};
-
-function StatementCalculatorPrefillButton({
-  prefill,
-  compact = false,
-}: {
-  prefill: StatementCalculatorPrefill | null;
-  compact?: boolean;
-}) {
-  const openCalculatorPrefill = useContext(StatementCalculatorPrefillContext);
-  if (!prefill || !openCalculatorPrefill) return null;
-
-  return (
-    <button
-      type="button"
-      onClick={() => openCalculatorPrefill(prefill)}
-      className={
-        compact
-          ? "inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800 hover:border-violet-300 hover:bg-violet-100"
-          : "inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:border-violet-300 hover:bg-violet-100"
-      }
-    >
-      <Plus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={2.2} aria-hidden="true" />
-      Přidat smlouvu
-    </button>
-  );
-}
-
-const clampStatementCalculatorPanelPosition = (
-  position: { x: number; y: number },
-  size: { width: number; height: number }
-): { x: number; y: number } => {
-  if (typeof window === "undefined") return position;
-  const maxX = Math.max(16, window.innerWidth - size.width - 16);
-  const maxY = Math.max(16, window.innerHeight - size.height - 16);
-  return {
-    x: Math.min(Math.max(16, position.x), maxX),
-    y: Math.min(Math.max(16, position.y), maxY),
-  };
-};
-
-const clampStatementCalculatorPanelSize = (
-  size: { width: number; height: number }
-): { width: number; height: number } => {
-  if (typeof window === "undefined") {
-    return {
-      width: Math.min(1120, Math.max(520, size.width)),
-      height: Math.min(760, Math.max(420, size.height)),
-    };
-  }
-
-  const maxWidth = Math.max(320, window.innerWidth - 32);
-  const maxHeight = Math.max(320, window.innerHeight - 96);
-  const minWidth = Math.min(520, maxWidth);
-  const minHeight = Math.min(420, maxHeight);
-
-  return {
-    width: Math.min(maxWidth, Math.max(minWidth, size.width)),
-    height: Math.min(maxHeight, Math.max(minHeight, size.height)),
-  };
-};
-
-const defaultStatementCalculatorPanelSize = (): { width: number; height: number } =>
-  clampStatementCalculatorPanelSize({ width: 1120, height: 760 });
-
-function StatementCalculatorIframePanel({
-  prefill,
-  onClose,
-}: {
-  prefill: StatementCalculatorPrefill;
-  onClose: () => void;
-}) {
-  const href = useMemo(() => statementCalculatorPrefillHref(prefill), [prefill]);
-  const [minimized, setMinimized] = useState(false);
-  const [size, setSize] = useState(defaultStatementCalculatorPanelSize);
-  const [position, setPosition] = useState(() =>
-    clampStatementCalculatorPanelPosition(
-      { x: 16, y: 72 },
-      defaultStatementCalculatorPanelSize()
-    )
-  );
-  const dragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
-  const resizeRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    originWidth: number;
-    originHeight: number;
-  } | null>(null);
-
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("button,a")) return;
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: position.x,
-      originY: position.y,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    setPosition(
-      clampStatementCalculatorPanelPosition({
-        x: drag.originX + event.clientX - drag.startX,
-        y: drag.originY + event.clientY - drag.startY,
-      }, size)
-    );
-  };
-
-  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (dragRef.current?.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  const handleResizePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    resizeRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originWidth: size.width,
-      originHeight: size.height,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handleResizePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const resize = resizeRef.current;
-    if (!resize || resize.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    const nextSize = clampStatementCalculatorPanelSize({
-      width: resize.originWidth + event.clientX - resize.startX,
-      height: resize.originHeight + event.clientY - resize.startY,
-    });
-    setSize(nextSize);
-    setPosition((previous) => clampStatementCalculatorPanelPosition(previous, nextSize));
-  };
-
-  const handleResizePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (resizeRef.current?.pointerId !== event.pointerId) return;
-    resizeRef.current = null;
-    event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  return (
-    <>
-      {minimized && (
-      <div className="fixed bottom-4 right-4 z-[95] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full border border-violet-200 bg-slate-950 px-3 py-2 text-white shadow-[0_22px_60px_rgba(15,23,42,0.34)]">
-        <button
-          type="button"
-          onClick={() => setMinimized(false)}
-          className="min-w-0 text-left"
-        >
-          <span className="block truncate text-xs font-black uppercase tracking-wide text-violet-200">
-            Kalkulačka
-          </span>
-          <span className="block truncate text-sm font-bold">
-            {prefill.contractNumber || prefill.productLabel}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMinimized(false)}
-          className="inline-flex h-9 items-center rounded-full bg-white px-3 text-sm font-bold text-slate-950 transition hover:bg-violet-50"
-        >
-          Otevřít
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 text-white transition hover:bg-white/10"
-          aria-label="Zavřít kalkulačku"
-        >
-          <X className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-        </button>
-      </div>
-      )}
-
-    <div
-      className={`fixed left-0 top-0 z-[95] flex overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.28)] ring-1 ring-white/75 transition-opacity ${
-        minimized ? "pointer-events-none opacity-0" : "opacity-100"
-      }`}
-      style={{
-        width: `${size.width}px`,
-        height: `${size.height}px`,
-        transform: `translate(${position.x}px, ${position.y}px)`,
-      }}
-      role="dialog"
-      aria-label="Přidat smlouvu z provizního výpisu"
-      aria-hidden={minimized}
-    >
-      <div className="relative flex min-h-0 w-full flex-col">
-        <div
-          className="flex cursor-move items-center justify-between gap-3 border-b border-violet-100 bg-white/95 px-4 py-3 backdrop-blur-xl"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
-              <Move className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-black text-slate-950">
-                Přidat smlouvu z výpisu
-              </div>
-              <div className="truncate text-xs font-semibold text-slate-500">
-                {prefill.contractNumber || "bez čísla"} · {prefill.clientName || prefill.productLabel}
-              </div>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="hidden h-9 items-center gap-2 rounded-full border border-violet-100 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-violet-200 hover:text-violet-800 sm:inline-flex"
-            >
-              <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-              Nová karta
-            </a>
-            <button
-              type="button"
-              onClick={() => setMinimized(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100 bg-white text-slate-700 transition hover:border-violet-200 hover:text-violet-800"
-              aria-label="Minimalizovat kalkulačku"
-            >
-              <Minus className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white transition hover:bg-black"
-              aria-label="Zavřít kalkulačku"
-            >
-              <X className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-        <iframe
-          title={`Přidat smlouvu ${prefill.contractNumber || prefill.productLabel}`}
-          src={href}
-          className="min-h-0 flex-1 border-0"
-        />
-        <button
-          type="button"
-          onPointerDown={handleResizePointerDown}
-          onPointerMove={handleResizePointerMove}
-          onPointerUp={handleResizePointerUp}
-          onPointerCancel={handleResizePointerUp}
-          className="absolute bottom-1 right-1 z-10 inline-flex h-8 w-8 cursor-nwse-resize items-center justify-center rounded-lg border border-violet-100 bg-white/90 text-violet-700 shadow-[0_8px_18px_rgba(15,23,42,0.14)] backdrop-blur transition hover:border-violet-200 hover:bg-violet-50"
-          aria-label="Změnit velikost kalkulačky"
-        >
-          <Grip className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-        </button>
-      </div>
-    </div>
-    </>
-  );
-}
-
-function SjednatelExtranetLink({
-  href,
-  compact = false,
-}: {
-  href: string | null | undefined;
-  compact?: boolean;
-}) {
-  if (!href) return null;
-
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className={
-        compact
-          ? "inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-800 hover:border-sky-300 hover:bg-sky-100"
-          : "inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900 hover:border-sky-300 hover:bg-sky-100"
-      }
-    >
-      <ExternalLink className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={2.2} aria-hidden="true" />
-      {compact ? "Extranet" : "Otevřít extranet"}
-    </a>
-  );
-}
-
-function AmountComparisonPanel({
-  comparisons,
-  baseComparisons = [],
-}: {
-  comparisons: CommissionAmountComparison[];
-  baseComparisons?: PremiumBaseComparison[];
-}) {
-  if (comparisons.length === 0 && baseComparisons.length === 0) return null;
-
-  const baseDisplayLines = (
-    comparison: PremiumBaseComparison,
-    side: "system" | "statement"
-  ): { primary: string; secondary: string | null } => {
-    if (comparison.statementBasePeriod === "annual") {
-      const amount =
-        side === "system"
-          ? comparison.systemAnnualPremiumBase
-          : comparison.statementAnnualPremiumBase;
-      return {
-        primary: `${formatWholeMoney(amount)} Kč ročně`,
-        secondary: null,
-      };
-    }
-
-    const amount =
-      side === "system" ? comparison.systemPremiumBase : comparison.statementPaymentBase;
-    return {
-      primary:
-        side === "system"
-          ? paymentAmountWithFrequencyLabel(amount, comparison.systemPaymentFrequency)
-          : `${formatWholeMoney(amount)} Kč za platbu`,
-      secondary:
-        comparison.paymentsPerYear > 1
-          ? `${formatWholeMoney(
-              side === "system"
-                ? comparison.systemAnnualPremiumBase
-                : comparison.statementAnnualPremiumBase
-            )} Kč ročně`
-          : null,
-    };
-  };
-  const baseDifferenceLines = (
-    comparison: PremiumBaseComparison
-  ): { primary: string; secondary: string | null } => {
-    if (comparison.statementBasePeriod === "annual") {
-      return {
-        primary: formatSignedWholeMoney(comparison.annualDifference),
-        secondary: null,
-      };
-    }
-
-    return {
-      primary: formatSignedWholeMoney(comparison.difference),
-      secondary:
-        comparison.paymentsPerYear > 1
-          ? `${formatSignedWholeMoney(comparison.annualDifference)} ročně`
-          : null,
-    };
-  };
-  const issueCount = comparisons.filter((comparison) => comparison.status !== "ok").length;
-  const baseChangeCount = baseComparisons.filter(
-    (comparison) =>
-      comparison.canBeAnniversaryPremiumChange &&
-      Math.abs(comparison.annualDifference) > ANNUAL_PREMIUM_TOLERANCE
-  ).length;
-  const baseMismatchCount = baseComparisons.filter(
-    (comparison) =>
-      !comparison.canBeAnniversaryPremiumChange &&
-      Math.abs(comparison.annualDifference) > ANNUAL_PREMIUM_TOLERANCE
-  ).length;
-  const panelTone =
-    issueCount > 0 ? "rose" : baseMismatchCount > 0 ? "amber" : baseChangeCount > 0 ? "sky" : "emerald";
-  const panelClass =
-    panelTone === "rose"
-      ? "border-rose-200 bg-rose-50"
-      : panelTone === "amber"
-        ? "border-amber-200 bg-amber-50"
-      : panelTone === "sky"
-        ? "border-sky-200 bg-sky-50"
-        : "border-emerald-200 bg-emerald-50";
-  const badgeClass =
-    panelTone === "rose"
-      ? "border-rose-200 bg-white text-rose-800"
-      : panelTone === "amber"
-        ? "border-amber-200 bg-white text-amber-900"
-      : panelTone === "sky"
-        ? "border-sky-200 bg-white text-sky-800"
-        : "border-emerald-200 bg-white text-emerald-800";
-  const badgeLabel =
-    issueCount > 0
-      ? amountIssueCountLabel(issueCount)
-      : baseMismatchCount > 0
-        ? "Rozdíl základny"
-      : baseChangeCount > 0
-        ? "Změna pojistného"
-        : "Vše sedí";
-  const baseStatusLabel = (comparison: PremiumBaseComparison): string => {
-    if (Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE) {
-      return "Sedí";
-    }
-    if (!comparison.canBeAnniversaryPremiumChange) return "Nesedí";
-    return comparison.annualDifference > 0
-      ? "Pojistné navýšeno"
-      : "Pojistné poníženo";
-  };
-  const baseStatusClass = (comparison: PremiumBaseComparison): string => {
-    if (Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE) {
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
-    }
-    if (!comparison.canBeAnniversaryPremiumChange) {
-      return "border-amber-200 bg-amber-50 text-amber-900";
-    }
-    return comparison.annualDifference > 0
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : "border-sky-200 bg-sky-50 text-sky-800";
-  };
-
-  return (
-    <div className={`mt-3 rounded-xl border px-3 py-3 ${panelClass}`}>
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div className="font-bold text-slate-950">
-          {baseComparisons.length > 0 ? "Kontrola výpisu" : "Kontrola vyplacených částek"}
-        </div>
-        <div className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
-          {badgeLabel}
-        </div>
-      </div>
-
-      <div className="mt-3 overflow-x-auto rounded-lg border border-white/70 bg-white">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-3 py-2">Položka</th>
-              <th className="px-3 py-2 text-right">Bohemka.app</th>
-              <th className="px-3 py-2 text-right">Provizní výpis</th>
-              <th className="px-3 py-2 text-right">Rozdíl ve výpise</th>
-              <th className="px-3 py-2 text-right">Stav</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {baseComparisons.map((comparison) => {
-              const systemLines = baseDisplayLines(comparison, "system");
-              const statementLines = baseDisplayLines(comparison, "statement");
-              const differenceLines = baseDifferenceLines(comparison);
-              return (
-                <tr key={comparison.key}>
-                  <td className="px-3 py-2 font-semibold text-slate-900">
-                    {comparison.label}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-700">
-                    <div>{systemLines.primary}</div>
-                    {systemLines.secondary && (
-                      <div className="text-xs text-slate-500">{systemLines.secondary}</div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-700">
-                    <div>{statementLines.primary}</div>
-                    {statementLines.secondary && (
-                      <div className="text-xs text-slate-500">{statementLines.secondary}</div>
-                    )}
-                  </td>
-                  <td
-                    className={`px-3 py-2 text-right font-semibold ${
-                      Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE
-                        ? "text-slate-700"
-                        : !comparison.canBeAnniversaryPremiumChange
-                          ? "text-amber-900"
-                        : comparison.annualDifference > 0
-                          ? "text-emerald-800"
-                          : "text-sky-800"
-                    }`}
-                  >
-                    <div>{differenceLines.primary}</div>
-                    {differenceLines.secondary && (
-                      <div className="text-xs font-medium text-slate-500">
-                        {differenceLines.secondary}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <span
-                      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${baseStatusClass(comparison)}`}
-                    >
-                      {baseStatusLabel(comparison)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-            {comparisons.map((comparison) => (
-              <tr key={comparison.key}>
-                <td className="px-3 py-2 font-semibold text-slate-900">
-                  <div>{comparison.label}</div>
-                  {comparison.detailLines && comparison.detailLines.length > 0 && (
-                    <div className="mt-1 space-y-0.5 text-xs font-medium leading-5 text-slate-500">
-                      {comparison.detailLines.map((line) => (
-                        <div key={line}>{line}</div>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-right text-slate-700">
-                  {formatMoney(comparison.expectedAmount)} Kč
-                </td>
-                <td className="px-3 py-2 text-right text-slate-700">
-                  {formatMoney(comparison.statementAmount)} Kč
-                </td>
-                <td
-                  className={`px-3 py-2 text-right font-semibold ${
-                    Math.abs(comparison.difference) <= COMMISSION_AMOUNT_TOLERANCE
-                      ? "text-slate-700"
-                      : "text-rose-800"
-                  }`}
-                >
-                  {comparison.difference > 0 ? "+" : ""}
-                  {formatMoney(comparison.difference)} Kč
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${amountComparisonStatusClass(comparison.status)}`}
-                  >
-                    {amountComparisonStatusLabel(comparison.status)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function StatementCorrectionWarning({
-  details,
-  label,
-}: {
-  details: string[];
-  label: string | null;
-}) {
-  if (details.length === 0) return null;
-
-  const title =
-    label === "Oprava kariérního stupně" || label === "Opravná provize: kariérní stupeň"
-      ? "Pozor: smlouva byla zprovizována na jiném kariérním stupni, než by měla"
-      : label === "Opravná provize"
-        ? "Pozor: tento výpis obsahuje opravu provize"
-      : "Pozor: provize byla opravena navazujícím výpisem";
-
-  return (
-    <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-      <div>
-        <div className="font-bold">{title}</div>
-        <div className="mt-0.5 space-y-1 font-medium text-amber-900">
-          {details.map((detail) => (
-            <div key={detail}>{detail}</div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CareerMismatchWarning({
-  careerCheck,
-  hasAmountDifference,
-}: {
-  careerCheck: ReturnType<typeof statementCareerMismatch> | null;
-  hasAmountDifference: boolean;
-}) {
-  if (
-    !careerCheck ||
-    careerCheck.careers.length === 0 ||
-    !careerCheck.systemPosition ||
-    !careerCheck.mismatched
-  ) {
-    return null;
-  }
-
-  return (
-    <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-      <div>
-        <div className="font-bold">Nesoulad kariérního stupně</div>
-        <div className="mt-0.5 font-medium text-rose-900">
-          Firma zprovizovala smlouvu na Kar. {statementCareerPositionsLabel(careerCheck.careers)}, ale podle systému má být {positionLabel(careerCheck.systemPosition)}.{" "}
-          {hasAmountDifference
-            ? "Kvůli tomu vznikl rozdíl v provizi."
-            : "To může způsobit rozdíl v provizi."}{" "}
-          Doporučuju prověřit výpis, případně zkontrolovat další výpis, jestli proběhlo odúčtování a nová výplata ve správném stupni.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ContractTimelinePositionWarning({
-  mismatch,
-}: {
-  mismatch: ContractTimelinePositionMismatch | null;
-}) {
-  if (!mismatch) return null;
-
-  return (
-    <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-      <div>
-        <div className="font-bold">Pozice smlouvy nesedí s historií kariéry</div>
-        <div className="mt-0.5 font-medium text-amber-900">
-          Na smlouvě je uložená pozice {positionLabel(mismatch.storedPosition)}, ale podle historie kariéry k datu sjednání {mismatch.signedDateLabel} má být {positionLabel(mismatch.timelinePosition)}. Nejdřív zkontroluj a případně oprav uloženou smlouvu; teprve potom má smysl řešit rozdíl proti proviznímu výpisu.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SystemMatchBadge({
-  match,
-  scope = "my",
-}: {
-  match: ContractMatchState | null;
-  scope?: ContractMatchScope;
-}) {
-  if (!match || match.status === "idle") return null;
-  const resolvedContract = matchedSystemContract(match);
-  const historyLabel = systemMatchHistoryLabel(match);
-
-  const badgeClass =
-    match.status === "matched"
-      ? resolvedContract
-        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-        : "border-amber-200 bg-amber-50 text-amber-900"
-      : match.status === "loading"
-        ? "border-sky-200 bg-sky-50 text-sky-800"
-        : match.status === "not_found"
-          ? "border-amber-200 bg-amber-50 text-amber-900"
-          : "border-rose-200 bg-rose-50 text-rose-800";
-
-  const label =
-    match.status === "matched"
-      ? resolvedContract
-        ? historyLabel
-          ? `Spárováno s historií (${historyLabel})`
-          : "Spárováno v systému"
-        : `Více shod v systému (${match.contracts.length})`
-      : match.status === "loading"
-        ? scope === "team"
-          ? "Páruji v týmu"
-          : scope === "tip"
-            ? "Páruji TIP"
-          : "Páruji se systémem"
-        : match.status === "not_found"
-          ? scope === "team"
-            ? "Nenalezeno v týmu"
-            : scope === "tip"
-              ? "Nenalezeno přes TIP"
-            : "Nenalezeno v mých smlouvách"
-          : "Ověření nedokončeno";
-
-  return (
-    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
-      {label}
-    </span>
-  );
-}
-
-function SystemMatchPanel({
-  match,
-  expectedProductKey,
-  selectedContract,
-  scope = "my",
-}: {
-  match: ContractMatchState | null;
-  expectedProductKey?: Product | null;
-  selectedContract?: MatchedSystemContract | null;
-  scope?: ContractMatchScope;
-}) {
-  if (!match || match.status === "idle") return null;
-
-  if (match.status === "loading") {
-    return (
-      <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
-        {scope === "team"
-          ? "Páruji číslo smlouvy s týmovými smlouvami."
-          : scope === "tip"
-            ? "Páruji číslo smlouvy přes uloženou TIP vazbu."
-            : "Páruji číslo smlouvy s mými uloženými smlouvami."}
-      </div>
-    );
-  }
-
-  if (match.status === "not_found") return null;
-
-  if (match.status === "error") {
-    return (
-      <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">
-        Ověření se systémem selhalo: {match.error}
-      </div>
-    );
-  }
-
-  const resolvedContract = selectedContract ?? matchedSystemContract(match);
-  const uniqueContracts =
-    match.status === "matched" ? dedupeEquivalentSystemContracts(match.contracts) : [];
-  const hasFamilyHistory = systemMatchHasSingleFamilyHistory(match);
-  const displayContracts =
-    hasFamilyHistory && resolvedContract
-      ? [
-          resolvedContract,
-          ...sortSystemContractTimeline(uniqueContracts).filter(
-            (contract) => contract.id !== resolvedContract.id
-          ),
-        ]
-      : uniqueContracts.length > 0
-        ? uniqueContracts
-        : match.contracts;
-
-  return (
-    <div className="mt-3 space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-      {displayContracts.map((contract) => {
-        const productMismatch =
-          Boolean(expectedProductKey && contract.productKey) &&
-          !statementProductMatchesSystemProduct(expectedProductKey, contract.productKey);
-        const timelinePositionMismatch = systemContractTimelinePositionMismatch(contract);
-        const inputAmount = Number(
-          systemContractIsEndorsement(contract)
-            ? contract.newInputAmount ?? contract.effectiveInputAmount ?? contract.inputAmount
-            : contract.inputAmount
-        );
-        const isSelected = resolvedContract?.id === contract.id;
-        const contractLabel = hasFamilyHistory
-          ? isSelected
-            ? "Použitý záznam"
-            : systemContractIsEndorsement(contract)
-              ? "Dodatek v historii"
-              : "Původní záznam v historii"
-          : "Shoda v systému";
-
-        return (
-          <div key={`${contract.adviserEmail ?? "owner"}-${contract.id}`}>
-            <div className="font-bold">
-              {contractLabel}: {contract.clientName || "klient bez názvu"}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-emerald-900">
-              <span>{productLabelFromKey(contract.productKey)}</span>
-              <span>Poradce: {contract.adviserName || contract.adviserEmail || "—"}</span>
-              <span>Pozice: {positionLabel(systemContractPosition(contract))}</span>
-              <span>
-                Pojistné:{" "}
-                {Number.isFinite(inputAmount)
-                  ? paymentAmountWithFrequencyLabel(inputAmount, contract.frequencyRaw)
-                  : "—"}
-              </span>
-              <span>Sjednáno: {formatSystemDate(contract.contractSignedDate)}</span>
-              <span>Počátek: {formatSystemDate(contract.policyStartDate)}</span>
-            </div>
-            {productMismatch && (
-              <div className="mt-1 font-semibold text-amber-900">
-                Pozor: produkt ve výpisu nesedí s produktem uložené smlouvy.
-              </div>
-            )}
-            {timelinePositionMismatch && (
-              <div className="mt-1 font-semibold text-amber-900">
-                Pozor: uložená pozice {positionLabel(timelinePositionMismatch.storedPosition)} nesedí s historií kariéry ({positionLabel(timelinePositionMismatch.timelinePosition)} k datu sjednání).
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function StornoSystemStatusBadge({
-  contract,
-}: {
-  contract: MatchedSystemContract | null;
-}) {
-  if (!contract) return null;
-
-  if (systemContractIsStorno(contract)) {
-    const stornoDate = toDate(contract.stornoDate);
-    return (
-      <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
-        Storno v systému
-        {stornoDate ? ` · ${formatLocalDate(stornoDate)}` : ""}
-      </span>
-    );
-  }
-
-  return (
-    <span className="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
-      V systému není storno
-    </span>
-  );
-}
-
-function StornoSystemActionPanel({
-  target,
-  onRequestStorno,
-}: {
-  target: StornoStatementActionTarget | null;
-  onRequestStorno?: (target: StornoStatementActionTarget) => void;
-}) {
-  if (!target || systemContractIsStorno(target.contract)) return null;
-
-  const inference = target.inference ?? null;
-  const inferenceAmountSourceLabel =
-    inference?.matchedSource === "contract_item"
-      ? "v detailu smlouvy je stejná provize"
-      : "v historii výpisů je stejná výplata";
-  const inferenceDateSourceLabel =
-    inference?.referenceDateSource === "statement_period"
-      ? "konec období výpisu"
-      : inference?.referenceDateSource === "statement_period_overlap"
-        ? "překryv období výpisu s dvouměsíční lhůtou"
-      : inference?.referenceDateSource === "row_date"
-        ? "datum řádku storna"
-        : "navržené datum";
-
-  return (
-    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-violet-100 bg-violet-50/70 px-3 py-2 text-sm text-slate-900 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" strokeWidth={2.2} aria-hidden="true" />
-        <div>
-          {inference ? (
-            <>
-              <div className="font-bold">
-                Pravděpodobně storno smlouvy do 2 měsíců od počátku
-              </div>
-              <div className="mt-0.5 font-medium text-slate-700">
-                Výpis vrací {formatMoney(inference.stornoAmount)} Kč z{" "}
-                {inference.commissionCode ?? "provize"} a {inferenceAmountSourceLabel}{" "}
-                {formatMoney(inference.matchedPaidAmount)} Kč.
-              </div>
-              <div className="mt-1 text-xs font-medium text-slate-500">
-                Čas: počátek {formatLocalDate(inference.policyStartDate)}, {inferenceDateSourceLabel}{" "}
-                {formatLocalDate(inference.suggestedDate)}, hranice 2 měsíců{" "}
-                {formatLocalDate(inference.fullStornoBoundaryDate)}. Výpis drží zápornou položku v
-                cashflow, tlačítko jen doplní storno smlouvy a zastaví další projekce.
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="font-bold">Výpis hlásí storno, systém ne</div>
-              <div className="mt-0.5 font-medium text-slate-700">
-                Smlouva je v systému vedená jako {systemContractStatusLabel(target.contract)}.
-              </div>
-              <div className="mt-1 text-xs font-medium text-slate-500">
-                Datum storna před uložením ověř proklikem do MAXXu nebo Extranetu.
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-      {onRequestStorno && (
-        <button
-          type="button"
-          onClick={() => onRequestStorno(target)}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-3 py-2 text-sm font-bold text-white shadow-[0_12px_26px_rgba(15,23,42,0.16)] transition hover:bg-black"
-        >
-          <CalendarX className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-          {inference ? "Označit podle výpisu" : "Označit jako stornovanou"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function StornoStatementActionModal({
-  target,
-  dateInput,
-  saving,
-  error,
-  onDateChange,
-  onClose,
-  onConfirm,
-}: {
-  target: StornoStatementActionTarget;
-  dateInput: string;
-  saving: boolean;
-  error: string | null;
-  onDateChange: (value: string) => void;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  const extranetUrl = firstSjednatelExtranetUrl([], target.contract);
-  const inference = target.inference ?? null;
-  const inferenceAmountSourceTitle =
-    inference?.matchedSource === "contract_item" ? "Provize v detailu" : "Původní výplata";
-  const inferenceDateSourceTitle =
-    inference?.referenceDateSource === "statement_period"
-      ? "Konec období výpisu"
-      : inference?.referenceDateSource === "statement_period_overlap"
-        ? "Překryv období a lhůty"
-      : inference?.referenceDateSource === "row_date"
-        ? "Datum řádku storna"
-        : "Navržené datum";
-  const inferenceDatePrefillLabel =
-    inference?.referenceDateSource === "statement_period"
-      ? "konce období výpisu"
-      : inference?.referenceDateSource === "statement_period_overlap"
-        ? "překryvu období výpisu a dvouměsíční lhůty"
-      : inference?.referenceDateSource === "row_date"
-        ? "data řádku storna"
-        : "navrženého data";
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-      <button
-        type="button"
-        className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-        aria-label="Zavřít označení storna"
-        onClick={onClose}
-        disabled={saving}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Označit smlouvu jako stornovanou"
-        className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-              Označit jako stornovanou
-            </h3>
-            <p className="mt-1 text-sm font-medium text-slate-600">
-              Smlouva {target.contractNumber || "—"} · {target.client}
-            </p>
-            <p className="mt-0.5 text-sm text-slate-500">{target.product}</p>
-            <p className="mt-2 text-sm font-medium text-slate-600">
-              {inference
-                ? `Pravděpodobně jde o storno smlouvy do 2 měsíců od počátku. Datum je předvyplněné podle ${inferenceDatePrefillLabel}.`
-                : "Datum storna ověř v MAXXu nebo Extranetu a pak ho ulož do systému."}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-full px-2 text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
-            aria-label="Zavřít"
-          >
-            ×
-          </button>
-        </div>
-
-        {(target.contract.maxxContractDetailUrl || extranetUrl) && (
-          <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-            <ContractDetailLink href={target.contract.maxxContractDetailUrl} compact />
-            <SjednatelExtranetLink href={extranetUrl} compact />
-          </div>
-        )}
-
-        {inference && (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
-            <div className="font-semibold">Doporučení z výpisu</div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <div>
-                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
-                  Vrácená provize
-                </div>
-                <div className="font-semibold">{formatMoney(inference.stornoAmount)} Kč</div>
-              </div>
-              <div>
-                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
-                  {inferenceAmountSourceTitle}
-                </div>
-                <div className="font-semibold">{formatMoney(inference.matchedPaidAmount)} Kč</div>
-              </div>
-              <div>
-                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
-                  Počátek smlouvy
-                </div>
-                <div className="font-semibold">
-                  {formatLocalDate(inference.policyStartDate)}
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700">
-                  {inferenceDateSourceTitle}
-                </div>
-                <div className="font-semibold">
-                  {formatLocalDate(inference.suggestedDate)}
-                </div>
-              </div>
-            </div>
-            <div className="mt-2 text-xs font-medium text-amber-800">
-              Hranice pro plné storno je {formatLocalDate(inference.fullStornoBoundaryDate)}.
-              Uložením se smlouva označí jako storno k navrženému datu, provize z výpisu se tím
-              nepřepíše.
-            </div>
-          </div>
-        )}
-
-        <label className="mt-5 block text-sm font-semibold text-slate-700">
-          Datum storna
-          <input
-            type="date"
-            value={dateInput}
-            onChange={(event) => onDateChange(event.target.value)}
-            disabled={saving}
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
-          />
-        </label>
-
-        {error && (
-          <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">
-            {error}
-          </p>
-        )}
-
-        <div className="mt-5 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
-          >
-            Zrušit
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-xl border border-amber-700 bg-amber-600 px-5 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(180,83,9,0.25)] transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving && (
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-            )}
-            Uložit storno
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NeonRefreshConversionPromptModal({
-  target,
-  totalCount,
-  saving,
-  error,
-  onClose,
-  onConfirm,
-}: {
-  target: PostProcessingNeonRefreshPromptTarget;
-  totalCount: number;
-  saving: boolean;
-  error: string | null;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-      <button
-        type="button"
-        className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-        aria-label="Zavřít převod smlouvy na REFRESH"
-        onClick={onClose}
-        disabled={saving}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Označit smlouvu jako REFRESH"
-        className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-sky-800">
-              <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-              REFRESH z výpisu
-            </div>
-            <h3 className="mt-3 text-xl font-semibold tracking-tight text-slate-900">
-              Označit smlouvu jako REFRESH?
-            </h3>
-            <p className="mt-1 text-sm font-medium text-slate-600">
-              Smlouva {target.contractNumber} · {target.client}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-full p-1.5 text-slate-700 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
-            aria-label="Zavřít"
-          >
-            <X className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
-          <div className="font-bold">Výpis uvádí produkt {target.productCode}</div>
-          <p className="mt-1 font-medium text-sky-900">
-            V systému smlouva zatím není vedená jako REFRESH. Převod nastaví REFRESH režim a
-            převezme základnu z výpisu, aby očekávané provize odpovídaly výpisu.
-          </p>
-        </div>
-
-        <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-              Výpis
-            </div>
-            <div className="mt-1 font-semibold text-slate-900">{target.statementLabel}</div>
-            <div className="mt-1 text-slate-600">
-              Základna {formatWholeMoney(target.statementAnnualPremium)} Kč ročně
-            </div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-              Systém teď
-            </div>
-            <div className="mt-1 font-semibold text-slate-900">
-              {productLabelFromKey(target.contract.productKey)}
-            </div>
-            <div className="mt-1 text-slate-600">
-              {target.systemAnnualPremium == null
-                ? "Základna není jistá"
-                : `${formatWholeMoney(target.systemAnnualPremium)} Kč ročně (${formatWholeMoney(
-                    target.systemMonthlyPremium ?? target.systemAnnualPremium / 12
-                  )} Kč měsíčně)`}
-            </div>
-          </div>
-        </div>
-
-        {totalCount > 1 && (
-          <p className="mt-3 text-sm font-medium text-slate-500">
-            Po potvrzení se zobrazí další nalezená REFRESH smlouva.
-          </p>
-        )}
-
-        {error && (
-          <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">
-            {error}
-          </p>
-        )}
-
-        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
-          >
-            Teď ne
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={saving}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-950 bg-slate-950 px-5 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(15,23,42,0.2)] transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-            ) : (
-              <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            )}
-            Označit jako REFRESH
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const summaryIconToneClass: Record<"slate" | "emerald" | "sky" | "indigo", string> = {
-  slate: "text-slate-500",
-  emerald: "text-violet-700",
-  sky: "text-violet-700",
-  indigo: "text-violet-700",
-};
-
-function SummaryStatCard({
-  icon: Icon,
-  label,
-  value,
-  tone = "slate",
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  tone?: keyof typeof summaryIconToneClass;
-}) {
-  return (
-    <div className="flex min-h-20 items-center justify-between gap-3 px-4 py-3">
-      <div className="min-w-0">
-        <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-          {label}
-        </div>
-        <div className="mt-1 truncate text-base font-black text-slate-950">
-          {value}
-        </div>
-      </div>
-      <Icon className={`h-5 w-5 shrink-0 ${summaryIconToneClass[tone]}`} strokeWidth={2.2} aria-hidden="true" />
-    </div>
-  );
-}
-
-function StatementSummary({ statement }: { statement: ParsedStatement }) {
-  const totalCommission = useMemo(
-    () => sumRows(statement.commissionRows),
-    [statement.commissionRows]
-  );
-  const totalOtherPayments = useMemo(
-    () => sumPayments(statement.otherPayments),
-    [statement.otherPayments]
-  );
-  const totalManagerCommission = useMemo(
-    () =>
-      statement.managerCommissions.reduce(
-        (sum, advisor) => sum + advisor.commission + advisor.stornos + advisor.deductions,
-        0
-      ),
-    [statement.managerCommissions]
-  );
-
-  return (
-    <div className="overflow-hidden border-y border-violet-100 bg-white/35">
-      <div className="grid divide-y divide-violet-100 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-5">
-        <SummaryStatCard
-          icon={CalendarDays}
-          label="Období"
-          value={statement.header.period ?? "—"}
-          tone="slate"
-        />
-        <SummaryStatCard
-          icon={Banknote}
-          label="Vyplaceno"
-          value={
-            statement.payoutTotal != null
-              ? `${formatMoney(statement.payoutTotal)} Kč`
-              : "—"
-          }
-          tone="emerald"
-        />
-        <SummaryStatCard
-          icon={HandCoins}
-          label="Záloha za smlouvy"
-          value={`${formatMoney(totalCommission)} Kč`}
-          tone="emerald"
-        />
-        <SummaryStatCard
-          icon={WalletCards}
-          label="Ostatní platby"
-          value={`${formatMoney(totalOtherPayments)} Kč`}
-          tone="sky"
-        />
-        <SummaryStatCard
-          icon={UsersRound}
-          label="Provize manažera"
-          value={`${formatMoney(totalManagerCommission)} Kč`}
-          tone="indigo"
-        />
-      </div>
-    </div>
-  );
-}
-
 function LifeSplitContractCard({
   contract,
   match,
@@ -8033,24 +5141,13 @@ function LifeSplitContractCard({
     target: ManualNeonRefreshConversionTarget
   ) => Promise<ManualNeonRefreshConversionResponse>;
 }) {
-  const a101Rows = rowsByKind(contract, "a101");
-  const b0301Rows = rowsByKind(contract, "b0301");
-  const a101 = sumRows(a101Rows);
-  const b0301 = sumRows(b0301Rows);
-  const b3601 = sumRows(rowsByKind(contract, "b3601"));
-  const b4801 = sumRows(rowsByKind(contract, "b4801"));
-  const subsequent = sumRows(rowsByKind(contract, "subsequent"));
-  const care = sumRows(rowsByKind(contract, "care"));
-  const increaseRows = rowsByKind(contract, "increase");
-  const increase = sumRows(increaseRows);
-  const tip = sumRows(rowsByKind(contract, "tip"));
-  const b36Half = sumPayments(contract.b36Payments);
-  const total = a101 + b0301 + b3601 + b4801 + subsequent + care + increase + tip + b36Half;
-  const monthlyPremium = contract.annualPremium > 0 ? contract.annualPremium / 12 : null;
-  const hasLifePremiumIncrease = increaseRows.length > 0;
-  const lifeIncreaseAnnualPremium = increaseRows
-    .map((row) => row.base)
-    .find((base) => base > 0) ?? 0;
+  const {
+    total,
+    monthlyPremium,
+    tipCommission: tip,
+    hasPremiumIncrease: hasLifePremiumIncrease,
+    premiumIncreaseAnnualBase: lifeIncreaseAnnualPremium,
+  } = lifeSplitCardSummary(contract);
   const b36HalfLabel = b36HalfLabelForProduct(contract.productCode);
   const pairedB36PaymentIndexes = b36OffsetPairIndexes(contract.b36Payments);
   const contractProductMeta = resolveStatementProduct(contract.productCode);
@@ -8141,6 +5238,12 @@ function LifeSplitContractCard({
   const premiumEndorsementAnnualDelta = Number(
     premiumBaseExplainedByEndorsement?.annualPremiumDelta
   );
+  const premiumBaseNotice = lifePremiumBaseNoticeKind({
+    hasPremiumMismatch: Boolean(premiumBaseMismatch),
+    isRefreshMissingOriginal,
+    hasPremiumIncrease: hasLifePremiumIncrease,
+    hasEndorsement: Boolean(premiumBaseExplainedByEndorsement),
+  });
   const detailUrl = firstContractDetailUrl(contract.rows);
   const extranetUrl = firstSjednatelExtranetUrl(contract.rows, systemContract);
   const calculatorPrefill =
@@ -8157,7 +5260,7 @@ function LifeSplitContractCard({
       : null;
   const [expanded, setExpanded] = useState(false);
   const [refreshConversionState, setRefreshConversionState] = useState<{
-    status: "idle" | "saving" | "success" | "error";
+    status: StatementRefreshConversionStatus;
     message: string | null;
   }>({ status: "idle", message: null });
   const isStatementNrfRefresh = normalizeProductCode(reviewContract.productCode) === "CPP_NRF_LF";
@@ -8244,7 +5347,11 @@ function LifeSplitContractCard({
               <StatementProductLogo product={contractProductMeta} size="xs" />
               {contract.productLabel} · {contract.productCode}
             </span>
-            <SystemMatchBadge match={match} scope={matchScope} />
+            <SystemMatchBadge
+              match={match}
+              scope={matchScope}
+              presentation={systemMatchPresentation}
+            />
             {correctionLabel && (
               <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
                 {correctionLabel}
@@ -8334,6 +5441,7 @@ function LifeSplitContractCard({
             expectedProductKey={expectedProductKey}
             selectedContract={systemContract}
             scope={matchScope}
+            presentation={systemMatchPresentation}
           />
           {(systemContract || detailUrl || extranetUrl || calculatorPrefill) && (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -8344,90 +5452,17 @@ function LifeSplitContractCard({
             </div>
           )}
 
-          <div className="mt-3 grid divide-y divide-violet-100 border-y border-violet-100 text-xs font-semibold text-slate-600 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-            <div className="px-3 py-2">
-              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                Uzavřeno
-              </div>
-              <div className="mt-0.5 text-slate-900">{contract.signedAt || "—"}</div>
-            </div>
-            <div className="px-3 py-2">
-              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                Počátek
-              </div>
-              <div className="mt-0.5 text-slate-900">{contract.validFrom || "—"}</div>
-            </div>
-            <div className="px-3 py-2">
-              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                Roční základna
-              </div>
-              <div className="mt-0.5 text-slate-900">
-                {contract.annualPremium > 0 ? `${formatWholeMoney(contract.annualPremium)} Kč` : "—"}
-              </div>
-            </div>
-            <div className="px-3 py-2">
-              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                Měsíčně
-              </div>
-              <div className="mt-0.5 text-slate-900">
-                {monthlyPremium === null ? "—" : `${formatWholeMoney(monthlyPremium)} Kč`}
-              </div>
-            </div>
-          </div>
+          <LifeSplitCardMetadata contract={contract} monthlyPremium={monthlyPremium} />
 
-          {(shouldShowStatementRefreshConversion || refreshConversionState.message) && (
-            <div
-              className={`mt-3 flex flex-col gap-3 rounded-xl border px-3 py-3 text-sm sm:flex-row sm:items-start sm:justify-between ${
-                refreshConversionState.status === "success"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                  : refreshConversionState.status === "error"
-                    ? "border-rose-200 bg-rose-50 text-rose-950"
-                    : "border-sky-200 bg-sky-50 text-sky-950"
-              }`}
-            >
-              <div className="flex min-w-0 items-start gap-2">
-                {refreshConversionState.status === "error" ? (
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-                ) : (
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-                )}
-                <div>
-                  <div className="font-bold">Výpis označuje smlouvu jako REFRESH</div>
-                  <div
-                    className={`mt-0.5 font-medium ${
-                      refreshConversionState.status === "error"
-                        ? "text-rose-900"
-                        : refreshConversionState.status === "success"
-                          ? "text-emerald-900"
-                          : "text-sky-900"
-                    }`}
-                  >
-                    {refreshConversionState.message ??
-                      (statementId
-                        ? "V systému zatím není vedená jako REFRESH. Ruční převod nastaví REFRESH režim a převezme výpisovou základnu z řádku NRF, aby očekávané provize odpovídaly výpisu."
-                        : "V systému zatím není vedená jako REFRESH. Nejdřív zpracuj výpis, aby měl uložené ID, potom půjde smlouvu ručně převést podle řádku NRF.")}
-                  </div>
-                </div>
-              </div>
-              {shouldShowStatementRefreshConversion && refreshConversionState.status !== "success" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleConvertStatementRefresh();
-                  }}
-                  disabled={!canConvertStatementRefresh || refreshConversionState.status === "saving"}
-                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {refreshConversionState.status === "saving" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-                  ) : (
-                    <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                  )}
-                  {statementId ? "Převést na REFRESH" : "Nejdřív zpracovat výpis"}
-                </button>
-              )}
-            </div>
-          )}
+          <StatementRefreshConversionPanel
+            showConversion={shouldShowStatementRefreshConversion}
+            state={refreshConversionState}
+            statementId={statementId}
+            canConvert={canConvertStatementRefresh}
+            onConvert={() => {
+              void handleConvertStatementRefresh();
+            }}
+          />
 
           <StatementCorrectionWarning details={correctionDetails} label={correctionLabel} />
           <StatementCorrectionWarning
@@ -8440,153 +5475,43 @@ function LifeSplitContractCard({
             hasAmountDifference={amountIssueCount > 0}
           />
 
-          {hasLifePremiumIncrease && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-950">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <div>
-                <div className="font-bold">Pojistné navýšeno</div>
-                <div className="mt-0.5 font-medium text-cyan-900">
-                  Řádek výpisu je provize za navýšení smlouvy. Základna {formatWholeMoney(lifeIncreaseAnnualPremium)} Kč znamená navýšení pojistného o {formatWholeMoney(lifeIncreaseAnnualPremium)} Kč ročně ({formatWholeMoney(lifeIncreaseAnnualPremium / 12)} Kč měsíčně), ne celé nové pojistné.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {coefficientOverride && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <div>
-                <div className="font-bold">
-                  Výpis sedí na {coefficientSetLabel(coefficientOverride.coefficientSet)}
-                </div>
-                <div className="mt-0.5 font-medium text-violet-900">
-                  Smlouva podle data používá {coefficientSetLabel(coefficientOverride.currentSet)}, ale vyplacené částky ve výpisu jednoznačně odpovídají sadě {coefficientSetLabel(coefficientOverride.coefficientSet)}. Při zápisu výpisu uložím ke smlouvě výjimku a přepočítám položky podle výpisu.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {premiumBaseMismatch && isRefreshMissingOriginal && !hasLifePremiumIncrease && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <div>
-                <div className="font-bold">REFRESH bez původní smlouvy v systému</div>
-                <div className="mt-0.5 font-medium text-sky-900">
-                  Výpis počítá se základnou {formatWholeMoney(premiumBaseMismatch.statementAnnualPremium)} Kč ročně ({formatWholeMoney(premiumBaseMismatch.statementAnnualPremium / 12)} Kč měsíčně). Smlouva je uložená jako REFRESH bez původní smlouvy v systému, takže kalkulační základna je jen orientační a musí se převzít z výpisu.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {premiumBaseMismatch && !isRefreshMissingOriginal && !premiumBaseExplainedByEndorsement && !hasLifePremiumIncrease && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <div>
-                <div className="font-bold">Nesoulad ročního pojistného</div>
-                <div className="mt-0.5 font-medium text-amber-900">
-                  Výpis počítá se základnou {formatWholeMoney(premiumBaseMismatch.statementAnnualPremium)} Kč ročně ({formatWholeMoney(premiumBaseMismatch.statementAnnualPremium / 12)} Kč měsíčně), ale systém eviduje {formatWholeMoney(premiumBaseMismatch.systemAnnualPremium)} Kč ročně ({formatWholeMoney(premiumBaseMismatch.systemMonthlyPremium)} Kč měsíčně). Rozdíl pojistného je {formatWholeMoney(premiumBaseMismatch.difference)} Kč ročně ({formatWholeMoney(premiumMonthlyDifference ?? 0)} Kč měsíčně).
-                </div>
-              </div>
-            </div>
-          )}
-
-          {premiumBaseMismatch && premiumBaseExplainedByEndorsement && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <div>
-                <div className="font-bold">Základna odpovídá dodatku smlouvy</div>
-                <div className="mt-0.5 font-medium text-sky-900">
-                  Výpis počítá se základnou {formatWholeMoney(premiumBaseMismatch.statementAnnualPremium)} Kč ročně ({formatWholeMoney(premiumBaseMismatch.statementAnnualPremium / 12)} Kč měsíčně). Aktuální hlavní záznam má {formatWholeMoney(premiumBaseMismatch.systemAnnualPremium)} Kč ročně, ale dohledaný dodatek od {premiumEndorsementDate} eviduje {Number.isFinite(premiumEndorsementAnnual) ? formatWholeMoney(premiumEndorsementAnnual) : "—"} Kč ročně{Number.isFinite(premiumEndorsementMonthly) ? ` (${formatWholeMoney(premiumEndorsementMonthly)} Kč měsíčně)` : ""}{Number.isFinite(premiumEndorsementAnnualDelta) && premiumEndorsementAnnualDelta !== 0 ? `, změna ${formatWholeMoney(premiumEndorsementAnnualDelta)} Kč ročně` : ""}.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {missingClientCardCommissionWarning && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <div>
-                <div className="font-bold">Chybí provize B0301 (karta klienta)</div>
-                <div className="mt-0.5 font-medium text-amber-900">
-                  Ve výpisu je A101, ale B0301 zde není. Pokud karta klienta nebyla zpracována do výplatního termínu, očekáváme B0301 obvykle po 3 měsících.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {deferredClientCardCommission && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <div>
-                <div className="font-bold">Doplacená B0301 po kartě klienta</div>
-                <div className="mt-0.5 font-medium text-emerald-900">
-                  Ve výpisu je pouze B0301 bez A101. Beru ji jako pozdější doplacení provize po zpracování karty klienta; částka se pořád kontroluje proti Bohemka.App.
-                </div>
-              </div>
-            </div>
-          )}
+          <LifePremiumIncreaseNotice
+            annualPremiumIncrease={hasLifePremiumIncrease ? lifeIncreaseAnnualPremium : null}
+          />
+          <LifeCoefficientOverrideNotice override={coefficientOverride} />
+          <LifePremiumBaseNotice
+            kind={premiumBaseNotice}
+            mismatch={premiumBaseMismatch}
+            monthlyDifference={premiumMonthlyDifference}
+            endorsement={
+              premiumBaseExplainedByEndorsement
+                ? {
+                    dateLabel: premiumEndorsementDate,
+                    annualPremium: premiumEndorsementAnnual,
+                    monthlyPremium: premiumEndorsementMonthly,
+                    annualPremiumDelta: premiumEndorsementAnnualDelta,
+                  }
+                : null
+            }
+          />
+          <LifeClientCardCommissionNotice
+            hasMissingCommission={missingClientCardCommissionWarning}
+            hasDeferredCommission={deferredClientCardCommission}
+          />
 
           <AmountComparisonPanel
             comparisons={amountComparisons}
             baseComparisons={lifePremiumBaseComparison ? [lifePremiumBaseComparison] : []}
           />
 
-          {missingB36Warning && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <span>Zrychlený režim: {missingB36Warning.detail}</span>
-            </div>
-          )}
+          <AcceleratedB36WarningNotice warning={missingB36Warning} />
 
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Kód</th>
-                  <th className="px-3 py-2">Význam</th>
-                  <th className="px-3 py-2 text-right">Základna</th>
-                  <th className="px-3 py-2 text-right">Procento</th>
-                  <th className="px-3 py-2 text-right">Provize</th>
-                  <th className="px-3 py-2 text-right">Rez. fond</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {contract.rows.map((row) => (
-                  <tr key={`${row.id}-${row.type}-${row.commission}`}>
-                    <td className="px-3 py-2 font-semibold text-slate-900">{row.type}</td>
-                    <td className="px-3 py-2 text-slate-700">{row.lifeSplitLabel}</td>
-                    <td className="px-3 py-2 text-right text-slate-700">{formatMoney(row.base)}</td>
-                    <td className="px-3 py-2 text-right text-slate-700">{row.percent || "—"}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-slate-950">
-                      {formatMoney(row.commission)}
-                    </td>
-                    <td className="px-3 py-2 text-right text-slate-700">
-                      {formatMoney(row.reserveFund)}
-                    </td>
-                  </tr>
-                ))}
-                {contract.b36Payments.map((payment, index) => {
-                  const isOffsetPair = pairedB36PaymentIndexes.has(index);
-                  return (
-                    <tr key={`${payment.contractNumber}-b36-${index}`} className="bg-emerald-50/60">
-                      <td className="px-3 py-2 font-semibold text-slate-900">B36</td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {b36HalfLabel} z ostatních plateb
-                        {payment.isStorno ? " / storno" : ""}
-                        {isOffsetPair ? " / vyplaceno a odečteno ve stejném výpisu" : ""}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700">—</td>
-                      <td className="px-3 py-2 text-right text-slate-700">—</td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-950">
-                        {formatMoney(payment.amount)}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700">—</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <LifeSplitCommissionTable
+            rows={contract.rows}
+            b36Payments={contract.b36Payments}
+            b36HalfLabel={b36HalfLabel}
+            pairedB36PaymentIndexes={pairedB36PaymentIndexes}
+          />
         </div>
       )}
     </article>
@@ -8614,18 +5539,15 @@ function OtherProductContractCard({
 }) {
   const productMetas = uniqueProductMetasForRows(contract.rows);
   const notes = productMetas.map((product) => product.note).filter(Boolean);
-  const totalCommission = sumRows(contract.rows) + sumPayments(contract.b36Payments);
+  const {
+    totalCommission,
+    totalReserve,
+    hasUnknownCommissionCode: hasUnknown,
+    annualBase,
+    monthlyBase,
+  } = otherProductCardSummary(contract);
   const pairedB36PaymentIndexes = b36OffsetPairIndexes(contract.b36Payments);
-  const totalReserve = contract.rows.reduce((sum, row) => sum + row.reserveFund, 0);
-  const hasUnknown = contract.rows.some(
-    (row) => classifyGeneralCommissionCode(row.product, row.type).kind === "unknown"
-  );
   const isAutoContract = contractHasProductCategory(contract, "auto");
-  const annualBaseRow = contract.rows.find(
-    (row) => resolveStatementProduct(row.product).usesAnnualPremiumBase && row.base > 0
-  );
-  const annualBase = annualBaseRow?.base ?? 0;
-  const monthlyBase = annualBase > 0 ? annualBase / 12 : null;
   const expectedProductKey =
     productMetas.length === 1 ? productMetas[0]?.productKey ?? null : null;
   const calculatorPrefillProduct =
@@ -8785,7 +5707,11 @@ function OtherProductContractCard({
                 Neznámý kód
               </span>
             )}
-            <SystemMatchBadge match={match} scope={matchScope} />
+            <SystemMatchBadge
+              match={match}
+              scope={matchScope}
+              presentation={systemMatchPresentation}
+            />
             {correctionLabel && (
               <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
                 {correctionLabel}
@@ -8889,6 +5815,7 @@ function OtherProductContractCard({
             match={match}
             expectedProductKey={expectedProductKey}
             scope={matchScope}
+            presentation={systemMatchPresentation}
           />
           {(systemContract || detailUrl || extranetUrl || calculatorPrefill) && (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -9023,84 +5950,12 @@ function OtherProductContractCard({
             </div>
           )}
 
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Produkt</th>
-                  <th className="px-3 py-2">Kód</th>
-                  <th className="px-3 py-2">Význam</th>
-                  <th className="px-3 py-2 text-right">Základna</th>
-                  <th className="px-3 py-2 text-right">Procento</th>
-                  <th className="px-3 py-2 text-right">Provize</th>
-                  <th className="px-3 py-2 text-right">Rez. fond</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {contract.rows.map((row) => {
-                  const classification = classifyGeneralCommissionCode(row.product, row.type);
-                  const rowProductMeta = resolveStatementProduct(row.product);
-                  return (
-                    <tr key={`${row.id}-${row.type}-${row.commission}`}>
-                      <td className="px-3 py-2 text-slate-700">
-                        <div className="font-semibold text-slate-900">{rowProductMeta.label}</div>
-                        <div className="text-xs text-slate-500">{rowProductMeta.rawCode}</div>
-                      </td>
-                      <td className="px-3 py-2 font-semibold text-slate-900">{row.type || "—"}</td>
-                      <td className="px-3 py-2 text-slate-700">
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${generalCommissionKindClass(classification.kind)}`}>
-                          {classification.label}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700">
-                        <div>{formatMoney(row.base)}</div>
-                        {rowProductMeta.usesAnnualPremiumBase && row.base > 0 && (
-                          <div className="text-xs text-slate-500">
-                            měs. {formatWholeMoney(row.base / 12)} Kč
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700">{row.percent || "—"}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-950">
-                        {formatMoney(row.commission)}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700">
-                        {formatMoney(row.reserveFund)}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {contract.b36Payments.map((payment, index) => {
-                  const isOffsetPair = pairedB36PaymentIndexes.has(index);
-                  return (
-                    <tr key={`${payment.contractNumber}-b36-${index}`} className="bg-emerald-50/60">
-                      <td className="px-3 py-2 text-slate-700">
-                        <div className="font-semibold text-slate-900">Ostatní platby</div>
-                        <div className="text-xs text-slate-500">bez produktového kódu</div>
-                      </td>
-                      <td className="px-3 py-2 font-semibold text-slate-900">B36</td>
-                      <td className="px-3 py-2 text-slate-700">
-                        <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
-                          50% z B36 z ostatních plateb
-                        </span>
-                        {isOffsetPair && (
-                          <div className="mt-1 text-xs font-medium text-emerald-800">
-                            Vyplaceno a odečteno ve stejném výpisu
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700">—</td>
-                      <td className="px-3 py-2 text-right text-slate-700">—</td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-950">
-                        {formatMoney(payment.amount)}
-                      </td>
-                      <td className="px-3 py-2 text-right text-slate-700">—</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <OtherProductCommissionTable
+            rows={contract.rows}
+            b36Payments={contract.b36Payments}
+            pairedB36PaymentIndexes={pairedB36PaymentIndexes}
+            generalCommissionKindClass={generalCommissionKindClass}
+          />
         </div>
       )}
     </article>
@@ -9132,78 +5987,40 @@ function LifeSplitProductsSection({
     target: ManualNeonRefreshConversionTarget
   ) => Promise<ManualNeonRefreshConversionResponse>;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  if (contracts.length === 0) return null;
-  const totalPayout = contracts.reduce((sum, contract) => sum + lifeSplitContractTotal(contract), 0);
-  const uncertaintyCount = contracts.reduce(
-    (sum, contract) =>
-      sum +
-      lifeSplitContractUncertaintyCount(
-        contract,
-        matchesByContractNumber,
-        statementPeriod,
-        statementKey,
-        correctionContext
-      ),
-    0
-  );
-
   return (
-    <div className="relative overflow-hidden rounded-lg border border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl">
-      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/60" aria-hidden="true" />
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-3 px-4 py-3 text-left transition hover:bg-violet-50/35 sm:flex-row sm:items-center sm:justify-between"
-        aria-expanded={expanded}
-      >
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
-            <HeartPulse className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <h3 className="text-base font-black tracking-tight text-slate-950">
-            Životní pojištění
-          </h3>
-        </div>
-        <span className="inline-flex flex-wrap items-center gap-3 text-sm font-bold text-slate-900">
-          <span>{contracts.length} smluv · {formatMoney(totalPayout)} Kč</span>
-          {uncertaintyCount > 0 && (
-            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-black text-violet-800 ring-1 ring-violet-100">
-              {uncertaintyCountLabel(uncertaintyCount)}
-            </span>
+    <LifeSplitProductsSectionPanel
+      contracts={contracts}
+      contractTotal={lifeSplitContractTotal}
+      contractUncertaintyCount={(contract) =>
+        lifeSplitContractUncertaintyCount(
+          contract,
+          matchesByContractNumber,
+          statementPeriod,
+          statementKey,
+          correctionContext
+        )
+      }
+      uncertaintyCountLabel={uncertaintyCountLabel}
+      renderContract={(contract) => (
+        <LifeSplitContractCard
+          key={`${contract.productCode}-${contract.contractNumber}`}
+          contract={contract}
+          match={contractMatchForNumber(
+            matchesByContractNumber,
+            contract.contractNumber,
+            lifeSplitContractMatchScope(contract)
           )}
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-violet-100 bg-white/45 py-2 pl-4 pr-3 sm:pl-5">
-          {contracts.map((contract) => (
-            <LifeSplitContractCard
-              key={`${contract.productCode}-${contract.contractNumber}`}
-              contract={contract}
-              match={contractMatchForNumber(
-                matchesByContractNumber,
-                contract.contractNumber,
-                lifeSplitContractMatchScope(contract)
-              )}
-              deductionRows={deductionRows}
-              statementId={statementId}
-              statementPeriod={statementPeriod}
-              statementPrefillSource={statementPrefillSource}
-              statementKey={statementKey}
-              correctionContext={correctionContext}
-              markingControls={markingControls}
-              onConvertNeonRefresh={onConvertNeonRefresh}
-            />
-          ))}
-        </div>
+          deductionRows={deductionRows}
+          statementId={statementId}
+          statementPeriod={statementPeriod}
+          statementPrefillSource={statementPrefillSource}
+          statementKey={statementKey}
+          correctionContext={correctionContext}
+          markingControls={markingControls}
+          onConvertNeonRefresh={onConvertNeonRefresh}
+        />
       )}
-    </div>
+    />
   );
 }
 
@@ -9628,7 +6445,11 @@ function ManagerCommissionRowCard({
               </span>
             )}
             {hasStorno && <StornoSystemStatusBadge contract={matchedContract} />}
-            <SystemMatchBadge match={match} scope="team" />
+            <SystemMatchBadge
+              match={match}
+              scope="team"
+              presentation={systemMatchPresentation}
+            />
             {rowComparisons.length > 0 && (
               <span
                 className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
@@ -10190,537 +7011,6 @@ function ManagerCommissionsSection({
   );
 }
 
-function StornoContractsSection({
-  statement,
-  statementId,
-  matchesByContractNumber,
-  currentUserEmail,
-  markingControls,
-  onRequestSystemStorno,
-}: {
-  statement: ParsedStatement;
-  statementId?: string | null;
-  matchesByContractNumber: ContractMatchesByNumber;
-  currentUserEmail?: string | null;
-  markingControls?: MarkingControls;
-  onRequestSystemStorno?: (target: StornoStatementActionTarget) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [pairedExpanded, setPairedExpanded] = useState(true);
-  const [unpairedExpanded, setUnpairedExpanded] = useState(true);
-  const otherPaymentStornos = statement.otherPayments.filter((payment) => payment.isStorno);
-  const stornoStatementGroups = groupStornoRowsByContract(statement.stornoRows);
-  const combinedStornoGroups = groupStornoItemsByContract(
-    statement.stornoRows,
-    otherPaymentStornos
-  );
-  const itemCount = statement.stornoRows.length + otherPaymentStornos.length;
-  if (itemCount === 0) return null;
-
-  const statusRuleByCode = new Map(
-    statement.contractStatusRules.map((rule) => [rule.code.trim().toUpperCase(), rule])
-  );
-
-  const totalStorno =
-    statement.stornoRows.reduce((sum, row) => sum + row.commission, 0) +
-    otherPaymentStornos.reduce((sum, payment) => sum + payment.amount, 0);
-  const statementStornoTotal = statement.stornoRows.reduce(
-    (sum, row) => sum + row.commission,
-    0
-  );
-  const otherPaymentStornoTotal = otherPaymentStornos.reduce(
-    (sum, payment) => sum + payment.amount,
-    0
-  );
-  const stornoGroupEntries = combinedStornoGroups.map((group, groupIndex) => {
-    const match = contractMatchForNumber(matchesByContractNumber, group.contractNumber);
-    const systemContract = matchedSystemContract(match);
-    return {
-      group,
-      groupIndex,
-      match,
-      systemContract,
-    };
-  });
-  const pairedStornoGroupEntries = stornoGroupEntries.filter((entry) =>
-    Boolean(entry.systemContract)
-  );
-  const unpairedStornoGroupEntries = stornoGroupEntries.filter(
-    (entry) => !entry.systemContract
-  );
-  const stornoUncertaintyCount = stornoGroupEntries.filter(
-    (entry) =>
-      !normalizeContractNumberForMatch(entry.group.contractNumber) ||
-      stornoSystemUncertainty(entry.match)
-  ).length;
-  type StornoGroupEntry = (typeof stornoGroupEntries)[number];
-  const stornoSectionTotal = (entries: StornoGroupEntry[]): number =>
-    entries.reduce((sum, entry) => sum + entry.group.totalAmount, 0);
-  const stornoSectionItemCount = (entries: StornoGroupEntry[]): number =>
-    entries.reduce(
-      (sum, entry) => sum + entry.group.rows.length + entry.group.payments.length,
-      0
-    );
-  const pairedNeedsSystemStornoCount = pairedStornoGroupEntries.filter(
-    (entry) => entry.systemContract && !systemContractIsStorno(entry.systemContract)
-  ).length;
-  const stornoSections = [
-    {
-      key: "paired",
-      title: "Spárované smlouvy",
-      description: "Storna s nalezenou smlouvou v systému.",
-      entries: pairedStornoGroupEntries,
-      expanded: pairedExpanded,
-      onToggle: () => setPairedExpanded((value) => !value),
-      icon: CheckCircle2,
-      containerClass: "border-white/70 bg-white/65 ring-1 ring-violet-100/70",
-      iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-      textClass: "text-slate-950",
-      descriptionClass: "text-slate-600",
-      dividerClass: "border-violet-100",
-      warningCount: pairedNeedsSystemStornoCount,
-      warningLabel: "není storno v systému",
-      warningClass: "bg-slate-950 text-white",
-    },
-    {
-      key: "unpaired",
-      title: "Nespárované smlouvy",
-      description: "Storna bez jednoznačné shody v systému.",
-      entries: unpairedStornoGroupEntries,
-      expanded: unpairedExpanded,
-      onToggle: () => setUnpairedExpanded((value) => !value),
-      icon: AlertTriangle,
-      containerClass: "border-white/70 bg-white/65 ring-1 ring-violet-100/70",
-      iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-      textClass: "text-slate-950",
-      descriptionClass: "text-slate-600",
-      dividerClass: "border-violet-100",
-      warningCount: unpairedStornoGroupEntries.length,
-      warningLabel: "k ruční kontrole",
-      warningClass: "bg-violet-50 text-violet-800 ring-1 ring-violet-100",
-    },
-  ].filter((section) => section.entries.length > 0);
-
-  return (
-    <div className="relative overflow-hidden rounded-lg border border-white/70 bg-white/75 shadow-[0_18px_42px_rgba(15,23,42,0.08)] ring-1 ring-violet-100/70 backdrop-blur-xl">
-      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/70" aria-hidden="true" />
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-3 px-4 py-4 text-left sm:flex-row sm:items-center sm:justify-between"
-        aria-expanded={expanded}
-      >
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
-            <AlertTriangle className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <div>
-            <h3 className="text-lg font-black tracking-tight text-slate-950">Stornované smlouvy</h3>
-            <p className="text-sm font-semibold text-slate-600">
-              Storna z výpisu a vratky provizí z ostatních plateb.
-            </p>
-          </div>
-        </div>
-        <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-950">
-          <span>{combinedStornoGroups.length} smluv · {formatMoney(totalStorno)} Kč</span>
-          {stornoUncertaintyCount > 0 && (
-            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
-              {uncertaintyCountLabel(stornoUncertaintyCount)}
-            </span>
-          )}
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="space-y-4 border-t border-violet-100 px-4 py-4">
-          <div className="overflow-hidden rounded-lg border border-violet-100 bg-white/45">
-            <div className="grid divide-y divide-violet-100 md:grid-cols-3 md:divide-x md:divide-y-0">
-              <div className="px-4 py-3">
-                <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">
-                  Storna z výpisu
-                </div>
-                <div className="mt-2 text-base font-black text-slate-950">
-                  {stornoStatementGroups.length} smluv · {statement.stornoRows.length} položek
-                </div>
-                <div className="mt-1 text-sm font-semibold text-slate-600">
-                  {formatMoney(statementStornoTotal)} Kč
-                </div>
-              </div>
-              <div className="px-4 py-3">
-                <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">
-                  Ostatní platby
-                </div>
-                <div className="mt-2 text-base font-black text-slate-950">
-                  {otherPaymentStornos.length} položek
-                </div>
-                <div className="mt-1 text-sm font-semibold text-slate-600">
-                  {formatMoney(otherPaymentStornoTotal)} Kč
-                </div>
-              </div>
-              <div className="px-4 py-3">
-                <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">
-                  Celkem
-                </div>
-                <div className="mt-2 text-base font-black text-slate-950">
-                  {combinedStornoGroups.length} smluv
-                </div>
-                <div className="mt-1 text-sm font-semibold text-slate-600">
-                  {formatMoney(totalStorno)} Kč
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {stornoSections.map((section) => {
-              const SectionIcon = section.icon;
-              return (
-                <div
-                  key={`storno-section-${section.key}`}
-                  className={`overflow-hidden rounded-lg border shadow-[0_14px_32px_rgba(15,23,42,0.05)] ${section.containerClass}`}
-                >
-                  <button
-                    type="button"
-                    onClick={section.onToggle}
-                    className="flex w-full flex-col gap-3 bg-white/35 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                    aria-expanded={section.expanded}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${section.iconClass}`}
-                      >
-                        <SectionIcon className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                      </span>
-                      <div>
-                        <h4 className={`text-base font-bold ${section.textClass}`}>
-                          {section.title}
-                        </h4>
-                        <p className={`text-sm ${section.descriptionClass}`}>
-                          {section.description}
-                        </p>
-                      </div>
-                    </div>
-                    <span
-                      className={`inline-flex flex-wrap items-center justify-end gap-2 text-sm font-semibold ${section.textClass}`}
-                    >
-                      <span>
-                        {section.entries.length} smluv ·{" "}
-                        {stornoSectionItemCount(section.entries)} položek ·{" "}
-                        {formatMoney(stornoSectionTotal(section.entries))} Kč
-                      </span>
-                      {section.warningCount > 0 && (
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-bold ${section.warningClass}`}
-                        >
-                          {section.warningCount} {section.warningLabel}
-                        </span>
-                      )}
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform ${
-                          section.expanded ? "rotate-180" : ""
-                        }`}
-                        strokeWidth={2.2}
-                        aria-hidden="true"
-                      />
-                    </span>
-                  </button>
-                  {section.expanded && (
-                    <div className={`space-y-3 border-t ${section.dividerClass} px-4 py-4`}>
-                      {section.entries.map(({ group, groupIndex, match, systemContract }) => {
-              const row = group.rows[0] ?? null;
-              const stornoInference = fullAutoStornoInferenceForGroup({
-                statement,
-                statementId,
-                group,
-                systemContract,
-                currentUserEmail,
-              });
-              const extranetUrl = firstSjednatelExtranetUrl(group.rows, systemContract);
-              const uniqueProducts = uniqueProductMetasForRows(group.rows);
-              const statementProductLabel =
-                group.rows.length > 0
-                  ? uniqueProducts.length === 1
-                    ? `${uniqueProducts[0].label} · ${uniqueProducts[0].rawCode}`
-                    : `${uniqueProducts.length} produktů`
-                  : null;
-              const productLabel =
-                statementProductLabel && group.payments.length > 0
-                  ? `${statementProductLabel} + ostatní platby`
-                  : statementProductLabel ?? "Ostatní platby";
-              const displayClient =
-                group.client || row?.client || systemContract?.clientName || "Klient nezjištěn";
-              const statusRules = [
-                ...new Map(
-                  group.rows
-                    .map((item) => statusRuleByCode.get(item.statusCode))
-                    .filter((rule): rule is ContractStatusRule => Boolean(rule))
-                    .map((rule) => [rule.code, rule])
-                ).values(),
-              ];
-              const statusCodes = [
-                ...new Set(group.rows.map((item) => item.statusCode).filter(Boolean)),
-              ];
-              const hasB36Payment = group.payments.some((payment) => payment.isB36Half);
-              const rowItemsLabel = czechCountLabel(
-                group.rows.length,
-                "položka storna",
-                "položky storna",
-                "položek storna"
-              );
-              const paymentItemsLabel = czechCountLabel(
-                group.payments.length,
-                "ostatní platba",
-                "ostatní platby",
-                "ostatních plateb"
-              );
-              const actionTarget: StornoStatementActionTarget | null = systemContract
-                ? {
-                    contract: systemContract,
-                    contractNumber: group.contractNumber || systemContract.contractNumber || "",
-                    client: displayClient,
-                    product: productLabel,
-                    suggestedDate:
-                      stornoInference?.suggestedDate ??
-                      suggestedStornoDateForStatement(statement.header),
-                    inference: stornoInference,
-                  }
-                : null;
-              const markedItem: MarkedDiscrepancyItem | null = markingControls
-                ? {
-                    key: markedDiscrepancyKey({
-                      statementKey: markingControls.statementKey,
-                      scope: "my",
-                      category: "Storna",
-                      contractNumber: group.contractNumber,
-                      fallback: `${group.key}-${groupIndex}`,
-                    }),
-                    statementKey: markingControls.statementKey,
-                    statementLabel: markingControls.statementLabel,
-                    category: "Storna",
-                    scope: "my",
-                    contractNumber: group.contractNumber,
-                    client: displayClient,
-                    product: productLabel,
-                    title: "Ručně označené storno k opravě",
-                    amount: group.totalAmount,
-                    details: [
-                      group.rows.length > 0 ? rowItemsLabel : null,
-                      group.payments.length > 0 ? paymentItemsLabel : null,
-                      row ? `Uzavřeno: ${row.signedAt || "—"}` : null,
-                      group.rows.length > 0
-                        ? group.rows
-                            .map((item) =>
-                              `${item.type || "—"} ${item.statusCode || ""}: ${formatMoney(
-                                item.commission
-                              )} Kč`
-                            )
-                            .join(" · ")
-                        : null,
-                      ...group.payments.map((payment) => payment.description),
-                    ].filter((detail): detail is string => Boolean(detail)),
-                  }
-                : null;
-
-              return (
-                <article
-                  key={`storno-contract-group-${group.key}-${groupIndex}`}
-                  className="rounded-lg border border-white/80 bg-white/80 px-3 py-3 text-sm shadow-[0_12px_28px_rgba(15,23,42,0.05)] ring-1 ring-violet-100/60"
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-slate-950">
-                          Smlouva {group.contractNumber || "—"}
-                        </span>
-                        <BohemkaContractDetailLink contract={systemContract} compact />
-                        <ContractDetailLink href={row?.detailUrl} compact />
-                        <SjednatelExtranetLink href={extranetUrl} compact />
-                        <SystemMatchBadge match={match} />
-                        {group.rows.length > 0 && (
-                          <span className="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
-                            Storno z výpisu
-                          </span>
-                        )}
-                        {group.payments.length > 0 && (
-                          <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
-                            Ostatní platby
-                          </span>
-                        )}
-                        <StornoSystemStatusBadge contract={systemContract} />
-                        {hasB36Payment && (
-                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">
-                            B36
-                          </span>
-                        )}
-                      </div>
-                      {markedItem && (
-                        <div className="mt-2">
-                          <MarkedDiscrepancyToggle
-                            item={markedItem}
-                            markingControls={markingControls}
-                          />
-                        </div>
-                      )}
-                      <div className="mt-1 text-[15px] font-semibold text-slate-800">
-                        {displayClient}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
-                        <span>{productLabel}</span>
-                        {row && <span>Uzavřeno: {row.signedAt || "—"}</span>}
-                        {group.rows.length > 0 && (
-                          <span>Rez. fond celkem: {formatMoney(group.totalReserveFund)} Kč</span>
-                        )}
-                        {group.rows.length > 0 && <span>{rowItemsLabel}</span>}
-                        {group.payments.length > 0 && <span>{paymentItemsLabel}</span>}
-                      </div>
-                      {statusCodes.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {statusCodes.map((statusCode) => (
-                            <span
-                              key={statusCode}
-                              className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-xs font-bold text-violet-800 ring-1 ring-violet-100"
-                            >
-                              {statusCode}
-                            </span>
-                          ))}
-                          {statusRules.map((rule) => (
-                            <span
-                              key={rule.code}
-                              className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700"
-                            >
-                              {rule.label}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-slate-950 px-3 py-2 text-right text-white shadow-[0_12px_26px_rgba(15,23,42,0.15)] lg:min-w-[178px]">
-                      <div className="text-[11px] font-black uppercase tracking-wide text-violet-200">
-                        Celkem
-                      </div>
-                      <div className="mt-1 whitespace-nowrap text-lg font-black text-white">
-                        {formatMoney(group.totalAmount)} Kč
-                      </div>
-                      {group.rows.length > 0 && group.payments.length > 0 && (
-                        <div className="mt-1 text-[11px] font-semibold text-white/70">
-                          Výpis {formatMoney(group.totalCommission)} Kč · platby{" "}
-                          {formatMoney(group.totalOtherPayments)} Kč
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {group.rows.length > 0 && (
-                    <div className="mt-3 overflow-x-auto rounded-lg border border-violet-100">
-                      <div className="grid min-w-[560px] grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-3 bg-violet-50/70 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-violet-800">
-                        <span>Storna z výpisu</span>
-                        <span className="text-right">Základna</span>
-                        <span className="text-right">Provize</span>
-                        <span className="text-right">Rez. fond</span>
-                      </div>
-                      <div className="min-w-[560px] divide-y divide-violet-50 bg-white">
-                        {group.rows.map((item) => {
-                          const itemProduct = resolveStatementProduct(item.product);
-                          const itemClassification = classifyGeneralCommissionCode(
-                            item.product,
-                            item.type
-                          );
-                          const showProduct = uniqueProducts.length > 1;
-
-                          return (
-                            <div
-                              key={`${item.id}-${item.type}-${item.statusCode}-${item.commission}`}
-                              className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-3 px-3 py-2 text-xs"
-                            >
-                              <div className="min-w-0">
-                                <span
-                                  className={`inline-flex rounded-full border px-2 py-0.5 font-semibold ${generalCommissionKindClass(itemClassification.kind)}`}
-                                >
-                                  {item.type || "—"}
-                                </span>
-                                {showProduct && (
-                                  <span className="ml-2 font-medium text-slate-500">
-                                    {itemProduct.rawCode}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="whitespace-nowrap text-right font-medium text-slate-600">
-                                {formatMoney(item.base)} Kč
-                              </span>
-                              <span className="whitespace-nowrap text-right font-bold text-slate-950">
-                                {formatMoney(item.commission)} Kč
-                              </span>
-                              <span className="whitespace-nowrap text-right font-medium text-slate-600">
-                                {formatMoney(item.reserveFund)} Kč
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {group.payments.length > 0 && (
-                    <div className="mt-3 overflow-x-auto rounded-lg border border-violet-100">
-                      <div className="grid min-w-[560px] grid-cols-[minmax(0,1fr)_auto] gap-3 bg-violet-50/70 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-violet-800">
-                        <span>Storna z ostatních plateb</span>
-                        <span className="text-right">Částka</span>
-                      </div>
-                      <div className="min-w-[560px] divide-y divide-violet-50 bg-white">
-                        {group.payments.map((payment) => (
-                          <div
-                            key={`payment-${payment.index}-${
-                              payment.contractNumber ?? "bez-cisla"
-                            }`}
-                            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-xs"
-                          >
-                            <div className="min-w-0 font-medium text-slate-600">
-                              {payment.description}
-                              {payment.isB36Half && (
-                                <span className="ml-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
-                                  B36
-                                </span>
-                              )}
-                            </div>
-                            <span className="whitespace-nowrap text-right font-bold text-slate-950">
-                              {formatMoney(payment.amount)} Kč
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <SystemMatchPanel
-                    match={match}
-                    expectedProductKey={
-                      row ? resolveStatementProduct(row.product).productKey : null
-                    }
-                  />
-                  <StornoSystemActionPanel
-                    target={actionTarget}
-                    onRequestStorno={onRequestSystemStorno}
-                  />
-                </article>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function OtherProductsSection({
   title = "Ostatní smlouvy",
   description = "Primárně seskupeno podle čísla smlouvy. Produkt je doplňující kontrola z výpisu.",
@@ -10741,7 +7031,7 @@ function OtherProductsSection({
   description?: string;
   showTitle?: boolean;
   showDescription?: boolean;
-  sectionKind?: "life" | "auto" | "property" | "business" | "travel" | "foreigners" | "investment" | "other";
+  sectionKind?: StatementProductSectionKind;
   enableA101Filter?: boolean;
   contracts?: OtherProductContractPreview[];
   matchesByContractNumber: ContractMatchesByNumber;
@@ -10752,1132 +7042,45 @@ function OtherProductsSection({
   correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [showOnlyA101, setShowOnlyA101] = useState(false);
-  const safeContracts = contracts ?? [];
-  const a101Contracts = safeContracts.filter(otherProductContractHasA101Commission);
-  const a101FilterActive = enableA101Filter && showOnlyA101 && a101Contracts.length > 0;
-  const displayedContracts = a101FilterActive ? a101Contracts : safeContracts;
-  if (safeContracts.length === 0) return null;
-
-  const totalCommission = displayedContracts.reduce(
-    (sum, contract) => sum + otherProductContractTotal(contract),
-    0
-  );
-  const uncertaintyCount = displayedContracts.reduce(
-    (sum, contract) =>
-      sum +
-      otherProductContractUncertaintyCount(
-        contract,
-        matchesByContractNumber,
-        statementPeriod,
-        statementKey,
-        correctionContext
-      ),
-    0
-  );
-	  const sectionMeta: {
-	    icon: LucideIcon;
-	    iconClass: string;
-	    containerClass: string;
-	    accentClass: string;
-	    dividerClass: string;
-	  } =
-	    sectionKind === "life"
-	      ? {
-	          icon: HeartPulse,
-	          iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-	          containerClass:
-	            "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
-	          accentClass: "bg-violet-500/60",
-	          dividerClass: "border-violet-100",
-	        }
-	    : sectionKind === "auto"
-	      ? {
-	          icon: Car,
-	          iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-	          containerClass:
-	            "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
-	          accentClass: "bg-violet-500/60",
-	          dividerClass: "border-violet-100",
-	        }
-	      : sectionKind === "property"
-	        ? {
-	            icon: House,
-	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-	            containerClass:
-	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
-	            accentClass: "bg-violet-500/60",
-	            dividerClass: "border-violet-100",
-	          }
-	      : sectionKind === "business"
-	        ? {
-	            icon: ReceiptText,
-	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-	            containerClass:
-	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
-	            accentClass: "bg-violet-500/60",
-	            dividerClass: "border-violet-100",
-	          }
-	      : sectionKind === "travel"
-	        ? {
-	            icon: Plane,
-	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-	            containerClass:
-	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
-	            accentClass: "bg-violet-500/60",
-	            dividerClass: "border-violet-100",
-	          }
-	      : sectionKind === "foreigners"
-	        ? {
-	            icon: UsersRound,
-	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-	            containerClass:
-	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
-	            accentClass: "bg-violet-500/60",
-	            dividerClass: "border-violet-100",
-	          }
-	      : sectionKind === "investment"
-	        ? {
-	            icon: HandCoins,
-	            iconClass: "bg-violet-50 text-violet-700 ring-1 ring-violet-100",
-	            containerClass:
-	              "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
-	            accentClass: "bg-violet-500/60",
-	            dividerClass: "border-violet-100",
-	          }
-	        : {
-	          icon: ReceiptText,
-	          iconClass: "bg-white text-slate-600 ring-1 ring-violet-100",
-	          containerClass:
-	            "border-white/70 bg-white/75 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl",
-	          accentClass: "bg-slate-400/70",
-	          dividerClass: "border-violet-100",
-	        };
-  const HeaderIcon = sectionMeta.icon;
-
-	  return (
-	    <div className={`relative overflow-hidden rounded-lg border ${sectionMeta.containerClass}`}>
-	      <span className={`pointer-events-none absolute inset-x-0 top-0 h-px ${sectionMeta.accentClass}`} aria-hidden="true" />
-	      <button
-	        type="button"
-	        onClick={() => setExpanded((value) => !value)}
-	        className={`flex w-full px-4 py-3 text-left transition hover:bg-violet-50/35 ${
-	          showTitle
-	            ? "flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-	            : "justify-end"
-	        }`}
-	        aria-expanded={expanded}
-	      >
-	        {showTitle && (
-	          <div className="flex items-center gap-3">
-	            <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${sectionMeta.iconClass}`}>
-	              <HeaderIcon className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-	            </span>
-	            <div className="min-w-0">
-	              <h3 className="text-base font-black tracking-tight text-slate-950">{title}</h3>
-	              {showDescription && (
-	                <p className="mt-0.5 line-clamp-1 text-xs font-semibold text-slate-500">
-	                  {description}
-	                </p>
-	              )}
-	            </div>
-	          </div>
-	        )}
-	        <span className="inline-flex flex-wrap items-center justify-end gap-3 text-sm font-bold text-slate-900">
-	          <span>{displayedContracts.length} smluv · {formatMoney(totalCommission)} Kč</span>
-	          {a101FilterActive && (
-	            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-800 ring-1 ring-emerald-100">
-	              Pouze A101
-	            </span>
-	          )}
-	          {uncertaintyCount > 0 && (
-	            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-black text-violet-800 ring-1 ring-violet-100">
-	              {uncertaintyCountLabel(uncertaintyCount)}
-	            </span>
-	          )}
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-
-	      {expanded && (
-	        <div className={`border-t ${sectionMeta.dividerClass} bg-white/45 py-2 pl-4 pr-3 sm:pl-5`}>
-          {enableA101Filter && (
-            <div className="mb-2 flex flex-col gap-2 rounded-lg border border-violet-100 bg-white/75 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs font-bold text-slate-600">
-                A101: {a101Contracts.length} / {safeContracts.length} smluv
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowOnlyA101((value) => !value)}
-                disabled={a101Contracts.length === 0}
-                className={`inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                  a101FilterActive
-                    ? "bg-emerald-600 text-white shadow-[0_8px_18px_rgba(5,150,105,0.24)]"
-                    : "bg-violet-50 text-violet-800 ring-1 ring-violet-100 hover:bg-violet-100"
-                }`}
-              >
-                <ListChecks className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden="true" />
-                Pouze A101
-              </button>
-            </div>
-          )}
-          {displayedContracts.map((contract) => (
-            <OtherProductContractCard
-              key={contract.key}
-              contract={contract}
-              match={contractMatchForNumber(
-                matchesByContractNumber,
-                contract.contractNumber,
-                otherProductContractMatchScope(contract)
-              )}
-              deductionRows={deductionRows}
-              statementPeriod={statementPeriod}
-              statementPrefillSource={statementPrefillSource}
-              statementKey={statementKey}
-              correctionContext={correctionContext}
-              markingControls={markingControls}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const statementCommissionCodeSet = (statement: ParsedStatement): string[] => {
-  const codes = new Set<string>();
-  const addCode = (value: string | null | undefined) => {
-    const code = normalizedRowText(value);
-    if (code) codes.add(code);
-  };
-
-  statement.commissionRows.forEach((row) => addCode(row.type));
-  statement.deductionRows.forEach((row) => addCode(row.type));
-  statement.stornoRows.forEach((row) => addCode(row.type));
-  statement.managerCommissions.forEach((advisor) => {
-    advisor.rows.forEach((row) => addCode(row.type));
-  });
-
-  return [...codes].sort((left, right) => left.localeCompare(right, "cs"));
-};
-
-const commissionCodeRuleUsedCodes = (
-  rule: CommissionCodeRule,
-  usedCodes: string[]
-): string[] => usedCodes.filter((code) => commissionCodeRuleMatches(rule, code));
-
-function StatementLegendModal({
-  title,
-  description,
-  eyebrow,
-  children,
-  onClose,
-}: {
-  title: string;
-  description: string;
-  eyebrow: string;
-  children: ReactNode;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-md"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/75 bg-white/90 shadow-[0_30px_90px_rgba(15,23,42,0.28)] ring-1 ring-violet-100/80 backdrop-blur-xl"
-      >
-        <div className="flex flex-col gap-4 border-b border-violet-100/80 bg-white/60 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">
-              {eyebrow}
-            </div>
-            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
-              {title}
-            </h2>
-            <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
-              {description}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white shadow-[0_14px_30px_rgba(15,23,42,0.2)] transition hover:bg-black"
-            aria-label="Zavřít"
-          >
-            <X className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          {children}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function CommissionCodeRulesPanel({ statement }: { statement: ParsedStatement }) {
-  const [open, setOpen] = useState(false);
-  const usedCodes = statementCommissionCodeSet(statement);
-  const groupedRules = COMMISSION_CODE_CATEGORY_ORDER.flatMap((category) => {
-    const rules = COMMISSION_CODE_RULES.filter((rule) => rule.category === category);
-    return rules.length > 0 ? [{ category, rules }] : [];
-  });
-  const ruleCount = COMMISSION_CODE_RULES.length + TROY_OUNCE_COMMISSION_CODE_RULES.length;
-  const usedRuleCount = COMMISSION_CODE_RULES.filter(
-    (rule) => commissionCodeRuleUsedCodes(rule, usedCodes).length > 0
-  ).length;
-  const unknownUsedCodes = usedCodes.filter((code) => {
-    const knownInGeneral = COMMISSION_CODE_RULES.some((rule) =>
-      commissionCodeRuleMatches(rule, code)
-    );
-    const knownInTroyOunce = TROY_OUNCE_COMMISSION_CODE_RULES.some((rule) =>
-      commissionCodeRuleMatches(rule, code)
-    );
-    return !knownInGeneral && !knownInTroyOunce;
-  });
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="group relative flex min-h-28 w-full items-center justify-between gap-4 overflow-hidden rounded-lg border border-white/70 bg-white/75 px-4 py-4 text-left shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_22px_48px_rgba(76,29,149,0.12)]"
-      >
-        <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/60" aria-hidden="true" />
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
-            <ReceiptText className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h3 className="text-base font-black tracking-tight text-slate-950">
-              Kódy provizí
-            </h3>
-            <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-600">
-              Legenda provizních položek a zvýraznění kódů z tohoto výpisu.
-            </p>
-          </div>
-        </div>
-        <span className="flex shrink-0 flex-col items-end gap-2">
-          <span className="text-sm font-black text-slate-950">{ruleCount} pravidel</span>
-          {usedRuleCount > 0 && (
-            <span className="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
-              {usedRuleCount} nalezeno
-            </span>
-          )}
-          <ExternalLink className="h-4 w-4 text-violet-700 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={2.2} aria-hidden="true" />
-        </span>
-      </button>
-
-      {open && (
-        <StatementLegendModal
-          eyebrow="Legenda výpisu"
-          title="Kódy provizí"
-          description="Kódy použité v tomto výpisu jsou zvýrazněné. Troyská unce má vlastní odlišnosti významu kódů."
-          onClose={() => setOpen(false)}
-        >
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2 text-sm font-bold text-slate-700">
-              <span className="rounded-full bg-violet-50 px-3 py-1 text-violet-800 ring-1 ring-violet-100">
-                {ruleCount} pravidel
-              </span>
-              {usedCodes.length > 0 && (
-                <span className="rounded-full bg-white px-3 py-1 text-slate-700 ring-1 ring-slate-200">
-                  {usedCodes.length} kódů ve výpisu
-                </span>
-              )}
-              {usedRuleCount > 0 && (
-                <span className="rounded-full bg-slate-950 px-3 py-1 text-white">
-                  {usedRuleCount} nalezeno
-                </span>
-              )}
-            </div>
-
-          <div className="grid gap-3 xl:grid-cols-2">
-            {groupedRules.map(({ category, rules }) => (
-              <div key={category} className="rounded-lg border border-white/80 bg-white/75 px-3 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.05)] ring-1 ring-violet-100/60">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${commissionCodeCategoryClass(category)}`}>
-                    {commissionCodeCategoryLabel(category)}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-500">
-                    {rules.length} pravidel
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {rules.map((rule) => {
-                    const usedRuleCodes = commissionCodeRuleUsedCodes(rule, usedCodes);
-
-                    return (
-                      <div key={`${category}-${rule.codes}`} className="grid gap-1 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0">
-                        <div className="flex flex-wrap items-baseline gap-2">
-                          <span className="font-mono text-sm font-bold text-slate-950">
-                            {rule.codes}
-                          </span>
-                          {usedRuleCodes.length > 0 && (
-                            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-800 ring-1 ring-violet-100">
-                              ve výpisu: {usedRuleCodes.join(", ")}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-slate-700">{rule.label}</div>
-                        {rule.note && <div className="text-xs text-slate-500">{rule.note}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-lg border border-violet-100 bg-violet-50/70 px-3 py-3">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${commissionCodeCategoryClass("troyOunce")}`}>
-                Troyská unce - odlišnosti významu kódů
-              </span>
-              <span className="text-xs font-semibold text-purple-900">
-                Produkty TU_*
-              </span>
-            </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              {TROY_OUNCE_COMMISSION_CODE_RULES.map((rule) => {
-                const usedRuleCodes = commissionCodeRuleUsedCodes(rule, usedCodes);
-
-                return (
-                  <div key={`troy-${rule.codes}`} className="rounded-lg border border-white/80 bg-white/80 px-3 py-2 ring-1 ring-violet-100/70">
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="font-mono text-sm font-bold text-slate-950">
-                        {rule.codes}
-                      </span>
-                      {usedRuleCodes.length > 0 && (
-                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-900 ring-1 ring-violet-100">
-                          ve výpisu
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-1 text-sm text-slate-700">{rule.label}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {unknownUsedCodes.length > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              <span className="font-bold">Nezařazené kódy ve výpisu: </span>
-              {unknownUsedCodes.join(", ")}
-            </div>
-          )}
-        </div>
-        </StatementLegendModal>
-      )}
-    </>
-  );
-}
-
-function ContractStatusRulesPanel({ rules }: { rules?: ContractStatusRule[] }) {
-  const [open, setOpen] = useState(false);
-  const safeRules = rules ?? [];
-  if (safeRules.length === 0) return null;
-
-  const groupedRules = safeRules.reduce<Record<ContractStatusCategory, ContractStatusRule[]>>(
-    (groups, rule) => {
-      groups[rule.category].push(rule);
-      return groups;
-    },
-    {
-      active: [],
-      pending: [],
-      matured: [],
-      transferred: [],
-      storno: [],
-      invalid: [],
-      unknown: [],
-    }
-  );
-  const visibleGroups = Object.entries(groupedRules).filter(([, groupRules]) => groupRules.length > 0) as [
-    ContractStatusCategory,
-    ContractStatusRule[],
-  ][];
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="group relative flex min-h-28 w-full items-center justify-between gap-4 overflow-hidden rounded-lg border border-white/70 bg-white/75 px-4 py-4 text-left shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_22px_48px_rgba(76,29,149,0.12)]"
-      >
-        <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/60" aria-hidden="true" />
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
-            <ListChecks className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h3 className="text-base font-black tracking-tight text-slate-950">
-              Kódy stavů smluv
-            </h3>
-            <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-600">
-              Obecná pravidla pro stav smlouvy při importu a ČPP synchronizaci.
-            </p>
-          </div>
-        </div>
-        <span className="flex shrink-0 flex-col items-end gap-2">
-          <span className="text-sm font-black text-slate-950">{safeRules.length} kódů</span>
-          <ExternalLink className="h-4 w-4 text-violet-700 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={2.2} aria-hidden="true" />
-        </span>
-      </button>
-
-      {open && (
-        <StatementLegendModal
-          eyebrow="Import a stav smlouvy"
-          title="Kódy stavů smluv"
-          description="Konkrétní stav smlouvy se při ostrém importu vezme z našeho systému nebo ČPP synchronizace. Tohle je obecná legenda pravidel."
-          onClose={() => setOpen(false)}
-        >
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2 text-sm font-bold text-slate-700">
-              <span className="rounded-full bg-violet-50 px-3 py-1 text-violet-800 ring-1 ring-violet-100">
-                {safeRules.length} kódů celkem
-              </span>
-            </div>
-
-            <div className="grid gap-3 xl:grid-cols-2">
-              {visibleGroups.map(([category, groupRules]) => (
-                <div key={category} className="rounded-lg border border-white/80 bg-white/75 px-3 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.05)] ring-1 ring-violet-100/60">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${contractStatusCategoryClass(category)}`}>
-                      {contractStatusCategoryLabel(category)}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-500">
-                      {groupRules.length} kódů
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {groupRules.map((rule) => (
-                      <div key={rule.code} className="grid gap-1 border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
-                        <div className="flex flex-wrap items-baseline gap-2">
-                          <span className="font-mono text-sm font-bold text-slate-950">{rule.code}</span>
-                          <span className="text-sm text-slate-700">{rule.label}</span>
-                        </div>
-                        <div className="text-xs text-slate-500">{rule.importDecision}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </StatementLegendModal>
-      )}
-    </>
-  );
-}
-
-function MarkedDiscrepancyToggle({
-  item,
-  markingControls,
-}: {
-  item: MarkedDiscrepancyItem;
-  markingControls?: MarkingControls;
-}) {
-  if (!markingControls?.markingMode) return null;
-
-  const checked = Boolean(markingControls.markedItems[item.key]);
-
-  return (
-    <label
-      onClick={(event) => event.stopPropagation()}
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-        checked
-          ? "border-rose-200 bg-rose-50 text-rose-800"
-          : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50"
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => markingControls.onToggleMarked(item, event.target.checked)}
-        className="h-4 w-4 accent-rose-700"
-      />
-      Označit nesrovnalost
-    </label>
-  );
-}
-
-function DiscrepancyPdfNotesModal({
-  items,
-  notes,
-  downloading,
-  onNoteChange,
-  onClose,
-  onDownload,
-}: {
-  items: DiscrepancyPdfItem[];
-  notes: Record<string, string>;
-  downloading: boolean;
-  onNoteChange: (key: string, note: string) => void;
-  onClose: () => void;
-  onDownload: () => void;
-}) {
-  if (items.length === 0) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-slate-950">
-              Souhrn nesrovnalostí
-            </h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Doplň poznámky pro účetní a stáhni PDF.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={downloading}
-            className="rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Zavřít
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          {items.map((item) => (
-            <article key={item.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0 text-sm">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-slate-950">
-                      Smlouva {item.contractNumber || "—"}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {item.category}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {discrepancyScopeLabel(item.scope)}
-                    </span>
-                  </div>
-                  <div className="mt-2 font-semibold text-slate-800">
-                    {item.client || "—"} · {item.product || "—"}
-                  </div>
-                  <div className="mt-1 text-xs font-medium text-slate-500">
-                    {item.statementLabel}
-                    {hasFiniteNumber(item.amount ?? undefined)
-                      ? ` · ${formatMoney(item.amount ?? 0)} Kč`
-                      : ""}
-                  </div>
-                  {item.autoIssues.length > 0 && (
-                    <ul className="mt-2 space-y-2 text-xs text-slate-600">
-                      {item.autoIssues.map((issue) => (
-                        <li key={issue.key}>
-                          <div className="font-semibold text-slate-700">{issue.title}</div>
-                          {issue.details.length > 0 && (
-                            <div className="mt-1 space-y-0.5 text-slate-500">
-                              {issue.details.map((detail) => (
-                                <div key={detail}>{detail}</div>
-                              ))}
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <textarea
-                  value={notes[item.key] ?? ""}
-                  onChange={(event) => onNoteChange(item.key, event.target.value)}
-                  placeholder="Poznámka pro účetní"
-                  className="min-h-24 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 lg:w-96"
-                />
-              </div>
-            </article>
-          ))}
-        </div>
-
-        <div className="flex flex-col gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm font-semibold text-slate-600">
-            {items.length} označených položek
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={downloading}
-              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Zpět
-            </button>
-            <button
-              type="button"
-              onClick={onDownload}
-              disabled={downloading}
-              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {downloading ? (
-                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-              ) : (
-                <Printer className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-              )}
-              Stáhnout PDF
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DiscrepancyIssueAmountBlock({ issue }: { issue: StatementDiscrepancyIssue }) {
-  const amountLines = [
-    hasFiniteNumber(issue.statementAmount) ? `Výpis ${formatMoney(issue.statementAmount)} Kč` : null,
-    hasFiniteNumber(issue.expectedAmount) ? `Systém ${formatMoney(issue.expectedAmount)} Kč` : null,
-    hasFiniteNumber(issue.difference) ? `Rozdíl ${formatMoney(issue.difference)} Kč` : null,
-    issue.manualAmountText || null,
-  ].filter(Boolean);
-
-  if (amountLines.length === 0) return null;
-
-  return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {amountLines.map((line) => (
-        <span
-          key={line}
-          className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700"
-        >
-          {line}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// Legacy inline report panel kept out of render while the marking modal flow is active.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function DiscrepancyReportPanel({
-  statement,
-  matchesByContractNumber,
-  reviewState,
-  manualItems,
-  onReviewStateChange,
-  onManualItemsChange,
-}: {
-  statement: ParsedStatement;
-  matchesByContractNumber: ContractMatchesByNumber;
-  reviewState: DiscrepancyReviewState;
-  manualItems: ManualDiscrepancyItem[];
-  onReviewStateChange: Dispatch<SetStateAction<DiscrepancyReviewState>>;
-  onManualItemsChange: Dispatch<SetStateAction<ManualDiscrepancyItem[]>>;
-}) {
-  const statementKey = statementDiscrepancyKey(statement);
-  const autoIssues = useMemo(
-    () => buildStatementDiscrepancyIssues(statement, matchesByContractNumber),
-    [matchesByContractNumber, statement]
-  );
-  const statementManualItems = useMemo(
-    () => manualItems.filter((item) => item.statementKey === statementKey),
-    [manualItems, statementKey]
-  );
-  const selectedReportItems = useMemo(
-    () => buildPrintableDiscrepancyItems(autoIssues, reviewState, statementManualItems),
-    [autoIssues, reviewState, statementManualItems]
-  );
-  const [manualDraft, setManualDraft] = useState({
-    contractNumber: "",
-    client: "",
-    product: "",
-    title: "",
-    note: "",
-    amountText: "",
-  });
-
-  const selectedAutoCount = autoIssues.filter(
-    (issue) => reviewState[issue.key]?.selected ?? true
-  ).length;
-  const selectedManualCount = statementManualItems.filter((item) => item.selected).length;
-  const allItemCount = autoIssues.length + statementManualItems.length;
-  const allItemsSelected = allItemCount > 0 && selectedReportItems.length === allItemCount;
-  const selectedDifference = selectedReportItems.reduce(
-    (sum, issue) => sum + (hasFiniteNumber(issue.difference) ? issue.difference : 0),
-    0
-  );
-
-  const updateIssueReview = (
-    issueKey: string,
-    patch: DiscrepancyReviewStateItem
-  ) => {
-    onReviewStateChange((previous) => ({
-      ...previous,
-      [issueKey]: {
-        selected: previous[issueKey]?.selected ?? true,
-        note: previous[issueKey]?.note ?? "",
-        ...patch,
-      },
-    }));
-  };
-
-  const updateManualItem = (
-    itemKey: string,
-    patch: Partial<ManualDiscrepancyItem>
-  ) => {
-    onManualItemsChange((previous) =>
-      previous.map((item) => (item.key === itemKey ? { ...item, ...patch } : item))
-    );
-  };
-
-  const toggleAllItems = (selected: boolean) => {
-    onReviewStateChange((previous) => {
-      const next = { ...previous };
-      for (const issue of autoIssues) {
-        next[issue.key] = {
-          selected,
-          note: previous[issue.key]?.note ?? "",
-        };
+    <OtherProductsSectionPanel
+      title={title}
+      description={description}
+      showTitle={showTitle}
+      showDescription={showDescription}
+      sectionKind={sectionKind}
+      enableA101Filter={enableA101Filter}
+      contracts={contracts}
+      contractHasA101Commission={otherProductContractHasA101Commission}
+      contractTotal={otherProductContractTotal}
+      contractUncertaintyCount={(contract) =>
+        otherProductContractUncertaintyCount(
+          contract,
+          matchesByContractNumber,
+          statementPeriod,
+          statementKey,
+          correctionContext
+        )
       }
-      return next;
-    });
-    onManualItemsChange((previous) =>
-      previous.map((item) =>
-        item.statementKey === statementKey ? { ...item, selected } : item
-      )
-    );
-  };
-
-  const addManualItem = () => {
-    const normalizedDraft = {
-      contractNumber: normalizeText(manualDraft.contractNumber),
-      client: normalizeText(manualDraft.client),
-      product: normalizeText(manualDraft.product),
-      title: normalizeText(manualDraft.title),
-      note: normalizeText(manualDraft.note),
-      amountText: normalizeText(manualDraft.amountText),
-    };
-    const hasContent = Object.values(normalizedDraft).some(Boolean);
-    if (!hasContent) return;
-
-    const key = discrepancyIssueKey(
-      statementKey,
-      "manual",
-      Date.now(),
-      Math.random().toString(36).slice(2, 8)
-    );
-    onManualItemsChange((previous) => [
-      ...previous,
-      {
-        key,
-        statementKey,
-        selected: true,
-        ...normalizedDraft,
-      },
-    ]);
-    setManualDraft({
-      contractNumber: "",
-      client: "",
-      product: "",
-      title: "",
-      note: "",
-      amountText: "",
-    });
-  };
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50">
-      <div className="flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex items-start gap-3">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700">
-            <ListChecks className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <div>
-            <h3 className="text-lg font-bold text-slate-950">
-              Souhrn nesrovnalostí pro účetní
-            </h3>
-            <p className="text-sm text-slate-600">
-              Vybrané položky se otevřou jako tisková sestava pro uložení do PDF.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => toggleAllItems(!allItemsSelected)}
-            disabled={allItemCount === 0}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {allItemsSelected ? "Odznačit vše" : "Označit vše"}
-          </button>
-          <button
-            type="button"
-            onClick={() => printDiscrepancyReport(statement, selectedReportItems)}
-            disabled={selectedReportItems.length === 0}
-            className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Printer className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            Tisk / PDF
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Detekováno
-          </div>
-          <div className="mt-1 text-lg font-bold text-slate-950">{autoIssues.length}</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Ručně
-          </div>
-          <div className="mt-1 text-lg font-bold text-slate-950">{statementManualItems.length}</div>
-        </div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-            Do PDF
-          </div>
-          <div className="mt-1 text-lg font-bold text-emerald-950">
-            {selectedReportItems.length}
-          </div>
-          <div className="mt-0.5 text-xs font-medium text-emerald-800">
-            {selectedAutoCount} auto · {selectedManualCount} ručně
-          </div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Součet rozdílů
-          </div>
-          <div className="mt-1 text-lg font-bold text-slate-950">
-            {formatMoney(selectedDifference)} Kč
-          </div>
-        </div>
-      </div>
-
-      <div className="border-t border-slate-200 px-4 py-4">
-        <div className="grid gap-2 lg:grid-cols-[1fr_1fr_1fr_1.3fr_auto]">
-          <input
-            value={manualDraft.contractNumber}
-            onChange={(event) =>
-              setManualDraft((previous) => ({ ...previous, contractNumber: event.target.value }))
-            }
-            placeholder="Číslo smlouvy"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-          />
-          <input
-            value={manualDraft.client}
-            onChange={(event) =>
-              setManualDraft((previous) => ({ ...previous, client: event.target.value }))
-            }
-            placeholder="Klient"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-          />
-          <input
-            value={manualDraft.product}
-            onChange={(event) =>
-              setManualDraft((previous) => ({ ...previous, product: event.target.value }))
-            }
-            placeholder="Produkt / oblast"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-          />
-          <input
-            value={manualDraft.title}
-            onChange={(event) =>
-              setManualDraft((previous) => ({ ...previous, title: event.target.value }))
-            }
-            placeholder="Nesrovnalost"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-          />
-          <button
-            type="button"
-            onClick={addManualItem}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            Přidat
-          </button>
-        </div>
-        <div className="mt-2 grid gap-2 lg:grid-cols-[1fr_2fr]">
-          <input
-            value={manualDraft.amountText}
-            onChange={(event) =>
-              setManualDraft((previous) => ({ ...previous, amountText: event.target.value }))
-            }
-            placeholder="Částka / rozdíl"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-          />
-          <textarea
-            value={manualDraft.note}
-            onChange={(event) =>
-              setManualDraft((previous) => ({ ...previous, note: event.target.value }))
-            }
-            placeholder="Poznámka pro účetní"
-            className="min-h-10 resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-          />
-        </div>
-
-        {allItemCount === 0 ? (
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-600">
-            Zatím není označená žádná nesrovnalost.
-          </div>
-        ) : (
-          <div className="mt-4 space-y-2">
-            {autoIssues.map((issue) => {
-              const selected = reviewState[issue.key]?.selected ?? true;
-              const note = reviewState[issue.key]?.note ?? "";
-
-              return (
-                <article
-                  key={issue.key}
-                  className={`rounded-xl border px-3 py-3 text-sm ${
-                    selected
-                      ? "border-slate-200 bg-white"
-                      : "border-slate-200 bg-slate-100 opacity-75"
-                  }`}
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={(event) =>
-                              updateIssueReview(issue.key, { selected: event.target.checked })
-                            }
-                            className="h-4 w-4 accent-slate-950"
-                          />
-                          Do PDF
-                        </label>
-                        <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${discrepancySeverityClass(issue.severity)}`}>
-                          {discrepancySeverityLabel(issue.severity)}
-                        </span>
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          {issue.category}
-                        </span>
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          {discrepancyScopeLabel(issue.scope)}
-                        </span>
-                      </div>
-                      <div className="mt-2 font-bold text-slate-950">{issue.title}</div>
-                      <div className="mt-1 text-slate-700">
-                        Smlouva {issue.contractNumber || "—"} · {issue.client || "—"} · {issue.product || "—"}
-                      </div>
-                      {issue.details.length > 0 && (
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-600">
-                          {issue.details.map((detail) => (
-                            <li key={detail}>{detail}</li>
-                          ))}
-                        </ul>
-                      )}
-                      <DiscrepancyIssueAmountBlock issue={issue} />
-                    </div>
-                    <textarea
-                      value={note}
-                      onChange={(event) =>
-                        updateIssueReview(issue.key, { note: event.target.value })
-                      }
-                      placeholder="Poznámka k opravě"
-                      className="min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 lg:w-80"
-                    />
-                  </div>
-                </article>
-              );
-            })}
-
-            {statementManualItems.map((item) => {
-              const issue = manualDiscrepancyToIssue(item);
-
-              return (
-                <article
-                  key={item.key}
-                  className={`rounded-xl border px-3 py-3 text-sm ${
-                    item.selected
-                      ? "border-slate-200 bg-white"
-                      : "border-slate-200 bg-slate-100 opacity-75"
-                  }`}
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={item.selected}
-                            onChange={(event) =>
-                              updateManualItem(item.key, { selected: event.target.checked })
-                            }
-                            className="h-4 w-4 accent-slate-950"
-                          />
-                          Do PDF
-                        </label>
-                        <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${discrepancySeverityClass(issue.severity)}`}>
-                          Ručně
-                        </span>
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          {issue.category}
-                        </span>
-                      </div>
-                      <div className="mt-2 font-bold text-slate-950">{issue.title}</div>
-                      <div className="mt-1 text-slate-700">
-                        Smlouva {issue.contractNumber || "—"} · {issue.client || "—"} · {issue.product || "—"}
-                      </div>
-                      <DiscrepancyIssueAmountBlock issue={issue} />
-                    </div>
-                    <div className="flex w-full flex-col gap-2 lg:w-80">
-                      <textarea
-                        value={item.note}
-                        onChange={(event) =>
-                          updateManualItem(item.key, { note: event.target.value })
-                        }
-                        placeholder="Poznámka k opravě"
-                        className="min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onManualItemsChange((previous) =>
-                            previous.filter((previousItem) => previousItem.key !== item.key)
-                          )
-                        }
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800 transition hover:bg-rose-100"
-                      >
-                        <Trash2 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                        Odebrat
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+      uncertaintyCountLabel={uncertaintyCountLabel}
+      renderContract={(contract) => (
+        <OtherProductContractCard
+          key={contract.key}
+          contract={contract}
+          match={contractMatchForNumber(
+            matchesByContractNumber,
+            contract.contractNumber,
+            otherProductContractMatchScope(contract)
+          )}
+          deductionRows={deductionRows}
+          statementPeriod={statementPeriod}
+          statementPrefillSource={statementPrefillSource}
+          statementKey={statementKey}
+          correctionContext={correctionContext}
+          markingControls={markingControls}
+        />
+      )}
+    />
   );
 }
 
@@ -11913,110 +7116,47 @@ function StatementPreview({
       parsePeriodEndDate(statement.header.period)?.getTime() ??
       null,
   };
-  const unpairedLifeSplitContracts = statement.lifeSplitContracts.filter((contract) =>
-    isUnpairedContractMatch(
-      contractMatchForNumber(
-        matchesByContractNumber,
-        contract.contractNumber,
-        lifeSplitContractMatchScope(contract)
-      )
-    )
-  );
-  const pairedLifeSplitContracts = statement.lifeSplitContracts.filter(
-    (contract) =>
-      !isUnpairedContractMatch(
+  const {
+    unpairedLifeSplitContracts,
+    pairedLifeSplitContracts,
+    unpairedOtherProductContracts,
+    lifeProductContracts,
+    autoProductContracts,
+    propertyProductContracts,
+    businessProductContracts,
+    travelProductContracts,
+    foreignerProductContracts,
+    investmentProductContracts,
+    remainingOtherProductContracts,
+  } = groupStatementPreviewContracts({
+    lifeSplitContracts: statement.lifeSplitContracts,
+    otherProductContracts: statement.otherProductContracts,
+    isUnpairedLifeSplitContract: (contract) =>
+      isUnpairedContractMatch(
         contractMatchForNumber(
           matchesByContractNumber,
           contract.contractNumber,
           lifeSplitContractMatchScope(contract)
         )
-      )
-  );
-  const unpairedOtherProductContracts = statement.otherProductContracts.filter((contract) =>
-    isUnpairedContractMatch(
-      contractMatchForNumber(
-        matchesByContractNumber,
-        contract.contractNumber,
-        otherProductContractMatchScope(contract)
-      )
-    )
-  );
-  const pairedOtherProductContracts = statement.otherProductContracts.filter(
-    (contract) =>
-      !isUnpairedContractMatch(
+      ),
+    isUnpairedOtherProductContract: (contract) =>
+      isUnpairedContractMatch(
         contractMatchForNumber(
           matchesByContractNumber,
           contract.contractNumber,
           otherProductContractMatchScope(contract)
         )
-      )
-  );
-  const lifeProductContracts = pairedOtherProductContracts.filter((contract) =>
-    contractHasProductCategory(contract, "life")
-  );
-  const autoProductContracts = pairedOtherProductContracts.filter((contract) =>
-    contractHasProductCategory(contract, "auto")
-  );
-  const propertyProductContracts = pairedOtherProductContracts.filter((contract) =>
-    contractHasProductCategory(contract, "property")
-  );
-  const businessProductContracts = pairedOtherProductContracts.filter((contract) =>
-    contractHasProductCategory(contract, "business")
-  );
-  const travelProductContracts = pairedOtherProductContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "foreigners") &&
-      contractHasProductCategory(contract, "travel")
-  );
-  const foreignerProductContracts = pairedOtherProductContracts.filter((contract) =>
-    contractHasProductCategory(contract, "foreigners")
-  );
-  const investmentProductContracts = pairedOtherProductContracts.filter((contract) =>
-    contractHasProductCategory(contract, "investment")
-  );
-  const remainingOtherProductContracts = pairedOtherProductContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "life") &&
-      !contractHasProductCategory(contract, "auto") &&
-      !contractHasProductCategory(contract, "property") &&
-      !contractHasProductCategory(contract, "business") &&
-      !contractHasProductCategory(contract, "travel") &&
-      !contractHasProductCategory(contract, "foreigners") &&
-      !contractHasProductCategory(contract, "investment")
-  );
+      ),
+    hasOtherProductCategory: contractHasProductCategory,
+  });
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
-            <ReceiptText className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            <span className="truncate">{statement.fileName}</span>
-          </div>
-          <h2 className="mt-1 text-lg font-bold text-slate-950">
-            Výpis {statement.header.statementNumber ?? "bez čísla"}
-          </h2>
-          {statement.header.statementDate && (
-            <p className="mt-1 text-sm font-medium text-slate-500">
-              Vystaveno {statement.header.statementDate}
-            </p>
-          )}
-        </div>
-        <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
-          <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-          Bez zápisu provizí
-        </span>
-      </div>
-
-      {statement.parseWarnings.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {statement.parseWarnings.map((warning) => (
-            <div key={warning} className="flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <span>{warning}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <StatementPreviewHeader
+        fileName={statement.fileName}
+        statementNumber={statement.header.statementNumber}
+        statementDate={statement.header.statementDate}
+      />
+      <StatementParseWarnings warnings={statement.parseWarnings} />
 
       <StatementSummary statement={statement} />
 
@@ -12199,7 +7339,10 @@ function StatementPreview({
                       <div className="flex flex-wrap items-center gap-2 font-semibold text-slate-950">
                         <span>Smlouva {payment.contractNumber ?? "—"}</span>
                         <BohemkaContractDetailLink contract={systemContract} compact />
-                        <SystemMatchBadge match={match} />
+                        <SystemMatchBadge
+                          match={match}
+                          presentation={systemMatchPresentation}
+                        />
                       </div>
                       {markedItem && (
                         <div className="mt-2">
@@ -12215,7 +7358,7 @@ function StatementPreview({
                       {formatMoney(payment.amount)} Kč
                     </div>
                   </div>
-                  <SystemMatchPanel match={match} />
+                  <SystemMatchPanel match={match} presentation={systemMatchPresentation} />
                 </div>
               );
             })}
@@ -12223,13 +7366,14 @@ function StatementPreview({
         </div>
       )}
 
-      <StornoContractsSection
+      <StornoContractsSectionPanel
         statement={statement}
         statementId={selectedStatementId}
         matchesByContractNumber={matchesByContractNumber}
         currentUserEmail={currentUserEmail}
         markingControls={markingControls}
         onRequestSystemStorno={onRequestSystemStorno}
+        presentation={systemMatchPresentation}
       />
 
       <ManagerCommissionsSection
@@ -12750,15 +7894,20 @@ export default function CommissionStatementsPage() {
       return next;
     });
 
-    void fetchSystemContractMatches(user, statementContractMatchRequests, (request, match) => {
-      if (cancelled) return;
-      const key = contractMatchKey(request.scope, request.contractNumber);
-      if (!key) return;
-      setMatchesByContractNumber((previous) => ({
-        ...previous,
-        [key]: match,
-      }));
-    }).catch((err) => {
+    void fetchSystemContractMatches(
+      user,
+      statementContractMatchRequests,
+      (request, match) => {
+        if (cancelled) return;
+        const key = contractMatchKey(request.scope, request.contractNumber);
+        if (!key) return;
+        setMatchesByContractNumber((previous) => ({
+          ...previous,
+          [key]: match,
+        }));
+      },
+      dedupeEquivalentSystemContracts
+    ).catch((err) => {
       if (cancelled) return;
       setMatchingError(
         err instanceof Error
@@ -12802,7 +7951,7 @@ export default function CommissionStatementsPage() {
         return next;
       });
 
-      void fetchSystemContractMatchBatch(user, requests)
+      void fetchSystemContractMatchBatch(user, requests, dedupeEquivalentSystemContracts)
         .then((matches) => {
           if (cancelled) return;
           setMatchesByContractNumber((previous) => {

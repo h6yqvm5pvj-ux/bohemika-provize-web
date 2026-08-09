@@ -63,8 +63,9 @@ describe("app session cookie", () => {
       nowMs: 1_000_000,
       maxAgeSeconds: 120,
     });
-    const replacement = created.value.endsWith("a") ? "b" : "a";
-    const tampered = `${created.value.slice(0, -1)}${replacement}`;
+    const [payload, signature] = created.value.split(".");
+    const replacement = signature.startsWith("a") ? "b" : "a";
+    const tampered = `${payload}.${replacement}${signature.slice(1)}`;
 
     await expect(
       verifyAppSessionCookieValue(tampered, { nowMs: 1_030_000 })

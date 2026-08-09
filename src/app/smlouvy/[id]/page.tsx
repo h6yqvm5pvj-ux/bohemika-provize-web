@@ -107,30 +107,20 @@ import {
 } from "./ContractCommissionSection";
 import { ContractCommissionHistory } from "./ContractCommissionHistory";
 import { ContractAutoPremiumHistory } from "./ContractAutoPremiumHistory";
+import {
+  mergeEmptyContractFields,
+  mergeEmptyNeonDetailFields,
+  mergeEmptyPropertyDetailFields,
+  PDF_REIMPORT_PARSERS,
+} from "./contractDetailPdfReimport";
+import { useContractDetails } from "./useContractDetails";
 import { fetchAuthedBlob } from "@/app/lib/authenticatedApi";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
-import { parseAllianzAutoPdf } from "@/app/lib/parseAllianzAutoPdf";
-import { parseComfortPdf } from "@/app/lib/parseComfortPdf";
-import { parseCppAutoPdf } from "@/app/lib/parseCppAutoPdf";
-import { parseCppBytexPdf } from "@/app/lib/parseCppBytexPdf";
-import { parseCppCestovkoPdf } from "@/app/lib/parseCppCestovkoPdf";
-import { parseCppHafanPdf } from "@/app/lib/parseCppHafanPdf";
-import { parseCppSimplexPdf } from "@/app/lib/parseCppSimplexPdf";
-import { parseCsobAutoPdf } from "@/app/lib/parseCsobAutoPdf";
-import { parseDomexPdf } from "@/app/lib/parseDomexPdf";
-import { parseFlexiPdf } from "@/app/lib/parseFlexiPdf";
 import {
   birthDateFromCzechBirthNumber,
   parseKooperativaAutoPdf,
 } from "@/app/lib/parseKooperativaAutoPdf";
-import { parseKoopOdzamPdf } from "@/app/lib/parseKoopOdzamPdf";
-import { parseMaxCizinKomplexPdf } from "@/app/lib/parseMaxCizinKomplexPdf";
-import { parseMaxdomovPdf } from "@/app/lib/parseMaxdomovPdf";
-import { parseNeonPdf } from "@/app/lib/parseNeonPdf";
-import { parsePillowAutoPdf } from "@/app/lib/parsePillowAutoPdf";
-import { parseSlaviaAutoPdf } from "@/app/lib/parseSlaviaAutoPdf";
-import { parseUniqaAutoPdf } from "@/app/lib/parseUniqaAutoPdf";
 import { isSlaviaAutoSupportedForSignedDate } from "@/app/lib/productFormulas/slaviaAuto";
 
 const CPP_EXTRANET_REDIRECT_URL =
@@ -256,13 +246,6 @@ type ContractPdfOption = {
   isCurrent: boolean;
 };
 
-type PdfReimportParser = (file: File) => Promise<unknown>;
-type PropertyDetail = NonNullable<ContractDoc["maxdomovDetail"]>;
-type PropertyDetailField = keyof PropertyDetail;
-type NeonDetail = NonNullable<ContractDoc["neonDetail"]>;
-type NeonDetailField = keyof NeonDetail;
-type ContractUpdateField = keyof ContractDoc;
-
 const statementDisplayTitle = (statement: ContractCommissionStatementDetail): string => {
   if (statement.statementNumber) return `Provizní výpis ${statement.statementNumber}`;
   return statement.fileName || "Provizní výpis";
@@ -378,384 +361,6 @@ function CommissionStatementPreviewModal({
   );
 }
 
-const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
-  cppAuto: parseCppAutoPdf,
-  slaviaauto: parseSlaviaAutoPdf,
-  allianzAuto: parseAllianzAutoPdf,
-  csobAuto: parseCsobAutoPdf,
-  uniqaAuto: parseUniqaAutoPdf,
-  pillowAuto: parsePillowAutoPdf,
-  kooperativaAuto: parseKooperativaAutoPdf,
-  cppcestovko: parseCppCestovkoPdf,
-  cppsimplex: parseCppSimplexPdf,
-  neon: parseNeonPdf,
-  flexi: parseFlexiPdf,
-  domex: parseDomexPdf,
-  cppbytex: parseCppBytexPdf,
-  cpphafan: parseCppHafanPdf,
-  koopodzam: parseKoopOdzamPdf,
-  maxdomov: parseMaxdomovPdf,
-  maxcizinkomplex: parseMaxCizinKomplexPdf,
-  comfortcc: parseComfortPdf,
-};
-
-const PDF_CONTRACT_FIELD_MAP = [
-  ["contractNumber", "contractNumber"],
-  ["clientName", "clientName"],
-  ["policyStartDate", "policyStartDate"],
-  ["policyEndDate", "policyEndDate"],
-  ["contractSignedDate", "contractSignedDate"],
-  ["durationYears", "durationYears"],
-  ["durationMonths", "durationMonths"],
-  ["maxCizinKomplexVariant", "maxCizinKomplexVariant"],
-  ["carMake", "carMake"],
-  ["carPlate", "carPlate"],
-  ["carVin", "carVin"],
-  ["carTp", "carTp"],
-  ["carOrv", "carOrv"],
-  ["carAnnualMileage", "carAnnualMileage"],
-  ["carAllianzScope", "carAllianzScope"],
-  ["carLiabilityLimit", "carLiabilityLimit"],
-  ["carHullSumInsured", "carHullSumInsured"],
-  ["carHullSumInsuredText", "carHullSumInsuredText"],
-  ["carHullDeductible", "carHullDeductible"],
-  ["carHullDeductibleText", "carHullDeductibleText"],
-  ["carHullRiskAccident", "carHullRiskAccident"],
-  ["carHullRiskTheft", "carHullRiskTheft"],
-  ["carHullRiskNatural", "carHullRiskNatural"],
-  ["carHullRiskVandalism", "carHullRiskVandalism"],
-  ["carHullRiskAnimalCollision", "carHullRiskAnimalCollision"],
-  ["carAssistancePlan", "carAssistancePlan"],
-  ["carAddonEso", "carAddonEso"],
-  ["carAddonNaturalRisks", "carAddonNaturalRisks"],
-  ["carAddonGlass", "carAddonGlass"],
-  ["carAddonAnimalCollision", "carAddonAnimalCollision"],
-  ["carAddonAnimalDamage", "carAddonAnimalDamage"],
-  ["carAddonVandalism", "carAddonVandalism"],
-  ["carAddonTheft", "carAddonTheft"],
-  ["carAddonNatural", "carAddonNatural"],
-  ["carAddonPothole", "carAddonPothole"],
-  ["carAddonNonFaultAccident", "carAddonNonFaultAccident"],
-  ["carAddonGap", "carAddonGap"],
-  ["carAddonReplacementCar", "carAddonReplacementCar"],
-  ["carAddonLuggage", "carAddonLuggage"],
-  ["carAddonTransportedGoods", "carAddonTransportedGoods"],
-  ["carAddonFireExplosion", "carAddonFireExplosion"],
-  ["carAddonLegalAdvice", "carAddonLegalAdvice"],
-  ["carAddonKeyLossTheft", "carAddonKeyLossTheft"],
-] as const satisfies ReadonlyArray<readonly [string, ContractUpdateField]>;
-
-const NUMBER_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
-  "durationYears",
-  "durationMonths",
-  "carLiabilityLimit",
-  "carHullSumInsured",
-  "carHullDeductible",
-]);
-
-const BOOLEAN_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
-  "carHullRiskAccident",
-  "carHullRiskTheft",
-  "carHullRiskNatural",
-  "carHullRiskVandalism",
-  "carHullRiskAnimalCollision",
-  "carAddonEso",
-  "carAddonNaturalRisks",
-  "carAddonGlass",
-  "carAddonAnimalCollision",
-  "carAddonAnimalDamage",
-  "carAddonVandalism",
-  "carAddonTheft",
-  "carAddonNatural",
-  "carAddonPothole",
-  "carAddonNonFaultAccident",
-  "carAddonGap",
-  "carAddonReplacementCar",
-  "carAddonLuggage",
-  "carAddonTransportedGoods",
-  "carAddonFireExplosion",
-  "carAddonLegalAdvice",
-  "carAddonKeyLossTheft",
-]);
-
-const PROPERTY_PDF_DETAIL_FIELD_MAP = [
-  ["domexAddress", "address"],
-  ["domexPropertyType", "propertyType"],
-  ["domexPropertyCoverage", "propertyCoverage"],
-  ["domexPropertySumInsured", "sumInsured"],
-  ["domexPropertyDeductible", "deductible"],
-  ["domexHouseholdType", "householdType"],
-  ["domexHouseholdCoverage", "householdCoverage"],
-  ["domexHouseholdSumInsured", "householdSumInsured"],
-  ["domexHouseholdDeductible", "householdDeductible"],
-  ["domexOutbuildingSumInsured", "outbuildingSumInsured"],
-  ["domexLiabilitySumInsured", "liabilitySumInsured"],
-  ["domexLiabilityDeductible", "liabilityDeductible"],
-  ["domexLiabilityMobile", "liabilityMobile"],
-  ["domexLiabilityTenant", "liabilityTenant"],
-  ["domexLiabilityLandlord", "liabilityLandlord"],
-  ["domexAssistancePlus", "assistancePlus"],
-] as const satisfies ReadonlyArray<readonly [string, PropertyDetailField]>;
-
-const NEON_PDF_DETAIL_FIELD_MAP = [
-  ["version", "version"],
-  ["deathType", "deathType"],
-  ["deathAmount", "deathAmount"],
-  ["death2Type", "death2Type"],
-  ["death2Amount", "death2Amount"],
-  ["deathTerminalAmount", "deathTerminalAmount"],
-  ["waiverInvalidity", "waiverInvalidity"],
-  ["waiverUnemployment", "waiverUnemployment"],
-  ["invalidityAType", "invalidityAType"],
-  ["invalidityA1", "invalidityA1"],
-  ["invalidityA2", "invalidityA2"],
-  ["invalidityA3", "invalidityA3"],
-  ["invalidityBType", "invalidityBType"],
-  ["invalidityB1", "invalidityB1"],
-  ["invalidityB2", "invalidityB2"],
-  ["invalidityB3", "invalidityB3"],
-  ["invalidityPension", "invalidityPension"],
-  ["criticalType", "criticalIllnessType"],
-  ["criticalVariant", "criticalIllnessVariant"],
-  ["criticalAmount", "criticalIllnessAmount"],
-  ["childSurgeryAmount", "childSurgeryAmount"],
-  ["vaccinationCompAmount", "vaccinationCompAmount"],
-  ["diabetesAmount", "diabetesAmount"],
-  ["deathAccidentAmount", "deathAccidentAmount"],
-  ["injuryPermanentAmount", "injuryPermanentAmount"],
-  ["injuryPermanentFulfillmentFrom", "injuryPermanentFulfillmentFrom"],
-  ["injuryPermanentProgression", "injuryPermanentProgression"],
-  ["injuryPermanent2Amount", "injuryPermanent2Amount"],
-  ["injuryPermanent2FulfillmentFrom", "injuryPermanent2FulfillmentFrom"],
-  ["injuryPermanent2Progression", "injuryPermanent2Progression"],
-  ["hospitalizationAmount", "hospitalizationAmount"],
-  ["hospitalizationIllnessAmount", "hospitalizationIllnessAmount"],
-  ["hospitalizationInjuryAmount", "hospitalizationInjuryAmount"],
-  ["accidentDailyBenefitStart", "accidentDailyBenefitStart"],
-  ["accidentDailyBenefitBackpay", "accidentDailyBenefitBackpay"],
-  ["accidentDailyBenefit", "accidentDailyBenefit"],
-  ["workIncapacityStart", "workIncapacityStart"],
-  ["workIncapacityBackpay", "workIncapacityBackpay"],
-  ["workIncapacityAmount", "workIncapacityAmount"],
-  ["workIncapacityInjury", "workIncapacityInjury"],
-  ["workIncapacityIllness", "workIncapacityIllness"],
-  ["workIncapacity2Start", "workIncapacity2Start"],
-  ["workIncapacity2Backpay", "workIncapacity2Backpay"],
-  ["workIncapacity2Amount", "workIncapacity2Amount"],
-  ["workIncapacity2Injury", "workIncapacity2Injury"],
-  ["workIncapacity2Illness", "workIncapacity2Illness"],
-  ["careDependencyAmount", "careDependencyAmount"],
-  ["specialAidAmount", "specialAidAmount"],
-  ["caregivingAmount", "caregivingAmount"],
-  ["reproductionCostAmount", "reproductionCostAmount"],
-  ["cppHelp", "cppHelp"],
-  ["liabilityCitizenLimit", "liabilityCitizenLimit"],
-  ["liabilityEmployeeLimit", "liabilityEmployeeLimit"],
-  ["travelInsurance", "travelInsurance"],
-] as const satisfies ReadonlyArray<readonly [string, NeonDetailField]>;
-
-const NUMBER_PROPERTY_DETAIL_FIELDS = new Set<PropertyDetailField>([
-  "sumInsured",
-  "deductible",
-  "householdSumInsured",
-  "householdDeductible",
-  "outbuildingSumInsured",
-  "liabilitySumInsured",
-  "liabilityDeductible",
-]);
-
-const BOOLEAN_PROPERTY_DETAIL_FIELDS = new Set<PropertyDetailField>([
-  "liabilityMobile",
-  "liabilityTenant",
-  "liabilityLandlord",
-  "assistancePlus",
-]);
-
-const NUMBER_NEON_DETAIL_FIELDS = new Set<NeonDetailField>([
-  "deathAmount",
-  "death2Amount",
-  "deathTerminalAmount",
-  "invalidityA1",
-  "invalidityA2",
-  "invalidityA3",
-  "invalidityB1",
-  "invalidityB2",
-  "invalidityB3",
-  "criticalIllnessAmount",
-  "childSurgeryAmount",
-  "vaccinationCompAmount",
-  "diabetesAmount",
-  "deathAccidentAmount",
-  "injuryPermanentAmount",
-  "injuryPermanent2Amount",
-  "hospitalizationAmount",
-  "hospitalizationIllnessAmount",
-  "hospitalizationInjuryAmount",
-  "accidentDailyBenefit",
-  "workIncapacityAmount",
-  "workIncapacity2Amount",
-  "careDependencyAmount",
-  "specialAidAmount",
-  "caregivingAmount",
-  "reproductionCostAmount",
-  "liabilityCitizenLimit",
-  "liabilityEmployeeLimit",
-]);
-
-const BOOLEAN_NEON_DETAIL_FIELDS = new Set<NeonDetailField>([
-  "waiverInvalidity",
-  "waiverUnemployment",
-  "invalidityPension",
-  "workIncapacityInjury",
-  "workIncapacityIllness",
-  "workIncapacity2Injury",
-  "workIncapacity2Illness",
-  "cppHelp",
-  "travelInsurance",
-]);
-
-const isEmptyReimportValue = (value: unknown): boolean => {
-  if (value == null) return true;
-  if (typeof value === "string") return value.trim().length === 0;
-  if (typeof value === "number") return !Number.isFinite(value);
-  return false;
-};
-
-const parsedPdfValueForContractField = (
-  field: ContractUpdateField,
-  rawValue: unknown
-): string | number | boolean | null => {
-  if (rawValue == null) return null;
-
-  if (NUMBER_CONTRACT_UPDATE_FIELDS.has(field)) {
-    const value =
-      typeof rawValue === "number"
-        ? rawValue
-        : typeof rawValue === "string"
-          ? Number(rawValue.replace(/\s+/g, "").replace(",", "."))
-          : Number.NaN;
-    return Number.isFinite(value) ? Math.round(value) : null;
-  }
-
-  if (BOOLEAN_CONTRACT_UPDATE_FIELDS.has(field)) {
-    return rawValue === true ? true : null;
-  }
-
-  const value = typeof rawValue === "string" ? rawValue.trim() : String(rawValue).trim();
-  return value || null;
-};
-
-const parsedPdfValueForPropertyDetailField = (
-  field: PropertyDetailField,
-  rawValue: unknown
-): string | number | boolean | null => {
-  if (rawValue == null) return null;
-
-  if (NUMBER_PROPERTY_DETAIL_FIELDS.has(field)) {
-    const value =
-      typeof rawValue === "number"
-        ? rawValue
-        : typeof rawValue === "string"
-          ? Number(rawValue.replace(/\s+/g, "").replace(",", "."))
-          : Number.NaN;
-    return Number.isFinite(value) ? Math.round(value) : null;
-  }
-
-  if (BOOLEAN_PROPERTY_DETAIL_FIELDS.has(field)) {
-    return rawValue === true ? true : null;
-  }
-
-  const value = typeof rawValue === "string" ? rawValue.trim() : String(rawValue).trim();
-  return value || null;
-};
-
-const parsedPdfValueForNeonDetailField = (
-  field: NeonDetailField,
-  rawValue: unknown
-): string | number | boolean | null => {
-  if (rawValue == null) return null;
-
-  if (NUMBER_NEON_DETAIL_FIELDS.has(field)) {
-    const value =
-      typeof rawValue === "number"
-        ? rawValue
-        : typeof rawValue === "string"
-          ? Number(rawValue.replace(/\s+/g, "").replace(",", "."))
-          : Number.NaN;
-    return Number.isFinite(value) ? Math.round(value) : null;
-  }
-
-  if (BOOLEAN_NEON_DETAIL_FIELDS.has(field)) {
-    return rawValue === true ? true : null;
-  }
-
-  const value = typeof rawValue === "string" ? rawValue.trim() : String(rawValue).trim();
-  return value || null;
-};
-
-const mergeEmptyContractFields = (
-  currentContract: ContractDoc,
-  parsed: Record<string, unknown>
-): { updates: Record<string, string | number | boolean | null>; appliedCount: number } => {
-  const updates: Record<string, string | number | boolean | null> = {};
-  let appliedCount = 0;
-
-  for (const [parsedKey, contractField] of PDF_CONTRACT_FIELD_MAP) {
-    if (!isEmptyReimportValue(currentContract[contractField])) continue;
-
-    const parsedValue = parsedPdfValueForContractField(contractField, parsed[parsedKey]);
-    if (parsedValue == null) continue;
-
-    updates[contractField] = parsedValue;
-    appliedCount += 1;
-  }
-
-  return { updates, appliedCount };
-};
-
-const mergeEmptyPropertyDetailFields = (
-  currentDetail: ContractDoc["maxdomovDetail"] | ContractDoc["domexDetail"],
-  parsed: Record<string, unknown>
-): { detail: PropertyDetail; appliedCount: number } => {
-  const detail: PropertyDetail = { ...(currentDetail ?? {}) };
-  let appliedCount = 0;
-
-  for (const [parsedKey, detailField] of PROPERTY_PDF_DETAIL_FIELD_MAP) {
-    if (!isEmptyReimportValue(detail[detailField])) continue;
-
-    const parsedValue = parsedPdfValueForPropertyDetailField(detailField, parsed[parsedKey]);
-    if (parsedValue == null) continue;
-
-    (detail as Record<PropertyDetailField, string | number | boolean | null | undefined>)[
-      detailField
-    ] = parsedValue;
-    appliedCount += 1;
-  }
-
-  return { detail, appliedCount };
-};
-
-const mergeEmptyNeonDetailFields = (
-  currentDetail: ContractDoc["neonDetail"],
-  riskFields: Record<string, unknown>
-): { detail: NeonDetail; appliedCount: number } => {
-  const detail: NeonDetail = { ...(currentDetail ?? {}) };
-  let appliedCount = 0;
-
-  for (const [parsedKey, detailField] of NEON_PDF_DETAIL_FIELD_MAP) {
-    if (!isEmptyReimportValue(detail[detailField])) continue;
-
-    const parsedValue = parsedPdfValueForNeonDetailField(detailField, riskFields[parsedKey]);
-    if (parsedValue == null) continue;
-
-    (detail as Record<NeonDetailField, string | number | boolean | null | undefined>)[
-      detailField
-    ] = parsedValue;
-    appliedCount += 1;
-  }
-
-  return { detail, appliedCount };
-};
 
 
 export default function ContractDetailPage() {
@@ -3826,6 +3431,8 @@ export default function ContractDetailPage() {
     }
   };
 
+  const saveContractDetails = useContractDetails();
+
   const handleSaveDetails = async () => {
     if (!canManageContract || !ownerEmail || !entryId) return;
     setSavingDetails(true);
@@ -3833,459 +3440,194 @@ export default function ContractDetailPage() {
     setDetailsSaved(false);
 
     try {
-      const toNumberOrNull = (txt: string) => {
-        const trimmed = txt.trim().replace(/\s+/g, "").replace(",", ".");
-        if (!trimmed) return null;
-        const n = Number(trimmed);
-        return Number.isFinite(n) ? n : null;
-      };
-
-      const trimmedName = editClientName.trim();
-      const trimmedEmail = editClientEmail.trim();
-      const trimmedPhone = editClientPhone.trim();
-      const trimmedAddress = editClientAddress.trim();
-      const trimmedNumber = editContractNumber.trim();
-      const signedDate = editContractSigned ? new Date(editContractSigned) : null;
-      const startDate = editPolicyStart ? new Date(editPolicyStart) : null;
-      const endDate = editPolicyEnd ? new Date(editPolicyEnd) : null;
-      if (startDate && endDate && endDate.getTime() < startDate.getTime()) {
-        setDetailsError("Datum „Pojištění do“ nesmí být před datem počátku.");
-        return;
-      }
-      const durationVal =
-        durationBounds != null &&
-        typeof editDuration === "number" &&
-        !Number.isNaN(editDuration)
-          ? Math.max(
-              durationBounds[0],
-              Math.min(durationBounds[1], Math.floor(editDuration))
-            )
-          : null;
-      const trimmedCarHullSumInsured = editCarHullSumInsured.trim();
-      const parsedCarHullSumInsured = toNumberOrNull(trimmedCarHullSumInsured);
-      const parsedCarHullSumInsuredText =
-        trimmedCarHullSumInsured && parsedCarHullSumInsured == null
-          ? trimmedCarHullSumInsured
-          : null;
-
-      const autoFields =
-        isAutoProduct(prod ?? null)
-          ? {
-              carMake: editCarMake.trim() || null,
-              carPlate: editCarPlate.trim() || null,
-              carVin: editCarVin.trim() || null,
-              carTp: editCarTp.trim() || null,
-              carOrv: editCarOrv.trim() || null,
-              carAnnualMileage:
-                prod === "allianzAuto" || prod === "pillowAuto"
-                  ? editCarAnnualMileage.trim() || null
-                  : null,
-              carAllianzScope:
-                prod === "allianzAuto" ? editCarAllianzScope.trim() || null : null,
-              carLiabilityLimit: toNumberOrNull(editCarLiabilityLimit),
-              carHullSumInsured: parsedCarHullSumInsured,
-              carHullSumInsuredText: parsedCarHullSumInsuredText,
-              carHullDeductible: toNumberOrNull(editCarHullDeductible),
-              carHullDeductibleText: editCarHullDeductible.trim() || null,
-              carHullRiskAccident: !!editCarHullRiskAccident,
-              carHullRiskTheft: !!editCarHullRiskTheft,
-              carHullRiskNatural: !!editCarHullRiskNatural,
-              carHullRiskVandalism: !!editCarHullRiskVandalism,
-              carHullRiskAnimalCollision: !!editCarHullRiskAnimalCollision,
-              carAssistancePlan: editCarAssistancePlan.trim() || null,
-              carAddonEso: !!editCarAddonEso,
-              carAddonNaturalRisks: !!editCarAddonNaturalRisks,
-              carAddonKlika: !!editCarAddonKlika,
-              carAddonGlass: !!editCarAddonGlass,
-              carAddonGlassLimit: editCarAddonGlass ? toNumberOrNull(editCarAddonGlassLimit) : null,
-              carAddonAnimalCollision: !!editCarAddonAnimalCollision,
-              carAddonAnimalCollisionLimit: editCarAddonAnimalCollision
-                ? toNumberOrNull(editCarAddonAnimalCollisionLimit)
-                : null,
-              carAddonAnimalDamage: !!editCarAddonAnimalDamage,
-              carAddonAnimalDamageLimit: editCarAddonAnimalDamage
-                ? toNumberOrNull(editCarAddonAnimalDamageLimit)
-                : null,
-              carAddonVandalism: !!editCarAddonVandalism,
-              carAddonTheft: !!editCarAddonTheft,
-              carAddonTheftLimit: editCarAddonTheft
-                ? toNumberOrNull(editCarAddonTheftLimit)
-                : null,
-              carAddonNatural: !!editCarAddonNatural,
-              carAddonNaturalLimit: editCarAddonNatural
-                ? toNumberOrNull(editCarAddonNaturalLimit)
-                : null,
-              carAddonOwnDamage: !!editCarAddonOwnDamage,
-              carAddonOwnDamageLimit: editCarAddonOwnDamage
-                ? toNumberOrNull(editCarAddonOwnDamageLimit)
-                : null,
-              carAddonPothole: !!editCarAddonPothole,
-              carAddonNonFaultAccident: !!editCarAddonNonFaultAccident,
-              carAddonGap: !!editCarAddonGap,
-              carAddonGapLimit: editCarAddonGap ? toNumberOrNull(editCarAddonGapLimit) : null,
-              carAddonSmartGap: !!editCarAddonSmartGap,
-              carAddonServisPro: !!editCarAddonServisPro,
-              carAddonReplacementCar: !!editCarAddonReplacementCar,
-              carAddonLuggage: !!editCarAddonLuggage,
-              carAddonTransportedGoods: !!editCarAddonTransportedGoods,
-              carAddonFireExplosion: !!editCarAddonFireExplosion,
-              carAddonLegalAdvice: !!editCarAddonLegalAdvice,
-              carAddonPassengerInjury: !!editCarAddonPassengerInjury,
-              carAddonKeyLossTheft: !!editCarAddonKeyLossTheft,
-            }
-          : {
-              carMake: null,
-              carPlate: null,
-              carVin: null,
-              carTp: null,
-              carOrv: null,
-              carAnnualMileage: null,
-              carAllianzScope: null,
-              carLiabilityLimit: null,
-              carHullSumInsured: null,
-              carHullSumInsuredText: null,
-              carHullDeductible: null,
-              carHullDeductibleText: null,
-              carHullRiskAccident: null,
-              carHullRiskTheft: null,
-              carHullRiskNatural: null,
-              carHullRiskVandalism: null,
-              carHullRiskAnimalCollision: null,
-              carAssistancePlan: null,
-              carAddonEso: null,
-              carAddonNaturalRisks: null,
-              carAddonKlika: null,
-              carAddonGlass: null,
-              carAddonGlassLimit: null,
-              carAddonAnimalCollision: null,
-              carAddonAnimalCollisionLimit: null,
-              carAddonAnimalDamage: null,
-              carAddonAnimalDamageLimit: null,
-              carAddonVandalism: null,
-              carAddonTheft: null,
-              carAddonTheftLimit: null,
-              carAddonNatural: null,
-              carAddonNaturalLimit: null,
-              carAddonOwnDamage: null,
-              carAddonOwnDamageLimit: null,
-              carAddonPothole: null,
-              carAddonNonFaultAccident: null,
-              carAddonGap: null,
-              carAddonGapLimit: null,
-              carAddonSmartGap: null,
-              carAddonServisPro: null,
-              carAddonReplacementCar: null,
-              carAddonLuggage: null,
-              carAddonTransportedGoods: null,
-              carAddonFireExplosion: null,
-              carAddonLegalAdvice: null,
-              carAddonPassengerInjury: null,
-              carAddonKeyLossTheft: null,
-            };
-
-      const propertyDetailPayload = {
-        address: editDomexAddress.trim() || null,
-        propertyType: editDomexPropertyType.trim() || null,
-        propertyCoverage: editDomexPropertyCoverage.trim() || null,
-        sumInsured: toNumberOrNull(editDomexSumInsured),
-        deductible: toNumberOrNull(editDomexDeductible),
-        householdType: editDomexHouseholdType.trim() || null,
-        householdCoverage: editDomexHouseholdCoverage.trim() || null,
-        householdSumInsured: toNumberOrNull(editDomexHouseholdSumInsured),
-        householdDeductible: toNumberOrNull(editDomexHouseholdDeductible),
-        outbuildingSumInsured: toNumberOrNull(editDomexOutbuildingSumInsured),
-        liabilitySumInsured: toNumberOrNull(editDomexLiabilitySumInsured),
-        liabilityDeductible: toNumberOrNull(editDomexLiabilityDeductible),
-        liabilityMobile: !!editDomexLiabilityMobile,
-        liabilityTenant: !!editDomexLiabilityTenant,
-        liabilityLandlord: !!editDomexLiabilityLandlord,
-        assistancePlus: !!editDomexAssistancePlus,
-        note: editDomexNote.trim() || null,
-      };
-
-      const propertyDetailUpdate =
-        prod === "domex"
-          ? { domexDetail: propertyDetailPayload, maxdomovDetail: null }
-          : prod === "maxdomov"
-            ? { domexDetail: null, maxdomovDetail: propertyDetailPayload }
-            : { domexDetail: null, maxdomovDetail: null };
-
-      const neonUpdate =
-        prod === "neon"
-          ? {
-              neonDetail: {
-                version: editNeonVersion.trim() || null,
-                deathType: editNeonDeathType.trim() || null,
-                deathAmount: toNumberOrNull(editNeonDeathAmount),
-                death2Type: editNeonDeath2Type.trim() || null,
-                death2Amount: toNumberOrNull(editNeonDeath2Amount),
-                deathTerminalAmount: toNumberOrNull(editNeonDeathTerminalAmount),
-                waiverInvalidity: !!editNeonWaiverInvalidity,
-                waiverUnemployment: !!editNeonWaiverUnemployment,
-                invalidityAType: editNeonInvalidityAType.trim() || null,
-                invalidityA1: toNumberOrNull(editNeonInvalidityA1),
-                invalidityA2: toNumberOrNull(editNeonInvalidityA2),
-                invalidityA3: toNumberOrNull(editNeonInvalidityA3),
-                invalidityBType: editNeonInvalidityBType.trim() || null,
-                invalidityB1: toNumberOrNull(editNeonInvalidityB1),
-                invalidityB2: toNumberOrNull(editNeonInvalidityB2),
-                invalidityB3: toNumberOrNull(editNeonInvalidityB3),
-                invalidityPension: !!editNeonInvalidityPension,
-                criticalIllnessType: editNeonCriticalType.trim() || null,
-                criticalIllnessVariant: editNeonCriticalVariant.trim() || null,
-                criticalIllnessAmount: toNumberOrNull(editNeonCriticalAmount),
-                childSurgeryAmount: toNumberOrNull(editNeonChildSurgeryAmount),
-                vaccinationCompAmount: toNumberOrNull(editNeonVaccinationCompAmount),
-                accidentDailyBenefitStart: editNeonAccidentDailyBenefitStart.trim() || null,
-                accidentDailyBenefitBackpay:
-                  editNeonAccidentDailyBenefitBackpay.trim() || null,
-                accidentDailyBenefit: toNumberOrNull(editNeonAccidentDailyBenefit),
-                diabetesAmount: toNumberOrNull(editNeonDiabetesAmount),
-                deathAccidentAmount: toNumberOrNull(editNeonDeathAccidentAmount),
-                injuryPermanentAmount: toNumberOrNull(editNeonInjuryPermanentAmount),
-                injuryPermanentFulfillmentFrom:
-                  editNeonInjuryPermanentFulfillmentFrom.trim() || null,
-                injuryPermanentProgression:
-                  editNeonInjuryPermanentProgression.trim() || null,
-                injuryPermanent2Amount: toNumberOrNull(editNeonInjuryPermanent2Amount),
-                injuryPermanent2FulfillmentFrom:
-                  editNeonInjuryPermanent2FulfillmentFrom.trim() || null,
-                injuryPermanent2Progression:
-                  editNeonInjuryPermanent2Progression.trim() || null,
-                hospitalizationAmount: toNumberOrNull(editNeonHospitalizationAmount),
-                hospitalizationIllnessAmount: toNumberOrNull(editNeonHospitalizationIllnessAmount),
-                hospitalizationInjuryAmount: toNumberOrNull(editNeonHospitalizationInjuryAmount),
-                workIncapacityStart: editNeonWorkIncapacityStart.trim() || null,
-                workIncapacityBackpay: editNeonWorkIncapacityBackpay.trim() || null,
-                workIncapacityAmount: toNumberOrNull(editNeonWorkIncapacityAmount),
-                workIncapacityInjury: editNeonWorkIncapacityInjury,
-                workIncapacityIllness: editNeonWorkIncapacityIllness,
-                workIncapacity2Start: editNeonWorkIncapacity2Start.trim() || null,
-                workIncapacity2Backpay: editNeonWorkIncapacity2Backpay.trim() || null,
-                workIncapacity2Amount: toNumberOrNull(editNeonWorkIncapacity2Amount),
-                workIncapacity2Injury: editNeonWorkIncapacity2Injury,
-                workIncapacity2Illness: editNeonWorkIncapacity2Illness,
-                careDependencyAmount: toNumberOrNull(editNeonCareDependencyAmount),
-                specialAidAmount: toNumberOrNull(editNeonSpecialAidAmount),
-                caregivingAmount: toNumberOrNull(editNeonCaregivingAmount),
-                reproductionCostAmount: toNumberOrNull(editNeonReproductionCostAmount),
-                cppHelp: !!editNeonCppHelp,
-                liabilityCitizenLimit: toNumberOrNull(editNeonLiabilityCitizenLimit),
-                liabilityEmployeeLimit: toNumberOrNull(editNeonLiabilityEmployeeLimit),
-                travelInsurance: !!editNeonTravelInsurance,
-                neonPdfRisks: null,
-              },
-            }
-          : { neonDetail: null };
-
-      const flexiUpdate =
-        prod === "flexi"
-          ? {
-              flexiDetail: {
-                deathAmount: toNumberOrNull(editFlexiDeathAmount),
-                deathTypedType: editFlexiDeathTypedType.trim() || null,
-                deathTypedAmount: toNumberOrNull(editFlexiDeathTypedAmount),
-                deathAccidentAmount: toNumberOrNull(editFlexiDeathAccidentAmount),
-                seriousIllnessType: editFlexiSeriousIllnessType.trim() || null,
-                seriousIllnessAmount: toNumberOrNull(editFlexiSeriousIllnessAmount),
-                seriousIllnessForHim: toNumberOrNull(editFlexiIllnessForHim),
-                seriousIllnessForHer: toNumberOrNull(editFlexiIllnessForHer),
-                permanentIllnessAmount: toNumberOrNull(editFlexiPermanentIllnessAmount),
-                invalidityIllnessType: editFlexiInvalidityIllnessType.trim() || null,
-                invalidityIllness1: toNumberOrNull(editFlexiInvalidityIllness1),
-                invalidityIllness2: toNumberOrNull(editFlexiInvalidityIllness2),
-                invalidityIllness3: toNumberOrNull(editFlexiInvalidityIllness3),
-                hospitalGeneralAmount: toNumberOrNull(editFlexiHospitalGeneralAmount),
-                workIncapacityStart: editFlexiWorkIncapacityStart.trim() || null,
-                workIncapacityBackpay: editFlexiWorkIncapacityBackpay.trim() || null,
-                workIncapacityAmount: toNumberOrNull(editFlexiWorkIncapacityAmount),
-                caregivingAmount: toNumberOrNull(editFlexiCaregivingAmount),
-                permanentAccidentAmount: toNumberOrNull(editFlexiPermanentAccidentAmount),
-                injuryDamageAmount: toNumberOrNull(editFlexiInjuryDamageAmount),
-                accidentDailyBenefit: toNumberOrNull(editFlexiAccidentDailyBenefit),
-                hospitalAccidentAmount: toNumberOrNull(editFlexiHospitalAccidentAmount),
-                invalidityAccidentType: editFlexiInvalidityAccidentType.trim() || null,
-                invalidityAccident1: toNumberOrNull(editFlexiInvalidityAccident1),
-                invalidityAccident2: toNumberOrNull(editFlexiInvalidityAccident2),
-                invalidityAccident3: toNumberOrNull(editFlexiInvalidityAccident3),
-                trafficDeathAccidentAmount: toNumberOrNull(editFlexiTrafficDeathAccidentAmount),
-                trafficPermanentAccidentAmount: toNumberOrNull(editFlexiTrafficPermanentAccidentAmount),
-                trafficInjuryDamageAmount: toNumberOrNull(editFlexiTrafficInjuryDamageAmount),
-                trafficAccidentDailyBenefit: toNumberOrNull(editFlexiTrafficAccidentDailyBenefit),
-                trafficHospitalAccidentAmount: toNumberOrNull(editFlexiTrafficHospitalAccidentAmount),
-                trafficWorkIncapacityAmount: toNumberOrNull(editFlexiTrafficWorkIncapacityAmount),
-                trafficInvalidityAmount: toNumberOrNull(editFlexiTrafficInvalidityAmount),
-                loanDeathAmount: toNumberOrNull(editFlexiLoanDeathAmount),
-                loanInvalidityType: editFlexiLoanInvalidityType.trim() || null,
-                loanInvalidity1: toNumberOrNull(editFlexiLoanInvalidity1),
-                loanInvalidity2: toNumberOrNull(editFlexiLoanInvalidity2),
-                loanInvalidity3: toNumberOrNull(editFlexiLoanInvalidity3),
-                loanIllnessAmount: toNumberOrNull(editFlexiLoanIllnessAmount),
-                loanWorkIncapacityAmount: toNumberOrNull(editFlexiLoanWorkIncapacityAmount),
-                addonMajakBasic: !!editFlexiAddonMajakBasic,
-                addonMajakPlus: !!editFlexiAddonMajakPlus,
-                addonLiabilityCitizen: toNumberOrNull(editFlexiAddonLiabilityCitizen),
-                addonTravel: !!editFlexiAddonTravel,
-              },
-            }
-          : { flexiDetail: null };
-
-      const updates: Record<string, any> = {
-        clientName: trimmedName || null,
-        clientEmail: trimmedEmail || null,
-        clientPhone: trimmedPhone || null,
-        clientAddress: trimmedAddress || null,
-        contractNumber: trimmedNumber || null,
-        contractSignedDate: signedDate ?? null,
-        policyStartDate: startDate ?? null,
-        policyEndDate: endDate ?? null,
-        ...autoFields,
-        ...neonUpdate,
-        ...flexiUpdate,
-        ...propertyDetailUpdate,
-      };
-      if (showDurationForProduct) {
-        updates.durationYears = durationVal ?? null;
-      }
-
-      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/update-fields", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
+      const result = await saveContractDetails({
+        product: prod,
+        durationBounds,
+        showDurationForProduct,
+        ownerEmail,
+        entryId,
+        requestContractsApi,
+        form: {
+          editCarAddonAnimalCollision,
+          editCarAddonAnimalCollisionLimit,
+          editCarAddonAnimalDamage,
+          editCarAddonAnimalDamageLimit,
+          editCarAddonEso,
+          editCarAddonFireExplosion,
+          editCarAddonGap,
+          editCarAddonGapLimit,
+          editCarAddonGlass,
+          editCarAddonGlassLimit,
+          editCarAddonKeyLossTheft,
+          editCarAddonKlika,
+          editCarAddonLegalAdvice,
+          editCarAddonLuggage,
+          editCarAddonNatural,
+          editCarAddonNaturalLimit,
+          editCarAddonNaturalRisks,
+          editCarAddonNonFaultAccident,
+          editCarAddonOwnDamage,
+          editCarAddonOwnDamageLimit,
+          editCarAddonPassengerInjury,
+          editCarAddonPothole,
+          editCarAddonReplacementCar,
+          editCarAddonServisPro,
+          editCarAddonSmartGap,
+          editCarAddonTheft,
+          editCarAddonTheftLimit,
+          editCarAddonTransportedGoods,
+          editCarAddonVandalism,
+          editCarAllianzScope,
+          editCarAnnualMileage,
+          editCarAssistancePlan,
+          editCarHullDeductible,
+          editCarHullRiskAccident,
+          editCarHullRiskAnimalCollision,
+          editCarHullRiskNatural,
+          editCarHullRiskTheft,
+          editCarHullRiskVandalism,
+          editCarHullSumInsured,
+          editCarLiabilityLimit,
+          editCarMake,
+          editCarOrv,
+          editCarPlate,
+          editCarTp,
+          editCarVin,
+          editClientAddress,
+          editClientEmail,
+          editClientName,
+          editClientPhone,
+          editContractNumber,
+          editContractSigned,
+          editDomexAddress,
+          editDomexAssistancePlus,
+          editDomexDeductible,
+          editDomexHouseholdCoverage,
+          editDomexHouseholdDeductible,
+          editDomexHouseholdSumInsured,
+          editDomexHouseholdType,
+          editDomexLiabilityDeductible,
+          editDomexLiabilityLandlord,
+          editDomexLiabilityMobile,
+          editDomexLiabilitySumInsured,
+          editDomexLiabilityTenant,
+          editDomexNote,
+          editDomexOutbuildingSumInsured,
+          editDomexPropertyCoverage,
+          editDomexPropertyType,
+          editDomexSumInsured,
+          editDuration,
+          editFlexiAccidentDailyBenefit,
+          editFlexiAddonLiabilityCitizen,
+          editFlexiAddonMajakBasic,
+          editFlexiAddonMajakPlus,
+          editFlexiAddonTravel,
+          editFlexiCaregivingAmount,
+          editFlexiDeathAccidentAmount,
+          editFlexiDeathAmount,
+          editFlexiDeathTypedAmount,
+          editFlexiDeathTypedType,
+          editFlexiHospitalAccidentAmount,
+          editFlexiHospitalGeneralAmount,
+          editFlexiIllnessForHer,
+          editFlexiIllnessForHim,
+          editFlexiInjuryDamageAmount,
+          editFlexiInvalidityAccident1,
+          editFlexiInvalidityAccident2,
+          editFlexiInvalidityAccident3,
+          editFlexiInvalidityAccidentType,
+          editFlexiInvalidityIllness1,
+          editFlexiInvalidityIllness2,
+          editFlexiInvalidityIllness3,
+          editFlexiInvalidityIllnessType,
+          editFlexiLoanDeathAmount,
+          editFlexiLoanIllnessAmount,
+          editFlexiLoanInvalidity1,
+          editFlexiLoanInvalidity2,
+          editFlexiLoanInvalidity3,
+          editFlexiLoanInvalidityType,
+          editFlexiLoanWorkIncapacityAmount,
+          editFlexiPermanentAccidentAmount,
+          editFlexiPermanentIllnessAmount,
+          editFlexiSeriousIllnessAmount,
+          editFlexiSeriousIllnessType,
+          editFlexiTrafficAccidentDailyBenefit,
+          editFlexiTrafficDeathAccidentAmount,
+          editFlexiTrafficHospitalAccidentAmount,
+          editFlexiTrafficInjuryDamageAmount,
+          editFlexiTrafficInvalidityAmount,
+          editFlexiTrafficPermanentAccidentAmount,
+          editFlexiTrafficWorkIncapacityAmount,
+          editFlexiWorkIncapacityAmount,
+          editFlexiWorkIncapacityBackpay,
+          editFlexiWorkIncapacityStart,
+          editNeonAccidentDailyBenefit,
+          editNeonAccidentDailyBenefitBackpay,
+          editNeonAccidentDailyBenefitStart,
+          editNeonCareDependencyAmount,
+          editNeonCaregivingAmount,
+          editNeonChildSurgeryAmount,
+          editNeonCppHelp,
+          editNeonCriticalAmount,
+          editNeonCriticalType,
+          editNeonCriticalVariant,
+          editNeonDeath2Amount,
+          editNeonDeath2Type,
+          editNeonDeathAccidentAmount,
+          editNeonDeathAmount,
+          editNeonDeathTerminalAmount,
+          editNeonDeathType,
+          editNeonDiabetesAmount,
+          editNeonHospitalizationAmount,
+          editNeonHospitalizationIllnessAmount,
+          editNeonHospitalizationInjuryAmount,
+          editNeonInjuryPermanent2Amount,
+          editNeonInjuryPermanent2FulfillmentFrom,
+          editNeonInjuryPermanent2Progression,
+          editNeonInjuryPermanentAmount,
+          editNeonInjuryPermanentFulfillmentFrom,
+          editNeonInjuryPermanentProgression,
+          editNeonInvalidityA1,
+          editNeonInvalidityA2,
+          editNeonInvalidityA3,
+          editNeonInvalidityAType,
+          editNeonInvalidityB1,
+          editNeonInvalidityB2,
+          editNeonInvalidityB3,
+          editNeonInvalidityBType,
+          editNeonInvalidityPension,
+          editNeonLiabilityCitizenLimit,
+          editNeonLiabilityEmployeeLimit,
+          editNeonReproductionCostAmount,
+          editNeonSpecialAidAmount,
+          editNeonTravelInsurance,
+          editNeonVaccinationCompAmount,
+          editNeonVersion,
+          editNeonWaiverInvalidity,
+          editNeonWaiverUnemployment,
+          editNeonWorkIncapacity2Amount,
+          editNeonWorkIncapacity2Backpay,
+          editNeonWorkIncapacity2Illness,
+          editNeonWorkIncapacity2Injury,
+          editNeonWorkIncapacity2Start,
+          editNeonWorkIncapacityAmount,
+          editNeonWorkIncapacityBackpay,
+          editNeonWorkIncapacityIllness,
+          editNeonWorkIncapacityInjury,
+          editNeonWorkIncapacityStart,
+          editPolicyEnd,
+          editPolicyStart,
         },
-        body: JSON.stringify({
-          ownerEmail,
-          entryId,
-          updates,
-        }),
       });
 
-      setContract((prev) =>
-        prev
-          ? {
-              ...prev,
-              clientName: trimmedName || null,
-              clientEmail: trimmedEmail || null,
-              clientPhone: trimmedPhone || null,
-              clientAddress: trimmedAddress || null,
-              contractNumber: trimmedNumber || null,
-              contractSignedDate: signedDate ?? null,
-              policyStartDate: startDate ?? null,
-              policyEndDate: endDate ?? null,
-              durationYears:
-                showDurationForProduct
-                  ? durationVal ?? prev.durationYears ?? null
-                  : prev.durationYears ?? null,
-              ...(isAutoProduct(prod ?? null)
-                ? {
-                    carMake: autoFields.carMake,
-                    carPlate: autoFields.carPlate,
-                    carVin: autoFields.carVin,
-                    carTp: autoFields.carTp,
-                    carOrv: autoFields.carOrv,
-                    carAnnualMileage: autoFields.carAnnualMileage,
-                    carAllianzScope: autoFields.carAllianzScope,
-                    carLiabilityLimit: autoFields.carLiabilityLimit,
-                    carHullSumInsured: autoFields.carHullSumInsured,
-                    carHullSumInsuredText: autoFields.carHullSumInsuredText,
-                    carHullDeductible: autoFields.carHullDeductible,
-                    carHullDeductibleText: editCarHullDeductible.trim() || null,
-                    carHullRiskAccident: autoFields.carHullRiskAccident,
-                    carHullRiskTheft: autoFields.carHullRiskTheft,
-                    carHullRiskNatural: autoFields.carHullRiskNatural,
-                    carHullRiskVandalism: autoFields.carHullRiskVandalism,
-                    carHullRiskAnimalCollision: autoFields.carHullRiskAnimalCollision,
-                    carAssistancePlan: autoFields.carAssistancePlan,
-                    carAddonEso: autoFields.carAddonEso,
-                    carAddonNaturalRisks: autoFields.carAddonNaturalRisks,
-                    carAddonKlika: autoFields.carAddonKlika,
-                    carAddonGlass: autoFields.carAddonGlass,
-                    carAddonGlassLimit: autoFields.carAddonGlassLimit,
-                    carAddonAnimalCollision: autoFields.carAddonAnimalCollision,
-                    carAddonAnimalCollisionLimit: autoFields.carAddonAnimalCollisionLimit,
-                    carAddonAnimalDamage: autoFields.carAddonAnimalDamage,
-                    carAddonAnimalDamageLimit: autoFields.carAddonAnimalDamageLimit,
-                    carAddonVandalism: autoFields.carAddonVandalism,
-                    carAddonTheft: autoFields.carAddonTheft,
-                    carAddonTheftLimit: autoFields.carAddonTheftLimit,
-                    carAddonNatural: autoFields.carAddonNatural,
-                    carAddonNaturalLimit: autoFields.carAddonNaturalLimit,
-                    carAddonOwnDamage: autoFields.carAddonOwnDamage,
-                    carAddonOwnDamageLimit: autoFields.carAddonOwnDamageLimit,
-                    carAddonPothole: autoFields.carAddonPothole,
-                    carAddonNonFaultAccident: autoFields.carAddonNonFaultAccident,
-                    carAddonGap: autoFields.carAddonGap,
-                    carAddonGapLimit: autoFields.carAddonGapLimit,
-                    carAddonSmartGap: autoFields.carAddonSmartGap,
-                    carAddonServisPro: autoFields.carAddonServisPro,
-                    carAddonReplacementCar: autoFields.carAddonReplacementCar,
-                    carAddonLuggage: autoFields.carAddonLuggage,
-                    carAddonTransportedGoods: autoFields.carAddonTransportedGoods,
-                    carAddonFireExplosion: autoFields.carAddonFireExplosion,
-                    carAddonLegalAdvice: autoFields.carAddonLegalAdvice,
-                    carAddonPassengerInjury: autoFields.carAddonPassengerInjury,
-                    carAddonKeyLossTheft: autoFields.carAddonKeyLossTheft,
-                    neonDetail: neonUpdate.neonDetail,
-                  }
-                : {
-                    carMake: null,
-                    carPlate: null,
-                    carVin: null,
-                    carTp: null,
-                    carOrv: null,
-                    carAnnualMileage: null,
-                    carAllianzScope: null,
-                    carLiabilityLimit: null,
-                    carHullSumInsured: null,
-                    carHullSumInsuredText: null,
-                    carHullDeductible: null,
-                    carHullDeductibleText: null,
-                    carHullRiskAccident: null,
-                    carHullRiskTheft: null,
-                    carHullRiskNatural: null,
-                    carHullRiskVandalism: null,
-                    carHullRiskAnimalCollision: null,
-                    carAssistancePlan: null,
-                    carAddonEso: null,
-                    carAddonNaturalRisks: null,
-                    carAddonKlika: null,
-                    carAddonGlass: null,
-                    carAddonGlassLimit: null,
-                    carAddonAnimalCollision: null,
-                    carAddonAnimalCollisionLimit: null,
-                    carAddonAnimalDamage: null,
-                    carAddonAnimalDamageLimit: null,
-                    carAddonVandalism: null,
-                    carAddonTheft: null,
-                    carAddonTheftLimit: null,
-                    carAddonNatural: null,
-                    carAddonNaturalLimit: null,
-                    carAddonOwnDamage: null,
-                    carAddonOwnDamageLimit: null,
-                    carAddonPothole: null,
-                    carAddonNonFaultAccident: null,
-                    carAddonGap: null,
-                    carAddonGapLimit: null,
-                    carAddonSmartGap: null,
-                    carAddonServisPro: null,
-                    carAddonReplacementCar: null,
-                    carAddonLuggage: null,
-                    carAddonTransportedGoods: null,
-                    carAddonFireExplosion: null,
-                    carAddonLegalAdvice: null,
-                    carAddonPassengerInjury: null,
-                    carAddonKeyLossTheft: null,
-                    neonDetail: neonUpdate.neonDetail,
-                  }),
-              domexDetail: propertyDetailUpdate.domexDetail,
-              maxdomovDetail: propertyDetailUpdate.maxdomovDetail,
-              ...(prod === "flexi"
-                ? { flexiDetail: flexiUpdate.flexiDetail }
-                : { flexiDetail: null }),
-            }
-          : prev
-      );
+      if (!result.ok) {
+        setDetailsError(result.error);
+        return;
+      }
 
+      setContract((previous) =>
+        previous ? result.applyToContract(previous) : previous
+      );
       setEditMode(false);
       setDetailsSaved(true);
       pushToast("Detaily smlouvy byly uloženy.", "success");

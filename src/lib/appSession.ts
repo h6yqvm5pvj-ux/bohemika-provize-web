@@ -1,7 +1,8 @@
 export const APP_SESSION_COOKIE_NAME = "bohemika_app_session";
 
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 12 * 60 * 60;
-const MAX_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
+const DEFAULT_TRUSTED_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const MAX_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_VERSION = 1;
 
 type AppSessionPayload = {
@@ -36,10 +37,37 @@ export type AppSessionVerificationResult =
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-export function getAppSessionMaxAgeSeconds(): number {
-  const raw = Number(process.env.APP_SESSION_MAX_AGE_SECONDS ?? "");
-  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_SESSION_MAX_AGE_SECONDS;
-  return Math.min(Math.round(raw), MAX_SESSION_MAX_AGE_SECONDS);
+type SessionDurationOptions = {
+  rememberThisDevice?: boolean;
+};
+
+function resolveConfiguredSessionMaxAge(
+  rawValue: string,
+  fallbackSeconds: number
+): number {
+  const raw = Number(rawValue);
+  if (!Number.isFinite(raw) || raw <= 0) return fallbackSeconds;
+  return Math.max(60, Math.min(Math.round(raw), MAX_SESSION_MAX_AGE_SECONDS));
+}
+
+export function getAppSessionMaxAgeSeconds(
+  options: SessionDurationOptions = {}
+): number {
+  const { rememberThisDevice = false } = options;
+  const envValue = rememberThisDevice
+    ? (process.env.APP_TRUSTED_SESSION_MAX_AGE_SECONDS ??
+      process.env.APP_SESSION_MAX_AGE_SECONDS ??
+      "")
+    : process.env.APP_SESSION_MAX_AGE_SECONDS ?? "";
+
+  if (rememberThisDevice) {
+    return resolveConfiguredSessionMaxAge(
+      envValue,
+      DEFAULT_TRUSTED_SESSION_MAX_AGE_SECONDS
+    );
+  }
+
+  return resolveConfiguredSessionMaxAge(envValue, DEFAULT_SESSION_MAX_AGE_SECONDS);
 }
 
 export function resolveAppSessionSecret(): string {

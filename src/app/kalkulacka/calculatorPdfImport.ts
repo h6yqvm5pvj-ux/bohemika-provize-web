@@ -221,7 +221,12 @@ export async function parseContractPdfByProduct(
   }
 }
 
-const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
+/**
+ * Every product for which `parseContractPdfByProduct` has a dedicated parser.
+ * Keep bulk import derived from this registry so a new parser is never
+ * accidentally available only for single-PDF import.
+ */
+export const AUTOMATED_PDF_PRODUCTS: readonly Product[] = [
   "cppAuto",
   "slaviaauto",
   "allianzAuto",
@@ -242,10 +247,21 @@ const PDF_AUTOMATED_PRODUCTS = new Set<Product>([
   "maxdomov",
   "maxcizinkomplex",
   "comfortcc",
-]);
+];
+
+const PDF_AUTOMATED_PRODUCT_SET = new Set<Product>(AUTOMATED_PDF_PRODUCTS);
 
 export const hasAutomatedPdfImport = (product: Product): boolean =>
-  PDF_AUTOMATED_PRODUCTS.has(product);
+  PDF_AUTOMATED_PRODUCT_SET.has(product);
+
+/**
+ * Comfort CC is intentionally excluded from batch import: its contract PDF
+ * does not reliably describe the commercial setup needed for unattended save.
+ * It remains available for regular, single-PDF import.
+ */
+export const BULK_PDF_PRODUCTS: readonly Product[] = AUTOMATED_PDF_PRODUCTS.filter(
+  (product) => product !== "comfortcc"
+);
 
 export const manualPdfImportMessage = (product: Product): string =>
   `Pro produkt ${productLabelFromCatalog(product, product)} zatím není automatické načítání dat z PDF hotové. PDF se při uložení přiloží ke smlouvě, údaje prosím vyplň ručně.`;

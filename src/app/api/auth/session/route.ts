@@ -41,6 +41,11 @@ function setNoStoreHeaders(response: NextResponse): NextResponse {
   return response;
 }
 
+function parseRememberThisDevicePayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  return Boolean((payload as { rememberThisDevice?: unknown }).rememberThisDevice);
+}
+
 function setAppSessionCookie(
   response: NextResponse,
   value: string,
@@ -72,6 +77,9 @@ function clearAppSessionCookie(response: NextResponse): NextResponse {
 }
 
 export async function POST(req: NextRequest) {
+  const payload = await req.json().catch(() => null);
+  const rememberThisDevice = parseRememberThisDevicePayload(payload);
+
   const endpointLimit = await consumeRateLimit({
     namespace: "api:auth:session",
     key: getRequestIp(req),
@@ -167,7 +175,7 @@ export async function POST(req: NextRequest) {
     const session = await createAppSessionCookieValue({
       uid,
       email,
-      maxAgeSeconds: getAppSessionMaxAgeSeconds(),
+      maxAgeSeconds: getAppSessionMaxAgeSeconds({ rememberThisDevice }),
     });
     await recordAppSession({
       email,

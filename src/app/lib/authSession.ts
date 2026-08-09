@@ -21,14 +21,20 @@ async function readErrorMessage(response: Response): Promise<string> {
     : "Serverovou session se nepodařilo nastavit.";
 }
 
-export async function createServerSessionFromToken(idToken: string): Promise<void> {
+export async function createServerSessionFromToken(
+  idToken: string,
+  options: { rememberThisDevice?: boolean } = {}
+): Promise<void> {
+  const rememberThisDevice = options.rememberThisDevice === true;
   const response = await fetch("/api/auth/session", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${idToken}`,
+      "Content-Type": "application/json",
     },
     credentials: "same-origin",
     cache: "no-store",
+    body: JSON.stringify({ rememberThisDevice }),
   });
 
   if (!response.ok) {
