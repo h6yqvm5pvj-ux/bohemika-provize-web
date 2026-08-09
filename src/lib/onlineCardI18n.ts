@@ -10,6 +10,18 @@ export type OnlineCardTranslatedFields = {
 export type OnlineCardTranslations = Partial<
   Record<Exclude<OnlineCardLocale, "cs">, Partial<OnlineCardTranslatedFields>>
 >;
+export type OnlineCardTestimonial = {
+  id: string;
+  quote: string;
+  author: string;
+  context: string;
+  locale: OnlineCardLocale;
+  published: boolean;
+  submittedAt?: string;
+};
+export type OnlineCardPendingTestimonial = Omit<OnlineCardTestimonial, "published"> & {
+  submittedAt: string;
+};
 
 export const resolveOnlineCardLocale = (value: unknown): OnlineCardLocale =>
   value === "en" || value === "uk" ? value : "cs";
@@ -99,6 +111,25 @@ export const ONLINE_CARD_COPY = {
       noOfficeAddress: "Adresa kanceláře není vyplněná.",
       contact: "Kontakt",
       notFilled: "Nevyplněno",
+      testimonialsKicker: "Zkušenosti klientů",
+      testimonialsTitle: "Důvěra vzniká z dobré zkušenosti",
+      testimonialsContextFallback: "Klient Bohemika",
+      writeReview: "Napsat recenzi",
+      reviewPrompt: "Máte zkušenost se spoluprací? Budeme rádi za vaši krátkou recenzi.",
+      reviewTitle: "Napsat recenzi",
+      reviewDescription: "Recenze se zobrazí až po schválení poradcem.",
+      reviewName: "Jméno nebo iniciály",
+      reviewNamePlaceholder: "Např. Jana K.",
+      reviewContext: "Oblast spolupráce (volitelné)",
+      reviewContextPlaceholder: "Např. Revize pojištění",
+      reviewText: "Vaše zkušenost",
+      reviewTextPlaceholder: "Napište krátce, s čím vám spolupráce pomohla…",
+      reviewConsent: "Souhlasím se zveřejněním této recenze po schválení poradcem.",
+      reviewSubmit: "Odeslat ke schválení",
+      reviewSubmitting: "Odesílám…",
+      reviewSubmitted: "Děkujeme. Recenze byla odeslána ke schválení.",
+      reviewValidation: "Vyplňte prosím jméno, recenzi a souhlas se zveřejněním.",
+      reviewGenericError: "Recenzi se nepodařilo odeslat. Zkuste to prosím znovu.",
       scheduleKicker: "Sjednat schůzku",
       scheduleTitle: "Domluvte si termín",
       scheduleDescription: "Vyplňte kontakt a zprávu. V nejbližší době vás budu kontaktovat.",
@@ -172,6 +203,7 @@ export const ONLINE_CARD_COPY = {
     },
     public: {
       share: "Share profile", shareShort: "Share", shareSuccess: "The profile link has been copied to your clipboard.", shareError: "The link could not be shared. Please copy it from the address bar.", saveContact: "Save contact", displayMode: "Profile appearance", dark: "Dark", light: "Light", language: "Profile language", office: "Office", noOfficePhotos: "No office photos have been added.", previousOfficePhoto: "Previous office photo", nextOfficePhoto: "Next office photo", showOfficePhoto: "Show office photo", openMaps: "Open in Google Maps", noOfficeAddress: "The office address has not been added.", contact: "Contact", notFilled: "Not provided", scheduleKicker: "Book a meeting", scheduleTitle: "Arrange an appointment", scheduleDescription: "Leave your contact details and a message. I will get back to you shortly.", closeForm: "Close form", submitted: "Your request has been sent. We will get back to you soon.", onlineCardTitle: "Bohemika online profile",
+      testimonialsKicker: "Client experiences", testimonialsTitle: "Trust is built through good experience", testimonialsContextFallback: "Bohemika client", writeReview: "Write a review", reviewPrompt: "Have you worked with us? We would appreciate a short review.", reviewTitle: "Write a review", reviewDescription: "Your review will appear only after the advisor approves it.", reviewName: "Name or initials", reviewNamePlaceholder: "For example, Jane K.", reviewContext: "Area of cooperation (optional)", reviewContextPlaceholder: "For example, insurance review", reviewText: "Your experience", reviewTextPlaceholder: "Briefly describe how the cooperation helped you…", reviewConsent: "I agree that this review may be published after the advisor approves it.", reviewSubmit: "Send for approval", reviewSubmitting: "Sending…", reviewSubmitted: "Thank you. Your review was sent for approval.", reviewValidation: "Please enter your name, review and consent to publication.", reviewGenericError: "The review could not be sent. Please try again.",
     },
     meeting: {
       steps: ["What you need", "Contact", "Message"], topics: ["Vehicle insurance", "Property insurance", "Liability insurance", "Life and accident insurance", "Health insurance for foreigners", "Loans and mortgages", "Investments", "Precious metals", "Other"], chooseTopic: "What would you like to discuss", name: "Full name", namePlaceholder: "John Smith", phone: "Phone", email: "Email", selectedTopics: "Selected areas", message: "Message (optional)", messagePlaceholder: "Let us know your preferred time or briefly describe what you need.", company: "Company", chooseTopicError: "Please select at least one area you would like to discuss.", contactError: "Please enter your name, phone number and a valid email address.", selected: "Selected", characters: "characters", fillContact: "Enter your contact details.", back: "Back", continue: "Continue", submitting: "Sending…", submit: "Send request", genericError: "Your request could not be sent.",
@@ -186,6 +218,7 @@ export const ONLINE_CARD_COPY = {
     },
     public: {
       share: "Поділитися профілем", shareShort: "Поділитися", shareSuccess: "Посилання на профіль скопійовано в буфер обміну.", shareError: "Не вдалося поділитися посиланням. Скопіюйте його з адресного рядка.", saveContact: "Зберегти контакт", displayMode: "Вигляд профілю", dark: "Темний", light: "Світлий", language: "Мова профілю", office: "Офіс", noOfficePhotos: "Фотографії офісу ще не додані.", previousOfficePhoto: "Попереднє фото офісу", nextOfficePhoto: "Наступне фото офісу", showOfficePhoto: "Показати фото офісу", openMaps: "Відкрити в Google Maps", noOfficeAddress: "Адресу офісу ще не вказано.", contact: "Контакти", notFilled: "Не вказано", scheduleKicker: "Записатися на зустріч", scheduleTitle: "Домовтеся про зустріч", scheduleDescription: "Залиште свої контакти та повідомлення. Я зв’яжуся з вами найближчим часом.", closeForm: "Закрити форму", submitted: "Ваш запит надіслано. Ми зв’яжемося з вами найближчим часом.", onlineCardTitle: "Онлайн-профіль Bohemika",
+      testimonialsKicker: "Досвід клієнтів", testimonialsTitle: "Довіра народжується з гарного досвіду", testimonialsContextFallback: "Клієнт Bohemika", writeReview: "Написати відгук", reviewPrompt: "Маєте досвід співпраці? Будемо вдячні за короткий відгук.", reviewTitle: "Написати відгук", reviewDescription: "Відгук з’явиться лише після схвалення консультантом.", reviewName: "Ім’я або ініціали", reviewNamePlaceholder: "Наприклад, Олена К.", reviewContext: "Напрям співпраці (необов’язково)", reviewContextPlaceholder: "Наприклад, перегляд страхування", reviewText: "Ваш досвід", reviewTextPlaceholder: "Коротко напишіть, чим вам допомогла співпраця…", reviewConsent: "Я погоджуюся на публікацію цього відгуку після схвалення консультантом.", reviewSubmit: "Надіслати на схвалення", reviewSubmitting: "Надсилаємо…", reviewSubmitted: "Дякуємо. Відгук надіслано на схвалення.", reviewValidation: "Вкажіть ім’я, текст відгуку та згоду на публікацію.", reviewGenericError: "Не вдалося надіслати відгук. Спробуйте ще раз.",
     },
     meeting: {
       steps: ["Ваше питання", "Контакти", "Повідомлення"], topics: ["Страхування транспорту", "Страхування майна", "Страхування відповідальності", "Страхування життя та від нещасних випадків", "Медичне страхування для іноземців", "Кредити та іпотека", "Інвестиції", "Дорогоцінні метали", "Інше"], chooseTopic: "Що ви хочете обговорити", name: "Ім’я та прізвище", namePlaceholder: "Іван Петренко", phone: "Телефон", email: "Електронна пошта", selectedTopics: "Обрані теми", message: "Повідомлення (необов’язково)", messagePlaceholder: "Вкажіть бажаний час або коротко опишіть ваше питання.", company: "Компанія", chooseTopicError: "Будь ласка, виберіть хоча б одну тему для обговорення.", contactError: "Будь ласка, введіть ім’я, телефон і дійсну електронну адресу.", selected: "Обрано", characters: "символів", fillContact: "Введіть контактні дані.", back: "Назад", continue: "Продовжити", submitting: "Надсилаємо…", submit: "Надіслати запит", genericError: "Не вдалося надіслати запит.",
@@ -217,4 +250,65 @@ export const resolveOnlineCardTranslations = (
   });
 
   return out;
+};
+
+export const resolveOnlineCardTestimonials = (value: unknown): OnlineCardTestimonial[] => {
+  if (!Array.isArray(value)) return [];
+  const testimonials: OnlineCardTestimonial[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const raw = entry as Record<string, unknown>;
+    const id = typeof raw.id === "string" ? raw.id.trim().slice(0, 80) : "";
+    const quote = typeof raw.quote === "string" ? raw.quote.trim().slice(0, 600) : "";
+    if (!id || !quote || seen.has(id)) continue;
+    const author = typeof raw.author === "string" ? raw.author.trim().slice(0, 80) : "";
+    const context = typeof raw.context === "string" ? raw.context.trim().slice(0, 120) : "";
+    const submittedAt = typeof raw.submittedAt === "string" ? raw.submittedAt.trim().slice(0, 48) : "";
+    testimonials.push({
+      id,
+      quote,
+      author,
+      context,
+      locale: resolveOnlineCardLocale(raw.locale),
+      published: raw.published === true,
+      ...(submittedAt ? { submittedAt } : {}),
+    });
+    seen.add(id);
+    if (testimonials.length >= 6) break;
+  }
+
+  return testimonials;
+};
+
+export const resolveOnlineCardPendingTestimonials = (
+  value: unknown
+): OnlineCardPendingTestimonial[] => {
+  if (!Array.isArray(value)) return [];
+  const testimonials: OnlineCardPendingTestimonial[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const raw = entry as Record<string, unknown>;
+    const id = typeof raw.id === "string" ? raw.id.trim().slice(0, 80) : "";
+    const quote = typeof raw.quote === "string" ? raw.quote.trim().slice(0, 600) : "";
+    const submittedAt = typeof raw.submittedAt === "string" ? raw.submittedAt.trim().slice(0, 48) : "";
+    if (!id || !quote || !submittedAt || seen.has(id)) continue;
+    const author = typeof raw.author === "string" ? raw.author.trim().slice(0, 80) : "";
+    const context = typeof raw.context === "string" ? raw.context.trim().slice(0, 120) : "";
+    testimonials.push({
+      id,
+      quote,
+      author,
+      context,
+      locale: resolveOnlineCardLocale(raw.locale),
+      submittedAt,
+    });
+    seen.add(id);
+    if (testimonials.length >= 30) break;
+  }
+
+  return testimonials;
 };

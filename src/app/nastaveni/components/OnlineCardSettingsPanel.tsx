@@ -5,11 +5,17 @@ import Image from "next/image";
 import { Download, Globe, Maximize2, Minimize2, X } from "lucide-react";
 
 import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
+import { OnlineCardTestimonials } from "@/components/OnlineCardTestimonials";
 import {
   PremiumOnlineCardPreview,
   type PremiumOnlineCardValue,
 } from "@/components/PremiumOnlineCardPreview";
-import type { OnlineCardLocale, OnlineCardTranslatedFields } from "@/lib/onlineCardI18n";
+import {
+  ONLINE_CARD_LANGUAGE_OPTIONS,
+  type OnlineCardLocale,
+  type OnlineCardTestimonial,
+  type OnlineCardTranslatedFields,
+} from "@/lib/onlineCardI18n";
 
 type OnlineCardSettingsPanelProps = {
   className: string;
@@ -66,6 +72,61 @@ export function OnlineCardSettingsPanel({
     officeLabel: draft.officeLabel,
     officePhotos: draft.officePhotos,
     translations: draft.translations,
+    testimonials: draft.testimonials,
+    pendingTestimonials: draft.pendingTestimonials,
+  };
+  const updateTestimonial = (
+    id: string,
+    patch: Partial<OnlineCardTestimonial>
+  ) => {
+    onDraftPatch({
+      testimonials: (draft.testimonials ?? []).map((testimonial) =>
+        testimonial.id === id ? { ...testimonial, ...patch } : testimonial
+      ),
+    });
+  };
+  const addTestimonial = () => {
+    const current = draft.testimonials ?? [];
+    if (current.length >= 6) return;
+    const id =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `reference-${Date.now()}-${current.length + 1}`;
+    onDraftPatch({
+      testimonials: [
+        ...current,
+        {
+          id,
+          quote: "",
+          author: "",
+          context: "",
+          locale: "cs",
+          published: false,
+          submittedAt: new Date().toISOString(),
+        },
+      ],
+    });
+  };
+  const removeTestimonial = (id: string) => {
+    onDraftPatch({
+      testimonials: (draft.testimonials ?? []).filter((testimonial) => testimonial.id !== id),
+    });
+  };
+  const approvePendingTestimonial = (id: string) => {
+    const pending = draft.pendingTestimonials ?? [];
+    const testimonial = pending.find((entry) => entry.id === id);
+    const published = draft.testimonials ?? [];
+    if (!testimonial || published.length >= 6) return;
+
+    onDraftPatch({
+      testimonials: [...published, { ...testimonial, published: true }],
+      pendingTestimonials: pending.filter((entry) => entry.id !== id),
+    });
+  };
+  const removePendingTestimonial = (id: string) => {
+    onDraftPatch({
+      pendingTestimonials: (draft.pendingTestimonials ?? []).filter((entry) => entry.id !== id),
+    });
   };
   const updateTranslation = (
     locale: Exclude<OnlineCardLocale, "cs">,
@@ -90,7 +151,7 @@ export function OnlineCardSettingsPanel({
       <div className="space-y-4 sm:space-y-5">
         {publishPanel}
 
-        <div className="space-y-3 rounded-[20px] border border-violet-100 bg-white px-3 py-3 shadow-[0_12px_30px_rgba(88,28,135,0.06)] sm:space-y-4 sm:rounded-[30px] sm:px-5 sm:py-5 sm:shadow-[0_20px_60px_rgba(88,28,135,0.08)]">
+        <div className="flex flex-col gap-3 rounded-[20px] border border-violet-100 bg-white px-3 py-3 shadow-[0_12px_30px_rgba(88,28,135,0.06)] sm:gap-4 sm:rounded-[30px] sm:px-5 sm:py-5 sm:shadow-[0_20px_60px_rgba(88,28,135,0.08)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
@@ -133,11 +194,12 @@ export function OnlineCardSettingsPanel({
             />
 
             <AdvisorProfileSections flush />
+            <OnlineCardTestimonials testimonials={previewValue.testimonials} locale="cs" allowSubmission={false} />
             {officeSection}
             {contactSection}
           </div>
 
-          <details className="rounded-[20px] border border-violet-100 bg-violet-50/45 px-4 py-3 text-slate-900">
+          <details className="order-3 rounded-[20px] border border-violet-100 bg-violet-50/45 px-4 py-3 text-slate-900">
             <summary className="cursor-pointer text-sm font-bold marker:text-violet-700">
               Anglická a ukrajinská verze obsahu
             </summary>
@@ -204,6 +266,174 @@ export function OnlineCardSettingsPanel({
               })}
             </div>
           </details>
+
+          {(draft.pendingTestimonials?.length ?? 0) > 0 ? (
+            <section id="online-card-reviews" className="order-1 rounded-[20px] border border-amber-200 bg-amber-50/70 px-4 py-4 text-slate-900">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold">Recenze čekající na schválení</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    Klienti je poslali přímo z vizitky. Před zveřejněním je zkontroluj; můžeš je také rovnou smazat.
+                  </p>
+                </div>
+                <span className="rounded-full border border-amber-300 bg-white px-2.5 py-1 text-xs font-bold text-amber-900">
+                  {draft.pendingTestimonials?.length} čeká
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {draft.pendingTestimonials?.map((testimonial) => (
+                  <article key={testimonial.id} className="rounded-2xl border border-amber-200/90 bg-white p-3">
+                    <p className="text-sm leading-6 text-slate-700">“{testimonial.quote}”</p>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                      <div className="text-xs text-slate-500">
+                        <span className="font-bold text-slate-800">{testimonial.author || "Klient"}</span>
+                        {testimonial.context ? ` · ${testimonial.context}` : ""}
+                        <span className="ml-2 text-slate-400">{testimonial.locale.toUpperCase()}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => approvePendingTestimonial(testimonial.id)}
+                          disabled={(draft.testimonials?.length ?? 0) >= 6}
+                          className="text-xs font-bold text-emerald-700 transition hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          Zveřejnit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removePendingTestimonial(testimonial.id)}
+                          className="text-xs font-bold text-rose-700 transition hover:text-rose-900"
+                        >
+                          Smazat
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              {(draft.testimonials?.length ?? 0) >= 6 ? (
+                <p className="mt-3 text-xs font-medium text-amber-800">Pro zveřejnění další recenze nejdřív uvolni místo (maximálně 6).</p>
+              ) : null}
+            </section>
+          ) : null}
+
+          <section className="order-2 rounded-[20px] border border-violet-100 bg-white px-4 py-4 text-slate-900">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold">Reference klientů</h3>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">
+                  Zveřejňuj pouze reference klientů, kteří výslovně souhlasili se zveřejněním.
+                  Neaktivní reference zůstane uložená, ale na veřejné vizitce se nezobrazí.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addTestimonial}
+                disabled={(draft.testimonials?.length ?? 0) >= 6}
+                className="rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Přidat referenci
+              </button>
+            </div>
+
+            {(draft.testimonials?.length ?? 0) === 0 ? (
+              <p className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                Zatím nemáš žádnou referenci. Přidej ji až po získání souhlasu klienta.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {draft.testimonials?.map((testimonial, index) => (
+                  <fieldset
+                    key={testimonial.id}
+                    className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <legend className="text-sm font-bold text-slate-900">Reference {index + 1}</legend>
+                      <div className="flex items-center gap-3">
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={testimonial.published}
+                            onChange={(event) =>
+                              updateTestimonial(testimonial.id, { published: event.target.checked })
+                            }
+                            className="h-4 w-4 rounded border-slate-300 text-violet-700 focus:ring-violet-200"
+                          />
+                          Zveřejnit
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeTestimonial(testimonial.id)}
+                          className="text-xs font-bold text-rose-700 transition hover:text-rose-900"
+                        >
+                          Smazat
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Jméno nebo iniciály
+                        <input
+                          type="text"
+                          value={testimonial.author}
+                          onChange={(event) =>
+                            updateTestimonial(testimonial.id, { author: event.target.value.slice(0, 80) })
+                          }
+                          maxLength={80}
+                          placeholder="Např. Jana K., Praha"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Oblast nebo kontext
+                        <input
+                          type="text"
+                          value={testimonial.context}
+                          onChange={(event) =>
+                            updateTestimonial(testimonial.id, { context: event.target.value.slice(0, 120) })
+                          }
+                          maxLength={120}
+                          placeholder="Např. Revize rodinného pojištění"
+                          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                        />
+                      </label>
+                    </div>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Jazyk reference
+                      <select
+                        value={testimonial.locale}
+                        onChange={(event) =>
+                          updateTestimonial(testimonial.id, {
+                            locale: event.target.value as OnlineCardLocale,
+                          })
+                        }
+                        className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      >
+                        {ONLINE_CARD_LANGUAGE_OPTIONS.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Text reference
+                      <textarea
+                        value={testimonial.quote}
+                        onChange={(event) =>
+                          updateTestimonial(testimonial.id, { quote: event.target.value.slice(0, 600) })
+                        }
+                        maxLength={600}
+                        rows={4}
+                        placeholder="Stručná zkušenost klienta…"
+                        className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      />
+                    </label>
+                  </fieldset>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
 
@@ -253,6 +483,7 @@ export function OnlineCardSettingsPanel({
                     onPatch={onDraftPatch}
                   />
                   <AdvisorProfileSections flush />
+                  <OnlineCardTestimonials testimonials={previewValue.testimonials} locale="cs" allowSubmission={false} />
                   {officeSection}
                   {contactSection}
                 </div>

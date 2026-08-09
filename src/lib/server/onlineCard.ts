@@ -1,6 +1,10 @@
 import type { PremiumOnlineCardValue } from "@/components/PremiumOnlineCardPreview";
 import { adminDb } from "@/lib/server/firebaseAdmin";
-import { resolveOnlineCardTranslations } from "@/lib/onlineCardI18n";
+import {
+  resolveOnlineCardPendingTestimonials,
+  resolveOnlineCardTestimonials,
+  resolveOnlineCardTranslations,
+} from "@/lib/onlineCardI18n";
 
 export const ONLINE_CARD_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -97,6 +101,8 @@ const parseOnlineCard = (
   const officeLabel = normalizeText(row.officeLabel, 160);
   const officePhotos = normalizeOfficePhotos(row.officePhotos);
   const translations = resolveOnlineCardTranslations(row.translations);
+  const testimonials = resolveOnlineCardTestimonials(row.testimonials);
+  const pendingTestimonials = resolveOnlineCardPendingTestimonials(row.pendingTestimonials);
 
   if (!enabled) return null;
   if (!slug || slug.length < 3) return null;
@@ -116,6 +122,8 @@ const parseOnlineCard = (
     officeLabel,
     officePhotos,
     translations,
+    testimonials,
+    pendingTestimonials,
   };
 };
 
@@ -143,6 +151,7 @@ export async function loadOnlineCardBySlug(
       officeLabel: parsed.officeLabel,
       officePhotos: parsed.officePhotos,
       translations: parsed.translations,
+      testimonials: parsed.testimonials,
     };
   }
 

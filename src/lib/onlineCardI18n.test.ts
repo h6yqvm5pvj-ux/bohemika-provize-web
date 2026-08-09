@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   resolveOnlineCardLocale,
+  resolveOnlineCardPendingTestimonials,
+  resolveOnlineCardTestimonials,
   resolveOnlineCardTranslations,
 } from "./onlineCardI18n";
 
@@ -37,5 +39,76 @@ describe("online card localization", () => {
         officeLabel: "Bohemika Praha",
       },
     });
+  });
+
+  it("keeps only publishable testimonial fields and removes duplicates", () => {
+    expect(
+      resolveOnlineCardTestimonials([
+        {
+          id: "reference-1",
+          quote: "  Everything was explained clearly. ",
+          author: "John S.",
+          context: "Family insurance review",
+          locale: "en",
+          published: true,
+          submittedAt: "2026-08-09T12:00:00.000Z",
+        },
+        {
+          id: "reference-1",
+          quote: "Duplicate",
+          locale: "cs",
+          published: true,
+        },
+        {
+          id: "empty-quote",
+          quote: "   ",
+          locale: "cs",
+          published: true,
+        },
+      ])
+    ).toEqual([
+      {
+        id: "reference-1",
+        quote: "Everything was explained clearly.",
+        author: "John S.",
+        context: "Family insurance review",
+        locale: "en",
+        published: true,
+        submittedAt: "2026-08-09T12:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("keeps valid reviews awaiting approval separately from public testimonials", () => {
+    expect(
+      resolveOnlineCardPendingTestimonials([
+        {
+          id: "pending-1",
+          quote: "  Friendly and professional help. ",
+          author: "Jana K.",
+          context: "Insurance review",
+          locale: "cs",
+          submittedAt: "2026-08-09T12:00:00.000Z",
+        },
+        {
+          id: "pending-1",
+          quote: "Duplicate",
+          submittedAt: "2026-08-09T12:01:00.000Z",
+        },
+        {
+          id: "missing-date",
+          quote: "Ignored",
+        },
+      ])
+    ).toEqual([
+      {
+        id: "pending-1",
+        quote: "Friendly and professional help.",
+        author: "Jana K.",
+        context: "Insurance review",
+        locale: "cs",
+        submittedAt: "2026-08-09T12:00:00.000Z",
+      },
+    ]);
   });
 });

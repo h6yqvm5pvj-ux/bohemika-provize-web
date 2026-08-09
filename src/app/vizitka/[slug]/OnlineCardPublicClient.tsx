@@ -16,9 +16,10 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
+import { OnlineCardTestimonials } from "@/components/OnlineCardTestimonials";
 import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
 import {
   PremiumOnlineCardPreview,
@@ -163,6 +164,41 @@ export default function OnlineCardPublicClient({
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(officeMapsQuery)}`
     : "";
   const lightMode = theme === "light";
+  const contactItems = [
+    {
+      key: "phone",
+      label: copy.preview.phone,
+      icon: PhoneCall,
+      value: localizedCard.phone.trim(),
+      href: cardPhoneLink || undefined,
+    },
+    {
+      key: "email",
+      label: copy.meeting.email,
+      icon: Mail,
+      value: localizedCard.email.trim(),
+      href: localizedCard.email.trim() ? `mailto:${localizedCard.email.trim()}` : undefined,
+    },
+    {
+      key: "web",
+      label: copy.preview.website,
+      icon: Globe2,
+      value: cardWebsiteLabel,
+      href: cardWebsiteLink || undefined,
+    },
+    {
+      key: "ico",
+      label: copy.preview.companyId,
+      icon: Building2,
+      value: localizedCard.ico.trim(),
+    },
+    {
+      key: "location",
+      label: copy.preview.location,
+      icon: MapPin,
+      value: localizedCard.location.trim(),
+    },
+  ];
 
   useEffect(() => {
     document.documentElement.lang = onlineCardLanguageMeta(locale).htmlLang;
@@ -224,6 +260,26 @@ export default function OnlineCardPublicClient({
 
     return () => observer.disconnect();
   }, [theme]);
+
+  useEffect(() => {
+    const root = shellRef.current;
+    if (!root) return;
+
+    const updateScrollProgress = () => {
+      const documentElement = document.documentElement;
+      const maxScroll = Math.max(documentElement.scrollHeight - window.innerHeight, 1);
+      const progress = Math.min(1, Math.max(0, window.scrollY / maxScroll));
+      root.style.setProperty("--online-card-scroll-progress", progress.toFixed(4));
+    };
+
+    updateScrollProgress();
+    window.addEventListener("scroll", updateScrollProgress, { passive: true });
+    window.addEventListener("resize", updateScrollProgress);
+    return () => {
+      window.removeEventListener("scroll", updateScrollProgress);
+      window.removeEventListener("resize", updateScrollProgress);
+    };
+  }, []);
 
   const openModal = () => {
     setStatus(null);
@@ -328,6 +384,20 @@ export default function OnlineCardPublicClient({
     });
   };
 
+  const handleShellPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    const root = event.currentTarget;
+    const x = Math.round((event.clientX / Math.max(window.innerWidth, 1)) * 100);
+    const y = Math.round((event.clientY / Math.max(window.innerHeight, 1)) * 100);
+    root.style.setProperty("--online-card-pointer-x", `${x}%`);
+    root.style.setProperty("--online-card-pointer-y", `${y}%`);
+  };
+
+  const resetShellPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.style.setProperty("--online-card-pointer-x", "50%");
+    event.currentTarget.style.setProperty("--online-card-pointer-y", "28%");
+  };
+
   return (
     <>
       <div
@@ -340,17 +410,21 @@ export default function OnlineCardPublicClient({
       />
       <div
         ref={shellRef}
-        className={`online-card-public-shell online-card-theme-${theme} relative z-10 mx-auto max-w-[1160px] overflow-hidden rounded-none border-x-0 border-y transition-colors duration-300 sm:rounded-[38px] sm:border ${
+        onPointerMove={handleShellPointerMove}
+        onPointerLeave={resetShellPointer}
+        className={`online-card-public-shell online-card-theme-${theme} relative z-10 w-full overflow-hidden transition-colors duration-300 ${
           lightMode
-            ? "border-violet-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_48%,#ffffff_100%)] text-slate-950 shadow-[0_30px_90px_rgba(88,28,135,0.16)]"
-            : "border-violet-400/22 bg-[linear-gradient(180deg,#10081f_0%,#0f0b22_48%,#080715_100%)] text-white shadow-[0_36px_110px_rgba(5,4,18,0.72)]"
+            ? "bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_48%,#ffffff_100%)] text-slate-950"
+            : "bg-[linear-gradient(180deg,#10081f_0%,#0f0b22_48%,#080715_100%)] text-white"
         }`}
       >
+        <div className="online-card-pointer-glow" aria-hidden="true" />
+        <div className="online-card-scroll-progress" aria-hidden="true" />
         <div className="sticky top-2 z-30 flex flex-wrap justify-end gap-1.5 px-3 pt-3 sm:absolute sm:right-5 sm:top-5 sm:gap-2 sm:px-0 sm:pt-0">
           <button
             type="button"
             onClick={handleShareOnlineCard}
-            className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800"
+            className="online-card-action inline-flex items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800"
           >
             <Share2 className="h-3.5 w-3.5" />
             <span className="sm:hidden">{copy.public.shareShort}</span>
@@ -359,7 +433,7 @@ export default function OnlineCardPublicClient({
           <button
             type="button"
             onClick={handleDownloadContactVCard}
-            className="hidden items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800 sm:inline-flex"
+            className="online-card-action hidden items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-700 px-3 py-2 text-xs font-bold text-white shadow-[0_14px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800 sm:inline-flex"
           >
             <Download className="h-3.5 w-3.5" />
             {copy.public.saveContact}
@@ -454,6 +528,14 @@ export default function OnlineCardPublicClient({
           theme={theme}
           locale={locale}
           onScheduleMeeting={openModal}
+        />
+        <OnlineCardTestimonials
+          slug={slug}
+          testimonials={localizedCard.testimonials}
+          locale={locale}
+          theme={theme}
+          reveal
+          mode="showcase"
         />
         {hasOfficeSection ? (
           <section
@@ -596,75 +678,53 @@ export default function OnlineCardPublicClient({
           }`}
         >
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(124,58,237,0.1),transparent_44%)]" />
-          <div className="relative z-10 space-y-5">
+          <div className="relative z-10 mx-auto max-w-[1680px]">
             <div className="text-center">
-              <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
+              <p
+                className={`mx-auto inline-flex items-center gap-2 rounded-full border px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
+                  lightMode
+                    ? "border-violet-300/55 bg-violet-50 text-violet-800"
+                    : "border-violet-300/35 bg-white/[0.05] text-violet-100"
+                }`}
+              >
                 <Mail className="h-3.5 w-3.5" />
                 {copy.public.contact}
               </p>
             </div>
 
-            <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
-              {[
-                {
-                  key: "phone",
-                  label: copy.preview.phone,
-                  icon: PhoneCall,
-                  value: localizedCard.phone.trim(),
-                  href: cardPhoneLink || undefined,
-                },
-                {
-                  key: "email",
-                  label: copy.meeting.email,
-                  icon: Mail,
-                  value: localizedCard.email.trim(),
-                  href: localizedCard.email.trim() ? `mailto:${localizedCard.email.trim()}` : undefined,
-                },
-                {
-                  key: "web",
-                  label: copy.preview.website,
-                  icon: Globe2,
-                  value: cardWebsiteLabel,
-                  href: cardWebsiteLink || undefined,
-                },
-                {
-                  key: "ico",
-                  label: copy.preview.companyId,
-                  icon: Building2,
-                  value: localizedCard.ico.trim(),
-                },
-                {
-                  key: "location",
-                  label: copy.preview.location,
-                  icon: MapPin,
-                  value: localizedCard.location.trim(),
-                },
-              ].map((item) => (
-                <div key={item.key} className="group space-y-2">
-                  <div className="inline-flex items-center gap-2.5 text-violet-200/75">
-                    <span className="relative inline-flex h-8 w-7 items-center justify-center text-violet-100">
-                      <item.icon
-                        className="h-[18px] w-[18px] drop-shadow-[0_8px_18px_rgba(196,181,253,0.2)] transition duration-300 group-hover:-translate-y-0.5 group-hover:scale-110 group-hover:text-white"
-                        strokeWidth={1.9}
-                      />
-                      <span
-                        className="absolute bottom-0 left-1 right-1 h-0.5 rounded-full bg-violet-300/75 opacity-70 shadow-[0_0_14px_rgba(196,181,253,0.5)] transition duration-300 group-hover:left-0 group-hover:right-0 group-hover:opacity-100"
-                        aria-hidden="true"
-                      />
+            <div
+              className={`mt-7 grid gap-x-0 gap-y-7 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)_minmax(0,1.2fr)_minmax(0,.8fr)_minmax(0,.85fr)] xl:divide-x ${
+                lightMode ? "xl:divide-violet-200" : "xl:divide-white/[0.09]"
+              }`}
+            >
+              {contactItems.map((item) => (
+                <div
+                  key={item.key}
+                  className="group min-w-0 px-1 text-center transition duration-300 sm:px-5"
+                >
+                  <div className="flex items-center justify-center gap-2.5">
+                    <span
+                      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center transition duration-300 group-hover:-translate-y-0.5 ${
+                        lightMode
+                          ? "text-violet-700 group-hover:text-violet-950"
+                          : "text-violet-200 group-hover:text-white"
+                      }`}
+                    >
+                      <item.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
                     </span>
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/75">
+                    <span className={`text-[10px] font-bold uppercase tracking-[0.18em] ${lightMode ? "text-violet-700/70" : "text-violet-200/75"}`}>
                       {item.label}
                     </span>
                   </div>
 
-                  <div className="min-h-[28px] break-words pl-[42px] text-[18px] font-semibold leading-tight text-white/92 sm:text-[22px]">
+                  <div className={`mt-3 break-words text-base font-semibold leading-snug sm:text-lg ${lightMode ? "text-slate-900" : "text-white/92"}`}>
                     {item.value ? (
                       item.href ? (
                         <a
                           href={item.href}
                           target={item.href.startsWith("http") ? "_blank" : undefined}
                           rel={item.href.startsWith("http") ? "noreferrer noopener" : undefined}
-                          className="underline decoration-violet-300/30 underline-offset-4 transition hover:decoration-violet-300"
+                          className="underline decoration-violet-300/45 underline-offset-4 transition hover:decoration-violet-500"
                         >
                           {item.value}
                         </a>
@@ -672,24 +732,33 @@ export default function OnlineCardPublicClient({
                         item.value
                       )
                     ) : (
-                      <span className="text-white/35">{copy.public.notFilled}</span>
+                      <span className={lightMode ? "text-slate-400" : "text-white/35"}>{copy.public.notFilled}</span>
                     )}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="flex justify-center pt-2">
+            <div className="mt-8 flex justify-center pt-6">
               <button
                 type="button"
                 onClick={handleDownloadContactVCard}
-                className="inline-flex w-full items-center justify-center rounded-[18px] border border-violet-300/25 bg-violet-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(124,58,237,0.34)] transition hover:bg-violet-800 sm:w-auto"
+                className="online-card-action inline-flex w-full items-center justify-center gap-2 rounded-[16px] border border-violet-300/25 bg-violet-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(124,58,237,0.34)] transition hover:-translate-y-0.5 hover:bg-violet-800 sm:w-auto"
               >
+                <Download className="h-4 w-4" />
                 {copy.public.saveContact}
               </button>
             </div>
           </div>
         </section>
+        <OnlineCardTestimonials
+          slug={slug}
+          testimonials={localizedCard.testimonials}
+          locale={locale}
+          theme={theme}
+          reveal
+          mode="submission"
+        />
       </div>
 
       {open ? (

@@ -919,6 +919,22 @@ body {
   }
 }
 
+@keyframes vizitka-button-sheen {
+  0%,
+  72%,
+  100% {
+    transform: translateX(-155%) skewX(-18deg);
+    opacity: 0;
+  }
+  78% {
+    opacity: 0.72;
+  }
+  94% {
+    transform: translateX(240%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
 .logo-loop-track {
   animation: logo-loop-scroll var(--logo-loop-duration, 28s) linear infinite;
   will-change: transform;
@@ -955,6 +971,64 @@ body {
 .vizitka-bg-shift {
   background-size: 140% 140%;
   animation: vizitka-bg-shift 22s ease-in-out infinite;
+}
+
+.online-card-public-shell {
+  --online-card-pointer-x: 50%;
+  --online-card-pointer-y: 28%;
+  --online-card-scroll-progress: 0;
+}
+
+.online-card-pointer-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    34rem circle at var(--online-card-pointer-x) var(--online-card-pointer-y),
+    rgba(167, 139, 250, 0.16),
+    transparent 64%
+  );
+  opacity: 0.8;
+  transition: opacity 360ms ease;
+}
+
+.online-card-theme-light .online-card-pointer-glow {
+  background: radial-gradient(
+    32rem circle at var(--online-card-pointer-x) var(--online-card-pointer-y),
+    rgba(124, 58, 237, 0.1),
+    transparent 64%
+  );
+}
+
+.online-card-scroll-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 60;
+  height: 3px;
+  transform: scaleX(var(--online-card-scroll-progress));
+  transform-origin: left center;
+  background: linear-gradient(90deg, #8b5cf6, #d8b4fe 58%, #38bdf8);
+  box-shadow: 0 0 18px rgba(167, 139, 250, 0.8);
+  transition: transform 90ms linear;
+}
+
+.online-card-action {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.online-card-action::after {
+  position: absolute;
+  z-index: 0;
+  top: -40%;
+  bottom: -40%;
+  left: 0;
+  width: 30%;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: vizitka-button-sheen 6.6s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .online-card-theme-light .premium-online-card-preview--full :not(button)[class*="text-white"],
@@ -1105,6 +1179,14 @@ body {
     transform: none !important;
     filter: none !important;
     opacity: 1 !important;
+  }
+  .online-card-pointer-glow,
+  .online-card-action::after {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+  .online-card-scroll-progress {
+    transition: none !important;
   }
   .online-card-public-shell .online-card-scroll-reveal {
     opacity: 1 !important;

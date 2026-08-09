@@ -204,7 +204,7 @@ export function AdvisorProfileSections({
           <h2 className="text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl">
             {copy.advisor.serviceTitle}
           </h2>
-          <p className="mx-auto max-w-3xl text-base leading-relaxed text-violet-100/80 sm:text-lg">
+          <p className="mx-auto max-w-5xl text-base leading-relaxed text-violet-100/80 sm:text-lg">
             {copy.advisor.serviceLead}
           </p>
 
@@ -235,7 +235,7 @@ export function AdvisorProfileSections({
               <button
                 type="button"
                 onClick={onScheduleMeeting}
-                className="inline-flex items-center gap-2 rounded-[20px] border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_56%,#c084fc_100%)] px-7 py-3 text-base font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.42)] transition hover:brightness-110 vizitka-cta-glow"
+                className="online-card-action inline-flex items-center gap-2 rounded-[20px] border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_56%,#c084fc_100%)] px-7 py-3 text-base font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.42)] transition hover:brightness-110 vizitka-cta-glow"
               >
                 <Sparkles className="h-4 w-4" />
                 {copy.preview.scheduleMeeting}
@@ -338,8 +338,9 @@ export function AdvisorProfileSections({
           <LogoLoop
             items={PARTNER_LOGO_ITEMS}
             speed={24}
-            className="mx-auto max-w-5xl py-4 vizitka-anim-up [animation-delay:660ms]"
-            itemClassName="min-h-[96px] min-w-[152px]"
+            gap={18}
+            className="w-full py-4 vizitka-anim-up [animation-delay:660ms]"
+            itemClassName="min-h-[96px] min-w-[144px]"
           />
         </div>
       </section>

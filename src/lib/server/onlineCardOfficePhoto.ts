@@ -1,6 +1,6 @@
 import { detectSafeUserAttachment } from "@/lib/server/safeUserAttachments";
 
-export const ONLINE_CARD_OFFICE_PHOTO_MAX_BYTES = 6 * 1024 * 1024;
+export const ONLINE_CARD_OFFICE_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 
 export type OnlineCardOfficePhotoContentType =
   | "image/jpeg"
@@ -89,7 +89,7 @@ export async function prepareOnlineCardOfficePhotoFile(
   if (file.size > ONLINE_CARD_OFFICE_PHOTO_MAX_BYTES) {
     return {
       ok: false,
-      error: "Fotka kanceláře je příliš velká (max 6 MB).",
+      error: "Fotka kanceláře je příliš velká (max 10 MB).",
     };
   }
 

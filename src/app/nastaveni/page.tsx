@@ -67,7 +67,11 @@ import { CareerTimelinePanel } from "./components/CareerTimelinePanel";
 import { NotificationsSettingsPanel } from "./components/NotificationsSettingsPanel";
 import { OnlineCardSettingsPanel } from "./components/OnlineCardSettingsPanel";
 import {
+  resolveOnlineCardPendingTestimonials,
   resolveOnlineCardTranslations,
+  type OnlineCardPendingTestimonial,
+  resolveOnlineCardTestimonials,
+  type OnlineCardTestimonial,
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
 import { ProfileSettingsPanel } from "./components/ProfileSettingsPanel";
@@ -270,6 +274,8 @@ type OnlineCardDraft = {
   officeLabel: string;
   officePhotos: string[];
   translations: OnlineCardTranslations;
+  testimonials: OnlineCardTestimonial[];
+  pendingTestimonials: OnlineCardPendingTestimonial[];
 };
 
 const ONLINE_CARD_SLUG_MAX_LEN = 64;
@@ -471,6 +477,8 @@ const defaultOnlineCardFromUser = (
     officeLabel: "",
     officePhotos: [],
     translations: {},
+    testimonials: [],
+    pendingTestimonials: [],
   };
 };
 
@@ -532,6 +540,8 @@ const normalizeOnlineCardDraft = (
         : "",
     officePhotos: normalizeOnlineCardOfficePhotos(row.officePhotos),
     translations: resolveOnlineCardTranslations(row.translations),
+    testimonials: resolveOnlineCardTestimonials(row.testimonials),
+    pendingTestimonials: resolveOnlineCardPendingTestimonials(row.pendingTestimonials),
   };
 };
 
@@ -549,6 +559,8 @@ const EMPTY_ONLINE_CARD_DRAFT: OnlineCardDraft = {
   officeLabel: "",
   officePhotos: [],
   translations: {},
+  testimonials: [],
+  pendingTestimonials: [],
 };
 
 type InlineStatus = {
@@ -1914,6 +1926,8 @@ export default function SettingsPage() {
       officeLabel: onlineCardDraft.officeLabel.trim().slice(0, ONLINE_CARD_OFFICE_MAX_LEN),
       officePhotos: normalizeOnlineCardOfficePhotos(onlineCardDraft.officePhotos),
       translations: resolveOnlineCardTranslations(onlineCardDraft.translations),
+      testimonials: resolveOnlineCardTestimonials(onlineCardDraft.testimonials),
+      pendingTestimonials: resolveOnlineCardPendingTestimonials(onlineCardDraft.pendingTestimonials),
     };
 
     const saved = await saveUserFields({ onlineCard: payload });
@@ -3093,6 +3107,7 @@ export default function SettingsPage() {
               onChange={(event) => void uploadOnlineCardOfficePhoto(event)}
             />
           </label>
+          <p className="text-[11px] text-violet-100/65">JPG, PNG nebo WEBP, maximálně 10 MB na fotku.</p>
 
           {activeOnlineCardOfficePhoto ? (
             <div className="space-y-3">
@@ -3298,19 +3313,29 @@ export default function SettingsPage() {
                   enabled: !onlineCardDraft.enabled,
                 })
               }
-              className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              role="switch"
+              aria-checked={onlineCardDraft.enabled}
+              aria-label={`Veřejná vizitka: ${onlineCardDraft.enabled ? "zapnuto" : "vypnuto"}`}
+              className={`inline-flex shrink-0 items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-violet-950 ${
                 onlineCardDraft.enabled
                   ? "border-emerald-200/45 bg-emerald-300/18 !text-emerald-50 shadow-[0_14px_30px_rgba(16,185,129,0.18)]"
                   : "border-white/18 bg-white/[0.08] !text-violet-100 hover:bg-white/[0.12]"
               }`}
-              aria-pressed={onlineCardDraft.enabled}
             >
               <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  onlineCardDraft.enabled ? "bg-emerald-200" : "bg-violet-200/60"
+                className={`relative inline-flex h-7 w-12 shrink-0 rounded-full border transition-colors ${
+                  onlineCardDraft.enabled
+                    ? "border-emerald-100/45 bg-emerald-500/80"
+                    : "border-white/20 bg-slate-950/35"
                 }`}
                 aria-hidden="true"
-              />
+              >
+                <span
+                  className={`absolute top-0.5 h-5.5 w-5.5 rounded-full bg-white shadow-[0_2px_8px_rgba(15,23,42,0.34)] transition-transform duration-300 ${
+                    onlineCardDraft.enabled ? "translate-x-[22px]" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
               {onlineCardDraft.enabled ? "Zapnuto" : "Vypnuto"}
             </button>
           </div>
@@ -3411,7 +3436,11 @@ export default function SettingsPage() {
   return (
     <AppLayout active="settings">
       <div className="settings-page w-full bg-white px-2 py-3 sm:px-4 sm:py-8 lg:px-8">
-        <div className="mx-auto w-full max-w-6xl space-y-4 px-0 py-0 font-mono text-slate-900 sm:space-y-6 sm:px-2 sm:py-2">
+        <div
+          className={`mx-auto w-full space-y-4 px-0 py-0 font-mono text-slate-900 sm:space-y-6 sm:px-2 sm:py-2 ${
+            activeTab === "onlineCard" ? "max-w-none" : "max-w-6xl"
+          }`}
+        >
         {timelineSaveFlashVisible && (
           <div aria-live="polite" className="pointer-events-none fixed inset-x-3 bottom-4 z-50 sm:inset-x-auto sm:bottom-6 sm:right-6">
             <div className="relative flex items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">

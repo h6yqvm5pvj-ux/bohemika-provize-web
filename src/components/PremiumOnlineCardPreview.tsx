@@ -17,6 +17,8 @@ import type { ComponentType } from "react";
 import {
   ONLINE_CARD_COPY,
   type OnlineCardLocale,
+  type OnlineCardPendingTestimonial,
+  type OnlineCardTestimonial,
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
 
@@ -38,6 +40,8 @@ export type PremiumOnlineCardValue = {
   officeLabel: string;
   officePhotos: string[];
   translations?: OnlineCardTranslations;
+  testimonials?: OnlineCardTestimonial[];
+  pendingTestimonials?: OnlineCardPendingTestimonial[];
 };
 
 type PremiumOnlineCardPreviewProps = {
@@ -630,7 +634,7 @@ export function PremiumOnlineCardPreview({
                     type="button"
                     onClick={meetingCta.onClick}
                     disabled={meetingCta.disabled || meetingCta.busy}
-                    className={`inline-flex items-center justify-center gap-2 rounded-[20px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow ${
+                    className={`online-card-action inline-flex items-center justify-center gap-2 rounded-[20px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow ${
                       compact ? "min-w-[220px] px-5 py-2.5 text-base" : "mt-0 min-w-[190px] px-4 py-2 text-sm sm:-mt-10 sm:min-w-[260px] sm:px-7 sm:py-3 sm:text-lg lg:-mt-12"
                     }`}
                   >

@@ -19,7 +19,11 @@ import {
 } from "@/app/intranet/sections";
 import { isFontTheme } from "@/lib/fontTheme";
 import {
+  resolveOnlineCardPendingTestimonials,
   resolveOnlineCardTranslations,
+  type OnlineCardPendingTestimonial,
+  resolveOnlineCardTestimonials,
+  type OnlineCardTestimonial,
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
 
@@ -384,6 +388,8 @@ type OnlineCardPayload = {
   officeLabel: string;
   officePhotos: string[];
   translations: OnlineCardTranslations;
+  testimonials: OnlineCardTestimonial[];
+  pendingTestimonials: OnlineCardPendingTestimonial[];
   updatedAt: string;
 };
 
@@ -462,6 +468,8 @@ function sanitizeOnlineCard(value: unknown, ownerEmail: string): OnlineCardPaylo
   const officeLabel = normalizeOptionalText(value.officeLabel, ONLINE_CARD_OFFICE_MAX_LEN);
   const officePhotos = sanitizeOnlineCardPhotos(value.officePhotos);
   const translations = resolveOnlineCardTranslations(value.translations);
+  const testimonials = resolveOnlineCardTestimonials(value.testimonials);
+  const pendingTestimonials = resolveOnlineCardPendingTestimonials(value.pendingTestimonials);
 
   if (
     fullName == null ||
@@ -510,6 +518,8 @@ function sanitizeOnlineCard(value: unknown, ownerEmail: string): OnlineCardPaylo
     officeLabel,
     officePhotos,
     translations,
+    testimonials,
+    pendingTestimonials,
     updatedAt: new Date().toISOString(),
   };
 }
