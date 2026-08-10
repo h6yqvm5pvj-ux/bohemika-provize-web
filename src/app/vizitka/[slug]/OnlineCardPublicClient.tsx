@@ -540,7 +540,9 @@ export default function OnlineCardPublicClient({
         {hasOfficeSection ? (
           <section
             data-vizitka-reveal
-            className={`online-card-public-section online-card-scroll-reveal vizitka-anim-up relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 [animation-delay:680ms] ${
+            className={`online-card-public-section online-card-scroll-reveal vizitka-anim-up relative overflow-hidden px-4 ${
+              activeOfficePhoto ? "py-10 sm:px-10 sm:py-16" : "py-8 sm:px-10 sm:py-12"
+            } [animation-delay:680ms] ${
               lightMode
                 ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,245,255,0.94)_100%)]"
                 : "bg-[linear-gradient(180deg,rgba(10,8,24,0.99)_0%,rgba(13,10,29,0.99)_100%)]"
@@ -548,14 +550,18 @@ export default function OnlineCardPublicClient({
           >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(124,58,237,0.12),transparent_34%)]" />
             <div
-              className={`relative z-10 mx-auto grid max-w-[1040px] gap-5 lg:items-start ${
-                activeOfficePhotoIsPortrait
-                  ? "lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
-                  : "lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]"
+              className={`relative z-10 mx-auto gap-5 ${
+                activeOfficePhoto
+                  ? `grid max-w-[1040px] lg:items-start ${
+                      activeOfficePhotoIsPortrait
+                        ? "lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
+                        : "lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]"
+                    }`
+                  : "max-w-xl"
               }`}
             >
-              <div className="space-y-3">
-                {activeOfficePhoto ? (
+              {activeOfficePhoto ? (
+                <div className="space-y-3">
                   <div
                     className={`mx-auto w-full ${
                       activeOfficePhotoIsPortrait
@@ -615,11 +621,6 @@ export default function OnlineCardPublicClient({
                       ) : null}
                     </div>
                   </div>
-                ) : (
-                  <div className="flex h-[230px] items-center justify-center rounded-2xl border border-white/14 bg-slate-950/45 text-center text-xs text-violet-100/70 sm:h-[320px] lg:h-[360px]">
-                    {copy.public.noOfficePhotos}
-                  </div>
-                )}
 
                 {officePhotoCount > 1 ? (
                   <div className="flex justify-center gap-1.5">
@@ -636,17 +637,31 @@ export default function OnlineCardPublicClient({
                     ))}
                   </div>
                 ) : null}
-              </div>
+                </div>
+              ) : null}
 
-              <div className="flex items-start">
-                <div className="w-full max-w-[580px] space-y-4 border-l border-violet-300/18 pl-5 sm:pl-6">
-                  <p className="inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">
+              <div className={activeOfficePhoto ? "flex items-start" : "flex justify-center text-center"}>
+                <div
+                  className={`w-full max-w-[580px] space-y-4 ${
+                    activeOfficePhoto
+                      ? "border-l border-violet-300/18 pl-5 sm:pl-6"
+                      : "mx-auto"
+                  }`}
+                >
+                  {!activeOfficePhoto ? (
+                    <Building2 className="mx-auto h-10 w-10 text-violet-200/75 vizitka-float-soft" strokeWidth={1.45} />
+                  ) : null}
+                  <p className={`inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100 ${
+                    activeOfficePhoto ? "" : "mx-auto"
+                  }`}>
                     <Building2 className="h-3.5 w-3.5" />
                     {copy.public.office}
                   </p>
 
                   {officeAddressText ? (
-                    <p className="max-w-[46ch] text-base font-semibold leading-snug text-white/92 sm:text-lg">
+                    <p className={`max-w-[46ch] text-base font-semibold leading-snug text-white/92 sm:text-lg ${
+                      activeOfficePhoto ? "" : "mx-auto"
+                    }`}>
                       {officeAddressText}
                     </p>
                   ) : (
