@@ -253,13 +253,13 @@ export default function LoginPage() {
     setMfaHintLabel(null);
   };
 
-  const clearPostLoginPromptState = () => {
+  const clearPostLoginPromptState = useCallback(() => {
     setShowRememberThisDevicePrompt(false);
     setPendingLoginToken(null);
     setRememberThisDevice(false);
-  };
+  }, []);
 
-  const safeSignOut = async () => {
+  const safeSignOut = useCallback(async () => {
     try {
       setIsLoginFlowInProgress(false);
       clearPostLoginPromptState();
@@ -268,7 +268,7 @@ export default function LoginPage() {
     } catch (err) {
       logAuthIssue("safeSignOut", err);
     }
-  };
+  }, [clearPostLoginPromptState]);
 
   const finalizeServerSession = useCallback(
     async (token: string, rememberDevice: boolean) => {
@@ -307,7 +307,7 @@ export default function LoginPage() {
       );
       setLoading(false);
     }
-  }, [pendingLoginToken, rememberThisDevice, finalizeServerSession]);
+  }, [pendingLoginToken, rememberThisDevice, finalizeServerSession, safeSignOut]);
 
   // pokud už je přihlášený, zkusíme ověřit předplatné a podle toho pustíme dál
   useEffect(() => {
@@ -404,6 +404,7 @@ export default function LoginPage() {
     pendingLoginToken,
     showRememberThisDevicePrompt,
     finalizeServerSession,
+    safeSignOut,
   ]);
 
   useEffect(() => {

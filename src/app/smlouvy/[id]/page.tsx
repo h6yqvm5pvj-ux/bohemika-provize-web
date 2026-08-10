@@ -5701,6 +5701,7 @@ export default function ContractDetailPage() {
               />
 
               <ContractCommissionHistory
+                product={contract?.productKey ?? null}
                 payouts={contract?.commissionPayouts ?? []}
                 viewerEmail={normalizedViewerEmail}
                 contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}

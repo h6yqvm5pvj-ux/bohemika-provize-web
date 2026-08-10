@@ -15,6 +15,7 @@ import {
   requireContractsEntryGuard,
 } from "@/app/api/contracts/_lib/contractsApi";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
+import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
 import {
   isAutoProduct,
@@ -2037,6 +2038,18 @@ const expectedPayoutAmountForRow = (
   row: CommissionStatementPayoutRow,
   viewerEmail: string | null | undefined
 ): number | null => {
+  // A201 in ČPP ŽP NEON is the investment-life component. It intentionally
+  // uses a different premium base than A101, so it must not be compared with
+  // the regular immediate commission calculated for the contract.
+  if (
+    isNeonInvestmentLifeA201Payout({
+      product: contract.productKey,
+      commissionCode: row.commissionCode,
+    })
+  ) {
+    return null;
+  }
+
   const code = normalizeCommissionCodeKey(row.commissionCode);
   const comparableCode = baseCommissionCodeForStatementComparison(code);
   const sourceItems =

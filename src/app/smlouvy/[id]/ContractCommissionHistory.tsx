@@ -3,10 +3,13 @@
 import { Fragment, useState } from "react";
 import { ChevronDown, Eye, FileText, RefreshCw } from "lucide-react";
 
+import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
+import type { Product } from "@/app/types/domain";
 import { formatMoney, nameFromEmail } from "./contractDetailHelpers";
 import { type ContractCommissionPayout } from "./contractDetailTypes";
 
 type ContractCommissionHistoryProps = {
+  product?: Product | null;
   payouts?: ContractCommissionPayout[] | null;
   viewerEmail?: string | null;
   contractOwnerEmail?: string | null;
@@ -318,6 +321,7 @@ const groupPayoutsByWriter = ({
 };
 
 export function ContractCommissionHistory({
+  product = null,
   payouts,
   viewerEmail = null,
   contractOwnerEmail = null,
@@ -448,11 +452,20 @@ export function ContractCommissionHistory({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {group.rows.map((payout, index) => {
+                        const isExpectedInvestmentLifeA201 = isNeonInvestmentLifeA201Payout({
+                          product,
+                          commissionCode: payout.code,
+                        });
+                        const displayStatus = isExpectedInvestmentLifeA201
+                          ? "paid"
+                          : payout.status;
                         const statementId = String(payout.statementId ?? "").trim();
                         const canOpenStatement = Boolean(statementId && onOpenStatement);
                         const isPreviewLoading = statementPreviewLoadingId === statementId;
                         const itemLabel = payoutItemLabel(payout);
-                        const alertMessage = payoutAlertMessage(payout);
+                        const alertMessage = isExpectedInvestmentLifeA201
+                          ? null
+                          : payoutAlertMessage(payout);
                         const rowKey =
                           payout.key ??
                           `${payout.statementId ?? "statement"}-${
@@ -482,9 +495,9 @@ export function ContractCommissionHistory({
                               </td>
                               <td className="px-2 py-2 text-right">
                                 <span
-                                  className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(payout.status)}`}
+                                  className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(displayStatus)}`}
                                 >
-                                  {statusLabel(payout.status)}
+                                  {statusLabel(displayStatus)}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-right">

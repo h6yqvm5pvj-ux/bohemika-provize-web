@@ -1,6 +1,7 @@
 import { generateCashflow } from "@/app/cashflow/generator";
 import type { EntryDoc } from "@/app/cashflow/types";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
+import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
 import { toDate } from "@/app/lib/formatters";
 import type {
   CommissionResultItemDTO,
@@ -669,6 +670,14 @@ export function commissionAuditSummaryForContract(
 
   for (let payoutIndex = 0; payoutIndex < commissionPayouts.length; payoutIndex += 1) {
     const payout = commissionPayouts[payoutIndex];
+    if (
+      isNeonInvestmentLifeA201Payout({
+        product: contract.productKey,
+        commissionCode: payout.code,
+      })
+    ) {
+      continue;
+    }
     const status = String(payout?.status ?? "").trim().toLowerCase();
     const indexedKey = payout.key ?? `${payout.statementId ?? "statement"}:${payoutIndex}`;
     const differenceReason = String(payout.differenceReason ?? "")
