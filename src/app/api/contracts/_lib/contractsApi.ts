@@ -153,6 +153,7 @@ import {
 import {
   buildFindAllowedOwnerSet,
   canManageContractOwner,
+  canViewStatementDerivedRecord,
   extractEmailFromUnknown,
   hasContractAccess,
   type ContractFindScope,
@@ -610,6 +611,36 @@ const toContractResponseItem = (
     userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
     effectivePosition: timelinePosition ?? storedPosition ?? null,
     timelinePosition,
+  };
+};
+
+const filterStatementDerivedContractDataForViewer = ({
+  contract,
+  viewerEmail,
+  teamEmails,
+}: {
+  contract: ContractResponseItem;
+  viewerEmail: string;
+  teamEmails: string[];
+}): ContractResponseItem => {
+  const canViewRecord = (record: { writtenBy?: string | null }) =>
+    canViewStatementDerivedRecord({
+      viewerEmail,
+      teamEmails,
+      writtenBy: record.writtenBy,
+    });
+
+  return {
+    ...contract,
+    // Starší záznamy bez autora schováváme také: nelze bezpečně určit, komu patří.
+    commissionPayouts: Array.isArray(contract.commissionPayouts)
+      ? contract.commissionPayouts.filter(canViewRecord)
+      : [],
+    premiumStatementHistory: Array.isArray(contract.premiumStatementHistory)
+      ? contract.premiumStatementHistory.filter(canViewRecord)
+      : [],
+    // Souhrn může zahrnovat i skryté manažerské zápisy, proto jej neposíláme.
+    commissionStornoSummary: null,
   };
 };
 
@@ -3787,13 +3818,17 @@ export async function handleContractsGet(
       );
     }
 
-    const contract = toContractResponseItem(
-      detailSnap.id,
-      detailOwnerEmail,
-      contractRaw,
-      usersByEmail.get(detailOwnerEmail)?.name ?? null,
-      usersByEmail.get(detailOwnerEmail) ?? null
-    );
+    const contract = filterStatementDerivedContractDataForViewer({
+      contract: toContractResponseItem(
+        detailSnap.id,
+        detailOwnerEmail,
+        contractRaw,
+        usersByEmail.get(detailOwnerEmail)?.name ?? null,
+        usersByEmail.get(detailOwnerEmail) ?? null
+      ),
+      viewerEmail: email,
+      teamEmails,
+    });
     const canManageContract = canManageContractOwner({
       viewerEmail: email,
       teamEmails: contractAccessEmails,
@@ -3821,13 +3856,17 @@ export async function handleContractsGet(
           .where("contractNumber", "==", contractNumber)
           .get();
         const timelineEntries = (timelineSnap?.docs ?? []).map((snap) =>
-          toContractResponseItem(
-            snap.id,
-            detailOwnerEmail,
-            snap.data() as ContractDoc,
-            usersByEmail.get(detailOwnerEmail)?.name ?? null,
-            usersByEmail.get(detailOwnerEmail) ?? null
-          )
+          filterStatementDerivedContractDataForViewer({
+            contract: toContractResponseItem(
+              snap.id,
+              detailOwnerEmail,
+              snap.data() as ContractDoc,
+              usersByEmail.get(detailOwnerEmail)?.name ?? null,
+              usersByEmail.get(detailOwnerEmail) ?? null
+            ),
+            viewerEmail: email,
+            teamEmails,
+          })
         );
 
         const targetRootId = normalizeRootEntryId(contract);
@@ -4008,7 +4047,14 @@ export async function handleContractsGet(
   }
 
   const { list, hasMore, nextCursor, nextCursorToken } = primaryRes;
-  const teamContracts = teamRes?.list;
+  const filterStatementData = (contract: ContractResponseItem) =>
+    filterStatementDerivedContractDataForViewer({
+      contract,
+      viewerEmail: email,
+      teamEmails,
+    });
+  const visibleContracts = list.map(filterStatementData);
+  const teamContracts = teamRes?.list.map(filterStatementData);
   const teamHasMore = teamRes?.hasMore;
   const teamNextCursor = teamRes?.nextCursor;
   const teamNextCursorToken = teamRes?.nextCursorToken;
@@ -4020,7 +4066,7 @@ export async function handleContractsGet(
     commissionMode: ctx.commissionMode,
     hasTeam: teamEmails.length > 0,
     teamEmails,
-    contracts: list,
+    contracts: visibleContracts,
     hasMore,
     nextCursor,
     nextCursorToken,
@@ -4151,13 +4197,17 @@ const resolveContractsFindContracts = async ({
       if (seenKeys.has(itemKey)) continue;
       seenKeys.add(itemKey);
       const ownerProfile = await resolveOwnerProfileForFind(context, ownerFromPath);
-      const item = toContractResponseItem(
-        snap.id,
-        ownerFromPath,
-        contract,
-        normalizeOptionalDisplayName(ownerProfile?.name) ?? null,
-        ownerProfile
-      );
+      const item = filterStatementDerivedContractDataForViewer({
+        contract: toContractResponseItem(
+          snap.id,
+          ownerFromPath,
+          contract,
+          normalizeOptionalDisplayName(ownerProfile?.name) ?? null,
+          ownerProfile
+        ),
+        viewerEmail: context.email,
+        teamEmails: context.teamEmails,
+      });
       if (item.productKey && LIFE_TIMELINE_PRODUCTS.has(item.productKey as Product)) {
         item.lifePremiumChanges = await loadLifePremiumChangesForFindMatch({
           ownerEmail: ownerFromPath,

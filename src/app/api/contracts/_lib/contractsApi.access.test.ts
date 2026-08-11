@@ -5,6 +5,7 @@ import { buildChildrenByManager } from "@/app/lib/teamHierarchy";
 import type { ContractDoc, UserNode } from "./contractsApi.types";
 import {
   buildFindAllowedOwnerSet,
+  canViewStatementDerivedRecord,
   canManageContractOwner,
   extractEmailFromUnknown,
   hasContractAccess,
@@ -135,6 +136,46 @@ describe("contracts access helpers", () => {
         viewerEmail: "advisor@example.com",
         teamEmails: [],
         ownerEmail: "owner@example.com",
+      })
+    ).toBe(false);
+  });
+
+  it("shows statement-derived records only to their author and managers above them", () => {
+    const managerTree = ["advisor@example.com", "junior@example.com"];
+
+    expect(
+      canViewStatementDerivedRecord({
+        viewerEmail: "advisor@example.com",
+        teamEmails: [],
+        writtenBy: "advisor@example.com",
+      })
+    ).toBe(true);
+    expect(
+      canViewStatementDerivedRecord({
+        viewerEmail: "advisor@example.com",
+        teamEmails: [],
+        writtenBy: "manager@example.com",
+      })
+    ).toBe(false);
+    expect(
+      canViewStatementDerivedRecord({
+        viewerEmail: "manager@example.com",
+        teamEmails: managerTree,
+        writtenBy: "junior@example.com",
+      })
+    ).toBe(true);
+    expect(
+      canViewStatementDerivedRecord({
+        viewerEmail: "manager@example.com",
+        teamEmails: managerTree,
+        writtenBy: "director@example.com",
+      })
+    ).toBe(false);
+    expect(
+      canViewStatementDerivedRecord({
+        viewerEmail: "manager@example.com",
+        teamEmails: managerTree,
+        writtenBy: null,
       })
     ).toBe(false);
   });

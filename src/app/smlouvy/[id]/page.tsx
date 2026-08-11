@@ -115,6 +115,12 @@ import {
 } from "./contractDetailPdfReimport";
 import { useContractDetails } from "./useContractDetails";
 import { fetchAuthedBlob } from "@/app/lib/authenticatedApi";
+import {
+  ADMIN_IMPERSONATION_EVENT,
+  ADMIN_IMPERSONATION_STORAGE_KEY,
+  readAdminImpersonationState,
+  type AdminImpersonationState,
+} from "@/app/lib/adminImpersonation";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
 import {
@@ -392,6 +398,10 @@ export default function ContractDetailPage() {
   }
 
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [adminImpersonation, setAdminImpersonation] =
+    useState<AdminImpersonationState | null>(() =>
+      typeof window === "undefined" ? null : readAdminImpersonationState()
+    );
   const [managerPosition, setManagerPosition] = useState<Position | null>(
     null
   );
@@ -583,6 +593,24 @@ export default function ContractDetailPage() {
   }, []);
 
   useEffect(() => {
+    const syncImpersonation = () => {
+      setAdminImpersonation(readAdminImpersonationState());
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== ADMIN_IMPERSONATION_STORAGE_KEY) return;
+      syncImpersonation();
+    };
+
+    syncImpersonation();
+    window.addEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     const media = window.matchMedia("(max-width: 767px), (hover: none) and (pointer: coarse)");
@@ -767,7 +795,7 @@ export default function ContractDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [entryId, ownerEmail, requestContractsApi, user]);
+  }, [adminImpersonation?.email, entryId, ownerEmail, requestContractsApi, user]);
 
   useEffect(() => {
     const contractNumber = contract?.contractNumber?.trim() ?? "";
@@ -841,7 +869,7 @@ export default function ContractDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [contract?.contractNumber, contract?.productKey, user]);
+  }, [adminImpersonation?.email, contract?.contractNumber, contract?.productKey, user]);
 
   const handleOpenCommissionStatementPreview = useCallback(
     async (statementId: string) => {
@@ -1484,33 +1512,33 @@ export default function ContractDetailPage() {
       ? [1, 80]
       : null;
   const showDurationForProduct = durationBounds != null;
-  const normalizedUserEmail = useMemo(
-    () => normalizeEmail(user?.email ?? null),
-    [user?.email]
+  const normalizedEffectiveUserEmail = useMemo(
+    () => normalizeEmail(adminImpersonation?.email ?? user?.email ?? null),
+    [adminImpersonation?.email, user?.email]
   );
   const normalizedOwnerEmail = useMemo(
     () => normalizeEmail(contract?.userEmail ?? null),
     [contract?.userEmail]
   );
   const isOwnContract = useMemo(() => {
-    if (!normalizedUserEmail || !normalizedOwnerEmail) return false;
-    return normalizedUserEmail === normalizedOwnerEmail;
-  }, [normalizedOwnerEmail, normalizedUserEmail]);
+    if (!normalizedEffectiveUserEmail || !normalizedOwnerEmail) return false;
+    return normalizedEffectiveUserEmail === normalizedOwnerEmail;
+  }, [normalizedEffectiveUserEmail, normalizedOwnerEmail]);
 
   const isManagerOnChain = useMemo(() => {
-    if (!contract || !normalizedUserEmail || !normalizedOwnerEmail) return false;
-    if (normalizedUserEmail === normalizedOwnerEmail) return false;
-    if (normalizeEmail(contract.managerEmailSnapshot) === normalizedUserEmail) return true;
-    if (isEmailInChain(normalizedUserEmail, contract.managerChain ?? null)) return true;
-    if (isEmailInChain(normalizedUserEmail, contract.managerOverrides ?? null)) return true;
+    if (!contract || !normalizedEffectiveUserEmail || !normalizedOwnerEmail) return false;
+    if (normalizedEffectiveUserEmail === normalizedOwnerEmail) return false;
+    if (normalizeEmail(contract.managerEmailSnapshot) === normalizedEffectiveUserEmail) return true;
+    if (isEmailInChain(normalizedEffectiveUserEmail, contract.managerChain ?? null)) return true;
+    if (isEmailInChain(normalizedEffectiveUserEmail, contract.managerOverrides ?? null)) return true;
     return false;
-  }, [contract, normalizedOwnerEmail, normalizedUserEmail]);
+  }, [contract, normalizedEffectiveUserEmail, normalizedOwnerEmail]);
 
   const isManagerOnCurrentChain = useMemo(() => {
-    if (!normalizedUserEmail || !currentChainEmails.length) return false;
-    if (normalizedOwnerEmail && normalizedUserEmail === normalizedOwnerEmail) return false;
-    return currentChainEmails.includes(normalizedUserEmail);
-  }, [currentChainEmails, normalizedOwnerEmail, normalizedUserEmail]);
+    if (!normalizedEffectiveUserEmail || !currentChainEmails.length) return false;
+    if (normalizedOwnerEmail && normalizedEffectiveUserEmail === normalizedOwnerEmail) return false;
+    return currentChainEmails.includes(normalizedEffectiveUserEmail);
+  }, [currentChainEmails, normalizedEffectiveUserEmail, normalizedOwnerEmail]);
 
   const isManagerViewingSubordinate = useMemo(() => {
     if (!isManagerPosition(managerPosition)) return false;
@@ -1658,12 +1686,12 @@ export default function ContractDetailPage() {
     let cancelled = false;
 
     const checkRefreshReplacementAccess = async () => {
-      if (!hasRefreshReplacement || !normalizedUserEmail) {
+      if (!hasRefreshReplacement || !normalizedEffectiveUserEmail) {
         setCanOpenRefreshReplacement(false);
         return;
       }
 
-      if (normalizedUserEmail === refreshReplacementOwnerEmail) {
+      if (normalizedEffectiveUserEmail === refreshReplacementOwnerEmail) {
         setCanOpenRefreshReplacement(true);
         return;
       }
@@ -1696,7 +1724,7 @@ export default function ContractDetailPage() {
     };
   }, [
     hasRefreshReplacement,
-    normalizedUserEmail,
+    normalizedEffectiveUserEmail,
     requestContractsApi,
     refreshReplacementOwnerEmail,
     refreshReplacementEntryId,
@@ -1814,7 +1842,7 @@ export default function ContractDetailPage() {
 
     const snapshotPosition =
       (contract.managerPositionSnapshot as Position | null | undefined) ?? null;
-    const viewerEmail = normalizedUserEmail;
+    const viewerEmail = normalizedEffectiveUserEmail;
     if (!viewerEmail) return snapshotPosition ?? managerPosition ?? null;
 
     const overrides = (contract.managerOverrides as ContractDoc["managerOverrides"]) ?? [];
@@ -1833,7 +1861,7 @@ export default function ContractDetailPage() {
     }
 
     return snapshotPosition ?? managerPosition ?? null;
-  }, [contract, managerPosition, normalizedUserEmail]);
+  }, [contract, managerPosition, normalizedEffectiveUserEmail]);
 
   const [editMode, setEditMode] = useState(false);
   const [editClientName, setEditClientName] = useState("");
@@ -3866,7 +3894,7 @@ export default function ContractDetailPage() {
       return;
     }
 
-    const normalizedUserEmail = (user?.email ?? "").toLowerCase();
+    const normalizedUserEmail = normalizedEffectiveUserEmail;
     const managerOverrides = (contract.managerOverrides as ContractDoc["managerOverrides"]) ?? [];
 
     const storedOverride =
@@ -3963,7 +3991,7 @@ export default function ContractDetailPage() {
     isManagerViewingSubordinate,
     ownerManagerPosition,
     ownerManagerEmail,
-    user?.email,
+    normalizedEffectiveUserEmail,
     adjustLegacyPerPaymentTotal,
   ]);
 
@@ -4069,7 +4097,7 @@ export default function ContractDetailPage() {
     isManagerViewingSubordinate &&
     childOverrideLabel;
 
-  const normalizedViewerEmail = (user?.email ?? "").trim().toLowerCase();
+  const normalizedViewerEmail = normalizedEffectiveUserEmail;
   const otherManagerOverrideCards = (() => {
     if (!contract || !isManagerViewingSubordinate) return [];
 
@@ -4184,7 +4212,9 @@ export default function ContractDetailPage() {
     isPaymentBasedProduct ? managerSum * paymentMultiplier : overrideTotal ?? 0;
   const childManagerTotalDisplay =
     isPaymentBasedProduct ? childManagerSum * paymentMultiplier : childOverrideTotal ?? 0;
-  const contractAuthorName = nameFromEmail(contract?.userEmail ?? ownerEmail ?? user?.email);
+  const contractAuthorName = nameFromEmail(
+    contract?.userEmail ?? ownerEmail ?? normalizedEffectiveUserEmail
+  );
   const clientCardHref = CLIENT_CARDS_ENABLED
     ? clientCardHrefForName(contract?.clientName ?? null)
     : null;
@@ -4195,7 +4225,7 @@ export default function ContractDetailPage() {
           {
             key: `self:${normalizedViewerEmail || "manager"}`,
             email: normalizedViewerEmail || null,
-            userName: nameFromEmail(user?.email),
+            userName: nameFromEmail(normalizedEffectiveUserEmail),
             position: effectiveManagerPosition ?? null,
             mode: overrideMode ?? null,
             items: managerItems,
@@ -4232,7 +4262,7 @@ export default function ContractDetailPage() {
 
   useEffect(() => {
     setExpandedMeziprovisionKeys([]);
-  }, [contract?.id, user?.email, isManagerViewingSubordinate]);
+  }, [contract?.id, normalizedEffectiveUserEmail, isManagerViewingSubordinate]);
 
   const toggleMeziprovisionCard = (key: string) => {
     setExpandedMeziprovisionKeys((prev) =>

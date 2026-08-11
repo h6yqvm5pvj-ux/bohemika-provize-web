@@ -10,6 +10,28 @@ export const normalizeAccessEmail = (
   email: string | null | undefined
 ): string => (email ?? "").trim().toLowerCase();
 
+/**
+ * Zápisy z provizních výpisů patří autorovi výpisu. Manažer může vidět
+ * zápisy své i celého svého podřízeného stromu, nikdy však zápisy nadřízených.
+ */
+export const canViewStatementDerivedRecord = ({
+  viewerEmail,
+  teamEmails,
+  writtenBy,
+}: {
+  viewerEmail: string | null | undefined;
+  teamEmails: Iterable<string | null | undefined>;
+  writtenBy: string | null | undefined;
+}): boolean => {
+  const normalizedWriter = normalizeAccessEmail(writtenBy);
+  if (!normalizedWriter) return false;
+
+  const normalizedViewer = normalizeAccessEmail(viewerEmail);
+  if (normalizedWriter === normalizedViewer) return true;
+
+  return uniqueNormalizedEmails(teamEmails).includes(normalizedWriter);
+};
+
 const uniqueNormalizedEmails = (emails: Iterable<string | null | undefined>): string[] =>
   Array.from(
     new Set(
