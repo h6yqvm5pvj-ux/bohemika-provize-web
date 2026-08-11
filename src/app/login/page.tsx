@@ -1,7 +1,7 @@
 // src/app/login/page.tsx
 "use client";
 
-import { useCallback, useEffect, useState, FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   FactorId,
@@ -234,7 +234,6 @@ export default function LoginPage() {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaHintUid, setMfaHintUid] = useState<string | null>(null);
   const [mfaHintLabel, setMfaHintLabel] = useState<string | null>(null);
-  const [isLoginFlowInProgress, setIsLoginFlowInProgress] = useState(false);
   const [installPlatform, setInstallPlatform] = useState<InstallPlatform>("desktop");
   const [isIosSafari, setIsIosSafari] = useState(false);
   const [isStandaloneApp, setIsStandaloneApp] = useState(false);
@@ -242,9 +241,8 @@ export default function LoginPage() {
     useState<DeferredInstallPromptEvent | null>(null);
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
-  const [showRememberThisDevicePrompt, setShowRememberThisDevicePrompt] = useState(false);
-  const [pendingLoginToken, setPendingLoginToken] = useState<string | null>(null);
   const [rememberThisDevice, setRememberThisDevice] = useState(false);
+  const loginRememberThisDeviceRef = useRef(false);
 
   const clearMfaState = () => {
     setMfaResolver(null);
@@ -253,34 +251,25 @@ export default function LoginPage() {
     setMfaHintLabel(null);
   };
 
-  const clearPostLoginPromptState = useCallback(() => {
-    setShowRememberThisDevicePrompt(false);
-    setPendingLoginToken(null);
-    setRememberThisDevice(false);
-  }, []);
-
   const safeSignOut = useCallback(async () => {
     try {
-      setIsLoginFlowInProgress(false);
-      clearPostLoginPromptState();
+      loginRememberThisDeviceRef.current = false;
       await clearServerSession();
       await withTimeout(signOut(auth), 6000, "Odhlášení trvá příliš dlouho.");
     } catch (err) {
       logAuthIssue("safeSignOut", err);
     }
-  }, [clearPostLoginPromptState]);
+  }, []);
 
   const finalizeServerSession = useCallback(
-    async (token: string, rememberDevice: boolean) => {
+    async (token: string) => {
       await withTimeout(
-        createServerSessionFromToken(token, { rememberThisDevice: rememberDevice }),
+        createServerSessionFromToken(token, {
+          rememberThisDevice: loginRememberThisDeviceRef.current,
+        }),
         10000,
         "Nastavuji relaci uživatele trvá příliš dlouho."
       );
-      setShowRememberThisDevicePrompt(false);
-      setPendingLoginToken(null);
-      setRememberThisDevice(false);
-      setIsLoginFlowInProgress(false);
       setMfaResolver(null);
       setMfaCode("");
       setMfaHintUid(null);
@@ -289,25 +278,6 @@ export default function LoginPage() {
     },
     [router]
   );
-
-  const handleTrustDeviceContinue = useCallback(async () => {
-    if (!pendingLoginToken) {
-      return;
-    }
-
-    setError(null);
-    setLoading(true);
-    try {
-      await finalizeServerSession(pendingLoginToken, rememberThisDevice);
-    } catch (error) {
-      logAuthIssue("handleTrustDeviceContinue", error);
-      await safeSignOut();
-      setError(
-        "Nepodařilo se bezpečně dokončit přihlášení. Zkus to prosím znovu nebo kontaktuj podporu."
-      );
-      setLoading(false);
-    }
-  }, [pendingLoginToken, rememberThisDevice, finalizeServerSession, safeSignOut]);
 
   // pokud už je přihlášený, zkusíme ověřit předplatné a podle toho pustíme dál
   useEffect(() => {
@@ -323,18 +293,14 @@ export default function LoginPage() {
         return;
       }
 
-      if (showRememberThisDevicePrompt && pendingLoginToken) {
-        return;
-      }
-
       try {
         const loginToken = await withTimeout(
           user.getIdToken(),
           10000,
           "Ověření přihlášení trvá příliš dlouho."
         );
-        const finishLogin = async (rememberDevice: boolean) => {
-          await finalizeServerSession(loginToken, rememberDevice);
+        const finishLogin = async () => {
+          await finalizeServerSession(loginToken);
         };
         const loginAttemptState = await postLoginAttempt("success", rawEmail, loginToken);
         if (!loginAttemptState.ok || loginAttemptState.locked) {
@@ -349,18 +315,8 @@ export default function LoginPage() {
           "Ověření účtu trvá příliš dlouho."
         );
 
-        const promptForTrustChoice = () => {
-          setPendingLoginToken(loginToken);
-          setShowRememberThisDevicePrompt(true);
-          setRememberThisDevice(false);
-        };
-
         if (response?.hasProfile !== true) {
-          if (isLoginFlowInProgress) {
-            promptForTrustChoice();
-            return;
-          }
-          await finishLogin(false);
+          await finishLogin();
           return;
         }
         const data = response?.profile ?? {};
@@ -372,11 +328,7 @@ export default function LoginPage() {
 
         if (hasActive) {
           // OK → pustíme na hlavní stránku
-          if (isLoginFlowInProgress) {
-            promptForTrustChoice();
-            return;
-          }
-          await finishLogin(false);
+          await finishLogin();
         } else {
           // žádné / expirované předplatné → odhlásit a ukázat hlášku
           await safeSignOut();
@@ -398,14 +350,7 @@ export default function LoginPage() {
     });
 
     return () => unsub();
-  }, [
-    router,
-    isLoginFlowInProgress,
-    pendingLoginToken,
-    showRememberThisDevicePrompt,
-    finalizeServerSession,
-    safeSignOut,
-  ]);
+  }, [finalizeServerSession, safeSignOut]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -530,9 +475,8 @@ export default function LoginPage() {
     }
 
     setError(null);
-    clearPostLoginPromptState();
     setLoading(true);
-    setIsLoginFlowInProgress(true);
+    loginRememberThisDeviceRef.current = rememberThisDevice;
 
     try {
       const trimmedEmail = email.trim().toLowerCase();
@@ -541,7 +485,6 @@ export default function LoginPage() {
       if (!trimmedEmail || !trimmedPassword) {
         setError("Zadej e-mail i heslo.");
         setLoading(false);
-        setIsLoginFlowInProgress(false);
         return;
       }
 
@@ -549,7 +492,6 @@ export default function LoginPage() {
       if (!gate.ok || gate.locked) {
         setError(buildLoginAttemptMessage(gate));
         setLoading(false);
-        setIsLoginFlowInProgress(false);
         return;
       }
 
@@ -578,7 +520,6 @@ export default function LoginPage() {
               "Účet vyžaduje 2FA, ale nebyl nalezen TOTP faktor. Kontaktuj podporu."
             );
             setLoading(false);
-            setIsLoginFlowInProgress(false);
             return;
           }
 
@@ -593,7 +534,6 @@ export default function LoginPage() {
         } catch (resolverError) {
           logAuthIssue("handleSubmitResolver", resolverError);
           msg = "Nepodařilo se zahájit 2FA ověření. Zkus přihlášení znovu.";
-          setIsLoginFlowInProgress(false);
         }
       } else if (authErr?.code && PASSWORD_ATTEMPT_ERROR_CODES.has(authErr.code)) {
         const attemptState = await postLoginAttempt(
@@ -614,7 +554,6 @@ export default function LoginPage() {
 
       setError(msg);
       setLoading(false);
-      setIsLoginFlowInProgress(false);
     }
   };
 
@@ -624,10 +563,9 @@ export default function LoginPage() {
       return;
     }
 
-    clearPostLoginPromptState();
     setError(null);
     setResetStatus(null);
-    setIsLoginFlowInProgress(true);
+    loginRememberThisDeviceRef.current = rememberThisDevice;
     setPasskeyLoading(true);
     setLoading(true);
     clearMfaState();
@@ -644,7 +582,6 @@ export default function LoginPage() {
         )
       );
       setLoading(false);
-      setIsLoginFlowInProgress(false);
     } finally {
       setPasskeyLoading(false);
     }
@@ -852,73 +789,58 @@ export default function LoginPage() {
                 </p>
               )}
 
-              {showRememberThisDevicePrompt ? (
-                <div className="space-y-3 rounded-2xl border border-violet-200/25 bg-white/[0.05] px-4 py-3">
-                  <p className="text-sm text-violet-100/92">
-                    Přihlášení bylo úspěšné. Chceš, aby tě toto zařízení drželo přihlášené delší dobu?
-                  </p>
-                  <label className="flex items-center gap-3 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={rememberThisDevice}
-                      onChange={(event) => setRememberThisDevice(event.target.checked)}
-                      disabled={loading}
-                      className="h-4 w-4 rounded border-violet-200/60 bg-transparent text-violet-500 focus:ring-violet-200/60 focus:ring-offset-0 focus:ring-offset-transparent"
-                    />
-                    <span className="text-violet-100/82">
-                      Důvěřovat tomuto zařízení (zůstanu přihlášený déle)
-                    </span>
-                  </label>
+              {!mfaResolver ? (
+                <label className="flex items-center gap-3 rounded-xl px-1 pt-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={rememberThisDevice}
+                    onChange={(event) => setRememberThisDevice(event.target.checked)}
+                    disabled={loading}
+                    className="h-4 w-4 rounded border-violet-200/60 bg-transparent text-violet-500 focus:ring-violet-200/60 focus:ring-offset-0 focus:ring-offset-transparent"
+                  />
+                  <span className="text-violet-100/82">
+                    Důvěřovat tomuto zařízení (zůstanu přihlášený déle)
+                  </span>
+                </label>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={loading || passkeyLoading}
+                className="mt-2 w-full rounded-2xl border border-violet-200/25 bg-[linear-gradient(135deg,#b85cff_0%,#7c3aed_52%,#4338ca_100%)] py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#100b21] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+              >
+                {loading && !passkeyLoading
+                  ? mfaResolver
+                    ? "Ověřuji 2FA…"
+                    : "Přihlašuji…"
+                  : passkeyLoading
+                    ? "Ověřuji přístupový klíč…"
+                  : mfaResolver
+                    ? "Potvrdit 2FA"
+                    : "Přihlásit se"}
+              </button>
+
+              {!mfaResolver && passkeySupported ? (
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-100/45">
+                    <span className="h-px flex-1 bg-violet-200/15" />
+                    <span>nebo</span>
+                    <span className="h-px flex-1 bg-violet-200/15" />
+                  </div>
                   <button
                     type="button"
-                    onClick={() => void handleTrustDeviceContinue()}
-                    disabled={loading}
-                    className="mt-1 w-full rounded-2xl border border-violet-200/25 bg-[linear-gradient(135deg,#b85cff_0%,#7c3aed_52%,#4338ca_100%)] py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#100b21] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                    onClick={() => void handlePasskeyLogin()}
+                    disabled={loading || passkeyLoading}
+                    className="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-violet-200/25 bg-white/[0.1] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(10,5,30,0.18)] transition hover:bg-white/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {loading ? "Dokončuji přihlášení…" : "Pokračovat"}
+                    {passkeyLoading
+                      ? "Otevírám ověření…"
+                      : installPlatform === "ios"
+                        ? "Přihlásit přes Face ID"
+                        : "Přihlásit přes přístupový klíč"}
                   </button>
                 </div>
-              ) : (
-                <>
-                  <button
-                    type="submit"
-                    disabled={loading || passkeyLoading}
-                    className="mt-2 w-full rounded-2xl border border-violet-200/25 bg-[linear-gradient(135deg,#b85cff_0%,#7c3aed_52%,#4338ca_100%)] py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#100b21] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-                  >
-                    {loading && !passkeyLoading
-                      ? mfaResolver
-                        ? "Ověřuji 2FA…"
-                        : "Přihlašuji…"
-                      : passkeyLoading
-                        ? "Ověřuji přístupový klíč…"
-                      : mfaResolver
-                        ? "Potvrdit 2FA"
-                        : "Přihlásit se"}
-                  </button>
-
-                  {!mfaResolver && passkeySupported ? (
-                    <div className="space-y-3 pt-1">
-                      <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-100/45">
-                        <span className="h-px flex-1 bg-violet-200/15" />
-                        <span>nebo</span>
-                        <span className="h-px flex-1 bg-violet-200/15" />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void handlePasskeyLogin()}
-                        disabled={loading || passkeyLoading}
-                        className="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-violet-200/25 bg-white/[0.1] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(10,5,30,0.18)] transition hover:bg-white/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {passkeyLoading
-                          ? "Otevírám ověření…"
-                          : installPlatform === "ios"
-                            ? "Přihlásit přes Face ID"
-                            : "Přihlásit přes přístupový klíč"}
-                      </button>
-                    </div>
-                  ) : null}
-                </>
-              )}
+              ) : null}
             </form>
 
             {shouldShowInstallAssistant ? (

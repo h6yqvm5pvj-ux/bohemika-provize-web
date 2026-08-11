@@ -21,6 +21,7 @@ const PASSKEY_CHALLENGES_COLLECTION = "_passkeyChallenges";
 const PASSKEY_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const PASSKEY_RECENT_AUTH_MAX_AGE_MS = 10 * 60 * 1000;
 const RP_NAME = "Bohemka.App";
+const PRIMARY_PRODUCTION_WEBAUTHN_ORIGIN = "https://bohemka.app";
 
 type ChallengeType = "registration" | "authentication";
 
@@ -145,6 +146,10 @@ function configuredOrigins(fallbackOrigin: string): Set<string> {
   if (!isProductionRuntime()) {
     const fallback = normalizeOrigin(fallbackOrigin);
     if (fallback) origins.add(fallback);
+  } else {
+    // The primary application origin is a safe default. Extra domains and
+    // deployment previews must still be explicitly configured below.
+    add(PRIMARY_PRODUCTION_WEBAUTHN_ORIGIN);
   }
   add(process.env.NEXT_PUBLIC_APP_URL);
   add(process.env.WEBAUTHN_ORIGIN);
