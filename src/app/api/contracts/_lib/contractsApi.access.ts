@@ -13,18 +13,23 @@ export const normalizeAccessEmail = (
 /**
  * Zápisy z provizních výpisů patří autorovi výpisu. Manažer může vidět
  * zápisy své i celého svého podřízeného stromu, nikdy však zápisy nadřízených.
+ * Výjimkou je správce smluv, který má oprávnění k celému systému smluv.
  */
 export const canViewStatementDerivedRecord = ({
   viewerEmail,
   teamEmails,
   writtenBy,
+  canViewAllStatementDerivedRecords = false,
 }: {
   viewerEmail: string | null | undefined;
   teamEmails: Iterable<string | null | undefined>;
   writtenBy: string | null | undefined;
+  canViewAllStatementDerivedRecords?: boolean;
 }): boolean => {
   const normalizedWriter = normalizeAccessEmail(writtenBy);
   if (!normalizedWriter) return false;
+
+  if (canViewAllStatementDerivedRecords) return true;
 
   const normalizedViewer = normalizeAccessEmail(viewerEmail);
   if (normalizedWriter === normalizedViewer) return true;

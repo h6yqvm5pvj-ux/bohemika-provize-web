@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -74,6 +75,18 @@ import {
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
+import { saveContractEntry } from "../kalkulacka/useContractSave";
+import {
+  CppAutoBatchQueue,
+  CppAutoBatchQueueAddButton,
+  CppAutoBatchQueueContext,
+  cppAutoBatchQueueAmount,
+  cppAutoBatchQueueItemFromPrefill,
+  cppAutoBatchQueueItemKey,
+  validateCppAutoBatchQueueItem,
+  type CppAutoBatchQueueItem,
+  type CppAutoBatchQueuePatch,
+} from "./CppAutoBatchQueue";
 import { StatementPairingLoader } from "./StatementPairingLoader";
 import {
   NeonRefreshConversionPromptModal,
@@ -5646,6 +5659,10 @@ function OtherProductContractCard({
           source: statementPrefillSource,
         })
       : null;
+  const cppAutoBatchQueueEligible =
+    match?.status === "not_found" &&
+    calculatorPrefill?.product === "cppAuto" &&
+    otherProductContractHasA101Commission(reviewContract);
   const [expanded, setExpanded] = useState(false);
   const markedItem: MarkedDiscrepancyItem | null = markingControls
     ? {
@@ -5817,12 +5834,16 @@ function OtherProductContractCard({
             scope={matchScope}
             presentation={systemMatchPresentation}
           />
-          {(systemContract || detailUrl || extranetUrl || calculatorPrefill) && (
+          {(systemContract || detailUrl || extranetUrl || calculatorPrefill || cppAutoBatchQueueEligible) && (
             <div className="mt-3 flex flex-wrap gap-2">
               <BohemkaContractDetailLink contract={systemContract} />
               <ContractDetailLink href={detailUrl} />
               <SjednatelExtranetLink href={extranetUrl} />
               <StatementCalculatorPrefillButton prefill={calculatorPrefill} />
+              <CppAutoBatchQueueAddButton
+                prefill={calculatorPrefill}
+                eligible={cppAutoBatchQueueEligible}
+              />
             </div>
           )}
 
@@ -7414,6 +7435,9 @@ export default function CommissionStatementsPage() {
     useState<BohemkaContractDetailModalPayload | null>(null);
   const [calculatorPrefillPanel, setCalculatorPrefillPanel] =
     useState<StatementCalculatorPrefill | null>(null);
+  const [cppAutoBatchQueue, setCppAutoBatchQueue] = useState<CppAutoBatchQueueItem[]>([]);
+  const [cppAutoBatchQueueRunning, setCppAutoBatchQueueRunning] = useState(false);
+  const [cppAutoBatchQueueNotice, setCppAutoBatchQueueNotice] = useState<string | null>(null);
   const [pdfDownloading, setPdfDownloading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [matchingError, setMatchingError] = useState<string | null>(null);
@@ -8518,6 +8542,333 @@ export default function CommissionStatementsPage() {
     }
   };
 
+  const addCppAutoToBatchQueue = useCallback((prefill: StatementCalculatorPrefill) => {
+    if (prefill.product !== "cppAuto") return;
+
+    const nextItem = cppAutoBatchQueueItemFromPrefill(prefill);
+    const contractKey = cppAutoBatchQueueItemKey(prefill);
+    setCppAutoBatchQueue((previous) => {
+      const duplicate = contractKey
+        ? previous.some(
+            (item) => cppAutoBatchQueueItemKey(item) === contractKey
+          )
+        : false;
+      if (duplicate) return previous;
+      return [...previous, nextItem];
+    });
+    setCppAutoBatchQueueNotice(
+      contractKey
+        ? `Smlouva ${prefill.contractNumber} je připravená ve frontě.`
+        : "Smlouva je připravená ve frontě; před uložením doplň její číslo."
+    );
+  }, []);
+
+  const updateCppAutoBatchQueueItem = useCallback(
+    (id: string, patch: CppAutoBatchQueuePatch) => {
+      setCppAutoBatchQueue((previous) =>
+        previous.map((item) => {
+          if (item.id !== id) return item;
+          if (item.status === "saved") return item;
+          return {
+            ...item,
+            ...patch,
+            status: "ready",
+            message: null,
+          };
+        })
+      );
+      setCppAutoBatchQueueNotice(null);
+    },
+    []
+  );
+
+  const removeCppAutoBatchQueueItem = useCallback((id: string) => {
+    setCppAutoBatchQueue((previous) => previous.filter((item) => item.id !== id));
+    setCppAutoBatchQueueNotice(null);
+  }, []);
+
+  const clearSavedCppAutoBatchQueueItems = useCallback(() => {
+    setCppAutoBatchQueue((previous) => previous.filter((item) => item.status !== "saved"));
+    setCppAutoBatchQueueNotice(null);
+  }, []);
+
+  const runCppAutoBatchQueue = async () => {
+    if (cppAutoBatchQueueRunning) return;
+    if (!user) {
+      setCppAutoBatchQueueNotice("Pro uložení dávky se nejdřív přihlas.");
+      return;
+    }
+    if (!effectiveUserEmail) {
+      setCppAutoBatchQueueNotice("Nepodařilo se určit uživatele, pod kterým se mají smlouvy uložit.");
+      return;
+    }
+
+    const candidates = cppAutoBatchQueue.filter(
+      (item) => item.status !== "saved" && item.status !== "saving"
+    );
+    const validItems: CppAutoBatchQueueItem[] = [];
+    const invalidItems = new Map<string, string>();
+    for (const item of candidates) {
+      const validationError = validateCppAutoBatchQueueItem(item);
+      if (validationError) {
+        invalidItems.set(item.id, validationError);
+      } else {
+        validItems.push(item);
+      }
+    }
+
+    if (invalidItems.size > 0) {
+      setCppAutoBatchQueue((previous) =>
+        previous.map((item) => {
+          const message = invalidItems.get(item.id);
+          return message ? { ...item, status: "error", message } : item;
+        })
+      );
+    }
+    if (validItems.length === 0) {
+      setCppAutoBatchQueueNotice("Doplň nebo oprav označené údaje a potom spusť dávku znovu.");
+      return;
+    }
+
+    setCppAutoBatchQueueRunning(true);
+    setCppAutoBatchQueueNotice(`Ukládám ${validItems.length} smluv ve frontě…`);
+    setCppAutoBatchQueue((previous) =>
+      previous.map((item) =>
+        validItems.some((candidate) => candidate.id === item.id)
+          ? { ...item, status: "saving", message: null }
+          : item
+      )
+    );
+
+    type SavedBatchItem = {
+      item: CppAutoBatchQueueItem;
+      stored: boolean;
+      attachmentFailed: boolean;
+    };
+    const savedBatchItems: SavedBatchItem[] = [];
+    let nextIndex = 0;
+    const saveOne = async (item: CppAutoBatchQueueItem): Promise<SavedBatchItem> => {
+      const amount = cppAutoBatchQueueAmount(item.amountText);
+      const sourceRecordedAtMs = item.queuedAtMs;
+      try {
+        const saved = await saveContractEntry({
+          user,
+          ownerEmail: effectiveUserEmail,
+          entry: {
+            productKey: "cppAuto",
+            entryType: "contract",
+            commissionMode: null,
+            inputAmount: amount,
+            effectiveInputAmount: amount,
+            frequencyRaw: item.frequency,
+            clientName: item.clientName.trim(),
+            contractSignedDate: item.contractSignedDate.trim(),
+            policyStartDate: item.policyStartDate.trim(),
+            policyEndDate: null,
+            status: item.stornoDate.trim() ? "storno" : "active",
+            stornoDate: item.stornoDate.trim() || null,
+            durationYears: null,
+            durationMonths: null,
+            maxCizinKomplexVariant: null,
+            contractNumber: item.contractNumber.trim(),
+            tipContractTipsterEmail: null,
+            tipContractTipsterPercent: null,
+            tipContractSourceTipId: null,
+            tipContractSourceTipTitle: null,
+            tipContractSourceTipProductLabel: null,
+            tipContractSourceTipClientName: null,
+            tipContractSourceTipCreatedAtMs: null,
+            paid: false,
+            isRefresh: false,
+            refreshOriginalContractNumber: null,
+            refreshOriginalMissingInSystem: false,
+            requiresStatementRefresh: false,
+            commissionCalculationStatus: null,
+            commissionBaseSource: null,
+            premiumUpdatedFromStatementAtMs: sourceRecordedAtMs,
+            premiumUpdatedFromStatementChronologyMs: item.statementChronologyMs,
+            premiumUpdatedFromStatementId: item.statementId,
+            createdFromCommissionStatement: true,
+            createdFromCommissionStatementAtMs: sourceRecordedAtMs,
+            createdFromCommissionStatementChronologyMs: item.statementChronologyMs,
+            createdFromCommissionStatementId: item.statementId,
+          },
+          fallbackError: "Smlouvu se nepodařilo uložit.",
+          pdfFile: item.pdfFile,
+        });
+        if (!saved.ok) {
+          setCppAutoBatchQueue((previous) =>
+            previous.map((current) =>
+              current.id === item.id
+                ? { ...current, status: "error", message: saved.error }
+                : current
+            )
+          );
+          return { item, stored: false, attachmentFailed: false };
+        }
+
+        const attachmentErrorMessage =
+          saved.pdfAttachment.status === "failed" ? saved.pdfAttachment.message : null;
+        const attachmentFailed = attachmentErrorMessage !== null;
+        const message = attachmentFailed
+          ? `Smlouva je uložená, ale PDF se nepodařilo přiložit: ${attachmentErrorMessage}`
+          : item.pdfFile
+            ? "Smlouva i PDF jsou uložené."
+            : "Smlouva je uložená.";
+        setCppAutoBatchQueue((previous) =>
+          previous.map((current) =>
+            current.id === item.id
+              ? {
+                  ...current,
+                  status: attachmentFailed ? "attachment_error" : "saved",
+                  message,
+                }
+              : current
+          )
+        );
+        return { item, stored: true, attachmentFailed };
+      } catch (saveError) {
+        const message =
+          saveError instanceof Error && saveError.message.trim()
+            ? saveError.message
+            : "Smlouvu se nepodařilo uložit.";
+        setCppAutoBatchQueue((previous) =>
+          previous.map((current) =>
+            current.id === item.id ? { ...current, status: "error", message } : current
+          )
+        );
+        return { item, stored: false, attachmentFailed: false };
+      }
+    };
+
+    const worker = async () => {
+      while (nextIndex < validItems.length) {
+        const item = validItems[nextIndex++];
+        if (!item) return;
+        savedBatchItems.push(await saveOne(item));
+      }
+    };
+
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(3, validItems.length) }, () => worker())
+      );
+
+      const storedItems = savedBatchItems.filter((result) => result.stored);
+      const savedContractNumbers = new Set(
+        storedItems.map((result) => normalizeContractNumberForMatch(result.item.contractNumber))
+      );
+      const reprocessSourceStatementIds = [
+        ...new Set(
+          storedItems
+            .map((result) => result.item.statementId?.trim() || "")
+            .filter(Boolean)
+        ),
+      ];
+      const reprocessFailures: string[] = [];
+
+      for (const statementId of reprocessSourceStatementIds) {
+        try {
+          const sendRequest = async (forceRefreshToken = false) => {
+            const token = await user.getIdToken(forceRefreshToken);
+            return fetch("/api/commission-statements", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                action: "reprocess-saved-statement",
+                statementId,
+              }),
+            });
+          };
+          let response = await sendRequest();
+          if (response.status === 401) response = await sendRequest(true);
+          const payload = (await response.json().catch(() => null)) as
+            | { ok?: boolean; error?: string }
+            | null;
+          if (!response.ok || payload?.ok !== true) {
+            throw new Error(payload?.error || "Výpis se nepodařilo zpracovat znovu.");
+          }
+        } catch (reprocessError) {
+          reprocessFailures.push(
+            reprocessError instanceof Error
+              ? reprocessError.message
+              : "Výpis se nepodařilo zpracovat znovu."
+          );
+        }
+      }
+
+      const requestsToRefresh = statementContractMatchRequests.filter((request) =>
+        savedContractNumbers.has(normalizeContractNumberForMatch(request.contractNumber))
+      );
+      let matchingFailure: string | null = null;
+      if (requestsToRefresh.length > 0) {
+        setMatchesByContractNumber((previous) => {
+          const next = { ...previous };
+          for (const request of requestsToRefresh) {
+            const key = contractMatchKey(request.scope, request.contractNumber);
+            if (key) next[key] = { status: "loading", contracts: [] };
+          }
+          return next;
+        });
+        try {
+          const refreshedMatches = await fetchSystemContractMatchBatch(
+            user,
+            requestsToRefresh,
+            dedupeEquivalentSystemContracts
+          );
+          setMatchesByContractNumber((previous) => {
+            const next = { ...previous };
+            for (const request of requestsToRefresh) {
+              const key = contractMatchKey(request.scope, request.contractNumber);
+              if (!key) continue;
+              next[key] =
+                refreshedMatches.get(key) ??
+                systemContractMatchError("Párování po uložení smlouvy nevrátilo výsledek.");
+            }
+            return next;
+          });
+        } catch (matchError) {
+          matchingFailure =
+            matchError instanceof Error
+              ? matchError.message
+              : "Párování po uložení smluv selhalo.";
+          setMatchesByContractNumber((previous) => {
+            const next = { ...previous };
+            for (const request of requestsToRefresh) {
+              const key = contractMatchKey(request.scope, request.contractNumber);
+              if (key) next[key] = systemContractMatchError(matchingFailure!);
+            }
+            return next;
+          });
+        }
+      }
+
+      if (reprocessSourceStatementIds.length > 0) void refreshProcessedStatementHistory();
+      const attachmentFailures = storedItems.filter((result) => result.attachmentFailed).length;
+      const failureCount = savedBatchItems.length - storedItems.length;
+      const resultParts = [`Uloženo ${storedItems.length} z ${validItems.length} smluv.`];
+      if (attachmentFailures > 0) resultParts.push(`PDF vyžaduje opravu u ${attachmentFailures} smluv.`);
+      if (reprocessSourceStatementIds.length > 0 && reprocessFailures.length === 0) {
+        resultParts.push(`Znovu zpracováno výpisů: ${reprocessSourceStatementIds.length}.`);
+      }
+      if (reprocessFailures.length > 0) resultParts.push(`Výpis se nepodařilo obnovit: ${reprocessFailures[0]}`);
+      if (matchingFailure) resultParts.push(`Párování se nepodařilo obnovit: ${matchingFailure}`);
+      if (failureCount > 0) resultParts.push(`${failureCount} smluv vyžaduje opravu.`);
+      setCppAutoBatchQueueNotice(resultParts.join(" "));
+    } catch (batchError) {
+      setCppAutoBatchQueueNotice(
+        batchError instanceof Error
+          ? `Dávka doběhla s chybou při obnovení párování: ${batchError.message}`
+          : "Dávka doběhla s chybou při obnovení párování."
+      );
+    } finally {
+      setCppAutoBatchQueueRunning(false);
+    }
+  };
+
   const freshUploadPairingInProgress =
     statements.length > 0 &&
     statementFilesForProcessing.length > 0 &&
@@ -8537,7 +8888,8 @@ export default function CommissionStatementsPage() {
   return (
     <BohemkaContractDetailModalContext.Provider value={setContractDetailModal}>
       <StatementCalculatorPrefillContext.Provider value={setCalculatorPrefillPanel}>
-        <AppLayout active="statements">
+        <CppAutoBatchQueueContext.Provider value={addCppAutoToBatchQueue}>
+          <AppLayout active="statements">
       <div className="w-full max-w-7xl space-y-4">
         {!freshUploadPairingInProgress && (
           <section
@@ -8776,6 +9128,17 @@ export default function CommissionStatementsPage() {
           <StatementPairingLoader stats={matchStats} hasUser={Boolean(user)} />
         ) : (
           <div className="space-y-4">
+            <CppAutoBatchQueue
+              items={cppAutoBatchQueue}
+              isRunning={cppAutoBatchQueueRunning}
+              notice={cppAutoBatchQueueNotice}
+              onUpdate={updateCppAutoBatchQueueItem}
+              onRemove={removeCppAutoBatchQueueItem}
+              onRun={() => {
+                void runCppAutoBatchQueue();
+              }}
+              onClearSaved={clearSavedCppAutoBatchQueueItems}
+            />
             {statements.map((statement) => {
               const statementKey = statementDiscrepancyKey(statement);
               const statementLabel = statementDiscrepancyLabel(statement);
@@ -8951,7 +9314,8 @@ export default function CommissionStatementsPage() {
           }}
         />
       )}
-        </AppLayout>
+          </AppLayout>
+        </CppAutoBatchQueueContext.Provider>
       </StatementCalculatorPrefillContext.Provider>
     </BohemkaContractDetailModalContext.Provider>
   );

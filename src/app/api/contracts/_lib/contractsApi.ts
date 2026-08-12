@@ -618,16 +618,19 @@ const filterStatementDerivedContractDataForViewer = ({
   contract,
   viewerEmail,
   teamEmails,
+  canViewAllStatementDerivedRecords = false,
 }: {
   contract: ContractResponseItem;
   viewerEmail: string;
   teamEmails: string[];
+  canViewAllStatementDerivedRecords?: boolean;
 }): ContractResponseItem => {
   const canViewRecord = (record: { writtenBy?: string | null }) =>
     canViewStatementDerivedRecord({
       viewerEmail,
       teamEmails,
       writtenBy: record.writtenBy,
+      canViewAllStatementDerivedRecords,
     });
 
   return {
@@ -3828,6 +3831,7 @@ export async function handleContractsGet(
       ),
       viewerEmail: email,
       teamEmails,
+      canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
     });
     const canManageContract = canManageContractOwner({
       viewerEmail: email,
@@ -3866,6 +3870,7 @@ export async function handleContractsGet(
             ),
             viewerEmail: email,
             teamEmails,
+            canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
           })
         );
 
@@ -4052,6 +4057,7 @@ export async function handleContractsGet(
       contract,
       viewerEmail: email,
       teamEmails,
+      canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
     });
   const visibleContracts = list.map(filterStatementData);
   const teamContracts = teamRes?.list.map(filterStatementData);
@@ -4102,6 +4108,7 @@ const sortContractsFindResults = (contracts: ContractResponseItem[]): ContractRe
 type ContractsFindResolverContext = {
   email: string;
   teamEmails: string[];
+  canViewAllStatementDerivedRecords: boolean;
   usersByEmail: Map<string, UserNode>;
   ownerProfileByEmail: Map<string, ContractOwnerPositionContext | null>;
   entryRefsByQuery: Map<
@@ -4207,6 +4214,7 @@ const resolveContractsFindContracts = async ({
         ),
         viewerEmail: context.email,
         teamEmails: context.teamEmails,
+        canViewAllStatementDerivedRecords: context.canViewAllStatementDerivedRecords,
       });
       if (item.productKey && LIFE_TIMELINE_PRODUCTS.has(item.productKey as Product)) {
         item.lifePremiumChanges = await loadLifePremiumChangesForFindMatch({
@@ -4228,16 +4236,19 @@ const resolveContractsFindContracts = async ({
 const createContractsFindResolverContext = ({
   email,
   teamEmails,
+  canViewAllStatementDerivedRecords,
   users,
   logPrefix,
 }: {
   email: string;
   teamEmails: string[];
+  canViewAllStatementDerivedRecords: boolean;
   users: UserNode[];
   logPrefix: string;
 }): ContractsFindResolverContext => ({
   email,
   teamEmails,
+  canViewAllStatementDerivedRecords,
   usersByEmail: new Map(users.map((item) => [item.email, item])),
   ownerProfileByEmail: new Map(),
   entryRefsByQuery: new Map(),
@@ -4274,6 +4285,7 @@ export async function handleContractsFind(req: NextRequest) {
   const resolverContext = createContractsFindResolverContext({
     email,
     teamEmails,
+    canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
     users,
     logPrefix: "GET /api/contracts/find",
   });
@@ -4351,6 +4363,7 @@ export async function handleContractsFindBulk(req: NextRequest) {
   const resolverContext = createContractsFindResolverContext({
     email,
     teamEmails,
+    canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
     users,
     logPrefix: "POST /api/contracts/find",
   });

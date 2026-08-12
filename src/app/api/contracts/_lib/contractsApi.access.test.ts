@@ -178,6 +178,22 @@ describe("contracts access helpers", () => {
         writtenBy: null,
       })
     ).toBe(false);
+    expect(
+      canViewStatementDerivedRecord({
+        viewerEmail: "admin@example.com",
+        teamEmails: [],
+        writtenBy: "advisor@example.com",
+        canViewAllStatementDerivedRecords: true,
+      })
+    ).toBe(true);
+    expect(
+      canViewStatementDerivedRecord({
+        viewerEmail: "admin@example.com",
+        teamEmails: [],
+        writtenBy: null,
+        canViewAllStatementDerivedRecords: true,
+      })
+    ).toBe(false);
   });
 
   it("builds team access from hierarchy and admin advisor visibility", () => {
