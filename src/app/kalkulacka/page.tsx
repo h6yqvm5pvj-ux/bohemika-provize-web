@@ -452,6 +452,8 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 const STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE = "bohemka:statement-contract-saved";
 const STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE =
   "bohemka:statement-contract-save-completed";
+const STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE =
+  "bohemka:statement-cpp-auto-queue-add";
 type StatementPremiumSource = {
   statementId: string | null;
   statementChronologyMs: number | null;
@@ -529,6 +531,45 @@ const notifyStatementParentContractSaveCompleted = (
     type: STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE,
     ...payload,
   });
+
+const notifyStatementParentCppAutoQueueAdd = ({
+  contractNumber,
+  clientName,
+  contractSignedDate,
+  policyStartDate,
+  amountText,
+  frequency,
+  stornoDate,
+  pdfFile,
+}: {
+  contractNumber: string;
+  clientName: string;
+  contractSignedDate: string;
+  policyStartDate: string;
+  amountText: string;
+  frequency: PaymentFrequency;
+  stornoDate: string;
+  pdfFile: File | null;
+}) => {
+  if (typeof window === "undefined" || window.parent === window) return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("prefill") !== "commission-statement") return;
+
+  window.parent.postMessage(
+    {
+      type: STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE,
+      contractNumber,
+      clientName,
+      contractSignedDate,
+      policyStartDate,
+      amountText,
+      frequency,
+      stornoDate,
+      pdfFile,
+    },
+    window.location.origin
+  );
+};
 const CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL = "jakub.rauscher@bohemika.eu";
 const isKooperativaAutoDetailProduct = (product: Product): boolean =>
   product === "kooperativaAuto" || product === "koopflotila";
@@ -911,6 +952,8 @@ export default function CalculatorPage() {
   const pdfImportRunIdRef = useRef(0);
   const statementPrefillAppliedRef = useRef(false);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
+  const [statementEmbedParentAvailable, setStatementEmbedParentAvailable] = useState(false);
+  const [statementCppAutoQueueEligible, setStatementCppAutoQueueEligible] = useState(false);
   const [statementPremiumSource, setStatementPremiumSource] =
     useState<StatementPremiumSource | null>(null);
   const [pdfImporting, setPdfImporting] = useState(false);
@@ -956,6 +999,10 @@ export default function CalculatorPage() {
     const params = new URLSearchParams(window.location.search);
     const isStatementPrefill = params.get("prefill") === "commission-statement";
     setStatementEmbedMode(isStatementPrefill);
+    setStatementEmbedParentAvailable(isStatementPrefill && window.parent !== window);
+    setStatementCppAutoQueueEligible(
+      isStatementPrefill && params.get("cppAutoQueueEligible") === "1"
+    );
     if (!isStatementPrefill) {
       setStatementPremiumSource(null);
       return;
@@ -5209,9 +5256,7 @@ export default function CalculatorPage() {
             createdFromCommissionStatementChronologyMs: null,
             createdFromCommissionStatementId: null,
             refreshOriginalContractNumber: isReplacementPdf
-              ? replacementOriginalMissingInSystem
-                ? null
-                : replacementNumber
+              ? replacementNumber
               : null,
           };
 
@@ -6022,6 +6067,62 @@ export default function CalculatorPage() {
     }
   };
 
+  const handleAddCppAutoToStatementQueue = () => {
+    if (
+      product !== "cppAuto" ||
+      !statementEmbedMode ||
+      !statementEmbedParentAvailable ||
+      !statementCppAutoQueueEligible
+    ) {
+      return;
+    }
+
+    const value = parseNumber(amountText);
+    const missing: string[] = [];
+    if (value <= 0) missing.push("částku");
+    if (!clientName.trim()) missing.push("jméno klienta");
+    if (!contractNumber.trim()) missing.push("číslo smlouvy");
+    if (!contractSignedDate.trim()) missing.push("datum sjednání");
+    if (!policyStartDate.trim()) missing.push("datum počátku");
+    if (missing.length > 0) {
+      const message = `Doplň: ${missing.join(", ")}.`;
+      setSaveMessage(message);
+      setValidationError(message);
+      setMissingFields(missing);
+      return;
+    }
+    if (contractDateErrors.length > 0) {
+      const message = `Zkontroluj datumy: ${contractDateErrors
+        .map((issue) => issue.message)
+        .join(" ")}`;
+      setSaveMessage(message);
+      setValidationError(message);
+      return;
+    }
+
+    const trimmedStornoDate = stornoDate.trim();
+    if (trimmedStornoDate && !parseIsoDayAsLocalDate(trimmedStornoDate)) {
+      const message = "Datum storna má neplatný formát.";
+      setSaveMessage(message);
+      setValidationError(message);
+      return;
+    }
+
+    notifyStatementParentCppAutoQueueAdd({
+      contractNumber: contractNumber.trim(),
+      clientName: clientName.trim(),
+      contractSignedDate: contractSignedDate.trim(),
+      policyStartDate: policyStartDate.trim(),
+      amountText: amountText.trim(),
+      frequency,
+      stornoDate: trimmedStornoDate,
+      pdfFile: importedContractPdfFile,
+    });
+    setMissingFields([]);
+    setValidationError(null);
+    setSaveMessage("Smlouva byla přidána do fronty. Na výpisu ji pak nahraješ hromadně.");
+  };
+
   const handleSaveContract = async (skipDuplicateCheck = false) => {
     if (endorsementDraft) {
       await handleSaveEndorsement();
@@ -6757,11 +6858,15 @@ export default function CalculatorPage() {
       }
 
       const linkedRefreshOriginal = Boolean(linkedRefreshOriginalEntryId);
+      const originalReplacementStornoDescription =
+        product === "cppAuto" || product === "allianzAuto"
+          ? "jeden den před počátkem nové smlouvy"
+          : "ke dni počátku";
       const savedMessage = isRefreshWithoutOriginalInSystem
         ? "Smlouva byla uložena jako REFRESH bez původní smlouvy v systému. Výpočet provize je orientační a musí se sladit podle provizního výpisu."
         : shouldReplaceOriginalContract
           ? linkedRefreshOriginal
-            ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ke dni počátku.`
+            ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ${originalReplacementStornoDescription}.`
             : `Smlouva byla uložena jako ${originalReplacementLabel(product)}. Původní smlouva nebyla v systému nalezena, takže se automaticky nestornovala.`
           : "Smlouva byla uložena mezi sepsané.";
       setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);
@@ -9100,6 +9205,19 @@ export default function CalculatorPage() {
             }
             savingButtonLabel={endorsementDraft ? "Ukládám dodatek…" : "Ukládám smlouvu…"}
             lastSavedContractHref={lastSavedContractHref}
+            showAddToQueue={
+              statementEmbedMode &&
+              statementEmbedParentAvailable &&
+              statementCppAutoQueueEligible &&
+              isAddContractMode &&
+              product === "cppAuto" &&
+              !tipsterModeEnabled &&
+              !originalReplacementWorkflowActive &&
+              !endorsementDraft &&
+              !endorsementWorkflowActive &&
+              !endorsementDuplicateCandidateActive
+            }
+            canAddToQueue={!saving && !pdfImporting && !autoBulkImporting}
             onOpenCoefModal={() => setShowCoefModal(true)}
             onToggleTipsterPercentPanel={() => setTipsterPercentPanelOpen((prev) => !prev)}
             onTipsterPercentDraft={setTipsterPercentDraft}
@@ -9107,6 +9225,7 @@ export default function CalculatorPage() {
             onSaveContract={() => {
               void handleSaveContract();
             }}
+            onAddToQueue={handleAddCppAutoToStatementQueue}
           />
         </div>
         )}

@@ -394,7 +394,15 @@ const NEW_CONTRACT_PUSH_RECENT_SIGNED_DAYS = 45;
 const NEW_CONTRACT_PUSH_MAX_RECIPIENTS = 40;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER = 30;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
-const UNLINKED_ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["domex", "cppAuto"]);
+const UNLINKED_ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>([
+  "domex",
+  "cppAuto",
+  "allianzAuto",
+]);
+const PREVIOUS_DAY_REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
+  "cppAuto",
+  "allianzAuto",
+]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
 
@@ -1124,6 +1132,20 @@ const toIsoDay = (value: Date): string => {
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const originalReplacementStornoDate = ({
+  productKey,
+  policyStartDate,
+}: {
+  productKey: Product;
+  policyStartDate: Date;
+}): Date => {
+  const startDate = new Date(policyStartDate.getTime());
+  if (!PREVIOUS_DAY_REPLACEMENT_STORNO_PRODUCTS.has(productKey)) return startDate;
+
+  startDate.setUTCDate(startDate.getUTCDate() - 1);
+  return startDate;
 };
 
 const parsePositionTimeline = (raw: unknown): PositionTimelineEntry[] => {
@@ -5412,6 +5434,10 @@ export async function handleContractsCreate(req: NextRequest) {
             const refreshOriginalData = (refreshOriginalSnap.data() ?? {}) as ContractDoc;
             const originalAlreadyStorno =
               contractLifecycleStatus(refreshOriginalData) === "storno";
+            const replacementStornoDate = originalReplacementStornoDate({
+              productKey: trustedPayload.productKey,
+              policyStartDate: trustedPayload.policyStartDate,
+            });
             tx.set(
               refreshOriginalRef,
               {
@@ -5419,12 +5445,12 @@ export async function handleContractsCreate(req: NextRequest) {
                   ? {}
                   : {
                       status: "storno",
-                      stornoDate: trustedPayload.policyStartDate,
+                      stornoDate: replacementStornoDate,
                     }),
                 ...contractListIndexFieldsForContract({
                   ...refreshOriginalData,
                   status: "storno",
-                  stornoDate: trustedPayload.policyStartDate,
+                  stornoDate: replacementStornoDate,
                 }),
                 paid: refreshOriginalData.paid === true,
                 userEmail: normalizeEmail(refreshOriginalData.userEmail) || targetOwnerEmail,

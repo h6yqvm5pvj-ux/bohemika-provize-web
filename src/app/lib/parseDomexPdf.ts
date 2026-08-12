@@ -1,9 +1,5 @@
 // src/app/lib/parseDomexPdf.ts
 import { type PaymentFrequency } from "../types/domain";
-import {
-  extractOcrLinesFromPdf,
-  type PdfOcrProgress,
-} from "./pdfOcr";
 
 export type DomexPdfResult = {
   isRefresh?: boolean | null;
@@ -29,12 +25,6 @@ export type DomexPdfResult = {
   domexLiabilityTenant?: boolean | null;
   domexLiabilityLandlord?: boolean | null;
   domexAssistancePlus?: boolean | null;
-  ocrTextUsed?: boolean | null;
-};
-
-export type DomexPdfParseOptions = {
-  onOcrStart?: () => void;
-  onOcrProgress?: (progress: PdfOcrProgress) => void;
 };
 
 type PositionedTextItem = {
@@ -134,9 +124,6 @@ const pickFirstLongNumber = (value: string | null | undefined): string | null =>
   if (!matches?.length) return null;
   return matches[0] ?? null;
 };
-
-const hasUsefulExtractedText = (lines: string[]): boolean =>
-  lines.join(" ").replace(/\s+/g, "").length >= 80;
 
 const normalizeDomexClientName = (value: string | null | undefined): string | null => {
   if (!value) return null;
@@ -298,10 +285,7 @@ async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
     .filter(Boolean);
 }
 
-export async function parseDomexPdf(
-  file: File,
-  options: DomexPdfParseOptions = {}
-): Promise<DomexPdfResult> {
+export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
   const buffer = await file.arrayBuffer();
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
@@ -317,28 +301,12 @@ export async function parseDomexPdf(
   }
 
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-  let lines: string[] = [];
+  const lines: string[] = [];
 
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const pageLines = await extractLayoutLinesFromPage(page);
     lines.push(...pageLines);
-  }
-
-  let ocrTextUsed = false;
-  if (!hasUsefulExtractedText(lines)) {
-    try {
-      options.onOcrStart?.();
-      const ocr = await extractOcrLinesFromPdf(file, {
-        onProgress: options.onOcrProgress,
-      });
-      if (hasUsefulExtractedText(ocr.lines)) {
-        lines = ocr.lines;
-        ocrTextUsed = true;
-      }
-    } catch (err) {
-      console.warn("OCR fallback pro DOMEX PDF selhal", err);
-    }
   }
 
   const fullText = lines.join("\n");
@@ -347,9 +315,6 @@ export async function parseDomexPdf(
   const ascii = normalizeSearchText(normalized);
 
   const result: DomexPdfResult = {};
-  if (ocrTextUsed) {
-    result.ocrTextUsed = true;
-  }
 
   // Náhrada smlouvy -> číslo nahrazované smlouvy.
   const replacementOriginalContractNumber = pickDomexReplacementOriginalContractNumber(

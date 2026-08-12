@@ -2,6 +2,8 @@
 import { type PaymentFrequency } from "../types/domain";
 
 export type AllianzAutoPdfResult = {
+  isRefresh?: boolean | null;
+  refreshOriginalContractNumber?: string | null;
   contractNumber?: string | null;
   clientName?: string | null;
   policyStartDate?: string | null;
@@ -199,6 +201,27 @@ const pickBestContractNumber = (candidates: string[]): string | null => {
     return score(b) - score(a);
   });
   return unique[0] ?? null;
+};
+
+const pickAllianzAutoReplacementOriginalContractNumber = (
+  lines: string[],
+  asciiLines: string[]
+): string | null => {
+  for (let idx = 0; idx < asciiLines.length; idx++) {
+    const asciiLine = asciiLines[idx] ?? "";
+    if (
+      !/nahrazuje\s+puvodni\s+pojistnou\s+smlouvu\s+cislo/i.test(asciiLine) &&
+      !/nahrazuje\s+puvodni\s+pojistnou\s+smlouvu/i.test(asciiLine)
+    ) {
+      continue;
+    }
+
+    for (let step = 0; step <= 3; step++) {
+      const candidate = normalizeContractNumber(lines[idx + step]);
+      if (candidate) return candidate;
+    }
+  }
+  return null;
 };
 
 const normalizeClientName = (value: string | null | undefined): string | null => {
@@ -471,6 +494,15 @@ export async function parseAllianzAutoPdf(file: File): Promise<AllianzAutoPdfRes
   const ascii = stripDiacritics(normalized).toLowerCase();
 
   const result: AllianzAutoPdfResult = {};
+
+  const replacementOriginalContractNumber = pickAllianzAutoReplacementOriginalContractNumber(
+    lines,
+    asciiLines
+  );
+  if (replacementOriginalContractNumber) {
+    result.isRefresh = true;
+    result.refreshOriginalContractNumber = replacementOriginalContractNumber;
+  }
 
   const contractCandidates: string[] = [];
   const explicitContractMatches = [

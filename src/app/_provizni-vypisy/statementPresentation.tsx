@@ -42,6 +42,7 @@ export type StatementCalculatorPrefill = {
   statementPeriod: string | null;
   statementDate: string | null;
   statementChronologyMs: number | null;
+  cppAutoQueueEligible?: boolean;
 };
 
 export type StatementCalculatorPrefillSource = {

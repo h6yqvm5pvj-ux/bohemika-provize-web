@@ -176,7 +176,7 @@ export async function parseContractPdfByProduct(
     }
     case "domex": {
       const { parseDomexPdf } = await import("../lib/parseDomexPdf");
-      return parseDomexPdf(file, options);
+      return parseDomexPdf(file);
     }
     case "cppbytex": {
       const { parseCppBytexPdf } = await import("../lib/parseCppBytexPdf");

@@ -3,7 +3,15 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { BarChart3, CheckCircle2, ChevronDown, FileText, Loader2, Sigma } from "lucide-react";
+import {
+  BarChart3,
+  CheckCircle2,
+  ChevronDown,
+  FileText,
+  ListPlus,
+  Loader2,
+  Sigma,
+} from "lucide-react";
 
 import {
   type CommissionMode,
@@ -53,11 +61,14 @@ type CalculatorResultsSectionProps = {
   saveButtonLabel?: string;
   savingButtonLabel?: string;
   lastSavedContractHref: string | null;
+  showAddToQueue?: boolean;
+  canAddToQueue?: boolean;
   onOpenCoefModal: () => void;
   onToggleTipsterPercentPanel: () => void;
   onTipsterPercentDraft: (value: number) => void;
   onPersistTipsterPercent: (value: number) => void | Promise<void>;
   onSaveContract: () => void;
+  onAddToQueue?: () => void;
 };
 
 function formatMoneyResult(value: number | undefined | null): string {
@@ -206,11 +217,14 @@ export function CalculatorResultsSection({
   saveButtonLabel = "Uložit jako sepsáno",
   savingButtonLabel = "Ukládám smlouvu…",
   lastSavedContractHref,
+  showAddToQueue = false,
+  canAddToQueue = false,
   onOpenCoefModal,
   onToggleTipsterPercentPanel,
   onTipsterPercentDraft,
   onPersistTipsterPercent,
   onSaveContract,
+  onAddToQueue,
 }: CalculatorResultsSectionProps) {
   const [expandedNeonImmediateBreakdown, setExpandedNeonImmediateBreakdown] =
     useState(false);
@@ -706,6 +720,17 @@ export function CalculatorResultsSection({
             </span>
             {saving ? savingButtonLabel : saveButtonLabel}
           </button>
+          {showAddToQueue && onAddToQueue && (
+            <button
+              type="button"
+              onClick={onAddToQueue}
+              disabled={!canAddToQueue || saving}
+              className="ui-focus inline-flex min-w-[190px] items-center justify-center gap-2 rounded-full border border-emerald-700 bg-emerald-700 px-6 py-3 text-sm font-black !text-white shadow-[0_16px_34px_rgba(4,120,87,0.18)] transition hover:-translate-y-0.5 hover:bg-emerald-800 hover:shadow-[0_20px_44px_rgba(4,120,87,0.22)] disabled:cursor-not-allowed disabled:border-slate-400 disabled:bg-slate-400 disabled:opacity-50 disabled:shadow-none disabled:hover:translate-y-0"
+            >
+              <ListPlus size={17} strokeWidth={2.4} className="shrink-0" aria-hidden="true" />
+              Přidat do fronty
+            </button>
+          )}
           {lastSavedContractHref && (
             <Link
               href={lastSavedContractHref}

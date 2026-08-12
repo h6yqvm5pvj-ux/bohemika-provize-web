@@ -78,8 +78,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { saveContractEntry } from "../kalkulacka/useContractSave";
 import {
   CppAutoBatchQueue,
-  CppAutoBatchQueueAddButton,
-  CppAutoBatchQueueContext,
   cppAutoBatchQueueAmount,
   cppAutoBatchQueueItemFromPrefill,
   cppAutoBatchQueueItemKey,
@@ -317,6 +315,8 @@ type StatementProductMapResponse = {
 const STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE = "bohemka:statement-contract-saved";
 const STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE =
   "bohemka:statement-contract-save-completed";
+const STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE =
+  "bohemka:statement-cpp-auto-queue-add";
 
 type StatementContractSavedMessage = {
   type:
@@ -329,6 +329,24 @@ type StatementContractSavedMessage = {
   entryId?: string | null;
   savedAtMs?: number | null;
 };
+
+type StatementCppAutoQueueAddMessage = {
+  type: typeof STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE;
+  contractNumber: string;
+  clientName: string;
+  contractSignedDate: string;
+  policyStartDate: string;
+  amountText: string;
+  frequency: PaymentFrequency;
+  stornoDate: string;
+  pdfFile?: File | null;
+};
+
+const isPaymentFrequency = (value: unknown): value is PaymentFrequency =>
+  value === "monthly" ||
+  value === "quarterly" ||
+  value === "semiannual" ||
+  value === "annual";
 
 const isStatementContractSavedMessage = (
   value: unknown
@@ -351,6 +369,23 @@ const isStatementContractSaveCompletedMessage = (
     record.type === STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE &&
     typeof record.contractNumber === "string" &&
     normalizeContractNumberForMatch(record.contractNumber).length > 0
+  );
+};
+
+const isStatementCppAutoQueueAddMessage = (
+  value: unknown
+): value is StatementCppAutoQueueAddMessage => {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.type === STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE &&
+    typeof record.contractNumber === "string" &&
+    typeof record.clientName === "string" &&
+    typeof record.contractSignedDate === "string" &&
+    typeof record.policyStartDate === "string" &&
+    typeof record.amountText === "string" &&
+    typeof record.stornoDate === "string" &&
+    isPaymentFrequency(record.frequency)
   );
 };
 
@@ -5461,7 +5496,7 @@ function LifeSplitContractCard({
               <BohemkaContractDetailLink contract={systemContract} />
               <ContractDetailLink href={detailUrl} />
               <SjednatelExtranetLink href={extranetUrl} />
-              <StatementCalculatorPrefillButton prefill={calculatorPrefill} />
+              <StatementCalculatorPrefillButton prefill={calculatorPrefill} maxxHref={detailUrl} />
             </div>
           )}
 
@@ -5663,6 +5698,10 @@ function OtherProductContractCard({
     match?.status === "not_found" &&
     calculatorPrefill?.product === "cppAuto" &&
     otherProductContractHasA101Commission(reviewContract);
+  const calculatorPrefillWithCppAutoQueue =
+    calculatorPrefill && cppAutoBatchQueueEligible
+      ? { ...calculatorPrefill, cppAutoQueueEligible: true }
+      : calculatorPrefill;
   const [expanded, setExpanded] = useState(false);
   const markedItem: MarkedDiscrepancyItem | null = markingControls
     ? {
@@ -5834,15 +5873,14 @@ function OtherProductContractCard({
             scope={matchScope}
             presentation={systemMatchPresentation}
           />
-          {(systemContract || detailUrl || extranetUrl || calculatorPrefill || cppAutoBatchQueueEligible) && (
+          {(systemContract || detailUrl || extranetUrl || calculatorPrefillWithCppAutoQueue) && (
             <div className="mt-3 flex flex-wrap gap-2">
               <BohemkaContractDetailLink contract={systemContract} />
               <ContractDetailLink href={detailUrl} />
               <SjednatelExtranetLink href={extranetUrl} />
-              <StatementCalculatorPrefillButton prefill={calculatorPrefill} />
-              <CppAutoBatchQueueAddButton
-                prefill={calculatorPrefill}
-                eligible={cppAutoBatchQueueEligible}
+              <StatementCalculatorPrefillButton
+                prefill={calculatorPrefillWithCppAutoQueue}
+                maxxHref={detailUrl}
               />
             </div>
           )}
@@ -7108,6 +7146,7 @@ function OtherProductsSection({
 function StatementPreview({
   statement,
   matchesByContractNumber,
+  queuedCppAutoContractNumbers,
   currentUserEmail,
   selectedStatementId,
   correctionContext,
@@ -7117,6 +7156,7 @@ function StatementPreview({
 }: {
   statement: ParsedStatement;
   matchesByContractNumber: ContractMatchesByNumber;
+  queuedCppAutoContractNumbers: ReadonlySet<string>;
   currentUserEmail?: string | null;
   selectedStatementId?: string | null;
   correctionContext?: StatementCorrectionContext;
@@ -7137,6 +7177,20 @@ function StatementPreview({
       parsePeriodEndDate(statement.header.period)?.getTime() ??
       null,
   };
+  const visibleOtherProductContracts = statement.otherProductContracts.filter((contract) => {
+    const contractNumber = normalizeContractNumberForMatch(contract.contractNumber);
+    if (!contractNumber || !queuedCppAutoContractNumbers.has(contractNumber)) return true;
+    if (!contractHasProductCategory(contract, "auto")) return true;
+    if (!otherProductContractHasA101Commission(contract)) return true;
+
+    return !isUnpairedContractMatch(
+      contractMatchForNumber(
+        matchesByContractNumber,
+        contract.contractNumber,
+        otherProductContractMatchScope(contract)
+      )
+    );
+  });
   const {
     unpairedLifeSplitContracts,
     pairedLifeSplitContracts,
@@ -7151,7 +7205,7 @@ function StatementPreview({
     remainingOtherProductContracts,
   } = groupStatementPreviewContracts({
     lifeSplitContracts: statement.lifeSplitContracts,
-    otherProductContracts: statement.otherProductContracts,
+    otherProductContracts: visibleOtherProductContracts,
     isUnpairedLifeSplitContract: (contract) =>
       isUnpairedContractMatch(
         contractMatchForNumber(
@@ -8030,6 +8084,52 @@ export default function CommissionStatementsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleCppAutoQueueAdd = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (!isStatementCppAutoQueueAddMessage(event.data)) return;
+
+      const prefill = calculatorPrefillPanel;
+      if (!prefill || prefill.product !== "cppAuto" || !prefill.cppAutoQueueEligible) return;
+
+      const queuedPrefill: StatementCalculatorPrefill = {
+        ...prefill,
+        contractNumber: event.data.contractNumber.trim(),
+        clientName: event.data.clientName.trim(),
+        contractSignedDate: event.data.contractSignedDate.trim(),
+        policyStartDate: event.data.policyStartDate.trim(),
+        amountText: event.data.amountText.trim(),
+        frequency: event.data.frequency,
+      };
+      const pdfFile =
+        typeof File !== "undefined" && event.data.pdfFile instanceof File
+          ? event.data.pdfFile
+          : null;
+      const nextItem = {
+        ...cppAutoBatchQueueItemFromPrefill(queuedPrefill),
+        stornoDate: event.data.stornoDate.trim(),
+        pdfFile,
+      };
+      const contractKey = cppAutoBatchQueueItemKey(queuedPrefill);
+
+      setCppAutoBatchQueue((previous) => {
+        const duplicate = contractKey
+          ? previous.some((item) => cppAutoBatchQueueItemKey(item) === contractKey)
+          : false;
+        if (duplicate) return previous;
+        return [...previous, nextItem];
+      });
+      setCppAutoBatchQueueNotice(
+        contractKey
+          ? `Smlouva ${queuedPrefill.contractNumber} je připravená ve frontě.`
+          : "Smlouva je připravená ve frontě; před nahráním doplň její číslo."
+      );
+    };
+
+    window.addEventListener("message", handleCppAutoQueueAdd);
+    return () => window.removeEventListener("message", handleCppAutoQueueAdd);
+  }, [calculatorPrefillPanel]);
+
   const matchStats = useMemo<ContractMatchStats>(() => {
     let matched = 0;
     let loading = 0;
@@ -8542,27 +8642,6 @@ export default function CommissionStatementsPage() {
     }
   };
 
-  const addCppAutoToBatchQueue = useCallback((prefill: StatementCalculatorPrefill) => {
-    if (prefill.product !== "cppAuto") return;
-
-    const nextItem = cppAutoBatchQueueItemFromPrefill(prefill);
-    const contractKey = cppAutoBatchQueueItemKey(prefill);
-    setCppAutoBatchQueue((previous) => {
-      const duplicate = contractKey
-        ? previous.some(
-            (item) => cppAutoBatchQueueItemKey(item) === contractKey
-          )
-        : false;
-      if (duplicate) return previous;
-      return [...previous, nextItem];
-    });
-    setCppAutoBatchQueueNotice(
-      contractKey
-        ? `Smlouva ${prefill.contractNumber} je připravená ve frontě.`
-        : "Smlouva je připravená ve frontě; před uložením doplň její číslo."
-    );
-  }, []);
-
   const updateCppAutoBatchQueueItem = useCallback(
     (id: string, patch: CppAutoBatchQueuePatch) => {
       setCppAutoBatchQueue((previous) =>
@@ -8875,6 +8954,15 @@ export default function CommissionStatementsPage() {
     matchStats.total > 0 &&
     matchStats.completed < matchStats.total &&
     !matchingError;
+  const queuedCppAutoContractNumbers = useMemo(
+    () =>
+      new Set(
+        cppAutoBatchQueue
+          .map((item) => normalizeContractNumberForMatch(item.contractNumber))
+          .filter(Boolean)
+      ),
+    [cppAutoBatchQueue]
+  );
   const canReprocessSelectedHistoryStatement =
     statements.length === 1 &&
     statementFilesForProcessing.length === 0 &&
@@ -8888,8 +8976,7 @@ export default function CommissionStatementsPage() {
   return (
     <BohemkaContractDetailModalContext.Provider value={setContractDetailModal}>
       <StatementCalculatorPrefillContext.Provider value={setCalculatorPrefillPanel}>
-        <CppAutoBatchQueueContext.Provider value={addCppAutoToBatchQueue}>
-          <AppLayout active="statements">
+        <AppLayout active="statements">
       <div className="w-full max-w-7xl space-y-4">
         {!freshUploadPairingInProgress && (
           <section
@@ -9151,6 +9238,7 @@ export default function CommissionStatementsPage() {
                   key={`${statement.fileName}-${statement.header.statementNumber ?? "bez-cisla"}`}
                   statement={statement}
                   matchesByContractNumber={matchesByContractNumber}
+                  queuedCppAutoContractNumbers={queuedCppAutoContractNumbers}
                   currentUserEmail={effectiveUserEmail}
                   selectedStatementId={statementIdForActions}
                   onRequestSystemStorno={openStornoActionModal}
@@ -9314,8 +9402,7 @@ export default function CommissionStatementsPage() {
           }}
         />
       )}
-          </AppLayout>
-        </CppAutoBatchQueueContext.Provider>
+        </AppLayout>
       </StatementCalculatorPrefillContext.Provider>
     </BohemkaContractDetailModalContext.Provider>
   );

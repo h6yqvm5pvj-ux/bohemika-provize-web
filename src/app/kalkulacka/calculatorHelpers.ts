@@ -40,7 +40,12 @@ export const POSITION_ORDER: Position[] = [
   "manazer10",
 ];
 
-const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>(["neon", "domex", "cppAuto"]);
+const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>([
+  "neon",
+  "domex",
+  "cppAuto",
+  "allianzAuto",
+]);
 const POLICY_END_DATE_PRODUCTS = new Set<Product>([
   "cppcestovko",
   "axacestovko",

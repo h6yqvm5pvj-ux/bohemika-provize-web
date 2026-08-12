@@ -236,23 +236,31 @@ const statementCalculatorPrefillHref = (prefill: StatementCalculatorPrefill): st
   if (prefill.statementChronologyMs != null) {
     params.set("sourceStatementChronologyMs", String(prefill.statementChronologyMs));
   }
+  if (prefill.cppAutoQueueEligible) params.set("cppAutoQueueEligible", "1");
   return `/kalkulacka?${params.toString()}`;
 };
 
 export function StatementCalculatorPrefillButton({
   prefill,
   compact = false,
+  maxxHref,
 }: {
   prefill: StatementCalculatorPrefill | null;
   compact?: boolean;
+  maxxHref?: string | null;
 }) {
   const openCalculatorPrefill = useContext(StatementCalculatorPrefillContext);
   if (!prefill || !openCalculatorPrefill) return null;
 
+  const openContractForm = () => {
+    if (maxxHref) window.open(maxxHref, "_blank", "noopener,noreferrer");
+    openCalculatorPrefill(prefill);
+  };
+
   return (
     <button
       type="button"
-      onClick={() => openCalculatorPrefill(prefill)}
+      onClick={openContractForm}
       className={
         compact
           ? "inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800 hover:border-violet-300 hover:bg-violet-100"

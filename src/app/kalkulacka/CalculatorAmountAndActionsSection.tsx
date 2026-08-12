@@ -93,8 +93,15 @@ export function CalculatorAmountAndActionsSection({
   const activeRefreshContractActionButtonClass = `${refreshContractActionButtonClass} ring-2 ring-violet-200`;
   const changeContractActionButtonClass = `${contractActionButtonBaseClass} border-violet-200 bg-white text-slate-950 shadow-[0_10px_22px_rgba(15,23,42,0.08)] hover:border-violet-300 hover:bg-violet-50`;
   const activeChangeContractActionButtonClass = `${changeContractActionButtonClass} ring-2 ring-violet-200`;
-  const canUseOriginalReplacement = product === "neon" || product === "domex" || product === "cppAuto";
-  const canSaveUnlinkedOriginalReplacement = product === "domex" || product === "cppAuto";
+  const canUseOriginalReplacement =
+    product === "neon" ||
+    product === "domex" ||
+    product === "cppAuto" ||
+    product === "allianzAuto";
+  const canSaveUnlinkedOriginalReplacement =
+    product === "domex" || product === "cppAuto" || product === "allianzAuto";
+  const usesPreviousDayReplacementStorno =
+    product === "cppAuto" || product === "allianzAuto";
   const originalReplacementButtonLabel =
     product === "neon"
       ? refreshOriginalOpen
@@ -104,7 +111,16 @@ export function CalculatorAmountAndActionsSection({
         ? "Náhrada zapnutá"
         : "Náhrada";
   const originalReplacementProductLabel =
-    product === "domex" ? "DOMEX" : product === "cppAuto" ? "ČPP Auto" : "ČPP ŽP NEON";
+    product === "domex"
+      ? "DOMEX"
+      : product === "cppAuto"
+        ? "ČPP Auto"
+        : product === "allianzAuto"
+          ? "Allianz Auto"
+          : "ČPP ŽP NEON";
+  const originalReplacementStornoDescription = usesPreviousDayReplacementStorno
+    ? "jeden den před datem počátku nové smlouvy"
+    : "ke dni počátku nové smlouvy";
 
   if (!showAmountInput && !showComfortControls && !showContractActionButtons && !showManualEntryButton) {
     return null;
@@ -374,8 +390,8 @@ export function CalculatorAmountAndActionsSection({
                     />
                     <p className="text-[11px] text-slate-600">
                       {canSaveUnlinkedOriginalReplacement
-                        ? "Pokud se původní smlouva najde u stejného vlastníka a produktu, při uložení se stornuje ke dni počátku nové smlouvy."
-                        : "Při uložení se původní smlouva stornuje ke dni počátku nové smlouvy."}
+                        ? `Pokud se původní smlouva najde u stejného vlastníka a produktu, při uložení se stornuje ${originalReplacementStornoDescription}.`
+                        : `Při uložení se původní smlouva stornuje ${originalReplacementStornoDescription}.`}
                     </p>
                   </>
                 )}

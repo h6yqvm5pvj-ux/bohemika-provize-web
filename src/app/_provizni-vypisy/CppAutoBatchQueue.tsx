@@ -1,11 +1,11 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { useState } from "react";
 import {
+  ChevronDown,
   CheckCircle2,
   FileText,
   Loader2,
-  Plus,
   Trash2,
   TriangleAlert,
   Upload,
@@ -58,10 +58,6 @@ export type CppAutoBatchQueuePatch = Partial<
     | "pdfFile"
   >
 >;
-
-type QueueAddHandler = (prefill: StatementCalculatorPrefill) => void;
-
-export const CppAutoBatchQueueContext = createContext<QueueAddHandler | null>(null);
 
 const normalizedContractNumber = (value: string): string =>
   value.trim().replace(/\s+/g, "").toLocaleUpperCase("cs-CZ");
@@ -157,28 +153,6 @@ export const validateCppAutoBatchQueueItem = (item: CppAutoBatchQueueItem): stri
   return null;
 };
 
-export function CppAutoBatchQueueAddButton({
-  prefill,
-  eligible,
-}: {
-  prefill: StatementCalculatorPrefill | null;
-  eligible: boolean;
-}) {
-  const addToQueue = useContext(CppAutoBatchQueueContext);
-  if (!prefill || !eligible || !addToQueue) return null;
-
-  return (
-    <button
-      type="button"
-      onClick={() => addToQueue(prefill)}
-      className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 hover:border-emerald-300 hover:bg-emerald-100"
-    >
-      <Plus className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-      Přidat do fronty
-    </button>
-  );
-}
-
 const statusPresentation = (
   item: CppAutoBatchQueueItem
 ): { label: string; className: string } => {
@@ -216,6 +190,8 @@ export function CppAutoBatchQueue({
   onClearSaved: () => void;
   notice?: string | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (items.length === 0) return null;
 
   const pendingCount = items.filter((item) => item.status !== "saved").length;
@@ -223,19 +199,38 @@ export function CppAutoBatchQueue({
 
   return (
     <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/55 shadow-[0_14px_32px_rgba(5,150,105,0.08)]">
-      <div className="flex flex-col gap-3 border-b border-emerald-200 bg-white/75 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 bg-white/75 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={expanded}
+          aria-controls="cpp-auto-batch-queue-content"
+        >
+          <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-100 text-emerald-800">
               <Upload className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
             </span>
             <h2 className="text-base font-black text-slate-950">Fronta ČPP Auto · A101</h2>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800">
+              {pendingCount} {pendingCount === 1 ? "smlouva" : "smluv"}
+            </span>
           </div>
           <p className="mt-1 text-sm font-medium text-slate-600">
-            Uprav údaje, volitelně přilož PDF a ulož vše najednou. Každá položka se ukládá
-            pod právě zobrazeným uživatelem.
+            {expanded
+              ? "Uprav údaje a nahraj připravené smlouvy."
+              : "Rozbalit a zkontrolovat připravené smlouvy."}
           </p>
-        </div>
+          </div>
+          <ChevronDown
+            className={`h-5 w-5 shrink-0 text-emerald-800 transition-transform ${
+              expanded ? "rotate-180" : ""
+            }`}
+            strokeWidth={2.2}
+            aria-hidden="true"
+          />
+        </button>
         <div className="flex flex-wrap items-center gap-2">
           {savedCount > 0 && (
             <button
@@ -251,7 +246,10 @@ export function CppAutoBatchQueue({
           <button
             type="button"
             disabled={isRunning || pendingCount === 0}
-            onClick={onRun}
+            onClick={() => {
+              setExpanded(true);
+              onRun();
+            }}
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white shadow-[0_10px_22px_rgba(4,120,87,0.2)] hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isRunning ? (
@@ -259,18 +257,22 @@ export function CppAutoBatchQueue({
             ) : (
               <Upload className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
             )}
-            {isRunning ? "Ukládám dávku…" : `Uložit a spárovat (${pendingCount})`}
+            {isRunning ? "Nahrávám frontu…" : `Nahrát frontu (${pendingCount})`}
           </button>
         </div>
       </div>
 
-      {notice && (
-        <div className="mx-3 mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900 sm:mx-4">
-          {notice}
-        </div>
-      )}
+      <div
+        id="cpp-auto-batch-queue-content"
+        className={expanded ? "border-t border-emerald-200" : "hidden"}
+      >
+        {notice && (
+          <div className="mx-3 mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900 sm:mx-4">
+            {notice}
+          </div>
+        )}
 
-      <div className="space-y-3 p-3 sm:p-4">
+        <div className="space-y-3 p-3 sm:p-4">
         {items.map((item) => {
           const status = statusPresentation(item);
           const disabled = queueItemDisabled(item, isRunning);
@@ -424,6 +426,7 @@ export function CppAutoBatchQueue({
             </article>
           );
         })}
+        </div>
       </div>
     </section>
   );

@@ -16,14 +16,11 @@ import {
   classifyGeneralCommissionCode,
   formatLocalDate,
   formatMoney,
-  normalizeContractNumberForMatch,
   resolveStatementProduct,
 } from "./statementParsing";
 import {
   fullAutoStornoInferenceForGroup,
   groupStornoItemsByContract,
-  groupStornoRowsByContract,
-  stornoSystemUncertainty,
   suggestedStornoDateForStatement,
 } from "./statementStorno";
 import {
@@ -56,12 +53,6 @@ const czechCountLabel = (
   few: string,
   many: string
 ): string => `${count} ${count === 1 ? singular : count >= 2 && count <= 4 ? few : many}`;
-
-const uncertaintyCountLabel = (count: number): string => {
-  if (count === 1) return "1 nejasnost";
-  if (count >= 2 && count <= 4) return `${count} nejasnosti`;
-  return `${count} nejasností`;
-};
 
 const generalCommissionKindClass = (kind: GeneralCommissionKind): string => {
   switch (kind) {
@@ -219,7 +210,6 @@ export function StornoContractsSectionPanel({
   const [pairedExpanded, setPairedExpanded] = useState(true);
   const [unpairedExpanded, setUnpairedExpanded] = useState(true);
   const otherPaymentStornos = statement.otherPayments.filter((payment) => payment.isStorno);
-  const stornoStatementGroups = groupStornoRowsByContract(statement.stornoRows);
   const combinedStornoGroups = groupStornoItemsByContract(
     statement.stornoRows,
     otherPaymentStornos
@@ -233,14 +223,6 @@ export function StornoContractsSectionPanel({
   const totalStorno =
     statement.stornoRows.reduce((sum, row) => sum + row.commission, 0) +
     otherPaymentStornos.reduce((sum, payment) => sum + payment.amount, 0);
-  const statementStornoTotal = statement.stornoRows.reduce(
-    (sum, row) => sum + row.commission,
-    0
-  );
-  const otherPaymentStornoTotal = otherPaymentStornos.reduce(
-    (sum, payment) => sum + payment.amount,
-    0
-  );
   const stornoGroupEntries = combinedStornoGroups.map((group, groupIndex) => {
     const match = contractMatchForNumber(matchesByContractNumber, group.contractNumber);
     const systemContract = matchedSystemContract(match);
@@ -252,78 +234,65 @@ export function StornoContractsSectionPanel({
   const unpairedStornoGroupEntries = stornoGroupEntries.filter(
     (entry) => !entry.systemContract
   );
-  const stornoUncertaintyCount = stornoGroupEntries.filter(
-    (entry) =>
-      !normalizeContractNumberForMatch(entry.group.contractNumber) ||
-      stornoSystemUncertainty(entry.match)
-  ).length;
   type StornoGroupEntry = (typeof stornoGroupEntries)[number];
   const stornoSectionTotal = (entries: StornoGroupEntry[]): number =>
     entries.reduce((sum, entry) => sum + entry.group.totalAmount, 0);
-  const stornoSectionItemCount = (entries: StornoGroupEntry[]): number =>
-    entries.reduce(
-      (sum, entry) => sum + entry.group.rows.length + entry.group.payments.length,
-      0
-    );
   const pairedNeedsSystemStornoCount = pairedStornoGroupEntries.filter(
     (entry) => entry.systemContract && !systemContractIsStorno(entry.systemContract)
   ).length;
   const stornoSections = [
     {
       key: "paired",
-      title: "Spárované smlouvy",
-      description: "Storna s nalezenou smlouvou v systému.",
+      title: "Spárované",
+      description: "Smlouvy nalezené v systému.",
       entries: pairedStornoGroupEntries,
       expanded: pairedExpanded,
       onToggle: () => setPairedExpanded((value) => !value),
       icon: CheckCircle2,
       warningCount: pairedNeedsSystemStornoCount,
-      warningLabel: "není storno v systému",
-      warningClass: "bg-slate-950 text-white",
+      warningLabel: "čeká na označení storna",
+      warningClass: "bg-amber-100 text-amber-900",
     },
     {
       key: "unpaired",
-      title: "Nespárované smlouvy",
-      description: "Storna bez jednoznačné shody v systému.",
+      title: "Nespárované",
+      description: "Vyžadují ruční spárování.",
       entries: unpairedStornoGroupEntries,
       expanded: unpairedExpanded,
       onToggle: () => setUnpairedExpanded((value) => !value),
       icon: AlertTriangle,
       warningCount: unpairedStornoGroupEntries.length,
-      warningLabel: "k ruční kontrole",
-      warningClass: "bg-violet-50 text-violet-800 ring-1 ring-violet-100",
+      warningLabel: "k ručnímu spárování",
+      warningClass: "bg-amber-100 text-amber-900",
     },
   ].filter((section) => section.entries.length > 0);
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-white/70 bg-white/75 shadow-[0_18px_42px_rgba(15,23,42,0.08)] ring-1 ring-violet-100/70 backdrop-blur-xl">
-      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/70" aria-hidden="true" />
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-3 px-4 py-4 text-left sm:flex-row sm:items-center sm:justify-between"
+        className="flex w-full flex-col gap-3 px-4 py-4 text-left transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
         aria-expanded={expanded}
       >
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-700">
             <AlertTriangle className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
           </span>
           <div>
-            <h3 className="text-lg font-black tracking-tight text-slate-950">Stornované smlouvy</h3>
-            <p className="text-sm font-semibold text-slate-600">
-              Storna z výpisu a vratky provizí z ostatních plateb.
+            <h3 className="text-lg font-black tracking-tight text-slate-950">Storna</h3>
+            <p className="text-sm text-slate-600">
+              {pairedStornoGroupEntries.length} spárovaných · {unpairedStornoGroupEntries.length} nespárovaných
             </p>
           </div>
         </div>
-        <span className="inline-flex items-center gap-2 text-sm font-bold text-slate-950">
-          <span>{combinedStornoGroups.length} smluv · {formatMoney(totalStorno)} Kč</span>
-          {stornoUncertaintyCount > 0 && (
-            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
-              {uncertaintyCountLabel(stornoUncertaintyCount)}
-            </span>
-          )}
+        <span className="inline-flex items-center gap-3 text-right">
+          <span>
+            <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">Celkem</span>
+            <span className="block text-lg font-black text-rose-700">{formatMoney(totalStorno)} Kč</span>
+          </span>
           <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+            className={`h-4 w-4 text-slate-500 transition-transform ${expanded ? "rotate-180" : ""}`}
             strokeWidth={2.2}
             aria-hidden="true"
           />
@@ -331,92 +300,75 @@ export function StornoContractsSectionPanel({
       </button>
 
       {expanded && (
-        <div className="space-y-4 border-t border-violet-100 px-4 py-4">
-          <div className="overflow-hidden rounded-lg border border-violet-100 bg-white/45">
-            <div className="grid divide-y divide-violet-100 md:grid-cols-3 md:divide-x md:divide-y-0">
-              <StornoTotal label="Storna z výpisu" value={`${stornoStatementGroups.length} smluv · ${statement.stornoRows.length} položek`} amount={statementStornoTotal} />
-              <StornoTotal label="Ostatní platby" value={`${otherPaymentStornos.length} položek`} amount={otherPaymentStornoTotal} />
-              <StornoTotal label="Celkem" value={`${combinedStornoGroups.length} smluv`} amount={totalStorno} />
-            </div>
-          </div>
+        <div className="space-y-5 border-t border-slate-200 px-4 py-4">
+          {stornoSections.map((section) => {
+            const SectionIcon = section.icon;
+            const sectionTotal = stornoSectionTotal(section.entries);
 
-          <div className="space-y-3">
-            {stornoSections.map((section) => {
-              const SectionIcon = section.icon;
-              return (
-                <div
-                  key={`storno-section-${section.key}`}
-                  className="overflow-hidden rounded-lg border border-white/70 bg-white/65 shadow-[0_14px_32px_rgba(15,23,42,0.05)] ring-1 ring-violet-100/70"
+            return (
+              <section key={`storno-section-${section.key}`}>
+                <button
+                  type="button"
+                  onClick={section.onToggle}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg px-1 py-2 text-left transition hover:bg-slate-50"
+                  aria-expanded={section.expanded}
                 >
-                  <button
-                    type="button"
-                    onClick={section.onToggle}
-                    className="flex w-full flex-col gap-3 bg-white/35 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                    aria-expanded={section.expanded}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
-                        <SectionIcon className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                      </span>
-                      <div>
-                        <h4 className="text-base font-bold text-slate-950">{section.title}</h4>
-                        <p className="text-sm text-slate-600">{section.description}</p>
-                      </div>
-                    </div>
-                    <span className="inline-flex flex-wrap items-center justify-end gap-2 text-sm font-semibold text-slate-950">
-                      <span>
-                        {section.entries.length} smluv · {stornoSectionItemCount(section.entries)} položek ·{" "}
-                        {formatMoney(stornoSectionTotal(section.entries))} Kč
-                      </span>
-                      {section.warningCount > 0 && (
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${section.warningClass}`}>
-                          {section.warningCount} {section.warningLabel}
-                        </span>
-                      )}
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform ${section.expanded ? "rotate-180" : ""}`}
-                        strokeWidth={2.2}
-                        aria-hidden="true"
-                      />
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                        section.key === "paired" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      <SectionIcon className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
                     </span>
-                  </button>
-                  {section.expanded && (
-                    <div className="space-y-3 border-t border-violet-100 px-4 py-4">
-                      {section.entries.map(({ group, groupIndex, match, systemContract }) => (
-                        <StornoContractGroupCard
-                          key={`storno-contract-group-${group.key}-${groupIndex}`}
-                          statement={statement}
-                          statementId={statementId}
-                          group={group}
-                          groupIndex={groupIndex}
-                          match={match}
-                          systemContract={systemContract}
-                          currentUserEmail={currentUserEmail}
-                          statusRuleByCode={statusRuleByCode}
-                          markingControls={markingControls}
-                          onRequestSystemStorno={onRequestSystemStorno}
-                          presentation={presentation}
-                        />
-                      ))}
+                    <div>
+                      <h4 className="font-bold text-slate-950">{section.title}</h4>
+                      <p className="text-xs text-slate-600">{section.description}</p>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                  </div>
+                  <span className="flex shrink-0 items-center gap-2 text-right">
+                    <span>
+                      <span className="block text-sm font-black text-slate-950">{formatMoney(sectionTotal)} Kč</span>
+                      <span className="block text-xs font-medium text-slate-500">{section.entries.length} smluv</span>
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 text-slate-500 transition-transform ${section.expanded ? "rotate-180" : ""}`}
+                      strokeWidth={2.2}
+                      aria-hidden="true"
+                    />
+                  </span>
+                </button>
+                {section.warningCount > 0 && (
+                  <p className={`mt-1 rounded-md px-3 py-2 text-xs font-semibold ${section.warningClass}`}>
+                    {section.warningCount} {section.warningLabel}
+                  </p>
+                )}
+                {section.expanded && (
+                  <div className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
+                    {section.entries.map(({ group, groupIndex, match, systemContract }) => (
+                      <StornoContractGroupCard
+                        key={`storno-contract-group-${group.key}-${groupIndex}`}
+                        statement={statement}
+                        statementId={statementId}
+                        group={group}
+                        groupIndex={groupIndex}
+                        match={match}
+                        systemContract={systemContract}
+                        currentUserEmail={currentUserEmail}
+                        statusRuleByCode={statusRuleByCode}
+                        markingControls={markingControls}
+                        onRequestSystemStorno={onRequestSystemStorno}
+                        presentation={presentation}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
-    </div>
-  );
-}
-
-function StornoTotal({ label, value, amount }: { label: string; value: string; amount: number }) {
-  return (
-    <div className="px-4 py-3">
-      <div className="text-[11px] font-black uppercase tracking-wide text-violet-700">{label}</div>
-      <div className="mt-2 text-base font-black text-slate-950">{value}</div>
-      <div className="mt-1 text-sm font-semibold text-slate-600">{formatMoney(amount)} Kč</div>
-    </div>
+    </section>
   );
 }
 
@@ -445,6 +397,7 @@ function StornoContractGroupCard({
   onRequestSystemStorno?: (target: StornoStatementActionTarget) => void;
   presentation: SystemMatchPresentation;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const row = group.rows[0] ?? null;
   const stornoInference = fullAutoStornoInferenceForGroup({
     statement,
@@ -538,157 +491,136 @@ function StornoContractGroupCard({
     : null;
 
   return (
-    <article className="rounded-lg border border-white/80 bg-white/80 px-3 py-3 text-sm shadow-[0_12px_28px_rgba(15,23,42,0.05)] ring-1 ring-violet-100/60">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <article className="bg-white text-sm">
+      <button
+        type="button"
+        onClick={() => setDetailsOpen((value) => !value)}
+        className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
+        aria-expanded={detailsOpen}
+      >
         <div className="min-w-0">
+          <div className="truncate font-bold text-slate-950">
+            Smlouva {group.contractNumber || "bez čísla"}
+          </div>
+          <div className="mt-0.5 truncate font-semibold text-slate-800">{displayClient}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
+            <span>{productLabel}</span>
+            {group.rows.length > 0 && <span>· {rowItemsLabel}</span>}
+            {group.payments.length > 0 && <span>· {paymentItemsLabel}</span>}
+          </div>
+          <div className="mt-2">
+            {systemContract ? (
+              <StornoSystemStatusBadge contract={systemContract} />
+            ) : (
+              <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-bold text-amber-900">
+                Nenalezeno v systému
+              </span>
+            )}
+          </div>
+        </div>
+        <span className="whitespace-nowrap text-right text-base font-black text-rose-700">
+          {formatMoney(group.totalAmount)} Kč
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-slate-400 transition-transform ${detailsOpen ? "rotate-180" : ""}`}
+          strokeWidth={2.2}
+          aria-hidden="true"
+        />
+      </button>
+
+      {detailsOpen && (
+        <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-slate-950">Smlouva {group.contractNumber || "—"}</span>
             <BohemkaContractDetailLink contract={systemContract} compact />
             <ContractDetailLink href={row?.detailUrl} compact />
             <SjednatelExtranetLink href={extranetUrl} compact />
             <SystemMatchBadge match={match} presentation={presentation} />
-            {group.rows.length > 0 && (
-              <span className="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
-                Storno z výpisu
-              </span>
-            )}
-            {group.payments.length > 0 && (
-              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
-                Ostatní platby
-              </span>
-            )}
-            <StornoSystemStatusBadge contract={systemContract} />
             {hasB36Payment && (
-              <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">
-                B36
-              </span>
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800">B36</span>
             )}
           </div>
-          {markedItem && (
-            <div className="mt-2">
-              <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
-            </div>
-          )}
-          <div className="mt-1 text-[15px] font-semibold text-slate-800">{displayClient}</div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
-            <span>{productLabel}</span>
-            {row && <span>Uzavřeno: {row.signedAt || "—"}</span>}
-            {group.rows.length > 0 && (
-              <span>Rez. fond celkem: {formatMoney(group.totalReserveFund)} Kč</span>
-            )}
-            {group.rows.length > 0 && <span>{rowItemsLabel}</span>}
-            {group.payments.length > 0 && <span>{paymentItemsLabel}</span>}
-          </div>
+
+          {markedItem && <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />}
+
           {statusCodes.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="font-semibold text-slate-500">Stav z výpisu:</span>
               {statusCodes.map((statusCode) => (
-                <span
-                  key={statusCode}
-                  className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-xs font-bold text-violet-800 ring-1 ring-violet-100"
-                >
+                <span key={statusCode} className="rounded-full bg-violet-50 px-2 py-0.5 font-bold text-violet-800">
                   {statusCode}
                 </span>
               ))}
               {statusRules.map((rule) => (
-                <span
-                  key={rule.code}
-                  className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700"
-                >
+                <span key={rule.code} className="rounded-full bg-white px-2 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200">
                   {rule.label}
                 </span>
               ))}
             </div>
           )}
-        </div>
-        <div className="rounded-lg bg-slate-950 px-3 py-2 text-right text-white shadow-[0_12px_26px_rgba(15,23,42,0.15)] lg:min-w-[178px]">
-          <div className="text-[11px] font-black uppercase tracking-wide text-violet-200">Celkem</div>
-          <div className="mt-1 whitespace-nowrap text-lg font-black text-white">
-            {formatMoney(group.totalAmount)} Kč
-          </div>
-          {group.rows.length > 0 && group.payments.length > 0 && (
-            <div className="mt-1 text-[11px] font-semibold text-white/70">
-              Výpis {formatMoney(group.totalCommission)} Kč · platby {formatMoney(group.totalOtherPayments)} Kč
+
+          {group.rows.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+                <span>Položky storna</span>
+                <span>Provize</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {group.rows.map((item) => {
+                  const itemProduct = resolveStatementProduct(item.product);
+                  const itemClassification = classifyGeneralCommissionCode(item.product, item.type);
+                  const showProduct = uniqueProducts.length > 1;
+
+                  return (
+                    <div
+                      key={`${item.id}-${item.type}-${item.statusCode}-${item.commission}`}
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
+                    >
+                      <span className="min-w-0">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 font-semibold ${generalCommissionKindClass(itemClassification.kind)}`}>
+                          {item.type || "—"}
+                        </span>
+                        {showProduct && <span className="ml-2 text-slate-500">{itemProduct.rawCode}</span>}
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap font-bold text-slate-950">
+                        {formatMoney(item.commission)} Kč
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
-        </div>
-      </div>
 
-      {group.rows.length > 0 && (
-        <div className="mt-3 overflow-x-auto rounded-lg border border-violet-100">
-          <div className="grid min-w-[560px] grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-3 bg-violet-50/70 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-violet-800">
-            <span>Storna z výpisu</span>
-            <span className="text-right">Základna</span>
-            <span className="text-right">Provize</span>
-            <span className="text-right">Rez. fond</span>
-          </div>
-          <div className="min-w-[560px] divide-y divide-violet-50 bg-white">
-            {group.rows.map((item) => {
-              const itemProduct = resolveStatementProduct(item.product);
-              const itemClassification = classifyGeneralCommissionCode(item.product, item.type);
-              const showProduct = uniqueProducts.length > 1;
-
-              return (
-                <div
-                  key={`${item.id}-${item.type}-${item.statusCode}-${item.commission}`}
-                  className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-3 px-3 py-2 text-xs"
-                >
-                  <div className="min-w-0">
-                    <span className={`inline-flex rounded-full border px-2 py-0.5 font-semibold ${generalCommissionKindClass(itemClassification.kind)}`}>
-                      {item.type || "—"}
-                    </span>
-                    {showProduct && <span className="ml-2 font-medium text-slate-500">{itemProduct.rawCode}</span>}
-                  </div>
-                  <span className="whitespace-nowrap text-right font-medium text-slate-600">
-                    {formatMoney(item.base)} Kč
-                  </span>
-                  <span className="whitespace-nowrap text-right font-bold text-slate-950">
-                    {formatMoney(item.commission)} Kč
-                  </span>
-                  <span className="whitespace-nowrap text-right font-medium text-slate-600">
-                    {formatMoney(item.reserveFund)} Kč
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {group.payments.length > 0 && (
-        <div className="mt-3 overflow-x-auto rounded-lg border border-violet-100">
-          <div className="grid min-w-[560px] grid-cols-[minmax(0,1fr)_auto] gap-3 bg-violet-50/70 px-3 py-2 text-[11px] font-black uppercase tracking-wide text-violet-800">
-            <span>Storna z ostatních plateb</span>
-            <span className="text-right">Částka</span>
-          </div>
-          <div className="min-w-[560px] divide-y divide-violet-50 bg-white">
-            {group.payments.map((payment) => (
-              <div
-                key={`payment-${payment.index}-${payment.contractNumber ?? "bez-cisla"}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-xs"
-              >
-                <div className="min-w-0 font-medium text-slate-600">
-                  {payment.description}
-                  {payment.isB36Half && (
-                    <span className="ml-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
-                      B36
-                    </span>
-                  )}
-                </div>
-                <span className="whitespace-nowrap text-right font-bold text-slate-950">
-                  {formatMoney(payment.amount)} Kč
-                </span>
+          {group.payments.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+                <span>Ostatní platby</span>
+                <span>Částka</span>
               </div>
-            ))}
-          </div>
+              <div className="divide-y divide-slate-100">
+                {group.payments.map((payment) => (
+                  <div
+                    key={`payment-${payment.index}-${payment.contractNumber ?? "bez-cisla"}`}
+                    className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
+                  >
+                    <span className="min-w-0 font-medium text-slate-700">{payment.description}</span>
+                    <span className="shrink-0 whitespace-nowrap font-bold text-slate-950">
+                      {formatMoney(payment.amount)} Kč
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <SystemMatchPanel
+            match={match}
+            expectedProductKey={row ? resolveStatementProduct(row.product).productKey : null}
+            presentation={presentation}
+          />
+          <StornoSystemActionPanel target={actionTarget} onRequestStorno={onRequestSystemStorno} />
         </div>
       )}
-
-      <SystemMatchPanel
-        match={match}
-        expectedProductKey={row ? resolveStatementProduct(row.product).productKey : null}
-        presentation={presentation}
-      />
-      <StornoSystemActionPanel target={actionTarget} onRequestStorno={onRequestSystemStorno} />
     </article>
   );
 }
