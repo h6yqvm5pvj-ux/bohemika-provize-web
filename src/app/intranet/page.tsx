@@ -187,6 +187,11 @@ type WallCommentLikeResponse = {
 type AttachmentPreviewState = {
   attachment: WallAttachment;
   objectUrl: string | null;
+  /**
+   * PDF.js on iOS/WebKit cannot reliably load a blob: URL. Keep the already
+   * authenticated response bytes for the canvas renderer instead.
+   */
+  pdfData: Uint8Array | null;
   loading: boolean;
   error: string | null;
 };
@@ -773,11 +778,11 @@ function PdfPagePreview({
 }
 
 function PdfDocumentPreview({
-  objectUrl,
+  pdfData,
   name,
   cacheKey,
 }: {
-  objectUrl: string;
+  pdfData: Uint8Array;
   name: string;
   cacheKey: string;
 }) {
@@ -824,7 +829,11 @@ function PdfDocumentPreview({
           ).toString();
         }
 
-        const task = pdfjs.getDocument({ url: objectUrl });
+        // Supplying bytes avoids a second fetch of a blob: URL. That fetch
+        // works in desktop Chromium but returns response 0 in iOS WebKit on
+        // the public domain. Pass a copy because PDF.js may transfer its
+        // input buffer to the worker.
+        const task = pdfjs.getDocument({ data: pdfData.slice() });
         loadingTask = task;
         const pdf = (await task.promise) as unknown as PdfDocumentLike;
         if (cancelled) {
@@ -854,7 +863,7 @@ function PdfDocumentPreview({
         pdfDocumentRef.current = null;
       }
     };
-  }, [cacheKey, objectUrl]);
+  }, [cacheKey, pdfData]);
 
   const renderPage = useCallback(
     async (pageNumber: number) => {
@@ -1825,6 +1834,7 @@ export default function IntranetPage() {
     setAttachmentPreview({
       attachment,
       objectUrl: null,
+      pdfData: null,
       loading: true,
       error: null,
     });
@@ -1834,6 +1844,9 @@ export default function IntranetPage() {
         cache: attachment.isImage ? "force-cache" : "no-store",
       });
       const objectUrl = URL.createObjectURL(blob);
+      const pdfData = isPdfAttachment(attachment)
+        ? new Uint8Array(await blob.arrayBuffer())
+        : null;
       if (attachmentPreviewRequestIdRef.current !== requestId) {
         URL.revokeObjectURL(objectUrl);
         return;
@@ -1843,6 +1856,7 @@ export default function IntranetPage() {
       setAttachmentPreview({
         attachment,
         objectUrl,
+        pdfData,
         loading: false,
         error: null,
       });
@@ -1851,6 +1865,7 @@ export default function IntranetPage() {
       setAttachmentPreview({
         attachment,
         objectUrl: null,
+        pdfData: null,
         loading: false,
         error: error instanceof Error ? error.message : "Přílohu se nepodařilo otevřít.",
       });
@@ -2861,9 +2876,9 @@ export default function IntranetPage() {
                     className="max-h-[74vh] max-w-full rounded-2xl object-contain shadow-[0_18px_50px_rgba(15,23,42,0.18)]"
                   />
                 </div>
-              ) : attachmentPreview.objectUrl && previewAttachmentIsPdf ? (
+              ) : attachmentPreview.pdfData && previewAttachmentIsPdf ? (
                 <PdfDocumentPreview
-                  objectUrl={attachmentPreview.objectUrl}
+                  pdfData={attachmentPreview.pdfData}
                   name={attachmentPreview.attachment.name}
                   cacheKey={attachmentPreview.attachment.url}
                 />

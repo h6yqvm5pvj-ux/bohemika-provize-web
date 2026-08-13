@@ -608,6 +608,7 @@ export default function HomePage() {
   const [accessProfileReady, setAccessProfileReady] = useState(false);
   const [accessProfileError, setAccessProfileError] = useState<string | null>(null);
   const [accessProfile, setAccessProfile] = useState<Record<string, unknown> | null>(null);
+  const [accessProfileHasTeam, setAccessProfileHasTeam] = useState(false);
   const [mailUnreadCount, setMailUnreadCount] = useState(0);
   const normalizedEmail = useMemo(
     () => normalizeEmail(user?.email) || null,
@@ -624,6 +625,12 @@ export default function HomePage() {
   const advisorDataEmail = shouldLoadAdvisorHome ? effectiveAdvisorEmail : null;
   const shouldLoadExpectedPayout =
     shouldLoadAdvisorHome && homeWidgets.expectedPayout;
+  const teamHistoryMonths = useMemo(() => {
+    if (!shouldLoadAdvisorHome || !homeWidgets.teamLeaderboard) return 0;
+    if (lbRange === "sixMonths") return 6;
+    if (lbRange === "year") return new Date().getMonth();
+    return 0;
+  }, [lbRange, homeWidgets.teamLeaderboard, shouldLoadAdvisorHome]);
 
   const {
     userMeta,
@@ -645,7 +652,8 @@ export default function HomePage() {
   } = useHomeData({
     email: advisorDataEmail,
     loadPersonalHistory: false,
-    loadTeamHistory: shouldLoadAdvisorHome && homeWidgets.teamLeaderboard,
+    teamHistoryMonths,
+    initialHasTeam: accessProfileHasTeam,
     reloadKey: homeReloadKey,
   });
   const [expectedPayoutLoading, setExpectedPayoutLoading] = useState(false);
@@ -714,6 +722,7 @@ export default function HomePage() {
     if (!authReady) return;
     if (!user) {
       setAccessProfile(null);
+      setAccessProfileHasTeam(false);
       setAccessProfileError(null);
       setAccessProfileReady(true);
       return;
@@ -730,6 +739,7 @@ export default function HomePage() {
           if (cancelled) return;
           const profile = (payload?.profile ?? {}) as Record<string, unknown>;
           setAccessProfile(profile);
+          setAccessProfileHasTeam(payload?.hasTeam === true);
           if (typeof profile.language === "string") {
             setLanguage(applyHomeLanguagePreference(profile.language));
           }
@@ -738,6 +748,7 @@ export default function HomePage() {
           if (cancelled) return;
           console.error("Ověření typu účtu selhalo:", error);
           setAccessProfile(null);
+          setAccessProfileHasTeam(false);
           setAccessProfileError(HOME_COPY.cs.profileTypeLoadError);
         })
         .finally(() => {

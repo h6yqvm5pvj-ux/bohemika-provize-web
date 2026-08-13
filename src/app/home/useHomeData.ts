@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { auth } from "@/app/firebase";
+import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
@@ -97,7 +98,10 @@ export type HomeDataState = {
 type UseHomeDataOptions = {
   email: string | null;
   loadPersonalHistory: boolean;
-  loadTeamHistory: boolean;
+  /** Zero keeps the initial request to the current/previous-month summary. */
+  teamHistoryMonths: number;
+  /** The profile request that opens the page already knows this for managers. */
+  initialHasTeam?: boolean;
   reloadKey?: number;
 };
 
@@ -141,7 +145,7 @@ type UserProfileApiResponse = {
 };
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
-const HOME_CACHE_VERSION = "v3-immediate-components";
+const HOME_CACHE_VERSION = "v4-range-aware";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 
 export const invalidateHomeCache = (email?: string | null) => {
@@ -174,7 +178,8 @@ const normalizeCursorToken = (
 export function useHomeData({
   email,
   loadPersonalHistory,
-  loadTeamHistory,
+  teamHistoryMonths,
+  initialHasTeam = false,
   reloadKey = 0,
 }: UseHomeDataOptions): HomeDataState {
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
@@ -239,8 +244,13 @@ export function useHomeData({
         const personalRangeStart = loadPersonalHistory
           ? new Date(currentYear, currentMonth - 11, 1)
           : monthStart;
+        const safeTeamHistoryMonths = Math.max(
+          0,
+          Math.min(12, Math.floor(teamHistoryMonths))
+        );
+        const loadTeamHistory = safeTeamHistoryMonths > 0;
         const teamRangeStart = loadTeamHistory
-          ? new Date(currentYear, currentMonth - 11, 1)
+          ? new Date(currentYear, currentMonth - safeTeamHistoryMonths, 1)
           : monthStart;
         const summaryRangeStartMs = previousMonthStart.getTime();
         const personalRangeStartMs = personalRangeStart.getTime();
@@ -526,7 +536,22 @@ export function useHomeData({
           return { count, immediate };
         };
 
-        // Fáze 1: rychlé souhrny za aktuální měsíc (UI dostane čísla co nejdřív)
+        // Fáze 1: rychlé souhrny za aktuální měsíc (UI dostane čísla co nejdřív).
+        // U manažera známe existenci týmu už z profilu, proto jsou obě
+        // nezávislá čtení souběžná. U staršího profilu zůstává původní postup.
+        let teamSummaryPromise: Promise<ScopeCollection> | null = initialHasTeam
+          ? collectScope("team", summaryRangeStartMs)
+          : null;
+        if (teamSummaryPromise) {
+          void teamSummaryPromise.catch(() => undefined);
+        }
+        const loadTeamSummary = () => {
+          if (!teamSummaryPromise) {
+            teamSummaryPromise = collectScope("team", summaryRangeStartMs);
+          }
+          return teamSummaryPromise;
+        };
+
         const ownSummaryResult = await collectScope("my", summaryRangeStartMs);
         if (!position && ownSummaryResult.positionHint) {
           position = ownSummaryResult.positionHint;
@@ -537,7 +562,7 @@ export function useHomeData({
         let teamSummaryEntries: EntryDoc[] = [];
         if (hasTeamValue) {
           try {
-            const teamSummaryResult = await collectScope("team", summaryRangeStartMs);
+            const teamSummaryResult = await loadTeamSummary();
             teamSummaryEntries = teamSummaryResult.entries;
             hasTeamValue = hasTeamValue || teamSummaryEntries.length > 0;
           } catch (teamErr) {
@@ -614,7 +639,7 @@ export function useHomeData({
               if (!signed) return false;
               return signed >= teamRangeStart && signed < nextMonthStart;
             })
-          : [];
+          : teamSummaryEntries;
 
         const payload: HomeCachePayload = {
           userMeta: {
@@ -657,7 +682,11 @@ export function useHomeData({
         const currentYear = now.getFullYear();
         const forceReload = reloadKey > 0;
 
-        const cacheKey = `${HOME_CACHE_VERSION}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|${loadTeamHistory ? "teamhist" : "noteamhist"}`;
+        const safeTeamHistoryMonths = Math.max(
+          0,
+          Math.min(12, Math.floor(teamHistoryMonths))
+        );
+        const cacheKey = `${HOME_CACHE_VERSION}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|team-${safeTeamHistoryMonths}`;
         const cached = homeDataCache[cacheKey];
         if (cached?.payload) {
           fallbackPayload = cached.payload;
@@ -694,30 +723,14 @@ export function useHomeData({
         try {
           const currentUser = auth.currentUser;
           if (currentUser) {
-            let bearerToken = await currentUser.getIdToken();
-            const requestWithToken = async (token: string) =>
-              fetch("/api/user/profile", {
-                method: "GET",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-                cache: "no-store",
-              });
-
-            let profileRes = await requestWithToken(bearerToken);
-            if (profileRes.status === 401) {
-              bearerToken = await currentUser.getIdToken(true);
-              profileRes = await requestWithToken(bearerToken);
-            }
-
-            const profilePayload = (await profileRes
-              .json()
-              .catch(() => null)) as UserProfileApiResponse | null;
-            if (!profileRes.ok || profilePayload?.ok === false) {
-              throw new Error(
-                profilePayload?.error ||
-                  `API user-profile selhalo (${profileRes.status}).`
-              );
+            // HomePage profil načítá ještě před spuštěním tohoto hooku. Sdílená
+            // cache proto odstraní druhé stejné HTTP/Firebase čtení a pokud
+            // cache není k dispozici, bezpečně provede původní načtení.
+            const profilePayload = (await getUserProfileCached(currentUser, {
+              maxAgeMs: 60 * 1000,
+            })) as UserProfileApiResponse;
+            if (profilePayload?.ok === false) {
+              throw new Error(profilePayload.error || "API user-profile selhalo.");
             }
 
             const profile = profilePayload?.profile ?? {};
@@ -772,7 +785,7 @@ export function useHomeData({
     return () => {
       cancelled = true;
     };
-  }, [email, loadPersonalHistory, loadTeamHistory, reloadKey]);
+  }, [email, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths]);
 
   return {
     userMeta,
