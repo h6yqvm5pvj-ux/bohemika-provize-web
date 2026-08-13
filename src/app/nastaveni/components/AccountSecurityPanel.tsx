@@ -446,88 +446,68 @@ export function AccountSecurityPanel({
 
         <div className="order-1 space-y-4 xl:order-1">
         <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:rounded-[24px] sm:shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-          <div className="mfa-security-hero bg-[linear-gradient(135deg,#0b0717_0%,#1d1238_52%,#5b21b6_100%)] px-3.5 py-4 text-white sm:px-5 sm:py-5">
+          <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#ffffff_0%,#fafafa_62%,#f5f3ff_100%)] px-3.5 py-4 sm:px-5 sm:py-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 shadow-[0_10px_24px_rgba(0,0,0,0.22)] sm:h-11 sm:w-11 sm:rounded-2xl">
-                  <ShieldCheck size={22} strokeWidth={2} aria-hidden="true" />
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-100 bg-violet-50 text-violet-800 sm:h-11 sm:w-11 sm:rounded-2xl">
+                  <ShieldCheck size={22} strokeWidth={2.2} aria-hidden="true" />
                 </span>
                 <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/75">
-                    Zabezpečení
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Ověřovací aplikace
                   </div>
-                  <h3 className="mt-0.5 text-lg font-black leading-tight tracking-normal text-white">
+                  <h3 className="mt-0.5 text-lg font-black leading-tight tracking-normal text-slate-950">
                     Microsoft Authenticator
                   </h3>
-                  <p className="mt-1 max-w-md text-xs leading-relaxed text-white/80">
-                    Po zadání hesla se přihlášení potvrzuje ještě jednorázovým kódem z aplikace.
+                  <p className="mt-1 max-w-md text-xs leading-relaxed text-slate-500">
+                    {mfaEnabled
+                      ? "Druhý faktor je aktivní a chrání přihlášení k účtu."
+                      : "Pro přihlášení budeš potvrzovat jednorázový kód z aplikace."}
                   </p>
                 </div>
               </div>
               <span
                 className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
                   mfaEnabled
-                    ? "border-violet-200/70 bg-violet-300/20 text-violet-50"
-                    : "border-white/25 bg-white/10 text-white"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border-slate-200 bg-slate-50 text-slate-600"
                 }`}
               >
                 <span
-                  className={`h-2 w-2 rounded-full ${mfaEnabled ? "bg-violet-200" : "bg-slate-300"}`}
+                  className={`h-2 w-2 rounded-full ${mfaEnabled ? "bg-emerald-500" : "bg-slate-400"}`}
                   aria-hidden="true"
                 />
                 {mfaEnabled ? "Zapnuto" : "Vypnuto"}
               </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <a
-                href={MICROSOFT_AUTHENTICATOR_APP_STORE_URL}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Otevřít Microsoft Authenticator v App Store"
-                className="group flex min-h-[58px] items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-left transition hover:border-white/40 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-950">
-                  <Apple size={18} strokeWidth={2.2} aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.13em] text-white/60">
-                    Stáhnout v
-                  </span>
-                  <span className="block text-sm font-bold text-white">App Store</span>
-                </span>
-                <ExternalLink
-                  size={14}
-                  strokeWidth={2}
-                  className="text-white/50 transition group-hover:text-white"
-                  aria-hidden="true"
-                />
-              </a>
-
-              <a
-                href={MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Otevřít Microsoft Authenticator v Google Play"
-                className="group flex min-h-[58px] items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5 text-left transition hover:border-white/40 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-700 text-white">
-                  <Play size={17} strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.13em] text-white/60">
-                    Stáhnout na
-                  </span>
-                  <span className="block text-sm font-bold text-white">Google Play</span>
-                </span>
-                <ExternalLink
-                  size={14}
-                  strokeWidth={2}
-                  className="text-white/50 transition group-hover:text-white"
-                  aria-hidden="true"
-                />
-              </a>
-            </div>
+            {!mfaEnabled && !mfaEnrollmentSecretKey ? (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-xs text-slate-500">Stáhnout aplikaci:</span>
+                <a
+                  href={MICROSOFT_AUTHENTICATOR_APP_STORE_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Otevřít Microsoft Authenticator v App Store"
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800"
+                >
+                  <Apple size={14} strokeWidth={2.2} aria-hidden="true" />
+                  App Store
+                  <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+                </a>
+                <a
+                  href={MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Otevřít Microsoft Authenticator v Google Play"
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800"
+                >
+                  <Play size={13} strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
+                  Google Play
+                  <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+                </a>
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-3 px-3.5 py-4 sm:px-5 sm:py-5">
@@ -633,16 +613,31 @@ export function AccountSecurityPanel({
             )}
 
             {mfaEnabled && !mfaEnrollmentSecretKey && (
-              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 sm:rounded-2xl">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/75 px-3 py-3 sm:rounded-2xl">
                 {!mfaDisableConfirmOpen ? (
-                  <button
-                    type="button"
-                    onClick={onOpenDisableMfa}
-                    disabled={mfaBusy}
-                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
-                  >
-                    Vypnout 2FA
-                  </button>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        <ShieldCheck size={16} strokeWidth={2.2} aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {mfaTotpLabel || "Microsoft Authenticator"}
+                        </p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                          Kód z aplikace se vyžaduje při přihlášení přes heslo.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onOpenDisableMfa}
+                      disabled={mfaBusy}
+                      className="inline-flex min-h-9 w-fit shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Vypnout 2FA
+                    </button>
+                  </div>
                 ) : (
                   <div className="space-y-3 rounded-xl border border-rose-200 bg-white px-3 py-3 sm:rounded-2xl">
                     <p className="text-[11px] text-slate-500">

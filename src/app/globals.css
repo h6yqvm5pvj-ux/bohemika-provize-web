@@ -1429,25 +1429,6 @@ body {
     color: #f8fafc !important;
   }
 
-  /* MFA bezpecnostni banner zustava tmavy i ve zjednodusenem bilem rezimu. */
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero,
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero .text-white,
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero .text-white\/80,
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero .text-white\/75,
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero .text-white\/70,
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero .text-white\/60,
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero .text-white\/50 {
-    color: #f8fafc !important;
-  }
-
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero .bg-white\/20 {
-    background-color: rgba(255, 255, 255, 0.2) !important;
-  }
-
-  body.simple-bg.simple-bg-white .app-content .mfa-security-hero .bg-white\/10 {
-    background-color: rgba(255, 255, 255, 0.1) !important;
-  }
-
   /* Jednoduché černé pozadí – převrať kontrast: světlé plochy do černa, tmavé do bíla */
   body.simple-bg.simple-bg-black {
     --surface-950-rgb: 6, 6, 8;
