@@ -23,6 +23,7 @@ export type Category =
   | "life"
   | "auto"
   | "property"
+  | "business"
   | "travel"
   | "foreigners"
   | "comfort"
@@ -73,6 +74,7 @@ export type TeamOverviewSuccess = {
   }>;
   lastActive: Record<string, number | null>;
   contractCounts: Record<string, ContractStats>;
+  activeContractCounts: Record<string, ContractStats>;
   tipCounts: Record<string, TipStats>;
 };
 

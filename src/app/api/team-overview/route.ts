@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { toDate } from "@/app/lib/formatters";
+import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
   isLifeProduct,
   productCategory,
@@ -40,7 +41,7 @@ const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT = 60;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS = 60_000;
-const TEAM_OVERVIEW_MODEL_VERSION = 3;
+const TEAM_OVERVIEW_MODEL_VERSION = 4;
 const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
@@ -72,6 +73,17 @@ const POSITION_VALUES: Position[] = [
   "manazer10",
 ];
 const POSITION_SET = new Set<Position>(POSITION_VALUES);
+const BUSINESS_PRODUCTS = new Set<Product>([
+  "cppsimplex",
+  "kooppmop",
+  "cppPPRs",
+  "cppPPRbez",
+]);
+
+type ContractStatsByScope = {
+  all: Record<string, ContractStats>;
+  active: Record<string, ContractStats>;
+};
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
@@ -263,6 +275,9 @@ function paymentsPerYear(freq?: PaymentFrequency | null): number {
 }
 
 function categorizeProduct(p?: Product | null): Category {
+  if (p && BUSINESS_PRODUCTS.has(p)) {
+    return "business";
+  }
   if (p === "maxcizinkomplex") {
     return "foreigners";
   }
@@ -307,6 +322,7 @@ function emptyCategoryCounts(): Record<Category, number> {
     life: 0,
     auto: 0,
     property: 0,
+    business: 0,
     travel: 0,
     foreigners: 0,
     comfort: 0,
@@ -319,6 +335,7 @@ function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
     life: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     auto: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     property: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
+    business: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     foreigners: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
@@ -335,6 +352,7 @@ function emptyInstitutionByCategory(): Record<Category, Record<string, Aggregate
     life: {},
     auto: {},
     property: {},
+    business: {},
     travel: {},
     foreigners: {},
     comfort: {},
@@ -381,6 +399,7 @@ function cloneContractStats(source: ContractStats): ContractStats {
       life: { ...source.categoryMetrics.life },
       auto: { ...source.categoryMetrics.auto },
       property: { ...source.categoryMetrics.property },
+      business: { ...source.categoryMetrics.business },
       travel: { ...source.categoryMetrics.travel },
       foreigners: { ...source.categoryMetrics.foreigners },
       comfort: { ...source.categoryMetrics.comfort },
@@ -409,6 +428,12 @@ function cloneContractStats(source: ContractStats): ContractStats {
         Object.entries(source.institutionByCategory.property).map(
           ([name, value]) => [name, { ...value }]
         )
+      ),
+      business: Object.fromEntries(
+        Object.entries(source.institutionByCategory.business).map(([name, value]) => [
+          name,
+          { ...value },
+        ])
       ),
       travel: Object.fromEntries(
         Object.entries(source.institutionByCategory.travel).map(([name, value]) => [
@@ -463,6 +488,7 @@ function parseCategoryCounts(value: unknown): Record<Category, number> {
     life: finiteNumber(row.life),
     auto: finiteNumber(row.auto),
     property: finiteNumber(row.property),
+    business: finiteNumber(row.business),
     travel: finiteNumber(row.travel),
     foreigners: finiteNumber(row.foreigners),
     comfort: finiteNumber(row.comfort),
@@ -481,6 +507,7 @@ function parseCategoryMetrics(
     life: parseAggregateMetrics(row.life),
     auto: parseAggregateMetrics(row.auto),
     property: parseAggregateMetrics(row.property),
+    business: parseAggregateMetrics(row.business),
     travel: parseAggregateMetrics(row.travel),
     foreigners: parseAggregateMetrics(row.foreigners),
     comfort: parseAggregateMetrics(row.comfort),
@@ -515,6 +542,7 @@ function parseInstitutionByCategory(
     life: parseInstitutionMetrics(row.life),
     auto: parseInstitutionMetrics(row.auto),
     property: parseInstitutionMetrics(row.property),
+    business: parseInstitutionMetrics(row.business),
     travel: parseInstitutionMetrics(row.travel),
     foreigners: parseInstitutionMetrics(row.foreigners),
     comfort: parseInstitutionMetrics(row.comfort),
@@ -989,34 +1017,21 @@ async function loadTeamContext(
   };
 }
 
-function consumeOwnerEntry({
+function accumulateContractEntry({
   stats,
-  ownerSet,
+  ownerEmail,
   data,
-  ownerEmailRaw,
-  entryId,
-  seen,
   previousMonthStart,
   monthStart,
   nextMonthStart,
 }: {
   stats: Record<string, ContractStats>;
-  ownerSet: Set<string>;
+  ownerEmail: string;
   data: Record<string, unknown>;
-  ownerEmailRaw: string | null | undefined;
-  entryId: string;
-  seen: Set<string>;
   previousMonthStart: number;
   monthStart: number;
   nextMonthStart: number;
 }) {
-  const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? ownerEmailRaw);
-  if (!ownerEmail || !ownerSet.has(ownerEmail)) return;
-
-  const key = `${ownerEmail}___${entryId}`;
-  if (seen.has(key)) return;
-  seen.add(key);
-
   const current = stats[ownerEmail] ?? emptyContractStats();
   current.total += 1;
 
@@ -1071,21 +1086,70 @@ function consumeOwnerEntry({
   stats[ownerEmail] = current;
 }
 
-function consumeTipsterContractEntry({
+function consumeOwnerEntry({
   stats,
-  tipsterSet,
+  activeStats,
+  ownerSet,
   data,
-  entryPath,
+  ownerEmailRaw,
+  entryId,
   seen,
+  now,
   previousMonthStart,
   monthStart,
   nextMonthStart,
 }: {
   stats: Record<string, ContractStats>;
+  activeStats: Record<string, ContractStats>;
+  ownerSet: Set<string>;
+  data: Record<string, unknown>;
+  ownerEmailRaw: string | null | undefined;
+  entryId: string;
+  seen: Set<string>;
+  now: Date;
+  previousMonthStart: number;
+  monthStart: number;
+  nextMonthStart: number;
+}) {
+  const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? ownerEmailRaw);
+  if (!ownerEmail || !ownerSet.has(ownerEmail)) return;
+
+  const key = `${ownerEmail}___${entryId}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+
+  const options = {
+    ownerEmail,
+    data,
+    previousMonthStart,
+    monthStart,
+    nextMonthStart,
+  };
+  accumulateContractEntry({ stats, ...options });
+  if (contractLifecycleStatus(data, now) === "active") {
+    accumulateContractEntry({ stats: activeStats, ...options });
+  }
+}
+
+function consumeTipsterContractEntry({
+  stats,
+  activeStats,
+  tipsterSet,
+  data,
+  entryPath,
+  seen,
+  now,
+  previousMonthStart,
+  monthStart,
+  nextMonthStart,
+}: {
+  stats: Record<string, ContractStats>;
+  activeStats: Record<string, ContractStats>;
   tipsterSet: Set<string>;
   data: Record<string, unknown>;
   entryPath: string;
   seen: Set<string>;
+  now: Date;
   previousMonthStart: number;
   monthStart: number;
   nextMonthStart: number;
@@ -1097,69 +1161,28 @@ function consumeTipsterContractEntry({
   if (seen.has(key)) return;
   seen.add(key);
 
-  const current = stats[tipsterEmail] ?? emptyContractStats();
-  current.total += 1;
-
-  const category = categorizeProduct(data.productKey as Product | undefined);
-  current.categories[category] = (current.categories[category] ?? 0) + 1;
-
-  const annualPremium = annualPremiumFromEntry(data, category);
-  const monthlyPremium = annualPremium / 12;
-
-  const byCategory = current.categoryMetrics[category] ?? {
-    contracts: 0,
-    annualPremium: 0,
-    monthlyPremium: 0,
+  const options = {
+    ownerEmail: tipsterEmail,
+    data,
+    previousMonthStart,
+    monthStart,
+    nextMonthStart,
   };
-  byCategory.contracts += 1;
-  byCategory.annualPremium += annualPremium;
-  byCategory.monthlyPremium += monthlyPremium;
-  current.categoryMetrics[category] = byCategory;
-
-  const institution =
-    productInstitutionLabel(data.productKey as Product | undefined, "Ostatní") ?? "Ostatní";
-  const byInstitution = current.institutionMetrics[institution] ?? {
-    contracts: 0,
-    annualPremium: 0,
-    monthlyPremium: 0,
-  };
-  byInstitution.contracts += 1;
-  byInstitution.annualPremium += annualPremium;
-  byInstitution.monthlyPremium += monthlyPremium;
-  current.institutionMetrics[institution] = byInstitution;
-
-  const byInstitutionForCategory = current.institutionByCategory[category][institution] ?? {
-    contracts: 0,
-    annualPremium: 0,
-    monthlyPremium: 0,
-  };
-  byInstitutionForCategory.contracts += 1;
-  byInstitutionForCategory.annualPremium += annualPremium;
-  byInstitutionForCategory.monthlyPremium += monthlyPremium;
-  current.institutionByCategory[category][institution] = byInstitutionForCategory;
-
-  const signed = toDate(data.contractSignedDate ?? data.createdAt);
-  const ts = signed?.getTime();
-  if (ts != null && ts >= monthStart && ts < nextMonthStart) {
-    current.month += 1;
-    addAggregateContract(current.monthMetrics, annualPremium, monthlyPremium);
-  } else if (ts != null && ts >= previousMonthStart && ts < monthStart) {
-    current.previousMonth += 1;
-    addAggregateContract(current.previousMonthMetrics, annualPremium, monthlyPremium);
+  accumulateContractEntry({ stats, ...options });
+  if (contractLifecycleStatus(data, now) === "active") {
+    accumulateContractEntry({ stats: activeStats, ...options });
   }
-
-  stats[tipsterEmail] = current;
 }
 
 async function buildContractStatsByOwnerFromEntries(
   owners: string[]
-): Promise<Record<string, ContractStats>> {
+): Promise<ContractStatsByScope> {
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
   }
 
   const db = adminDb;
-  const stats: Record<string, ContractStats> = {};
+  const stats: ContractStatsByScope = { all: {}, active: {} };
   if (owners.length === 0) return stats;
 
   const ownerSet = new Set(owners.map((email) => normalizeEmail(email)).filter(Boolean));
@@ -1181,12 +1204,14 @@ async function buildContractStatsByOwnerFromEntries(
 
     for (const docSnap of groupSnap.docs) {
       consumeOwnerEntry({
-        stats,
+        stats: stats.all,
+        activeStats: stats.active,
         ownerSet,
         data: docSnap.data() as Record<string, unknown>,
         ownerEmailRaw: docSnap.ref.parent.parent?.id ?? null,
         entryId: docSnap.id,
         seen,
+        now,
         previousMonthStart,
         monthStart,
         nextMonthStart,
@@ -1200,13 +1225,13 @@ async function buildContractStatsByOwnerFromEntries(
 async function buildContractStatsByTipsterFromEntries(
   tipsterEmails: string[],
   fallbackOwnerEmails: string[]
-): Promise<Record<string, ContractStats>> {
+): Promise<ContractStatsByScope> {
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
   }
 
   const db = adminDb;
-  const stats: Record<string, ContractStats> = {};
+  const stats: ContractStatsByScope = { all: {}, active: {} };
   const tipsterSet = new Set(
     tipsterEmails.map((email) => normalizeEmail(email)).filter(Boolean)
   );
@@ -1222,11 +1247,13 @@ async function buildContractStatsByTipsterFromEntries(
     docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
   ) => {
     consumeTipsterContractEntry({
-      stats,
+      stats: stats.all,
+      activeStats: stats.active,
       tipsterSet,
       data: docSnap.data() as Record<string, unknown>,
       entryPath: docSnap.ref.path,
       seen,
+      now,
       previousMonthStart,
       monthStart,
       nextMonthStart,
@@ -1367,14 +1394,16 @@ async function loadContractStatsFromReadModel(
   nowMs: number
 ): Promise<{
   stats: Record<string, ContractStats>;
+  activeStats: Record<string, ContractStats>;
   ownersToRefresh: string[];
 }> {
   if (!adminDb || owners.length === 0) {
-    return { stats: {}, ownersToRefresh: owners };
+    return { stats: {}, activeStats: {}, ownersToRefresh: owners };
   }
 
   const db = adminDb;
   const stats: Record<string, ContractStats> = {};
+  const activeStats: Record<string, ContractStats> = {};
   const ownersToRefresh = new Set<string>();
 
   const totalsRefs = owners.map((owner) =>
@@ -1413,6 +1442,9 @@ async function loadContractStatsFromReadModel(
     }
 
     const parsed = parseContractStatsFromTotalsDoc(totalsRaw);
+    const parsedActive = parseContractStatsFromTotalsDoc(
+      isPlainObject(totalsRaw.activeContractStats) ? totalsRaw.activeContractStats : {}
+    );
     const monthSnap = monthSnaps[idx];
     if (monthSnap?.exists) {
       const monthRaw = monthSnap.data() as Record<string, unknown>;
@@ -1424,6 +1456,8 @@ async function loadContractStatsFromReadModel(
       ) {
         parsed.month = finiteNumber(monthRaw.monthCount);
         parsed.monthMetrics = parseAggregateMetrics(monthRaw.monthMetrics);
+        parsedActive.month = finiteNumber(monthRaw.activeMonthCount);
+        parsedActive.monthMetrics = parseAggregateMetrics(monthRaw.activeMonthMetrics);
       } else {
         ownersToRefresh.add(owner);
       }
@@ -1442,6 +1476,10 @@ async function loadContractStatsFromReadModel(
       ) {
         parsed.previousMonth = finiteNumber(previousMonthRaw.monthCount);
         parsed.previousMonthMetrics = parseAggregateMetrics(previousMonthRaw.monthMetrics);
+        parsedActive.previousMonth = finiteNumber(previousMonthRaw.activeMonthCount);
+        parsedActive.previousMonthMetrics = parseAggregateMetrics(
+          previousMonthRaw.activeMonthMetrics
+        );
       } else {
         ownersToRefresh.add(owner);
       }
@@ -1450,13 +1488,15 @@ async function loadContractStatsFromReadModel(
     }
 
     stats[owner] = parsed;
+    activeStats[owner] = parsedActive;
   });
 
-  return { stats, ownersToRefresh: [...ownersToRefresh] };
+  return { stats, activeStats, ownersToRefresh: [...ownersToRefresh] };
 }
 
 async function persistContractStatsToReadModel(
   stats: Record<string, ContractStats>,
+  activeStats: Record<string, ContractStats>,
   yearMonth: string,
   previousMonth: string,
   updatedAtMs: number
@@ -1479,6 +1519,7 @@ async function persistContractStatsToReadModel(
   };
 
   for (const [ownerEmail, stat] of entries) {
+    const activeStat = activeStats[ownerEmail] ?? emptyContractStats();
     const totalsRef = db.collection(TEAM_OVERVIEW_TOTALS_COLLECTION).doc(ownerEmail);
     const monthRef = db
       .collection(TEAM_OVERVIEW_MONTHLY_COLLECTION)
@@ -1497,6 +1538,13 @@ async function persistContractStatsToReadModel(
         categoryMetrics: stat.categoryMetrics,
         institutionMetrics: stat.institutionMetrics,
         institutionByCategory: stat.institutionByCategory,
+        activeContractStats: {
+          total: finiteNumber(activeStat.total),
+          categories: activeStat.categories,
+          categoryMetrics: activeStat.categoryMetrics,
+          institutionMetrics: activeStat.institutionMetrics,
+          institutionByCategory: activeStat.institutionByCategory,
+        },
         updatedAtMs,
       },
       { merge: true }
@@ -1509,6 +1557,8 @@ async function persistContractStatsToReadModel(
         yearMonth,
         monthCount: finiteNumber(stat.month),
         monthMetrics: stat.monthMetrics ?? emptyAggregateMetrics(),
+        activeMonthCount: finiteNumber(activeStat.month),
+        activeMonthMetrics: activeStat.monthMetrics ?? emptyAggregateMetrics(),
         updatedAtMs,
       },
       { merge: true }
@@ -1521,6 +1571,8 @@ async function persistContractStatsToReadModel(
         yearMonth: previousMonth,
         monthCount: finiteNumber(stat.previousMonth),
         monthMetrics: stat.previousMonthMetrics ?? emptyAggregateMetrics(),
+        activeMonthCount: finiteNumber(activeStat.previousMonth),
+        activeMonthMetrics: activeStat.previousMonthMetrics ?? emptyAggregateMetrics(),
         updatedAtMs,
       },
       { merge: true }
@@ -2837,6 +2889,7 @@ export async function GET(req: NextRequest) {
 	          context.members.map((member) => [member.email, member.lastActiveTs ?? null])
 	        ),
 	        contractCounts: {},
+	        activeContractCounts: {},
 	        tipCounts: {},
 	      };
 
@@ -2877,22 +2930,31 @@ export async function GET(req: NextRequest) {
       nowMs
     );
     const contractCounts: Record<string, ContractStats> = {};
+    const activeContractCounts: Record<string, ContractStats> = {};
     Object.entries(readModel.stats).forEach(([owner, stat]) => {
       contractCounts[owner] = cloneContractStats(stat);
+    });
+    Object.entries(readModel.activeStats).forEach(([owner, stat]) => {
+      activeContractCounts[owner] = cloneContractStats(stat);
     });
 
     if (readModel.ownersToRefresh.length > 0) {
       const rebuilt = await buildContractStatsByOwnerFromEntries(readModel.ownersToRefresh);
       const rebuiltWithDefaults: Record<string, ContractStats> = {};
+      const rebuiltActiveWithDefaults: Record<string, ContractStats> = {};
 
       readModel.ownersToRefresh.forEach((owner) => {
-        rebuiltWithDefaults[owner] = rebuilt[owner]
-          ? cloneContractStats(rebuilt[owner]!)
+        rebuiltWithDefaults[owner] = rebuilt.all[owner]
+          ? cloneContractStats(rebuilt.all[owner]!)
+          : emptyContractStats();
+        rebuiltActiveWithDefaults[owner] = rebuilt.active[owner]
+          ? cloneContractStats(rebuilt.active[owner]!)
           : emptyContractStats();
       });
 
       await persistContractStatsToReadModel(
         rebuiltWithDefaults,
+        rebuiltActiveWithDefaults,
         yearMonth,
         previousMonthKey,
         nowMs
@@ -2900,11 +2962,17 @@ export async function GET(req: NextRequest) {
       Object.entries(rebuiltWithDefaults).forEach(([owner, stat]) => {
         contractCounts[owner] = stat;
       });
+      Object.entries(rebuiltActiveWithDefaults).forEach(([owner, stat]) => {
+        activeContractCounts[owner] = stat;
+      });
     }
 
     owners.forEach((owner) => {
       if (!contractCounts[owner]) {
         contractCounts[owner] = emptyContractStats();
+      }
+      if (!activeContractCounts[owner]) {
+        activeContractCounts[owner] = emptyContractStats();
       }
     });
 
@@ -2914,8 +2982,11 @@ export async function GET(req: NextRequest) {
     ]);
 
     tipsterOwners.forEach((tipsterEmail) => {
-      contractCounts[tipsterEmail] = tipsterContractStats[tipsterEmail]
-        ? cloneContractStats(tipsterContractStats[tipsterEmail]!)
+      contractCounts[tipsterEmail] = tipsterContractStats.all[tipsterEmail]
+        ? cloneContractStats(tipsterContractStats.all[tipsterEmail]!)
+        : emptyContractStats();
+      activeContractCounts[tipsterEmail] = tipsterContractStats.active[tipsterEmail]
+        ? cloneContractStats(tipsterContractStats.active[tipsterEmail]!)
         : emptyContractStats();
       if (!tipCounts[tipsterEmail]) {
         tipCounts[tipsterEmail] = emptyTipStats();
@@ -2948,6 +3019,7 @@ export async function GET(req: NextRequest) {
         context.members.map((member) => [member.email, member.lastActiveTs ?? null])
       ),
       contractCounts,
+      activeContractCounts,
       tipCounts,
     };
 

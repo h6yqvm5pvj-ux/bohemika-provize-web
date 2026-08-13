@@ -28,6 +28,12 @@ export const dynamic = "force-dynamic";
 
 type HealthCheckSeverity = "ok" | "info" | "warning" | "critical";
 type HealthCheckStatus = "pass" | "warn" | "fail";
+const BUSINESS_PRODUCTS = new Set<Product>([
+  "cppsimplex",
+  "kooppmop",
+  "cppPPRs",
+  "cppPPRbez",
+]);
 
 type HealthSample = {
   label: string;
@@ -305,6 +311,7 @@ function productFromEntry(value: unknown): Product | null {
 }
 
 function categorizeProduct(product?: Product | null): Category {
+  if (product && BUSINESS_PRODUCTS.has(product)) return "business";
   if (product === "maxcizinkomplex") return "foreigners";
 
   switch (productCategory(product)) {
@@ -341,6 +348,7 @@ function emptyCategoryCounts(): Record<Category, number> {
     life: 0,
     auto: 0,
     property: 0,
+    business: 0,
     travel: 0,
     foreigners: 0,
     comfort: 0,
@@ -353,6 +361,7 @@ function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
     life: emptyAggregateMetrics(),
     auto: emptyAggregateMetrics(),
     property: emptyAggregateMetrics(),
+    business: emptyAggregateMetrics(),
     travel: emptyAggregateMetrics(),
     foreigners: emptyAggregateMetrics(),
     comfort: emptyAggregateMetrics(),
@@ -365,6 +374,7 @@ function emptyInstitutionByCategory(): Record<Category, Record<string, Aggregate
     life: {},
     auto: {},
     property: {},
+    business: {},
     travel: {},
     foreigners: {},
     comfort: {},

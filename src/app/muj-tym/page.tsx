@@ -225,6 +225,7 @@ type Category =
   | "life"
   | "auto"
   | "property"
+  | "business"
   | "travel"
   | "foreigners"
   | "comfort"
@@ -233,6 +234,7 @@ type ProductionCategory =
   | "life"
   | "auto"
   | "property"
+  | "business"
   | "travel"
   | "foreigners"
   | "comfort";
@@ -258,6 +260,7 @@ const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
   { key: "life", label: "Životní pojištění" },
   { key: "auto", label: "Auta" },
   { key: "property", label: "Majetek" },
+  { key: "business", label: "Podnikatelé" },
   { key: "comfort", label: "Zlato" },
   { key: "foreigners", label: "Cizinci" },
   { key: "travel", label: "Cestovko" },
@@ -380,6 +383,7 @@ type TeamCachePayload = {
   members: Member[];
   lastActive: Record<string, number | null>;
   contractCounts: Record<string, ContractStats>;
+  activeContractCounts: Record<string, ContractStats>;
   tipCounts: Record<string, TipStats>;
   contractsLoaded: boolean;
   contractsError: boolean;
@@ -406,6 +410,7 @@ type TeamOverviewApiSuccess = {
   }>;
   lastActive?: Record<string, number | null>;
   contractCounts?: Record<string, ContractStats>;
+  activeContractCounts?: Record<string, ContractStats>;
   tipCounts?: Record<string, TipStats>;
 };
 
@@ -614,6 +619,9 @@ export default function TeamPage() {
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [lastActive, setLastActive] = useState<Record<string, number | null>>({});
   const [contractCounts, setContractCounts] = useState<Record<string, ContractStats>>({});
+  const [activeContractCounts, setActiveContractCounts] = useState<
+    Record<string, ContractStats>
+  >({});
   const [tipCounts, setTipCounts] = useState<Record<string, TipStats>>({});
   const [contractsLoaded, setContractsLoaded] = useState(false);
   const [contractsError, setContractsError] = useState(false);
@@ -621,6 +629,9 @@ export default function TeamPage() {
   const [canManagePositions, setCanManagePositions] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>("activity");
   const [productionCategory, setProductionCategory] = useState<ProductionCategory>("life");
+  const [productionContractScope, setProductionContractScope] = useState<"all" | "active">(
+    "all"
+  );
   const [detailTab, setDetailTab] = useState<"overview" | "subordinates" | "career">("overview");
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [careerTimelineDraft, setCareerTimelineDraft] = useState<PositionTimelineItem[]>([]);
@@ -681,6 +692,7 @@ export default function TeamPage() {
     setMembers(payload.members);
     setLastActive(payload.lastActive);
     setContractCounts(payload.contractCounts);
+    setActiveContractCounts(payload.activeContractCounts ?? {});
     setTipCounts(payload.tipCounts ?? {});
     setContractsLoaded(payload.contractsLoaded);
     setContractsError(payload.contractsError);
@@ -725,6 +737,7 @@ export default function TeamPage() {
 	        setMembers([]);
 	        setLastActive({});
 	        setContractCounts({});
+	        setActiveContractCounts({});
 	        setTipCounts({});
 	        setContractsLoaded(true);
         setContractsError(false);
@@ -739,6 +752,7 @@ export default function TeamPage() {
       let lastActiveMap: Record<string, number | null> = {};
       let all: Member[] = [];
       let stats: Record<string, ContractStats> = {};
+      let activeStats: Record<string, ContractStats> = {};
       let tipStats: Record<string, TipStats> = {};
       let nextContractsLoaded = true;
       let nextContractsError = false;
@@ -865,6 +879,7 @@ export default function TeamPage() {
         });
 
         stats = responseData.contractCounts ?? {};
+        activeStats = responseData.activeContractCounts ?? {};
         tipStats = responseData.tipCounts ?? {};
         nextContractsLoaded = true;
         nextContractsError = false;
@@ -874,6 +889,7 @@ export default function TeamPage() {
         setMembers(all);
         setLastActive(lastActiveMap);
         setContractCounts(stats);
+        setActiveContractCounts(activeStats);
         setTipCounts(tipStats);
         setContractsLoaded(true);
         setContractsError(false);
@@ -889,6 +905,7 @@ export default function TeamPage() {
           all = fallbackPayload.members;
           lastActiveMap = fallbackPayload.lastActive;
           stats = fallbackPayload.contractCounts;
+          activeStats = fallbackPayload.activeContractCounts ?? {};
           tipStats = fallbackPayload.tipCounts ?? {};
           nextContractsLoaded = fallbackPayload.contractsLoaded;
           nextContractsError = fallbackPayload.contractsError;
@@ -896,6 +913,7 @@ export default function TeamPage() {
           setMembers([]);
           setLastActive({});
           setContractCounts({});
+          setActiveContractCounts({});
           setTipCounts({});
           setContractsLoaded(true);
           setContractsError(true);
@@ -912,6 +930,7 @@ export default function TeamPage() {
 	              members: all,
 	              lastActive: lastActiveMap,
 	              contractCounts: stats,
+	              activeContractCounts: activeStats,
 	              tipCounts: tipStats,
 	              contractsLoaded: nextContractsLoaded,
               contractsError: nextContractsError,
@@ -1043,9 +1062,11 @@ export default function TeamPage() {
           ? tipCounts[member.email]?.month ?? 0
           : tipCounts[member.email]?.total ?? 0;
       }
+      const contractStats =
+        productionContractScope === "active" ? activeContractCounts : contractCounts;
       return key === "month"
-        ? contractCounts[member.email]?.month ?? 0
-        : contractCounts[member.email]?.total ?? 0;
+        ? contractStats[member.email]?.month ?? 0
+        : contractStats[member.email]?.total ?? 0;
     };
 
     return base.sort((a, b) => {
@@ -1065,7 +1086,16 @@ export default function TeamPage() {
       if (actDiff !== 0) return actDiff;
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [members, search, sortBy, lastActive, contractCounts, tipCounts]);
+  }, [
+    members,
+    search,
+    sortBy,
+    lastActive,
+    contractCounts,
+    activeContractCounts,
+    productionContractScope,
+    tipCounts,
+  ]);
 
   useEffect(() => {
     const el = membersListRef.current;
@@ -1200,7 +1230,11 @@ export default function TeamPage() {
   const selectedPhoneHref = phoneTelHref(selectedPhoneNumber);
   const selectedIco = selected?.ico?.trim() ?? "";
   const selectedIsTipster = selected?.accountType === "tipster";
-  const selectedContractStats = selected ? contractCounts[selected.email] ?? null : null;
+  const selectedContractStats = selected
+    ? (productionContractScope === "active"
+        ? activeContractCounts[selected.email]
+        : contractCounts[selected.email]) ?? null
+    : null;
   const selectedTipStats = selected ? tipCounts[selected.email] ?? null : null;
   const showMonthlyPremiumInProduction = productionCategory === "life";
   const productionGridColsClass = showMonthlyPremiumInProduction
@@ -1321,6 +1355,7 @@ export default function TeamPage() {
     contractsError ||
     (!contractsLoaded &&
       Object.keys(contractCounts).length === 0 &&
+      Object.keys(activeContractCounts).length === 0 &&
       Object.keys(tipCounts).length === 0);
   const isSelectedSubordinate = useMemo(
     () => !!selected?.email && !!userEmail && selected.email.toLowerCase() !== userEmail.toLowerCase(),
@@ -1454,7 +1489,10 @@ export default function TeamPage() {
   const contractCountLabel = (email: string, key: "total" | "month") => {
     if (contractsError) return "—";
     if (!contractsLoaded && Object.keys(contractCounts).length === 0) return "—";
-    const stats = contractCounts[email];
+    const stats =
+      productionContractScope === "active"
+        ? activeContractCounts[email]
+        : contractCounts[email];
     const value = key === "total" ? stats?.total : stats?.month;
     return value != null ? String(value) : "0";
   };
@@ -2386,16 +2424,55 @@ export default function TeamPage() {
                             </div>
                           </div>
 
-		                          <div className="team-production-panel relative overflow-hidden space-y-3 rounded-2xl border border-violet-100 bg-white px-3 py-4 shadow-[0_16px_38px_rgba(76,29,149,0.07)]">
+	                          <div className="team-production-panel relative overflow-hidden space-y-3 rounded-2xl border border-violet-100 bg-white px-3 py-4 shadow-[0_16px_38px_rgba(76,29,149,0.07)]">
 	                            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{productionBoxTitle}</div>
-                              <div className="text-xs font-semibold text-slate-500">
-                                {showMonthlyPremiumInProduction
-                                  ? "Pojišťovna / počet smluv / měsíční / roční"
-                                  : "Pojišťovna / počet smluv / roční"}
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                <div
+                                  className="inline-flex rounded-full border border-violet-100 bg-violet-50/80 p-0.5"
+                                  role="group"
+                                  aria-label="Rozsah zobrazených smluv"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductionContractScope("all")}
+                                    aria-pressed={productionContractScope === "all"}
+                                    className={`ui-focus rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                                      productionContractScope === "all"
+                                        ? "bg-white text-violet-800 shadow-sm"
+                                        : "text-slate-500 hover:text-violet-800"
+                                    }`}
+                                  >
+                                    Všechny
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductionContractScope("active")}
+                                    aria-pressed={productionContractScope === "active"}
+                                    title="Bez stornovaných a dožitých smluv"
+                                    className={`ui-focus rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                                      productionContractScope === "active"
+                                        ? "bg-violet-700 !text-white shadow-[0_4px_12px_rgba(109,40,217,0.24)]"
+                                        : "text-slate-500 hover:text-violet-800"
+                                    }`}
+                                  >
+                                    Aktivní
+                                  </button>
+                                </div>
+                                <div className="text-xs font-semibold text-slate-500">
+                                  {showMonthlyPremiumInProduction
+                                    ? "Pojišťovna / počet smluv / měsíční / roční"
+                                    : "Pojišťovna / počet smluv / roční"}
+                                </div>
                               </div>
                             </div>
+
+                            {productionContractScope === "active" ? (
+                              <p className="-mt-1 text-xs text-slate-500">
+                                Zobrazené jsou jen smlouvy bez storna a dožití.
+                              </p>
+                            ) : null}
 
 		                            <div className="team-production-tabs inline-flex w-fit flex-wrap items-center gap-1 rounded-full border border-violet-100 bg-violet-50/70 p-1">
                               {PRODUCTION_CATEGORY_TABS.map((tab) => {
