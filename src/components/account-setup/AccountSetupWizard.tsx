@@ -2,11 +2,19 @@
 
 import Image from "next/image";
 import {
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type KeyboardEvent,
+} from "react";
+import {
   Apple,
   BriefcaseBusiness,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CircleHelp,
   ExternalLink,
   Loader2,
   PhoneCall,
@@ -16,6 +24,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 
 import type { Position } from "@/app/types/domain";
@@ -89,6 +98,220 @@ const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
 
 const ACCOUNT_SETUP_FIELD_CLASS =
   "w-full rounded-2xl border border-white/18 bg-white/[0.06] px-3 py-2.5 text-sm font-semibold text-white outline-none transition placeholder:text-violet-100/38 focus:border-violet-200/70 focus:bg-white/[0.09] focus:ring-2 focus:ring-violet-200/20";
+const MFA_CODE_LENGTH = 6;
+
+type MfaCodeInputProps = {
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+};
+
+function MfaCodeInput({ value, disabled, onChange }: MfaCodeInputProps) {
+  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const code = value.replace(/\D/g, "").slice(0, MFA_CODE_LENGTH);
+
+  const focusDigit = (index: number) => {
+    window.requestAnimationFrame(() => inputRefs.current[index]?.focus());
+  };
+
+  const updateFromInput = (index: number, rawValue: string) => {
+    const enteredDigits = rawValue.replace(/\D/g, "");
+    if (!enteredDigits) {
+      onChange(`${code.slice(0, index)}${code.slice(index + 1)}`);
+      return;
+    }
+
+    const nextCode = `${code.slice(0, index)}${enteredDigits}${code.slice(
+      index + enteredDigits.length
+    )}`.slice(0, MFA_CODE_LENGTH);
+    onChange(nextCode);
+    focusDigit(Math.min(index + enteredDigits.length, MFA_CODE_LENGTH - 1));
+  };
+
+  const handleChange = (index: number, event: ChangeEvent<HTMLInputElement>) => {
+    updateFromInput(index, event.target.value);
+  };
+
+  const handlePaste = (index: number, event: ClipboardEvent<HTMLInputElement>) => {
+    const pastedDigits = event.clipboardData.getData("text").replace(/\D/g, "");
+    if (!pastedDigits) return;
+
+    event.preventDefault();
+    updateFromInput(index, pastedDigits);
+  };
+
+  const handleKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowLeft" && index > 0) {
+      event.preventDefault();
+      focusDigit(index - 1);
+      return;
+    }
+    if (event.key === "ArrowRight" && index < MFA_CODE_LENGTH - 1) {
+      event.preventDefault();
+      focusDigit(index + 1);
+      return;
+    }
+    if (event.key === "Backspace" && !code[index] && index > 0) {
+      event.preventDefault();
+      onChange(code.slice(0, -1));
+      focusDigit(index - 1);
+    }
+  };
+
+  return (
+    <div
+      className="flex gap-2 sm:gap-3"
+      role="group"
+      aria-label="Šestimístný 2FA kód"
+    >
+      {Array.from({ length: MFA_CODE_LENGTH }, (_, index) => (
+        <input
+          key={index}
+          ref={(element) => {
+            inputRefs.current[index] = element;
+          }}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete={index === 0 ? "one-time-code" : "off"}
+          aria-label={`Číslice ${index + 1} z ${MFA_CODE_LENGTH} 2FA kódu`}
+          value={code[index] ?? ""}
+          onChange={(event) => handleChange(index, event)}
+          onPaste={(event) => handlePaste(index, event)}
+          onKeyDown={(event) => handleKeyDown(index, event)}
+          onFocus={() => {
+            const firstEmptyIndex = Math.min(code.length, MFA_CODE_LENGTH - 1);
+            if (index > firstEmptyIndex) focusDigit(firstEmptyIndex);
+          }}
+          disabled={disabled}
+          className="h-12 w-10 rounded-xl border border-white/18 bg-white/[0.06] p-0 text-center font-mono text-lg font-bold text-white outline-none transition focus:border-violet-200/70 focus:bg-white/[0.09] focus:ring-2 focus:ring-violet-200/20 disabled:cursor-not-allowed disabled:opacity-55 sm:h-14 sm:w-12"
+        />
+      ))}
+    </div>
+  );
+}
+
+type MfaHelpDialogProps = {
+  onClose: () => void;
+};
+
+function MfaHelpDialog({ onClose }: MfaHelpDialogProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 px-4 py-5 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mfa-help-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="relative max-h-full w-full max-w-4xl overflow-y-auto rounded-[28px] border border-violet-200/25 bg-[linear-gradient(145deg,#1b1030_0%,#100a20_58%,#0b0717_100%)] p-4 text-white shadow-[0_32px_90px_rgba(4,3,18,0.72),inset_0_1px_0_rgba(255,255,255,0.13)] sm:p-6">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/16 bg-white/[0.06] text-violet-100 transition hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 sm:right-6 sm:top-6"
+          aria-label="Zavřít nápovědu"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_252px] lg:items-start">
+          <div className="pr-10 sm:pr-12 lg:pr-0">
+            <div className="inline-flex self-start items-center gap-2 rounded-full border border-sky-200/30 bg-sky-300/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-100">
+              <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
+              Rychlá nápověda
+            </div>
+            <h4 id="mfa-help-title" className="mt-6 text-xl font-bold tracking-[-0.02em] text-white sm:text-2xl">
+              Jak přidat Bohemka.App do Authenticatoru?
+            </h4>
+            <p className="mt-3 text-sm leading-relaxed text-violet-100/72">
+              Otevři si v mobilu nebo stáhni aplikaci{" "}
+              <strong className="font-semibold text-white">Microsoft Authenticator</strong>.
+              {" "}Pravděpodobně ji už máš, pokud využíváš portál SUS ČPP nebo KNZ
+              KOOPERATIVA.
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a
+                href={MICROSOFT_AUTHENTICATOR_APP_STORE_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-white/[0.11]"
+                aria-label="Otevřít Microsoft Authenticator v App Store"
+              >
+                <Apple className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                App Store
+                <ExternalLink className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
+              </a>
+              <a
+                href={MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-white/[0.11]"
+                aria-label="Otevřít Microsoft Authenticator v Google Play"
+              >
+                <Play className="h-3.5 w-3.5" strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
+                Google Play
+                <ExternalLink className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
+              </a>
+            </div>
+
+            <div className="mt-8 border-t border-white/10 pt-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-200/70">
+                Postup nastavení
+              </p>
+              <ol className="mt-3 space-y-3">
+                <li className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.045] p-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-400/25 text-xs font-bold text-violet-50">
+                    1
+                  </span>
+                  <p className="pt-0.5 text-sm leading-relaxed text-violet-100/82">
+                    Otevři aplikaci. V jejím dolním pravém rohu najdi ikonu QR kódu.
+                  </p>
+                </li>
+                <li className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.045] p-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-400/25 text-xs font-bold text-violet-50">
+                    2
+                  </span>
+                  <p className="pt-0.5 text-sm leading-relaxed text-violet-100/82">
+                    Klikni na ni a namiř fotoaparátem na QR kód zobrazený v tomto okně.
+                  </p>
+                </li>
+                <li className="flex gap-3 rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-400/25 text-xs font-bold text-emerald-50">
+                    3
+                  </span>
+                  <p className="pt-0.5 text-sm leading-relaxed text-emerald-50/88">
+                    Po naskenování je hotovo. V aplikaci najdeš unikátní šestimístný
+                    číselný kód, který se každých 30 vteřin mění. Zadej ho sem do
+                    aplikace.
+                  </p>
+                </li>
+              </ol>
+            </div>
+
+          </div>
+
+          <figure>
+            <div className="flex h-[380px] items-center justify-center sm:h-[440px] lg:h-[470px]">
+              <Image
+                src="/icons/microsoft-authenticator-qr-help-purple.png"
+                alt="Microsoft Authenticator s vyznačenou ikonou QR kódu v dolním pravém rohu"
+                width={853}
+                height={1844}
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <figcaption className="px-1 pb-1 pt-2 text-center text-[11px] font-medium leading-relaxed text-violet-100/65">
+              Ikona QR kódu v Microsoft Authenticatoru
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+    </div>
+  );
+}
 
 export function AccountSetupWizard({
   ariaLabel,
@@ -134,6 +357,7 @@ export function AccountSetupWizard({
   onBack,
   onPrimaryAction,
 }: AccountSetupWizardProps) {
+  const [isMfaHelpOpen, setIsMfaHelpOpen] = useState(false);
   const progress = completed ? 100 : ((stepIndex + 1) / steps.length) * 100;
   const lastStepIndex = steps.length - 1;
   const primaryLabel =
@@ -472,31 +696,6 @@ export function AccountSetupWizard({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <a
-                      href={MICROSOFT_AUTHENTICATOR_APP_STORE_URL}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-white/[0.11]"
-                      aria-label="Otevřít Microsoft Authenticator v App Store"
-                    >
-                      <Apple className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                      App Store
-                      <ExternalLink className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
-                    </a>
-                    <a
-                      href={MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-white/[0.11]"
-                      aria-label="Otevřít Microsoft Authenticator v Google Play"
-                    >
-                      <Play className="h-3.5 w-3.5" strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
-                      Google Play
-                      <ExternalLink className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
-                    </a>
-                  </div>
-
                   {mfaGraceActive ? (
                     <div className="rounded-2xl border border-amber-200/35 bg-amber-300/12 px-3 py-3 text-sm leading-relaxed text-amber-50/90">
                       2FA je potřeba zapnout do {mfaGraceRemainingDays}{" "}
@@ -549,29 +748,17 @@ export function AccountSetupWizard({
                   ) : null}
 
                   {!mfaEnabled && mfaSecretKey ? (
-                    <div className="space-y-3 rounded-2xl border border-white/14 bg-white/[0.05] px-3 py-3">
-                      <div className="flex items-start gap-3">
-                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-violet-200/28 bg-violet-300/12 text-violet-100">
-                          <QrCode className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white">Naskenuj QR kód</p>
-                          <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
-                            Po přidání účtu opiš aktuální kód z aplikace.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
-                        <div className="flex h-[220px] w-[220px] items-center justify-center overflow-hidden rounded-2xl border border-white/14 bg-white p-2">
+                    <div className="mt-1 grid gap-5 lg:grid-cols-[216px_minmax(0,1fr)] lg:items-center">
+                      <div className="flex flex-col items-center lg:items-start">
+                        <div className="flex h-[196px] w-[196px] items-center justify-center overflow-hidden rounded-[22px] border border-white/18 bg-white p-2 shadow-[0_18px_38px_rgba(3,2,13,0.34)]">
                           {mfaQrLoading ? (
                             <Loader2 className="h-7 w-7 animate-spin text-slate-500" aria-hidden="true" />
                           ) : mfaQrDataUrl ? (
                             <Image
                               src={mfaQrDataUrl}
                               alt="QR kód pro nastavení 2FA"
-                              width={220}
-                              height={220}
+                              width={196}
+                              height={196}
                               unoptimized
                               className="h-full w-full object-contain"
                             />
@@ -579,15 +766,66 @@ export function AccountSetupWizard({
                             <QrCode className="h-10 w-10 text-slate-400" aria-hidden="true" />
                           )}
                         </div>
+                        <p className="mt-2 text-center text-[11px] font-medium text-violet-100/52 lg:text-left">
+                          Naskenuj ho v aplikaci Authenticator
+                        </p>
+                      </div>
 
-                        <div className="min-w-0 space-y-3">
-                          {mfaQrError ? (
-                            <p className="rounded-2xl border border-amber-200/35 bg-amber-300/12 px-3 py-2 text-xs font-semibold text-amber-100">
-                              {mfaQrError}
+                      <div className="min-w-0">
+                        <div className="flex items-start gap-3">
+                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200/28 bg-violet-300/12 text-sm font-bold text-violet-50">
+                            1
+                          </span>
+                          <div className="min-w-0 pt-0.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-base font-semibold text-white">Naskenuj QR kód</p>
+                              <button
+                                type="button"
+                                onClick={() => setIsMfaHelpOpen(true)}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/25 bg-violet-300/10 px-2.5 py-1 text-[11px] font-semibold text-violet-50 transition hover:bg-violet-300/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80"
+                              >
+                                <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
+                                Nápověda
+                              </button>
+                            </div>
+                            <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
+                              V Microsoft Authenticatoru otevři čtečku QR kódů a namiř ji
+                              na tento kód.
                             </p>
-                          ) : null}
+                          </div>
+                        </div>
 
-                          <div className="rounded-2xl border border-white/12 bg-slate-950/35 px-3 py-2">
+                        {mfaQrError ? (
+                          <p className="mt-3 rounded-2xl border border-amber-200/35 bg-amber-300/12 px-3 py-2 text-xs font-semibold text-amber-100">
+                            {mfaQrError}
+                          </p>
+                        ) : null}
+
+                        <div className="mt-5 flex items-start gap-3 border-t border-white/10 pt-4">
+                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200/30 bg-emerald-300/12 text-sm font-bold text-emerald-50">
+                            2
+                          </span>
+                          <label className="block min-w-0 space-y-2 pt-0.5">
+                            <span className="block text-base font-semibold text-white">
+                              Zadej šestimístný kód
+                            </span>
+                            <p className="text-sm leading-relaxed text-violet-100/66">
+                              Po přidání účtu opiš aktuální kód z aplikace.
+                            </p>
+                            <MfaCodeInput
+                              value={mfaCode}
+                              disabled={mfaSaving}
+                              onChange={onMfaCodeChange}
+                            />
+                          </label>
+                        </div>
+
+                        <details className="group mt-4 border-t border-white/10 pt-3">
+                          <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-semibold text-violet-100/66 transition hover:text-violet-50 [&::-webkit-details-marker]:hidden">
+                            <ChevronRight className="h-3.5 w-3.5 transition group-open:rotate-90" aria-hidden="true" />
+                            Nemůžeš QR kód naskenovat? Použij ruční klíč.
+                          </summary>
+                          <div className="mt-2 rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-200/62">
                               Ruční klíč
                             </p>
@@ -595,25 +833,7 @@ export function AccountSetupWizard({
                               {mfaSecretKey}
                             </p>
                           </div>
-
-                          <label className="block space-y-2">
-                            <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
-                              2FA kód
-                            </span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              autoComplete="one-time-code"
-                              value={mfaCode}
-                              onChange={(event) =>
-                                onMfaCodeChange(event.target.value.replace(/\D+/g, "").slice(0, 8))
-                              }
-                              placeholder="123456"
-                              disabled={mfaSaving}
-                              className={ACCOUNT_SETUP_FIELD_CLASS}
-                            />
-                          </label>
-                        </div>
+                        </details>
                       </div>
                     </div>
                   ) : null}
@@ -687,6 +907,7 @@ export function AccountSetupWizard({
           </>
         )}
       </section>
+      {isMfaHelpOpen ? <MfaHelpDialog onClose={() => setIsMfaHelpOpen(false)} /> : null}
     </div>
   );
 }

@@ -24,6 +24,8 @@ import {
   Printer,
   ReceiptText,
   RotateCcw,
+  TrendingDown,
+  TrendingUp,
   UploadCloud,
   UsersRound,
   WalletCards,
@@ -315,8 +317,8 @@ type StatementProductMapResponse = {
 const STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE = "bohemka:statement-contract-saved";
 const STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE =
   "bohemka:statement-contract-save-completed";
-const STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE =
-  "bohemka:statement-cpp-auto-queue-add";
+const STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE =
+  "bohemka:statement-cpp-a101-queue-add";
 
 type StatementContractSavedMessage = {
   type:
@@ -330,8 +332,9 @@ type StatementContractSavedMessage = {
   savedAtMs?: number | null;
 };
 
-type StatementCppAutoQueueAddMessage = {
-  type: typeof STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE;
+type StatementCppA101QueueAddMessage = {
+  type: typeof STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE;
+  product: Extract<Product, "cppAuto" | "domex">;
   contractNumber: string;
   clientName: string;
   contractSignedDate: string;
@@ -347,6 +350,11 @@ const isPaymentFrequency = (value: unknown): value is PaymentFrequency =>
   value === "quarterly" ||
   value === "semiannual" ||
   value === "annual";
+
+const isCppA101QueueProduct = (
+  value: unknown
+): value is Extract<Product, "cppAuto" | "domex"> =>
+  value === "cppAuto" || value === "domex";
 
 const isStatementContractSavedMessage = (
   value: unknown
@@ -372,13 +380,14 @@ const isStatementContractSaveCompletedMessage = (
   );
 };
 
-const isStatementCppAutoQueueAddMessage = (
+const isStatementCppA101QueueAddMessage = (
   value: unknown
-): value is StatementCppAutoQueueAddMessage => {
+): value is StatementCppA101QueueAddMessage => {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return (
-    record.type === STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE &&
+    record.type === STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE &&
+    isCppA101QueueProduct(record.product) &&
     typeof record.contractNumber === "string" &&
     typeof record.clientName === "string" &&
     typeof record.contractSignedDate === "string" &&
@@ -2854,11 +2863,9 @@ const autoPremiumBaseComparisonForContract = (
     ...comparison,
     key: "auto-premium-base",
     label: "Základna pojistného",
-    canBeAnniversaryPremiumChange: isAutoInAnniversaryPremiumWindow(
-      contract,
-      systemContract,
-      statementPeriod
-    ),
+    // Změna pojistného u aut je běžná změna smlouvy, nikoliv nesrovnalost.
+    // Datum výročí dál uchováváme pro informaci v kartě, ale nerozhoduje o stavu.
+    canBeAnniversaryPremiumChange: true,
     firstAnniversaryDate: autoFirstAnniversaryDate(contract, systemContract),
     anniversaryDate:
       autoPremiumAnniversaryWindowForStatement(contract, systemContract, statementPeriod)
@@ -3078,9 +3085,6 @@ const autoPremiumChangeInfo = (
     systemContract,
     statementPeriod
   );
-  if (!anniversaryWindow && !isAutoInAnniversaryPremiumWindow(contract, systemContract, statementPeriod)) {
-    return null;
-  }
   const storedChange = storedAutoPremiumChangeInfo(
     mismatch,
     contract,
@@ -5645,7 +5649,6 @@ function OtherProductContractCard({
   const statementPremiumBaseComparison = systemContract && !tipOnlyContract
     ? otherProductPremiumBaseComparisonForContract(reviewContract, systemContract, statementPeriod)
     : null;
-  const autoPremiumBaseComparison = isAutoContract ? statementPremiumBaseComparison : null;
   const autoPremiumChange = tipOnlyContract
     ? null
     : autoPremiumChangeInfo(
@@ -5653,7 +5656,10 @@ function OtherProductContractCard({
         systemContract,
         statementPeriod
       );
-  const amountComparisonsForReview = amountComparisons;
+  const amountComparisonsForReview = amountComparisons.filter(
+    (comparison) =>
+      !isAmountComparisonExplainedByAutoPremiumChange(comparison, autoPremiumChange)
+  );
   const amountIssueCount = amountComparisonsForReview.filter(
     (comparison) => comparison.status !== "ok"
   ).length;
@@ -5667,18 +5673,6 @@ function OtherProductContractCard({
     careerCheck &&
       careerCheck.careers.length > 0 &&
       (!careerCheck.systemPosition || careerCheck.mismatched)
-  );
-  const autoPremiumBaseMismatch =
-    tipOnlyContract ||
-    autoPremiumChange ||
-    !autoPremiumBaseComparison ||
-    Math.abs(autoPremiumBaseComparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE
-      ? null
-      : autoPremiumBaseComparison;
-  const autoPremiumBaseMismatchBeforeAnniversary = Boolean(
-    autoPremiumBaseMismatch &&
-      autoPremiumBaseComparison &&
-      !autoPremiumBaseComparison.canBeAnniversaryPremiumChange
   );
   const detailUrl = firstContractDetailUrl(contract.rows);
   const extranetUrl = firstSjednatelExtranetUrl(contract.rows, systemContract);
@@ -5694,13 +5688,13 @@ function OtherProductContractCard({
           source: statementPrefillSource,
         })
       : null;
-  const cppAutoBatchQueueEligible =
+  const cppA101BatchQueueEligible =
     match?.status === "not_found" &&
-    calculatorPrefill?.product === "cppAuto" &&
+    isCppA101QueueProduct(calculatorPrefill?.product) &&
     otherProductContractHasA101Commission(reviewContract);
-  const calculatorPrefillWithCppAutoQueue =
-    calculatorPrefill && cppAutoBatchQueueEligible
-      ? { ...calculatorPrefill, cppAutoQueueEligible: true }
+  const calculatorPrefillWithCppA101Queue =
+    calculatorPrefill && cppA101BatchQueueEligible
+      ? { ...calculatorPrefill, cppA101QueueEligible: true }
       : calculatorPrefill;
   const [expanded, setExpanded] = useState(false);
   const markedItem: MarkedDiscrepancyItem | null = markingControls
@@ -5790,12 +5784,13 @@ function OtherProductContractCard({
             )}
             {autoPremiumChange && (
               <span
-                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                  autoPremiumChange.direction === "increase"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border-sky-200 bg-sky-50 text-sky-800"
-                }`}
+                className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800"
               >
+                {autoPremiumChange.direction === "increase" ? (
+                  <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+                ) : (
+                  <TrendingDown className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+                )}
                 {autoPremiumChange.direction === "increase"
                   ? "Pojistné navýšeno"
                   : "Pojistné poníženo"}
@@ -5873,13 +5868,13 @@ function OtherProductContractCard({
             scope={matchScope}
             presentation={systemMatchPresentation}
           />
-          {(systemContract || detailUrl || extranetUrl || calculatorPrefillWithCppAutoQueue) && (
+          {(systemContract || detailUrl || extranetUrl || calculatorPrefillWithCppA101Queue) && (
             <div className="mt-3 flex flex-wrap gap-2">
               <BohemkaContractDetailLink contract={systemContract} />
               <ContractDetailLink href={detailUrl} />
               <SjednatelExtranetLink href={extranetUrl} />
               <StatementCalculatorPrefillButton
-                prefill={calculatorPrefillWithCppAutoQueue}
+                prefill={calculatorPrefillWithCppA101Queue}
                 maxxHref={detailUrl}
               />
             </div>
@@ -5938,44 +5933,18 @@ function OtherProductContractCard({
           />
 
           {autoPremiumChange && (
-            <div
-              className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${
-                autoPremiumChange.direction === "increase"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                  : "border-sky-200 bg-sky-50 text-sky-950"
-              }`}
-            >
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+              {autoPremiumChange.direction === "increase" ? (
+                <TrendingUp className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+              ) : (
+                <TrendingDown className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+              )}
               <div>
                 <div className="font-bold">
-                  Pojistné {autoPremiumChange.direction === "increase" ? "navýšeno" : "poníženo"} u výročí smlouvy
+                  Pojistné {autoPremiumChange.direction === "increase" ? "navýšeno" : "poníženo"}
                 </div>
-                <div
-                  className={`mt-0.5 font-medium ${
-                    autoPremiumChange.direction === "increase"
-                      ? "text-emerald-900"
-                      : "text-sky-900"
-                  }`}
-                >
-                  Výpis počítá s {autoStatementPremiumBaseText(autoPremiumChange)} pro tuto provizní položku. Systém eviduje {paymentAmountWithFrequencyLabel(autoPremiumChange.systemPremiumBase, autoPremiumChange.systemPaymentFrequency)} ({formatWholeMoney(autoPremiumChange.systemAnnualPremiumBase)} Kč ročně). Rozdíl {formatSignedWholeMoney(autoPremiumChange.difference)} za platbu ({formatSignedWholeMoney(autoPremiumChange.annualDifference)} ročně) odpovídá {autoPremiumChange.source === "stored_history" ? "uložené historii změny pojistného" : "změně pojistného v toleranci kolem výročí"}{autoPremiumChange.anniversaryDate ? ` ${formatLocalDate(autoPremiumChange.anniversaryDate)}` : ""}{autoPremiumChange.referenceDate ? ` (výpis do ${formatLocalDate(autoPremiumChange.referenceDate)})` : ""}. Změna se zapisuje k výročnímu dni, proto ji neberu jako chybu výpisu.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {autoPremiumBaseMismatch && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <div>
-                <div className="font-bold">
-                  {autoPremiumBaseMismatchBeforeAnniversary
-                    ? "Nesedí základna ve výpisu"
-                    : "Rozdíl pojistného ve výpisu a systému"}
-                </div>
-                <div className="mt-0.5 font-medium text-amber-900">
-                  {autoPremiumBaseMismatchBeforeAnniversary
-                    ? `Pojišťovna ve výpisu použila základnu ${formatWholeMoney(autoPremiumBaseMismatch.statementPremiumBase)} Kč za platbu, ale v systému je ${paymentAmountWithFrequencyLabel(autoPremiumBaseMismatch.systemPremiumBase, autoPremiumBaseMismatch.systemPaymentFrequency)}. Výpis je do ${formatLocalDate(autoPremiumBaseComparison?.referenceDate)} a výročí je ${formatLocalDate(autoPremiumBaseComparison?.anniversaryDate ?? autoPremiumBaseComparison?.firstAnniversaryDate)}, takže rozdíl není v toleranci ${AUTO_PREMIUM_ANNIVERSARY_TOLERANCE_MONTHS} měsíců kolem výročí.`
-                    : "U aut to může být důsledek změny pojistného kolem výročí smlouvy, tedy zdražení nebo zlevnění, a vysvětlovat rozdíl ve vyplacené provizi."}
+                <div className="mt-0.5 font-medium text-rose-900">
+                  Výpis počítá s {autoStatementPremiumBaseText(autoPremiumChange)} pro tuto provizní položku. Systém eviduje {paymentAmountWithFrequencyLabel(autoPremiumChange.systemPremiumBase, autoPremiumChange.systemPaymentFrequency)} ({formatWholeMoney(autoPremiumChange.systemAnnualPremiumBase)} Kč ročně). Rozdíl {formatSignedWholeMoney(autoPremiumChange.difference)} za platbu ({formatSignedWholeMoney(autoPremiumChange.annualDifference)} ročně) odpovídá {autoPremiumChange.source === "stored_history" ? "uložené historii změny pojistného" : "změně pojistného u smlouvy"}{autoPremiumChange.anniversaryDate ? ` k výročí ${formatLocalDate(autoPremiumChange.anniversaryDate)}` : ""}{autoPremiumChange.referenceDate ? ` (výpis do ${formatLocalDate(autoPremiumChange.referenceDate)})` : ""}. Změnu pojistného u auta neberu jako chybu výpisu.
                 </div>
               </div>
             </div>
@@ -7146,7 +7115,7 @@ function OtherProductsSection({
 function StatementPreview({
   statement,
   matchesByContractNumber,
-  queuedCppAutoContractNumbers,
+  queuedCppA101ContractKeys,
   currentUserEmail,
   selectedStatementId,
   correctionContext,
@@ -7156,7 +7125,7 @@ function StatementPreview({
 }: {
   statement: ParsedStatement;
   matchesByContractNumber: ContractMatchesByNumber;
-  queuedCppAutoContractNumbers: ReadonlySet<string>;
+  queuedCppA101ContractKeys: ReadonlySet<string>;
   currentUserEmail?: string | null;
   selectedStatementId?: string | null;
   correctionContext?: StatementCorrectionContext;
@@ -7179,8 +7148,13 @@ function StatementPreview({
   };
   const visibleOtherProductContracts = statement.otherProductContracts.filter((contract) => {
     const contractNumber = normalizeContractNumberForMatch(contract.contractNumber);
-    if (!contractNumber || !queuedCppAutoContractNumbers.has(contractNumber)) return true;
-    if (!contractHasProductCategory(contract, "auto")) return true;
+    const productMetas = uniqueProductMetasForRows(contract.rows);
+    const productKey = productMetas.length === 1 ? productMetas[0]?.productKey : null;
+    const queueItemKey = productKey
+      ? cppAutoBatchQueueItemKey({ product: productKey, contractNumber })
+      : "";
+    if (!queueItemKey || !queuedCppA101ContractKeys.has(queueItemKey)) return true;
+    if (!isCppA101QueueProduct(productKey)) return true;
     if (!otherProductContractHasA101Commission(contract)) return true;
 
     return !isUnpairedContractMatch(
@@ -8085,12 +8059,19 @@ export default function CommissionStatementsPage() {
   }, []);
 
   useEffect(() => {
-    const handleCppAutoQueueAdd = (event: MessageEvent) => {
+    const handleCppA101QueueAdd = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
-      if (!isStatementCppAutoQueueAddMessage(event.data)) return;
+      if (!isStatementCppA101QueueAddMessage(event.data)) return;
 
       const prefill = calculatorPrefillPanel;
-      if (!prefill || prefill.product !== "cppAuto" || !prefill.cppAutoQueueEligible) return;
+      if (
+        !prefill ||
+        !isCppA101QueueProduct(prefill.product) ||
+        prefill.product !== event.data.product ||
+        !prefill.cppA101QueueEligible
+      ) {
+        return;
+      }
 
       const queuedPrefill: StatementCalculatorPrefill = {
         ...prefill,
@@ -8126,8 +8107,8 @@ export default function CommissionStatementsPage() {
       );
     };
 
-    window.addEventListener("message", handleCppAutoQueueAdd);
-    return () => window.removeEventListener("message", handleCppAutoQueueAdd);
+    window.addEventListener("message", handleCppA101QueueAdd);
+    return () => window.removeEventListener("message", handleCppA101QueueAdd);
   }, [calculatorPrefillPanel]);
 
   const matchStats = useMemo<ContractMatchStats>(() => {
@@ -8734,7 +8715,7 @@ export default function CommissionStatementsPage() {
           user,
           ownerEmail: effectiveUserEmail,
           entry: {
-            productKey: "cppAuto",
+            productKey: item.product,
             entryType: "contract",
             commissionMode: null,
             inputAmount: amount,
@@ -8954,11 +8935,11 @@ export default function CommissionStatementsPage() {
     matchStats.total > 0 &&
     matchStats.completed < matchStats.total &&
     !matchingError;
-  const queuedCppAutoContractNumbers = useMemo(
+  const queuedCppA101ContractKeys = useMemo(
     () =>
       new Set(
         cppAutoBatchQueue
-          .map((item) => normalizeContractNumberForMatch(item.contractNumber))
+          .map((item) => cppAutoBatchQueueItemKey(item))
           .filter(Boolean)
       ),
     [cppAutoBatchQueue]
@@ -9238,7 +9219,7 @@ export default function CommissionStatementsPage() {
                   key={`${statement.fileName}-${statement.header.statementNumber ?? "bez-cisla"}`}
                   statement={statement}
                   matchesByContractNumber={matchesByContractNumber}
-                  queuedCppAutoContractNumbers={queuedCppAutoContractNumbers}
+                  queuedCppA101ContractKeys={queuedCppA101ContractKeys}
                   currentUserEmail={effectiveUserEmail}
                   selectedStatementId={statementIdForActions}
                   onRequestSystemStorno={openStornoActionModal}

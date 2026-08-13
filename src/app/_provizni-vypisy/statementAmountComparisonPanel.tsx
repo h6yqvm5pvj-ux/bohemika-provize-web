@@ -1,3 +1,5 @@
+import { TrendingDown, TrendingUp } from "lucide-react";
+
 import {
   ANNUAL_PREMIUM_TOLERANCE,
   COMMISSION_AMOUNT_TOLERANCE,
@@ -181,9 +183,7 @@ export function AmountComparisonPanel({
     if (!comparison.canBeAnniversaryPremiumChange) {
       return "border-amber-200 bg-amber-50 text-amber-900";
     }
-    return comparison.annualDifference > 0
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : "border-sky-200 bg-sky-50 text-sky-800";
+    return "border-rose-200 bg-rose-50 text-rose-800";
   };
 
   return (
@@ -248,8 +248,15 @@ export function AmountComparisonPanel({
                   </td>
                   <td className="px-3 py-2 text-right">
                     <span
-                      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${baseStatusClass(comparison)}`}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${baseStatusClass(comparison)}`}
                     >
+                      {comparison.canBeAnniversaryPremiumChange &&
+                        Math.abs(comparison.annualDifference) > ANNUAL_PREMIUM_TOLERANCE &&
+                        (comparison.annualDifference > 0 ? (
+                          <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+                        ) : (
+                          <TrendingDown className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+                        ))}
                       {baseStatusLabel(comparison)}
                     </span>
                   </td>

@@ -830,8 +830,8 @@ export function useAccountSetupFlow({
       return;
     }
 
-    const verificationCode = mfaCode.replace(/\D+/g, "").slice(0, 8);
-    if (verificationCode.length < 6) {
+    const verificationCode = mfaCode.replace(/\D+/g, "").slice(0, 6);
+    if (verificationCode.length !== 6) {
       setError("Zadej aktuální 6místný kód z aplikace.");
       return;
     }
@@ -984,7 +984,7 @@ export function useAccountSetupFlow({
         setInfo(null);
       },
       onMfaCodeChange: (value: string) => {
-        setMfaCode(value);
+        setMfaCode(value.replace(/\D+/g, "").slice(0, 6));
         setError(null);
       },
       onDismissGrace: () => {

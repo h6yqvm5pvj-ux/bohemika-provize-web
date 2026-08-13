@@ -20,6 +20,11 @@ import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
+  ADMIN_IMPERSONATION_EVENT,
+  readAdminImpersonationState,
+  type AdminImpersonationState,
+} from "@/app/lib/adminImpersonation";
+import {
   formatMoney as formatMoneyValue,
   positionLabel,
 } from "@/app/lib/formatters";
@@ -596,7 +601,11 @@ function teamRevealStyle(delayMs: number): CSSProperties {
 }
 
 export default function TeamPage() {
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [authenticatedUserEmail, setAuthenticatedUserEmail] = useState<string | null>(null);
+  const [adminImpersonation, setAdminImpersonation] =
+    useState<AdminImpersonationState | null>(() =>
+      typeof window === "undefined" ? null : readAdminImpersonationState()
+    );
   const [authReady, setAuthReady] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [search, setSearch] = useState("");
@@ -664,6 +673,7 @@ export default function TeamPage() {
   const [membersScrollTop, setMembersScrollTop] = useState(0);
   const [membersViewportHeight, setMembersViewportHeight] = useState(0);
 
+  const userEmail = adminImpersonation?.email ?? authenticatedUserEmail;
   const cacheKey = useMemo(() => (userEmail ? `team:${userEmail}` : null), [userEmail]);
   const clampedLoadingProgress = Math.max(8, Math.min(97, loadingProgress));
 
@@ -681,15 +691,28 @@ export default function TeamPage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u?.email) {
-        setUserEmail(null);
+        setAuthenticatedUserEmail(null);
         setAuthReady(true);
         return;
       }
       const em = u.email.toLowerCase();
-      setUserEmail(em);
+      setAuthenticatedUserEmail(em);
       setAuthReady(true);
     });
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncImpersonation = () => {
+      setAdminImpersonation(readAdminImpersonationState());
+      setSelectedEmail(null);
+    };
+    syncImpersonation();
+    window.addEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    return () => {
+      window.removeEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    };
   }, []);
 
   useEffect(() => {

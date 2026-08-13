@@ -236,7 +236,7 @@ const statementCalculatorPrefillHref = (prefill: StatementCalculatorPrefill): st
   if (prefill.statementChronologyMs != null) {
     params.set("sourceStatementChronologyMs", String(prefill.statementChronologyMs));
   }
-  if (prefill.cppAutoQueueEligible) params.set("cppAutoQueueEligible", "1");
+  if (prefill.cppA101QueueEligible) params.set("cppA101QueueEligible", "1");
   return `/kalkulacka?${params.toString()}`;
 };
 

@@ -452,8 +452,8 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 const STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE = "bohemka:statement-contract-saved";
 const STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE =
   "bohemka:statement-contract-save-completed";
-const STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE =
-  "bohemka:statement-cpp-auto-queue-add";
+const STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE =
+  "bohemka:statement-cpp-a101-queue-add";
 type StatementPremiumSource = {
   statementId: string | null;
   statementChronologyMs: number | null;
@@ -532,7 +532,8 @@ const notifyStatementParentContractSaveCompleted = (
     ...payload,
   });
 
-const notifyStatementParentCppAutoQueueAdd = ({
+const notifyStatementParentCppA101QueueAdd = ({
+  product,
   contractNumber,
   clientName,
   contractSignedDate,
@@ -542,6 +543,7 @@ const notifyStatementParentCppAutoQueueAdd = ({
   stornoDate,
   pdfFile,
 }: {
+  product: "cppAuto" | "domex";
   contractNumber: string;
   clientName: string;
   contractSignedDate: string;
@@ -557,7 +559,8 @@ const notifyStatementParentCppAutoQueueAdd = ({
 
   window.parent.postMessage(
     {
-      type: STATEMENT_CPP_AUTO_QUEUE_ADD_MESSAGE_TYPE,
+      type: STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE,
+      product,
       contractNumber,
       clientName,
       contractSignedDate,
@@ -953,7 +956,7 @@ export default function CalculatorPage() {
   const statementPrefillAppliedRef = useRef(false);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
   const [statementEmbedParentAvailable, setStatementEmbedParentAvailable] = useState(false);
-  const [statementCppAutoQueueEligible, setStatementCppAutoQueueEligible] = useState(false);
+  const [statementCppA101QueueEligible, setStatementCppA101QueueEligible] = useState(false);
   const [statementPremiumSource, setStatementPremiumSource] =
     useState<StatementPremiumSource | null>(null);
   const [pdfImporting, setPdfImporting] = useState(false);
@@ -1000,8 +1003,8 @@ export default function CalculatorPage() {
     const isStatementPrefill = params.get("prefill") === "commission-statement";
     setStatementEmbedMode(isStatementPrefill);
     setStatementEmbedParentAvailable(isStatementPrefill && window.parent !== window);
-    setStatementCppAutoQueueEligible(
-      isStatementPrefill && params.get("cppAutoQueueEligible") === "1"
+    setStatementCppA101QueueEligible(
+      isStatementPrefill && params.get("cppA101QueueEligible") === "1"
     );
     if (!isStatementPrefill) {
       setStatementPremiumSource(null);
@@ -6067,12 +6070,12 @@ export default function CalculatorPage() {
     }
   };
 
-  const handleAddCppAutoToStatementQueue = () => {
+  const handleAddCppA101ToStatementQueue = () => {
     if (
-      product !== "cppAuto" ||
+      (product !== "cppAuto" && product !== "domex") ||
       !statementEmbedMode ||
       !statementEmbedParentAvailable ||
-      !statementCppAutoQueueEligible
+      !statementCppA101QueueEligible
     ) {
       return;
     }
@@ -6108,7 +6111,8 @@ export default function CalculatorPage() {
       return;
     }
 
-    notifyStatementParentCppAutoQueueAdd({
+    notifyStatementParentCppA101QueueAdd({
+      product,
       contractNumber: contractNumber.trim(),
       clientName: clientName.trim(),
       contractSignedDate: contractSignedDate.trim(),
@@ -9208,9 +9212,9 @@ export default function CalculatorPage() {
             showAddToQueue={
               statementEmbedMode &&
               statementEmbedParentAvailable &&
-              statementCppAutoQueueEligible &&
+              statementCppA101QueueEligible &&
               isAddContractMode &&
-              product === "cppAuto" &&
+              (product === "cppAuto" || product === "domex") &&
               !tipsterModeEnabled &&
               !originalReplacementWorkflowActive &&
               !endorsementDraft &&
@@ -9225,7 +9229,7 @@ export default function CalculatorPage() {
             onSaveContract={() => {
               void handleSaveContract();
             }}
-            onAddToQueue={handleAddCppAutoToStatementQueue}
+            onAddToQueue={handleAddCppA101ToStatementQueue}
           />
         </div>
         )}

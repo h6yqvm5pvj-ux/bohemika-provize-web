@@ -36,6 +36,10 @@ import {
 } from "@/app/lib/adminImpersonation";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
+  AUTO_PRODUCTS,
+  LIFE_PRODUCTS,
+  LIABILITY_PRODUCTS,
+  PROPERTY_PRODUCTS,
   productCategory,
   productInstitutionLabel,
   productLabel,
@@ -95,6 +99,46 @@ type ReviewsResponse = {
 };
 
 const WINDOW_OPTIONS = [14, 30, 60, DEFAULT_ANNIVERSARY_WINDOW_DAYS] as const;
+
+type RadarProductFilter =
+  | "all"
+  | "life"
+  | "propertyLiability"
+  | "auto"
+  | "entrepreneurs";
+
+const RADAR_PRODUCT_FILTERS: Array<{ key: RadarProductFilter; label: string }> = [
+  { key: "all", label: "Vše" },
+  { key: "life", label: "Život" },
+  { key: "propertyLiability", label: "Majetek a odpovědnost" },
+  { key: "auto", label: "Auto" },
+  { key: "entrepreneurs", label: "Podnikatelé" },
+];
+
+// Stejné dělení jako ve filtrech Smluv a v exportu produkce.
+const RADAR_ENTREPRENEUR_PRODUCTS = new Set<Product>([
+  "cppsimplex",
+  "kooppmop",
+  "cppPPRs",
+  "cppPPRbez",
+]);
+const RADAR_PROPERTY_LIABILITY_PRODUCTS = new Set<Product>(
+  [...PROPERTY_PRODUCTS, ...LIABILITY_PRODUCTS].filter(
+    (product) => product !== "zamex" && !RADAR_ENTREPRENEUR_PRODUCTS.has(product)
+  )
+);
+
+const matchesRadarProductFilter = (
+  product: Product | null | undefined,
+  filter: RadarProductFilter
+): boolean => {
+  if (filter === "all") return true;
+  if (!product) return false;
+  if (filter === "life") return LIFE_PRODUCTS.includes(product);
+  if (filter === "auto") return AUTO_PRODUCTS.includes(product);
+  if (filter === "entrepreneurs") return RADAR_ENTREPRENEUR_PRODUCTS.has(product);
+  return RADAR_PROPERTY_LIABILITY_PRODUCTS.has(product);
+};
 
 type ContactOutcome = "reached" | "no_answer" | "meeting" | "ignore";
 
@@ -788,6 +832,7 @@ export default function RadarVyrociPage() {
   const [windowDays, setWindowDays] = useState<number>(30);
   const [showTeam, setShowTeam] = useState(false);
   const [hideReviewed, setHideReviewed] = useState(false);
+  const [productFilter, setProductFilter] = useState<RadarProductFilter>("all");
 
   const [position, setPosition] = useState<Position | null>(null);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
@@ -980,18 +1025,28 @@ export default function RadarVyrociPage() {
     return items;
   }, [contracts, effectiveUserEmail, showTeam, windowDays]);
 
+  const productFilteredItems = useMemo(
+    () => radarItems.filter((item) => matchesRadarProductFilter(item.product, productFilter)),
+    [productFilter, radarItems]
+  );
+
   const visibleItems = useMemo(() => {
-    if (!hideReviewed) return radarItems;
-    return radarItems.filter((item) => !isReviewHandled(reviewRecords.get(item.key), item.occurrenceKey));
-  }, [radarItems, hideReviewed, reviewRecords]);
+    if (!hideReviewed) return productFilteredItems;
+    return productFilteredItems.filter(
+      (item) => !isReviewHandled(reviewRecords.get(item.key), item.occurrenceKey)
+    );
+  }, [productFilteredItems, hideReviewed, reviewRecords]);
 
   const handledCount = useMemo(
-    () => radarItems.filter((item) => isReviewHandled(reviewRecords.get(item.key), item.occurrenceKey)).length,
-    [radarItems, reviewRecords]
+    () =>
+      productFilteredItems.filter((item) =>
+        isReviewHandled(reviewRecords.get(item.key), item.occurrenceKey)
+      ).length,
+    [productFilteredItems, reviewRecords]
   );
   const urgentCount = useMemo(
-    () => radarItems.filter((item) => item.daysLeft <= 7).length,
-    [radarItems]
+    () => productFilteredItems.filter((item) => item.daysLeft <= 7).length,
+    [productFilteredItems]
   );
 
   const groups = useMemo(() => {
@@ -1301,7 +1356,7 @@ export default function RadarVyrociPage() {
             <StatTile
               icon={Target}
               label={`V okně ${windowDays} dní`}
-              value={radarItems.length}
+              value={productFilteredItems.length}
               gradient="bg-[linear-gradient(135deg,#818cf8_0%,#4338ca_100%)]"
               glow="shadow-[0_10px_22px_rgba(67,56,202,0.26)]"
             />
@@ -1333,6 +1388,26 @@ export default function RadarVyrociPage() {
                 </span>
               </button>
             ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1">
+            {RADAR_PRODUCT_FILTERS.map((filter) => {
+              const isActive = productFilter === filter.key;
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => setProductFilter(filter.key)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
+                    isActive
+                      ? "bg-[linear-gradient(135deg,#7c3aed_0%,#5b21b6_100%)] !text-white shadow-[0_6px_16px_rgba(109,40,217,0.28)]"
+                      : "text-slate-600 hover:bg-white"
+                  }`}
+                >
+                  <span className={isActive ? "!text-white" : ""}>{filter.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           {canShowTeam && (
@@ -1403,7 +1478,7 @@ export default function RadarVyrociPage() {
                 <Sparkles className="h-6 w-6" />
               </div>
               <div className="text-sm font-medium text-slate-700">
-                V tomto okně nikomu nekončí výročí smlouvy.
+                V tomto okně nejsou výročí smluv pro zvolený filtr.
               </div>
               <div className="text-xs text-slate-400">Zkus zvětšit okno nebo zapnout pohled na tým.</div>
             </div>

@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 
-import type { PaymentFrequency } from "@/app/types/domain";
+import type { PaymentFrequency, Product } from "@/app/types/domain";
 
 import type { StatementCalculatorPrefill } from "./statementPresentation";
 
@@ -25,7 +25,7 @@ export type CppAutoBatchQueueStatus =
 
 export type CppAutoBatchQueueItem = {
   id: string;
-  product: "cppAuto";
+  product: Extract<Product, "cppAuto" | "domex">;
   sourceProductCode: string;
   statementId: string | null;
   statementNumber: string | null;
@@ -66,8 +66,11 @@ export const cppAutoBatchQueueAmount = (value: string): number =>
   Number(value.trim().replace(/\s+/g, "").replace(",", "."));
 
 export const cppAutoBatchQueueItemKey = (
-  prefill: Pick<StatementCalculatorPrefill, "contractNumber">
-): string => normalizedContractNumber(prefill.contractNumber);
+  prefill: Pick<StatementCalculatorPrefill, "product" | "contractNumber">
+): string => {
+  const contractNumber = normalizedContractNumber(prefill.contractNumber);
+  return contractNumber ? `${prefill.product}:${contractNumber}` : "";
+};
 
 export const cppAutoBatchQueueItemFromPrefill = (
   prefill: StatementCalculatorPrefill
@@ -76,8 +79,8 @@ export const cppAutoBatchQueueItemFromPrefill = (
   const contractKey = cppAutoBatchQueueItemKey(prefill) || `without-number-${queuedAtMs}`;
 
   return {
-    id: `cpp-auto-a101:${contractKey}:${queuedAtMs}`,
-    product: "cppAuto",
+    id: `cpp-a101:${contractKey}:${queuedAtMs}`,
+    product: prefill.product === "domex" ? "domex" : "cppAuto",
     sourceProductCode: prefill.sourceProductCode,
     statementId: prefill.statementId,
     statementNumber: prefill.statementNumber,
@@ -212,7 +215,7 @@ export function CppAutoBatchQueue({
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-100 text-emerald-800">
               <Upload className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
             </span>
-            <h2 className="text-base font-black text-slate-950">Fronta ČPP Auto · A101</h2>
+            <h2 className="text-base font-black text-slate-950">Fronta ČPP Auto a DOMEX · A101</h2>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800">
               {pendingCount} {pendingCount === 1 ? "smlouva" : "smluv"}
             </span>
@@ -286,7 +289,7 @@ export function CppAutoBatchQueue({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-black text-slate-950">
-                      ČPP Auto · {item.sourceProductCode || "A101"}
+                      {item.product === "domex" ? "ČPP DOMEX" : "ČPP Auto"} · {item.sourceProductCode || "A101"}
                     </span>
                     <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${status.className}`}>
                       {item.status === "saving" && (
