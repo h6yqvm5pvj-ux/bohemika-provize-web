@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowRight, KeyRound, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import {
   FactorId,
   getMultiFactorResolver,
@@ -116,6 +117,10 @@ type LoginAttemptResponse = {
 };
 
 type InstallPlatform = "ios" | "android" | "desktop";
+
+const MFA_CODE_LENGTH = 6;
+
+const createEmptyMfaDigits = () => Array.from({ length: MFA_CODE_LENGTH }, () => "");
 
 type DeferredInstallPromptEvent = Event & {
   prompt: () => Promise<{ outcome: "accepted" | "dismissed"; platform: string } | void>;
@@ -246,7 +251,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<string | null>(null);
   const [mfaResolver, setMfaResolver] = useState<MultiFactorResolver | null>(null);
-  const [mfaCode, setMfaCode] = useState("");
+  const [mfaDigits, setMfaDigits] = useState<string[]>(createEmptyMfaDigits);
   const [mfaHintUid, setMfaHintUid] = useState<string | null>(null);
   const [mfaHintLabel, setMfaHintLabel] = useState<string | null>(null);
   const [installPlatform, setInstallPlatform] = useState<InstallPlatform>("desktop");
@@ -258,10 +263,11 @@ export default function LoginPage() {
   const [installFeedback, setInstallFeedback] = useState<string | null>(null);
   const [rememberThisDevice, setRememberThisDevice] = useState(false);
   const loginRememberThisDeviceRef = useRef(false);
+  const mfaInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   const clearMfaState = () => {
     setMfaResolver(null);
-    setMfaCode("");
+    setMfaDigits(createEmptyMfaDigits());
     setMfaHintUid(null);
     setMfaHintLabel(null);
   };
@@ -286,7 +292,7 @@ export default function LoginPage() {
         "Nastavuji relaci uživatele trvá příliš dlouho."
       );
       setMfaResolver(null);
-      setMfaCode("");
+      setMfaDigits(createEmptyMfaDigits());
       setMfaHintUid(null);
       setMfaHintLabel(null);
       router.replace(resolveSafeLoginNextPath("/"));
@@ -415,6 +421,12 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    if (!mfaResolver) return;
+    const frame = window.requestAnimationFrame(() => mfaInputRefs.current[0]?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [mfaResolver]);
+
+  useEffect(() => {
     if (!installGuideOpen || typeof document === "undefined") return;
 
     const previousOverflow = document.body.style.overflow;
@@ -439,9 +451,10 @@ export default function LoginPage() {
       return;
     }
 
-    const oneTimePassword = mfaCode.trim();
-    if (!oneTimePassword) {
-      setError("Zadej jednorázový kód z Microsoft Authenticator.");
+    const oneTimePassword = mfaDigits.join("");
+    if (oneTimePassword.length !== MFA_CODE_LENGTH) {
+      setError("Zadej všech 6 číslic jednorázového kódu.");
+      mfaInputRefs.current[mfaDigits.findIndex((digit) => !digit) || 0]?.focus();
       return;
     }
 
@@ -542,7 +555,7 @@ export default function LoginPage() {
           setMfaResolver(resolver);
           setMfaHintUid(totpHint.uid);
           setMfaHintLabel(totpHint.displayName ?? null);
-          setMfaCode("");
+          setMfaDigits(createEmptyMfaDigits());
           setResetStatus(null);
           setError(null);
           setLoading(false);
@@ -622,7 +635,42 @@ export default function LoginPage() {
   };
 
   const fieldInputClass =
-    "w-full rounded-2xl border border-violet-300/25 bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition placeholder:text-violet-100/38 focus:border-violet-200/70 focus:bg-white/[0.12] focus:ring-2 focus:ring-violet-200/20";
+    "w-full rounded-2xl border border-violet-300/25 bg-white/[0.08] py-3 pl-11 pr-4 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition placeholder:text-violet-100/38 focus:border-violet-200/70 focus:bg-white/[0.12] focus:ring-2 focus:ring-violet-200/20";
+
+  const focusMfaInput = (index: number) => {
+    window.requestAnimationFrame(() => mfaInputRefs.current[index]?.focus());
+  };
+
+  const applyMfaDigits = (startIndex: number, rawValue: string) => {
+    const digits = rawValue.replace(/\D/g, "").slice(0, MFA_CODE_LENGTH - startIndex);
+    if (!digits) return;
+
+    setMfaDigits((current) => {
+      const next = [...current];
+      for (const [offset, digit] of Array.from(digits).entries()) {
+        next[startIndex + offset] = digit;
+      }
+      return next;
+    });
+    setError(null);
+    focusMfaInput(Math.min(startIndex + digits.length, MFA_CODE_LENGTH - 1));
+  };
+
+  const handleMfaDigitChange = (index: number, rawValue: string) => {
+    const digits = rawValue.replace(/\D/g, "");
+    if (digits.length > 1) {
+      applyMfaDigits(index, digits);
+      return;
+    }
+
+    setMfaDigits((current) => {
+      const next = [...current];
+      next[index] = digits;
+      return next;
+    });
+    setError(null);
+    if (digits && index < MFA_CODE_LENGTH - 1) focusMfaInput(index + 1);
+  };
 
   const handleInstallCta = async () => {
     setInstallFeedback(null);
@@ -681,7 +729,7 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#160c2a_0%,#7c3aed_52%,#c084fc_100%)]" />
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-12 sm:py-16">
-        <div className="w-full max-w-xl space-y-7 font-mono">
+        <div className="w-full max-w-[30rem] space-y-7 font-mono">
           <div className="space-y-2 text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-violet-200/30 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-100 shadow-[0_8px_20px_rgba(10,5,30,0.18)]">
               <span className="h-2 w-2 rounded-full bg-violet-300" aria-hidden="true" />
@@ -693,7 +741,7 @@ export default function LoginPage() {
             <p className="text-sm text-violet-100/72">Přihlaš se do svého účtu.</p>
           </div>
 
-          <section className="relative overflow-hidden rounded-[30px] border border-violet-300/25 bg-[linear-gradient(155deg,#160c2a_0%,#100b21_62%,#0b0717_100%)] px-7 py-8 text-[#f8fafc] shadow-[0_24px_68px_rgba(39,18,67,0.34),inset_0_1px_0_rgba(196,181,253,0.18)] sm:px-9 sm:py-9">
+          <section className="relative overflow-hidden rounded-[28px] border border-violet-300/25 bg-[linear-gradient(155deg,#160c2a_0%,#100b21_62%,#0b0717_100%)] px-6 py-7 text-[#f8fafc] shadow-[0_24px_68px_rgba(39,18,67,0.34),inset_0_1px_0_rgba(196,181,253,0.18)] sm:px-8 sm:py-8">
             <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#cb85ff_0%,#aa57f5_46%,#8f44e8_100%)]" />
             <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
             <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
@@ -708,17 +756,23 @@ export default function LoginPage() {
                     >
                       E-mail
                     </label>
-                    <input
-                      id="login-email"
-                      name="email"
-                      type="email"
-                      autoComplete="username webauthn"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className={fieldInputClass}
-                      placeholder="Zadej e-mail"
-                    />
+                    <div className="relative">
+                      <Mail
+                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-100/48"
+                        aria-hidden="true"
+                      />
+                      <input
+                        id="login-email"
+                        name="email"
+                        type="email"
+                        autoComplete="username webauthn"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className={fieldInputClass}
+                        placeholder="Zadej e-mail"
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
@@ -728,17 +782,23 @@ export default function LoginPage() {
                     >
                       Heslo
                     </label>
-                    <input
-                      id="login-password"
-                      name="password"
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className={fieldInputClass}
-                      placeholder="••••••••"
-                    />
+                    <div className="relative">
+                      <LockKeyhole
+                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-100/48"
+                        aria-hidden="true"
+                      />
+                      <input
+                        id="login-password"
+                        name="password"
+                        type="password"
+                        autoComplete="current-password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={fieldInputClass}
+                        placeholder="••••••••"
+                      />
+                    </div>
                     <div className="flex justify-end">
                       <button
                         type="button"
@@ -759,28 +819,61 @@ export default function LoginPage() {
                       ? ` Faktor: ${mfaHintLabel}.`
                       : " Potvrď ho kódem z Microsoft Authenticator."}
                   </div>
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="login-otp"
-                      className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-100/75"
-                    >
+                  <fieldset className="space-y-3" aria-describedby="mfa-code-help">
+                    <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-violet-100/75">
+                      <ShieldCheck className="h-4 w-4 text-violet-200/75" aria-hidden="true" />
                       Jednorázový kód (2FA)
-                    </label>
-                    <input
-                      id="login-otp"
-                      name="otp"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      required
-                      value={mfaCode}
-                      onChange={(e) =>
-                        setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 8))
-                      }
-                      className={fieldInputClass}
-                      placeholder="123456"
-                    />
-                  </div>
+                    </legend>
+                    <div className="grid grid-cols-6 gap-2 sm:gap-3">
+                      {mfaDigits.map((digit, index) => (
+                        <input
+                          key={index}
+                          ref={(element) => {
+                            mfaInputRefs.current[index] = element;
+                          }}
+                          id={index === 0 ? "login-otp" : undefined}
+                          name={`otp-${index + 1}`}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete={index === 0 ? "one-time-code" : "off"}
+                          pattern="[0-9]*"
+                          maxLength={1}
+                          value={digit}
+                          disabled={loading}
+                          aria-label={`Číslice ${index + 1} z ${MFA_CODE_LENGTH}`}
+                          onChange={(event) => handleMfaDigitChange(index, event.target.value)}
+                          onFocus={(event) => event.currentTarget.select()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Backspace" && !digit && index > 0) {
+                              event.preventDefault();
+                              setMfaDigits((current) => {
+                                const next = [...current];
+                                next[index - 1] = "";
+                                return next;
+                              });
+                              focusMfaInput(index - 1);
+                            }
+                            if (event.key === "ArrowLeft" && index > 0) {
+                              event.preventDefault();
+                              focusMfaInput(index - 1);
+                            }
+                            if (event.key === "ArrowRight" && index < MFA_CODE_LENGTH - 1) {
+                              event.preventDefault();
+                              focusMfaInput(index + 1);
+                            }
+                          }}
+                          onPaste={(event) => {
+                            event.preventDefault();
+                            applyMfaDigits(index, event.clipboardData.getData("text"));
+                          }}
+                          className="h-14 min-w-0 w-full [min-inline-size:0] rounded-2xl border border-violet-300/30 bg-white/[0.08] text-center text-xl font-bold tabular-nums text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition placeholder:text-violet-100/38 hover:border-violet-200/45 focus:border-violet-200/80 focus:bg-white/[0.13] focus:ring-2 focus:ring-violet-200/25 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+                      ))}
+                    </div>
+                    <p id="mfa-code-help" className="text-xs text-violet-100/58">
+                      Kód z Microsoft Authenticatoru má 6 číslic.
+                    </p>
+                  </fieldset>
                   <div className="flex justify-end">
                     <button
                       type="button"
@@ -823,17 +916,22 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || passkeyLoading}
-                className="mt-2 w-full rounded-2xl border border-violet-200/25 bg-[linear-gradient(135deg,#b85cff_0%,#7c3aed_52%,#4338ca_100%)] py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#100b21] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-violet-200/25 bg-[linear-gradient(135deg,#b85cff_0%,#7c3aed_52%,#4338ca_100%)] py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#100b21] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
-                {loading && !passkeyLoading
-                  ? mfaResolver
-                    ? "Ověřuji 2FA…"
-                    : "Přihlašuji…"
-                  : passkeyLoading
-                    ? "Ověřuji přístupový klíč…"
-                  : mfaResolver
-                    ? "Potvrdit 2FA"
-                    : "Přihlásit se"}
+                <span>
+                  {loading && !passkeyLoading
+                    ? mfaResolver
+                      ? "Ověřuji 2FA…"
+                      : "Přihlašuji…"
+                    : passkeyLoading
+                      ? "Ověřuji přístupový klíč…"
+                    : mfaResolver
+                      ? "Potvrdit 2FA"
+                      : "Přihlásit se"}
+                </span>
+                {!loading && !passkeyLoading ? (
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                ) : null}
               </button>
 
               {!mfaResolver && passkeySupported ? (
@@ -847,8 +945,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => void handlePasskeyLogin()}
                     disabled={loading || passkeyLoading}
-                    className="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl border border-violet-200/25 bg-white/[0.1] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(10,5,30,0.18)] transition hover:bg-white/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-violet-200/25 bg-white/[0.1] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(10,5,30,0.18)] transition hover:bg-white/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
                   >
+                    <KeyRound className="h-4 w-4 text-violet-100/82" aria-hidden="true" />
                     {passkeyLoading
                       ? "Otevírám ověření…"
                       : installPlatform === "ios"
@@ -893,6 +992,7 @@ export default function LoginPage() {
             ) : null}
           </section>
         </div>
+
       </div>
 
       {shouldShowInstallAssistant && installGuideOpen && !isStandaloneApp ? (

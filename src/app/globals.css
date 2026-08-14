@@ -1353,6 +1353,17 @@ body {
     color: #0f172a !important;
   }
 
+  /* Akční tlačítka si explicitně říkají o bílý text. Ve světlém režimu
+     jim ho nesmí přebarvit kompatibilní vrstva výše, jinak se na barevném
+     pozadí ztratí i jejich ikony. */
+  body.simple-bg.simple-bg-white .app-content :is(button, a, [role="button"]).text-white,
+  body.simple-bg.simple-bg-white .app-content :is(button, a, [role="button"]).text-white\/95,
+  body.simple-bg.simple-bg-white .app-content :is(button, a, [role="button"]).text-white\/90,
+  body.simple-bg.simple-bg-white .app-content :is(button, a, [role="button"]).text-white\/80,
+  body.simple-bg.simple-bg-white .app-content :is(button, a, [role="button"]).text-white\/70 {
+    color: #fff !important;
+  }
+
   /* Výjimka: pokud je prvek na tmavém/černém podkladu, text má zůstat bílý */
   body.simple-bg.simple-bg-white .app-content .bg-slate-950.text-white,
   body.simple-bg.simple-bg-white .app-content .bg-slate-900.text-white,
