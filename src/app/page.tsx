@@ -1065,6 +1065,10 @@ export default function HomePage() {
 
   const isManager = isManagerPosition(userMeta?.position ?? null) || hasTeam;
   const showTeamBox = hasTeam;
+  const hasTipContract = myTipContractsCount > 0;
+  // Poradce bez týmu potřebuje plnou šířku až ve chvíli, kdy vedle vlastní
+  // produkce zobrazujeme také samostatnou kartu tipařské produkce.
+  const shouldExpandProductionSummary = showTeamBox || hasTipContract;
 
   const baseProduction = myImmediateSum;
   const prevBaseProduction = myImmediatePrevSum;
@@ -1363,7 +1367,7 @@ export default function HomePage() {
 
   const sectionSpan: Record<HomeSection, string> = {
     gold: "md:col-span-1",
-    summary: showTeamBox ? "md:col-span-2" : "md:col-span-1",
+    summary: shouldExpandProductionSummary ? "md:col-span-2" : "md:col-span-1",
     expectedPayout: "md:col-span-1",
     goal: "md:col-span-1",
     leaderboard: "md:col-span-1",
@@ -1842,7 +1846,9 @@ export default function HomePage() {
                   reorderEnabled
                     ? [sectionSpan[sec], sectionRowSpan[sec]].filter(Boolean).join(" ")
                     : `mb-4 break-inside-avoid sm:mb-5 ${
-                        sec === "summary" || sec === "chart" ? "md:[column-span:all]" : ""
+                        (sec === "summary" && shouldExpandProductionSummary) || sec === "chart"
+                          ? "md:[column-span:all]"
+                          : ""
                       }`
                 }
               >

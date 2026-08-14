@@ -152,6 +152,7 @@ export function AppLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const isHomeRoute = pathname === "/";
   const isTipsRoute = pathname === "/tipy" || pathname.startsWith("/tipy/");
   const isCashflowRoute = pathname === "/cashflow";
   const isPreparationSectionRoute =
@@ -649,10 +650,12 @@ export function AppLayout({
         <AppNavigation
           active={active}
           desktopHeaderContent={
-            user && desktopGlobalSearch ? <GlobalSearchCommand user={user} /> : undefined
+            user && isHomeRoute && desktopGlobalSearch
+              ? <GlobalSearchCommand user={user} />
+              : undefined
           }
           mobileHeaderAction={
-            user ? <GlobalSearchCommand user={user} compact /> : undefined
+            user && isHomeRoute ? <GlobalSearchCommand user={user} compact /> : undefined
           }
           navLabels={layoutCopy.nav}
           logoutLabel={layoutCopy.logout}

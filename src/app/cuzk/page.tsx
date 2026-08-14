@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { ColorButton } from "@/components/ColorButton";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { auth } from "../firebase";
 
@@ -1150,17 +1151,17 @@ export default function CuzkPage() {
                   )}
                 </div>
 
-                <button
-                  type="button"
+                <ColorButton
                   onClick={() => void handleSearchAddress()}
                   disabled={loading || !canSearch}
-                  className="group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-fuchsia-900/20 bg-[linear-gradient(135deg,#020617_0%,#a21caf_48%,#d946ef_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-fuchsia-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  size="hero"
+                  className="gap-3 shadow-[0_16px_36px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] active:scale-[0.99] disabled:opacity-60"
                 >
                   {loading ? "Načítám..." : "Vyhledat"}
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
                     {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <Search className="h-5 w-5" />}
                   </span>
-                </button>
+                </ColorButton>
               </div>
             </section>
           </div>
@@ -1248,17 +1249,17 @@ export default function CuzkPage() {
               </div>
 
               <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
+                <ColorButton
                   onClick={handleSearchAddress}
                   disabled={loading || !canSearch}
-                  className="group w-full inline-flex h-14 items-center justify-center gap-3 rounded-[18px] border border-fuchsia-900/20 bg-[linear-gradient(135deg,#020617_0%,#a21caf_48%,#d946ef_100%)] px-5 text-lg font-semibold text-white shadow-[0_14px_30px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  size="lg"
+                  className="w-full gap-3 shadow-[0_14px_30px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] disabled:opacity-60"
                 >
                   {loading ? "Načítám..." : "Vyhledat"}
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
                     {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <Search className="h-5 w-5" />}
                   </span>
-                </button>
+                </ColorButton>
 
                 <button
                   type="button"
@@ -1407,47 +1408,50 @@ export default function CuzkPage() {
               </div>
 
               <div className="grid gap-2 sm:grid-cols-3">
-                <button
-                  type="button"
+                <ColorButton
                   onClick={() => {
                     if (!gmapsUrl) return;
                     window.open(gmapsUrl, "_blank", "noopener,noreferrer");
                   }}
                   disabled={!gmapsUrl}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#020617_0%,#a21caf_52%,#d946ef_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(192,38,211,0.26)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                  tone="magenta"
+                  size="sm"
+                  className="disabled:opacity-45"
                 >
                   <MapPin className="h-4 w-4" />
                   Google Mapy
                   <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-                </button>
+                </ColorButton>
 
-                <button
-                  type="button"
+                <ColorButton
                   onClick={() => {
                     if (!marushkaUrl) return;
                     window.open(marushkaUrl, "_blank", "noopener,noreferrer");
                   }}
                   disabled={!marushkaUrl}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2563eb_0%,#06b6d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(37,99,235,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                  tone="blue"
+                  size="sm"
+                  className="disabled:opacity-45"
                 >
                   <Map className="h-4 w-4" />
                   Katastrální Mapy
                   <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-                </button>
+                </ColorButton>
 
-                <button
-                  type="button"
+                <ColorButton
                   onClick={() => {
                     if (!vdpUrl) return;
                     window.open(vdpUrl, "_blank", "noopener,noreferrer");
                   }}
                   disabled={!vdpUrl}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#f59e0b_0%,#f97316_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(249,115,22,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                  tone="orange"
+                  size="sm"
+                  className="disabled:opacity-45"
                 >
                   <Building2 className="h-4 w-4" />
                   Katastr
                   <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-                </button>
+                </ColorButton>
               </div>
 
               {dateInsights.length > 0 ? (

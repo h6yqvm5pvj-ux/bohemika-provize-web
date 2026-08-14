@@ -352,8 +352,9 @@ export function ProductionSummarySection({
   const containerShellClass = isLiteUI
     ? "relative h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-3 py-3 text-white transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 focus-within:border-violet-200/60 focus-within:shadow-[0_0_0_1px_rgba(221,214,254,0.3)] sm:px-4 sm:py-4"
     : "relative h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-3 py-3 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.24)] focus-within:border-violet-200/60 focus-within:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.3)] sm:px-4 sm:py-4";
-  const hasTipIncome = myTipImmediateSum > 0;
-  const hasManagerTipIncome = myTipImmediateSum > 0;
+  // Karta tipařské produkce má být viditelná už od první tipařské smlouvy,
+  // i kdyby její provize byla zatím nulová.
+  const hasTipContract = myTipContractsCount > 0;
   const ownCard: ProductionCard = {
     id: "own",
     tone: "own",
@@ -411,17 +412,17 @@ export function ProductionSummarySection({
     previousAmountValue: totalPrevWithTeam,
   };
   const desktopCards = !showTeamBox
-    ? hasTipIncome
+    ? hasTipContract
       ? [ownCard, tipCard]
       : [ownCard]
-    : hasManagerTipIncome
+    : hasTipContract
       ? [ownCard, teamCard, tipCard, totalCard]
       : [ownCard, teamCard, totalCard];
   const mobileCards = !showTeamBox
-    ? hasTipIncome
+    ? hasTipContract
       ? [ownCard, tipCard]
       : [ownCard]
-    : hasManagerTipIncome
+    : hasTipContract
       ? [ownCard, teamCard, tipCard, totalCard]
       : [ownCard, teamCard, totalCard];
 
@@ -583,8 +584,8 @@ export function ProductionSummarySection({
           ) : null}
         </div>
 
-        <div className={`relative z-10 hidden gap-3 md:grid ${hasTipIncome ? "md:grid-cols-2" : ""}`}>
-          {hasTipIncome ? <ShortDividerLines columns={2} visibilityClass="md:block" /> : null}
+        <div className={`relative z-10 hidden gap-3 md:grid ${hasTipContract ? "md:grid-cols-2" : ""}`}>
+          {hasTipContract ? <ShortDividerLines columns={2} visibilityClass="md:block" /> : null}
           {desktopCards.map((card) => (
             <ProductionColumn key={card.id} {...card} />
           ))}
@@ -629,10 +630,10 @@ export function ProductionSummarySection({
 
       <div
         className={`relative z-10 hidden gap-3 md:grid ${
-          hasManagerTipIncome ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"
+          hasTipContract ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"
         }`}
       >
-        {hasManagerTipIncome ? (
+        {hasTipContract ? (
           <>
             <ShortDividerLines columns={2} visibilityClass="md:block xl:hidden" />
             <ShortDividerLines columns={4} visibilityClass="xl:block" />
