@@ -10,12 +10,15 @@ import {
   HelpCircle,
   History,
   KeyRound,
+  Laptop,
   LogOut,
   MonitorSmartphone,
+  Pencil,
   Play,
   QrCode as QrCodeIcon,
   RefreshCw,
   ShieldCheck,
+  Smartphone,
   X,
 } from "lucide-react";
 
@@ -59,6 +62,7 @@ type AccountSecurityPanelProps = {
   securityScoreLabel: string;
   securityScorePercent: number;
   passkeySummary: string;
+  mfaLastVerifiedAt: string | null;
   showPasswordForm: boolean;
   currentPassword: string;
   newPassword: string;
@@ -71,6 +75,7 @@ type AccountSecurityPanelProps = {
   passkeysLoading: boolean;
   passkeyBusy: boolean;
   passkeyDeletingId: string | null;
+  passkeyRenamingId: string | null;
   passkeyName: string;
   passkeyStatus: InlineStatus | null;
   accountSessions: AccountSessionSummary[];
@@ -99,6 +104,7 @@ type AccountSecurityPanelProps = {
   onPasskeyNameChange: (value: string) => void;
   onCreatePasskey: () => void | Promise<void>;
   onDeletePasskey: (credentialId: string) => void | Promise<void>;
+  onRenamePasskey: (credentialId: string, name: string) => void | Promise<void>;
   onMfaPasswordChange: (value: string) => void;
   onMfaEnrollmentCodeChange: (value: string) => void;
   onMfaReauthCodeChange: (value: string) => void;
@@ -125,6 +131,7 @@ export function AccountSecurityPanel({
   securityScoreLabel,
   securityScorePercent,
   passkeySummary,
+  mfaLastVerifiedAt,
   showPasswordForm,
   currentPassword,
   newPassword,
@@ -137,6 +144,7 @@ export function AccountSecurityPanel({
   passkeysLoading,
   passkeyBusy,
   passkeyDeletingId,
+  passkeyRenamingId,
   passkeyName,
   passkeyStatus,
   accountSessions,
@@ -165,6 +173,7 @@ export function AccountSecurityPanel({
   onPasskeyNameChange,
   onCreatePasskey,
   onDeletePasskey,
+  onRenamePasskey,
   onMfaPasswordChange,
   onMfaEnrollmentCodeChange,
   onMfaReauthCodeChange,
@@ -177,6 +186,8 @@ export function AccountSecurityPanel({
 }: AccountSecurityPanelProps) {
   const [passkeyHelpOpen, setPasskeyHelpOpen] = useState(false);
   const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
+  const [editingPasskeyId, setEditingPasskeyId] = useState<string | null>(null);
+  const [editingPasskeyName, setEditingPasskeyName] = useState("");
   const mfaReauthInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [mfaReauthDigits, setMfaReauthDigits] = useState<string[]>(() =>
     Array.from({ length: MFA_CODE_LENGTH }, () => "")
@@ -201,6 +212,10 @@ export function AccountSecurityPanel({
   );
   const otherSessionsCount = activeAccountSessions.filter((session) => !session.current).length;
   const revokeOtherSessionsDisabled = accountSessionsBusy || accountSessionsLoading;
+  const mfaLastVerifiedAtMs = mfaLastVerifiedAt ? Date.parse(mfaLastVerifiedAt) : Number.NaN;
+  const mfaLastVerifiedLabel = Number.isFinite(mfaLastVerifiedAtMs)
+    ? formatDateTime(mfaLastVerifiedAtMs)
+    : "Zatím nezaznamenáno";
 
   const updateMfaReauthDigits = (nextDigits: string[]) => {
     setMfaReauthDigits(nextDigits);
@@ -309,7 +324,7 @@ export function AccountSecurityPanel({
             {mfaEnabled ? "Zapnuto" : "Vypnuto"}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
-            Microsoft Authenticator.
+            {mfaEnabled ? `Naposledy ověřeno ${mfaLastVerifiedLabel}.` : "Microsoft Authenticator."}
           </p>
         </article>
 
@@ -449,32 +464,104 @@ export function AccountSecurityPanel({
                     </div>
                   ) : null}
 
-                  {passkeyCredentials.map((credential) => (
-                    <div
-                      key={credential.credentialId}
-                    className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:rounded-2xl"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">
-                          {credential.name}
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-slate-500">
-                          Přidáno {formatDateTime(credential.createdAtMs)}
-                          {credential.lastUsedAtMs
-                            ? ` · použito ${formatDateTime(credential.lastUsedAtMs)}`
-                            : ""}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void onDeletePasskey(credential.credentialId)}
-                        disabled={passkeyDeletingId === credential.credentialId}
-                        className="inline-flex min-h-[36px] shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  {passkeyCredentials.map((credential) => {
+                    const normalizedName = credential.name.toLocaleLowerCase("cs-CZ");
+                    const DeviceIcon = /iphone|android|telefon|phone|mobil|ipad|tablet/.test(normalizedName)
+                      ? Smartphone
+                      : /mac|book|notebook|pc|windows|linux/.test(normalizedName)
+                        ? Laptop
+                        : KeyRound;
+                    const isEditing = editingPasskeyId === credential.credentialId;
+                    const isRenaming = passkeyRenamingId === credential.credentialId;
+
+                    return (
+                      <div
+                        key={credential.credentialId}
+                        className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:rounded-2xl"
                       >
-                        {passkeyDeletingId === credential.credentialId ? "Odebírám…" : "Odebrat"}
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex min-w-0 items-start gap-3">
+                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-100 bg-violet-50 text-violet-700">
+                            <DeviceIcon size={17} strokeWidth={2.2} aria-hidden="true" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            {isEditing ? (
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <input
+                                  type="text"
+                                  value={editingPasskeyName}
+                                  onChange={(event) => setEditingPasskeyName(event.target.value.slice(0, 80))}
+                                  className="min-w-0 flex-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
+                                  aria-label="Název přístupového klíče"
+                                  autoFocus
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void (async () => {
+                                        try {
+                                          await onRenamePasskey(
+                                            credential.credentialId,
+                                            editingPasskeyName
+                                          );
+                                          setEditingPasskeyId(null);
+                                        } catch {
+                                          // Chybu zobrazí nadřazená obrazovka; formulář necháme otevřený.
+                                        }
+                                      })();
+                                    }}
+                                    disabled={isRenaming || editingPasskeyName.trim().length === 0}
+                                    className="inline-flex min-h-9 items-center justify-center rounded-xl bg-violet-700 px-3 text-xs font-bold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {isRenaming ? "Ukládám…" : "Uložit"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingPasskeyId(null)}
+                                    disabled={isRenaming}
+                                    className="inline-flex min-h-9 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    Zrušit
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <div className="truncate text-sm font-semibold text-slate-900">{credential.name}</div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingPasskeyId(credential.credentialId);
+                                    setEditingPasskeyName(credential.name);
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-violet-700 transition hover:bg-violet-50"
+                                >
+                                  <Pencil size={11} strokeWidth={2.2} aria-hidden="true" />
+                                  Přejmenovat
+                                </button>
+                              </div>
+                            )}
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              Přidáno {formatDateTime(credential.createdAtMs)}
+                              {credential.lastUsedAtMs
+                                ? ` · použito ${formatDateTime(credential.lastUsedAtMs)}`
+                                : ""}
+                            </div>
+                          </div>
+                        </div>
+                        {!isEditing ? (
+                          <button
+                            type="button"
+                            onClick={() => void onDeletePasskey(credential.credentialId)}
+                            disabled={passkeyDeletingId === credential.credentialId}
+                            className="inline-flex min-h-[36px] w-fit shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 sm:self-end"
+                          >
+                            {passkeyDeletingId === credential.credentialId ? "Odebírám…" : "Odebrat"}
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {passkeyStatus && (
@@ -668,6 +755,10 @@ export function AccountSecurityPanel({
                       </p>
                       <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
                         Kód z aplikace se vyžaduje při přihlášení přes heslo.
+                      </p>
+                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-white px-2.5 py-1 text-[11px] font-semibold text-violet-800">
+                        <History size={12} strokeWidth={2.2} aria-hidden="true" />
+                        Poslední ověření: {mfaLastVerifiedLabel}
                       </p>
                     </div>
                   </div>

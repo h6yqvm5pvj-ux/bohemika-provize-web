@@ -129,6 +129,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "tvorbaFooterProfile",
   "onlineCard",
   "lastActivePing",
+  "mfaLastVerifiedPing",
 ]);
 
 const normalizeEmail = (value: unknown): string =>
@@ -863,6 +864,13 @@ function buildPatchFromBody(
       return { error: "lastActivePing musí být true." };
     }
     patch.lastActive = FieldValue.serverTimestamp();
+  }
+
+  if (body.mfaLastVerifiedPing != null) {
+    if (body.mfaLastVerifiedPing !== true) {
+      return { error: "mfaLastVerifiedPing musí být true." };
+    }
+    patch.mfaLastVerifiedAt = new Date().toISOString();
   }
 
   if (body.commissionMode != null) {

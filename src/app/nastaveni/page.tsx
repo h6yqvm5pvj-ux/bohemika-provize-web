@@ -49,6 +49,7 @@ import {
   deletePasskeyForUser,
   getPasskeyAvailability,
   listPasskeysForUser,
+  renamePasskeyForUser,
   resolvePasskeyErrorMessage,
   type PasskeyCredentialSummary,
 } from "@/app/lib/passkeys";
@@ -731,6 +732,7 @@ export default function SettingsPage() {
   const [mfaStatus, setMfaStatus] = useState<InlineStatus | null>(null);
   const [mfaBusy, setMfaBusy] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaLastVerifiedAt, setMfaLastVerifiedAt] = useState<string | null>(null);
   const [mfaTotpUid, setMfaTotpUid] = useState<string | null>(null);
   const [mfaTotpLabel, setMfaTotpLabel] = useState<string | null>(null);
   const [mfaReauthCode, setMfaReauthCode] = useState("");
@@ -746,6 +748,7 @@ export default function SettingsPage() {
   const [passkeysLoading, setPasskeysLoading] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyDeletingId, setPasskeyDeletingId] = useState<string | null>(null);
+  const [passkeyRenamingId, setPasskeyRenamingId] = useState<string | null>(null);
   const [passkeyName, setPasskeyName] = useState("");
   const [passkeyStatus, setPasskeyStatus] = useState<InlineStatus | null>(null);
   const [accountSessions, setAccountSessions] = useState<AccountSessionSummary[]>([]);
@@ -979,6 +982,15 @@ export default function SettingsPage() {
     setMfaDisableConfirmOpen(false);
   };
 
+  const recordMfaVerification = async (targetUser: FirebaseUser) => {
+    await fetchAuthedJsonOrThrow(targetUser, "/api/user/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ mfaLastVerifiedPing: true }),
+    });
+    setMfaLastVerifiedAt(new Date().toISOString());
+    invalidateUserProfileCache(normalizeEmail(targetUser.email));
+  };
+
   const syncMfaState = async (targetUser: FirebaseUser) => {
     await targetUser.reload();
     const activeUser = auth.currentUser ?? targetUser;
@@ -995,6 +1007,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user) {
       setMfaEnabled(false);
+      setMfaLastVerifiedAt(null);
       setMfaTotpUid(null);
       setMfaTotpLabel(null);
       setMfaStatus(null);
@@ -1167,6 +1180,12 @@ export default function SettingsPage() {
               : ""
           );
           setPhoneNumber(typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "");
+          setMfaLastVerifiedAt(
+            typeof data.mfaLastVerifiedAt === "string" &&
+              !Number.isNaN(Date.parse(data.mfaLastVerifiedAt))
+              ? data.mfaLastVerifiedAt
+              : null
+          );
           setProfileStatus(null);
 
           if (typeof data.monthlyGoal === "number") {
@@ -1231,6 +1250,7 @@ export default function SettingsPage() {
           setDirectManager(null);
           setAgencyNumber("");
           setPhoneNumber("");
+          setMfaLastVerifiedAt(null);
           setProfileStatus(null);
           setOnlineCardDraft(defaultOnlineCardFromUser(email, {}));
           setOnlineCardStatus(null);
@@ -2639,6 +2659,11 @@ export default function SettingsPage() {
       );
       await multiFactor(user).enroll(assertion, "Microsoft Authenticator");
       await syncMfaState(user);
+      await recordMfaVerification(user).catch((error) => {
+        // Druhý faktor už je úspěšně zapnutý, proto výpadek profilu nezablokuje dokončení.
+        console.warn("Nepodařilo se uložit čas prvního 2FA ověření.", error);
+        setMfaLastVerifiedAt(new Date().toISOString());
+      });
 
       setMfaPassword("");
       setMfaReauthCode("");
@@ -2821,6 +2846,30 @@ export default function SettingsPage() {
       });
     } finally {
       setPasskeyDeletingId(null);
+    }
+  };
+
+  const handleRenamePasskey = async (credentialId: string, name: string) => {
+    if (!user) return;
+    setPasskeyRenamingId(credentialId);
+    setPasskeyStatus(null);
+
+    try {
+      const renamed = await renamePasskeyForUser(user, credentialId, name);
+      setPasskeyCredentials((prev) =>
+        prev.map((item) =>
+          item.credentialId === credentialId ? renamed : item
+        )
+      );
+      setPasskeyStatus({ type: "success", message: "Název přístupového klíče byl uložen." });
+    } catch (error) {
+      setPasskeyStatus({
+        type: "error",
+        message: resolvePasskeyErrorMessage(error, "Přístupový klíč se nepodařilo přejmenovat."),
+      });
+      throw error;
+    } finally {
+      setPasskeyRenamingId(null);
     }
   };
 
@@ -3778,6 +3827,7 @@ export default function SettingsPage() {
                 userEmail={userEmail}
                 userFullName={fullName || profileDisplayName}
                 mfaEnabled={mfaEnabled}
+                mfaLastVerifiedAt={mfaLastVerifiedAt}
                 securityScoreLabel={securityScoreLabel}
                 securityScorePercent={securityScorePercent}
                 passkeySummary={passkeySummary}
@@ -3793,6 +3843,7 @@ export default function SettingsPage() {
                 passkeysLoading={passkeysLoading}
                 passkeyBusy={passkeyBusy}
                 passkeyDeletingId={passkeyDeletingId}
+                passkeyRenamingId={passkeyRenamingId}
                 passkeyName={passkeyName}
                 passkeyStatus={passkeyStatus}
                 accountSessions={accountSessions}
@@ -3830,6 +3881,7 @@ export default function SettingsPage() {
                 onPasskeyNameChange={setPasskeyName}
                 onCreatePasskey={handleCreatePasskey}
                 onDeletePasskey={handleDeletePasskey}
+                onRenamePasskey={handleRenamePasskey}
                 onMfaPasswordChange={setMfaPassword}
                 onMfaEnrollmentCodeChange={setMfaEnrollmentCode}
                 onMfaReauthCodeChange={setMfaReauthCode}

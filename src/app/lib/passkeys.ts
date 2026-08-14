@@ -50,6 +50,11 @@ type CredentialsListResponse = {
   credentials: PasskeyCredentialSummary[];
 };
 
+type CredentialRenameResponse = {
+  ok: true;
+  credential: PasskeyCredentialSummary;
+};
+
 let passkeyBrowserRuntimePromise:
   | Promise<typeof import("@simplewebauthn/browser")>
   | null = null;
@@ -198,4 +203,20 @@ export async function deletePasskeyForUser(
     method: "DELETE",
     body: JSON.stringify({ credentialId }),
   });
+}
+
+export async function renamePasskeyForUser(
+  user: FirebaseUser,
+  credentialId: string,
+  name: string
+): Promise<PasskeyCredentialSummary> {
+  const payload = await fetchAuthedJsonOrThrow<CredentialRenameResponse>(
+    user,
+    "/api/auth/passkeys/credentials",
+    {
+      method: "PATCH",
+      body: JSON.stringify({ credentialId, name }),
+    }
+  );
+  return payload.credential;
 }

@@ -52,6 +52,8 @@ type NavigationItem = NavigationItemConfig & {
 
 interface AppNavigationProps {
   children: ReactNode;
+  desktopHeaderContent?: ReactNode;
+  mobileHeaderAction?: ReactNode;
   active: ActivePage;
   navLabels: Record<ActivePage, string>;
   logoutLabel: string;
@@ -261,6 +263,8 @@ function NavigationList({
 
 export function AppNavigation({
   children,
+  desktopHeaderContent,
+  mobileHeaderAction,
   active,
   navLabels,
   logoutLabel,
@@ -376,6 +380,13 @@ export function AppNavigation({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {desktopHeaderContent ? (
+          <header
+            className={`sticky top-0 z-20 hidden h-[68px] pointer-events-none items-center px-6 lg:flex ${shellFontClass}`}
+          >
+            <div className="pointer-events-auto mx-auto w-full max-w-2xl">{desktopHeaderContent}</div>
+          </header>
+        ) : null}
         <header
           className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-900 bg-white px-3 py-2.5 lg:hidden ${shellFontClass}`}
         >
@@ -399,14 +410,17 @@ export function AppNavigation({
               ) : null}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onToggleMobileMenu}
-            className="ui-btn-primary ui-focus inline-flex shrink-0 items-center gap-2 rounded-[18px] px-3 py-2 text-xs"
-          >
-            <span className="text-base leading-none">☰</span>
-            <span className="hidden min-[390px]:inline">Menu</span>
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {mobileHeaderAction}
+            <button
+              type="button"
+              onClick={onToggleMobileMenu}
+              className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-[18px] px-3 py-2 text-xs"
+            >
+              <span className="text-base leading-none">☰</span>
+              <span className="hidden min-[390px]:inline">Menu</span>
+            </button>
+          </div>
         </header>
 
         {mobileMenuOpen ? (

@@ -14,6 +14,7 @@ import {
   ChevronUp,
   CircleHelp,
   Clock3,
+  CalendarClock,
   Download,
   FileText,
   Heart,
@@ -25,6 +26,7 @@ import {
   MessageSquare,
   Paperclip,
   Pencil,
+  Pin,
   Plane,
   Plus,
   RefreshCw,
@@ -123,6 +125,8 @@ type WallPost = {
   sectionLabel: string;
   createdAtMs: number | null;
   updatedAtMs: number | null;
+  pinned: boolean;
+  readByDay: string | null;
   commentCount: number;
   likeCount: number;
   likedByMe: boolean;
@@ -647,6 +651,11 @@ const toggleBoldAtTextAreaSelection = ({
 const normalizeWallPosts = (rawPosts: WallPost[]): WallPost[] =>
   rawPosts.map((post) => ({
     ...post,
+    pinned: post.pinned === true,
+    readByDay:
+      typeof post.readByDay === "string" && /^\d{4}-\d{2}-\d{2}$/.test(post.readByDay)
+        ? post.readByDay
+        : null,
     likeCount:
       Number.isFinite(post.likeCount) && post.likeCount >= 0
         ? Math.floor(post.likeCount)
@@ -1439,6 +1448,8 @@ export default function IntranetPage() {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [postSection, setPostSection] = useState<IntranetSectionKey>("obecne");
+  const [postPinned, setPostPinned] = useState(false);
+  const [postReadByDay, setPostReadByDay] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
@@ -1495,6 +1506,8 @@ export default function IntranetPage() {
     setTitle("");
     setText("");
     setPostSection(selectedSection);
+    setPostPinned(false);
+    setPostReadByDay("");
     setFiles([]);
     setRemovedAttachmentIds([]);
     setReplacementFilesByAttachmentId({});
@@ -1517,6 +1530,8 @@ export default function IntranetPage() {
     setTitle(post.title);
     setText(post.text);
     setPostSection(post.section);
+    setPostPinned(post.pinned);
+    setPostReadByDay(post.readByDay ?? "");
     setFiles([]);
     setRemovedAttachmentIds([]);
     setReplacementFilesByAttachmentId({});
@@ -1539,6 +1554,8 @@ export default function IntranetPage() {
     setPollEnabled(false);
     setPollQuestion("");
     setPollOptions(["", ""]);
+    setPostPinned(false);
+    setPostReadByDay("");
     setIsDraggingFiles(false);
     dragDepthRef.current = 0;
   };
@@ -2034,6 +2051,8 @@ export default function IntranetPage() {
       form.set("title", trimmedTitle.slice(0, MAX_TITLE_LEN));
       form.set("text", trimmedText.slice(0, MAX_TEXT_LEN));
       form.set("section", postSection);
+      form.set("pinned", postPinned ? "1" : "0");
+      if (postReadByDay) form.set("readByDay", postReadByDay);
       files.forEach((file) => form.append("files", file));
       if (!isEditing && pollEnabled) {
         form.set("pollEnabled", "1");
@@ -2082,6 +2101,8 @@ export default function IntranetPage() {
       setPollQuestion("");
       setPollOptions(["", ""]);
       setEmojiOpen(false);
+      setPostPinned(false);
+      setPostReadByDay("");
       setPostModalOpen(false);
       setEditingPost(null);
       if (postSection !== selectedSection) {
@@ -2606,7 +2627,9 @@ export default function IntranetPage() {
                       className={`${styles.wallCard} relative overflow-hidden rounded-[24px] border border-white/75 bg-white/90 p-4 shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur-xl ring-1 sm:p-5 ${visual.postAccent} ${
                         highlightPostId === post.id
                           ? "ring-2 ring-emerald-300 shadow-[0_0_0_4px_rgba(16,185,129,0.14),0_24px_54px_rgba(15,23,42,0.16)]"
-                          : ""
+                          : post.pinned
+                            ? "ring-2 ring-violet-200 shadow-[0_0_0_4px_rgba(124,58,237,0.08),0_24px_54px_rgba(15,23,42,0.16)]"
+                            : ""
                       }`}
                       style={{ animationDelay: `${Math.min(index * 50, 240)}ms` }}
                     >
@@ -2641,6 +2664,18 @@ export default function IntranetPage() {
                               <span className="truncate text-sm font-medium text-slate-600">
                                 od <strong className="text-slate-800">{post.author.name}</strong>
                               </span>
+                              {post.pinned ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-800">
+                                  <Pin className="h-3 w-3 fill-current" />
+                                  Připnuto
+                                </span>
+                              ) : null}
+                              {post.readByDay ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                                  <CalendarClock className="h-3 w-3" />
+                                  Přečíst do {new Date(`${post.readByDay}T00:00:00`).toLocaleDateString("cs-CZ")}
+                                </span>
+                              ) : null}
                             </div>
                             <div className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
                               <Clock3 className="h-3.5 w-3.5" />
@@ -3351,6 +3386,44 @@ export default function IntranetPage() {
                       ))}
                     </select>
                   </label>
+
+                  <div className="grid gap-3 rounded-2xl border border-violet-100 bg-[linear-gradient(145deg,#faf5ff_0%,#ffffff_100%)] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.13em] text-violet-800">
+                        <Pin className="h-3.5 w-3.5" />
+                        Důležitost příspěvku
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                        Připnuté příspěvky se v sekci zobrazí jako první.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={postPinned}
+                      onClick={() => setPostPinned((value) => !value)}
+                      className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                        postPinned
+                          ? "border-violet-700 bg-violet-700 text-white shadow-[0_8px_18px_rgba(109,40,217,0.25)]"
+                          : "border-violet-200 bg-white text-violet-800 hover:bg-violet-50"
+                      }`}
+                    >
+                      <Pin className={`h-3.5 w-3.5 ${postPinned ? "fill-current" : ""}`} />
+                      {postPinned ? "Připnuto nahoře" : "Připnout nahoře"}
+                    </button>
+                    <label className="sm:col-span-2 block space-y-1.5 border-t border-violet-100 pt-3">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        Přečíst do (volitelné)
+                      </span>
+                      <input
+                        type="date"
+                        value={postReadByDay}
+                        onChange={(event) => setPostReadByDay(event.target.value)}
+                        className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
+                      />
+                    </label>
+                  </div>
 
                   {!isEditingPost ? (
                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">

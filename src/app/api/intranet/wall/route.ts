@@ -44,6 +44,7 @@ const FILE_TOTAL_MAX_BYTES = 30 * 1024 * 1024;
 const POLL_QUESTION_MAX_LEN = 180;
 const POLL_OPTION_MAX_LEN = 100;
 const POLL_OPTIONS_MAX_COUNT = 8;
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const INTRANET_PUSH_MAX_RECIPIENTS = 350;
 const INTRANET_PUSH_MAX_TOKENS_PER_USER = 8;
 const INTRANET_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
@@ -114,6 +115,8 @@ type WallPost = {
   sectionLabel: string;
   createdAtMs: number | null;
   updatedAtMs: number | null;
+  pinned: boolean;
+  readByDay: string | null;
   commentCount: number;
   likeCount: number;
   likedByMe: boolean;
@@ -134,11 +137,23 @@ const normalizeEmail = (value: unknown): string =>
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
+const normalizeSearchText = (value: unknown): string =>
+  normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("cs-CZ");
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
 const clampText = (value: string, maxLen: number): string =>
   value.length > maxLen ? `${value.slice(0, maxLen - 1)}…` : value;
+
+const isIsoDay = (value: string): boolean => {
+  if (!ISO_DAY_RE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
 
 const sanitizeFileName = (value: string): string => {
   const cleaned = value
@@ -867,6 +882,11 @@ function mapPostFromDoc(
     sectionLabel: INTRANET_SECTION_LABEL_BY_KEY.get(section) ?? section,
     createdAtMs: toMillis(raw.createdAt),
     updatedAtMs: toMillis(raw.updatedAt),
+    pinned: raw.pinned === true,
+    readByDay: (() => {
+      const value = normalizeText(raw.readByDay);
+      return isIsoDay(value) ? value : null;
+    })(),
     commentCount,
     likeCount,
     likedByMe,
@@ -908,6 +928,9 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const searchQuery = normalizeText(req.nextUrl.searchParams.get("q")).slice(0, 120);
+  const normalizedSearchQuery = normalizeSearchText(searchQuery);
+
   const limitRaw = Number(req.nextUrl.searchParams.get("limit"));
   const limit =
     Number.isFinite(limitRaw) && limitRaw > 0
@@ -936,7 +959,13 @@ export async function GET(req: NextRequest) {
       for (const doc of postsSnap.docs) {
         const raw = doc.data() as Record<string, unknown>;
         const docSection = parseSection(raw.section);
-        if (!section || docSection === section) {
+        const matchesSection = !section || docSection === section;
+        const matchesSearch =
+          !normalizedSearchQuery ||
+          [raw.title, raw.text, raw.createdByName, raw.createdByEmail].some((value) =>
+            normalizeSearchText(value).includes(normalizedSearchQuery)
+          );
+        if (matchesSection && matchesSearch) {
           matchingDocs.push(doc);
           if (matchingDocs.length > limit) break;
         }
@@ -974,6 +1003,10 @@ export async function GET(req: NextRequest) {
         sections: INTRANET_SECTIONS,
         posts: posts
           .filter((post): post is WallPost => post !== null)
+          .sort((a, b) => {
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+            return (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0);
+          })
           .slice(0, limit),
         hasMore,
         nextCursorMs,
@@ -1029,6 +1062,9 @@ export async function POST(req: NextRequest) {
   const sectionInput = form.get("section");
   const section = parseSection(sectionInput) ?? "obecne";
   const pollEnabled = normalizeText(form.get("pollEnabled")) === "1";
+  const pinned = normalizeText(form.get("pinned")) === "1";
+  const readByDayRaw = normalizeText(form.get("readByDay"));
+  const readByDay = readByDayRaw || null;
   const pollQuestion = normalizeText(form.get("pollQuestion")).slice(0, POLL_QUESTION_MAX_LEN);
   const pollOptions = form
     .getAll("pollOptions")
@@ -1049,6 +1085,15 @@ export async function POST(req: NextRequest) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Text příspěvku je povinný." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  if (readByDay && !isIsoDay(readByDay)) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Termín přečtení musí být platné datum." },
         { status: 400 }
       ),
       ctx
@@ -1186,6 +1231,8 @@ export async function POST(req: NextRequest) {
       commentCount: 0,
       likeCount: 0,
       likedByEmails: [],
+      pinned,
+      readByDay,
       createdAt: timestamp,
       updatedAt: timestamp,
     };

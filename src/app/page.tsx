@@ -41,6 +41,7 @@ import {
 } from "@/lib/appLanguage";
 
 import { AppLayout } from "@/components/AppLayout";
+import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
 import { invalidateHomeCache, useHomeData } from "./home/useHomeData";
 import { type PaymentFrequency, type Product } from "./types/domain";
 import {
@@ -1644,7 +1645,7 @@ export default function HomePage() {
   }
 
   return (
-    <AppLayout active="home">
+    <AppLayout active="home" desktopGlobalSearch={false}>
       {portalLinksModalOpen && (
         <InstitutionPortalLinksModal onClose={() => setPortalLinksModalOpen(false)} />
       )}
@@ -1653,7 +1654,8 @@ export default function HomePage() {
         <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SplitTextHeading text={`${copy.homeHeadingPrefix} ${monthLabelCapitalized} ${year}`} />
-          <div className="self-start flex flex-wrap items-center gap-3">
+          <div className="self-start w-full sm:w-[29.5rem]">
+            <div className="flex flex-wrap items-center justify-end gap-3">
             <button
               type="button"
               onClick={refreshHomeData}
@@ -1814,6 +1816,10 @@ export default function HomePage() {
                   </p>
                 </div>
               )}
+            </div>
+            <div className="mt-3 w-full">
+              <GlobalSearchCommand user={user} dialogBelowDesktopHeader={false} />
+            </div>
           </div>
         </div>
         </div>

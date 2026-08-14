@@ -579,6 +579,7 @@ function ContractsPageContent() {
   });
   const lastListTransitionSignatureRef = useRef<string | null>(null);
   const shouldRestoreView = searchParams?.get("restore") === "1";
+  const globalSearchParam = (searchParams?.get("globalSearch") ?? "").trim().slice(0, 120);
   const normalizedUserEmail = normalizeEmail(user?.email);
   const deferredSearchText = useDeferredValue(searchText);
   const hasImmediateSearchQuery = normalizeSearchValue(searchText).length > 0;
@@ -602,6 +603,12 @@ function ContractsPageContent() {
     mode: commissionAuditMode,
     codeFilter: commissionAuditCodeFilter,
   });
+
+  useEffect(() => {
+    if (globalSearchParam) {
+      setSearchText(globalSearchParam);
+    }
+  }, [globalSearchParam]);
   const serverFilterActive =
     hasSearchQuery ||
     anniversaryModeActive ||

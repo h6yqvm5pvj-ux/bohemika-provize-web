@@ -43,12 +43,14 @@ import { clearServerSession } from "@/app/lib/authSession";
 import { useAccountSetupFlow } from "@/components/account-setup/useAccountSetupFlow";
 import { AppNavigation, type ActivePage } from "@/components/navigation/AppNavigation";
 import { useUserProfileAccess } from "@/components/profile/useUserProfileAccess";
+import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
 import { SubscriptionGate } from "@/components/subscription/SubscriptionGate";
 
 interface AppLayoutProps {
   children: ReactNode;
   active: ActivePage;
   embedded?: boolean;
+  desktopGlobalSearch?: boolean;
 }
 
 const AUTO_LOGOUT_AFTER_MS = 12 * 60 * 60 * 1000;
@@ -140,7 +142,12 @@ function PreparationSectionGate() {
   );
 }
 
-export function AppLayout({ children, active, embedded = false }: AppLayoutProps) {
+export function AppLayout({
+  children,
+  active,
+  embedded = false,
+  desktopGlobalSearch = true,
+}: AppLayoutProps) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -641,6 +648,12 @@ export function AppLayout({ children, active, embedded = false }: AppLayoutProps
 
         <AppNavigation
           active={active}
+          desktopHeaderContent={
+            user && desktopGlobalSearch ? <GlobalSearchCommand user={user} /> : undefined
+          }
+          mobileHeaderAction={
+            user ? <GlobalSearchCommand user={user} compact /> : undefined
+          }
           navLabels={layoutCopy.nav}
           logoutLabel={layoutCopy.logout}
           hasUser={Boolean(user)}

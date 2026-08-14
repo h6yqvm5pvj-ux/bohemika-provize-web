@@ -13,8 +13,10 @@ import {
   signOut,
   sendPasswordResetEmail,
   TotpMultiFactorGenerator,
+  type User as FirebaseUser,
 } from "firebase/auth";
 import { auth } from "../firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
   clearServerSession,
@@ -45,6 +47,19 @@ const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/invalid-continue-uri",
   "auth/missing-continue-uri",
 ]);
+
+const recordSuccessfulMfaVerification = async (user: FirebaseUser | null) => {
+  if (!user) return;
+  try {
+    await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ mfaLastVerifiedPing: true }),
+    });
+  } catch (error) {
+    // Záznam času nesmí zablokovat již úspěšné přihlášení.
+    console.warn("Nepodařilo se uložit čas posledního 2FA ověření.", error);
+  }
+};
 
 const PASSWORD_ATTEMPT_ERROR_CODES = new Set<string>([
   "auth/user-not-found",
@@ -438,11 +453,12 @@ export default function LoginPage() {
         mfaHintUid,
         oneTimePassword
       );
-      await withTimeout(
+      const credential = await withTimeout(
         mfaResolver.resolveSignIn(assertion),
         20000,
         "2FA ověření trvá příliš dlouho."
       );
+      void recordSuccessfulMfaVerification(credential.user);
       // dokončení přihlášení + kontrolu subscription řeší onAuthStateChanged
     } catch (err: unknown) {
       logAuthIssue("handleMfaSubmit", err);

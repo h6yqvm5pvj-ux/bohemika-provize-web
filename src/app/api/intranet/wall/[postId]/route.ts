@@ -32,6 +32,7 @@ const TEXT_MAX_LEN = 6000;
 const FILES_MAX_COUNT = 6;
 const FILE_MAX_SIZE_BYTES = 10 * 1024 * 1024;
 const FILE_TOTAL_MAX_BYTES = 30 * 1024 * 1024;
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 type RouteParams = {
   postId: string;
@@ -59,6 +60,12 @@ const resolvePostId = (raw: string): string =>
 
 const normalizeAttachmentId = (value: unknown): string =>
   normalizeText(value).replace(/[^\w-]/g, "");
+
+const isIsoDay = (value: string): boolean => {
+  if (!ISO_DAY_RE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -354,6 +361,8 @@ export async function PATCH(
   let title = "";
   let text = "";
   let section: IntranetSectionKey | null = null;
+  let pinned = false;
+  let readByDay: string | null = null;
   let files: File[] = [];
   let removedAttachmentIds: string[] = [];
   const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
@@ -363,6 +372,9 @@ export async function PATCH(
       title = normalizeText(form.get("title")).slice(0, TITLE_MAX_LEN);
       text = normalizeText(form.get("text")).slice(0, TEXT_MAX_LEN);
       section = parseSection(form.get("section"));
+      pinned = normalizeText(form.get("pinned")) === "1";
+      const readByDayRaw = normalizeText(form.get("readByDay"));
+      readByDay = readByDayRaw || null;
       files = form.getAll("files").filter((entry): entry is File => entry instanceof File);
       removedAttachmentIds = Array.from(
         new Set(
@@ -380,6 +392,9 @@ export async function PATCH(
       title = normalizeText(body.title).slice(0, TITLE_MAX_LEN);
       text = normalizeText(body.text).slice(0, TEXT_MAX_LEN);
       section = parseSection(body.section);
+      pinned = body.pinned === true;
+      const readByDayRaw = normalizeText(body.readByDay);
+      readByDay = readByDayRaw || null;
       removedAttachmentIds = Array.isArray(body.removedAttachmentIds)
         ? Array.from(
             new Set(body.removedAttachmentIds.map(normalizeAttachmentId).filter(Boolean))
@@ -418,6 +433,15 @@ export async function PATCH(
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Neplatná sekce." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  if (readByDay && !isIsoDay(readByDay)) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Termín přečtení musí být platné datum." },
         { status: 400 }
       ),
       ctx
@@ -572,6 +596,8 @@ export async function PATCH(
       section,
       sectionLabel,
       attachments,
+      pinned,
+      readByDay,
       updatedAt: FieldValue.serverTimestamp(),
     });
 

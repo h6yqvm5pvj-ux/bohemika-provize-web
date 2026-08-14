@@ -511,6 +511,38 @@ export async function deleteCredential(
   });
 }
 
+export async function renameCredential(
+  user: FirebasePasskeyAuthContext,
+  credentialId: unknown,
+  name: unknown
+): Promise<PasskeyCredentialSummary> {
+  if (typeof credentialId !== "string" || !credentialId.trim()) {
+    throw new PasskeyError("Chybí ID passkey.", 400);
+  }
+
+  const { db } = assertAdminReady();
+  const ref = db.collection(PASSKEY_CREDENTIALS_COLLECTION).doc(credentialId.trim());
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new PasskeyError("Přístupový klíč nebyl nalezen.", 404);
+  }
+
+  const data = snap.data() as PasskeyCredentialDoc;
+  if (data.uid !== user.uid || data.disabled) {
+    throw new PasskeyError("Tento passkey nepatří aktuálnímu uživateli.", 403);
+  }
+
+  const nextName = sanitizeCredentialName(name);
+  const updatedAtMs = Date.now();
+  await ref.update({
+    name: nextName,
+    updatedAtMs,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return summarizeCredential({ ...data, name: nextName, updatedAtMs });
+}
+
 export async function createAuthenticationOptions(req: NextRequest) {
   const webAuthn = getRequestWebAuthnContext(req);
   const options = await generateAuthenticationOptions({
