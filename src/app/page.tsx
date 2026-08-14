@@ -1,10 +1,24 @@
 // src/app/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Globe2, Mail, RefreshCw, SlidersHorizontal } from "lucide-react";
+import {
+  BarChart3,
+  Coins,
+  Gauge,
+  Globe2,
+  Mail,
+  Radar,
+  RefreshCw,
+  SlidersHorizontal,
+  Target,
+  Trophy,
+  WalletCards,
+  X,
+  Zap,
+} from "lucide-react";
 
 import { auth } from "./firebase";
 import {
@@ -42,7 +56,6 @@ import {
   type HomeWidgets,
   type LeaderboardProductFilter,
   type LeaderboardRange,
-  type LayoutScope,
   type PerformanceMode,
   type QuickAction,
   type TeamLeaderboardEntry,
@@ -282,8 +295,6 @@ const homeWidgetsKey = (email?: string | null) =>
   email ? `home.widgets:${email.toLowerCase()}` : null;
 const homeLayoutKey = (email?: string | null) =>
   email ? `home.layout:${email.toLowerCase()}` : null;
-const homeScopeKey = (email?: string | null) =>
-  email ? `home.scope:${email.toLowerCase()}` : null;
 const homePerformanceKey = (email?: string | null) =>
   email ? `home.performance:${email.toLowerCase()}` : null;
 const quickActionsKey = (email?: string | null) =>
@@ -326,15 +337,6 @@ const HOME_COPY: Record<
       defaultDescription: string;
       liteLabel: string;
       defaultLabel: string;
-    };
-    storage: {
-      title: string;
-      cloudDescription: string;
-      deviceDescription: string;
-      cloudLabel: string;
-      deviceLabel: string;
-      cloudHelp: string;
-      deviceHelp: string;
     };
     quickActions: {
       kicker: string;
@@ -386,15 +388,6 @@ const HOME_COPY: Record<
       defaultDescription: "Plné vizuály a efekty.",
       liteLabel: "Odlehčený",
       defaultLabel: "Plný",
-    },
-    storage: {
-      title: "Ukládání",
-      cloudDescription: "Synchronizuje se s tvým profilem (všechna zařízení).",
-      deviceDescription: "Uloží se jen do tohoto zařízení/prohlížeče.",
-      cloudLabel: "Cloud",
-      deviceLabel: "Jen zařízení",
-      cloudHelp: "Nastavení i rozložení se uloží do profilu a funguje na všech zařízeních.",
-      deviceHelp: "Nastavení zůstává jen v tomto prohlížeči (localStorage).",
     },
     quickActions: {
       kicker: "Rychlé akce",
@@ -590,7 +583,6 @@ export default function HomePage() {
   const [hoverSection, setHoverSection] = useState<HomeSection | null>(null);
   const homeLayoutRef = useRef<HomeSection[]>(HOME_LAYOUT_DEFAULT);
   const layoutDirtyRef = useRef(false);
-  const [layoutScope, setLayoutScope] = useState<LayoutScope>("cloud");
   const [performanceMode, setPerformanceMode] = useState<PerformanceMode>(PERFORMANCE_DEFAULT);
   const [goldLoading, setGoldLoading] = useState(false);
   const [goldError, setGoldError] = useState<string | null>(null);
@@ -813,214 +805,7 @@ export default function HomePage() {
     };
   }, [authReady, user]);
 
-  const persistHomeWidgets = (updater: (prev: HomeWidgets) => HomeWidgets) => {
-    setHomeWidgets((prev) => {
-      const next = updater(prev);
-      const key = homeWidgetsKey(normalizedEmail);
-      if (typeof window !== "undefined" && key) {
-        window.localStorage.setItem(key, JSON.stringify(next));
-      }
-      if (layoutScope === "cloud") {
-        void pushHomeSettingsToCloud({ homeWidgets: next });
-      }
-      return next;
-    });
-  };
-
-  const persistQuickActions = (updater: (prev: QuickAction[]) => QuickAction[]) => {
-    setQuickActions((prev) => {
-      const next = normalizeQuickActions(updater(prev));
-      const key = quickActionsKey(normalizedEmail);
-      if (typeof window !== "undefined" && key) {
-        window.localStorage.setItem(key, JSON.stringify(next));
-      }
-      if (layoutScope === "cloud") {
-        void pushHomeSettingsToCloud({ homeQuickActions: next });
-      }
-      return next;
-    });
-  };
-
-  const persistHomeLayout = (next: HomeSection[]) => {
-    setHomeLayout(next);
-    const key = homeLayoutKey(normalizedEmail);
-    if (typeof window !== "undefined" && key) {
-      window.localStorage.setItem(key, JSON.stringify(next));
-    }
-    if (layoutScope === "cloud") {
-      void pushHomeSettingsToCloud({ homeLayout: next });
-    }
-  };
-
-  const handleWidgetToggle = (key: keyof HomeWidgets) => {
-    persistHomeWidgets((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  };
-
-  const updatePerformanceMode = (mode: PerformanceMode) => {
-    setPerformanceMode(mode);
-    const key = homePerformanceKey(user?.email ?? null);
-    if (typeof window !== "undefined" && key) {
-      window.localStorage.setItem(key, mode);
-    }
-    if (layoutScope === "cloud") {
-      void pushHomeSettingsToCloud({ homePerformanceMode: mode });
-    }
-  };
-
-  const handleScopeToggle = async () => {
-    if (!user?.email) return;
-    const nextScope: LayoutScope = layoutScope === "cloud" ? "device" : "cloud";
-    if (nextScope === "cloud") {
-      await pushHomeSettingsToCloud({
-        homeLayout,
-        homeWidgets,
-        homePerformanceMode: performanceMode,
-        homeQuickActions: quickActions,
-      });
-    }
-    setLayoutScope(nextScope);
-    rememberScopePreference(nextScope);
-  };
-
-  const refreshGoldWidget = () => {
-    setGoldReloadKey((k) => k + 1);
-  };
-
-  const refreshHomeData = () => {
-    if (!advisorDataEmail) return;
-    invalidateHomeCache(advisorDataEmail);
-    setHomeReloadKey((k) => k + 1);
-    setGoldReloadKey((k) => k + 1);
-  };
-
-  // nastavení režimu ukládání (cloud vs device)
-  useEffect(() => {
-    if (!normalizedEmail) {
-      setLayoutScope("cloud");
-      return;
-    }
-    if (typeof window === "undefined") return;
-    const scopeKey = homeScopeKey(normalizedEmail);
-    if (!scopeKey) return;
-    const stored = window.localStorage.getItem(scopeKey);
-    if (stored === "device" || stored === "cloud") {
-      setLayoutScope(stored);
-    } else {
-      setLayoutScope("cloud");
-    }
-  }, [normalizedEmail]);
-
-  // načtení uživatelského rozložení domova (cloud nebo device)
-  useEffect(() => {
-    if (!normalizedEmail) return;
-    const email = normalizedEmail;
-
-    const loadFromDevice = () => {
-      const localLayout = readLocalHomeLayout(email);
-      const localWidgets = readLocalHomeWidgets(email);
-      const localPerf = readLocalPerformanceMode(email);
-      const localQA = readLocalQuickActions(email);
-      setHomeLayout(normalizeHomeLayout(localLayout));
-      setHomeWidgets(localWidgets ?? HOME_WIDGETS_DEFAULT);
-      setPerformanceMode(localPerf ?? PERFORMANCE_DEFAULT);
-      setQuickActions(normalizeQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT));
-    };
-
-    const load = async () => {
-      if (layoutScope === "device") {
-        loadFromDevice();
-        return;
-      }
-
-      try {
-        if (!auth.currentUser) {
-          loadFromDevice();
-          return;
-        }
-        const payload = await getUserProfileCached(auth.currentUser, {
-          maxAgeMs: 60 * 1000,
-        });
-        const data = (payload?.profile ?? {}) as any;
-
-        const cloudLayout = (data?.homeLayout as HomeSection[] | undefined) ?? null;
-        const cloudWidgets = (data?.homeWidgets as Partial<HomeWidgets> | undefined) ?? null;
-        const cloudPerf = (data?.homePerformanceMode as PerformanceMode | undefined) ?? null;
-        const cloudQA = (data?.homeQuickActions as QuickAction[] | undefined) ?? null;
-
-        if (cloudLayout && Array.isArray(cloudLayout) && cloudLayout.length > 0) {
-          const normalized = normalizeHomeLayout(cloudLayout as HomeSection[]);
-          setHomeLayout(normalized);
-          const key = homeLayoutKey(email);
-          if (typeof window !== "undefined" && key) {
-            window.localStorage.setItem(key, JSON.stringify(normalized));
-          }
-        } else {
-          const localLayout = readLocalHomeLayout(email);
-          if (localLayout) {
-            setHomeLayout(normalizeHomeLayout(localLayout));
-          } else {
-            setHomeLayout(HOME_LAYOUT_DEFAULT);
-          }
-        }
-
-        if (cloudWidgets) {
-          const merged = { ...HOME_WIDGETS_DEFAULT, ...cloudWidgets };
-          setHomeWidgets(merged);
-          const key = homeWidgetsKey(email);
-          if (typeof window !== "undefined" && key) {
-            window.localStorage.setItem(key, JSON.stringify(merged));
-          }
-        } else {
-          const localWidgets = readLocalHomeWidgets(email);
-          setHomeWidgets(localWidgets ?? HOME_WIDGETS_DEFAULT);
-        }
-
-        if (cloudQA && Array.isArray(cloudQA)) {
-          const normalizedQuickActions = normalizeQuickActions(cloudQA);
-          setQuickActions(normalizedQuickActions);
-          const key = quickActionsKey(email);
-          if (typeof window !== "undefined" && key) {
-            window.localStorage.setItem(key, JSON.stringify(normalizedQuickActions));
-          }
-        } else {
-          const localQA = readLocalQuickActions(email);
-          setQuickActions(normalizeQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT));
-        }
-
-        if (cloudPerf) {
-          setPerformanceMode(cloudPerf);
-          const key = homePerformanceKey(email);
-          if (typeof window !== "undefined" && key) {
-            window.localStorage.setItem(key, cloudPerf);
-          }
-        } else {
-          const localPerf = readLocalPerformanceMode(email);
-          setPerformanceMode(localPerf ?? PERFORMANCE_DEFAULT);
-        }
-      } catch (e) {
-        console.error("Načtení nastavení domova selhalo", e);
-        loadFromDevice();
-      }
-    };
-
-    load();
-  }, [normalizedEmail, layoutScope]);
-
-  const rememberScopePreference = (scope: LayoutScope) => {
-    if (typeof window === "undefined") return;
-    const key = homeScopeKey(normalizedEmail);
-    if (!key) return;
-    window.localStorage.setItem(key, scope);
-  };
-
-  useEffect(() => {
-    homeLayoutRef.current = homeLayout;
-  }, [homeLayout]);
-
-  const pushHomeSettingsToCloud = async (payload: {
+  const pushHomeSettingsToCloud = useCallback(async (payload: {
     homeLayout?: HomeSection[];
     homeWidgets?: HomeWidgets;
     homePerformanceMode?: PerformanceMode;
@@ -1037,8 +822,176 @@ export default function HomePage() {
     } catch (e) {
       console.error("Uložení nastavení domova selhalo", e);
     }
+  }, [normalizedEmail]);
+
+  const persistHomeWidgets = (updater: (prev: HomeWidgets) => HomeWidgets) => {
+    setHomeWidgets((prev) => {
+      const next = updater(prev);
+      const key = homeWidgetsKey(normalizedEmail);
+      if (typeof window !== "undefined" && key) {
+        window.localStorage.setItem(key, JSON.stringify(next));
+      }
+      void pushHomeSettingsToCloud({ homeWidgets: next });
+      return next;
+    });
   };
 
+  const persistQuickActions = (updater: (prev: QuickAction[]) => QuickAction[]) => {
+    setQuickActions((prev) => {
+      const next = normalizeQuickActions(updater(prev));
+      const key = quickActionsKey(normalizedEmail);
+      if (typeof window !== "undefined" && key) {
+        window.localStorage.setItem(key, JSON.stringify(next));
+      }
+      void pushHomeSettingsToCloud({ homeQuickActions: next });
+      return next;
+    });
+  };
+
+  const persistHomeLayout = (next: HomeSection[]) => {
+    setHomeLayout(next);
+    const key = homeLayoutKey(normalizedEmail);
+    if (typeof window !== "undefined" && key) {
+      window.localStorage.setItem(key, JSON.stringify(next));
+    }
+    void pushHomeSettingsToCloud({ homeLayout: next });
+  };
+
+  const handleWidgetToggle = (key: keyof HomeWidgets) => {
+    persistHomeWidgets((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const updatePerformanceMode = (mode: PerformanceMode) => {
+    setPerformanceMode(mode);
+    const key = homePerformanceKey(user?.email ?? null);
+    if (typeof window !== "undefined" && key) {
+      window.localStorage.setItem(key, mode);
+    }
+    void pushHomeSettingsToCloud({ homePerformanceMode: mode });
+  };
+
+  const refreshGoldWidget = () => {
+    setGoldReloadKey((k) => k + 1);
+  };
+
+  const refreshHomeData = () => {
+    if (!advisorDataEmail) return;
+    invalidateHomeCache(advisorDataEmail);
+    setHomeReloadKey((k) => k + 1);
+    setGoldReloadKey((k) => k + 1);
+  };
+
+  // Nastavení domova jsou vždy synchronizována s profilem; lokální uložiště slouží
+  // jen jako okamžitá záloha při nedostupném připojení.
+  useEffect(() => {
+    if (!normalizedEmail) return;
+    const email = normalizedEmail;
+
+    const loadFromDevice = () => {
+      const localLayout = readLocalHomeLayout(email);
+      const localWidgets = readLocalHomeWidgets(email);
+      const localPerf = readLocalPerformanceMode(email);
+      const localQA = readLocalQuickActions(email);
+      setHomeLayout(normalizeHomeLayout(localLayout));
+      setHomeWidgets(localWidgets ?? HOME_WIDGETS_DEFAULT);
+      setPerformanceMode(localPerf ?? PERFORMANCE_DEFAULT);
+      setQuickActions(normalizeQuickActions(localQA ?? QUICK_ACTIONS_DEFAULT));
+    };
+
+    const load = async () => {
+      try {
+        if (!auth.currentUser) {
+          loadFromDevice();
+          return;
+        }
+        const payload = await getUserProfileCached(auth.currentUser, {
+          maxAgeMs: 60 * 1000,
+        });
+        const data = (payload?.profile ?? {}) as any;
+
+        const cloudLayout = (data?.homeLayout as HomeSection[] | undefined) ?? null;
+        const cloudWidgets = (data?.homeWidgets as Partial<HomeWidgets> | undefined) ?? null;
+        const cloudPerf = (data?.homePerformanceMode as PerformanceMode | undefined) ?? null;
+        const cloudQA = (data?.homeQuickActions as QuickAction[] | undefined) ?? null;
+
+        const settingsToSynchronize: {
+          homeLayout?: HomeSection[];
+          homeWidgets?: HomeWidgets;
+          homePerformanceMode?: PerformanceMode;
+          homeQuickActions?: QuickAction[];
+        } = {};
+
+        if (cloudLayout && Array.isArray(cloudLayout) && cloudLayout.length > 0) {
+          const normalized = normalizeHomeLayout(cloudLayout as HomeSection[]);
+          setHomeLayout(normalized);
+          const key = homeLayoutKey(email);
+          if (typeof window !== "undefined" && key) {
+            window.localStorage.setItem(key, JSON.stringify(normalized));
+          }
+        } else {
+          const fallbackLayout = normalizeHomeLayout(readLocalHomeLayout(email));
+          setHomeLayout(fallbackLayout);
+          settingsToSynchronize.homeLayout = fallbackLayout;
+        }
+
+        if (cloudWidgets) {
+          const merged = { ...HOME_WIDGETS_DEFAULT, ...cloudWidgets };
+          setHomeWidgets(merged);
+          const key = homeWidgetsKey(email);
+          if (typeof window !== "undefined" && key) {
+            window.localStorage.setItem(key, JSON.stringify(merged));
+          }
+        } else {
+          const fallbackWidgets = readLocalHomeWidgets(email) ?? HOME_WIDGETS_DEFAULT;
+          setHomeWidgets(fallbackWidgets);
+          settingsToSynchronize.homeWidgets = fallbackWidgets;
+        }
+
+        if (cloudQA && Array.isArray(cloudQA)) {
+          const normalizedQuickActions = normalizeQuickActions(cloudQA);
+          setQuickActions(normalizedQuickActions);
+          const key = quickActionsKey(email);
+          if (typeof window !== "undefined" && key) {
+            window.localStorage.setItem(key, JSON.stringify(normalizedQuickActions));
+          }
+        } else {
+          const fallbackQuickActions = normalizeQuickActions(
+            readLocalQuickActions(email) ?? QUICK_ACTIONS_DEFAULT,
+          );
+          setQuickActions(fallbackQuickActions);
+          settingsToSynchronize.homeQuickActions = fallbackQuickActions;
+        }
+
+        if (cloudPerf) {
+          setPerformanceMode(cloudPerf);
+          const key = homePerformanceKey(email);
+          if (typeof window !== "undefined" && key) {
+            window.localStorage.setItem(key, cloudPerf);
+          }
+        } else {
+          const fallbackPerformanceMode = readLocalPerformanceMode(email) ?? PERFORMANCE_DEFAULT;
+          setPerformanceMode(fallbackPerformanceMode);
+          settingsToSynchronize.homePerformanceMode = fallbackPerformanceMode;
+        }
+
+        if (Object.keys(settingsToSynchronize).length > 0) {
+          void pushHomeSettingsToCloud(settingsToSynchronize);
+        }
+      } catch (e) {
+        console.error("Načtení nastavení domova selhalo", e);
+        loadFromDevice();
+      }
+    };
+
+    load();
+  }, [normalizedEmail, pushHomeSettingsToCloud]);
+
+  useEffect(() => {
+    homeLayoutRef.current = homeLayout;
+  }, [homeLayout]);
 
   useEffect(() => {
     if (!hasTeam) {
@@ -1700,7 +1653,7 @@ export default function HomePage() {
         <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
         <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SplitTextHeading text={`${copy.homeHeadingPrefix} ${monthLabelCapitalized} ${year}`} />
-          <div className="self-start flex items-center gap-3">
+          <div className="self-start flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={refreshHomeData}
@@ -1719,7 +1672,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => setPortalLinksModalOpen(true)}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-pink-500 bg-gradient-to-br from-pink-500 to-rose-600 px-4 text-sm font-bold text-white shadow-[0_12px_24px_rgba(219,39,119,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300 focus-visible:ring-offset-2"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-pink-500 bg-gradient-to-br from-pink-500 to-rose-600 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(219,39,119,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
               aria-label="Portály"
               title="Portály"
             >
@@ -1728,14 +1681,25 @@ export default function HomePage() {
             </button>
 
             <Link
+              href="/pomucky/radar-vyroci"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-violet-600 bg-gradient-to-br from-violet-600 to-indigo-700 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(109,40,217,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
+              aria-label="Radar výročí"
+              title="Radar výročí"
+            >
+              <Radar size={20} aria-hidden="true" />
+              <span>Výročí</span>
+            </Link>
+
+            <Link
               href="/posta"
-              className="relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-blue-700 bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-[0_12px_24px_rgba(37,99,235,0.35)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2"
+              className="relative inline-flex h-12 items-center justify-center gap-2 rounded-full border border-blue-700 bg-gradient-to-br from-blue-600 to-indigo-700 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(37,99,235,0.35)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
               aria-label={copy.mail}
               title={copy.mail}
             >
               <Mail size={21} aria-hidden="true" />
+              <span>{copy.mail}</span>
               {mailUnreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1 inline-flex min-w-[22px] items-center justify-center rounded-full border border-white bg-rose-600 px-1.5 text-[10px] font-bold leading-5 text-white shadow-[0_5px_12px_rgba(190,18,60,0.4)]">
+                <span className="absolute -right-1 -top-1 inline-flex min-w-[22px] items-center justify-center rounded-full border border-white bg-rose-600 px-1.5 text-[10px] font-bold leading-5 !text-white shadow-[0_5px_12px_rgba(190,18,60,0.4)]">
                   {mailUnreadCount > 99 ? "99+" : mailUnreadCount}
                 </span>
               ) : null}
@@ -1745,7 +1709,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => setWidgetPanelOpen((prev) => !prev)}
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-white shadow-[0_12px_24px_rgba(15,23,42,0.28)] transition hover:scale-[1.03] hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-900 bg-slate-900 !text-white shadow-[0_12px_24px_rgba(15,23,42,0.28)] transition hover:scale-[1.03] hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
                 aria-label={copy.customizeHomeAria}
                 title={copy.customizeButtonTitle}
               >
@@ -1753,116 +1717,103 @@ export default function HomePage() {
               </button>
 
               {widgetPanelOpen && (
-                <div className="fixed left-1/2 top-[min(42vh,22rem)] z-50 max-h-[calc(100vh-7rem)] w-[calc(100vw-2rem)] max-w-[20rem] -translate-x-1/2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:z-40 sm:mt-2 sm:w-72 sm:max-w-none sm:translate-x-0 sm:overflow-visible">
-                  <div className="flex items-center justify-between gap-2 pb-2">
-                    <div className="text-sm font-semibold text-slate-900">
-                      {copy.customizeTitle}
+                <div className="fixed left-1/2 top-[min(42vh,22rem)] z-50 max-h-[calc(100vh-7rem)] w-[calc(100vw-2rem)] max-w-[24rem] -translate-x-1/2 overflow-y-auto rounded-[26px] border border-violet-100 bg-white p-2 shadow-[0_24px_70px_rgba(49,25,105,0.28)] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:z-40 sm:mt-3 sm:w-[23rem] sm:max-w-none sm:translate-x-0">
+                  <div className="rounded-[20px] bg-gradient-to-br from-violet-700 via-violet-600 to-indigo-800 px-4 py-4 !text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-white/15 [&_svg]:!stroke-white">
+                          <SlidersHorizontal size={19} aria-hidden="true" />
+                        </span>
+                        <div>
+                          <div className="text-base font-extrabold !text-white">{copy.customizeTitle}</div>
+                          <p className="mt-1 text-xs leading-5 !text-violet-100">
+                            Změny se automaticky uloží do tvého profilu.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setWidgetPanelOpen(false)}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 !text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white [&_svg]:!stroke-white"
+                        aria-label={copy.close}
+                      >
+                        <X size={16} aria-hidden="true" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setWidgetPanelOpen(false)}
-                      className="rounded-full border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-50"
-                      aria-label={copy.close}
-                    >
-                      ×
-                    </button>
                   </div>
 
-                  <div className="space-y-2 text-sm text-slate-700">
+                  <div className="space-y-2 px-1 pb-1 pt-3">
                     {[
-                      { key: "productionSummary", label: copy.widgetLabels.productionSummary, disabled: false },
-                      { key: "expectedPayout", label: copy.widgetLabels.expectedPayout, disabled: false },
-                      { key: "monthlyGoal", label: copy.widgetLabels.monthlyGoal, disabled: false },
-                      { key: "goldWidget", label: copy.widgetLabels.goldWidget, disabled: false },
-                      {
-                        key: "teamLeaderboard",
-                        label: copy.widgetLabels.teamLeaderboard,
-                        disabled: !showTeamBox,
-                        note: copy.managerOnlyNote,
-                      },
-                      { key: "quickActions", label: copy.widgetLabels.quickActions, disabled: false },
+                      { key: "productionSummary" as const, label: copy.widgetLabels.productionSummary, icon: BarChart3, iconClass: "bg-violet-100 text-violet-700", disabled: false },
+                      { key: "expectedPayout" as const, label: copy.widgetLabels.expectedPayout, icon: WalletCards, iconClass: "bg-fuchsia-100 text-fuchsia-700", disabled: false },
+                      { key: "monthlyGoal" as const, label: copy.widgetLabels.monthlyGoal, icon: Target, iconClass: "bg-rose-100 text-rose-700", disabled: false },
+                      { key: "goldWidget" as const, label: copy.widgetLabels.goldWidget, icon: Coins, iconClass: "bg-amber-100 text-amber-700", disabled: false },
+                      { key: "teamLeaderboard" as const, label: copy.widgetLabels.teamLeaderboard, icon: Trophy, iconClass: "bg-sky-100 text-sky-700", disabled: !showTeamBox, note: copy.managerOnlyNote },
+                      { key: "quickActions" as const, label: copy.widgetLabels.quickActions, icon: Zap, iconClass: "bg-emerald-100 text-emerald-700", disabled: false },
                     ].map((opt) => {
-                    const checked = homeWidgets[opt.key as keyof HomeWidgets];
-                    const disabled = opt.disabled;
-                    return (
-                      <label
-                        key={opt.key}
-                        className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${
-                          disabled
-                            ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-50"
-                            : "cursor-pointer border-slate-200 bg-slate-50 hover:bg-white"
-                        }`}
-                      >
-                        <div className="flex flex-col">
-                          <span>{opt.label}</span>
-                          {opt.note && disabled ? (
-                            <span className="text-[11px] text-slate-500">
-                              {opt.note}
-                            </span>
-                          ) : null}
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={disabled}
-                          onChange={() => handleWidgetToggle(opt.key as keyof HomeWidgets)}
-                          className="h-4 w-4 accent-slate-900"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-semibold text-slate-900">{copy.performance.title}</span>
-                    <span className="text-[11px] text-slate-500">
-                      {performanceMode === "lite"
-                        ? copy.performance.liteDescription
-                        : copy.performance.defaultDescription}
-                    </span>
+                      const checked = homeWidgets[opt.key];
+                      const Icon = opt.icon;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          role="switch"
+                          aria-checked={checked}
+                          disabled={opt.disabled}
+                          onClick={() => handleWidgetToggle(opt.key)}
+                          className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                            opt.disabled
+                              ? "cursor-not-allowed border-slate-100 bg-slate-50 opacity-55"
+                              : "border-slate-200 bg-slate-50/80 hover:border-violet-200 hover:bg-violet-50/60"
+                          }`}
+                        >
+                          <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${opt.iconClass}`}>
+                            <Icon size={18} aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-slate-800">{opt.label}</span>
+                            {opt.note && opt.disabled ? (
+                              <span className="mt-0.5 block text-[11px] text-slate-500">{opt.note}</span>
+                            ) : null}
+                          </span>
+                          <span className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition ${checked ? "bg-violet-700" : "bg-slate-300"}`}>
+                            <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
-                    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                      {performanceMode === "lite" ? copy.performance.liteLabel : copy.performance.defaultLabel}
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={performanceMode === "default"}
+                    onClick={() => updatePerformanceMode(performanceMode === "lite" ? "default" : "lite")}
+                    className="mx-1 mb-1 mt-3 flex w-[calc(100%_-_0.5rem)] items-center gap-3 rounded-2xl border border-violet-100 bg-violet-50/70 p-3 text-left transition hover:bg-violet-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                  >
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm">
+                      <Gauge size={18} aria-hidden="true" />
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={performanceMode === "lite"}
-                      onChange={() =>
-                        updatePerformanceMode(performanceMode === "lite" ? "default" : "lite")
-                      }
-                      className="h-4 w-4 accent-slate-900"
-                    />
-                  </label>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold text-slate-900">{copy.performance.title}</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                        {performanceMode === "lite" ? copy.performance.liteDescription : copy.performance.defaultDescription}
+                      </span>
+                    </span>
+                    <span className="text-right">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700">
+                        {performanceMode === "lite" ? copy.performance.liteLabel : copy.performance.defaultLabel}
+                      </span>
+                      <span className={`mt-1.5 inline-flex h-5 w-9 rounded-full p-0.5 transition ${performanceMode === "default" ? "bg-violet-700" : "bg-slate-300"}`}>
+                        <span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${performanceMode === "default" ? "translate-x-4" : "translate-x-0"}`} />
+                      </span>
+                    </span>
+                  </button>
+                  <p className="px-3 pb-2 pt-2 text-center text-[11px] leading-4 text-slate-500">
+                    Nastavení domova se synchronizuje na všech tvých zařízeních.
+                  </p>
                 </div>
-                <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-semibold text-slate-900">{copy.storage.title}</span>
-                    <span className="text-[11px] text-slate-500">
-                      {layoutScope === "cloud"
-                        ? copy.storage.cloudDescription
-                        : copy.storage.deviceDescription}
-                    </span>
-                  </div>
-                  <label className="inline-flex items-center gap-2 text-xs text-slate-700">
-                    <span className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                      {layoutScope === "cloud" ? copy.storage.cloudLabel : copy.storage.deviceLabel}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={layoutScope === "cloud"}
-                      onChange={handleScopeToggle}
-                      className="h-4 w-4 accent-slate-900"
-                    />
-                  </label>
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  {layoutScope === "cloud"
-                    ? copy.storage.cloudHelp
-                    : copy.storage.deviceHelp}
-                </p>
-              </div>
-            )}
+              )}
           </div>
         </div>
         </div>

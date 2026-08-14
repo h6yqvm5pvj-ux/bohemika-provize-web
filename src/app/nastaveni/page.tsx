@@ -2684,6 +2684,7 @@ export default function SettingsPage() {
 
       setMfaPassword("");
       setMfaReauthCode("");
+      setMfaDisableConfirmOpen(false);
       clearMfaDraft();
       setMfaStatus({
         type: "success",
@@ -3808,7 +3809,6 @@ export default function SettingsPage() {
                 mfaQrCodeUri={mfaQrCodeUri}
                 mfaDisableConfirmOpen={mfaDisableConfirmOpen}
                 mfaTotpLabel={mfaTotpLabel}
-                mfaReauthCode={mfaReauthCode}
                 mfaStatus={mfaStatus}
                 onShowPasswordForm={() => {
                   setShowPasswordForm(true);

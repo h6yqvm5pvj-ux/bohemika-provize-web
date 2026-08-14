@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
   Apple,
@@ -27,6 +27,7 @@ const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
   "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
 const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
   "https://play.google.com/store/apps/details?id=com.azure.authenticator";
+const MFA_CODE_LENGTH = 6;
 
 type InlineStatus = {
   type: "success" | "error" | "info";
@@ -86,7 +87,6 @@ type AccountSecurityPanelProps = {
   mfaQrCodeUri: string;
   mfaDisableConfirmOpen: boolean;
   mfaTotpLabel: string | null;
-  mfaReauthCode: string;
   mfaStatus: InlineStatus | null;
   onShowPasswordForm: () => void;
   onCancelPasswordChange: () => void;
@@ -153,7 +153,6 @@ export function AccountSecurityPanel({
   mfaQrCodeUri,
   mfaDisableConfirmOpen,
   mfaTotpLabel,
-  mfaReauthCode,
   mfaStatus,
   onShowPasswordForm,
   onCancelPasswordChange,
@@ -178,6 +177,10 @@ export function AccountSecurityPanel({
 }: AccountSecurityPanelProps) {
   const [passkeyHelpOpen, setPasskeyHelpOpen] = useState(false);
   const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
+  const mfaReauthInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const [mfaReauthDigits, setMfaReauthDigits] = useState<string[]>(() =>
+    Array.from({ length: MFA_CODE_LENGTH }, () => "")
+  );
   const passwordPolicyChecks = useMemo(
     () =>
       getPasswordPolicyChecks({
@@ -198,6 +201,46 @@ export function AccountSecurityPanel({
   );
   const otherSessionsCount = activeAccountSessions.filter((session) => !session.current).length;
   const revokeOtherSessionsDisabled = accountSessionsBusy || accountSessionsLoading;
+
+  const updateMfaReauthDigits = (nextDigits: string[]) => {
+    setMfaReauthDigits(nextDigits);
+    onMfaReauthCodeChange(nextDigits.join(""));
+  };
+
+  const resetMfaReauthDigits = () => {
+    setMfaReauthDigits(Array.from({ length: MFA_CODE_LENGTH }, () => ""));
+  };
+
+  const handleOpenDisableMfa = () => {
+    resetMfaReauthDigits();
+    onOpenDisableMfa();
+  };
+
+  const handleCancelDisableMfa = () => {
+    resetMfaReauthDigits();
+    onCancelDisableMfa();
+  };
+
+  const focusMfaReauthInput = (index: number) => {
+    mfaReauthInputRefs.current[Math.max(0, Math.min(index, MFA_CODE_LENGTH - 1))]?.focus();
+  };
+
+  const handleMfaReauthDigitChange = (index: number, rawValue: string) => {
+    const digits = rawValue.replace(/\D/g, "").slice(0, MFA_CODE_LENGTH - index);
+    const nextDigits = [...mfaReauthDigits];
+
+    if (!digits) {
+      nextDigits[index] = "";
+      updateMfaReauthDigits(nextDigits);
+      return;
+    }
+
+    digits.split("").forEach((digit, offset) => {
+      nextDigits[index + offset] = digit;
+    });
+    updateMfaReauthDigits(nextDigits);
+    focusMfaReauthInput(Math.min(index + digits.length, MFA_CODE_LENGTH - 1));
+  };
 
   return (
     <section className={`space-y-4 sm:space-y-5 ${className}`}>
@@ -614,83 +657,33 @@ export function AccountSecurityPanel({
 
             {mfaEnabled && !mfaEnrollmentSecretKey && (
               <div className="rounded-xl border border-slate-200 bg-slate-50/75 px-3 py-3 sm:rounded-2xl">
-                {!mfaDisableConfirmOpen ? (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-start gap-2.5">
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
-                        <ShieldCheck size={16} strokeWidth={2.2} aria-hidden="true" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {mfaTotpLabel || "Microsoft Authenticator"}
-                        </p>
-                        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-                          Kód z aplikace se vyžaduje při přihlášení přes heslo.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={onOpenDisableMfa}
-                      disabled={mfaBusy}
-                      className="inline-flex min-h-9 w-fit shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Vypnout 2FA
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3 rounded-xl border border-rose-200 bg-white px-3 py-3 sm:rounded-2xl">
-                    <p className="text-[11px] text-slate-500">
-                      {mfaTotpLabel
-                        ? `Aktivní faktor: ${mfaTotpLabel}`
-                        : "Aktivní faktor: Microsoft Authenticator"}
-                    </p>
-                    <p className="text-xs leading-relaxed text-slate-600">
-                      Pro vypnutí potvrď změnu aktuálním heslem a kódem z aplikace.
-                    </p>
-                    <input
-                      type="password"
-                      autoComplete="current-password"
-                      className={fieldClass}
-                      placeholder="Aktuální heslo pro potvrzení"
-                      value={mfaPassword}
-                      onChange={(event) => onMfaPasswordChange(event.target.value)}
-                    />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      className={fieldClass}
-                      placeholder="Aktuální 2FA kód"
-                      value={mfaReauthCode}
-                      onChange={(event) =>
-                        onMfaReauthCodeChange(event.target.value.replace(/\D/g, "").slice(0, 8))
-                      }
-                    />
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <button
-                        type="button"
-                        onClick={() => void onDisableMfa()}
-                        disabled={mfaBusy}
-                        className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-rose-700 bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
-                      >
-                        {mfaBusy ? "Vypínám 2FA…" : "Potvrdit vypnutí"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={onCancelDisableMfa}
-                        disabled={mfaBusy}
-                        className="inline-flex min-h-[40px] items-center justify-center rounded-xl px-3 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Zrušit
-                      </button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+                      <ShieldCheck size={16} strokeWidth={2.2} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {mfaTotpLabel || "Microsoft Authenticator"}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                        Kód z aplikace se vyžaduje při přihlášení přes heslo.
+                      </p>
                     </div>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={handleOpenDisableMfa}
+                    disabled={mfaBusy}
+                    className="inline-flex min-h-9 w-fit shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Vypnout 2FA
+                  </button>
+                </div>
               </div>
             )}
 
-            {mfaStatus && (
+            {mfaStatus && !mfaDisableConfirmOpen && (
               <div className={`rounded-2xl border px-3 py-2 text-xs ${statusClass(mfaStatus)}`}>
                 {mfaStatus.message}
               </div>
@@ -1087,6 +1080,149 @@ export function AccountSecurityPanel({
               )}
             </div>
           </section>
+        </div>
+      ) : null}
+      {mfaDisableConfirmOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-3 py-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+            aria-label="Zavřít vypnutí 2FA"
+            onClick={mfaBusy ? undefined : handleCancelDisableMfa}
+          />
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="disable-mfa-title"
+            className="relative z-10 w-full max-w-lg overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(2,6,23,0.42)] sm:rounded-[30px]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!mfaBusy) void onDisableMfa();
+            }}
+          >
+            <div className="relative overflow-hidden bg-[#1c0710] px-4 py-4 !text-white sm:px-5">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#1c0710_0%,#e11d48_56%,#fb7185_100%)]" />
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(244,63,94,0.22)_0%,rgba(28,7,16,0)_48%,rgba(251,113,133,0.12)_100%)]" />
+              <div className="relative z-10 flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 !text-white [&_svg]:!stroke-white">
+                    <ShieldCheck size={18} strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] !text-rose-100/85">
+                      Zabezpečení účtu
+                    </p>
+                    <h3 id="disable-mfa-title" className="mt-1 text-xl font-black !text-white">
+                      Vypnout dvoufázové ověření?
+                    </h3>
+                    <p className="mt-1 text-xs font-semibold leading-relaxed !text-rose-100/90">
+                      Přihlašování přes heslo už nebude chráněné kódem z aplikace.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelDisableMfa}
+                  disabled={mfaBusy}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 !text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:!stroke-white"
+                  aria-label="Zavřít vypnutí 2FA"
+                >
+                  <X size={16} strokeWidth={2.2} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
+              <div className="rounded-2xl border border-rose-100 bg-rose-50/60 px-3 py-2.5 text-xs leading-relaxed text-slate-600">
+                <span className="font-semibold text-slate-800">Aktivní faktor: </span>
+                {mfaTotpLabel || "Microsoft Authenticator"}
+              </div>
+              <p className="text-sm leading-relaxed text-slate-600">
+                Pro vypnutí potvrď svou identitu aktuálním heslem a šestimístným kódem
+                z Microsoft Authenticatoru.
+              </p>
+              <div className="space-y-3">
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  className={fieldClass}
+                  placeholder="Aktuální heslo"
+                  value={mfaPassword}
+                  onChange={(event) => onMfaPasswordChange(event.target.value)}
+                  disabled={mfaBusy}
+                  autoFocus
+                />
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-slate-700">Ověřovací kód</p>
+                  <div
+                    className="flex max-w-[320px] items-center justify-between gap-1.5 sm:gap-2"
+                    role="group"
+                    aria-label="Šestimístný ověřovací kód z aplikace Microsoft Authenticator"
+                  >
+                    {mfaReauthDigits.map((digit, index) => (
+                      <input
+                        key={index}
+                        ref={(element) => {
+                          mfaReauthInputRefs.current[index] = element;
+                        }}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        autoComplete={index === 0 ? "one-time-code" : "off"}
+                        maxLength={index === 0 ? undefined : 1}
+                        className="h-12 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white text-center text-xl font-bold text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-rose-500 focus:ring-4 focus:ring-rose-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 sm:h-14 sm:text-2xl"
+                        aria-label={`Číslice ${index + 1} z ${MFA_CODE_LENGTH}`}
+                        value={digit}
+                        onChange={(event) => handleMfaReauthDigitChange(index, event.target.value)}
+                        onPaste={(event) => {
+                          event.preventDefault();
+                          handleMfaReauthDigitChange(index, event.clipboardData.getData("text"));
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Backspace" && !mfaReauthDigits[index] && index > 0) {
+                            focusMfaReauthInput(index - 1);
+                          }
+                          if (event.key === "ArrowLeft" && index > 0) {
+                            event.preventDefault();
+                            focusMfaReauthInput(index - 1);
+                          }
+                          if (event.key === "ArrowRight" && index < MFA_CODE_LENGTH - 1) {
+                            event.preventDefault();
+                            focusMfaReauthInput(index + 1);
+                          }
+                        }}
+                        onFocus={(event) => event.currentTarget.select()}
+                        disabled={mfaBusy}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {mfaStatus ? (
+                <div className={`rounded-2xl border px-3 py-2 text-xs ${statusClass(mfaStatus)}`}>
+                  {mfaStatus.message}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
+              <button
+                type="button"
+                onClick={handleCancelDisableMfa}
+                disabled={mfaBusy}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Zrušit
+              </button>
+              <button
+                type="submit"
+                disabled={mfaBusy}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-rose-700 bg-rose-600 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(225,29,72,0.22)] transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {mfaBusy ? "Vypínám 2FA…" : "Vypnout 2FA"}
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
       {passkeyHelpOpen ? (
