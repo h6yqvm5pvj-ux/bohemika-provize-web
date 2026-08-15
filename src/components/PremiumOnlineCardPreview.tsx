@@ -612,15 +612,15 @@ export function PremiumOnlineCardPreview({
           <header className={`${compact ? "pb-2 pt-0 sm:pb-3" : "mx-auto max-w-[1520px] pb-6 pt-4 sm:pb-10 sm:pt-7"} vizitka-anim-up [animation-delay:80ms]`}>
             {!compact ? (
               <div className="space-y-3 lg:hidden">
-                <div className="relative min-h-[142px]">
+                <div className="relative min-h-[172px]">
                   <div className="relative z-10 max-w-[calc(100%-112px)]">{identityBlock}</div>
                   {heroArtwork ? (
-                    <div className="absolute right-1 top-2 isolate h-[130px] w-[87px]">
+                    <div className="absolute right-1 top-2 isolate h-[165px] w-[110px]">
                       <Image
                         src={heroArtwork.src}
                         alt={heroArtwork.alt}
                         fill
-                        sizes="87px"
+                        sizes="110px"
                         className="object-cover object-center"
                         priority
                       />
