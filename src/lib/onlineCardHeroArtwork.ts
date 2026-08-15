@@ -29,6 +29,51 @@ const ONLINE_CARD_HERO_ARTWORKS: readonly OnlineCardHeroArtworkMatch[] = [
       alt: "Kovová osobní značka Jakuba Pokorného",
     },
   },
+  {
+    slugs: ["vojtech-mahr"],
+    emails: ["vojtech.mahr@bohemika.eu"],
+    fullNames: ["vojtech mahr"],
+    artwork: {
+      src: "/images/vojtech-mahr-signature.png",
+      alt: "Kovová osobní značka Vojtěcha Mahra",
+    },
+  },
+  {
+    slugs: ["michaela-kotabova"],
+    emails: ["michaela.kotabova@bohemika.eu"],
+    fullNames: ["michaela kotabova"],
+    artwork: {
+      src: "/images/michaela-kotabova-signature.png",
+      alt: "Kovová osobní značka Michaely Kotábové",
+    },
+  },
+  {
+    slugs: ["manfred-totzauer"],
+    emails: ["manfred.totzauer@bohemika.eu"],
+    fullNames: ["manfred totzauer"],
+    artwork: {
+      src: "/images/manfred-totzauer-signature.png",
+      alt: "Kovová osobní značka Manfreda Totzauera",
+    },
+  },
+  {
+    slugs: ["jindra-hajek", "jindrich-hajek"],
+    emails: ["jindra.hajek@bohemika.eu", "jindrich.hajek@bohemika.eu"],
+    fullNames: ["jindra hajek", "jindrich hajek"],
+    artwork: {
+      src: "/images/hajek-signature.png",
+      alt: "Kovová osobní značka Jindřicha Hájka",
+    },
+  },
+  {
+    slugs: ["jiri-kopica"],
+    emails: ["jiri.kopica@bohemika.eu"],
+    fullNames: ["jiri kopica"],
+    artwork: {
+      src: "/images/jiri-kopica-signature.png",
+      alt: "Kovová osobní značka Jiřího Kopici",
+    },
+  },
 ];
 
 const normalizeIdentity = (value: string): string =>

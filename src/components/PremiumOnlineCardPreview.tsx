@@ -629,7 +629,7 @@ export function PremiumOnlineCardPreview({
                         src={heroArtwork.src}
                         alt={heroArtwork.alt}
                         fill
-                        sizes="(min-width: 1024px) 273px, (min-width: 640px) 220px, 172px"
+                        sizes="(min-width: 1280px) 373px, (min-width: 1024px) 347px, (min-width: 640px) 267px, 200px"
                         className="object-cover object-center transition duration-700 hover:scale-[1.025]"
                         priority
                       />
