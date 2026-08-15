@@ -421,6 +421,7 @@ const ADMIN_BROADCAST_TOOL_TARGETS = [
   { path: "/pomucky/projekce-vykonu", label: "Projekce výkonu" },
   { path: "/pomucky/nastaveni-zivotniho-pojisteni", label: "Jak nastavit životní pojištění" },
   { path: "/pomucky/srovnavac-trvalych-nasledku", label: "Srovnavač trvalých následků" },
+  { path: "/pomucky/srovnavac-pracovni-neschopnosti", label: "Srovnavač pracovní neschopnosti" },
   { path: "/pomucky/srovnavac-zivotniho-pojisteni", label: "Srovnavač životního pojištění" },
 ] as const;
 

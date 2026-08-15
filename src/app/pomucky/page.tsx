@@ -429,6 +429,14 @@ export default function ToolsPage() {
         href: "/pomucky/srovnavac-trvalych-nasledku",
       },
       {
+        key: "srovnavac-pracovni-neschopnosti",
+        category: "Životní pojištění",
+        title: "Srovnavač Pracovní neschopnosti",
+        description: "Výběr produktů pro srovnání pracovní neschopnosti.",
+        icon: HeartPulse,
+        href: "/pomucky/srovnavac-pracovni-neschopnosti",
+      },
+      {
         key: "srovnavac-zivotniho-pojisteni",
         category: "Životní pojištění",
         title: "Srovnavač životního pojištění",

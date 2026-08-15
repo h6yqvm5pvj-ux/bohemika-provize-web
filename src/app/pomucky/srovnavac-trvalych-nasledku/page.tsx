@@ -5493,13 +5493,13 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 return (
                   <div
                     key={card.key}
-                    className={`group relative grid gap-3 border-t border-violet-100 px-4 first:border-t-0 hover:bg-violet-50/40 sm:grid-cols-[44px_minmax(0,1fr)_minmax(130px,0.32fr)_minmax(132px,0.28fr)_minmax(132px,auto)_36px] sm:items-center ${
-                      compactList ? "py-2" : "py-3"
+                    className={`group relative grid gap-3 border-t border-violet-100 px-4 first:border-t-0 hover:bg-violet-50/40 sm:grid-cols-[44px_minmax(230px,320px)_minmax(105px,max-content)_minmax(105px,max-content)_minmax(116px,140px)_40px] sm:items-center sm:justify-start sm:gap-x-4 ${
+                      compactList ? "py-3" : "py-4"
                     }`}
                   >
                     <div className="flex items-center gap-2 sm:block">
                       <span
-                        className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full border px-2 text-xs font-black ${
+                        className={`inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-2 text-sm font-black ${
                           idx === 0
                             ? "border-violet-500 bg-[linear-gradient(135deg,#111827_0%,#4c1d95_58%,#7c3aed_100%)] text-white"
                             : "border-violet-100 bg-white text-slate-700"
@@ -5518,7 +5518,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       <span
                         className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm ${institutionLogoFrameClass(
                           logoKey,
-                          "compact"
+                          "card"
                         )}`}
                       >
                         {logoPath ? (
@@ -5526,7 +5526,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                             src={logoPath}
                             alt={insurerName}
                             fill
-                            sizes="64px"
+                            sizes="72px"
                             className={institutionLogoImageClass(logoKey)}
                           />
                         ) : (
@@ -5535,7 +5535,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       </span>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="break-words text-base font-black leading-tight text-slate-950">
+                          <div className="break-words text-lg font-black leading-tight text-slate-950 sm:text-xl">
                             {insurerName}
                           </div>
                           {podium ? (
@@ -5544,7 +5544,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                             </span>
                           ) : null}
                         </div>
-                        <div className="break-words text-xs font-semibold leading-snug text-slate-500">
+                        <div className="mt-0.5 break-words text-sm font-semibold leading-snug text-slate-500">
                           {productName}
                         </div>
                       </div>
@@ -5554,7 +5554,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       {metaBadges.map((badge) => (
                         <span
                           key={badge}
-                          className="shrink-0 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700"
+                          className="shrink-0 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700"
                         >
                           {badge}
                         </span>
@@ -5565,7 +5565,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       {progressionBadges.map((badge) => (
                         <span
                           key={badge}
-                          className="shrink-0 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700"
+                          className="shrink-0 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700"
                         >
                           {badge}
                         </span>
@@ -5573,10 +5573,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     </div>
 
                     <div>
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 sm:text-right">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 sm:text-right">
                         Plnění
                       </div>
-                      <div className="mt-0.5 whitespace-nowrap text-base font-black leading-none text-slate-950 sm:text-right">
+                      <div className="mt-1 whitespace-nowrap text-xl font-black leading-none text-slate-950 sm:text-2xl sm:text-right">
                         {formatMoney(card.payout)}
                       </div>
                     </div>
@@ -5584,7 +5584,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     <button
                       type="button"
                       onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-white text-xs font-black text-violet-700 transition hover:border-fuchsia-300 hover:bg-fuchsia-50"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-violet-200 bg-white text-sm font-black text-violet-700 transition hover:border-fuchsia-300 hover:bg-fuchsia-50"
                       aria-label={`Zobrazit výpočet pro ${card.insurer}`}
                       aria-expanded={infoOpen === card.key}
                       aria-haspopup="dialog"
