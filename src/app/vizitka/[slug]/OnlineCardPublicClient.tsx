@@ -2,6 +2,7 @@
 
 import {
   Building2,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -564,6 +565,7 @@ export default function OnlineCardPublicClient({
         <AdvisorProfileSections
           flush
           reveal
+          connectToHero
           theme={theme}
           locale={locale}
           onScheduleMeeting={openModal}
@@ -822,24 +824,31 @@ export default function OnlineCardPublicClient({
       </div>
 
       {open ? (
-        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-slate-950/66 p-2 backdrop-blur-md sm:items-center sm:p-4 vizitka-anim-up">
-          <div className="w-full max-w-xl rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-white shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6 vizitka-anim-up [animation-delay:60ms]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
-                  {copy.public.scheduleKicker}
-                </p>
-                <h2 className="mt-1 text-xl font-bold tracking-[-0.02em] text-white">
-                  {copy.public.scheduleTitle}
-                </h2>
-                <p className="mt-1 text-sm text-violet-100/75">
-                  {copy.public.scheduleDescription}
-                </p>
+        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-[#070512]/74 p-2 backdrop-blur-xl sm:items-center sm:p-4 vizitka-anim-up">
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-[32px] border border-violet-300/25 bg-[#120a25] p-4 text-white shadow-[0_34px_100px_rgba(7,6,25,0.76),inset_0_1px_0_rgba(221,214,254,0.16)] sm:p-6 vizitka-anim-up [animation-delay:60ms]">
+            <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-500/25 blur-[90px]" />
+            <div className="pointer-events-none absolute -bottom-32 left-1/4 h-48 w-80 rounded-full bg-indigo-500/10 blur-[80px]" />
+            <div className="relative flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3.5">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-200/25 bg-violet-400/15 text-violet-100 shadow-[0_10px_24px_rgba(124,58,237,0.28)]">
+                  <CalendarDays className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-violet-200/80">
+                    {copy.public.scheduleKicker}
+                  </p>
+                  <h2 className="mt-1 text-2xl font-bold tracking-[-0.035em] text-white">
+                    {copy.public.scheduleTitle}
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-violet-100/70">
+                    {copy.public.scheduleDescription}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={closeModal}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-violet-100 transition hover:bg-white/18"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.07] text-violet-100 transition hover:rotate-90 hover:bg-white/[0.14]"
                 aria-label={copy.public.closeForm}
               >
                 <X className="h-4 w-4" />

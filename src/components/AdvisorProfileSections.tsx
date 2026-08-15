@@ -30,6 +30,7 @@ type AdvisorProfileSectionsProps = {
   reveal?: boolean;
   theme?: "dark" | "light";
   locale?: OnlineCardLocale;
+  connectToHero?: boolean;
 };
 
 const PARTNER_INSURERS: PartnerInsurer[] = [
@@ -40,21 +41,25 @@ const PARTNER_INSURERS: PartnerInsurer[] = [
   { label: "ČSOB", logoPath: "/icons/csb.png" },
   { label: "Pillow", logoPath: "/icons/pillow.png" },
   { label: "iNVESTiKA", logoPath: "/icons/invstk.png" },
+  { label: "Investona", logoPath: "/icons/investona.png" },
   { label: "Comfort Commodity", logoPath: "/icons/cclogo1.png" },
   { label: "MAXIMA", logoPath: "/icons/maxima.png" },
   { label: "SLAVIA", logoPath: "/icons/slavialogo.png" },
   { label: "AXA", logoPath: "/icons/axalogo.png" },
   { label: "Conseq", logoPath: "/icons/conseq.png" },
+  { label: "PVZP", logoPath: "/icons/pvzp.webp" },
 ];
 
 const PARTNER_LOGO_ITEMS: LogoLoopItem[] = PARTNER_INSURERS.map((insurer) => {
-  const mediumHighlightedLogos = ["ČSOB", "SLAVIA", "AXA", "Kooperativa", "Pillow", "iNVESTiKA"];
+  const mediumHighlightedLogos = ["ČSOB", "SLAVIA", "AXA", "Kooperativa", "Pillow", "iNVESTiKA", "PVZP"];
   const logoClassName =
     insurer.label === "ČPP"
       ? "object-contain p-1 scale-[1.3]"
       : insurer.label === "iNVESTiKA"
         ? "object-contain p-1 scale-[1.4]"
-      : mediumHighlightedLogos.includes(insurer.label)
+        : insurer.label === "Investona"
+          ? "object-contain p-1 scale-[1.16]"
+        : mediumHighlightedLogos.includes(insurer.label)
         ? "object-contain p-1.5 scale-[1.24]"
         : "object-contain p-2.5";
 
@@ -164,9 +169,11 @@ export function AdvisorProfileSections({
   reveal = false,
   theme = "dark",
   locale = "cs",
+  connectToHero = false,
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
   const light = theme === "light";
+  const connectedHero = connectToHero && flush;
   const revealAttrs = reveal
     ? {
         "data-vizitka-reveal": true,
@@ -178,11 +185,17 @@ export function AdvisorProfileSections({
     <div
       className={`online-card-flow-surface relative isolate w-full overflow-hidden ${
         flush ? "" : "mx-auto max-w-[1160px]"
+      } ${connectedHero ? "-mt-14 sm:-mt-24" : ""} ${
+        connectedHero
+          ? light
+            ? "bg-transparent text-slate-950"
+            : "bg-transparent text-white"
+          : light
+            ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,245,255,0.94)_54%,rgba(255,255,255,0.98)_100%)] text-slate-950"
+            : "bg-[linear-gradient(180deg,rgba(16,10,32,0.98)_0%,rgba(13,10,29,0.99)_50%,rgba(8,7,18,0.99)_100%)] text-white"
       } ${
-        light
-          ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,245,255,0.94)_54%,rgba(255,255,255,0.98)_100%)] text-slate-950"
-          : "bg-[linear-gradient(180deg,rgba(16,10,32,0.98)_0%,rgba(13,10,29,0.99)_50%,rgba(8,7,18,0.99)_100%)] text-white"
-      } ${className ?? ""}`}
+        className ?? ""
+      }`}
     >
       <div
         className={`pointer-events-none absolute inset-0 ${
@@ -194,7 +207,9 @@ export function AdvisorProfileSections({
 
       <section
         {...revealAttrs}
-        className={`relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:220ms] ${revealClass}`}
+        className={`relative overflow-hidden px-4 ${
+          connectedHero ? "pb-10 pt-5 sm:px-10 sm:pb-16 sm:pt-9" : "py-10 sm:px-10 sm:py-16"
+        } vizitka-anim-up [animation-delay:220ms] ${revealClass}`}
       >
         <div className="relative z-10 space-y-7 text-left sm:space-y-8 sm:text-center">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-white/[0.06] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100">

@@ -273,7 +273,9 @@ export function PremiumOnlineCardPreview({
           />
         </div>
       ) : value.fullName ? (
-        <h1 className={`${fullNameDisplayClass} vizitka-anim-up [animation-delay:180ms]`}>{value.fullName}</h1>
+        <h1 className={`${fullNameDisplayClass} vizitka-anim-up [animation-delay:180ms]`}>
+          {value.fullName}
+        </h1>
       ) : null}
 
       {editable ? (
@@ -319,9 +321,7 @@ export function PremiumOnlineCardPreview({
 
   const bioSection = (
     <section
-      className={`border-t vizitka-anim-up [animation-delay:360ms] ${
-        compact ? "pt-3 sm:pt-4" : "pt-5 sm:pt-6"
-      } ${
+      className={`border-t pt-3 sm:pt-4 vizitka-anim-up [animation-delay:360ms] ${
         fullWidthLayout ? "border-transparent" : "border-slate-200/85"
       }`}
     >
@@ -526,9 +526,9 @@ export function PremiumOnlineCardPreview({
               ? `overflow-hidden bg-transparent px-4 py-3 ${
                   lightFullWidth ? "text-slate-950" : "text-white"
                 } sm:px-5 sm:py-4 lg:px-7 lg:py-5`
-              : `overflow-hidden bg-transparent px-4 py-2 ${
+              : `overflow-hidden bg-transparent px-4 py-4 ${
                   lightFullWidth ? "text-slate-950" : "text-white"
-                } sm:px-8 sm:py-6 lg:px-12 lg:py-8`
+                } sm:px-8 sm:py-8 lg:px-12 lg:py-10`
             : compact
               ? "overflow-hidden rounded-[28px] border border-violet-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(168,85,247,0.34),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(145deg,#10081f_0%,#0f0b22_45%,#0b0a1b_100%)] px-4 py-3 text-white shadow-[0_24px_70px_rgba(8,6,28,0.5),inset_0_1px_0_rgba(196,181,253,0.2)] sm:px-5 sm:py-4 lg:px-7 lg:py-5"
               : "overflow-hidden rounded-[36px] border border-violet-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(168,85,247,0.34),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(145deg,#10081f_0%,#0f0b22_45%,#0b0a1b_100%)] px-4 py-4 text-white shadow-[0_35px_90px_rgba(8,6,28,0.65),inset_0_1px_0_rgba(196,181,253,0.2)] sm:px-8 sm:py-6 lg:px-12 lg:py-8"
@@ -609,20 +609,35 @@ export function PremiumOnlineCardPreview({
 		        ) : null}
 
         {fullWidthLayout ? (
-          <header className={`${compact ? "pb-2 pt-0 sm:pb-3" : "pb-3 pt-0 sm:pb-7 sm:pt-1"} vizitka-anim-up [animation-delay:80ms]`}>
-            <div className={compact ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)] lg:items-center" : "grid gap-4 sm:gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"}>
-              <div className={`order-2 text-left lg:order-1 ${compact ? "space-y-4 lg:pt-0" : "space-y-4 sm:space-y-6 lg:pt-2"}`}>
+          <header className={`${compact ? "pb-2 pt-0 sm:pb-3" : "mx-auto max-w-[1520px] pb-8 pt-3 sm:pb-10 sm:pt-7"} vizitka-anim-up [animation-delay:80ms]`}>
+            <div className={compact ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)] lg:items-center" : "grid gap-7 sm:gap-10 lg:grid-cols-[minmax(0,1.12fr)_minmax(340px,0.7fr)] lg:items-center xl:gap-20"}>
+              <div className={`order-2 text-left lg:order-1 ${compact ? "space-y-4 lg:pt-0" : "max-w-[780px] space-y-3 sm:space-y-4 lg:pl-6 xl:pl-10"}`}>
                 {identityBlock}
                 {bioSection}
+                {meetingCta ? (
+                  <button
+                    type="button"
+                    onClick={meetingCta.onClick}
+                    disabled={meetingCta.disabled || meetingCta.busy}
+                    className={`online-card-action inline-flex w-full items-center justify-center gap-2 rounded-[20px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow sm:w-auto ${
+                      compact
+                        ? "min-w-[220px] px-5 py-2.5 text-base"
+                        : "min-w-[190px] px-4 py-2 text-sm sm:min-w-[260px] sm:px-7 sm:py-3 sm:text-lg"
+                    }`}
+                  >
+                    <CalendarPlus2 className={compact ? "h-[18px] w-[18px]" : "h-4 w-4 sm:h-5 sm:w-5"} />
+                    {meetingCta.busy ? "Odesílám..." : meetingCtaLabel}
+                  </button>
+                ) : null}
               </div>
-              <div className={`order-1 ml-auto flex w-full flex-col items-center text-center lg:order-2 vizitka-anim-right [animation-delay:260ms] ${compact ? "max-w-[520px] gap-3 lg:mt-1" : "gap-2 sm:gap-4 lg:-mt-20 xl:-mt-24"}`}>
+              <div className={`order-1 ml-auto flex w-full flex-col items-center text-center lg:order-2 vizitka-anim-right [animation-delay:260ms] ${compact ? "max-w-[520px] gap-3 lg:mt-1" : "max-w-[430px] gap-2 sm:gap-4 lg:justify-self-end"}`}>
                 <div className="relative">
                   {heroArtwork ? (
                     <div
                       className={`relative isolate ${
                         compact
                           ? "h-[210px] w-[140px] sm:h-[248px] sm:w-[165px] lg:h-[292px] lg:w-[195px]"
-                          : "h-[300px] w-[200px] sm:h-[400px] sm:w-[267px] lg:h-[520px] lg:w-[347px] xl:h-[560px] xl:w-[373px]"
+                          : "h-[300px] w-[200px] sm:h-[390px] sm:w-[260px] lg:h-[470px] lg:w-[313px] xl:h-[500px] xl:w-[333px]"
                       }`}
                     >
                       <Image
@@ -645,25 +660,7 @@ export function PremiumOnlineCardPreview({
                       } object-contain object-top opacity-95 vizitka-float-soft`}
                     />
                   )}
-                  <div className={`pointer-events-none absolute left-1/2 top-[67.8%] w-[115vw] -translate-x-1/2 items-center gap-6 xl:top-[68.2%] ${compact ? "hidden" : "hidden lg:flex"}`}>
-                    <span className="h-px flex-1 bg-[linear-gradient(90deg,rgba(196,181,253,0.06)_0%,rgba(216,180,254,0.42)_100%)] vizitka-line-pulse" />
-                    <span className="h-px w-[270px] bg-transparent xl:w-[330px]" />
-                    <span className="h-px flex-1 bg-[linear-gradient(90deg,rgba(216,180,254,0.42)_0%,rgba(196,181,253,0.06)_100%)] vizitka-line-pulse [animation-delay:160ms]" />
-                  </div>
                 </div>
-                {meetingCta ? (
-                  <button
-                    type="button"
-                    onClick={meetingCta.onClick}
-                    disabled={meetingCta.disabled || meetingCta.busy}
-                    className={`online-card-action inline-flex items-center justify-center gap-2 rounded-[20px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow ${
-                      compact ? "min-w-[220px] px-5 py-2.5 text-base" : "mt-0 min-w-[190px] px-4 py-2 text-sm sm:-mt-10 sm:min-w-[260px] sm:px-7 sm:py-3 sm:text-lg lg:-mt-12"
-                    }`}
-                  >
-                    <CalendarPlus2 className={compact ? "h-[18px] w-[18px]" : "h-4 w-4 sm:h-5 sm:w-5"} />
-                    {meetingCta.busy ? "Odesílám..." : meetingCtaLabel}
-                  </button>
-                ) : null}
               </div>
             </div>
           </header>
