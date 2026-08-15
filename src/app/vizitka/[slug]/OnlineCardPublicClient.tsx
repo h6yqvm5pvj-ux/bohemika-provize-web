@@ -466,30 +466,30 @@ export default function OnlineCardPublicClient({
         <div className="online-card-pointer-glow" aria-hidden="true" />
         <div className="online-card-scroll-progress" aria-hidden="true" />
         <div
-          className={`sticky top-0 z-30 flex h-14 items-center justify-between gap-1.5 border-b px-3 py-2 backdrop-blur-xl sm:absolute sm:right-5 sm:top-5 sm:h-auto sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none ${
+          className={`sticky top-0 z-30 flex h-12 items-center justify-between gap-1 border-b px-2.5 py-1.5 backdrop-blur-xl sm:absolute sm:right-5 sm:top-5 sm:h-auto sm:gap-2 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none ${
             lightMode ? "border-violet-100/90 bg-white/82" : "border-white/8 bg-[#10081f]/82"
           }`}
         >
           <button
             type="button"
             onClick={handleShareOnlineCard}
-            className="online-card-action inline-flex h-9 w-9 items-center justify-center rounded-[13px] border border-violet-300/25 bg-violet-700 text-xs font-bold text-white shadow-[0_12px_24px_rgba(124,58,237,0.24)] transition hover:bg-violet-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
+            className="online-card-action inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-violet-300/25 bg-violet-700 text-xs font-bold text-white shadow-[0_10px_20px_rgba(124,58,237,0.24)] transition hover:bg-violet-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
             aria-label={copy.public.share}
           >
-            <Share2 className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+            <Share2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{copy.public.share}</span>
           </button>
           <button
             type="button"
             onClick={handleDownloadContactVCard}
-            className="online-card-action inline-flex h-9 w-9 items-center justify-center rounded-[13px] border border-violet-300/25 bg-violet-700 text-xs font-bold text-white shadow-[0_12px_24px_rgba(124,58,237,0.24)] transition hover:bg-violet-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
+            className="online-card-action inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-violet-300/25 bg-violet-700 text-xs font-bold text-white shadow-[0_10px_20px_rgba(124,58,237,0.24)] transition hover:bg-violet-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
             aria-label={copy.public.saveContact}
           >
-            <Download className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+            <Download className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{copy.public.saveContact}</span>
           </button>
           <div
-            className={`inline-flex h-9 items-center rounded-[13px] border p-0.5 text-[11px] font-bold shadow-[0_12px_24px_rgba(15,23,42,0.16)] backdrop-blur sm:h-auto sm:rounded-full sm:p-1 sm:text-xs ${
+            className={`inline-flex h-8 items-center rounded-[11px] border p-0.5 text-[11px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.16)] backdrop-blur sm:h-auto sm:rounded-full sm:p-1 sm:text-xs ${
               lightMode
                 ? "border-violet-200 bg-white/90 text-slate-700"
                 : "border-white/16 bg-slate-950/42 text-violet-100"
@@ -500,7 +500,7 @@ export default function OnlineCardPublicClient({
               type="button"
               onClick={() => setTheme("dark")}
               aria-pressed={!lightMode}
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-[10px] transition sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5 ${
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5 ${
                 !lightMode ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]" : "hover:bg-violet-50"
               }`}
             >
@@ -511,7 +511,7 @@ export default function OnlineCardPublicClient({
               type="button"
               onClick={() => setTheme("light")}
               aria-pressed={lightMode}
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-[10px] transition sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5 ${
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5 ${
                 lightMode ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]" : "hover:bg-white/10"
               }`}
             >
@@ -520,7 +520,7 @@ export default function OnlineCardPublicClient({
             </button>
           </div>
           <div
-            className={`inline-flex h-9 items-center rounded-[13px] border p-0.5 text-[11px] font-bold shadow-[0_12px_24px_rgba(15,23,42,0.16)] backdrop-blur sm:h-auto sm:rounded-full sm:p-1 sm:text-xs ${
+            className={`inline-flex h-8 items-center rounded-[11px] border p-0.5 text-[11px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.16)] backdrop-blur sm:h-auto sm:rounded-full sm:p-1 sm:text-xs ${
               lightMode
                 ? "border-violet-200 bg-white/90 text-slate-700"
                 : "border-white/16 bg-slate-950/42 text-violet-100"
@@ -534,7 +534,7 @@ export default function OnlineCardPublicClient({
                 onClick={() => selectLocale(option.id)}
                 aria-pressed={locale === option.id}
                 aria-label={option.label}
-                className={`inline-flex h-8 w-8 items-center justify-center gap-1 rounded-[10px] transition sm:h-auto sm:w-auto sm:rounded-full sm:px-3 sm:py-1.5 ${
+                className={`inline-flex h-7 w-7 items-center justify-center gap-1 rounded-[8px] transition sm:h-auto sm:w-auto sm:rounded-full sm:px-3 sm:py-1.5 ${
                   locale === option.id
                     ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]"
                     : "hover:bg-white/10"

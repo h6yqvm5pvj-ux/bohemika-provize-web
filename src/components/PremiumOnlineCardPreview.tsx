@@ -218,28 +218,28 @@ export function PremiumOnlineCardPreview({
   const fullNameInputClass = fullWidthLayout
     ? compact
       ? "w-full bg-transparent text-[34px] font-extrabold leading-[0.96] !text-white placeholder:text-white/45 outline-none sm:text-[44px] lg:text-[56px] xl:text-[62px]"
-      : "w-full bg-transparent text-[38px] font-extrabold leading-[0.96] !text-white placeholder:text-white/45 outline-none sm:text-[64px] sm:leading-[0.95] lg:text-[84px]"
+      : "w-full bg-transparent text-[34px] font-extrabold leading-[0.96] !text-white placeholder:text-white/45 outline-none sm:text-[64px] sm:leading-[0.95] lg:text-[84px]"
     : "w-full bg-transparent text-[40px] font-extrabold leading-[0.98] tracking-[-0.05em] !text-slate-950 placeholder:text-slate-400 outline-none sm:text-[58px]";
   const fullNameDisplayClass = fullWidthLayout
     ? compact
       ? `text-[34px] font-extrabold leading-[0.96] ${
           lightFullWidth ? "text-slate-950" : "text-white"
         } sm:text-[44px] lg:text-[56px] xl:text-[62px]`
-      : `text-[38px] font-extrabold leading-[0.96] ${
+      : `text-[34px] font-extrabold leading-[0.96] ${
           lightFullWidth ? "text-slate-950" : "text-white"
         } sm:text-[64px] sm:leading-[0.95] lg:text-[84px]`
     : "text-[40px] font-extrabold leading-[0.98] tracking-[-0.05em] text-slate-950 sm:text-[58px]";
   const titleInputClass = fullWidthLayout
     ? compact
       ? "w-full bg-transparent text-[21px] font-semibold !text-white/78 placeholder:text-white/45 outline-none sm:text-[26px] lg:text-[30px]"
-      : "w-full bg-transparent text-[22px] font-semibold !text-white/78 placeholder:text-white/45 outline-none sm:text-[32px] lg:text-[36px]"
+      : "w-full bg-transparent text-[20px] font-semibold !text-white/78 placeholder:text-white/45 outline-none sm:text-[32px] lg:text-[36px]"
     : "w-full bg-transparent text-base font-medium !text-slate-600 placeholder:text-slate-400 outline-none sm:text-xl";
   const titleDisplayClass = fullWidthLayout
     ? compact
       ? `text-[21px] font-semibold ${
           lightFullWidth ? "text-slate-700" : "text-white/78"
         } sm:text-[26px] lg:text-[30px]`
-      : `text-[22px] font-semibold ${
+      : `text-[20px] font-semibold ${
           lightFullWidth ? "text-slate-700" : "text-white/78"
         } sm:text-[32px] lg:text-[36px]`
     : "text-base font-medium text-slate-600 sm:text-xl";
@@ -253,7 +253,7 @@ export function PremiumOnlineCardPreview({
               ? "border-violet-200 bg-white/70 text-violet-950"
               : "border-violet-300/35 bg-white/[0.06] text-violet-100"
           } ${
-            compact ? "px-2.5 py-0.5 text-[9px]" : "px-3 py-1 text-[11px]"
+            compact ? "px-2.5 py-0.5 text-[9px]" : "px-2.5 py-0.5 text-[10px] sm:px-3 sm:py-1 sm:text-[11px]"
           }`}
         >
           <UserRound className={compact ? "h-3 w-3 text-fuchsia-300" : "h-3.5 w-3.5 text-fuchsia-300"} />
@@ -303,7 +303,7 @@ export function PremiumOnlineCardPreview({
       ) : value.title ? (
         <div className="inline-flex items-center gap-2.5 vizitka-anim-up [animation-delay:230ms]">
           <span
-            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border sm:h-8 sm:w-8 ${
               fullWidthLayout
                 ? lightFullWidth
                   ? "border-violet-200 bg-white/75 text-violet-700"
@@ -311,7 +311,7 @@ export function PremiumOnlineCardPreview({
                 : "border-slate-200 bg-white/80 text-slate-600"
             }`}
           >
-            <BriefcaseBusiness className="h-4 w-4" />
+            <BriefcaseBusiness className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </span>
           <p className={titleDisplayClass}>{value.title}</p>
         </div>
@@ -327,7 +327,7 @@ export function PremiumOnlineCardPreview({
     >
       <h2
         className={`inline-flex items-center gap-2 font-semibold uppercase tracking-[0.22em] ${
-          compact ? "text-[9px]" : "text-[11px]"
+          compact ? "text-[9px]" : "text-[10px] sm:text-[11px]"
         } ${
           fullWidthLayout ? (lightFullWidth ? "text-violet-800/78" : "text-violet-200/82") : "text-slate-500"
         }`}
@@ -351,7 +351,7 @@ export function PremiumOnlineCardPreview({
         </div>
       ) : value.bio ? (
         <p
-          className={`mt-3 whitespace-pre-line text-sm leading-relaxed sm:text-base ${
+          className={`mt-2.5 whitespace-pre-line text-[13px] leading-relaxed sm:mt-3 sm:text-base ${
             fullWidthLayout ? (lightFullWidth ? "text-slate-700" : "text-white/82") : "text-slate-700"
           }`}
         >
@@ -526,7 +526,7 @@ export function PremiumOnlineCardPreview({
               ? `overflow-hidden bg-transparent px-4 py-3 ${
                   lightFullWidth ? "text-slate-950" : "text-white"
                 } sm:px-5 sm:py-4 lg:px-7 lg:py-5`
-              : `overflow-hidden bg-transparent px-4 py-4 ${
+              : `overflow-hidden bg-transparent px-3 py-3 ${
                   lightFullWidth ? "text-slate-950" : "text-white"
                 } sm:px-8 sm:py-8 lg:px-12 lg:py-10`
             : compact
@@ -611,28 +611,30 @@ export function PremiumOnlineCardPreview({
         {fullWidthLayout ? (
           <header className={`${compact ? "pb-2 pt-0 sm:pb-3" : "mx-auto max-w-[1520px] pb-6 pt-4 sm:pb-10 sm:pt-7"} vizitka-anim-up [animation-delay:80ms]`}>
             {!compact ? (
-              <div className="space-y-4 lg:hidden">
-                {identityBlock}
-                <div className="flex justify-center py-1">
+              <div className="space-y-3 lg:hidden">
+                <div className="relative min-h-[142px]">
+                  <div className="relative z-10 max-w-[calc(100%-112px)]">{identityBlock}</div>
                   {heroArtwork ? (
-                    <div className="relative isolate h-[190px] w-[127px]">
+                    <div className="absolute right-1 top-2 isolate h-[130px] w-[87px]">
                       <Image
                         src={heroArtwork.src}
                         alt={heroArtwork.alt}
                         fill
-                        sizes="127px"
+                        sizes="87px"
                         className="object-cover object-center"
                         priority
                       />
                     </div>
                   ) : (
-                    <Image
-                      src={lightFullWidth ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"}
-                      alt="Bohemika logo"
-                      width={420}
-                      height={96}
-                      className="h-[74px] w-auto object-contain opacity-95"
-                    />
+                    <div className="absolute right-1 top-8">
+                      <Image
+                        src={lightFullWidth ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"}
+                        alt="Bohemika logo"
+                        width={420}
+                        height={96}
+                        className="h-[42px] w-auto object-contain opacity-95"
+                      />
+                    </div>
                   )}
                 </div>
                 {bioSection}
@@ -641,9 +643,9 @@ export function PremiumOnlineCardPreview({
                     type="button"
                     onClick={meetingCta.onClick}
                     disabled={meetingCta.disabled || meetingCta.busy}
-                    className="online-card-action inline-flex w-full items-center justify-center gap-2 rounded-[18px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-3.5 text-base font-bold text-white shadow-[0_18px_36px_rgba(124,58,237,0.36)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow"
+                    className="online-card-action inline-flex min-w-[210px] items-center justify-center gap-2 rounded-[16px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-4 py-2.5 text-sm font-bold text-white shadow-[0_16px_32px_rgba(124,58,237,0.34)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow"
                   >
-                    <CalendarPlus2 className="h-5 w-5" />
+                    <CalendarPlus2 className="h-4 w-4" />
                     {meetingCta.busy ? "Odesílám..." : meetingCtaLabel}
                   </button>
                 ) : null}
