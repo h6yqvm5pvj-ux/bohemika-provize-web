@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
+  BriefcaseBusiness,
+  CarFront,
   CalendarCheck,
   CalendarSearch,
   ChevronDown,
@@ -11,12 +13,15 @@ import {
   Eye,
   ExternalLink,
   Flame,
+  HeartPulse,
+  House,
   Loader2,
   PhoneCall,
   PhoneMissed,
   PartyPopper,
   Radar,
   RotateCcw,
+  ShieldCheck,
   Sparkles,
   Target,
   Users,
@@ -291,6 +296,28 @@ function checklistForItem(item: RadarItem): string[] {
   }
   if (category && CATEGORY_CHECKLIST[category]) return CATEGORY_CHECKLIST[category];
   return DEFAULT_CHECKLIST;
+}
+
+function ProductCategoryIcon({ product }: { product: Product | null | undefined }) {
+  let Icon = ShieldCheck;
+
+  if (product && RADAR_ENTREPRENEUR_PRODUCTS.has(product)) {
+    Icon = BriefcaseBusiness;
+  } else {
+    switch (productCategory(product ?? null)) {
+      case "life":
+        Icon = HeartPulse;
+        break;
+      case "auto":
+        Icon = CarFront;
+        break;
+      case "property":
+        Icon = House;
+        break;
+    }
+  }
+
+  return <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />;
 }
 
 type ContractDetailWindowState = {
@@ -1489,7 +1516,7 @@ export default function RadarVyrociPage() {
                 <div key={group.tone} className="space-y-3">
                   <div className="flex items-center gap-2 px-1">
                     <span
-                      className={`inline-flex h-6 items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${meta.chipBg}`}
+                      className={`anniversary-group-badge inline-flex h-6 items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-[0.12em] !text-white ${meta.chipBg}`}
                     >
                       {meta.label}
                     </span>
@@ -1536,14 +1563,19 @@ export default function RadarVyrociPage() {
                                   <span className="text-xs text-slate-400">#{item.contractNumber}</span>
                                 )}
                               </div>
-                              <div className="mt-0.5 text-xs text-slate-500">
-                                {productLabel(item.product)}
-                                {productInstitutionLabel(item.product)
-                                  ? ` · ${productInstitutionLabel(item.product)}`
-                                  : ""}
-                                {showTeam && item.ownerEmail !== effectiveUserEmail
-                                  ? ` · ${item.ownerEmail}`
-                                  : ""}
+                              <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
+                                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md border border-violet-100 bg-violet-50 text-violet-700">
+                                  <ProductCategoryIcon product={item.product} />
+                                </span>
+                                <span className="truncate">
+                                  {productLabel(item.product)}
+                                  {productInstitutionLabel(item.product)
+                                    ? ` · ${productInstitutionLabel(item.product)}`
+                                    : ""}
+                                  {showTeam && item.ownerEmail !== effectiveUserEmail
+                                    ? ` · ${item.ownerEmail}`
+                                    : ""}
+                                </span>
                               </div>
                             </div>
                             <div className="text-right">
@@ -1938,6 +1970,12 @@ export default function RadarVyrociPage() {
           color: #ffffff !important;
           -webkit-text-fill-color: #ffffff !important;
           stroke: #ffffff !important;
+        }
+
+        body.simple-bg.simple-bg-white .app-content .anniversary-group-badge,
+        body.simple-bg.simple-bg-white .app-content .anniversary-group-badge * {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
         }
       `}</style>
     </AppLayout>

@@ -16,11 +16,13 @@ import {
   type OnlineCardTestimonial,
   type OnlineCardTranslatedFields,
 } from "@/lib/onlineCardI18n";
+import { getOnlineCardHeroArtwork } from "@/lib/onlineCardHeroArtwork";
 
 type OnlineCardSettingsPanelProps = {
   className: string;
   draft: PremiumOnlineCardValue;
   publishPanel: ReactNode;
+  analyticsPanel: ReactNode;
   officeSection: ReactNode;
   contactSection: ReactNode;
   fullscreen: boolean;
@@ -43,6 +45,7 @@ export function OnlineCardSettingsPanel({
   className,
   draft,
   publishPanel,
+  analyticsPanel,
   officeSection,
   contactSection,
   fullscreen,
@@ -75,6 +78,10 @@ export function OnlineCardSettingsPanel({
     testimonials: draft.testimonials,
     pendingTestimonials: draft.pendingTestimonials,
   };
+  const heroArtwork = getOnlineCardHeroArtwork({
+    email: previewValue.email,
+    fullName: previewValue.fullName,
+  });
   const updateTestimonial = (
     id: string,
     patch: Partial<OnlineCardTestimonial>
@@ -150,6 +157,7 @@ export function OnlineCardSettingsPanel({
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#4c1d95_0%,#7c3aed_48%,#c084fc_100%)]" />
       <div className="space-y-4 sm:space-y-5">
         {publishPanel}
+        {analyticsPanel}
 
         <div className="flex flex-col gap-3 rounded-[20px] border border-violet-100 bg-white px-3 py-3 shadow-[0_12px_30px_rgba(88,28,135,0.06)] sm:gap-4 sm:rounded-[30px] sm:px-5 sm:py-5 sm:shadow-[0_20px_60px_rgba(88,28,135,0.08)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -186,6 +194,7 @@ export function OnlineCardSettingsPanel({
               surface="seamless"
               showContactSection={false}
               value={previewValue}
+              heroArtwork={heroArtwork}
               meetingCta={{
                 label: "Sjednat schůzku",
                 onClick: onPreviewMeetingCta,
@@ -476,6 +485,7 @@ export function OnlineCardSettingsPanel({
                     surface="seamless"
                     showContactSection={false}
                     value={previewValue}
+                    heroArtwork={heroArtwork}
                     meetingCta={{
                       label: "Sjednat schůzku",
                       onClick: onPreviewMeetingCta,

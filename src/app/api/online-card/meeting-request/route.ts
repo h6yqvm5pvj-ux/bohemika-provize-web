@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
+import { recordOnlineCardAnalyticsEvent } from "@/lib/server/onlineCardAnalytics";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
@@ -559,6 +560,17 @@ export async function POST(req: NextRequest) {
       createdAtMs,
       createdAt: FieldValue.serverTimestamp(),
     });
+
+    try {
+      await recordOnlineCardAnalyticsEvent({
+        ownerEmail: owner.ownerEmail,
+        slug,
+        event: "meeting_submitted",
+      });
+    } catch (error) {
+      // The valid meeting request must not fail just because its aggregate metric cannot be saved.
+      console.warn("Online card meeting analytics failed:", error);
+    }
 
     const mailboxTitle = "Nová žádost o schůzku";
     const mailboxBody = `${fullName} (${phone}) • ${email}`;

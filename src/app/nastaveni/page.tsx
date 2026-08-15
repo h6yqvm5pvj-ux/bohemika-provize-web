@@ -66,6 +66,7 @@ import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import { AccountSecurityPanel } from "./components/AccountSecurityPanel";
 import { CareerTimelinePanel } from "./components/CareerTimelinePanel";
 import { NotificationsSettingsPanel } from "./components/NotificationsSettingsPanel";
+import { OnlineCardAnalyticsPanel } from "./components/OnlineCardAnalyticsPanel";
 import { OnlineCardSettingsPanel } from "./components/OnlineCardSettingsPanel";
 import {
   resolveOnlineCardPendingTestimonials,
@@ -3337,6 +3338,10 @@ export default function SettingsPage() {
       </div>
     </section>
   );
+  const onlineCardAnalyticsPanel = (
+    <OnlineCardAnalyticsPanel user={user} enabled={onlineCardDraft.enabled} />
+  );
+
   const onlineCardStudioPublishPanel = (
     <aside className="relative overflow-hidden rounded-[20px] border border-violet-300/25 bg-[radial-gradient(circle_at_8%_0%,rgba(196,181,253,0.24),transparent_30%),linear-gradient(135deg,#140b2f_0%,#24104f_46%,#5b21b6_100%)] p-3.5 text-white shadow-[0_16px_42px_rgba(60,18,122,0.26)] sm:rounded-[30px] sm:p-5 sm:shadow-[0_26px_70px_rgba(60,18,122,0.34)]">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0%,transparent_45%,rgba(255,255,255,0.1)_100%)]" />
@@ -3713,6 +3718,7 @@ export default function SettingsPage() {
                   className={panelClass}
                   draft={onlineCardDraft}
                   publishPanel={onlineCardStudioPublishPanel}
+                  analyticsPanel={onlineCardAnalyticsPanel}
                   officeSection={onlineCardStudioOfficeSection}
                   contactSection={onlineCardStudioContactSection}
                   fullscreen={onlineCardStudioFullscreen}

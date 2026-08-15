@@ -21,6 +21,7 @@ import {
   type OnlineCardTestimonial,
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
+import type { OnlineCardHeroArtwork } from "@/lib/onlineCardHeroArtwork";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin-ext"],
@@ -55,6 +56,7 @@ type PremiumOnlineCardPreviewProps = {
   theme?: "dark" | "light";
   showContactSection?: boolean;
   locale?: OnlineCardLocale;
+  heroArtwork?: OnlineCardHeroArtwork | null;
   meetingCta?: {
     label?: string;
     onClick?: () => void;
@@ -189,6 +191,7 @@ export function PremiumOnlineCardPreview({
   theme = "dark",
   showContactSection = true,
   locale = "cs",
+  heroArtwork = null,
   meetingCta,
 }: PremiumOnlineCardPreviewProps) {
   const copy = ONLINE_CARD_COPY[locale].preview;
@@ -614,15 +617,34 @@ export function PremiumOnlineCardPreview({
               </div>
               <div className={`order-1 ml-auto flex w-full flex-col items-center text-center lg:order-2 vizitka-anim-right [animation-delay:260ms] ${compact ? "max-w-[520px] gap-3 lg:mt-1" : "gap-2 sm:gap-4 lg:-mt-20 xl:-mt-24"}`}>
                 <div className="relative">
-                  <Image
-                    src={lightFullWidth ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"}
-                    alt="Bohemika logo"
-                    width={420}
-                    height={96}
-                    className={`premium-online-card-logo ${
-                      compact ? "h-auto w-full max-w-[500px]" : "h-[132px] w-auto sm:h-[320px] lg:h-[430px]"
-                    } object-contain object-top opacity-95 vizitka-float-soft`}
-                  />
+                  {heroArtwork ? (
+                    <div
+                      className={`relative isolate ${
+                        compact
+                          ? "h-[210px] w-[140px] sm:h-[248px] sm:w-[165px] lg:h-[292px] lg:w-[195px]"
+                          : "h-[300px] w-[200px] sm:h-[400px] sm:w-[267px] lg:h-[520px] lg:w-[347px] xl:h-[560px] xl:w-[373px]"
+                      }`}
+                    >
+                      <Image
+                        src={heroArtwork.src}
+                        alt={heroArtwork.alt}
+                        fill
+                        sizes="(min-width: 1024px) 273px, (min-width: 640px) 220px, 172px"
+                        className="object-cover object-center transition duration-700 hover:scale-[1.025]"
+                        priority
+                      />
+                    </div>
+                  ) : (
+                    <Image
+                      src={lightFullWidth ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"}
+                      alt="Bohemika logo"
+                      width={420}
+                      height={96}
+                      className={`premium-online-card-logo ${
+                        compact ? "h-auto w-full max-w-[500px]" : "h-[132px] w-auto sm:h-[320px] lg:h-[430px]"
+                      } object-contain object-top opacity-95 vizitka-float-soft`}
+                    />
+                  )}
                   <div className={`pointer-events-none absolute left-1/2 top-[67.8%] w-[115vw] -translate-x-1/2 items-center gap-6 xl:top-[68.2%] ${compact ? "hidden" : "hidden lg:flex"}`}>
                     <span className="h-px flex-1 bg-[linear-gradient(90deg,rgba(196,181,253,0.06)_0%,rgba(216,180,254,0.42)_100%)] vizitka-line-pulse" />
                     <span className="h-px w-[270px] bg-transparent xl:w-[330px]" />

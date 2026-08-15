@@ -31,6 +31,8 @@ import {
   onlineCardLanguageMeta,
   type OnlineCardLocale,
 } from "@/lib/onlineCardI18n";
+import type { OnlineCardAnalyticsEvent } from "@/lib/onlineCardAnalytics";
+import { getOnlineCardHeroArtwork } from "@/lib/onlineCardHeroArtwork";
 
 type OfficePhotoMeta = {
   width: number;
@@ -112,6 +114,19 @@ const sanitizeVCardFilename = (value: string): string => {
   return normalized || "kontakt";
 };
 
+function trackOnlineCardEvent(slug: string, event: OnlineCardAnalyticsEvent) {
+  if (!slug || typeof window === "undefined") return;
+
+  void fetch("/api/online-card/analytics", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug, event }),
+    keepalive: true,
+  }).catch(() => {
+    // Tracking is optional and must never affect the public card flow.
+  });
+}
+
 export default function OnlineCardPublicClient({
   slug,
   card,
@@ -144,6 +159,11 @@ export default function OnlineCardPublicClient({
   );
   const cardWebsiteLabel = cardWebsiteLink ? normalizeWebsiteLabel(cardWebsiteLink) : localizedCard.website.trim();
   const cardPhoneLink = localizedCard.phone ? normalizePhoneHref(localizedCard.phone) : "";
+  const heroArtwork = getOnlineCardHeroArtwork({
+    slug,
+    email: localizedCard.email,
+    fullName: localizedCard.fullName,
+  });
   const officeLabel = localizedCard.officeLabel.trim();
   const officePhotos = localizedCard.officePhotos;
   const hasOfficeSection = officeLabel.length > 0 || officePhotos.length > 0;
@@ -171,6 +191,7 @@ export default function OnlineCardPublicClient({
       icon: PhoneCall,
       value: localizedCard.phone.trim(),
       href: cardPhoneLink || undefined,
+      analyticsEvent: "phone_click" as const,
     },
     {
       key: "email",
@@ -178,6 +199,7 @@ export default function OnlineCardPublicClient({
       icon: Mail,
       value: localizedCard.email.trim(),
       href: localizedCard.email.trim() ? `mailto:${localizedCard.email.trim()}` : undefined,
+      analyticsEvent: "email_click" as const,
     },
     {
       key: "web",
@@ -185,24 +207,38 @@ export default function OnlineCardPublicClient({
       icon: Globe2,
       value: cardWebsiteLabel,
       href: cardWebsiteLink || undefined,
+      analyticsEvent: "website_click" as const,
     },
     {
       key: "ico",
       label: copy.preview.companyId,
       icon: Building2,
       value: localizedCard.ico.trim(),
+      analyticsEvent: undefined,
     },
     {
       key: "location",
       label: copy.preview.location,
       icon: MapPin,
       value: localizedCard.location.trim(),
+      analyticsEvent: undefined,
     },
   ];
 
   useEffect(() => {
     document.documentElement.lang = onlineCardLanguageMeta(locale).htmlLang;
   }, [locale]);
+
+  useEffect(() => {
+    const visitKey = `online-card:visit:${slug}`;
+    try {
+      if (window.sessionStorage.getItem(visitKey)) return;
+      window.sessionStorage.setItem(visitKey, "1");
+    } catch {
+      // A strict browser mode may disable session storage; recording a single page load is still safe.
+    }
+    trackOnlineCardEvent(slug, "visit");
+  }, [slug]);
 
   const selectLocale = (nextLocale: OnlineCardLocale) => {
     setLocale(nextLocale);
@@ -284,6 +320,7 @@ export default function OnlineCardPublicClient({
   const openModal = () => {
     setStatus(null);
     setOpen(true);
+    trackOnlineCardEvent(slug, "meeting_open");
   };
 
   const closeModal = () => {
@@ -330,6 +367,7 @@ export default function OnlineCardPublicClient({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(objectUrl);
+    trackOnlineCardEvent(slug, "vcard_download");
   };
 
   const handleShareOnlineCard = async () => {
@@ -503,6 +541,7 @@ export default function OnlineCardPublicClient({
           theme={theme}
           locale={locale}
           showContactSection={false}
+          heroArtwork={heroArtwork}
           meetingCta={{
             label: copy.preview.scheduleMeeting,
             onClick: openModal,
@@ -673,6 +712,7 @@ export default function OnlineCardPublicClient({
                       href={officeMapsLink}
                       target="_blank"
                       rel="noreferrer noopener"
+                      onClick={() => trackOnlineCardEvent(slug, "map_click")}
                       className="inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12]"
                     >
                       <MapPin className="h-4 w-4" />
@@ -739,6 +779,11 @@ export default function OnlineCardPublicClient({
                           href={item.href}
                           target={item.href.startsWith("http") ? "_blank" : undefined}
                           rel={item.href.startsWith("http") ? "noreferrer noopener" : undefined}
+                          onClick={() => {
+                            if (item.analyticsEvent) {
+                              trackOnlineCardEvent(slug, item.analyticsEvent);
+                            }
+                          }}
                           className="underline decoration-violet-300/45 underline-offset-4 transition hover:decoration-violet-500"
                         >
                           {item.value}

@@ -232,6 +232,17 @@ function toolMatchesSearch(tool: Tool, normalizedQuery: string): boolean {
     .some((value) => value.includes(normalizedQuery));
 }
 
+function CategoryBadge({ category }: { category: ToolCategory }) {
+  const Icon = FILTER_VISUALS[category].icon;
+
+  return (
+    <span className="pomucky-category-badge inline-flex items-center gap-1.5 rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] !text-white shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:text-[0.7rem] sm:tracking-[0.16em] sm:shadow-[0_10px_22px_rgba(168,85,247,0.42)] [&_*]:!text-white">
+      <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.35} aria-hidden="true" />
+      <span>{CATEGORY_BADGE_LABEL[category]}</span>
+    </span>
+  );
+}
+
 export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
@@ -564,7 +575,6 @@ export default function ToolsPage() {
                 if (tool.onClick) {
                   const ToolIcon = tool.icon;
                   const style = CATEGORY_VISUALS[tool.category];
-                  const categoryBadgeLabel = CATEGORY_BADGE_LABEL[tool.category];
                   return (
                     <button
                       key={tool.key}
@@ -584,9 +594,7 @@ export default function ToolsPage() {
 
                       <div className="relative z-10 flex w-full flex-col gap-2.5">
                         <div className="flex items-start">
-                          <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:text-[0.7rem] sm:tracking-[0.16em] sm:shadow-[0_10px_22px_rgba(168,85,247,0.42)]">
-                            {categoryBadgeLabel}
-                          </span>
+                          <CategoryBadge category={tool.category} />
                         </div>
 
                         <div className="min-w-0">
@@ -614,7 +622,6 @@ export default function ToolsPage() {
                 const CardWrapper = tool.external ? "a" : Link;
                 const ToolIcon = tool.icon;
                 const style = CATEGORY_VISUALS[tool.category];
-                const categoryBadgeLabel = CATEGORY_BADGE_LABEL[tool.category];
                 const wrapperProps = tool.external
                   ? { href: tool.href ?? "#", target: "_blank", rel: "noreferrer" }
                   : { href: tool.href ?? "#" };
@@ -637,9 +644,7 @@ export default function ToolsPage() {
 
                     <div className="relative z-10 flex w-full flex-col gap-2.5">
                       <div className="flex items-start">
-                        <span className="inline-flex items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:text-[0.7rem] sm:tracking-[0.16em] sm:shadow-[0_10px_22px_rgba(168,85,247,0.42)]">
-                          {categoryBadgeLabel}
-                        </span>
+                        <CategoryBadge category={tool.category} />
                       </div>
 
                       <div className="min-w-0">
@@ -735,6 +740,14 @@ export default function ToolsPage() {
       {linksModalOpen && (
         <InstitutionPortalLinksModal onClose={() => setLinksModalOpen(false)} />
       )}
+      <style jsx global>{`
+        body.simple-bg.simple-bg-white .app-content .pomucky-category-badge,
+        body.simple-bg.simple-bg-white .app-content .pomucky-category-badge * {
+          color: #ffffff !important;
+          -webkit-text-fill-color: #ffffff !important;
+          stroke: currentColor !important;
+        }
+      `}</style>
     </AppLayout>
   );
 }
