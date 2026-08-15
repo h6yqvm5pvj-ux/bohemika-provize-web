@@ -609,9 +609,49 @@ export function PremiumOnlineCardPreview({
 		        ) : null}
 
         {fullWidthLayout ? (
-          <header className={`${compact ? "pb-2 pt-0 sm:pb-3" : "mx-auto max-w-[1520px] pb-8 pt-3 sm:pb-10 sm:pt-7"} vizitka-anim-up [animation-delay:80ms]`}>
-            <div className={compact ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)] lg:items-center" : "grid gap-7 sm:gap-10 lg:grid-cols-[minmax(0,1.12fr)_minmax(340px,0.7fr)] lg:items-center xl:gap-20"}>
-              <div className={`order-2 text-left lg:order-1 ${compact ? "space-y-4 lg:pt-0" : "max-w-[780px] space-y-3 sm:space-y-4 lg:pl-6 xl:pl-10"}`}>
+          <header className={`${compact ? "pb-2 pt-0 sm:pb-3" : "mx-auto max-w-[1520px] pb-6 pt-4 sm:pb-10 sm:pt-7"} vizitka-anim-up [animation-delay:80ms]`}>
+            {!compact ? (
+              <div className="space-y-4 lg:hidden">
+                {identityBlock}
+                <div className="flex justify-center py-1">
+                  {heroArtwork ? (
+                    <div className="relative isolate h-[190px] w-[127px]">
+                      <Image
+                        src={heroArtwork.src}
+                        alt={heroArtwork.alt}
+                        fill
+                        sizes="127px"
+                        className="object-cover object-center"
+                        priority
+                      />
+                    </div>
+                  ) : (
+                    <Image
+                      src={lightFullWidth ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"}
+                      alt="Bohemika logo"
+                      width={420}
+                      height={96}
+                      className="h-[74px] w-auto object-contain opacity-95"
+                    />
+                  )}
+                </div>
+                {bioSection}
+                {meetingCta ? (
+                  <button
+                    type="button"
+                    onClick={meetingCta.onClick}
+                    disabled={meetingCta.disabled || meetingCta.busy}
+                    className="online-card-action inline-flex w-full items-center justify-center gap-2 rounded-[18px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-3.5 text-base font-bold text-white shadow-[0_18px_36px_rgba(124,58,237,0.36)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow"
+                  >
+                    <CalendarPlus2 className="h-5 w-5" />
+                    {meetingCta.busy ? "Odesílám..." : meetingCtaLabel}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className={`${compact ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)] lg:items-center" : "hidden gap-10 lg:grid lg:grid-cols-[minmax(0,1.12fr)_minmax(340px,0.7fr)] lg:items-center xl:gap-20"}`}>
+              <div className={`order-1 text-left ${compact ? "space-y-4 lg:pt-0" : "max-w-[780px] space-y-3 sm:space-y-4 lg:pl-6 xl:pl-10"}`}>
                 {identityBlock}
                 {bioSection}
                 {meetingCta ? (
@@ -630,7 +670,7 @@ export function PremiumOnlineCardPreview({
                   </button>
                 ) : null}
               </div>
-              <div className={`order-1 ml-auto flex w-full flex-col items-center text-center lg:order-2 vizitka-anim-right [animation-delay:260ms] ${compact ? "max-w-[520px] gap-3 lg:mt-1" : "max-w-[430px] gap-2 sm:gap-4 lg:justify-self-end"}`}>
+              <div className={`order-2 ml-auto flex w-full flex-col items-center text-center vizitka-anim-right [animation-delay:260ms] ${compact ? "max-w-[520px] gap-3 lg:mt-1" : "max-w-[430px] gap-2 sm:gap-4 lg:justify-self-end"}`}>
                 <div className="relative">
                   {heroArtwork ? (
                     <div
