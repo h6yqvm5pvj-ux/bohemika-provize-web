@@ -12,7 +12,6 @@ import {
   UserRound,
 } from "lucide-react";
 import Image from "next/image";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import type { ComponentType } from "react";
 import {
   ONLINE_CARD_COPY,
@@ -22,12 +21,7 @@ import {
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
 import type { OnlineCardHeroArtwork } from "@/lib/onlineCardHeroArtwork";
-
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin-ext"],
-  weight: ["400", "500", "600", "700", "800"],
-  display: "swap",
-});
+import { systemSansFont } from "@/lib/fonts";
 
 export type PremiumOnlineCardValue = {
   fullName: string;
@@ -517,7 +511,7 @@ export function PremiumOnlineCardPreview({
 
   return (
     <article
-      className={`${jakarta.className} premium-online-card-preview ${
+      className={`${systemSansFont.className} premium-online-card-preview ${
         fullWidthLayout ? "premium-online-card-preview--full" : "premium-online-card-preview--contained"
       } relative isolate text-slate-900 ${
         fullWidthLayout

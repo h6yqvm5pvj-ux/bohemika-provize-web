@@ -1,18 +1,5 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, Manrope } from "next/font/google";
 import styles from "./page.module.css";
-
-const headingFont = Cormorant_Garamond({
-  subsets: ["latin-ext"],
-  weight: ["500", "600", "700"],
-  variable: "--font-heading",
-});
-
-const bodyFont = Manrope({
-  subsets: ["latin-ext"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-body",
-});
 
 export const metadata: Metadata = {
   title: "Jakub Rauscher | Manažer",
@@ -67,9 +54,7 @@ const processSteps = [
 
 export default function JakubRauscherPage() {
   return (
-    <main
-      className={`${styles.page} ${headingFont.variable} ${bodyFont.variable}`}
-    >
+    <main className={styles.page}>
       <div aria-hidden className={styles.orbTop} />
       <div aria-hidden className={styles.orbBottom} />
 

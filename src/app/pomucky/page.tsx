@@ -4,7 +4,6 @@
 import { useMemo, useState, type ReactElement } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Space_Grotesk } from "next/font/google";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUpRight,
@@ -38,11 +37,9 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { InstitutionPortalLinksModal } from "./InstitutionPortalLinksModal";
 import styles from "./pomuckyWallArt.module.css";
+import { systemSansFont } from "@/lib/fonts";
 
-const toolsFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const toolsFont = systemSansFont;
 
 const FILTERS = [
   "Všechny",

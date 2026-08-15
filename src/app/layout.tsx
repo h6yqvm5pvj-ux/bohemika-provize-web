@@ -1,13 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { PwaBootstrap } from "@/components/PwaBootstrap";
-
-const inter = Inter({
-  subsets: ["latin-ext"],
-  display: "swap",
-  variable: "--font-inter",
-});
 
 export const metadata: Metadata = {
   title: "Bohemika SmartApp",
@@ -47,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="cs" className={inter.variable}>
+    <html lang="cs">
       <body className="antialiased">
         <PwaBootstrap />
         {children}

@@ -2,17 +2,6 @@
 
 import Image from "next/image";
 import {
-  Bebas_Neue,
-  DM_Sans,
-  Manrope,
-  Montserrat,
-  Outfit,
-  Playfair_Display,
-  Plus_Jakarta_Sans,
-  Poppins,
-  Space_Grotesk,
-} from "next/font/google";
-import {
   useEffect,
   useRef,
   useState,
@@ -43,60 +32,17 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { auth } from "@/app/firebase-auth";
+import { systemCondensedFont, systemSansFont, systemSerifFont } from "@/lib/fonts";
 
-const modernSans = Manrope({
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700", "800"],
-  display: "swap",
-});
-
-const modernDisplay = Space_Grotesk({
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const modernSerif = Playfair_Display({
-  subsets: ["latin", "latin-ext"],
-  weight: ["500", "600", "700"],
-  display: "swap",
-});
-
-const modernPoster = Bebas_Neue({
-  subsets: ["latin"],
-  weight: "400",
-  display: "swap",
-});
-
-const modernPoppins = Poppins({
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const modernOutfit = Outfit({
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const modernMontserrat = Montserrat({
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const modernJakarta = Plus_Jakarta_Sans({
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const modernDmSans = DM_Sans({
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "700"],
-  display: "swap",
-});
+const modernSans = systemSansFont;
+const modernDisplay = systemSansFont;
+const modernSerif = systemSerifFont;
+const modernPoster = systemCondensedFont;
+const modernPoppins = systemSansFont;
+const modernOutfit = systemSansFont;
+const modernMontserrat = systemSansFont;
+const modernJakarta = systemSansFont;
+const modernDmSans = systemSansFont;
 
 let html2pdfPromise: Promise<any> | null = null;
 

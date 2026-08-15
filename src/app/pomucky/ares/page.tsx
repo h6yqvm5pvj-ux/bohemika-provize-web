@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { Space_Grotesk } from "next/font/google";
 import {
   AlertTriangle,
   Building2,
@@ -20,12 +19,9 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase-auth";
 import { aresGetEntityDetail, aresSearchEntities } from "@/app/lib/ares";
+import { systemSansFont } from "@/lib/fonts";
 
-const headingFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["700"],
-  display: "swap",
-});
+const headingFont = systemSansFont;
 
 const ARES_LOADING_PHASES = [
   "Validuji zadané údaje",

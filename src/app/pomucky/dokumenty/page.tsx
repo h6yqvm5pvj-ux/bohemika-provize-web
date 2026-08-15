@@ -3,7 +3,6 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Space_Grotesk } from "next/font/google";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
@@ -20,11 +19,9 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import SplitTitle from "../plan-produkce/SplitTitle";
+import { systemSansFont } from "@/lib/fonts";
 
-const documentsFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const documentsFont = systemSansFont;
 
 type DocumentSectionKey = "zivotni" | "majetek" | "auto" | "investice";
 

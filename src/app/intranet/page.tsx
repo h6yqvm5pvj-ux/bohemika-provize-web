@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { Space_Grotesk } from "next/font/google";
 import type { LucideIcon } from "lucide-react";
 import { EmojiStyle, type EmojiClickData } from "emoji-picker-react";
 import {
@@ -43,6 +42,7 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { systemSansFont } from "@/lib/fonts";
 import { auth } from "@/app/firebase";
 import {
   fetchAuthedBlobOrThrow,
@@ -57,10 +57,7 @@ import styles from "./intranetWallArt.module.css";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
-const wallFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const wallFont = systemSansFont;
 
 const INTRANET_SECTION_KEY_SET = new Set<IntranetSectionKey>(
   INTRANET_SECTIONS.map((section) => section.key)

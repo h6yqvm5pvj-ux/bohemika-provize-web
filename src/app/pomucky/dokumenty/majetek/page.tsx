@@ -3,7 +3,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Space_Grotesk } from "next/font/google";
 import { ArrowLeft, ArrowUpRight, Sparkles } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -18,11 +17,9 @@ import {
 } from "@/app/lib/institutionLogoDisplay";
 import SplitTitle from "../../plan-produkce/SplitTitle";
 import styles from "../../pomuckyWallArt.module.css";
+import { systemSansFont } from "@/lib/fonts";
 
-const documentsFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const documentsFont = systemSansFont;
 
 type InsurerCard = {
   key: PropertyToolDocumentInsurer["key"];

@@ -3,7 +3,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Space_Grotesk } from "next/font/google";
 import { ArrowLeft, ArrowUpRight, CarFront } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -17,11 +16,9 @@ import {
   institutionLogoKeyFromPath,
 } from "@/app/lib/institutionLogoDisplay";
 import SplitTitle from "../../plan-produkce/SplitTitle";
+import { systemSansFont } from "@/lib/fonts";
 
-const documentsFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const documentsFont = systemSansFont;
 
 type InsurerCard = {
   key: AutoToolDocumentInsurer["key"];

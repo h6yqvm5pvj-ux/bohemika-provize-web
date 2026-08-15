@@ -1,7 +1,6 @@
 "use client";
 
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
-import { Space_Grotesk } from "next/font/google";
 import { FileText, X } from "lucide-react";
 import {
   onAuthStateChanged,
@@ -43,11 +42,9 @@ import { CashflowMonthModal } from "./components/CashflowMonthModal";
 import { IntelligentPredictionModal } from "./components/IntelligentPredictionModal";
 import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
 import introStyles from "./cashflowIntro.module.css";
+import { systemSansFont } from "@/lib/fonts";
 
-const cashflowFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const cashflowFont = systemSansFont;
 
 type AccountType = "advisor" | "tipster";
 

@@ -10,14 +10,11 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { Space_Grotesk } from "next/font/google";
 
 import { AppLayout } from "@/components/AppLayout";
+import { systemSansFont } from "@/lib/fonts";
 
-const pageFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const pageFont = systemSansFont;
 
 type VariantId =
   | "lifeAnniversary"

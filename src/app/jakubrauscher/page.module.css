@@ -1,4 +1,6 @@
 .page {
+  --font-heading: Georgia, "Times New Roman", serif;
+  --font-body: var(--font-inter), Inter, "Avenir Next", Arial, sans-serif;
   --bg-1: #121a1a;
   --bg-2: #0f1417;
   --bg-3: #1f2620;

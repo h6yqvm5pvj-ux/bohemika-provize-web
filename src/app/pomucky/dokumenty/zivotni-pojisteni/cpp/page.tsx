@@ -6,7 +6,6 @@ import { onAuthStateChanged } from "firebase/auth";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Space_Grotesk } from "next/font/google";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -55,11 +54,9 @@ import {
   useSecureDocumentBlob,
 } from "@/app/lib/secureDocuments";
 import SplitTitle from "../../../plan-produkce/SplitTitle";
+import { systemSansFont } from "@/lib/fonts";
 
-const documentsFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const documentsFont = systemSansFont;
 
 type ActiveTab = ToolDocumentTab | "sprava";
 type EditorTabMode = "existing" | "new";

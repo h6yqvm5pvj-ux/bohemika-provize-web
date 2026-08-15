@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { Space_Grotesk } from "next/font/google";
 import {
   BadgeCheck,
   CalendarDays,
@@ -39,12 +38,9 @@ import {
   type WindshieldInputs,
   type WindshieldVehicleSummary,
 } from "./valuation";
+import { systemSansFont } from "@/lib/fonts";
 
-const headingFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["700"],
-  display: "swap",
-});
+const headingFont = systemSansFont;
 
 const WINDSHIELD_LOADING_PHASES = [
   "Kontroluji formát VIN a připravuji dotaz",
