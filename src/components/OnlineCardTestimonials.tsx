@@ -210,9 +210,11 @@ export function OnlineCardTestimonials({
             {copy.testimonialsKicker}
           </p>
           <h2
-            className={`mt-4 text-3xl font-bold tracking-[-0.03em] sm:text-5xl ${
-              light ? "text-slate-950" : "text-white"
-            }`}
+            className={`mt-4 font-bold tracking-[-0.03em] ${
+              mode === "showcase"
+                ? "text-3xl sm:text-5xl"
+                : "text-[clamp(1.25rem,3vw,2.45rem)] leading-tight sm:whitespace-nowrap"
+            } ${light ? "text-slate-950" : "text-white"}`}
           >
             {mode === "showcase" ? copy.testimonialsTitle : copy.reviewPrompt}
           </h2>

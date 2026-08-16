@@ -15,7 +15,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import Image from "next/image";
-import { LogoLoop, type LogoLoopItem } from "@/components/LogoLoop";
+import type { CSSProperties } from "react";
 import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 
 type PartnerInsurer = {
@@ -50,35 +50,14 @@ const PARTNER_INSURERS: PartnerInsurer[] = [
   { label: "PVZP", logoPath: "/icons/pvzp.webp" },
 ];
 
-const PARTNER_LOGO_ITEMS: LogoLoopItem[] = PARTNER_INSURERS.map((insurer) => {
+function getPartnerLogoClassName(insurer: PartnerInsurer) {
   const mediumHighlightedLogos = ["ČSOB", "SLAVIA", "AXA", "Kooperativa", "Pillow", "iNVESTiKA", "PVZP"];
-  const logoClassName =
-    insurer.label === "ČPP"
-      ? "object-contain p-1 scale-[1.3]"
-      : insurer.label === "iNVESTiKA"
-        ? "object-contain p-1 scale-[1.4]"
-        : insurer.label === "Investona"
-          ? "object-contain p-1 scale-[1.16]"
-        : mediumHighlightedLogos.includes(insurer.label)
-        ? "object-contain p-1.5 scale-[1.24]"
-        : "object-contain p-2.5";
-
-  return {
-    id: insurer.label.toLowerCase(),
-    title: insurer.label,
-    node: (
-      <div className="relative flex h-14 w-32 items-center justify-center rounded-[14px] border border-white/80 bg-white p-1 shadow-[0_10px_26px_rgba(3,2,14,0.25)] sm:h-16 sm:w-36">
-        <Image
-          src={insurer.logoPath}
-          alt={`${insurer.label} logo`}
-          fill
-          className={`${logoClassName} drop-shadow-[0_6px_12px_rgba(8,10,36,0.16)] transition duration-300 hover:scale-105`}
-          sizes="144px"
-        />
-      </div>
-    ),
-  };
-});
+  if (insurer.label === "ČPP") return "object-contain p-1 scale-[1.3]";
+  if (insurer.label === "iNVESTiKA") return "object-contain p-1 scale-[1.4]";
+  if (insurer.label === "Investona") return "object-contain p-1 scale-[1.16]";
+  if (mediumHighlightedLogos.includes(insurer.label)) return "object-contain p-1.5 scale-[1.24]";
+  return "object-contain p-2.5";
+}
 
 const ADVISOR_SERVICES = [
   {
@@ -273,14 +252,12 @@ export function AdvisorProfileSections({
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_-12%,rgba(129,140,248,0.3),transparent_38%),radial-gradient(circle_at_93%_27%,rgba(56,189,248,0.17),transparent_21%),radial-gradient(circle_at_4%_74%,rgba(139,92,246,0.24),transparent_31%)]" />
         <div className="pointer-events-none absolute inset-x-[11%] top-8 h-64 rounded-full bg-violet-500/[0.07] blur-[92px]" />
-        <div className="pointer-events-none absolute -right-20 top-16 h-72 w-72 rounded-full border border-cyan-200/[0.14]" />
-        <div className="pointer-events-none absolute -right-6 top-28 h-52 w-52 rounded-full border border-violet-200/[0.13]" />
         <div className="pointer-events-none absolute -left-28 bottom-6 h-72 w-72 rounded-full border border-violet-200/[0.08]" />
         <div className="pointer-events-none absolute inset-0 opacity-[0.25] [background-image:linear-gradient(rgba(196,181,253,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(196,181,253,0.14)_1px,transparent_1px)] [background-size:42px_42px] [mask-image:linear-gradient(to_bottom,black,transparent_78%)]" />
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(125,211,252,0.6),rgba(196,181,253,0.75),transparent)]" />
 
         <div className="relative z-10 mx-auto max-w-[1360px]">
-          <div className={`relative grid gap-6 border-b pb-10 sm:pb-12 lg:grid-cols-[minmax(0,0.48fr)_minmax(0,1fr)] lg:items-end ${dividerClass}`}>
+          <div className={`relative flex items-center gap-4 border-b pb-6 sm:pb-8 ${dividerClass}`}>
             <span className="pointer-events-none absolute -left-5 bottom-0 h-px w-20 bg-[linear-gradient(90deg,transparent,#7dd3fc,transparent)] sm:-left-12 sm:w-32" aria-hidden="true" />
             <p className={`inline-flex w-fit items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.26em] ${labelClass}`}>
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-current/25 bg-current/[0.08] shadow-[0_0_28px_rgba(125,211,252,0.12)]">
@@ -288,27 +265,38 @@ export function AdvisorProfileSections({
               </span>
               {copy.advisor.aboutKicker}
             </p>
-            <div className="relative lg:pl-8">
-              <p className={`text-[10px] font-semibold uppercase tracking-[0.28em] ${bodyClass}`}>{copy.advisor.pillarsKicker}</p>
-              <h2 className={`mt-3 text-5xl font-bold leading-[0.84] tracking-[-0.07em] drop-shadow-[0_18px_48px_rgba(7,6,25,0.38)] sm:text-7xl lg:text-[8.5rem] ${titleClass}`}>
-                Bohemika <span className="bg-[linear-gradient(110deg,#c4b5fd_5%,#7dd3fc_56%,#c4b5fd_96%)] bg-clip-text text-transparent">a.s.</span>
-              </h2>
-            </div>
+            <span className={`h-px flex-1 ${light ? "bg-slate-200" : "bg-violet-200/[0.12]"}`} />
           </div>
 
-          <div className="relative grid gap-8 pt-10 sm:pt-12 lg:grid-cols-12 lg:gap-12">
-            <div className="pointer-events-none absolute bottom-0 left-[55%] top-10 hidden w-px bg-[linear-gradient(180deg,transparent,rgba(125,211,252,0.34),transparent)] lg:block" />
+          <div className="relative grid gap-8 pt-9 sm:pt-11 lg:grid-cols-12 lg:gap-12">
+            <div className="pointer-events-none absolute bottom-0 left-[55%] top-32 hidden w-px bg-[linear-gradient(180deg,transparent,rgba(125,211,252,0.34),transparent)] lg:block" />
             <div className="lg:col-span-7">
+              <div className="relative mb-7 flex justify-center text-center sm:mb-9">
+                <span className="pointer-events-none absolute inset-x-[16%] bottom-0 h-px bg-[linear-gradient(90deg,transparent,rgba(125,211,252,0.68),rgba(196,181,253,0.58),transparent)]" aria-hidden="true" />
+                <h2 className={`pb-5 text-5xl font-bold leading-[0.84] tracking-[-0.07em] drop-shadow-[0_18px_48px_rgba(7,6,25,0.38)] sm:text-6xl xl:text-7xl ${titleClass}`}>
+                  Bohemika <span className="bg-[linear-gradient(110deg,#c4b5fd_5%,#7dd3fc_56%,#c4b5fd_96%)] bg-clip-text text-transparent">a.s.</span>
+                </h2>
+              </div>
               <div className={`relative h-full overflow-hidden rounded-[38px_38px_12px_38px] border p-6 shadow-[0_34px_100px_rgba(3,2,14,0.3)] sm:p-10 ${panelClass}`}>
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_102%_2%,rgba(125,211,252,0.12),transparent_31%),linear-gradient(135deg,rgba(124,58,237,0.09),transparent_55%)]" />
-                <div className="pointer-events-none absolute -right-5 -top-10 select-none text-[14rem] font-bold leading-none tracking-[-0.14em] text-violet-300/[0.08] sm:text-[18rem]" aria-hidden="true">
-                  B
+                <div
+                  className={`pointer-events-none absolute -right-10 -top-14 h-[400px] w-[276px] [mask-image:radial-gradient(ellipse_at_center,black_36%,transparent_73%)] sm:-right-14 sm:-top-20 sm:h-[490px] sm:w-[340px] ${
+                    light ? "opacity-[0.09] mix-blend-multiply" : "opacity-[0.16] mix-blend-screen"
+                  }`}
+                  aria-hidden="true"
+                >
+                  <Image
+                    src="/images/bohemika-ghost-logo.png"
+                    alt=""
+                    fill
+                    sizes="340px"
+                    className="object-contain brightness-125 contrast-125 saturate-0"
+                  />
                 </div>
                 <div className="relative">
                   <div className="mb-8 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <span className="h-px w-12 bg-gradient-to-r from-cyan-300 to-violet-300" />
-                      <span className={`text-[10px] font-semibold uppercase tracking-[0.28em] ${labelClass}`}>Bohemika</span>
                     </div>
                     <span className="flex gap-1.5" aria-hidden="true">
                       <span className="h-1.5 w-1.5 rounded-full bg-cyan-200 shadow-[0_0_12px_rgba(125,211,252,0.9)]" />
@@ -333,7 +321,7 @@ export function AdvisorProfileSections({
               </div>
             </div>
 
-            <aside className="relative lg:col-span-5 lg:pl-2">
+            <aside className="relative lg:col-span-5 lg:pt-[7.75rem] lg:pl-2">
               <div className="mb-5 flex items-center justify-between gap-4 sm:mb-6">
                 <p className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${labelClass}`}>
                   {copy.advisor.pillarsKicker}
@@ -411,15 +399,34 @@ export function AdvisorProfileSections({
             </h2>
           </div>
 
-          <div className="relative mt-7 py-4 sm:mt-9 sm:py-6">
-            <div className="pointer-events-none absolute left-[30%] top-1/2 h-20 w-2/5 -translate-y-1/2 rounded-full bg-violet-500/[0.08] blur-[54px]" />
-            <LogoLoop
-              items={PARTNER_LOGO_ITEMS}
-              speed={28}
-              gap={30}
-              className="relative w-full py-3 vizitka-anim-up [animation-delay:660ms]"
-              itemClassName="min-h-[82px] min-w-[150px]"
-            />
+          <div className="relative mt-8 sm:mt-10">
+            <div className="pointer-events-none absolute left-[30%] top-1/2 h-28 w-2/5 -translate-y-1/2 rounded-full bg-violet-500/[0.1] blur-[62px]" />
+            <div className="relative grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7">
+              {PARTNER_INSURERS.map((insurer, index) => (
+                <div
+                  key={insurer.label}
+                  className={`group relative flex aspect-[2.12/1] items-center justify-center overflow-hidden rounded-[18px] border p-3 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_34px_rgba(3,2,14,0.28)] ${
+                    light
+                      ? "border-slate-200 bg-[linear-gradient(145deg,#ffffff,#f4f4f5)] shadow-[0_10px_22px_rgba(71,85,105,0.1)]"
+                      : "border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(228,228,231,0.96))] shadow-[0_10px_24px_rgba(3,2,14,0.22)]"
+                  } partner-logo-tile vizitka-anim-up`}
+                  style={{
+                    animationDelay: `${660 + index * 45}ms`,
+                    "--partner-logo-delay": `${index * 0.44}s`,
+                  } as CSSProperties}
+                >
+                  <span className="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-[linear-gradient(90deg,transparent,rgba(125,211,252,0.7),rgba(167,139,250,0.55),transparent)] opacity-0 transition duration-300 group-hover:opacity-100" />
+                  <Image
+                    src={insurer.logoPath}
+                    alt={`${insurer.label} logo`}
+                    fill
+                    sizes="(min-width: 1280px) 180px, (min-width: 768px) 150px, 42vw"
+                    className={`${getPartnerLogoClassName(insurer)} relative drop-shadow-[0_6px_12px_rgba(8,10,36,0.16)] transition duration-300 group-hover:scale-110`}
+                  />
+                  <span className="partner-logo-tile__sheen" aria-hidden="true" />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>

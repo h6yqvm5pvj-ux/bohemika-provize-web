@@ -937,6 +937,43 @@ body {
   }
 }
 
+@keyframes partner-logo-sheen {
+  0%,
+  7%,
+  100% {
+    opacity: 0;
+    transform: translateX(0) skewX(-18deg);
+  }
+  10% {
+    opacity: 0.68;
+  }
+  23% {
+    opacity: 0;
+    transform: translateX(460%) skewX(-18deg);
+  }
+}
+
+.partner-logo-tile__sheen {
+  position: absolute;
+  z-index: 10;
+  top: -2.5rem;
+  bottom: -2.5rem;
+  left: -58%;
+  width: 38%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08) 24%,
+    rgba(255, 255, 255, 0.88) 50%,
+    rgba(125, 211, 252, 0.22) 72%,
+    transparent
+  );
+  mix-blend-mode: soft-light;
+  animation: partner-logo-sheen 10.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation-delay: var(--partner-logo-delay, 0s);
+}
+
 .logo-loop-track {
   animation: logo-loop-scroll var(--logo-loop-duration, 28s) linear infinite;
   will-change: transform;

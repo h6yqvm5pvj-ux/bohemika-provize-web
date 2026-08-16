@@ -115,7 +115,7 @@ export const ONLINE_CARD_COPY = {
       testimonialsTitle: "Důvěra vzniká z dobré zkušenosti",
       testimonialsContextFallback: "Klient Bohemika",
       writeReview: "Napsat recenzi",
-      reviewPrompt: "Máte zkušenost se spoluprací? Budeme rádi za vaši krátkou recenzi.",
+      reviewPrompt: "Máte zkušenost se spoluprací? Budu rád za vaši recenzi !",
       reviewTitle: "Napsat recenzi",
       reviewDescription: "Recenze se zobrazí až po schválení poradcem.",
       reviewName: "Jméno nebo iniciály",
