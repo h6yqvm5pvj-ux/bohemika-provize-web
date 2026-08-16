@@ -838,8 +838,8 @@ export default function OnlineCardPublicClient({
       </div>
 
       {open ? (
-        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-[#070512]/74 p-2 backdrop-blur-xl sm:items-center sm:p-4 vizitka-anim-up">
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-[32px] border border-violet-300/25 bg-[#120a25] p-4 text-white shadow-[0_34px_100px_rgba(7,6,25,0.76),inset_0_1px_0_rgba(221,214,254,0.16)] sm:p-6 vizitka-anim-up [animation-delay:60ms]">
+        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-[#070512]/74 p-0 backdrop-blur-xl sm:items-center sm:p-4 vizitka-anim-up">
+          <div className="relative max-h-[100dvh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-[30px] border border-violet-300/25 bg-[#120a25] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-white shadow-[0_34px_100px_rgba(7,6,25,0.76),inset_0_1px_0_rgba(221,214,254,0.16)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-[32px] sm:p-6 vizitka-anim-up [animation-delay:60ms]">
             <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-500/25 blur-[90px]" />
             <div className="pointer-events-none absolute -bottom-32 left-1/4 h-48 w-80 rounded-full bg-indigo-500/10 blur-[80px]" />
             <div className="relative flex items-start justify-between gap-3">
@@ -851,7 +851,7 @@ export default function OnlineCardPublicClient({
                   <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-violet-200/80">
                     {copy.public.scheduleKicker}
                   </p>
-                  <h2 className="mt-1 text-2xl font-bold tracking-[-0.035em] text-white">
+                  <h2 className="mt-1 text-xl font-bold tracking-[-0.035em] text-white sm:text-2xl">
                     {copy.public.scheduleTitle}
                   </h2>
                   <p className="mt-1 text-sm leading-relaxed text-violet-100/70">

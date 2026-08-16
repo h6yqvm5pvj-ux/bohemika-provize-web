@@ -187,8 +187,8 @@ export function OnlineCardMeetingStepper({
   };
 
   return (
-    <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
-      <div className="relative overflow-hidden rounded-[22px] border border-white/12 bg-black/15 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+    <form className="mt-4 space-y-3.5 sm:mt-5 sm:space-y-5" onSubmit={handleSubmit}>
+      <div className="relative overflow-hidden rounded-[20px] border border-white/12 bg-black/15 p-3 sm:rounded-[22px] sm:p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
         <div className="pointer-events-none absolute inset-x-12 top-0 h-16 bg-violet-400/10 blur-3xl" />
         <div className="relative grid grid-cols-3 gap-2">
           {formSteps.map((stepLabel, index) => {
@@ -228,7 +228,7 @@ export function OnlineCardMeetingStepper({
       </div>
 
       {step === 0 ? (
-        <div className="space-y-3 rounded-[20px] border border-white/10 bg-black/10 p-3.5 sm:p-4">
+        <div className="space-y-3 rounded-[18px] border border-white/10 bg-black/10 p-3 sm:rounded-[20px] sm:p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-200/85">
               {copy.chooseTopic}
@@ -237,7 +237,7 @@ export function OnlineCardMeetingStepper({
               {copy.selected}: {selectedTopics.length}
             </span>
           </div>
-          <div className="grid gap-2.5 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
             {MEETING_TOPICS.map((topic, index) => {
               const Icon = topic.icon;
               const selected = selectedTopics.includes(topic.id);
@@ -247,7 +247,7 @@ export function OnlineCardMeetingStepper({
                   key={topic.id}
                   type="button"
                   onClick={() => toggleTopic(topic.id)}
-                  className={`group relative flex min-h-[64px] items-center gap-3 overflow-hidden rounded-[18px] border px-3.5 py-2.5 text-left transition duration-200 ${
+                  className={`group relative flex min-h-[58px] items-center gap-2.5 overflow-hidden rounded-[16px] border px-3 py-2 text-left transition duration-200 sm:min-h-[64px] sm:gap-3 sm:rounded-[18px] sm:px-3.5 sm:py-2.5 ${
                     selected
                       ? "border-violet-200/70 bg-[linear-gradient(135deg,rgba(139,92,246,0.42),rgba(109,40,217,0.2))] text-white shadow-[0_12px_28px_rgba(139,92,246,0.24)]"
                       : "border-white/12 bg-white/[0.025] text-violet-100/90 hover:-translate-y-0.5 hover:border-violet-300/40 hover:bg-white/[0.07]"
@@ -261,9 +261,9 @@ export function OnlineCardMeetingStepper({
                       selected ? "text-white" : "text-violet-200/80 group-hover:text-violet-100"
                     }`}
                   >
-                    <Icon className="h-6 w-6 stroke-[1.8]" />
+                    <Icon className="h-5 w-5 stroke-[1.8] sm:h-6 sm:w-6" />
                   </span>
-                  <span className="pr-5 text-sm font-semibold leading-tight">{copy.topics[index]}</span>
+                  <span className="pr-3 text-[13px] font-semibold leading-tight sm:pr-5 sm:text-sm">{copy.topics[index]}</span>
                 </button>
               );
             })}
