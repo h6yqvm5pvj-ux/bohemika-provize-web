@@ -609,12 +609,12 @@ export function PremiumOnlineCardPreview({
                 <div className="relative h-[172px]">
                   <div className="relative z-10 max-w-[calc(100%-112px)]">{identityBlock}</div>
                   {heroArtwork ? (
-                    <div className="absolute right-4 top-1 isolate h-[185px] w-[123px]">
+                    <div className="absolute right-4 top-1 isolate h-[231px] w-[154px]">
                       <Image
                         src={heroArtwork.src}
                         alt={heroArtwork.alt}
                         fill
-                        sizes="123px"
+                        sizes="154px"
                         className="object-cover object-center"
                         priority
                       />
