@@ -637,7 +637,7 @@ export function PremiumOnlineCardPreview({
                     type="button"
                     onClick={meetingCta.onClick}
                     disabled={meetingCta.disabled || meetingCta.busy}
-                    className="online-card-action inline-flex min-w-[210px] items-center justify-center gap-2 rounded-[16px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-4 py-2.5 text-sm font-bold text-white shadow-[0_16px_32px_rgba(124,58,237,0.34)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow"
+                    className="online-card-action relative isolate inline-flex min-w-[210px] items-center justify-center gap-2 overflow-hidden rounded-[16px] border border-white/35 bg-[linear-gradient(120deg,rgba(124,58,237,0.82)_0%,rgba(168,85,247,0.72)_55%,rgba(192,132,252,0.82)_100%)] px-4 py-2.5 text-sm font-bold text-white shadow-[0_16px_32px_rgba(124,58,237,0.34),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 hover:shadow-[0_18px_38px_rgba(124,58,237,0.46),inset_0_1px_0_rgba(255,255,255,0.56)] before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-white/85 before:opacity-70 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow"
                   >
                     <CalendarPlus2 className="h-4 w-4" />
                     {meetingCta.busy ? "Odesílám..." : meetingCtaLabel}
@@ -655,7 +655,7 @@ export function PremiumOnlineCardPreview({
                     type="button"
                     onClick={meetingCta.onClick}
                     disabled={meetingCta.disabled || meetingCta.busy}
-                    className={`online-card-action inline-flex w-full items-center justify-center gap-2 rounded-[20px] border border-violet-300/20 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow sm:w-auto ${
+                    className={`online-card-action relative isolate inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-[20px] border border-white/35 bg-[linear-gradient(120deg,rgba(124,58,237,0.82)_0%,rgba(168,85,247,0.72)_55%,rgba(192,132,252,0.82)_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 hover:shadow-[0_24px_50px_rgba(124,58,237,0.5),inset_0_1px_0_rgba(255,255,255,0.56)] before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-white/85 before:opacity-70 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow sm:w-auto ${
                       compact
                         ? "min-w-[220px] px-5 py-2.5 text-base"
                         : "min-w-[190px] px-4 py-2 text-sm sm:min-w-[260px] sm:px-7 sm:py-3 sm:text-lg"
@@ -666,7 +666,7 @@ export function PremiumOnlineCardPreview({
                   </button>
                 ) : null}
               </div>
-              <div className={`order-2 ml-auto flex w-full flex-col items-center text-center vizitka-anim-right [animation-delay:260ms] ${compact ? "max-w-[520px] gap-3 lg:mt-1" : "max-w-[430px] gap-2 sm:gap-4 lg:justify-self-end"}`}>
+              <div className={`order-2 ml-auto flex w-full flex-col items-center text-center vizitka-anim-right [animation-delay:260ms] lg:-translate-x-8 xl:-translate-x-10 ${compact ? "max-w-[520px] gap-3 lg:mt-1" : "max-w-[430px] gap-2 sm:gap-4 lg:justify-self-end"}`}>
                 <div className="relative">
                   {heroArtwork ? (
                     <div

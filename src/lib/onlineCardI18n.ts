@@ -46,7 +46,7 @@ const advisorServices = {
     "Životní pojištění a zajištění příjmu",
     "Pojištění majetku a odpovědnosti",
     "Pojištění vozidel a flotil",
-    "Cestovní pojištění a péče o smlouvy",
+    "Cestovní pojištění",
     "Pojištění cizinců",
     "Investice",
     "Úvěry a hypotéky",
@@ -174,7 +174,7 @@ export const ONLINE_CARD_COPY = {
       serviceKicker: "Co pro vás zajistím",
       serviceTitle: "Poradenství, které nekončí sjednáním",
       serviceLead:
-        "Cílem není pouze uzavřít smlouvu, ale budovat dlouhodobý vztah založený na důvěře. Každému klientovi věnuji individuální péči a čas, abych opravdu porozuměl jeho situaci, plánům i obavám. Hledám řešení, které je optimální nejen cenou, ale především kvalitou, stabilitou a skutečným přínosem pro klienta v každodenním životě. Společně nastavíme pojištění, investice i finanční plán tak, aby dávaly smysl dnes a obstály i v budoucnu při změně zaměstnání, podnikání, rodinné situace nebo bydlení. Pravidelně smlouvy reviduji, vysvětluji možné varianty a doporučuji konkrétní kroky, které klienta chrání před zbytečnými riziky. Neřeším jen podpis smlouvy, ale dlouhodobý servis, dostupnost a aktivní péči, na kterou se můžete spolehnout, když ji opravdu potřebujete. Protože dobré poradenství nezačíná ani nekončí podpisem - začíná důvěrou a pokračuje dlouhodobou péčí.",
+        "Nejde mi jen o podpis smlouvy. Poznám vaši situaci, vyberu řešení, které dává smysl dnes i do budoucna, a zůstávám vám k dispozici i po sjednání. Srozumitelně, férově a s péčí, na kterou se můžete spolehnout, když ji opravdu potřebujete.",
       services: advisorServices.cs,
       aboutKicker: "O firmě",
       companyLead:

@@ -79,7 +79,7 @@ const ADVISOR_SERVICES = [
     accentClass: "bg-sky-300/80",
   },
   {
-    label: "Cestovní pojištění a péče o smlouvy",
+    label: "Cestovní pojištění",
     icon: PlaneTakeoff,
     iconClass: "text-indigo-200",
     accentClass: "bg-indigo-300/80",
@@ -213,12 +213,14 @@ export function AdvisorProfileSections({
             {ADVISOR_SERVICES.map((service, index) => (
               <div
                 key={copy.advisor.services[index]}
-                className="group inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-violet-50 sm:text-[15px] vizitka-anim-up"
+                className={`group inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-violet-50 sm:text-[15px] vizitka-anim-up ${
+                  index >= ADVISOR_SERVICES.length - 2 ? "lg:translate-x-[calc(50%+0.375rem)]" : ""
+                }`}
                 style={{ animationDelay: `${300 + index * 75}ms` }}
               >
-                <span className="relative inline-flex h-10 w-9 shrink-0 items-center justify-center">
+                <span className="relative inline-flex h-10 w-9 shrink-0 items-center justify-center lg:h-14 lg:w-14">
                   <service.icon
-                    className={`h-6 w-6 ${service.iconClass} drop-shadow-[0_8px_18px_rgba(196,181,253,0.20)] transition duration-300 group-hover:-translate-y-0.5 group-hover:scale-110`}
+                    className={`h-6 w-6 lg:h-10 lg:w-10 ${service.iconClass} drop-shadow-[0_8px_18px_rgba(196,181,253,0.20)] transition duration-300 group-hover:-translate-y-0.5 group-hover:scale-110`}
                     strokeWidth={1.85}
                   />
                   <span
@@ -236,7 +238,7 @@ export function AdvisorProfileSections({
               <button
                 type="button"
                 onClick={onScheduleMeeting}
-                className="online-card-action inline-flex items-center gap-2 rounded-[20px] border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_56%,#c084fc_100%)] px-7 py-3 text-base font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.42)] transition hover:brightness-110 vizitka-cta-glow"
+                className="online-card-action relative isolate inline-flex items-center gap-2 overflow-hidden rounded-[20px] border border-white/35 bg-[linear-gradient(120deg,rgba(124,58,237,0.82)_0%,rgba(168,85,247,0.72)_56%,rgba(192,132,252,0.82)_100%)] px-7 py-3 text-base font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.42),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 hover:shadow-[0_24px_50px_rgba(124,58,237,0.5),inset_0_1px_0_rgba(255,255,255,0.56)] before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-white/85 before:opacity-70 vizitka-cta-glow"
               >
                 <Sparkles className="h-4 w-4" />
                 {copy.preview.scheduleMeeting}
