@@ -33,6 +33,8 @@ type OnlineCardMeetingStepperProps = {
   slug: string;
   locale?: OnlineCardLocale;
   onSubmitted?: () => void;
+  initialSelectedTopics?: MeetingTopicId[];
+  initialStep?: 0 | 1;
 };
 
 const EMPTY_FORM: MeetingFormDraft = {
@@ -65,12 +67,17 @@ export function OnlineCardMeetingStepper({
   slug,
   locale = "cs",
   onSubmitted,
+  initialSelectedTopics,
+  initialStep = 0,
 }: OnlineCardMeetingStepperProps) {
   const copy = ONLINE_CARD_COPY[locale].meeting;
   const formSteps = copy.steps;
+  const validInitialTopics = (initialSelectedTopics ?? []).filter((topic): topic is MeetingTopicId =>
+    MEETING_TOPICS.some((availableTopic) => availableTopic.id === topic)
+  );
   const [form, setForm] = useState<MeetingFormDraft>(EMPTY_FORM);
-  const [selectedTopics, setSelectedTopics] = useState<MeetingTopicId[]>([]);
-  const [step, setStep] = useState(0);
+  const [selectedTopics, setSelectedTopics] = useState<MeetingTopicId[]>(() => validInitialTopics);
+  const [step, setStep] = useState(() => initialStep === 1 && validInitialTopics.length > 0 ? 1 : 0);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 

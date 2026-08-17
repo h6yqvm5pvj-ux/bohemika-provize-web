@@ -33,6 +33,7 @@ type AdvisorProfileSectionsProps = {
   locale?: OnlineCardLocale;
   connectToHero?: boolean;
   goldPageHref?: string;
+  lifeInsurancePageHref?: string;
 };
 
 const PARTNER_INSURERS: PartnerInsurer[] = [
@@ -154,6 +155,7 @@ export function AdvisorProfileSections({
   locale = "cs",
   connectToHero = false,
   goldPageHref,
+  lifeInsurancePageHref,
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
   const light = theme === "light";
@@ -216,25 +218,29 @@ export function AdvisorProfileSections({
 
           <div className="mx-auto grid w-full max-w-5xl gap-3 pt-1 sm:grid-cols-2 lg:grid-cols-3">
             {ADVISOR_SERVICES.map((service, index) => {
-              const isGoldService = index === ADVISOR_SERVICES.length - 1;
+              const servicePageHref = index === 0
+                ? lifeInsurancePageHref
+                : index === ADVISOR_SERVICES.length - 1
+                  ? goldPageHref
+                  : undefined;
+              const isDetailService = Boolean(servicePageHref);
 
               return (
               <div
                 key={copy.advisor.services[index]}
-                role={isGoldService ? "button" : undefined}
-                tabIndex={isGoldService ? 0 : undefined}
-                onClick={isGoldService ? () => window.location.assign(goldPageHref ?? "/embed/zlato") : undefined}
-                onKeyDown={isGoldService ? (event) => {
+                role={isDetailService ? "button" : undefined}
+                tabIndex={isDetailService ? 0 : undefined}
+                onClick={isDetailService ? () => window.location.assign(servicePageHref!) : undefined}
+                onKeyDown={isDetailService ? (event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    window.location.assign(goldPageHref ?? "/embed/zlato");
+                    window.location.assign(servicePageHref!);
                   }
                 } : undefined}
-                aria-haspopup={isGoldService ? "dialog" : undefined}
-                aria-label={isGoldService ? "Zjistit více o investičním zlatě a stříbru" : undefined}
+                aria-label={index === 0 ? "Zjistit více o životním a úrazovém pojištění" : index === ADVISOR_SERVICES.length - 1 ? "Zjistit více o investičním zlatě a stříbru" : undefined}
                 className={`group inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-violet-50 sm:text-[15px] vizitka-anim-up ${
                   index >= ADVISOR_SERVICES.length - 2 ? "lg:translate-x-[calc(50%+0.375rem)]" : ""
-                } ${isGoldService ? "cursor-pointer rounded-xl outline-none transition hover:bg-amber-300/[0.08] focus-visible:ring-2 focus-visible:ring-amber-200/80" : ""}`}
+                } ${isDetailService ? "cursor-pointer rounded-xl outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-violet-200/80" : ""}`}
                 style={{ animationDelay: `${300 + index * 75}ms` }}
               >
                 <span className="relative inline-flex h-10 w-9 shrink-0 items-center justify-center lg:h-14 lg:w-14">
@@ -249,7 +255,7 @@ export function AdvisorProfileSections({
                 </span>
                 <span>
                   {copy.advisor.services[index]}
-                  {isGoldService ? <span className="mt-0.5 block text-[10px] font-medium text-amber-100/65">Zjistit více</span> : null}
+                  {isDetailService ? <span className="mt-0.5 block text-[10px] font-medium text-violet-100/65">Zjistit více</span> : null}
                 </span>
               </div>
               );

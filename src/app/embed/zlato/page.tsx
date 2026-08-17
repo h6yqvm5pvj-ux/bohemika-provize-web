@@ -1,8 +1,9 @@
 "use client";
 
-import { ChartNoAxesCombined, Coins, Gem, Info, Moon, ShieldCheck, Sun, TrendingDown, TrendingUp } from "lucide-react";
+import { CalendarDays, ChartNoAxesCombined, CheckCircle2, Coins, Gem, Info, Moon, ShieldCheck, Sun, TrendingDown, TrendingUp, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
 
 type GoldPoint = { t: number; v: number };
 type GoldResponse = {
@@ -127,12 +128,37 @@ export default function GoldInvestmentEmbedPage() {
   const [data, setData] = useState<GoldResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  const [meetingSubmitted, setMeetingSubmitted] = useState(false);
+  const [meetingAdvisorSlug, setMeetingAdvisorSlug] = useState<string | null>(null);
   const lightMode = theme === "light";
   const updatedLabel = getUpdatedLabel(data);
   const primaryTextClass = lightMode ? "text-slate-950" : "text-white";
   const bodyTextClass = lightMode ? "text-slate-600" : "text-violet-50/74";
   const labelTextClass = lightMode ? "text-amber-800/75" : "text-amber-100/75";
   const subtleTextClass = lightMode ? "text-slate-500" : "text-violet-100/55";
+
+  const openGoldMeetingModal = () => {
+    const advisorSlug = new URLSearchParams(window.location.search).get("advisor")?.trim() ?? "";
+    if (!/^[a-z0-9-]+$/i.test(advisorSlug)) return;
+    setMeetingAdvisorSlug(advisorSlug);
+    setMeetingSubmitted(false);
+    setMeetingModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (!meetingModalOpen) return;
+
+    const bodyOverflow = document.body.style.overflow;
+    const rootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      document.documentElement.style.overflow = rootOverflow;
+    };
+  }, [meetingModalOpen]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -161,7 +187,7 @@ export default function GoldInvestmentEmbedPage() {
   }, []);
 
   return (
-    <main className={`min-h-full px-5 py-8 transition-colors duration-300 sm:px-10 sm:py-12 ${lightMode ? "bg-[radial-gradient(circle_at_92%_8%,rgba(245,158,11,0.2),transparent_22%),radial-gradient(circle_at_8%_42%,rgba(124,58,237,0.11),transparent_34%),linear-gradient(145deg,#fffbeb_0%,#faf5ff_53%,#ffffff_100%)] text-slate-950" : "bg-[radial-gradient(circle_at_92%_8%,rgba(245,158,11,0.16),transparent_22%),radial-gradient(circle_at_8%_42%,rgba(124,58,237,0.16),transparent_34%),linear-gradient(145deg,#0b0717_0%,#110a22_53%,#080610_100%)] text-white"}`}>
+    <main className={`min-h-full overflow-x-hidden px-5 py-8 transition-colors duration-300 sm:px-10 sm:py-12 ${lightMode ? "bg-[radial-gradient(circle_at_92%_8%,rgba(245,158,11,0.2),transparent_22%),radial-gradient(circle_at_8%_42%,rgba(124,58,237,0.11),transparent_34%),linear-gradient(145deg,#fffbeb_0%,#faf5ff_53%,#ffffff_100%)] text-slate-950" : "bg-[radial-gradient(circle_at_92%_8%,rgba(245,158,11,0.16),transparent_22%),radial-gradient(circle_at_8%_42%,rgba(124,58,237,0.16),transparent_34%),linear-gradient(145deg,#0b0717_0%,#110a22_53%,#080610_100%)] text-white"}`}>
       <article className="mx-auto max-w-[1440px]">
         <div className="flex justify-end pb-2">
           <div className={`inline-flex items-center rounded-full border p-1 text-xs font-bold shadow-[0_10px_20px_rgba(15,23,42,0.14)] ${lightMode ? "border-violet-200 bg-white/90 text-slate-700" : "border-white/16 bg-slate-950/42 text-violet-100"}`} aria-label="Vzhled stránky">
@@ -266,11 +292,73 @@ export default function GoldInvestmentEmbedPage() {
                 </div>
               </div>
             </div>
+            <section className={`relative mt-5 overflow-hidden rounded-[2rem_2rem_2rem_0.65rem] p-7 sm:p-9 ${lightMode ? "bg-amber-100/65" : "bg-amber-300/[0.075]"}`}>
+              <div className="pointer-events-none absolute -right-20 -top-32 h-80 w-80 rounded-full bg-amber-300/[0.18] blur-[90px]" />
+              <div className="relative flex flex-col gap-7 sm:flex-row sm:items-end sm:justify-between">
+                <div className="max-w-xl">
+                  <p className={`inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] ${labelTextClass}`}><Gem className="h-4 w-4" /> Investiční zlato a stříbro</p>
+                  <h2 className={`mt-4 text-3xl font-bold leading-[0.96] tracking-[-0.055em] sm:text-4xl ${primaryTextClass}`}>Zaujala vás investice do zlata? Pojďme se na to podívat.</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={openGoldMeetingModal}
+                  className="online-card-action relative isolate inline-flex w-fit shrink-0 items-center gap-2 overflow-hidden rounded-full border border-white/35 bg-[linear-gradient(120deg,rgba(217,119,6,0.9)_0%,rgba(245,158,11,0.82)_55%,rgba(253,230,138,0.86)_100%)] px-6 py-3.5 text-sm font-bold text-[#1c1002] shadow-[0_18px_36px_rgba(245,158,11,0.28),inset_0_1px_0_rgba(255,255,255,0.52)] transition hover:brightness-110 hover:shadow-[0_20px_42px_rgba(245,158,11,0.36)] before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-white/90 before:opacity-80"
+                >
+                  <CalendarDays className="h-4 w-4" />
+                  Sjednat schůzku
+                </button>
+              </div>
+            </section>
           </aside>
         </div>
 
         <footer className={`py-5 text-[11px] leading-relaxed ${lightMode ? "text-slate-500" : "text-violet-100/52"}`}>Historická výkonnost není zárukou budoucích výnosů. Investici vždy vybíráme podle vaší situace a cíle.</footer>
       </article>
+
+      {meetingModalOpen && meetingAdvisorSlug ? (
+        <div className="fixed inset-0 z-50 flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-[#070512]/78 p-4 backdrop-blur-xl sm:p-6" role="dialog" aria-modal="true" aria-label="Sjednat schůzku">
+          <div className="relative w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-hidden rounded-[30px] border border-violet-300/25 bg-[#120a25] p-4 text-white shadow-[0_34px_100px_rgba(7,6,25,0.76),inset_0_1px_0_rgba(221,214,254,0.16)] sm:max-h-[calc(100dvh-3rem)] sm:rounded-[32px] sm:p-6">
+            <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-amber-500/18 blur-[90px]" />
+            <div className="pointer-events-none absolute -bottom-32 left-1/4 h-48 w-80 rounded-full bg-indigo-500/10 blur-[80px]" />
+            <div className="relative flex shrink-0 items-start justify-between gap-3">
+              <div className="flex items-start gap-3.5">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-200/25 bg-amber-400/15 text-amber-100 shadow-[0_10px_24px_rgba(245,158,11,0.2)]">
+                  <CalendarDays className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-100/80">Sjednat schůzku</p>
+                  <h2 className="mt-1 text-xl font-bold tracking-[-0.035em] text-white sm:text-2xl">Domluvte si termín</h2>
+                  <p className="mt-1 text-sm leading-relaxed text-violet-100/70">Nechte na sebe kontakt a poradce se vám brzy ozve.</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setMeetingModalOpen(false)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.07] text-violet-100 transition hover:rotate-90 hover:bg-white/[0.14]" aria-label="Zavřít formulář">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="relative max-h-[calc(100dvh-11rem)] overflow-y-auto overflow-x-hidden overscroll-contain pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {meetingSubmitted ? (
+                <div className="mt-6 rounded-2xl border border-emerald-300/35 bg-emerald-400/14 px-4 py-4 text-emerald-50">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold">Žádost byla odeslána.</p>
+                      <p className="mt-1 text-sm text-emerald-50/82">Děkujeme, brzy se vám ozveme.</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <OnlineCardMeetingStepper
+                  slug={meetingAdvisorSlug}
+                  initialSelectedTopics={["precious-metals"]}
+                  initialStep={1}
+                  onSubmitted={() => setMeetingSubmitted(true)}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

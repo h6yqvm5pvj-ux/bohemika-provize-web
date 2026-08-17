@@ -40,7 +40,7 @@ export default async function OnlineCardGoldPage({
           </p>
         </div>
       </header>
-      <iframe title="Investiční zlato a stříbro" src="/embed/zlato" className="block h-[calc(100vh-65px)] min-h-[920px] w-full border-0 bg-[#080610]" />
+      <iframe title="Investiční zlato a stříbro" src={`/embed/zlato?advisor=${encodeURIComponent(normalizedSlug)}`} className="block h-[calc(100vh-65px)] min-h-[920px] w-full border-0 bg-[#080610]" />
     </main>
   );
 }

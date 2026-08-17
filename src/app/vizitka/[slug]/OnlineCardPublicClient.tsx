@@ -600,6 +600,7 @@ export default function OnlineCardPublicClient({
           locale={locale}
           onScheduleMeeting={openModal}
           goldPageHref={`/vizitka/${slug}/zlato`}
+          lifeInsurancePageHref={`/vizitka/${slug}/zivotni-pojisteni`}
         />
         <OnlineCardTestimonials
           slug={slug}
