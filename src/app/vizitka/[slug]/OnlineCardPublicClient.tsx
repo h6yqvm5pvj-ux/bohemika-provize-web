@@ -186,6 +186,7 @@ export default function OnlineCardPublicClient({
     ? activeOfficePhotoMeta.width > activeOfficePhotoMeta.height * 1.05
     : false;
   const officeAddressText = officeLabel || localizedCard.location.trim();
+  const officeLocationDisplay = officeAddressText.split(",").at(-1)?.trim() || officeAddressText;
   const officeMapsQuery = normalizeMapsAddressQuery(officeAddressText);
   const officeMapsLink = officeAddressText
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(officeMapsQuery)}`
@@ -246,6 +247,21 @@ export default function OnlineCardPublicClient({
     }
     trackOnlineCardEvent(slug, "visit");
   }, [slug]);
+
+  useEffect(() => {
+    if (officePhotos.length < 2) return;
+
+    const preloadId = window.setTimeout(() => {
+      officePhotos.forEach((photoUrl) => {
+        if (!photoUrl || photoUrl === activeOfficePhoto) return;
+        const image = new window.Image();
+        image.decoding = "async";
+        image.src = photoUrl;
+      });
+    }, 250);
+
+    return () => window.clearTimeout(preloadId);
+  }, [activeOfficePhoto, officePhotos]);
 
   const selectLocale = (nextLocale: OnlineCardLocale) => {
     setLocale(nextLocale);
@@ -583,6 +599,7 @@ export default function OnlineCardPublicClient({
           theme={theme}
           locale={locale}
           onScheduleMeeting={openModal}
+          goldPageHref={`/vizitka/${slug}/zlato`}
         />
         <OnlineCardTestimonials
           slug={slug}
@@ -607,10 +624,10 @@ export default function OnlineCardPublicClient({
             <div
               className={`relative z-10 mx-auto gap-5 ${
                 activeOfficePhoto
-                  ? `grid max-w-[1040px] lg:items-start ${
+                  ? `grid max-w-[1280px] lg:items-stretch ${
                       activeOfficePhotoIsPortrait
-                        ? "lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
-                        : "lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]"
+                        ? "lg:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]"
+                        : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
                     }`
                   : "max-w-xl"
               }`}
@@ -695,18 +712,42 @@ export default function OnlineCardPublicClient({
                 </div>
               ) : null}
 
-              <div className={activeOfficePhoto ? "flex items-start" : "flex justify-center text-center"}>
+              <div className={activeOfficePhoto ? "flex items-stretch" : "flex justify-center text-center"}>
                 <div
-                  className={`w-full max-w-[580px] space-y-4 ${
+                  className={`w-full max-w-[640px] ${
                     activeOfficePhoto
-                      ? "border-l border-violet-300/18 pl-5 sm:pl-6"
-                      : "mx-auto"
+                      ? `relative flex min-h-[310px] flex-col overflow-hidden rounded-[28px_28px_28px_10px] border p-6 shadow-[0_24px_60px_rgba(3,2,14,0.22)] sm:p-8 lg:min-h-0 lg:p-10 ${
+                          lightMode
+                            ? "border-violet-200/85 bg-white/80"
+                            : "border-violet-200/[0.16] bg-white/[0.035]"
+                        }`
+                      : "mx-auto space-y-4"
                   }`}
                 >
+                  {activeOfficePhoto ? (
+                    <>
+                      <div className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(196,181,253,0.35)_1px,transparent_1px),linear-gradient(90deg,rgba(196,181,253,0.35)_1px,transparent_1px)] [background-size:38px_38px]" />
+                      <div className="pointer-events-none absolute -right-8 bottom-6 max-w-[130%] select-none whitespace-nowrap text-5xl font-bold tracking-[-0.08em] text-violet-300/[0.12] sm:text-7xl" aria-hidden="true">
+                        {officeLocationDisplay}
+                      </div>
+                      <Image
+                        src="/images/bohemkalogo.png"
+                        alt=""
+                        width={1024}
+                        height={1536}
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute -right-12 -top-32 z-[1] h-[39rem] w-auto select-none ${lightMode ? "opacity-[0.09] mix-blend-multiply" : "opacity-[0.14] mix-blend-screen"}`}
+                      />
+                      <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-cyan-400/[0.10] blur-[78px]" />
+                    </>
+                  ) : null}
+                  <div className={activeOfficePhoto ? "relative z-10 flex h-full flex-col" : ""}>
                   {!activeOfficePhoto ? (
                     <Building2 className="mx-auto h-10 w-10 text-violet-200/75 vizitka-float-soft" strokeWidth={1.45} />
                   ) : null}
-                  <p className={`inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-100 ${
+                  <p className={`inline-flex w-fit items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
+                    lightMode ? "text-violet-800" : "text-violet-100"
+                  } ${
                     activeOfficePhoto ? "" : "mx-auto"
                   }`}>
                     <Building2 className="h-3.5 w-3.5" />
@@ -714,27 +755,49 @@ export default function OnlineCardPublicClient({
                   </p>
 
                   {officeAddressText ? (
-                    <p className={`max-w-[46ch] text-base font-semibold leading-snug text-white/92 sm:text-lg ${
+                    <p className={`mt-5 max-w-[20ch] text-xl font-bold leading-[1.05] tracking-[-0.035em] sm:text-3xl ${
+                      lightMode ? "text-slate-950" : "text-white"
+                    } ${
                       activeOfficePhoto ? "" : "mx-auto"
                     }`}>
                       {officeAddressText}
                     </p>
                   ) : (
-                    <p className="text-sm text-violet-100/70">{copy.public.noOfficeAddress}</p>
+                    <p className={`mt-5 text-sm ${lightMode ? "text-slate-500" : "text-violet-100/70"}`}>{copy.public.noOfficeAddress}</p>
                   )}
-
-                  {officeMapsLink ? (
-                    <a
-                      href={officeMapsLink}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      onClick={() => trackOnlineCardEvent(slug, "map_click")}
-                      className="inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12]"
-                    >
-                      <MapPin className="h-4 w-4" />
-                      {copy.public.openMaps}
-                    </a>
+                  {activeOfficePhoto ? (
+                    <p className={`mt-5 max-w-[33ch] text-sm leading-relaxed ${lightMode ? "text-slate-600" : "text-violet-100/72"}`}>
+                      {copy.public.officeWelcome}
+                    </p>
                   ) : null}
+
+                  <div className={`flex flex-wrap gap-3 ${activeOfficePhoto ? "mt-auto pt-8" : "pt-1"}`}>
+                    <button
+                      type="button"
+                      onClick={openModal}
+                      className="online-card-action relative isolate inline-flex items-center gap-2 overflow-hidden rounded-full border border-white/35 bg-[linear-gradient(120deg,rgba(124,58,237,0.82)_0%,rgba(168,85,247,0.72)_55%,rgba(192,132,252,0.82)_100%)] px-4 py-2 text-sm font-bold text-white shadow-[0_16px_32px_rgba(124,58,237,0.34),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-white/85 before:opacity-70 vizitka-cta-glow"
+                    >
+                      <CalendarDays className="h-4 w-4" />
+                      {copy.preview.scheduleMeeting}
+                    </button>
+                    {officeMapsLink ? (
+                      <a
+                        href={officeMapsLink}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        onClick={() => trackOnlineCardEvent(slug, "map_click")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                          lightMode
+                            ? "border-violet-200 bg-white/70 text-violet-900 hover:bg-violet-50"
+                            : "border-violet-300/35 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                        }`}
+                      >
+                        <MapPin className="h-4 w-4" />
+                        {copy.public.openMaps}
+                      </a>
+                    ) : null}
+                  </div>
+                  </div>
                 </div>
               </div>
             </div>

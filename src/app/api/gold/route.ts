@@ -6,7 +6,9 @@ import {
   getRequestIp,
 } from "@/lib/server/rateLimit";
 
-export const revalidate = 60;
+// Spot cena se obnovuje při každém požadavku. Historická řada má vlastní cache níže.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const runtime = "nodejs";
 const GOLD_RATE_LIMIT = 120;
 const GOLD_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -17,6 +19,7 @@ let lastOk: { usdPerOz: number; usdCzk: number; czkPerOz: number; ts: number } |
 // jednoduchá in-memory cache pro historické výpočty (šetří stooq)
 type ChangesPct = {
   "1d": number | null;
+  "1m": number | null;
   "3m": number | null;
   "1y": number | null;
   "2y": number | null;
@@ -515,6 +518,50 @@ function pctChange(latest: number, past: number) {
   return round2(((latest / past) - 1) * 100);
 }
 
+function calculateChangesPct(czkSeries: DailyPoint[]): ChangesPct {
+  const latest = czkSeries[czkSeries.length - 1];
+  if (!latest) {
+    return { "1d": null, "1m": null, "3m": null, "1y": null, "2y": null, "3y": null, "5y": null, "10y": null };
+  }
+
+  const now = new Date(`${latest.date}T00:00:00Z`);
+  const now1m = new Date(now);
+  now1m.setUTCMonth(now1m.getUTCMonth() - 1);
+  const now3m = new Date(now);
+  now3m.setUTCMonth(now3m.getUTCMonth() - 3);
+
+  const p1m = findClosestOnOrBefore(czkSeries, toYmd(now1m));
+  const p3m = findClosestOnOrBefore(czkSeries, toYmd(now3m));
+  const p1 = findClosestOnOrBefore(czkSeries, toYmd(new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate()))));
+  const p2 = findClosestOnOrBefore(czkSeries, toYmd(new Date(Date.UTC(now.getUTCFullYear() - 2, now.getUTCMonth(), now.getUTCDate()))));
+  const p3 = findClosestOnOrBefore(czkSeries, toYmd(new Date(Date.UTC(now.getUTCFullYear() - 3, now.getUTCMonth(), now.getUTCDate()))));
+  const p5 = findClosestOnOrBefore(czkSeries, toYmd(new Date(Date.UTC(now.getUTCFullYear() - 5, now.getUTCMonth(), now.getUTCDate()))));
+  const p10 = findClosestOnOrBefore(czkSeries, toYmd(new Date(Date.UTC(now.getUTCFullYear() - 10, now.getUTCMonth(), now.getUTCDate()))));
+  const prevDay = czkSeries.length >= 2 ? czkSeries[czkSeries.length - 2] : null;
+
+  const safePct = (past: DailyPoint | null) =>
+    !past || !Number.isFinite(past.close) || past.close <= 0 ? null : pctChange(latest.close, past.close);
+
+  return {
+    "1d": safePct(prevDay),
+    "1m": safePct(p1m),
+    "3m": safePct(p3m),
+    "1y": safePct(p1),
+    "2y": safePct(p2),
+    "3y": safePct(p3),
+    "5y": safePct(p5),
+    "10y": safePct(p10),
+  };
+}
+
+function appendLiveSpot(czkSeries: DailyPoint[], czkPerOz: number, timestamp: number): DailyPoint[] {
+  if (!Number.isFinite(czkPerOz) || czkPerOz <= 0) return czkSeries;
+  return dedupeAndSortDaily([
+    ...czkSeries,
+    { date: toYmd(new Date(timestamp)), close: round2(czkPerOz) },
+  ]);
+}
+
 async function computeGoldCzkSeriesAndChanges(): Promise<
   | {
       czkSeries: DailyPoint[];
@@ -565,44 +612,7 @@ async function computeGoldCzkSeriesAndChanges(): Promise<
   if (!czkSeries.length) return null;
 
   const latest = czkSeries[czkSeries.length - 1];
-
-  const now = new Date(latest.date + "T00:00:00Z");
-
-  // 3 měsíce zpět (kalendářně)
-  const now3m = new Date(now);
-  now3m.setUTCMonth(now3m.getUTCMonth() - 3);
-  const t3m = toYmd(now3m);
-
-  const t1 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate())));
-  const t2 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 2, now.getUTCMonth(), now.getUTCDate())));
-  const t3 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 3, now.getUTCMonth(), now.getUTCDate())));
-  const t5 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 5, now.getUTCMonth(), now.getUTCDate())));
-  const t10 = toYmd(new Date(Date.UTC(now.getUTCFullYear() - 10, now.getUTCMonth(), now.getUTCDate())));
-
-  const p3m = findClosestOnOrBefore(czkSeries, t3m);
-  const p1 = findClosestOnOrBefore(czkSeries, t1);
-  const p2 = findClosestOnOrBefore(czkSeries, t2);
-  const p3 = findClosestOnOrBefore(czkSeries, t3);
-  const p5 = findClosestOnOrBefore(czkSeries, t5);
-  const p10 = findClosestOnOrBefore(czkSeries, t10);
-
-  // 1d = změna proti předchozímu dostupnému dni (typicky včerejšek; o víkendu pátek)
-  const prevDay = czkSeries.length >= 2 ? czkSeries[czkSeries.length - 2] : null;
-
-  const safePct = (past: DailyPoint | null) => {
-    if (!past || !Number.isFinite(past.close) || past.close <= 0) return null;
-    return pctChange(latest.close, past.close);
-  };
-
-  const changesPct = {
-    "1d": safePct(prevDay),
-    "3m": safePct(p3m),
-    "1y": safePct(p1),
-    "2y": safePct(p2),
-    "3y": safePct(p3),
-    "5y": safePct(p5),
-    "10y": safePct(p10),
-  };
+  const changesPct = calculateChangesPct(czkSeries);
 
   lastHistory = { czkSeries, changesPct, asOfDate: latest.date, ts: Date.now() };
 
@@ -761,24 +771,34 @@ export async function GET(req: Request) {
     const czkPerOz = usdPerOz * usdCzk;
     lastOk = { usdPerOz, usdCzk, czkPerOz, ts: Date.now() };
 
+    // Denní historie zůstává zdrojem minulých hodnot, poslední bod ale vždy nahradíme
+    // právě načtenou spot cenou. Díky tomu se graf i procentní změny průběžně pohybují.
+    const liveCzkSeries = histAll ? appendLiveSpot(histAll.czkSeries, czkPerOz, lastOk.ts) : [];
+    const liveChangesPct = liveCzkSeries.length ? calculateChangesPct(liveCzkSeries) : histAll?.changesPct;
+    const liveAsOfDate = liveCzkSeries.at(-1)?.date ?? histAll?.asOfDate;
+
     const history =
       intradayW1 && intradayW1.length
         ? intradayW1
-        : histAll?.czkSeries
-          ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, days)
+        : liveCzkSeries.length
+          ? buildHistoryPointsFromCzkSeries(liveCzkSeries, days)
           : [];
     const historyGranularity = intradayW1 && intradayW1.length ? "intraday-1h" : "daily-1d";
 
-    return NextResponse.json({
-      ok: true,
-      ...lastOk,
-      // percent změny jsou vždy v CZK/oz (nezávisle na UI jednotkách)
-      ...(histAll ? { changesPct: histAll.changesPct, asOfDate: histAll.asOfDate } : {}),
-      history, // intraday (w1) nebo denní (ostatní range) body pro graf
-      historyDays: days ?? null,
-      historyMax: maxMode,
-      historyGranularity,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        ...lastOk,
+        updatedAt: new Date(lastOk.ts).toISOString(),
+        // Změny jsou vždy v CZK/oz a vycházejí z právě načtené spot ceny.
+        ...(histAll ? { changesPct: liveChangesPct, asOfDate: liveAsOfDate } : {}),
+        history, // intraday (w1) nebo denní body, vždy zakončené aktuální spot cenou
+        historyDays: days ?? null,
+        historyMax: maxMode,
+        historyGranularity,
+      },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (err: any) {
     // fallback: poslední úspěšná hodnota (pokud existuje)
     if (lastOk) {
@@ -803,25 +823,32 @@ export async function GET(req: Request) {
         computeGoldCzkSeriesAndChanges().catch(() => null),
         fallbackUseW1Intraday ? fetchW1IntradayGoldCzkSeries().catch(() => null) : Promise.resolve(null),
       ]);
+      const fallbackCzkSeries = histAll ? appendLiveSpot(histAll.czkSeries, lastOk.czkPerOz, lastOk.ts) : [];
+      const fallbackChangesPct = fallbackCzkSeries.length ? calculateChangesPct(fallbackCzkSeries) : histAll?.changesPct;
+      const fallbackAsOfDate = fallbackCzkSeries.at(-1)?.date ?? histAll?.asOfDate;
       const history =
         fallbackIntradayW1 && fallbackIntradayW1.length
           ? fallbackIntradayW1
-          : histAll?.czkSeries
-            ? buildHistoryPointsFromCzkSeries(histAll.czkSeries, fallbackDays)
+          : fallbackCzkSeries.length
+            ? buildHistoryPointsFromCzkSeries(fallbackCzkSeries, fallbackDays)
             : [];
       const historyGranularity =
         fallbackIntradayW1 && fallbackIntradayW1.length ? "intraday-1h" : "daily-1d";
 
-      return NextResponse.json({
-        ok: true,
-        ...lastOk,
-        stale: true,
-        ...(histAll ? { changesPct: histAll.changesPct, asOfDate: histAll.asOfDate } : {}),
-        history,
-        historyDays: fallbackDays ?? null,
-        historyMax: fallbackMax,
-        historyGranularity,
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          ...lastOk,
+          stale: true,
+          updatedAt: new Date(lastOk.ts).toISOString(),
+          ...(histAll ? { changesPct: fallbackChangesPct, asOfDate: fallbackAsOfDate } : {}),
+          history,
+          historyDays: fallbackDays ?? null,
+          historyMax: fallbackMax,
+          historyGranularity,
+        },
+        { headers: { "Cache-Control": "no-store, max-age=0" } }
+      );
     }
 
     return NextResponse.json(

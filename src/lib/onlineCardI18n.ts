@@ -50,7 +50,7 @@ const advisorServices = {
     "Pojištění cizinců",
     "Investice",
     "Úvěry a hypotéky",
-    "Investiční drahé kovy",
+    "Investiční zlato a stříbro",
   ],
   en: [
     "Life insurance and income protection",
@@ -60,7 +60,7 @@ const advisorServices = {
     "Health insurance for foreigners",
     "Investments",
     "Loans and mortgages",
-    "Investment precious metals",
+    "Investment gold and silver",
   ],
   uk: [
     "Страхування життя та захист доходу",
@@ -70,7 +70,7 @@ const advisorServices = {
     "Медичне страхування для іноземців",
     "Інвестиції",
     "Кредити та іпотека",
-    "Інвестиційні дорогоцінні метали",
+    "Інвестиційне золото та срібло",
   ],
 } as const;
 
@@ -104,6 +104,7 @@ export const ONLINE_CARD_COPY = {
       language: "Jazyk vizitky",
       office: "Kancelář",
       noOfficePhotos: "Bez nahraných fotek kanceláře.",
+      officeWelcome: "Prostor pro klidné rozhodnutí a osobní setkání.",
       previousOfficePhoto: "Předchozí fotka kanceláře",
       nextOfficePhoto: "Další fotka kanceláře",
       showOfficePhoto: "Zobrazit fotku kanceláře",
@@ -201,7 +202,7 @@ export const ONLINE_CARD_COPY = {
       advisorProfile: "Advisor profile", fullName: "Full name", fullNamePlaceholder: "Full name", title: "Role", titlePlaceholder: "Role / position", about: "About me", bioPlaceholder: "A short introduction for your public profile.", noBio: "No introduction has been added yet.", phone: "Phone", website: "Website", companyId: "Company ID", location: "Location", contact: "Contact", scheduleMeeting: "Book a meeting",
     },
     public: {
-      share: "Share profile", shareShort: "Share", shareSuccess: "The profile link has been copied to your clipboard.", shareError: "The link could not be shared. Please copy it from the address bar.", saveContact: "Save contact", displayMode: "Profile appearance", dark: "Dark", light: "Light", language: "Profile language", office: "Office", noOfficePhotos: "No office photos have been added.", previousOfficePhoto: "Previous office photo", nextOfficePhoto: "Next office photo", showOfficePhoto: "Show office photo", openMaps: "Open in Google Maps", noOfficeAddress: "The office address has not been added.", contact: "Contact", notFilled: "Not provided", scheduleKicker: "Book a meeting", scheduleTitle: "Arrange an appointment", scheduleDescription: "Leave your contact details and a message. I will get back to you shortly.", closeForm: "Close form", submitted: "Your request has been sent. We will get back to you soon.", onlineCardTitle: "Bohemika online profile",
+      share: "Share profile", shareShort: "Share", shareSuccess: "The profile link has been copied to your clipboard.", shareError: "The link could not be shared. Please copy it from the address bar.", saveContact: "Save contact", displayMode: "Profile appearance", dark: "Dark", light: "Light", language: "Profile language", office: "Office", noOfficePhotos: "No office photos have been added.", officeWelcome: "A space for calm decisions and personal meetings.", previousOfficePhoto: "Previous office photo", nextOfficePhoto: "Next office photo", showOfficePhoto: "Show office photo", openMaps: "Open in Google Maps", noOfficeAddress: "The office address has not been added.", contact: "Contact", notFilled: "Not provided", scheduleKicker: "Book a meeting", scheduleTitle: "Arrange an appointment", scheduleDescription: "Leave your contact details and a message. I will get back to you shortly.", closeForm: "Close form", submitted: "Your request has been sent. We will get back to you soon.", onlineCardTitle: "Bohemika online profile",
       testimonialsKicker: "Client experiences", testimonialsTitle: "Trust is built through good experience", testimonialsContextFallback: "Bohemika client", writeReview: "Write a review", reviewPrompt: "Have you worked with us? We would appreciate a short review.", reviewTitle: "Write a review", reviewDescription: "Your review will appear only after the advisor approves it.", reviewName: "Name or initials", reviewNamePlaceholder: "For example, Jane K.", reviewContext: "Area of cooperation (optional)", reviewContextPlaceholder: "For example, insurance review", reviewText: "Your experience", reviewTextPlaceholder: "Briefly describe how the cooperation helped you…", reviewConsent: "I agree that this review may be published after the advisor approves it.", reviewSubmit: "Send for approval", reviewSubmitting: "Sending…", reviewSubmitted: "Thank you. Your review was sent for approval.", reviewValidation: "Please enter your name, review and consent to publication.", reviewGenericError: "The review could not be sent. Please try again.",
     },
     meeting: {
@@ -216,7 +217,7 @@ export const ONLINE_CARD_COPY = {
       advisorProfile: "Профіль консультанта", fullName: "Ім’я та прізвище", fullNamePlaceholder: "Ім’я та прізвище", title: "Посада", titlePlaceholder: "Посада / роль", about: "Про мене", bioPlaceholder: "Коротко представте себе для публічного профілю.", noBio: "Опис ще не додано.", phone: "Телефон", website: "Вебсайт", companyId: "ІПН компанії", location: "Місто", contact: "Контакти", scheduleMeeting: "Записатися на зустріч",
     },
     public: {
-      share: "Поділитися профілем", shareShort: "Поділитися", shareSuccess: "Посилання на профіль скопійовано в буфер обміну.", shareError: "Не вдалося поділитися посиланням. Скопіюйте його з адресного рядка.", saveContact: "Зберегти контакт", displayMode: "Вигляд профілю", dark: "Темний", light: "Світлий", language: "Мова профілю", office: "Офіс", noOfficePhotos: "Фотографії офісу ще не додані.", previousOfficePhoto: "Попереднє фото офісу", nextOfficePhoto: "Наступне фото офісу", showOfficePhoto: "Показати фото офісу", openMaps: "Відкрити в Google Maps", noOfficeAddress: "Адресу офісу ще не вказано.", contact: "Контакти", notFilled: "Не вказано", scheduleKicker: "Записатися на зустріч", scheduleTitle: "Домовтеся про зустріч", scheduleDescription: "Залиште свої контакти та повідомлення. Я зв’яжуся з вами найближчим часом.", closeForm: "Закрити форму", submitted: "Ваш запит надіслано. Ми зв’яжемося з вами найближчим часом.", onlineCardTitle: "Онлайн-профіль Bohemika",
+      share: "Поділитися профілем", shareShort: "Поділитися", shareSuccess: "Посилання на профіль скопійовано в буфер обміну.", shareError: "Не вдалося поділитися посиланням. Скопіюйте його з адресного рядка.", saveContact: "Зберегти контакт", displayMode: "Вигляд профілю", dark: "Темний", light: "Світлий", language: "Мова профілю", office: "Офіс", noOfficePhotos: "Фотографії офісу ще не додані.", officeWelcome: "Простір для спокійних рішень та особистих зустрічей.", previousOfficePhoto: "Попереднє фото офісу", nextOfficePhoto: "Наступне фото офісу", showOfficePhoto: "Показати фото офісу", openMaps: "Відкрити в Google Maps", noOfficeAddress: "Адресу офісу ще не вказано.", contact: "Контакти", notFilled: "Не вказано", scheduleKicker: "Записатися на зустріч", scheduleTitle: "Домовтеся про зустріч", scheduleDescription: "Залиште свої контакти та повідомлення. Я зв’яжуся з вами найближчим часом.", closeForm: "Закрити форму", submitted: "Ваш запит надіслано. Ми зв’яжемося з вами найближчим часом.", onlineCardTitle: "Онлайн-профіль Bohemika",
       testimonialsKicker: "Досвід клієнтів", testimonialsTitle: "Довіра народжується з гарного досвіду", testimonialsContextFallback: "Клієнт Bohemika", writeReview: "Написати відгук", reviewPrompt: "Маєте досвід співпраці? Будемо вдячні за короткий відгук.", reviewTitle: "Написати відгук", reviewDescription: "Відгук з’явиться лише після схвалення консультантом.", reviewName: "Ім’я або ініціали", reviewNamePlaceholder: "Наприклад, Олена К.", reviewContext: "Напрям співпраці (необов’язково)", reviewContextPlaceholder: "Наприклад, перегляд страхування", reviewText: "Ваш досвід", reviewTextPlaceholder: "Коротко напишіть, чим вам допомогла співпраця…", reviewConsent: "Я погоджуюся на публікацію цього відгуку після схвалення консультантом.", reviewSubmit: "Надіслати на схвалення", reviewSubmitting: "Надсилаємо…", reviewSubmitted: "Дякуємо. Відгук надіслано на схвалення.", reviewValidation: "Вкажіть ім’я, текст відгуку та згоду на публікацію.", reviewGenericError: "Не вдалося надіслати відгук. Спробуйте ще раз.",
     },
     meeting: {

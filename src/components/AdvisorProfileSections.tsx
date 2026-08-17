@@ -21,6 +21,7 @@ import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 type PartnerInsurer = {
   label: string;
   logoPath: string;
+  darkTile?: boolean;
 };
 
 type AdvisorProfileSectionsProps = {
@@ -31,6 +32,7 @@ type AdvisorProfileSectionsProps = {
   theme?: "dark" | "light";
   locale?: OnlineCardLocale;
   connectToHero?: boolean;
+  goldPageHref?: string;
 };
 
 const PARTNER_INSURERS: PartnerInsurer[] = [
@@ -43,6 +45,7 @@ const PARTNER_INSURERS: PartnerInsurer[] = [
   { label: "iNVESTiKA", logoPath: "/icons/invstk.png" },
   { label: "Investona", logoPath: "/icons/investona.png" },
   { label: "Comfort Commodity", logoPath: "/icons/cclogo1.png" },
+  { label: "Ekka Gold", logoPath: "/images/ekkagold.png", darkTile: true },
   { label: "MAXIMA", logoPath: "/icons/maxima.png" },
   { label: "SLAVIA", logoPath: "/icons/slavialogo.png" },
   { label: "AXA", logoPath: "/icons/axalogo.png" },
@@ -55,6 +58,7 @@ function getPartnerLogoClassName(insurer: PartnerInsurer) {
   if (insurer.label === "ČPP") return "object-contain p-1 scale-[1.3]";
   if (insurer.label === "iNVESTiKA") return "object-contain p-1 scale-[1.4]";
   if (insurer.label === "Investona") return "object-contain p-1 scale-[1.16]";
+  if (insurer.label === "Ekka Gold") return "object-contain p-2 scale-[1.08]";
   if (mediumHighlightedLogos.includes(insurer.label)) return "object-contain p-1.5 scale-[1.24]";
   return "object-contain p-2.5";
 }
@@ -103,7 +107,7 @@ const ADVISOR_SERVICES = [
     accentClass: "bg-lime-300/80",
   },
   {
-    label: "Investiční drahé kovy",
+    label: "Investiční zlato a stříbro",
     icon: Gem,
     iconClass: "text-amber-200",
     accentClass: "bg-amber-300/80",
@@ -149,6 +153,7 @@ export function AdvisorProfileSections({
   theme = "dark",
   locale = "cs",
   connectToHero = false,
+  goldPageHref,
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
   const light = theme === "light";
@@ -210,12 +215,26 @@ export function AdvisorProfileSections({
           </p>
 
           <div className="mx-auto grid w-full max-w-5xl gap-3 pt-1 sm:grid-cols-2 lg:grid-cols-3">
-            {ADVISOR_SERVICES.map((service, index) => (
+            {ADVISOR_SERVICES.map((service, index) => {
+              const isGoldService = index === ADVISOR_SERVICES.length - 1;
+
+              return (
               <div
                 key={copy.advisor.services[index]}
+                role={isGoldService ? "button" : undefined}
+                tabIndex={isGoldService ? 0 : undefined}
+                onClick={isGoldService ? () => window.location.assign(goldPageHref ?? "/embed/zlato") : undefined}
+                onKeyDown={isGoldService ? (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    window.location.assign(goldPageHref ?? "/embed/zlato");
+                  }
+                } : undefined}
+                aria-haspopup={isGoldService ? "dialog" : undefined}
+                aria-label={isGoldService ? "Zjistit více o investičním zlatě a stříbru" : undefined}
                 className={`group inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-violet-50 sm:text-[15px] vizitka-anim-up ${
                   index >= ADVISOR_SERVICES.length - 2 ? "lg:translate-x-[calc(50%+0.375rem)]" : ""
-                }`}
+                } ${isGoldService ? "cursor-pointer rounded-xl outline-none transition hover:bg-amber-300/[0.08] focus-visible:ring-2 focus-visible:ring-amber-200/80" : ""}`}
                 style={{ animationDelay: `${300 + index * 75}ms` }}
               >
                 <span className="relative inline-flex h-10 w-9 shrink-0 items-center justify-center lg:h-14 lg:w-14">
@@ -228,9 +247,13 @@ export function AdvisorProfileSections({
                     aria-hidden="true"
                   />
                 </span>
-                <span>{copy.advisor.services[index]}</span>
+                <span>
+                  {copy.advisor.services[index]}
+                  {isGoldService ? <span className="mt-0.5 block text-[10px] font-medium text-amber-100/65">Zjistit více</span> : null}
+                </span>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {onScheduleMeeting ? (
@@ -403,14 +426,16 @@ export function AdvisorProfileSections({
 
           <div className="relative mt-8 sm:mt-10">
             <div className="pointer-events-none absolute left-[30%] top-1/2 h-28 w-2/5 -translate-y-1/2 rounded-full bg-violet-500/[0.1] blur-[62px]" />
-            <div className="relative grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7">
+            <div className="relative grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-8">
               {PARTNER_INSURERS.map((insurer, index) => (
                 <div
                   key={insurer.label}
-                  className={`group relative flex aspect-[2.12/1] items-center justify-center overflow-hidden rounded-[18px] border p-3 transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_34px_rgba(3,2,14,0.28)] ${
-                    light
-                      ? "border-slate-200 bg-[linear-gradient(145deg,#ffffff,#f4f4f5)] shadow-[0_10px_22px_rgba(71,85,105,0.1)]"
-                      : "border-white/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(228,228,231,0.96))] shadow-[0_10px_24px_rgba(3,2,14,0.22)]"
+                  className={`group relative flex aspect-[2.12/1] items-center justify-center overflow-hidden rounded-[18px] border p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_24px_rgba(3,2,14,0.18)] backdrop-blur-md transition duration-300 hover:-translate-y-1 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_18px_34px_rgba(3,2,14,0.28)] ${
+                    insurer.darkTile
+                      ? "border-amber-200/25 bg-[#110a1d]/[0.88]"
+                      : light
+                      ? "border-slate-200/80 bg-white/[0.78]"
+                      : "border-white/65 bg-white/[0.86]"
                   } partner-logo-tile vizitka-anim-up`}
                   style={{
                     animationDelay: `${660 + index * 45}ms`,
@@ -422,7 +447,7 @@ export function AdvisorProfileSections({
                     src={insurer.logoPath}
                     alt={`${insurer.label} logo`}
                     fill
-                    sizes="(min-width: 1280px) 180px, (min-width: 768px) 150px, 42vw"
+                    sizes="(min-width: 1280px) 160px, (min-width: 768px) 150px, 42vw"
                     className={`${getPartnerLogoClassName(insurer)} relative drop-shadow-[0_6px_12px_rgba(8,10,36,0.16)] transition duration-300 group-hover:scale-110`}
                   />
                   <span className="partner-logo-tile__sheen" aria-hidden="true" />
