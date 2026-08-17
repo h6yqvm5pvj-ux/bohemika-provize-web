@@ -40,6 +40,14 @@ const formatPercent = (value: number | undefined) => {
   })} %`;
 };
 
+const formatGoldPrice = (value: number) => `${Math.round(value).toLocaleString("cs-CZ")} Kč/oz`;
+
+const formatChartDate = (timestamp: number) => new Intl.DateTimeFormat("cs-CZ", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+}).format(timestamp * 1000);
+
 const formatUpdatedAt = (value: string | undefined) => {
   if (!value) return null;
   const timestamp = Date.parse(value);
@@ -57,6 +65,7 @@ const getUpdatedLabel = (data: GoldResponse | null) => {
 };
 
 function GoldLineChart({ points, lightMode }: { points: GoldPoint[]; lightMode: boolean }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const chart = useMemo(() => {
     const clean = points
       .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.v) && point.v > 0)
@@ -74,17 +83,18 @@ function GoldLineChart({ points, lightMode }: { points: GoldPoint[]; lightMode: 
     const right = 974;
     const top = 18;
     const bottom = 252;
-    const coords = sampled.map((point, index) => {
+    const plottedPoints = sampled.map((point, index) => {
       const x = left + (index / (sampled.length - 1)) * (right - left);
       const y = bottom - ((point.v - min + spread * 0.08) / (spread * 1.16)) * (bottom - top);
-      return [x, y] as const;
+      return { ...point, x, y };
     });
-    const line = coords.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+    const line = plottedPoints.map(({ x, y }, index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
     const area = `${line} L ${right} ${bottom} L ${left} ${bottom} Z`;
 
     return {
       line,
       area,
+      points: plottedPoints,
       from: new Date(sampled[0].t * 1000).getFullYear(),
       to: new Date((sampled.at(-1)?.t ?? sampled[0].t) * 1000).getFullYear(),
     };
@@ -94,10 +104,37 @@ function GoldLineChart({ points, lightMode }: { points: GoldPoint[]; lightMode: 
     return <div className={`flex h-[236px] items-center justify-center text-sm ${lightMode ? "text-amber-900/60" : "text-amber-50/60"}`}>Načítám desetiletou historii…</div>;
   }
 
+  const hoveredPoint = hoveredIndex === null ? null : chart.points[hoveredIndex] ?? null;
+  const latestPoint = chart.points.at(-1) ?? null;
+  const updateHoveredPoint = (clientX: number, svg: SVGSVGElement) => {
+    const bounds = svg.getBoundingClientRect();
+    if (!bounds.width) return;
+    const cursorX = ((clientX - bounds.left) / bounds.width) * 1000;
+    let closestIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    chart.points.forEach((point, index) => {
+      const distance = Math.abs(point.x - cursorX);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+    setHoveredIndex(closestIndex);
+  };
+
   return (
     <div className={`relative h-[164px] w-full overflow-hidden rounded-xl px-2 py-2 shadow-[inset_0_0_0_1px_rgba(253,230,138,0.08)] sm:h-[196px] ${lightMode ? "bg-white/80 shadow-[inset_0_0_0_1px_rgba(146,64,14,0.14),0_12px_30px_rgba(88,28,135,0.08)]" : "bg-[#0a0715]/72"}`}>
       <div className="pointer-events-none absolute inset-0 opacity-[0.15] [background-image:linear-gradient(rgba(253,230,138,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(253,230,138,0.08)_1px,transparent_1px)] [background-size:44px_44px]" />
-      <svg className="relative h-full w-full" viewBox="0 0 1000 280" preserveAspectRatio="none" role="img" aria-label="Vývoj ceny zlata za posledních deset let">
+      <svg
+        className="relative h-full w-full touch-none"
+        viewBox="0 0 1000 280"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Vývoj ceny zlata za posledních deset let"
+        onPointerMove={(event) => updateHoveredPoint(event.clientX, event.currentTarget)}
+        onPointerDown={(event) => updateHoveredPoint(event.clientX, event.currentTarget)}
+        onPointerLeave={() => setHoveredIndex(null)}
+      >
         <defs>
           <linearGradient id="gold-chart-stroke" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0" stopColor="#fde68a" />
@@ -115,7 +152,31 @@ function GoldLineChart({ points, lightMode }: { points: GoldPoint[]; lightMode: 
         </defs>
         <path d={chart.area} fill="url(#gold-chart-area)" />
         <path d={chart.line} fill="none" stroke="url(#gold-chart-stroke)" strokeWidth="4" vectorEffect="non-scaling-stroke" filter="url(#gold-chart-glow)" />
+        {hoveredPoint ? (
+          <g pointerEvents="none">
+            <line x1={hoveredPoint.x} x2={hoveredPoint.x} y1="12" y2="252" stroke={lightMode ? "rgba(146,64,14,0.36)" : "rgba(253,230,138,0.36)"} strokeDasharray="5 6" vectorEffect="non-scaling-stroke" />
+            <circle cx={hoveredPoint.x} cy={hoveredPoint.y} r="9" fill={lightMode ? "rgba(255,255,255,0.92)" : "rgba(10,7,21,0.9)"} stroke="#fbbf24" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+          </g>
+        ) : null}
       </svg>
+      {latestPoint ? (
+        <div
+          className={`pointer-events-none absolute right-3 z-10 -translate-y-1/2 rounded-lg border px-2.5 py-1.5 text-right shadow-lg backdrop-blur-md ${lightMode ? "border-amber-300/70 bg-white/88 text-amber-950" : "border-amber-100/25 bg-[#120b1d]/86 text-amber-50"}`}
+          style={{ top: `${Math.max(14, Math.min(68, (latestPoint.y / 280) * 100))}%` }}
+        >
+          <span className={`block text-[9px] font-semibold uppercase tracking-[0.12em] ${lightMode ? "text-amber-800/65" : "text-amber-100/62"}`}>Aktuálně</span>
+          <span className="block text-xs font-bold tracking-[-0.02em]">{formatGoldPrice(latestPoint.v)}</span>
+        </div>
+      ) : null}
+      {hoveredPoint ? (
+        <div
+          className={`pointer-events-none absolute z-20 -translate-y-1/2 rounded-xl border px-3 py-2 shadow-[0_14px_28px_rgba(8,6,16,0.3)] backdrop-blur-md ${hoveredPoint.x > 700 ? "-ml-2 -translate-x-full text-right" : "ml-2 text-left"} ${lightMode ? "border-amber-300/70 bg-white/92 text-amber-950" : "border-amber-100/25 bg-[#120b1d]/92 text-white"}`}
+          style={{ left: `${(hoveredPoint.x / 1000) * 100}%`, top: `${Math.max(18, Math.min(66, (hoveredPoint.y / 280) * 100))}%` }}
+        >
+          <span className={`block text-[10px] font-semibold ${lightMode ? "text-amber-800/70" : "text-amber-100/68"}`}>{formatChartDate(hoveredPoint.t)}</span>
+          <span className="mt-0.5 block text-sm font-bold tracking-[-0.02em]">{formatGoldPrice(hoveredPoint.v)}</span>
+        </div>
+      ) : null}
       <div className={`pointer-events-none absolute inset-x-5 bottom-3 flex justify-between text-[10px] font-semibold uppercase tracking-[0.16em] ${lightMode ? "text-amber-900/55" : "text-amber-50/55"}`}>
         <span>{chart.from}</span>
         <span>{chart.to}</span>
@@ -237,7 +298,7 @@ export default function GoldInvestmentEmbedPage() {
               <p className={`inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] ${labelTextClass}`}><Coins className="h-4 w-4" /> Jak lze investovat</p>
               <div className="mt-5 grid gap-5 sm:grid-cols-2">
                 <p className={`border-l border-amber-500/55 pl-4 text-sm leading-relaxed ${bodyTextClass}`}><strong className={`block text-base ${primaryTextClass}`}>Jednorázový nákup</strong>Pro chvíli, kdy chcete část prostředků převést do fyzického zlata.</p>
-                <p className={`border-l border-violet-500/55 pl-4 text-sm leading-relaxed ${bodyTextClass}`}><strong className={`block text-base ${primaryTextClass}`}>Spořicí plán od 500 Kč měsíčně</strong>Každá platba se ihned promítá do poměrné části investičního zlata — není nutné nejdříve spořit na celý slitek.</p>
+                <p className={`border-l border-violet-500/55 pl-4 text-sm leading-relaxed ${bodyTextClass}`}><strong className={`block text-base ${primaryTextClass}`}>Spořicí plány od 500 Kč měsíčně</strong>S každou platbou nakoupíte poměrnou část zlata. Tím se liší od klasického spoření. Po dospoření obdržíte vámi zvolený slitek.</p>
               </div>
             </div>
             <div className={`mt-10 rounded-2xl p-5 ${lightMode ? "bg-amber-100/65" : "bg-amber-300/[0.07]"}`}>
@@ -292,10 +353,18 @@ export default function GoldInvestmentEmbedPage() {
                 </div>
               </div>
             </div>
-            <section className={`relative mt-5 overflow-hidden rounded-[2rem_2rem_2rem_0.65rem] p-7 sm:p-9 ${lightMode ? "bg-amber-100/65" : "bg-amber-300/[0.075]"}`}>
+            <section className={`relative mt-5 min-h-[238px] overflow-hidden rounded-[2rem_2rem_2rem_0.65rem] p-7 sm:p-9 ${lightMode ? "bg-amber-100/65" : "bg-amber-300/[0.075]"}`}>
               <div className="pointer-events-none absolute -right-20 -top-32 h-80 w-80 rounded-full bg-amber-300/[0.18] blur-[90px]" />
-              <div className="relative flex flex-col gap-7 sm:flex-row sm:items-end sm:justify-between">
-                <div className="max-w-xl">
+              <Image
+                src="/images/investicni-zlato-slitky.png"
+                alt="Zlaté slitky"
+                width={1536}
+                height={1024}
+                className={`pointer-events-none absolute inset-y-0 right-0 hidden h-full w-[54%] object-cover object-[58%_center] md:block ${lightMode ? "opacity-65 mix-blend-multiply" : "opacity-75"}`}
+              />
+              <div className={`pointer-events-none absolute inset-y-0 right-0 hidden w-[78%] md:block ${lightMode ? "bg-[linear-gradient(90deg,rgba(254,243,199,0)_0%,rgba(254,243,199,0.36)_42%,rgba(254,243,199,0.66)_100%)]" : "bg-[linear-gradient(90deg,rgba(19,11,10,0)_0%,rgba(19,11,10,0.14)_42%,rgba(19,11,10,0.42)_100%)]"}`} />
+              <div className="relative flex min-h-[168px] flex-col items-start justify-between gap-7">
+                <div className="max-w-xl md:max-w-[60%]">
                   <p className={`inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] ${labelTextClass}`}><Gem className="h-4 w-4" /> Investiční zlato a stříbro</p>
                   <h2 className={`mt-4 text-3xl font-bold leading-[0.96] tracking-[-0.055em] sm:text-4xl ${primaryTextClass}`}>Zaujala vás investice do zlata? Pojďme se na to podívat.</h2>
                 </div>

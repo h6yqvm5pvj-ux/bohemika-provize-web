@@ -241,11 +241,13 @@ export async function middleware(req: NextRequest) {
   }
 
   const isMeetingEmbed = pathname.startsWith("/embed/schuzka/");
+  const isOnlineCardEmbed =
+    pathname === "/embed/zlato" || pathname === "/embed/zivotni-pojisteni";
   const isContractDetailEmbed =
     pathname.startsWith("/smlouvy/") && req.nextUrl.searchParams.get("embedded") === "1";
   const frameAncestors = isMeetingEmbed
     ? getMeetingEmbedFrameAncestors()
-    : isContractDetailEmbed
+    : isContractDetailEmbed || isOnlineCardEmbed
       ? "'self'"
       : "'none'";
   const requestHeaders = new Headers(req.headers);
@@ -267,7 +269,7 @@ export async function middleware(req: NextRequest) {
     res.headers.delete("X-Frame-Options");
     res.headers.set("Cross-Origin-Opener-Policy", "unsafe-none");
     res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
-  } else if (isContractDetailEmbed) {
+  } else if (isContractDetailEmbed || isOnlineCardEmbed) {
     res.headers.set("X-Frame-Options", "SAMEORIGIN");
   } else {
     res.headers.set("X-Frame-Options", "DENY");
