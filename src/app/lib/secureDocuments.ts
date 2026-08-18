@@ -17,6 +17,8 @@ export const SECURE_DOCUMENT_FILE_NAMES: Record<string, string> = {
   "koop-prijem": "koopprijem.jpg",
   "metlife-vypoved": "metlifevypoved.pdf",
   "metlife-zivot": "metlifezivot.pdf",
+  "metlife-oneguard-conditions-2024": "2024_09_OneGuard_Pojistne_podminky_PR059_PP_OGR0924.pdf",
+  "cpp-neon-conditions-2026": "cpp-neon-04-2026.pdf",
   "nn-zivot-vypoved": "nnvypoved.pdf",
   "maxima-nezivot-vypoved": "maximavypoved.pdf",
 };

@@ -423,6 +423,7 @@ const ADMIN_BROADCAST_TOOL_TARGETS = [
   { path: "/pomucky/srovnavac-trvalych-nasledku", label: "Srovnavač trvalých následků" },
   { path: "/pomucky/srovnavac-pracovni-neschopnosti", label: "Srovnavač pracovní neschopnosti" },
   { path: "/pomucky/srovnavac-zivotniho-pojisteni", label: "Srovnavač životního pojištění" },
+  { path: "/pomucky/neon-life-vs-metlife-oneguard", label: "NEON Life vs. MetLife OneGuard" },
 ] as const;
 
 const ADMIN_BROADCAST_GROUPS = [

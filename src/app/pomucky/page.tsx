@@ -14,6 +14,7 @@ import {
   Building2,
   CalendarClock,
   CarFront,
+  ChartNoAxesColumn,
   Clock3,
   Files,
   FileSignature,
@@ -440,6 +441,14 @@ export default function ToolsPage() {
         description: "Porovnání produktových podmínek životního pojištění podle pojišťoven a kategorií.",
         icon: ShieldCheck,
         href: "/pomucky/srovnavac-zivotniho-pojisteni",
+      },
+      {
+        key: "neon-life-vs-metlife-oneguard",
+        category: "Životní pojištění",
+        title: "NEON Life vs. MetLife OneGuard",
+        description: "Přehledné srovnání produktů ČPP NEON Life a MetLife OneGuard.",
+        icon: ChartNoAxesColumn,
+        href: "/pomucky/neon-life-vs-metlife-oneguard",
       },
     ],
     [setLinksModalOpen, setTachometerModalOpen]

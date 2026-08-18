@@ -3019,6 +3019,23 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [selectedInsurers, setSelectedInsurers] = useState<string[]>([]);
   const [selectedProgressions, setSelectedProgressions] = useState<string[]>([]);
   const [productPickerConfirmed, setProductPickerConfirmed] = useState(false);
+  const [embeddedMode, setEmbeddedMode] = useState(false);
+  const [presetCardKeys, setPresetCardKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shouldEmbed = params.get("embed") === "1";
+    const preset = params.get("preset");
+
+    setEmbeddedMode(shouldEmbed);
+
+    if (preset === "neon-oneguard-10x") {
+      setPresetCardKeys(["cpp-10x", "metlife-oneguard"]);
+      setSelectedInsurers([]);
+      setSelectedProgressions(["10× progrese"]);
+      setProductPickerConfirmed(true);
+    }
+  }, []);
 
   const sumInsuredValue = (() => {
     const parsed = parseNumber(sumInsuredInput);
@@ -3687,8 +3704,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
     "YOU PLUS",
   ]);
   const cards = buildCardsForPercent(rangePercentValue);
+  const filterableCards =
+    presetCardKeys.length > 0
+      ? cards.filter((card) => presetCardKeys.includes(card.key))
+      : cards;
 
-  const insurerFilterGroups = cards.reduce<InsurerFilterGroup[]>((groups, card) => {
+  const insurerFilterGroups = filterableCards.reduce<InsurerFilterGroup[]>((groups, card) => {
     const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
     let group = groups.find((item) => item.insurerName === insurerName);
 
@@ -3718,7 +3739,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     allFilterOptionValues.length > 0 &&
     allFilterOptionValues.every((value) => selectedInsurers.includes(value));
   const filterValueSignature = allFilterOptionValues.join("|");
-  const productFilteredCardsForProgressions = cards.filter(
+  const productFilteredCardsForProgressions = filterableCards.filter(
     (card) =>
       selectedInsurers.length === 0 ||
       getCardFilterOptions(card).some((option) =>
@@ -3784,6 +3805,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
   const applyCardFilters = (sourceCards: ComparisonCard[]): ComparisonCard[] =>
     sourceCards.filter((card) => {
+      const matchesPreset =
+        presetCardKeys.length === 0 || presetCardKeys.includes(card.key);
       const matchesProgression =
         selectedProgressions.length === 0 ||
         getCardProgressionBadges(card).some((badge) =>
@@ -3795,7 +3818,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
           selectedInsurers.includes(option.value)
         );
 
-      return matchesProgression && matchesInsurer;
+      return matchesPreset && matchesProgression && matchesInsurer;
     });
 
   const scenarioValues = [
@@ -4567,7 +4590,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       : "";
 
   return (
-    <AppLayout active="tools">
+    <AppLayout active="tools" embedded={embeddedMode}>
       <div className="relative w-full max-w-[1500px] space-y-3 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-0 pb-8 sm:space-y-4 sm:px-3">
         <header className="flex flex-col gap-3 px-0 pt-0 sm:gap-4 sm:px-2 sm:pt-2">
           <div className="flex flex-col gap-4">

@@ -64,6 +64,14 @@ const DOCUMENTS: Record<string, DocumentMeta> = {
     fileName: "metlifezivot.pdf",
     contentType: "application/pdf",
   },
+  "metlife-oneguard-conditions-2024": {
+    fileName: "2024_09_OneGuard_Pojistne_podminky_PR059_PP_OGR0924.pdf",
+    contentType: "application/pdf",
+  },
+  "cpp-neon-conditions-2026": {
+    fileName: "cpp-neon-04-2026.pdf",
+    contentType: "application/pdf",
+  },
   "nn-zivot-vypoved": {
     fileName: "nnvypoved.pdf",
     contentType: "application/pdf",
