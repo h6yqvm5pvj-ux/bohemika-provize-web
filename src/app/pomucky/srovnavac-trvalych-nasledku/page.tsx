@@ -2,10 +2,12 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import {
   type KeyboardEvent,
   type PointerEvent,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -32,17 +34,147 @@ import {
   institutionLogoKeyFromInsurerName,
 } from "@/app/lib/institutionLogoDisplay";
 
-let html2pdfPromise: Promise<any> | null = null;
+let pdfRendererPromise: Promise<{
+  html2canvas: any;
+  jsPDF: any;
+}> | null = null;
 
-async function getHtml2Pdf() {
-  if (!html2pdfPromise) {
-    html2pdfPromise = import("html2pdf.js").then(
-      (mod: unknown) =>
-        (mod as { default?: unknown }).default ??
-        (mod as Record<string, unknown>)
+async function getPdfRenderer() {
+  if (!pdfRendererPromise) {
+    pdfRendererPromise = Promise.all([import("html2canvas-pro"), import("jspdf")]).then(
+      ([html2canvasModule, jsPdfModule]) => ({
+        html2canvas: html2canvasModule.default,
+        jsPDF: jsPdfModule.jsPDF,
+      })
     );
   }
-  return html2pdfPromise;
+  return pdfRendererPromise;
+}
+
+async function waitForPdfAssets(source: HTMLElement) {
+  await Promise.all(
+    Array.from(source.querySelectorAll("img")).map(
+      (image) =>
+        new Promise<void>((resolve) => {
+          if (image.complete) {
+            resolve();
+            return;
+          }
+          image.addEventListener("load", () => resolve(), { once: true });
+          image.addEventListener("error", () => resolve(), { once: true });
+        })
+    )
+  );
+
+  await document.fonts?.ready;
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  );
+}
+
+async function saveCanvasPdf(
+  canvas: HTMLCanvasElement,
+  filename: string,
+  orientation: "portrait" | "landscape"
+) {
+  const { jsPDF } = await getPdfRenderer();
+  const pdf = new jsPDF({
+    unit: "pt",
+    format: "a4",
+    orientation,
+    compress: true,
+  });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const pageCanvasHeight = Math.floor((pageHeight / pageWidth) * canvas.width);
+
+    for (let sourceY = 0, pageIndex = 0; sourceY < canvas.height; pageIndex += 1) {
+      const sliceHeight = Math.min(pageCanvasHeight, canvas.height - sourceY);
+      const pageCanvas = document.createElement("canvas");
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sliceHeight;
+      const context = pageCanvas.getContext("2d");
+      if (!context) throw new Error("Nelze připravit stránku PDF.");
+
+      context.fillStyle = "#10091e";
+      context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      context.drawImage(
+        canvas,
+        0,
+        sourceY,
+        canvas.width,
+        sliceHeight,
+        0,
+        0,
+        canvas.width,
+        sliceHeight
+      );
+
+      if (pageIndex > 0) pdf.addPage();
+      pdf.addImage(
+        pageCanvas.toDataURL("image/jpeg", 0.98),
+        "JPEG",
+        0,
+        0,
+        pageWidth,
+        (sliceHeight / canvas.width) * pageWidth,
+        undefined,
+        "FAST"
+      );
+      sourceY += sliceHeight;
+    }
+
+    pdf.save(filename);
+}
+
+async function savePdfExport(exportHtml: string, filename: string) {
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText = "position:fixed;left:-100000px;top:0;width:794px;pointer-events:none;";
+  host.innerHTML = exportHtml;
+  document.body.appendChild(host);
+
+  try {
+    const source = host.querySelector<HTMLElement>(".pdf-root");
+    if (!source) throw new Error("Chybí obsah pro PDF export.");
+
+    await waitForPdfAssets(source);
+    const { html2canvas } = await getPdfRenderer();
+    const canvas = await html2canvas(source, {
+      backgroundColor: "#10091e",
+      scale: 2.4,
+      useCORS: true,
+      logging: false,
+      windowWidth: 794,
+      scrollX: 0,
+      scrollY: 0,
+    });
+    await saveCanvasPdf(canvas, filename, "portrait");
+  } finally {
+    host.remove();
+  }
+}
+
+async function saveLiveComparisonPdf(source: HTMLElement, filename: string) {
+  await waitForPdfAssets(source);
+
+  const { html2canvas } = await getPdfRenderer();
+  const width = Math.ceil(source.scrollWidth);
+  const height = Math.ceil(source.scrollHeight);
+  const canvas = await html2canvas(source, {
+    backgroundColor: "#10091e",
+    scale: 1.8,
+    useCORS: true,
+    logging: false,
+    width,
+    height,
+    windowWidth: window.innerWidth,
+    windowHeight: Math.max(window.innerHeight, height),
+    scrollX: -window.scrollX,
+    scrollY: -window.scrollY,
+  });
+
+  await saveCanvasPdf(canvas, filename, "landscape");
 }
 
 type ComparisonCard = {
@@ -99,6 +231,12 @@ type InsurerFilterGroup = {
   insurerName: string;
   options: InsurerFilterOption[];
 };
+
+const INSURER_FILTER_GROUP_PRIORITY = new Map([
+  ["ČPP", 0],
+  ["Kooperativa", 1],
+  ["Allianz", 2],
+]);
 
 const parseNumber = (val: string): number => {
   const num = Number(val.replace(",", ".").replace(/\s+/g, ""));
@@ -602,6 +740,296 @@ function PayoutCurveChart({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function RangeDial({
+  value,
+  onChange,
+  min = 0,
+  max = 100,
+  step = 1,
+  caption,
+  unitLabel = "PROCENT",
+  helper = "Táhni myší · 0 až 100 %",
+  displayValue = String(value),
+  displayFontSize = 38,
+  ariaLabel = "Rozsah trvalých následků",
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  caption?: string;
+  unitLabel?: string;
+  helper?: string;
+  displayValue?: string;
+  displayFontSize?: number;
+  ariaLabel?: string;
+}) {
+  const filterId = useId().replace(/:/g, "");
+  const size = 220;
+  const center = size / 2;
+  const radius = 82;
+  const startAngle = -135;
+  const sweepAngle = 270;
+  const safeValue = Math.max(min, Math.min(max, value));
+  const valueRatio = max === min ? 0 : (safeValue - min) / (max - min);
+  const accentHue = Math.round(190 - valueRatio * 190);
+  const accent = `hsl(${accentHue} 88% 62%)`;
+  const pointAt = (angle: number, distance = radius) => {
+    const radians = (angle * Math.PI) / 180;
+    return {
+      x: center + Math.cos(radians) * distance,
+      y: center + Math.sin(radians) * distance,
+    };
+  };
+  const arcPath = (from: number, to: number) => {
+    const fromPoint = pointAt(from);
+    const toPoint = pointAt(to);
+    const largeArcFlag = to - from > 180 ? 1 : 0;
+    return `M ${fromPoint.x} ${fromPoint.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${toPoint.x} ${toPoint.y}`;
+  };
+  const trackPath = arcPath(startAngle, startAngle + sweepAngle);
+  const progressAngle = startAngle + valueRatio * sweepAngle;
+  const progressPath = safeValue > 0 ? arcPath(startAngle, progressAngle) : "";
+  const knob = pointAt(progressAngle);
+
+  const valueFromPointer = (event: PointerEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return safeValue;
+
+    const x = ((event.clientX - bounds.left) / bounds.width) * size - center;
+    const y = ((event.clientY - bounds.top) / bounds.height) * size - center;
+    let angle = (Math.atan2(y, x) * 180) / Math.PI;
+    if (angle < startAngle) angle += 360;
+
+    const pointerRatio = Math.max(0, Math.min(1, (angle - startAngle) / sweepAngle));
+    const rawValue = min + pointerRatio * (max - min);
+    const snappedValue = Math.max(
+      min,
+      Math.min(max, min + Math.round((rawValue - min) / step) * step)
+    );
+    const decimalPlaces = step < 1 ? Math.ceil(-Math.log10(step)) : 0;
+    return Number(snappedValue.toFixed(decimalPlaces));
+  };
+
+  const updateFromPointer = (event: PointerEvent<SVGSVGElement>) => {
+    onChange(valueFromPointer(event));
+  };
+
+  const onKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    const keyboardStep = event.shiftKey ? step * 10 : step;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+      event.preventDefault();
+      onChange(Math.max(min, safeValue - keyboardStep));
+    } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+      event.preventDefault();
+      onChange(Math.min(max, safeValue + keyboardStep));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      onChange(min);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      onChange(max);
+    }
+  };
+
+  return (
+    <div className="relative mx-auto w-full max-w-[220px] select-none">
+      {caption ? (
+        <p className="mb-1 text-center text-[10px] font-semibold uppercase tracking-[0.17em] text-violet-100/58">
+          {caption}
+        </p>
+      ) : null}
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        className="h-auto w-full touch-none cursor-grab outline-none active:cursor-grabbing"
+        role="slider"
+        aria-label={ariaLabel}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={safeValue}
+        aria-valuetext={`${displayValue} ${unitLabel}`}
+        tabIndex={0}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          updateFromPointer(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            updateFromPointer(event);
+          }
+        }}
+        onPointerUp={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+        onKeyDown={onKeyDown}
+      >
+        <defs>
+          <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <path
+          d={trackPath}
+          fill="none"
+          stroke="rgba(255,255,255,0.1)"
+          strokeWidth="14"
+          strokeLinecap="round"
+        />
+        {Array.from({ length: 11 }, (_, index) => {
+          const angle = startAngle + (index / 10) * sweepAngle;
+          const outer = pointAt(angle, radius + 15);
+          const inner = pointAt(angle, radius + (index % 5 === 0 ? 7 : 10));
+          return (
+            <line
+              key={index}
+              x1={inner.x}
+              y1={inner.y}
+              x2={outer.x}
+              y2={outer.y}
+              stroke="rgba(255,255,255,0.22)"
+              strokeWidth={index % 5 === 0 ? 2 : 1}
+              strokeLinecap="round"
+            />
+          );
+        })}
+        {progressPath ? (
+          <path
+            d={progressPath}
+            fill="none"
+            stroke={accent}
+            strokeWidth="14"
+            strokeLinecap="round"
+              filter={`url(#${filterId})`}
+          />
+        ) : null}
+        <circle cx={knob.x} cy={knob.y} r="9" fill={accent} stroke="#fff" strokeWidth="3" />
+        <circle cx={center} cy={center} r="57" fill="rgba(8,5,18,0.64)" stroke="rgba(255,255,255,0.1)" />
+        <text
+          x={center}
+          y={center - 2}
+          textAnchor="middle"
+          fill="#ffffff"
+          className="font-bold"
+          style={{ fontSize: `${displayFontSize}px` }}
+        >
+          {displayValue}
+        </text>
+        <text
+          x={center}
+          y={center + 21}
+          textAnchor="middle"
+          fill="rgba(221,214,254,0.66)"
+          className="text-[10px] font-semibold tracking-[0.18em]"
+        >
+          {unitLabel}
+        </text>
+      </svg>
+      <p className="-mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/48">
+        {helper}
+      </p>
+    </div>
+  );
+}
+
+function EditorialResultRow({
+  card,
+  position,
+  compact,
+  featured = false,
+  isInfoOpen,
+  onToggleInfo,
+}: {
+  card: ComparisonCard;
+  position: number;
+  compact: boolean;
+  featured?: boolean;
+  isInfoOpen: boolean;
+  onToggleInfo: (key: string) => void;
+}) {
+  const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+  const progressionBadges = getCardProgressionBadges(card);
+  const progressionBadgeSet = new Set(progressionBadges);
+  const metaBadges = card.badges.filter((badge) => !progressionBadgeSet.has(badge));
+
+  return (
+    <article
+      className={`tn-editorial-row group grid gap-4 sm:gap-6 sm:px-5 lg:grid-cols-[56px_minmax(0,1fr)_minmax(220px,auto)] lg:items-center lg:gap-10 ${
+        featured
+          ? "py-3 sm:py-4 lg:py-5"
+          : `py-7 sm:py-9 lg:px-32 xl:px-44 ${compact ? "lg:py-6" : "lg:py-10"}`
+      }`}
+    >
+      <span
+        className={`pt-1 text-[11px] font-semibold tracking-[0.2em] ${
+          position === 0 ? "text-fuchsia-200" : "text-violet-100/45"
+        }`}
+      >
+        {String(position + 1).padStart(2, "0")}
+      </span>
+
+      <div className="min-w-0">
+        <h3
+          className={`tn-editorial-insurer break-words font-bold leading-[0.95] tracking-[-0.055em] transition ${
+            featured
+              ? "text-4xl sm:text-5xl lg:text-6xl"
+              : "text-3xl sm:text-4xl lg:text-5xl"
+          }`}
+        >
+          {insurerName}
+        </h3>
+        <p className="tn-editorial-product mt-2 break-words text-base font-medium leading-relaxed sm:text-lg">
+          {productName}
+        </p>
+        {metaBadges.length > 0 || progressionBadges.length > 0 ? (
+          <div className="mt-5 flex flex-wrap gap-x-3 gap-y-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-violet-100/52 sm:text-[11px]">
+            {[...metaBadges, ...progressionBadges].map((badge) => (
+              <span
+                key={badge}
+                className="border-l border-fuchsia-300/55 pl-3 first:border-l-0 first:pl-0"
+              >
+                {badge}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex items-end justify-between gap-5 lg:block lg:text-right">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-100/50 sm:text-[11px]">
+            Plnění
+          </div>
+          <div
+            className={`tn-editorial-payout mt-1 whitespace-nowrap font-bold leading-none tracking-[-0.06em] drop-shadow-[0_0_24px_rgba(110,231,183,0.16)] ${
+              featured ? "text-4xl sm:text-5xl lg:text-6xl" : "text-3xl sm:text-4xl lg:text-5xl"
+            }`}
+          >
+            {formatMoney(card.payout)}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggleInfo(card.key)}
+          className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-fuchsia-100/75 transition hover:text-fuchsia-100 lg:mt-5"
+          aria-label={`Zobrazit výpočet pro ${card.insurer}`}
+          aria-expanded={isInfoOpen}
+          aria-haspopup="dialog"
+        >
+          Detail výpočtu
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -3019,15 +3447,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [selectedInsurers, setSelectedInsurers] = useState<string[]>([]);
   const [selectedProgressions, setSelectedProgressions] = useState<string[]>([]);
   const [productPickerConfirmed, setProductPickerConfirmed] = useState(false);
-  const [embeddedMode, setEmbeddedMode] = useState(false);
   const [presetCardKeys, setPresetCardKeys] = useState<string[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const shouldEmbed = params.get("embed") === "1";
     const preset = params.get("preset");
-
-    setEmbeddedMode(shouldEmbed);
 
     if (preset === "neon-oneguard-10x") {
       setPresetCardKeys(["cpp-10x", "metlife-oneguard"]);
@@ -3687,6 +4111,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [currentExporting, setCurrentExporting] = useState(false);
   const [scenarioExporting, setScenarioExporting] = useState(false);
   const [scenarioExportError, setScenarioExportError] = useState<string | null>(null);
+  const comparisonExportRef = useRef<HTMLDivElement | null>(null);
   const infoTableScrollRef = useRef<HTMLDivElement | null>(null);
   const [expandedFilterInsurers, setExpandedFilterInsurers] = useState<string[]>([
     "ČPP",
@@ -3709,29 +4134,35 @@ export default function SrovnavacTrvalychNasledkuPage() {
       ? cards.filter((card) => presetCardKeys.includes(card.key))
       : cards;
 
-  const insurerFilterGroups = filterableCards.reduce<InsurerFilterGroup[]>((groups, card) => {
-    const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
-    let group = groups.find((item) => item.insurerName === insurerName);
+  const insurerFilterGroups = filterableCards
+    .reduce<InsurerFilterGroup[]>((groups, card) => {
+      const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+      let group = groups.find((item) => item.insurerName === insurerName);
 
-    if (!group) {
-      group = { insurerName, options: [] };
-      groups.push(group);
-    }
-
-    for (const filterOption of getCardFilterOptions(card)) {
-      let option = group.options.find((item) => item.value === filterOption.value);
-      if (!option) {
-        option = { value: filterOption.value, productName, badges: [] };
-        group.options.push(option);
+      if (!group) {
+        group = { insurerName, options: [] };
+        groups.push(group);
       }
 
-      for (const badge of filterOption.badges) {
-        if (!option.badges.includes(badge)) option.badges.push(badge);
-      }
-    }
+      for (const filterOption of getCardFilterOptions(card)) {
+        let option = group.options.find((item) => item.value === filterOption.value);
+        if (!option) {
+          option = { value: filterOption.value, productName, badges: [] };
+          group.options.push(option);
+        }
 
-    return groups;
-  }, []);
+        for (const badge of filterOption.badges) {
+          if (!option.badges.includes(badge)) option.badges.push(badge);
+        }
+      }
+
+      return groups;
+    }, [])
+    .sort(
+      (first, second) =>
+        (INSURER_FILTER_GROUP_PRIORITY.get(first.insurerName) ?? Number.MAX_SAFE_INTEGER) -
+        (INSURER_FILTER_GROUP_PRIORITY.get(second.insurerName) ?? Number.MAX_SAFE_INTEGER)
+    );
   const allFilterOptionValues = insurerFilterGroups.flatMap((group) =>
     group.options.map((option) => option.value)
   );
@@ -3854,142 +4285,104 @@ export default function SrovnavacTrvalychNasledkuPage() {
           const scenarioToneLabel = isMultiScenario
             ? `Scénář ${scenarioLetter}`
             : "Aktuální výpočet";
-          const rowsHtml = scenarioCards
-            .map((card, idx) => {
-              const logoPath = getInsurerLogoPath(card.insurer);
-              const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
-              const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
-              const logoClass =
-                logoKey === "cpp" || logoKey === "kooperativa"
-                  ? " insurer-logo--wide"
-                  : logoKey === "allianz" || logoKey === "axa"
-                    ? " insurer-logo--medium"
-                    : logoKey === "slavia"
-                      ? " insurer-logo--square"
-                      : "";
-              const rankBadgeClass =
-                idx === 0
-                  ? "rank-badge rank-badge--top"
-                  : idx === 1
-                    ? "rank-badge rank-badge--second"
-                    : idx === 2
-                      ? "rank-badge rank-badge--third"
-                      : "rank-badge";
-              const variantText = card.badges.join(", ") || "Bez varianty";
-              const insurerCell = logoPath
-                ? `<div class="insurer-cell"><span class="insurer-logo-wrap"><img class="insurer-logo${logoClass}" src="${escapeHtml(
-                    logoPath
-                  )}" alt="" /></span><span class="insurer-copy"><span class="insurer-name">${escapeHtml(
-                    insurerName
-                  )}</span><span class="insurer-product">${escapeHtml(
-                    productName
-                  )}</span></span></div>`
-                : `<div class="insurer-cell insurer-cell--text"><span class="insurer-copy"><span class="insurer-name">${escapeHtml(
-                    insurerName
-                  )}</span><span class="insurer-product">${escapeHtml(
-                    productName
-                  )}</span></span></div>`;
-              return `
-                <tr>
-                  <td class="rank-cell"><span class="${rankBadgeClass}">${idx + 1}</span></td>
-                  <td class="insurer-col">${insurerCell}</td>
-                  <td class="variant-col"><span class="variant-chip">${escapeHtml(variantText)}</span></td>
-                  <td class="amount-col">${escapeHtml(formatMoney(card.payout))}</td>
-                </tr>
-              `;
-            })
-            .join("");
-          const leadersHtml = scenarioCards
-            .slice(0, 3)
-            .map((card, idx) => {
-              const logoPath = getInsurerLogoPath(card.insurer);
-              const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
-              const logoMarkup = logoPath
-                ? `<span class="leader-logo-wrap"><img class="leader-logo" src="${escapeHtml(
-                    logoPath
-                  )}" alt="" /></span>`
-                : `<span class="leader-logo-wrap leader-logo-fallback">${escapeHtml(
-                    insurerName.slice(0, 2).toUpperCase()
-                  )}</span>`;
+          const buildDialMarkup = ({
+            caption,
+            displayValue,
+            unit,
+            helper,
+            ratio,
+          }: {
+            caption: string;
+            displayValue: string;
+            unit: string;
+            helper: string;
+            ratio: number;
+          }) => {
+            const boundedRatio = Math.max(0, Math.min(1, ratio));
+            const circumference = 2 * Math.PI * 42;
+            const dash = Math.max(0, circumference * boundedRatio);
+            const hue = Math.round(150 - boundedRatio * 115);
 
-              return `
-                <div class="leader-card">
-                  <span class="leader-rank">${idx + 1}</span>
-                  <div class="leader-identity">
-                    ${logoMarkup}
-                    <span class="leader-copy">
-                      <span class="leader-name">${escapeHtml(insurerName)}</span>
-                      <span class="leader-product">${escapeHtml(productName)}</span>
-                    </span>
-                  </div>
-                  <span class="leader-variant">${escapeHtml(card.badges.join(", ") || "Varianta")}</span>
-                  <strong class="leader-payout">${escapeHtml(formatMoney(card.payout))}</strong>
-                </div>
-              `;
-            })
-            .join("");
+            return `<div class="pdf-dial">
+              <span class="pdf-dial-caption">${escapeHtml(caption)}</span>
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="pdf-dial-track" cx="60" cy="60" r="42" />
+                <circle class="pdf-dial-progress" cx="60" cy="60" r="42" stroke="hsl(${hue} 88% 62%)" stroke-dasharray="${dash} ${circumference - dash}" />
+              </svg>
+              <span class="pdf-dial-value">${escapeHtml(displayValue)}</span>
+              <span class="pdf-dial-unit">${escapeHtml(unit)}</span>
+              <span class="pdf-dial-helper">${escapeHtml(helper)}</span>
+            </div>`;
+          };
+
+          const editorialRows = scenarioCards.map((card, idx) => {
+            const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+            const variantText = card.badges.join(" · ");
+
+            return `<article class="pdf-result-row ${idx === 0 ? "pdf-result-row--winner" : ""}">
+              <span class="pdf-result-rank">${String(idx + 1).padStart(2, "0")}</span>
+              <div class="pdf-result-identity">
+                <strong>${escapeHtml(insurerName)}</strong>
+                <span>${escapeHtml(productName)}</span>
+                ${variantText ? `<small>${escapeHtml(variantText)}</small>` : ""}
+              </div>
+              <div class="pdf-result-payout">
+                <span>Plnění</span>
+                <strong>${escapeHtml(formatMoney(card.payout))}</strong>
+              </div>
+            </article>`;
+          });
+          const winnerHtml = editorialRows[0] ?? "";
+          const remainingRowsHtml = editorialRows.slice(1).join("");
 
           return `
             <section class="report-page ${scenarioToneClass}">
-              <header class="page-header">
-                <div class="hero-main">
-                  <span class="hero-badge">${isMultiScenario ? "Export 3 scénáře" : "Export PDF"}</span>
+              <header class="pdf-hero">
+                <img class="pdf-ghost-logo" src="/images/bohemika-ghost-logo.png" alt="" />
+                <div class="pdf-hero-copy">
+                  <span class="pdf-hero-badge">Srovnávač plnění</span>
                   <h1>Trvalé následky</h1>
-                  <p>Porovnání plnění podle zadané pojistné částky a rozsahu poškození.</p>
                 </div>
-                <div class="hero-side">
-                  <span>${escapeHtml(scenarioToneLabel)}</span>
-                  <strong>${escapeHtml(formatPercent(scenario.percent))}</strong>
-                  <small>${escapeHtml(scenario.label)}</small>
-                </div>
-                <div class="hero-date">
-                  <span>Vygenerováno</span>
-                  <strong>${escapeHtml(generatedAt)}</strong>
-                </div>
+                <aside class="pdf-parameter-card">
+                  <span class="pdf-parameter-heading">Vstupní parametry</span>
+                  <div class="pdf-dial-grid">
+                    ${buildDialMarkup({
+                      caption: "Pojistná částka",
+                      displayValue: formatKcInput(sumInsuredValue),
+                      unit: "KČ",
+                      helper: "MAX. 3 MIL.",
+                      ratio: sumInsuredValue / 3_000_000,
+                    })}
+                    ${buildDialMarkup({
+                      caption: "Rozsah TN",
+                      displayValue: String(scenario.percent).replace(".", ","),
+                      unit: "PROCENT",
+                      helper: "0 AŽ 100 %",
+                      ratio: scenario.percent / 100,
+                    })}
+                  </div>
+                  <span class="pdf-scenario-note">${escapeHtml(scenarioToneLabel)} · ${escapeHtml(scenario.label)}</span>
+                </aside>
               </header>
 
-              <section class="info-card">
-                <div class="info-grid">
-                  <div class="info-item">
-                    <span class="info-label">Pojistná částka</span>
-                    <strong class="info-value">${escapeHtml(formatMoney(sumInsuredValue))}</strong>
-                  </div>
-                  <div class="info-item">
-                    <span class="info-label">Rozsah</span>
-                    <strong class="info-value">${escapeHtml(formatPercent(scenario.percent))}</strong>
-                  </div>
-                  <div class="info-item">
-                    <span class="info-label">Počet variant</span>
-                    <strong class="info-value">${scenarioCards.length}</strong>
-                  </div>
+              <section class="pdf-results-stage">
+                <div class="pdf-results-heading">
+                  <span>Srovnání plnění</span>
+                  <h2>Kdo vychází<br />nejlépe?</h2>
                 </div>
+                ${winnerHtml || `<p class="pdf-empty">Bez výsledků pro tento scénář.</p>`}
               </section>
 
               ${
-                leadersHtml
-                  ? `<section class="section-block">
-                      <div class="section-title">Nejvyšší plnění</div>
-                      <div class="leader-list">${leadersHtml}</div>
-                    </section>`
+                remainingRowsHtml
+                  ? `<section class="pdf-result-list">${remainingRowsHtml}</section>`
                   : ""
               }
 
-              <section class="section-block section-block--table">
-                <div class="section-title">Přehled variant</div>
-                <table class="scenario-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Pojišťovna</th>
-                      <th>Varianta</th>
-                      <th>Plnění</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${rowsHtml || `<tr><td colspan="4" class="empty-cell">Bez výsledků pro tento scénář.</td></tr>`}
-                  </tbody>
-                </table>
-              </section>
+              <footer class="pdf-footer">
+                <span>${scenarioCards.length} variant</span>
+                <span>Vygenerováno ${escapeHtml(generatedAt)}</span>
+              </footer>
             </section>
           `;
         })
@@ -4010,7 +4403,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
             margin: 0 auto;
             padding: 0;
             background: #ffffff;
-            font-family: Inter, "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             color: #0b1020;
             -webkit-font-smoothing: antialiased;
             -webkit-print-color-adjust: exact;
@@ -4396,6 +4789,275 @@ export default function SrovnavacTrvalychNasledkuPage() {
             color: #667085;
             background: #fbf7ff;
           }
+
+          /* Vizuál PDF kopíruje tmavý editoriální srovnávač v aplikaci. */
+          .pdf-root,
+          .report-stack {
+            width: 794px;
+            margin: 0 auto;
+            background: #10091e;
+            color: #f5f3ff;
+          }
+          .report-page {
+            --accent: #d946ef;
+            position: relative;
+            width: 794px;
+            min-height: 1123px;
+            height: auto;
+            padding: 30px 34px 28px;
+            overflow: hidden;
+            background: #10091e;
+            color: #f5f3ff;
+            break-after: page;
+            page-break-after: always;
+          }
+          .report-page::before {
+            inset: 0;
+            width: auto;
+            height: auto;
+            opacity: 0.1;
+            background-image: linear-gradient(rgba(196,181,253,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(196,181,253,0.08) 1px, transparent 1px);
+            background-size: 52px 52px;
+          }
+          .pdf-hero,
+          .pdf-results-stage,
+          .pdf-result-list,
+          .pdf-footer {
+            position: relative;
+            z-index: 1;
+          }
+          .pdf-hero {
+            position: relative;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 292px;
+            align-items: center;
+            gap: 24px;
+            min-height: 320px;
+            overflow: hidden;
+          }
+          .pdf-ghost-logo {
+            position: absolute;
+            left: -50px;
+            top: -128px;
+            width: 360px;
+            opacity: 0.075;
+            mix-blend-mode: screen;
+          }
+          .pdf-hero-copy {
+            position: relative;
+            z-index: 1;
+            padding-left: 8px;
+          }
+          .pdf-hero-badge,
+          .pdf-results-heading > span,
+          .pdf-parameter-heading,
+          .pdf-result-payout > span,
+          .pdf-result-identity small,
+          .pdf-scenario-note,
+          .pdf-footer {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+          }
+          .pdf-hero-badge {
+            display: inline-flex;
+            border: 1px solid rgba(245,208,254,0.24);
+            border-radius: 999px;
+            padding: 6px 10px;
+            color: #f5d0fe;
+            background: rgba(255,255,255,0.055);
+          }
+          .pdf-hero-copy h1 {
+            position: relative;
+            margin: 14px 0 0;
+            color: #ffffff;
+            font-size: 52px;
+            line-height: 0.9;
+            font-weight: 700;
+            letter-spacing: -0.065em;
+          }
+          .pdf-parameter-card {
+            position: relative;
+            z-index: 1;
+            min-height: 244px;
+            padding: 15px 14px 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 24px 24px 24px 8px;
+            background: radial-gradient(circle at 86% 12%, rgba(217,70,239,0.13), transparent 35%), rgba(255,255,255,0.035);
+          }
+          .pdf-parameter-heading {
+            display: block;
+            color: rgba(245,208,254,0.78);
+          }
+          .pdf-dial-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            margin-top: 12px;
+          }
+          .pdf-dial {
+            position: relative;
+            min-width: 0;
+            padding: 0 7px;
+            text-align: center;
+          }
+          .pdf-dial + .pdf-dial {
+            border-left: 1px solid rgba(255,255,255,0.1);
+          }
+          .pdf-dial-caption {
+            display: block;
+            min-height: 20px;
+            color: rgba(221,214,254,0.62);
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.13em;
+            text-transform: uppercase;
+          }
+          .pdf-dial svg {
+            display: block;
+            width: 112px;
+            height: 112px;
+            margin: -1px auto 0;
+          }
+          .pdf-dial-track,
+          .pdf-dial-progress {
+            fill: none;
+            stroke-width: 9;
+            stroke-linecap: round;
+            transform: rotate(-135deg);
+            transform-origin: 60px 60px;
+          }
+          .pdf-dial-track { stroke: rgba(255,255,255,0.12); stroke-dasharray: 198 66; }
+          .pdf-dial-progress { filter: drop-shadow(0 0 4px rgba(74,222,128,0.45)); }
+          .pdf-dial-value {
+            position: absolute;
+            top: 76px;
+            right: 0;
+            left: 0;
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            white-space: nowrap;
+          }
+          .pdf-dial-unit {
+            position: absolute;
+            top: 102px;
+            right: 0;
+            left: 0;
+            color: rgba(221,214,254,0.62);
+            font-size: 7px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+          }
+          .pdf-dial-helper {
+            display: block;
+            margin-top: -7px;
+            color: rgba(221,214,254,0.48);
+            font-size: 7px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+          }
+          .pdf-scenario-note {
+            display: block;
+            margin-top: 8px;
+            color: rgba(221,214,254,0.48);
+            text-align: center;
+          }
+          .pdf-results-stage {
+            display: grid;
+            grid-template-columns: 192px minmax(0, 1fr);
+            align-items: center;
+            gap: 26px;
+            margin-top: 8px;
+          }
+          .pdf-results-heading > span {
+            display: block;
+            color: rgba(245,208,254,0.75);
+          }
+          .pdf-results-heading h2 {
+            margin: 6px 0 0;
+            color: #f5d0fe;
+            font-size: 32px;
+            line-height: 0.91;
+            font-weight: 700;
+            letter-spacing: -0.065em;
+          }
+          .pdf-result-row {
+            display: grid;
+            grid-template-columns: 38px minmax(0, 1fr) 164px;
+            align-items: center;
+            gap: 14px;
+            min-height: 62px;
+            padding: 14px 28px;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .pdf-result-row--winner {
+            min-height: 124px;
+            padding: 18px 0;
+          }
+          .pdf-result-rank {
+            color: rgba(245,208,254,0.78);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+          }
+          .pdf-result-identity strong,
+          .pdf-result-identity span,
+          .pdf-result-identity small,
+          .pdf-result-payout > span,
+          .pdf-result-payout > strong {
+            display: block;
+          }
+          .pdf-result-identity strong {
+            color: #e9d5ff;
+            font-size: 23px;
+            line-height: 0.95;
+            font-weight: 700;
+            letter-spacing: -0.05em;
+          }
+          .pdf-result-row--winner .pdf-result-identity strong { font-size: 33px; }
+          .pdf-result-identity span {
+            margin-top: 4px;
+            color: rgba(221,214,254,0.72);
+            font-size: 11px;
+            font-weight: 600;
+          }
+          .pdf-result-identity small {
+            margin-top: 8px;
+            color: rgba(221,214,254,0.52);
+          }
+          .pdf-result-payout { text-align: right; }
+          .pdf-result-payout > span { color: rgba(221,214,254,0.52); }
+          .pdf-result-payout > strong {
+            margin-top: 4px;
+            color: #6ee7b7;
+            font-size: 23px;
+            line-height: 1;
+            font-weight: 700;
+            letter-spacing: -0.06em;
+            white-space: nowrap;
+          }
+          .pdf-result-row--winner .pdf-result-payout > strong { font-size: 31px; }
+          .pdf-result-list {
+            margin-top: 4px;
+            padding: 0 24px;
+          }
+          .pdf-result-list .pdf-result-row { padding-right: 4px; padding-left: 4px; }
+          .pdf-empty {
+            color: rgba(221,214,254,0.7);
+            font-size: 12px;
+            font-weight: 600;
+          }
+          .pdf-footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 22px;
+            padding: 13px 4px 0;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            color: rgba(221,214,254,0.48);
+          }
         </style>
       `;
 
@@ -4440,35 +5102,6 @@ export default function SrovnavacTrvalychNasledkuPage() {
     setScenarioStep(1);
   };
 
-  const createPdfExportOptions = (filename: string): any => ({
-    margin: [0, 0, 0, 0],
-    filename,
-    image: { type: "png", quality: 1 },
-    html2canvas: {
-      scale: 2.6,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-      windowWidth: 794,
-      scrollX: 0,
-      scrollY: 0,
-      onclone: (doc: Document) => {
-        // html2canvas neumí CSS color funkce lab()/oklch()
-        // z některých globálních stylů, proto je při exportu odfiltrujeme.
-        doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
-        doc.querySelectorAll("style").forEach((n) => {
-          const text = n.textContent ?? "";
-          if (/(oklch|lab)\(/i.test(text)) n.remove();
-        });
-      },
-    },
-    jsPDF: { unit: "pt", format: "a4", orientation: "portrait", compress: true },
-    pagebreak: {
-      mode: ["css", "legacy"],
-      before: ".report-page:not(:first-child)",
-      avoid: [".leader-card", ".info-card", ".scenario-table tbody tr"],
-    },
-  });
-
   const handleExportCurrentPdf = async () => {
     if (sumInsuredValue <= 0) {
       setScenarioExportError("Zadej nejdřív pojistnou částku.");
@@ -4478,17 +5111,14 @@ export default function SrovnavacTrvalychNasledkuPage() {
     setScenarioExportError(null);
     setCurrentExporting(true);
     try {
-      const html2pdf = await getHtml2Pdf();
-      const generatedAt = new Date().toLocaleString("cs-CZ");
       const fileStamp = new Date().toISOString().slice(0, 10);
-      const exportHtml = buildScenarioPdfExportHtml(generatedAt, [
-        { label: "Aktuální rozsah", percent: rangePercentValue },
-      ]);
+      const comparisonElement = comparisonExportRef.current;
+      if (!comparisonElement) throw new Error("Srovnávač není připravený pro export.");
 
-      await (html2pdf() as any)
-        .set(createPdfExportOptions(`srovnani_trvalych_nasledku_${fileStamp}.pdf`))
-        .from(exportHtml)
-        .save();
+      await saveLiveComparisonPdf(
+        comparisonElement,
+        `srovnani_trvalych_nasledku_${fileStamp}.pdf`
+      );
     } catch (error) {
       console.error("Nepodařilo se vygenerovat PDF srovnání trvalých následků", error);
       const detail =
@@ -4505,15 +5135,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
     setScenarioExportError(null);
     setScenarioExporting(true);
     try {
-      const html2pdf = await getHtml2Pdf();
       const generatedAt = new Date().toLocaleString("cs-CZ");
       const fileStamp = new Date().toISOString().slice(0, 10);
       const exportHtml = buildScenarioPdfExportHtml(generatedAt);
 
-      await (html2pdf() as any)
-        .set(createPdfExportOptions(`srovnani_trvalych_nasledku_scenare_${fileStamp}.pdf`))
-        .from(exportHtml)
-        .save();
+      await savePdfExport(exportHtml, `srovnani_trvalych_nasledku_scenare_${fileStamp}.pdf`);
     } catch (error) {
       console.error("Nepodařilo se vygenerovat 3 scénáře PDF", error);
       const detail =
@@ -4580,32 +5206,125 @@ export default function SrovnavacTrvalychNasledkuPage() {
     (compactList ? 1 : 0) +
     (selectedInsurers.length > 0 ? 1 : 0);
 
-  const podiumStyles: Array<{ badgeText: string }> = [{ badgeText: "TOP" }];
   const scenarioStepperSteps = ["Scénáře", "Náhled PDF"];
   const scenarioPreviewSrcDoc =
     scenarioModalOpen && scenarioStep === 1
-      ? `<!doctype html><html lang="cs"><head><meta charset="utf-8" /><style>html,body{margin:0;background:#ffffff;min-height:100%;}body{display:flex;justify-content:center;padding:16px;}.preview-scale{zoom:.94;}@supports not (zoom:1){.preview-scale{width:106.383%;transform:scale(.94);transform-origin:top center;}}</style></head><body><div class="preview-scale">${buildScenarioPdfExportHtml(
+      ? `<!doctype html><html lang="cs"><head><meta charset="utf-8" /><style>html,body{margin:0;background:#10091e;min-height:100%;}body{display:flex;justify-content:center;padding:16px;}.preview-scale{zoom:.94;}@supports not (zoom:1){.preview-scale{width:106.383%;transform:scale(.94);transform-origin:top center;}}</style></head><body><div class="preview-scale">${buildScenarioPdfExportHtml(
           new Date().toLocaleString("cs-CZ")
         )}</div></body></html>`
       : "";
 
   return (
-    <AppLayout active="tools" embedded={embeddedMode}>
-      <div className="relative w-full max-w-[1500px] space-y-3 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-0 pb-8 sm:space-y-4 sm:px-3">
-        <header className="flex flex-col gap-3 px-0 pt-0 sm:gap-4 sm:px-2 sm:pt-2">
-          <div className="flex flex-col gap-4">
-            <div className="space-y-2 sm:space-y-3">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200 bg-white/92 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 shadow-[0_8px_18px_rgba(217,70,239,0.08)] sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.18em] sm:shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
+    <AppLayout active="tools" embedded>
+      <div
+        ref={comparisonExportRef}
+        className="tn-comparison relative w-full space-y-3 overflow-hidden px-0 pb-8 sm:space-y-4 sm:px-3"
+      >
+        <nav className="tn-topbar sticky top-0 z-40 -mx-0.5 px-3 sm:-mx-3 sm:px-5" aria-label="Ovládání srovnávače">
+          <div className="mx-auto flex min-h-14 max-w-[1680px] items-center justify-between gap-3">
+            <Link
+              href="/pomucky"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.13] bg-white/[0.045] px-3 py-1.5 text-xs font-semibold text-violet-50/90 transition hover:border-fuchsia-200/35 hover:bg-white/[0.09]"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span>Zpět na pomůcky</span>
+            </Link>
+
+            {productPickerConfirmed ? (
+              <div className="flex items-center gap-1 sm:gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold text-violet-100/75 transition hover:bg-white/[0.08] sm:px-3"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{activeFilterCount === 0 ? "Filtry" : `Filtry · ${activeFilterCount}`}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExportCurrentPdf()}
+                  disabled={currentExporting || scenarioExporting}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold text-violet-100/75 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50 sm:px-3"
+                  title="Export PDF"
+                >
+                  {currentExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openScenarioExportModal}
+                  disabled={currentExporting || scenarioExporting}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-fuchsia-300/25 bg-fuchsia-400/[0.11] px-2.5 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/[0.19] disabled:cursor-not-allowed disabled:opacity-50 sm:px-3"
+                  title="Export 3 scénáře PDF"
+                >
+                  {scenarioExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Files className="h-3.5 w-3.5" />}
+                  <span className="hidden sm:inline">3 scénáře</span>
+                </button>
+              </div>
+            ) : (
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/48">Výběr produktů</span>
+            )}
+          </div>
+        </nav>
+        <header className="tn-hero relative overflow-visible px-4 py-7 sm:px-7 sm:py-10 lg:min-h-[35rem]">
+          <div className="pointer-events-none absolute -left-24 top-1/3 h-52 w-52 rounded-full bg-violet-500/25 blur-[90px]" />
+          <div className="pointer-events-none absolute -right-16 -top-20 h-72 w-72 rounded-full bg-fuchsia-500/20 blur-[100px]" />
+          <Image
+            src="/images/bohemika-ghost-logo.png"
+            alt=""
+            aria-hidden="true"
+            width={1024}
+            height={1536}
+            className="pointer-events-none absolute left-[3%] -top-20 hidden w-[34.5rem] max-w-none mix-blend-screen opacity-[0.1] lg:block xl:left-[5%]"
+          />
+          <div className="relative grid gap-7 lg:grid-cols-[minmax(0,1fr)_480px] lg:items-center lg:gap-10">
+            <div className="max-w-3xl space-y-3 sm:space-y-4 lg:-translate-y-12">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200/20 bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-100 shadow-[0_10px_24px_rgba(7,5,18,0.22)] backdrop-blur sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.18em]">
                 <ChartNoAxesColumn className="h-3.5 w-3.5" />
                 Srovnávač plnění
               </div>
               <div>
-                <h1 className="text-[2.3rem] font-black leading-[0.98] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+                <h1 className="tn-hero-title text-5xl font-bold leading-[0.9] tracking-[-0.065em] sm:text-8xl lg:text-[clamp(5rem,8vw,7.5rem)]">
                   Trvalé následky
                 </h1>
-                <p className="mt-2 max-w-2xl text-xs font-semibold leading-6 text-slate-500 sm:mt-3 sm:text-sm sm:leading-relaxed">
-                  Porovnej plnění podle pojistné částky a rozsahu poškození. Export používá stejná data i aktivní filtry.
+              </div>
+            </div>
+
+            <div className="tn-hero-summary relative isolate overflow-hidden rounded-[2rem_2rem_2rem_0.6rem] border border-white/[0.1] p-3.5 shadow-[0_28px_72px_rgba(7,5,18,0.28)] backdrop-blur-xl sm:px-5 sm:py-4 lg:-translate-x-20 lg:translate-y-6">
+              <div className="relative">
+                <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-100/72">
+                  <Calculator className="h-3.5 w-3.5" />
+                  Vstupní parametry
                 </p>
+                <div className="mt-3 grid grid-cols-2 divide-x divide-white/[0.1]">
+                  <div className="px-1 pr-2 sm:pr-3">
+                    <RangeDial
+                      value={sumInsuredValue}
+                      min={0}
+                      max={3_000_000}
+                      step={50_000}
+                      caption="Pojistná částka"
+                      unitLabel="KČ"
+                      helper="Táhni myší · max. 3 mil."
+                      displayValue={formatKcInput(sumInsuredValue)}
+                      displayFontSize={26}
+                      ariaLabel="Pojistná částka"
+                      onChange={(nextValue) => setSumInsuredInput(formatKcInput(nextValue))}
+                    />
+                  </div>
+                  <div className="px-2 pl-3 sm:pl-4">
+                    <RangeDial
+                      value={rangePercentValue}
+                      step={1}
+                      caption="Rozsah TN"
+                      unitLabel="PROCENT"
+                      helper="Táhni myší · 0 až 100 %"
+                      displayValue={String(rangePercentValue).replace(".", ",")}
+                      displayFontSize={34}
+                      onChange={(nextValue) => setRangePercentInput(String(nextValue))}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -4613,7 +5332,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
         {!productPickerConfirmed ? (
           <section className="space-y-3">
-            <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+            <div className="tn-panel rounded-[24px] border px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700">
@@ -4670,7 +5389,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
               </div>
             </div>
 
-            <div className="grid items-start gap-3 lg:grid-cols-2">
+            <div className="grid items-start gap-2.5 lg:grid-cols-3">
               {insurerFilterGroups.map((group) => {
                 const values = group.options.map((option) => option.value);
                 const selectedCount = values.filter((value) =>
@@ -4687,17 +5406,17 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 return (
                   <section
                     key={group.insurerName}
-                    className={`rounded-[18px] border bg-white px-4 py-4 transition ${
+                    className={`tn-panel rounded-[18px] border px-3 py-3 transition ${
                       groupFullySelected || groupPartlySelected
                         ? "border-sky-400 shadow-[0_12px_30px_rgba(14,165,233,0.10)]"
                         : "border-slate-300 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
                     }`}
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={() => toggleFilterGroupSelection(values)}
-                        className="flex min-w-0 flex-1 items-center gap-4 rounded-xl text-left transition"
+                        className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left transition"
                         aria-pressed={groupFullySelected}
                       >
                         <span
@@ -4715,7 +5434,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                           ) : null}
                         </span>
                         <span
-                          className={`relative inline-flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-transparent bg-white ${institutionLogoFrameClass(
+                          className={`tn-logo-frame relative inline-flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-transparent bg-white ${institutionLogoFrameClass(
                             logoKey,
                             "compact"
                           )}`}
@@ -4725,7 +5444,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                               src={logoPath}
                               alt={group.insurerName}
                               fill
-                              sizes="64px"
+                            sizes="56px"
                               className={institutionLogoImageClass(logoKey)}
                             />
                           ) : (
@@ -4735,7 +5454,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                           )}
                         </span>
                         <span className="min-w-0">
-                          <span className="block break-words text-xl font-medium leading-tight text-slate-950 sm:text-[1.7rem]">
+                          <span className="block break-words text-base font-semibold leading-tight text-slate-950 sm:text-lg">
                             {group.insurerName} ({selectedCount}/{group.options.length})
                           </span>
                         </span>
@@ -4743,12 +5462,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       <button
                         type="button"
                         onClick={() => toggleFilterGroupExpanded(group.insurerName)}
-                        className="ml-auto inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
+                        className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
                         aria-label={`${isExpanded ? "Sbalit" : "Rozbalit"} ${group.insurerName}`}
                         aria-expanded={isExpanded}
                       >
                         <ChevronDown
-                          className={`h-7 w-7 stroke-[2.5] transition ${
+                          className={`h-5 w-5 stroke-[2.5] transition ${
                             isExpanded ? "rotate-180" : ""
                           }`}
                         />
@@ -4756,8 +5475,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     </div>
 
                     {isExpanded ? (
-                      <div className="mt-6 space-y-4 pl-12 sm:pl-[76px]">
-                        <div className="space-y-4">
+                      <div className="mt-4 space-y-2 pl-10 sm:pl-[56px]">
+                        <div className="space-y-2">
                           {group.options.map((option) => {
                             const active = selectedInsurers.includes(option.value);
                             const optionYear = option.badges.join(", ");
@@ -4767,7 +5486,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                 key={option.value}
                                 type="button"
                                 onClick={() => toggleFilterOption(option.value)}
-                                className={`flex w-full items-center gap-5 rounded-xl text-left transition ${
+                                className={`flex w-full items-center gap-3 rounded-xl text-left transition ${
                                   active
                                     ? "bg-sky-50/70 text-slate-950"
                                     : "text-slate-950 hover:bg-slate-50"
@@ -4775,21 +5494,21 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                 aria-pressed={active}
                               >
                                 <span
-                                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 ${
+                                  className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 ${
                                     active
                                       ? "border-sky-400 bg-sky-50 text-sky-600"
                                       : "border-sky-300 bg-white text-white"
                                   }`}
                                   aria-hidden="true"
                                 >
-                                  {active ? <Check className="h-4 w-4" /> : null}
+                                  {active ? <Check className="h-3.5 w-3.5" /> : null}
                                 </span>
-                                <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-5 gap-y-1">
-                                  <span className="break-words text-lg font-normal leading-snug text-slate-950 sm:text-2xl">
+                              <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                                <span className="break-words text-sm font-medium leading-snug text-slate-950 sm:text-base">
                                     {option.productName}
                                   </span>
                                   {optionYear ? (
-                                    <span className="whitespace-nowrap text-lg font-normal leading-snug text-slate-400 sm:text-2xl">
+                                    <span className="whitespace-nowrap text-sm font-medium leading-snug text-slate-400 sm:text-base">
                                       {optionYear}
                                     </span>
                                   ) : null}
@@ -4809,168 +5528,13 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
         {productPickerConfirmed ? (
           <>
-        <div className="grid items-start gap-3 sm:gap-4 lg:grid-cols-[minmax(330px,520px)_minmax(360px,620px)]">
-          <section className="relative w-full max-w-[520px] space-y-4 overflow-hidden rounded-[22px] border border-violet-100 bg-white px-4 py-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:rounded-[24px] sm:px-5 sm:py-4">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
-            />
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <h2 className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
-                <Calculator className="h-3.5 w-3.5" />
-                <span>Vstupní parametry</span>
-              </h2>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="min-w-0">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] text-fuchsia-700">
-                      Pojistná částka
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 border-b border-violet-200 pb-1 transition focus-within:border-fuchsia-500">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      min={0}
-                      value={sumInsuredInput}
-                      onChange={(e) => {
-                        setSumInsuredInput(e.target.value);
-                      }}
-                      onBlur={() => {
-                        const parsed = parseNumber(sumInsuredInput);
-                        if (Number.isFinite(parsed) && parsed > 0) {
-                          setSumInsuredInput(formatKcInput(parsed));
-                        }
-                      }}
-                      className="min-w-0 flex-1 bg-transparent px-0 py-1.5 text-xl font-black leading-none text-slate-950 outline-none placeholder:text-slate-300"
-                    />
-                    <span className="text-xs font-black uppercase tracking-[0.08em] text-violet-700">
-                      Kč
-                    </span>
-                  </div>
-                </div>
-              </label>
-
-              <label className="min-w-0">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] text-fuchsia-700">
-                      Rozsah trvalých následků
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 border-b border-violet-200 pb-1 transition focus-within:border-fuchsia-500">
-                    <input
-                      type="number"
-                      max={100}
-                      value={rangePercentInput}
-                      onChange={(e) => setRangePercentInput(e.target.value)}
-                      onBlur={() => {
-                        const parsed = parseNumber(rangePercentInput);
-                        if (!Number.isFinite(parsed)) return;
-                        const limited = Math.min(100, Math.max(0, parsed));
-                        setRangePercentInput(formatKcInput(limited));
-                      }}
-                      className="min-w-0 flex-1 bg-transparent px-0 py-1.5 text-xl font-black leading-none text-slate-950 outline-none placeholder:text-slate-300"
-                    />
-                    <span className="text-xs font-black uppercase tracking-[0.08em] text-violet-700">
-                      %
-                    </span>
-                  </div>
-                  {Number.isFinite(rangePercentRaw) && rangePercentRaw > 100 && (
-                    <p className="mt-2 text-[11px] font-semibold text-fuchsia-700">
-                      Max 100 %. Počítám s {rangePercentValue}%.
-                    </p>
-                  )}
-                </div>
-              </label>
-            </div>
-          </section>
-
-          <section className="relative w-full max-w-[620px] space-y-3 overflow-hidden rounded-[22px] border border-violet-100 bg-white px-4 py-3 shadow-[0_12px_28px_rgba(76,29,149,0.08)] sm:rounded-[24px] sm:px-5 sm:py-4">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
-            />
-            <div className="flex flex-wrap items-center gap-3 justify-between">
-              <h2 className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                <span>Filtry</span>
-              </h2>
-              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleExportCurrentPdf()}
-                  disabled={currentExporting || scenarioExporting}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-[0_6px_14px_rgba(76,29,149,0.07)] transition hover:border-violet-400 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2 sm:shadow-[0_8px_18px_rgba(76,29,149,0.08)]"
-                >
-                  {currentExporting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <FileDown className="h-3.5 w-3.5" />
-                  )}
-                  <span>{currentExporting ? "Generuji…" : "Export PDF"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={openScenarioExportModal}
-                  disabled={currentExporting || scenarioExporting}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-fuchsia-300/35 bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-3 py-1.5 text-xs font-semibold text-zinc-50 shadow-[0_8px_20px_rgba(76,29,149,0.22)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2 sm:shadow-[0_12px_30px_rgba(76,29,149,0.25)]"
-                >
-                  {scenarioExporting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Files className="h-3.5 w-3.5" />
-                  )}
-                  <span>{scenarioExporting ? "Generuji…" : "Export 3 scénáře PDF"}</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-violet-100 pt-3">
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                <span className="font-semibold text-slate-700">
-                  {activeFilterCount === 0
-                    ? "Bez aktivních filtrů"
-                    : `Aktivní filtry: ${activeFilterCount}`}
-                </span>
-                {selectedProgressions.length > 0 && (
-                  <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
-                    Progrese: {selectedProgressions.join(", ")}
-                  </span>
-                )}
-                {selectedInsurers.length > 0 && (
-                  <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
-                    Ročníky: {selectedInsurers.length}
-                  </span>
-                )}
-                {compactList && (
-                  <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
-                    Hustší řádky
-                  </span>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setFiltersOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-950 bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-black"
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                <span>Filtry</span>
-              </button>
-            </div>
-          </section>
-        </div>
-
         {scenarioModalOpen && (
           <div
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
+            className="tn-overlay fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
             onClick={() => setScenarioModalOpen(false)}
           >
             <section
-              className={`relative max-h-[94vh] w-full overflow-y-auto rounded-[28px] border border-violet-100 bg-white p-4 text-slate-950 shadow-[0_34px_90px_rgba(15,23,42,0.28)] sm:p-5 ${
+              className={`tn-modal relative max-h-[94vh] w-full overflow-y-auto rounded-[28px] border p-4 text-slate-950 shadow-[0_34px_90px_rgba(15,23,42,0.28)] sm:p-5 ${
                 scenarioStep === 1 ? "max-w-7xl" : "max-w-5xl"
               }`}
               onClick={(e) => e.stopPropagation()}
@@ -5173,11 +5737,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
         {filtersOpen && (
           <div
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
+            className="tn-overlay fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
             onClick={() => setFiltersOpen(false)}
           >
             <div
-              className="relative max-h-[92vh] w-full max-w-7xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_34px_90px_rgba(15,23,42,0.28)] sm:p-5"
+              className="tn-modal tn-modal--light relative max-h-[92vh] w-full max-w-7xl overflow-y-auto rounded-[28px] border p-4 shadow-[0_34px_90px_rgba(15,23,42,0.28)] sm:p-5"
               onClick={(e) => e.stopPropagation()}
             >
               <span
@@ -5196,16 +5760,16 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 <button
                   type="button"
                   onClick={() => setFiltersOpen(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-950 bg-slate-950 text-sm text-white hover:bg-black"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-950 bg-slate-950 text-white transition hover:bg-black"
                   aria-label="Zavřít filtry"
                 >
-                  ×
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
               <div className="space-y-4">
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
-                  <section className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                  <section className="tn-panel rounded-[18px] border p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
                       Progrese podle vybraných produktů
                     </div>
@@ -5248,7 +5812,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     </div>
                   </section>
 
-                  <section className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                  <section className="tn-panel rounded-[18px] border p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
                       Zobrazení
                     </div>
@@ -5267,7 +5831,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 </div>
 
                 <section className="space-y-3">
-                  <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+                  <div className="tn-panel rounded-[24px] border px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0">
                         <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700">
@@ -5316,7 +5880,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     </div>
                   </div>
 
-                  <div className="grid items-start gap-3 lg:grid-cols-2">
+                  <div className="grid items-start gap-2.5 lg:grid-cols-3">
                     {insurerFilterGroups.map((group) => {
                       const values = group.options.map((option) => option.value);
                       const selectedCount = values.filter((value) =>
@@ -5337,17 +5901,17 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       return (
                         <section
                           key={group.insurerName}
-                          className={`rounded-[18px] border bg-white px-4 py-4 transition ${
+                        className={`tn-panel rounded-[18px] border px-3 py-3 transition ${
                             groupFullySelected || groupPartlySelected
                               ? "border-sky-400 shadow-[0_12px_30px_rgba(14,165,233,0.10)]"
                               : "border-slate-300 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
                           }`}
                         >
-                          <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-3">
                             <button
                               type="button"
                               onClick={() => toggleFilterGroupSelection(values)}
-                              className="flex min-w-0 flex-1 items-center gap-4 rounded-xl text-left transition"
+                              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left transition"
                               aria-pressed={groupFullySelected}
                             >
                               <span
@@ -5365,7 +5929,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                 ) : null}
                               </span>
                               <span
-                                className={`relative inline-flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-transparent bg-white ${institutionLogoFrameClass(
+                                className={`tn-logo-frame relative inline-flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-transparent bg-white ${institutionLogoFrameClass(
                                   logoKey,
                                   "compact"
                                 )}`}
@@ -5375,7 +5939,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                     src={logoPath}
                                     alt={group.insurerName}
                                     fill
-                                    sizes="64px"
+                                    sizes="56px"
                                     className={institutionLogoImageClass(logoKey)}
                                   />
                                 ) : (
@@ -5385,7 +5949,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                 )}
                               </span>
                               <span className="min-w-0">
-                                <span className="block break-words text-xl font-medium leading-tight text-slate-950 sm:text-[1.7rem]">
+                                <span className="block break-words text-base font-semibold leading-tight text-slate-950 sm:text-lg">
                                   {group.insurerName} ({selectedCount}/{group.options.length})
                                 </span>
                               </span>
@@ -5393,12 +5957,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                             <button
                               type="button"
                               onClick={() => toggleFilterGroupExpanded(group.insurerName)}
-                              className="ml-auto inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
+                              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
                               aria-label={`${isExpanded ? "Sbalit" : "Rozbalit"} ${group.insurerName}`}
                               aria-expanded={isExpanded}
                             >
                               <ChevronDown
-                                className={`h-7 w-7 stroke-[2.5] transition ${
+                                className={`h-5 w-5 stroke-[2.5] transition ${
                                   isExpanded ? "rotate-180" : ""
                                 }`}
                               />
@@ -5406,8 +5970,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
                           </div>
 
                           {isExpanded ? (
-                            <div className="mt-6 space-y-4 pl-12 sm:pl-[76px]">
-                              <div className="space-y-4">
+                            <div className="mt-4 space-y-2 pl-10 sm:pl-[56px]">
+                              <div className="space-y-2">
                                 {group.options.map((option) => {
                                   const active = selectedInsurers.includes(option.value);
                                   const optionYear = option.badges.join(", ");
@@ -5417,7 +5981,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                       key={option.value}
                                       type="button"
                                       onClick={() => toggleFilterOption(option.value)}
-                                      className={`flex w-full items-center gap-5 rounded-xl text-left transition ${
+                                      className={`flex w-full items-center gap-3 rounded-xl text-left transition ${
                                         active
                                           ? "bg-sky-50/70 text-slate-950"
                                           : "text-slate-950 hover:bg-slate-50"
@@ -5425,21 +5989,21 @@ export default function SrovnavacTrvalychNasledkuPage() {
                                       aria-pressed={active}
                                     >
                                       <span
-                                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 ${
+                                        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 ${
                                           active
                                             ? "border-sky-400 bg-sky-50 text-sky-600"
                                             : "border-sky-300 bg-white text-white"
                                         }`}
                                         aria-hidden="true"
                                       >
-                                        {active ? <Check className="h-4 w-4" /> : null}
+                                        {active ? <Check className="h-3.5 w-3.5" /> : null}
                                       </span>
-                                      <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-5 gap-y-1">
-                                        <span className="break-words text-lg font-normal leading-snug text-slate-950 sm:text-2xl">
+                                      <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                                        <span className="break-words text-sm font-medium leading-snug text-slate-950 sm:text-base">
                                           {option.productName}
                                         </span>
                                         {optionYear ? (
-                                          <span className="whitespace-nowrap text-lg font-normal leading-snug text-slate-400 sm:text-2xl">
+                                          <span className="whitespace-nowrap text-sm font-medium leading-snug text-slate-400 sm:text-base">
                                             {optionYear}
                                           </span>
                                         ) : null}
@@ -5470,24 +6034,30 @@ export default function SrovnavacTrvalychNasledkuPage() {
           </div>
         )}
 
-        <section className="relative overflow-visible rounded-[28px] border border-violet-100 bg-white p-4 shadow-[0_18px_42px_rgba(76,29,149,0.10)]">
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]"
-          />
-          <div className="flex flex-wrap items-end justify-between gap-3">
+        <section className="tn-editorial-results !-mt-24 px-4 pb-10 pt-4 sm:!-mt-32 sm:px-7 sm:pb-14 sm:pt-5 lg:!-mt-40">
+          <div className="grid gap-5 pb-5 lg:grid-cols-[minmax(270px,0.57fr)_minmax(0,1.43fr)] lg:items-start lg:gap-14">
             <div>
-              <h2 className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
-                <ChartNoAxesColumn className="h-3.5 w-3.5" />
+              <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.23em] text-fuchsia-100/75 sm:text-[11px]">
+                <ChartNoAxesColumn className="h-4 w-4" />
                 Srovnání plnění
-              </h2>
-              <p className="mt-2 text-xs font-semibold text-slate-500">
-                Výsledek podle zadaných parametrů.
               </p>
+              <h2 className="tn-editorial-heading -mt-1 max-w-[10ch] text-4xl font-bold leading-[0.91] tracking-[-0.065em] sm:-mt-2 sm:text-6xl">
+                Kdo vychází nejlépe?
+              </h2>
             </div>
-            <div className="text-right text-xs font-semibold text-slate-500">
-              {sortedCards.length} variant
-            </div>
+
+            {sortedCards[0] ? (
+              <div className="tn-editorial-featured">
+                <EditorialResultRow
+                  card={sortedCards[0]}
+                  position={0}
+                  compact={compactList}
+                  featured
+                  isInfoOpen={infoOpen === sortedCards[0].key}
+                  onToggleInfo={(key) => setInfoOpen(infoOpen === key ? null : key)}
+                />
+              </div>
+            ) : null}
           </div>
 
           {scenarioExportError && !scenarioModalOpen ? (
@@ -5496,139 +6066,33 @@ export default function SrovnavacTrvalychNasledkuPage() {
             </p>
           ) : null}
 
-          <div className="mt-4 overflow-visible rounded-2xl border border-violet-100 bg-white">
+          <div className="tn-editorial-list mx-auto mt-1 w-full max-w-[1680px] space-y-2 sm:mt-4 sm:space-y-4">
             {sortedCards.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
+              <div className="py-12 text-center text-sm font-semibold text-violet-100/65">
                 Žádná varianta neodpovídá aktivním filtrům.
               </div>
             ) : (
-              sortedCards.map((card, idx) => {
-                const podium = podiumStyles[idx];
-                const logoPath = getInsurerLogoPath(card.insurer);
-                const logoKey = institutionLogoKeyFromInsurerName(card.insurer);
-                const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
-                const progressionBadges = getCardProgressionBadges(card);
-                const progressionBadgeSet = new Set(progressionBadges);
-                const metaBadges = card.badges.filter(
-                  (badge) => !progressionBadgeSet.has(badge)
-                );
-
-                return (
-                  <div
-                    key={card.key}
-                    className={`group relative grid gap-3 border-t border-violet-100 px-4 first:border-t-0 hover:bg-violet-50/40 sm:grid-cols-[44px_minmax(230px,320px)_minmax(105px,max-content)_minmax(105px,max-content)_minmax(116px,140px)_40px] sm:items-center sm:justify-start sm:gap-x-4 ${
-                      compactList ? "py-3" : "py-4"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 sm:block">
-                      <span
-                        className={`inline-flex h-10 min-w-10 items-center justify-center rounded-full border px-2 text-sm font-black ${
-                          idx === 0
-                            ? "border-violet-500 bg-[linear-gradient(135deg,#111827_0%,#4c1d95_58%,#7c3aed_100%)] text-white"
-                            : "border-violet-100 bg-white text-slate-700"
-                        }`}
-                      >
-                        {idx + 1}
-                      </span>
-                      {podium ? (
-                        <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-700 sm:hidden">
-                          {podium.badgeText}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm ${institutionLogoFrameClass(
-                          logoKey,
-                          "card"
-                        )}`}
-                      >
-                        {logoPath ? (
-                          <Image
-                            src={logoPath}
-                            alt={insurerName}
-                            fill
-                            sizes="72px"
-                            className={institutionLogoImageClass(logoKey)}
-                          />
-                        ) : (
-                          <span className="text-[10px] font-semibold text-slate-400">LOGO</span>
-                        )}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="break-words text-lg font-black leading-tight text-slate-950 sm:text-xl">
-                            {insurerName}
-                          </div>
-                          {podium ? (
-                            <span className="hidden rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-700 sm:inline-flex">
-                              {podium.badgeText}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-0.5 break-words text-sm font-semibold leading-snug text-slate-500">
-                          {productName}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex max-w-full flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      {metaBadges.map((badge) => (
-                        <span
-                          key={badge}
-                          className="shrink-0 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700"
-                        >
-                          {badge}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="flex max-w-full flex-nowrap items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      {progressionBadges.map((badge) => (
-                        <span
-                          key={badge}
-                          className="shrink-0 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700"
-                        >
-                          {badge}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 sm:text-right">
-                        Plnění
-                      </div>
-                      <div className="mt-1 whitespace-nowrap text-xl font-black leading-none text-slate-950 sm:text-2xl sm:text-right">
-                        {formatMoney(card.payout)}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setInfoOpen(infoOpen === card.key ? null : card.key)}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-violet-200 bg-white text-sm font-black text-violet-700 transition hover:border-fuchsia-300 hover:bg-fuchsia-50"
-                      aria-label={`Zobrazit výpočet pro ${card.insurer}`}
-                      aria-expanded={infoOpen === card.key}
-                      aria-haspopup="dialog"
-                      title="Výpočet"
-                    >
-                      i
-                    </button>
-                  </div>
-                );
-              })
+              sortedCards.slice(1).map((card, index) => (
+                <EditorialResultRow
+                  key={card.key}
+                  card={card}
+                  position={index + 1}
+                  compact={compactList}
+                  isInfoOpen={infoOpen === card.key}
+                  onToggleInfo={(key) => setInfoOpen(infoOpen === key ? null : key)}
+                />
+              ))
             )}
           </div>
         </section>
 
         {selectedInfoCard && selectedInfoCardParts ? (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
+            className="tn-overlay fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
             onClick={() => setInfoOpen(null)}
           >
             <div
-              className="flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[30px] border border-violet-100 bg-white shadow-[0_34px_100px_rgba(15,23,42,0.34)]"
+              className="tn-modal tn-modal--light flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[30px] border shadow-[0_34px_100px_rgba(15,23,42,0.34)]"
               role="dialog"
               aria-modal="true"
               aria-label={`Detail výpočtu pro ${selectedInfoCard.insurer}`}
@@ -5829,6 +6293,287 @@ export default function SrovnavacTrvalychNasledkuPage() {
           </>
         ) : null}
       </div>
+
+      <style jsx global>{`
+        .tn-comparison {
+          isolation: isolate;
+          color: #f5f3ff;
+          background: #10091e;
+        }
+
+        .tn-comparison::before {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          content: "";
+          opacity: 0.1;
+          background-image:
+            linear-gradient(rgba(196, 181, 253, 0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(196, 181, 253, 0.08) 1px, transparent 1px);
+          background-size: 52px 52px;
+          mask-image: none;
+        }
+
+        .tn-comparison > *:not(.tn-topbar):not(.tn-overlay) {
+          position: relative;
+          z-index: 1;
+        }
+
+        .tn-topbar {
+          z-index: 40;
+          background: transparent;
+        }
+
+        .tn-hero {
+          background: transparent;
+        }
+
+        .tn-hero-title {
+          color: #ffffff !important;
+          text-shadow: 0 0 38px rgba(221, 214, 254, 0.1);
+        }
+
+        .tn-comparison [class*="bg-white"],
+        .tn-comparison [class*="bg-slate-50"],
+        .tn-comparison [class*="bg-violet-50"],
+        .tn-comparison [class*="bg-fuchsia-50"] {
+          background-color: rgba(255, 255, 255, 0.055) !important;
+        }
+
+        .tn-comparison [class*="border-slate-"],
+        .tn-comparison [class*="border-violet-"],
+        .tn-comparison [class*="border-fuchsia-"] {
+          border-color: rgba(221, 214, 254, 0.14) !important;
+        }
+
+        .tn-comparison [class*="text-slate-950"],
+        .tn-comparison [class*="text-slate-900"] {
+          color: #ffffff !important;
+        }
+
+        .tn-comparison [class*="text-slate-700"],
+        .tn-comparison [class*="text-slate-600"] {
+          color: rgba(237, 233, 254, 0.84) !important;
+        }
+
+        .tn-comparison [class*="text-slate-500"],
+        .tn-comparison [class*="text-slate-400"] {
+          color: rgba(221, 214, 254, 0.64) !important;
+        }
+
+        .tn-comparison [class*="text-violet-700"],
+        .tn-comparison [class*="text-violet-600"] {
+          color: #ddd6fe !important;
+        }
+
+        .tn-comparison [class*="text-fuchsia-700"],
+        .tn-comparison [class*="text-fuchsia-600"],
+        .tn-comparison [class*="text-fuchsia-800"] {
+          color: #f5d0fe !important;
+        }
+
+        .tn-panel,
+        .tn-modal {
+          border-color: rgba(221, 214, 254, 0.14) !important;
+          background:
+            linear-gradient(140deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)) !important;
+          box-shadow:
+            0 24px 64px rgba(4, 2, 12, 0.28),
+            inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+          backdrop-filter: blur(18px);
+        }
+
+        .tn-comparison .tn-modal--light {
+          color: #0f172a !important;
+          border-color: #e2e8f0 !important;
+          background: #ffffff !important;
+          box-shadow: 0 34px 100px rgba(15, 23, 42, 0.34) !important;
+          backdrop-filter: none;
+        }
+
+        .tn-comparison .tn-modal--light [class*="bg-white"] {
+          background-color: #ffffff !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="bg-slate-50"] {
+          background-color: #f8fafc !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="bg-violet-50"] {
+          background-color: #f5f3ff !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="bg-fuchsia-50"] {
+          background-color: #fdf2f8 !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="border-slate-"] {
+          border-color: #e2e8f0 !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="border-violet-100"] {
+          border-color: #ede9fe !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="border-violet-200"] {
+          border-color: #ddd6fe !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="border-fuchsia-200"] {
+          border-color: #f5d0fe !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="border-fuchsia-300"] {
+          border-color: #f0abfc !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-slate-950"],
+        .tn-comparison .tn-modal--light [class*="text-slate-900"] {
+          color: #0f172a !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-slate-700"] {
+          color: #334155 !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-slate-600"] {
+          color: #475569 !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-slate-500"] {
+          color: #64748b !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-slate-400"] {
+          color: #94a3b8 !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-violet-700"] {
+          color: #6d28d9 !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-fuchsia-950"] {
+          color: #500724 !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-fuchsia-800"] {
+          color: #86198f !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-fuchsia-700"] {
+          color: #a21caf !important;
+        }
+
+        .tn-comparison .tn-modal--light [class*="text-fuchsia-600"] {
+          color: #c026d3 !important;
+        }
+
+        .tn-comparison .tn-modal--light .tn-panel {
+          border-color: #e2e8f0 !important;
+          background: #ffffff !important;
+          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04) !important;
+          backdrop-filter: none;
+        }
+
+        .tn-comparison .tn-modal--light .tn-panel::before {
+          display: none;
+        }
+
+        .tn-panel::before {
+          position: absolute;
+          top: 0;
+          right: 13%;
+          left: 13%;
+          height: 1px;
+          content: "";
+          background: linear-gradient(90deg, transparent, rgba(245, 208, 254, 0.5), transparent);
+        }
+
+        .tn-hero-summary {
+          background:
+            radial-gradient(circle at 18% 92%, rgba(14, 165, 233, 0.08), transparent 35%),
+            radial-gradient(circle at 84% 15%, rgba(217, 70, 239, 0.12), transparent 36%),
+            rgba(255, 255, 255, 0.035) !important;
+          box-shadow:
+            0 24px 64px rgba(4, 2, 12, 0.22),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .tn-editorial-results {
+          position: relative;
+          background: transparent;
+        }
+
+        .tn-editorial-heading {
+          color: #f5d0fe !important;
+          text-shadow: 0 0 34px rgba(232, 121, 249, 0.14);
+        }
+
+        .tn-editorial-insurer {
+          color: #e9d5ff !important;
+          text-shadow: 0 0 28px rgba(192, 132, 252, 0.12);
+        }
+
+        .tn-editorial-row:hover .tn-editorial-insurer {
+          color: #f5d0fe !important;
+        }
+
+        .tn-editorial-product {
+          color: rgba(221, 214, 254, 0.72) !important;
+        }
+
+        .tn-editorial-payout {
+          color: #6ee7b7 !important;
+        }
+
+        .tn-editorial-row {
+          position: relative;
+          isolation: isolate;
+          transition: padding 180ms ease, background-color 180ms ease;
+        }
+
+        .tn-editorial-row::after {
+          position: absolute;
+          inset: 0;
+          z-index: -1;
+          border-radius: 1.5rem;
+          opacity: 0;
+          content: "";
+          background: radial-gradient(circle at 80% 50%, rgba(52, 211, 153, 0.1), transparent 40%), rgba(255, 255, 255, 0.025);
+          transition: opacity 180ms ease;
+        }
+
+        .tn-editorial-row:hover::after {
+          opacity: 1;
+        }
+
+        .tn-comparison .tn-logo-frame {
+          border-color: rgba(255, 255, 255, 0.16) !important;
+          background: #ffffff !important;
+          box-shadow: 0 8px 20px rgba(4, 2, 12, 0.24);
+        }
+
+        .tn-comparison input {
+          color: #ffffff !important;
+        }
+
+        .tn-comparison input::placeholder {
+          color: rgba(221, 214, 254, 0.4) !important;
+        }
+
+        .tn-comparison button:focus-visible,
+        .tn-comparison input:focus-visible {
+          outline: 2px solid rgba(232, 121, 249, 0.75);
+          outline-offset: 3px;
+        }
+
+        @media (max-width: 639px) {
+          .tn-hero {
+            margin-inline: -0.75rem;
+          }
+        }
+      `}</style>
 
     </AppLayout>
   );

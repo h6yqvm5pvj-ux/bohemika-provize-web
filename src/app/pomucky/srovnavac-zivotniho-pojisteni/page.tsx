@@ -850,7 +850,7 @@ export default function LifeInsuranceComparisonPage() {
       : `${activeFilterCount} aktivních filtrů`;
 
   return (
-    <AppLayout active="tools">
+    <AppLayout active="tools" embedded>
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
         <section
           role="dialog"

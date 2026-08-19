@@ -160,7 +160,9 @@ export function AppLayout({
     pathname.startsWith("/klienti/") ||
     pathname === "/provizni-vypisy";
   const isTipsterAllowedRoute = pathname === "/" || isTipsRoute || isCashflowRoute;
-  const pageHasCustomToolsBackButton = pathname === "/pomucky/projekce-vykonu";
+  const pageHasCustomToolsBackButton =
+    pathname === "/pomucky/projekce-vykonu" ||
+    pathname === "/pomucky/srovnavac-trvalych-nasledku";
   const showToolsBackToIndex =
     active === "tools" && pathname !== "/pomucky" && !pageHasCustomToolsBackButton;
   const toolsBackButtonRightAligned = pathname === "/pomucky/invalidita";
@@ -681,7 +683,9 @@ export function AppLayout({
             className={[
               `app-content relative flex min-w-0 w-full flex-1 items-start ${contentOverflowClass} ${shellFontClass}`,
               active === "tools" ? "tools-content" : "",
-              isFullBleedPage
+              embedded
+                ? "justify-start p-0"
+                : isFullBleedPage
                 ? "justify-start px-0 py-6 sm:py-8 lg:px-0"
                 : "justify-center px-3 py-6 sm:px-4 sm:py-8 lg:px-8",
             ].join(" ")}
