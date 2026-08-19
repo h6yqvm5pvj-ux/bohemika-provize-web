@@ -1706,6 +1706,10 @@ const UNIQA_ACTIVELIFE_2019_325_TABLE: number[] = [
   432, 440, 447, 455, 462, 470, 477, 485, 492, 500,
 ];
 
+const UNIQA_SYMFONIE_2021_TABLE: number[] = [
+  ...UNIQA_ACTIVELIFE_2019_324_TABLE,
+];
+
 const getUniqaZivotRadostPercent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return UNIQA_ZIVOT_RADOST_TABLE[idx] ?? 0;
@@ -1719,6 +1723,11 @@ const getUniqaActiveLife2019324Percent = (percent: number): number => {
 const getUniqaActiveLife2019325Percent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return UNIQA_ACTIVELIFE_2019_325_TABLE[idx] ?? 0;
+};
+
+const getUniqaSymfonie2021Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return UNIQA_SYMFONIE_2021_TABLE[idx] ?? 0;
 };
 
 const AXA_ACTIVE_LIFE_2016_2021_324_324U_TABLE =
@@ -3404,6 +3413,7 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
     getUniqaLogika2020Multiplier10x(percent) * percent,
   "uniqa-activelife-2019-324-324u": getUniqaActiveLife2019324Percent,
   "uniqa-activelife-2019-325-325u": getUniqaActiveLife2019325Percent,
+  "uniqa-symfonie-2021-324-324u": getUniqaSymfonie2021Percent,
   "axa-active-life-2016-2021-324-324u":
     getAxaActiveLife20162021Tarif324Percent,
   "axa-active-life-2016-2021-325-325u":
@@ -3510,6 +3520,10 @@ export default function SrovnavacTrvalychNasledkuPage() {
       getUniqaActiveLife2019325Percent(normalizedPercent);
     const payoutUniqaActiveLife2019325 =
       sumInsuredValue * (uniqaActiveLife2019325Percent / 100);
+    const uniqaSymfonie2021Percent =
+      getUniqaSymfonie2021Percent(normalizedPercent);
+    const payoutUniqaSymfonie2021 =
+      sumInsuredValue * (uniqaSymfonie2021Percent / 100);
     const axaActiveLife324324uPercent =
       getAxaActiveLife20162021Tarif324Percent(normalizedPercent);
     const payoutAxaActiveLife324324u =
@@ -3732,6 +3746,18 @@ export default function SrovnavacTrvalychNasledkuPage() {
         tablePreview: buildPercentValueTablePreview(
           "Tabulka ActiveLife 2019 tarify 325/325U",
           UNIQA_ACTIVELIFE_2019_325_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        key: "uniqa-symfonie-2021-324-324u",
+        insurer: "UNIQA Symfonie 2021",
+        badges: ["Tarify 324 a 324U", "5× progrese"],
+        payout: payoutUniqaSymfonie2021,
+        info: `Tarify 324 a 324U: ${formatMoney(sumInsuredValue)} × ${uniqaSymfonie2021Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka UNIQA Symfonie 2021 – tarify 324 a 324U",
+          UNIQA_SYMFONIE_2021_TABLE,
           normalizedPercent
         ),
       },

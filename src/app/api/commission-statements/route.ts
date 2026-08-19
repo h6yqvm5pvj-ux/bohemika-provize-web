@@ -1324,6 +1324,44 @@ const serializeStatementDoc = (
   };
 };
 
+// The history dialog only renders these metadata fields.  Keep this serializer
+// separate from the regular list response: the latter derives contract rows
+// from the stored HTML, which is unnecessarily expensive for every item in a
+// history list.
+const serializeStatementHistoryDoc = (
+  docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
+) => {
+  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const periodStartMs = toMillis(data.periodStartMs);
+  const periodEndMs = toMillis(data.periodEndMs);
+  const statementDateMs = toMillis(data.statementDateMs);
+
+  return {
+    id: docSnap.id,
+    fileName: normalizeText(data.fileName) ?? "Provizní výpis",
+    statementNumber: normalizeText(data.statementNumber, 64),
+    statementDate: normalizeText(data.statementDate, 32),
+    period: normalizeText(data.period, 80),
+    periodStartMs,
+    periodEndMs,
+    statementChronologyMs:
+      toMillis(data.statementChronologyMs) ??
+      statementChronologyMsFromParts({
+        statementDate: normalizeText(data.statementDate, 32),
+        statementDateMs,
+        statementPeriod: normalizeText(data.period, 80),
+        periodEndMs,
+        periodStartMs,
+      }),
+    payoutMonthKey:
+      normalizeText(data.payoutMonthKey, 16) ??
+      resolvePayoutMonthKey({ statementDateMs, periodEndMs, periodStartMs }),
+    payoutTotal: normalizeNullableNumber(data.payoutTotal),
+    processedAtMs: toMillis(data.processedAtMs),
+    processedBy: normalizeText(data.processedBy, 180),
+  };
+};
+
 const serializePremiumHistoryStatementDoc = (
   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>,
   contractNumber: string
@@ -4755,6 +4793,33 @@ export async function GET(req: NextRequest) {
     }
 
     const limit = parseLimit(req.nextUrl.searchParams.get("limit"));
+    if (requestedShape === "history") {
+      const snap = await statementCollection(ctx.email)
+        .where("processedAtMs", ">", 0)
+        .orderBy("processedAtMs", "desc")
+        .limit(limit)
+        .select(
+          "fileName",
+          "statementNumber",
+          "statementDate",
+          "statementDateMs",
+          "period",
+          "periodStartMs",
+          "periodEndMs",
+          "statementChronologyMs",
+          "payoutMonthKey",
+          "payoutTotal",
+          "processedAtMs",
+          "processedBy"
+        )
+        .get();
+
+      return withRateLimitHeaders(
+        NextResponse.json({ ok: true, items: snap.docs.map(serializeStatementHistoryDoc) }),
+        ctx
+      );
+    }
+
     const requestedMonthKey = parseMonthKey(
       req.nextUrl.searchParams.get("year"),
       req.nextUrl.searchParams.get("month")

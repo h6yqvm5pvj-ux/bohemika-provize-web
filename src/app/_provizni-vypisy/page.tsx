@@ -613,7 +613,7 @@ const fetchProcessedCommissionStatementHistory = async (
 ): Promise<SavedCommissionStatement[]> => {
   const request = async (forceRefreshToken = false) => {
     const token = await currentUser.getIdToken(forceRefreshToken);
-    return fetch("/api/commission-statements?limit=240", {
+    return fetch("/api/commission-statements?shape=history&limit=240", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -7585,51 +7585,17 @@ export default function CommissionStatementsPage() {
   };
 
   useEffect(() => {
-    if (!user) {
-      setProcessedStatementHistory([]);
-      setProcessedStatementHistoryError(null);
-      setProcessedStatementHistoryLoading(false);
-      setProcessedStatementHistoryVisible(false);
-      setSelectedHistoryStatementId(null);
-      setProcessedStatementIdsByKey({});
-      setNeonRefreshPromptTargets([]);
-      setNeonRefreshPromptError(null);
-      return;
-    }
+    if (user) return;
 
-    let cancelled = false;
-
-    const loadHistory = async () => {
-      setProcessedStatementHistoryLoading(true);
-      setProcessedStatementHistoryError(null);
-
-      try {
-        const items = await fetchProcessedCommissionStatementHistory(user);
-        if (!cancelled) {
-          setProcessedStatementHistory(items);
-        }
-      } catch (historyError) {
-        if (cancelled) return;
-        console.warn("Provizní výpisy: historii zpracovaných výpisů se nepodařilo načíst.", historyError);
-        setProcessedStatementHistory([]);
-        setProcessedStatementHistoryError(
-          historyError instanceof Error
-            ? historyError.message
-            : "Historii zpracovaných výpisů se nepodařilo načíst."
-        );
-      } finally {
-        if (!cancelled) {
-          setProcessedStatementHistoryLoading(false);
-        }
-      }
-    };
-
-    void loadHistory();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [effectiveUserEmail, user]);
+    setProcessedStatementHistory([]);
+    setProcessedStatementHistoryError(null);
+    setProcessedStatementHistoryLoading(false);
+    setProcessedStatementHistoryVisible(false);
+    setSelectedHistoryStatementId(null);
+    setProcessedStatementIdsByKey({});
+    setNeonRefreshPromptTargets([]);
+    setNeonRefreshPromptError(null);
+  }, [user]);
 
   useEffect(() => {
     if (!statementRecordsProcessing) {
@@ -8971,7 +8937,10 @@ export default function CommissionStatementsPage() {
               </h1>
               <button
                 type="button"
-                onClick={() => setProcessedStatementHistoryVisible(true)}
+                onClick={() => {
+                  setProcessedStatementHistoryVisible(true);
+                  void refreshProcessedStatementHistory();
+                }}
                 className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:bg-black"
               >
                 <CalendarDays className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />

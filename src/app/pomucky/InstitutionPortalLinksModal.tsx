@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { ArrowUpRight, X } from "lucide-react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import styles from "./InstitutionPortalLinksModal.module.css";
 
 type InstitutionPortalTarget = {
   key: string;
@@ -9,6 +11,7 @@ type InstitutionPortalTarget = {
   href: string;
   logoPath: string;
   tintClass: string;
+  logoScale?: number;
   ghostLogoClass?: string;
 };
 
@@ -17,8 +20,9 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
     key: "maxx",
     label: "Maxx",
     href: "https://sjednatel.bohemiaservis.cz/login",
-    logoPath: "/icons/bohemikalogo.png",
-    ghostLogoClass: "p-1 scale-[1.24]",
+    logoPath: "/icons/bohemika-chrome-symbol.png",
+    logoScale: 1.08,
+    ghostLogoClass: "p-1",
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(37,99,235,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(6,182,212,0.16)_0%,transparent_66%)]",
   },
@@ -26,8 +30,9 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
     key: "bsf-aplikace",
     label: "BSF Aplikace",
     href: "https://bsfaplikace.cz/sign/",
-    logoPath: "/icons/bohemikalogo.png",
-    ghostLogoClass: "p-1 scale-[1.24]",
+    logoPath: "/icons/bohemika-chrome-symbol.png",
+    logoScale: 1.08,
+    ghostLogoClass: "p-1",
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(79,70,229,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(34,197,94,0.16)_0%,transparent_66%)]",
   },
@@ -108,7 +113,8 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
     label: "Comfort Commodity",
     href: "https://eshop.comfort-commodity.cz/#/",
     logoPath: "/icons/cclogo.png",
-    ghostLogoClass: "p-3 scale-[1.08]",
+    logoScale: 1.08,
+    ghostLogoClass: "p-3",
     tintClass:
       "bg-[radial-gradient(circle_at_20%_18%,rgba(14,116,144,0.22)_0%,transparent_62%),radial-gradient(circle_at_82%_78%,rgba(8,145,178,0.16)_0%,transparent_66%)]",
   },
@@ -116,6 +122,27 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
 
 type InstitutionPortalLinksModalProps = {
   onClose: () => void;
+};
+
+const resetCardTilt = (card: HTMLAnchorElement) => {
+  card.style.setProperty("--portal-card-rotate-x", "0deg");
+  card.style.setProperty("--portal-card-rotate-y", "0deg");
+  card.style.setProperty("--portal-card-light-x", "50%");
+  card.style.setProperty("--portal-card-light-y", "24%");
+};
+
+const handleCardPointerMove = (event: ReactPointerEvent<HTMLAnchorElement>) => {
+  if (event.pointerType === "touch") return;
+
+  const card = event.currentTarget;
+  const bounds = card.getBoundingClientRect();
+  const x = Math.min(Math.max((event.clientX - bounds.left) / bounds.width, 0), 1);
+  const y = Math.min(Math.max((event.clientY - bounds.top) / bounds.height, 0), 1);
+
+  card.style.setProperty("--portal-card-rotate-x", `${((0.5 - y) * 8).toFixed(2)}deg`);
+  card.style.setProperty("--portal-card-rotate-y", `${((x - 0.5) * 10).toFixed(2)}deg`);
+  card.style.setProperty("--portal-card-light-x", `${(x * 100).toFixed(1)}%`);
+  card.style.setProperty("--portal-card-light-y", `${(y * 100).toFixed(1)}%`);
 };
 
 export function InstitutionPortalLinksModal({ onClose }: InstitutionPortalLinksModalProps) {
@@ -162,7 +189,10 @@ export function InstitutionPortalLinksModal({ onClose }: InstitutionPortalLinksM
               href={target.href}
               target="_blank"
               rel="noreferrer"
-              className="pomucky-portal-card group relative isolate min-h-[154px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_26px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_34px_rgba(15,23,42,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/80"
+              className={`${styles.portalCard} pomucky-portal-card group relative isolate min-h-[154px] overflow-hidden rounded-2xl p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/80`}
+              onPointerMove={handleCardPointerMove}
+              onPointerLeave={(event) => resetCardTilt(event.currentTarget)}
+              onPointerCancel={(event) => resetCardTilt(event.currentTarget)}
               onClick={onClose}
             >
               <Image
@@ -170,17 +200,22 @@ export function InstitutionPortalLinksModal({ onClose }: InstitutionPortalLinksM
                 alt={`Logo ${target.label}`}
                 fill
                 sizes="(max-width: 768px) 100vw, 50vw"
-                className={`pointer-events-none object-contain opacity-[0.18] saturate-0 contrast-125 ${target.ghostLogoClass ?? "p-4"}`}
+                style={{ "--portal-logo-scale": target.logoScale ?? 1 } as CSSProperties}
+                className={`${styles.ghostLogo} pointer-events-none object-contain opacity-[0.44] saturate-0 contrast-150 ${target.ghostLogoClass ?? "p-4"}`}
               />
-              <div className={`pomucky-portal-tint pointer-events-none absolute inset-0 ${target.tintClass}`} />
+              <div
+                className={`${styles.tint} pomucky-portal-tint pointer-events-none absolute inset-0 ${target.tintClass}`}
+              />
 
-              <div className="relative flex h-full flex-col justify-between">
+              <div className={`${styles.content} relative flex h-full flex-col justify-between`}>
                 <h3 className="max-w-[calc(100%-3rem)] text-2xl font-bold tracking-[-0.015em] text-slate-900">
                   {target.label}
                 </h3>
 
                 <div className="flex justify-end">
-                  <span className="pomucky-portal-arrow inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-indigo-300 group-hover:bg-indigo-700 group-hover:text-white">
+                  <span
+                    className={`${styles.arrow} pomucky-portal-arrow inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/90 bg-white/90 text-slate-700 transition group-hover:border-indigo-300 group-hover:bg-indigo-700 group-hover:text-white`}
+                  >
                     <ArrowUpRight className="h-4.5 w-4.5" />
                   </span>
                 </div>
