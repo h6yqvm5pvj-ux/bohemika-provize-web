@@ -29,6 +29,7 @@ import {
   institutionLogoImageClass,
   institutionLogoKeyFromInsurerName,
 } from "@/app/lib/institutionLogoDisplay";
+import { InSituExplanation } from "./InSituExplanation";
 import { OneGuardTermsDownload } from "./OneGuardTermsDownload";
 import { ProgressivePayoutComparison } from "./ProgressivePayoutComparison";
 
@@ -45,7 +46,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     id: "uraz-neurazovy-dej",
     topic: (
       <div>
-        <span className="inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">
+          <Activity className="h-3.5 w-3.5" aria-hidden="true" />
           Úrazové pojištění
         </span>
         <h2 className="mt-3 text-lg font-black leading-tight text-slate-950">
@@ -121,7 +123,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     id: "obecne-vyluky",
     topic: (
       <div>
-        <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-800">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-800">
+          <ShieldPlus className="h-3.5 w-3.5" aria-hidden="true" />
           Neživotní připojištění
         </span>
         <h2 className="mt-3 text-lg font-black leading-tight text-slate-950">
@@ -199,7 +202,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     id: "invalidita-cekaci-doba",
     topic: (
       <div>
-        <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-sky-800">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-sky-800">
+          <Activity className="h-3.5 w-3.5" aria-hidden="true" />
           Invalidita
         </span>
         <h2 className="mt-3 text-lg font-black leading-tight text-slate-950">
@@ -285,7 +289,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     id: "snizena-sobestacnost",
     topic: (
       <div>
-        <span className="inline-flex rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-800">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-800">
+          <Hand className="h-3.5 w-3.5" aria-hidden="true" />
           Dlouhodobá péče
         </span>
         <h2 className="mt-3 text-lg font-black leading-tight text-slate-950">
@@ -691,7 +696,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
     id: "zavazna-onemocneni",
     topic: (
       <div>
-        <span className="inline-flex rounded-full bg-fuchsia-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-800">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-800">
+          <Stethoscope className="h-3.5 w-3.5" aria-hidden="true" />
           Závažná onemocnění
         </span>
         <h2 className="mt-3 text-lg font-black leading-tight text-slate-950">
@@ -702,9 +708,12 @@ const COMPARISON_ROWS: ComparisonRow[] = [
           diagnózy uvedené v pojistných podmínkách.
         </p>
         <div className="mt-4 rounded-xl border border-fuchsia-100 bg-fuchsia-50/75 p-3">
-          <div className="flex items-start gap-2 text-sm font-bold leading-5 text-fuchsia-950">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-fuchsia-600" aria-hidden="true" />
-            <span>Rakovina ve formě in-situ</span>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start gap-2 text-sm font-bold leading-5 text-fuchsia-950">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-fuchsia-600" aria-hidden="true" />
+              <span>Rakovina ve formě in-situ</span>
+            </div>
+            <InSituExplanation />
           </div>
           <p className="mt-1.5 text-sm leading-5 text-fuchsia-950/80">
             NEON Life ji zahrnuje, zatímco OneGuard ji řadí mezi výluky.
@@ -760,7 +769,8 @@ const COMPARISON_ROWS: ComparisonRow[] = [
               Rakovina ve formě in-situ
             </h4>
           </div>
-          <span className="mt-2 inline-flex rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+            <CircleX className="h-3 w-3" aria-hidden="true" />
             Výluka v základním krytí
           </span>
           <blockquote className="mt-2 border-l-2 border-rose-400 pl-3 text-sm font-semibold leading-5 text-rose-950/85">
@@ -1888,7 +1898,7 @@ const PRODUCTS = [
 export default function NeonLifeVsMetLifeOneGuardPage() {
   return (
     <AppLayout active="tools">
-      <div className="relative w-full max-w-[1500px] space-y-4 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-0 pb-8 sm:space-y-5 sm:px-3">
+      <div className="neon-oneguard-comparison relative w-full max-w-[1500px] space-y-4 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_45%,#ffffff_100%)] px-0 pb-8 sm:space-y-5 sm:px-3">
         <header className="px-0 pt-0 sm:px-2 sm:pt-2">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-200 bg-white/92 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-fuchsia-700 shadow-[0_8px_18px_rgba(217,70,239,0.08)] sm:gap-2 sm:px-3 sm:text-[11px] sm:tracking-[0.18em]">
             <ChartNoAxesColumn className="h-3.5 w-3.5" />
@@ -1905,9 +1915,15 @@ export default function NeonLifeVsMetLifeOneGuardPage() {
           </div>
         </header>
 
-        <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:rounded-[24px]">
+        <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:rounded-[24px] lg:overflow-visible">
           <div className="min-w-[840px]">
-            <div className="grid border-b border-slate-200 bg-slate-50" style={{ gridTemplateColumns: "minmax(250px, 0.8fr) repeat(2, minmax(290px, 1fr))" }}>
+            <div
+              className="sticky top-3 z-40 isolate grid border-b border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98)_0%,rgba(248,250,252,0.97)_100%)] shadow-[0_16px_38px_rgba(15,23,42,0.14)] lg:rounded-2xl lg:border lg:border-white"
+              style={{
+                gridTemplateColumns:
+                  "minmax(250px, 0.8fr) repeat(2, minmax(290px, 1fr))",
+              }}
+            >
               <div className="flex min-h-[76px] items-center border-r border-slate-200 px-4 py-3 sm:px-5">
                 <span className="inline-flex items-center gap-2 text-sm font-black text-slate-900">
                   <CircleHelp className="h-4 w-4 text-violet-600" />
@@ -1916,13 +1932,26 @@ export default function NeonLifeVsMetLifeOneGuardPage() {
               </div>
               {PRODUCTS.map((product) => {
                 const logoKey = institutionLogoKeyFromInsurerName(product.insurer);
+                const isMetLife = product.insurer === "MetLife";
 
                 return (
                   <div
                     key={product.product}
-                    className="flex min-h-[76px] items-center gap-3 border-r border-slate-200 px-4 py-3 last:border-r-0 sm:px-5"
+                    className={`relative flex min-h-[76px] items-center gap-3 overflow-hidden border-r border-white/80 px-4 py-3 last:border-r-0 sm:px-5 ${
+                      isMetLife
+                        ? "bg-[linear-gradient(135deg,rgba(255,255,255,0.82)_0%,rgba(239,246,255,0.72)_100%)]"
+                        : "bg-[linear-gradient(135deg,rgba(255,255,255,0.82)_0%,rgba(236,253,245,0.70)_100%)]"
+                    }`}
                   >
-                    <span className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-transparent bg-white ${institutionLogoFrameClass(logoKey, "compact")}`}>
+                    <span
+                      className={`absolute inset-x-0 top-0 h-1 ${
+                        isMetLife
+                          ? "bg-[linear-gradient(90deg,#0f172a_0%,#2563eb_100%)]"
+                          : "bg-[linear-gradient(90deg,#064e3b_0%,#0f766e_100%)]"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.08)] ${institutionLogoFrameClass(logoKey, "compact")}`}>
                       <Image
                         src={product.logoPath}
                         alt={product.insurer}
@@ -1932,10 +1961,10 @@ export default function NeonLifeVsMetLifeOneGuardPage() {
                       />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-xs font-bold text-slate-900">
+                      <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
                         {product.insurer}
                       </span>
-                      <span className="mt-0.5 block text-base font-bold leading-tight text-slate-700">
+                      <span className="mt-0.5 block text-base font-black leading-tight text-slate-900">
                         {product.product}
                       </span>
                     </span>
@@ -1953,17 +1982,21 @@ export default function NeonLifeVsMetLifeOneGuardPage() {
                   <div className="border-r border-slate-100 px-4 py-5 sm:px-5">
                     {row.topic}
                   </div>
-                  <div className="border-r border-slate-100 bg-rose-50/30 px-4 py-5 sm:px-5">
-                    {row.oneGuard}
+                  <div className="comparison-product-cell comparison-product-cell--metlife relative overflow-hidden border-r border-slate-100 bg-[linear-gradient(145deg,#f8fafc_0%,#eff6ff_52%,#ffffff_100%)] px-4 py-5 sm:px-5">
+                    <div className="relative [&>article]:relative [&>article]:overflow-hidden [&>article]:!border-white/90 [&>article]:!bg-white/65 [&>article]:ring-1 [&>article]:ring-slate-900/[0.04] [&>article]:before:absolute [&>article]:before:inset-x-0 [&>article]:before:top-0 [&>article]:before:h-1 [&>article]:before:bg-[linear-gradient(90deg,#0f172a_0%,#2563eb_100%)] [&>article]:before:content-['']">
+                      {row.oneGuard}
+                    </div>
                   </div>
                   <div
-                    className={`px-4 py-5 sm:px-5 ${
+                    className={`comparison-product-cell comparison-product-cell--neon px-4 py-5 sm:px-5 ${
                       row.neonLife == null || row.neonLifeTone === "neutral"
                         ? "bg-slate-50/70"
-                        : "bg-emerald-50/30"
+                        : "relative overflow-hidden bg-[linear-gradient(145deg,#f8fafc_0%,#ecfdf5_52%,#ffffff_100%)]"
                     }`}
                   >
-                    {row.neonLife}
+                    <div className="relative [&>article]:relative [&>article]:overflow-hidden [&>article]:!border-white/90 [&>article]:!bg-white/65 [&>article]:ring-1 [&>article]:ring-slate-900/[0.04] [&>article]:before:absolute [&>article]:before:inset-x-0 [&>article]:before:top-0 [&>article]:before:h-1 [&>article]:before:bg-[linear-gradient(90deg,#064e3b_0%,#0f766e_100%)] [&>article]:before:content-['']">
+                      {row.neonLife}
+                    </div>
                   </div>
                 </div>
               ))}
