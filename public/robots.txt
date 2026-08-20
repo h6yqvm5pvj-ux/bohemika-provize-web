@@ -1,3 +1,6 @@
 User-agent: *
+Allow: /vizitka/
+Allow: /jakubrauscher
 Disallow: /
 
+Sitemap: https://bohemka.app/sitemap.xml

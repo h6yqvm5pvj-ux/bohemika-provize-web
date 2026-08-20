@@ -5,6 +5,21 @@ export const metadata: Metadata = {
   title: "Jakub Rauscher | Manažer",
   description:
     "Osobní vizitka Jakuba Rauschera. Specializace na komplexní pojištění, investice a drahé kovy.",
+  alternates: {
+    canonical: "/jakubrauscher",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  openGraph: {
+    type: "website",
+    locale: "cs_CZ",
+    url: "/jakubrauscher",
+    title: "Jakub Rauscher | Manažer",
+    description:
+      "Osobní vizitka Jakuba Rauschera. Specializace na komplexní pojištění, investice a drahé kovy.",
+  },
 };
 
 const highlightBadges = [

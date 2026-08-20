@@ -3,6 +3,7 @@ import "./globals.css";
 import { PwaBootstrap } from "@/components/PwaBootstrap";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://bohemka.app"),
   title: "Bohemika SmartApp",
   description: "Webová verze",
   manifest: "/manifest.webmanifest",

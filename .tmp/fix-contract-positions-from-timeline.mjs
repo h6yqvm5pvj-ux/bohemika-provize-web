@@ -316,6 +316,8 @@ function computeItemsForEntry(entry, position, mode) {
       return formulas.calculateCppAuto(amount, frequency, position, coefficientSignedDateIso);
     case "allianzAuto":
       return formulas.calculateAllianzAuto(amount, frequency, position, coefficientSignedDateIso);
+    case "uniqaAuto":
+      return formulas.calculateUniqaAuto(amount, frequency, position, coefficientSignedDateIso);
     case "flexi":
       return formulas.calculateFlexi(
         amount,
@@ -587,12 +589,17 @@ function buildPatch(entry, expectedPosition) {
 
 async function main() {
   const apply = hasArg("--apply");
+  const recalculateAll = hasArg("--recalculate-all");
   const email = normalizeEmail(parseArgValue("--email", DEFAULT_EMAIL));
+  const fromDateIso = parseArgValue("--from", null);
   const onlyContractsRaw = parseArgValue("--contracts", null);
   const onlyContracts = onlyContractsRaw
     ? new Set(onlyContractsRaw.split(",").map(normalizeContractNumber).filter(Boolean))
     : null;
   if (!email) throw new Error("Missing --email.");
+  if (fromDateIso && !isIsoDay(fromDateIso)) {
+    throw new Error(`Invalid --from date: ${fromDateIso}. Expected YYYY-MM-DD.`);
+  }
 
   const credentials = loadCredentials();
   if (!credentials) throw new Error("Missing FIREBASE_ADMIN_* credentials.");
@@ -615,17 +622,18 @@ async function main() {
       if ((entry.entryType ?? "contract") !== "contract") continue;
       const contractNumber = normalizeContractNumber(entry.contractNumber);
       if (onlyContracts && !onlyContracts.has(contractNumber)) continue;
-      scanned += 1;
 
       const signedDateIso = toIsoDay(entry.contractSignedDate);
+      if (fromDateIso && (!signedDateIso || signedDateIso < fromDateIso)) continue;
+      scanned += 1;
       const match = resolvePositionTimelineMatch(signedDateIso, profile.parsedTimeline);
       if (!match?.position) {
         counters.set("timeline_unresolved", (counters.get("timeline_unresolved") ?? 0) + 1);
         continue;
       }
       const storedPosition = normalizePosition(entry.position);
-      if (storedPosition === match.position) continue;
-      mismatches += 1;
+      if (storedPosition !== match.position) mismatches += 1;
+      if (!recalculateAll && storedPosition === match.position) continue;
 
       const update = buildPatch(entry, match.position);
       if (update.skipped) {
@@ -653,6 +661,8 @@ async function main() {
 
   console.log(`owner=${email}`);
   console.log(`profile_doc=${profile.docId}`);
+  console.log(`from_date=${fromDateIso ?? "all"}`);
+  console.log(`recalculate_all=${recalculateAll}`);
   console.log(`timeline_rows=${profile.parsedTimeline.length}`);
   console.log(`scanned_contracts=${scanned}`);
   console.log(`position_mismatches=${mismatches}`);

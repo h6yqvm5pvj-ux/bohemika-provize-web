@@ -140,6 +140,16 @@ function isServerProtectedPagePath(pathname: string): boolean {
   );
 }
 
+function isSearchIndexExcludedPath(pathname: string): boolean {
+  return (
+    isServerProtectedPagePath(pathname) ||
+    isPrivateWorkspacePath(pathname) ||
+    pathname === "/login" ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/embed/")
+  );
+}
+
 function isClientCardsPath(pathname: string): boolean {
   return pathname === "/klienti" || pathname.startsWith("/klienti/");
 }
@@ -291,6 +301,9 @@ export async function middleware(req: NextRequest) {
     res.headers.set("Pragma", "no-cache");
     res.headers.set("Expires", "0");
     res.headers.set("Vary", "Authorization, Cookie");
+  }
+
+  if (isSearchIndexExcludedPath(pathname)) {
     res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   }
 

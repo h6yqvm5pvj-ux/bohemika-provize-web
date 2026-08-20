@@ -157,3 +157,27 @@ export async function loadOnlineCardBySlug(
 
   return null;
 }
+
+export async function listEnabledOnlineCardSlugs(): Promise<string[]> {
+  if (!adminDb) return [];
+
+  try {
+    const snap = await adminDb
+      .collection("users")
+      .where("onlineCard.enabled", "==", true)
+      .select("onlineCard")
+      .get();
+    const slugs = new Set<string>();
+
+    for (const docSnap of snap.docs) {
+      const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+      const parsed = parseOnlineCard(data.onlineCard);
+      if (parsed) slugs.add(parsed.slug);
+    }
+
+    return [...slugs].sort();
+  } catch (error) {
+    console.error("online-card sitemap load failed", error);
+    return [];
+  }
+}
