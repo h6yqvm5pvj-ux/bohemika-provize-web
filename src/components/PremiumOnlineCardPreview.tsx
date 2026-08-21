@@ -116,11 +116,11 @@ function ContactRow({
       }`}
     >
       <div className="grid gap-1.5 sm:grid-cols-[minmax(0,188px)_minmax(0,1fr)] sm:items-center sm:gap-3">
-        <div className={`inline-flex items-center gap-2.5 ${dark ? "text-violet-200/75" : "text-slate-500"}`}>
+        <div className={`inline-flex items-center gap-2.5 ${dark ? "text-blue-200/75" : "text-slate-500"}`}>
           <span
             className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
               dark
-                ? "border-white/14 bg-white/[0.07] text-violet-100 group-hover:border-violet-300/60 group-hover:text-white"
+                ? "border-white/14 bg-white/[0.07] text-blue-100 group-hover:border-blue-300/60 group-hover:text-white"
                 : "border-slate-200/90 bg-white/85 text-slate-600 group-hover:border-slate-300 group-hover:text-slate-900"
             }`}
           >
@@ -128,7 +128,7 @@ function ContactRow({
           </span>
           <span
             className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${
-              dark ? "text-violet-200/75" : "text-slate-500"
+              dark ? "text-blue-200/75" : "text-slate-500"
             }`}
           >
             {label}
@@ -156,7 +156,7 @@ function ContactRow({
                 rel={href.startsWith("http") ? "noreferrer noopener" : undefined}
                 className={`underline underline-offset-4 transition ${
                   dark
-                    ? "decoration-violet-300/30 hover:decoration-violet-300"
+                    ? "decoration-blue-300/30 hover:decoration-blue-300"
                     : "decoration-slate-300 hover:decoration-slate-900"
                 }`}
               >
@@ -200,13 +200,13 @@ export function PremiumOnlineCardPreview({
   const showHeaderCta = !fullWidthLayout && !!meetingCta;
   const editableFieldFrameClass = fullWidthLayout
     ? compact
-      ? "rounded-lg border border-dashed border-violet-300/45 bg-white/[0.03] px-2.5 py-1.5 transition-colors hover:border-violet-200/65 focus-within:border-violet-200/80 focus-within:bg-white/[0.05]"
-      : "rounded-xl border border-dashed border-violet-300/45 bg-white/[0.03] px-3 py-2 transition-colors hover:border-violet-200/65 focus-within:border-violet-200/80 focus-within:bg-white/[0.05]"
+      ? "rounded-lg border border-dashed border-blue-300/45 bg-white/[0.03] px-2.5 py-1.5 transition-colors hover:border-blue-200/65 focus-within:border-blue-200/80 focus-within:bg-white/[0.05]"
+      : "rounded-xl border border-dashed border-blue-300/45 bg-white/[0.03] px-3 py-2 transition-colors hover:border-blue-200/65 focus-within:border-blue-200/80 focus-within:bg-white/[0.05]"
     : "rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-3 py-2 transition-colors hover:border-slate-400 focus-within:border-slate-500 focus-within:bg-white";
   const editableFieldLabelClass = fullWidthLayout
     ? compact
-      ? "text-[9px] font-semibold uppercase tracking-[0.16em] text-violet-200/78"
-      : "text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200/78"
+      ? "text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/78"
+      : "text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-200/78"
     : "text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500";
 
   const fullNameInputClass = fullWidthLayout
@@ -244,13 +244,13 @@ export function PremiumOnlineCardPreview({
         <p
           className={`inline-flex items-center gap-2 rounded-full border font-semibold uppercase tracking-[0.18em] ${
             lightFullWidth
-              ? "border-violet-200 bg-white/70 text-violet-950"
-              : "border-violet-300/35 bg-white/[0.06] text-violet-100"
+              ? "border-blue-200 bg-white/70 text-blue-950"
+              : "border-blue-300/35 bg-white/[0.06] text-blue-100"
           } ${
             compact ? "px-2.5 py-0.5 text-[9px]" : "px-2.5 py-0.5 text-[10px] sm:px-3 sm:py-1 sm:text-[11px]"
           }`}
         >
-          <UserRound className={compact ? "h-3 w-3 text-fuchsia-300" : "h-3.5 w-3.5 text-fuchsia-300"} />
+          <UserRound className={compact ? "h-3 w-3 text-sky-300" : "h-3.5 w-3.5 text-sky-300"} />
           {copy.advisorProfile}
         </p>
       ) : null}
@@ -278,7 +278,7 @@ export function PremiumOnlineCardPreview({
             className={`inline-flex shrink-0 items-center justify-center rounded-full border ${
               compact ? "h-7 w-7" : "h-8 w-8"
             } ${
-              fullWidthLayout ? "border-white/16 bg-white/[0.06] text-violet-100" : "border-slate-200 bg-white/80 text-slate-600"
+              fullWidthLayout ? "border-white/16 bg-white/[0.06] text-blue-100" : "border-slate-200 bg-white/80 text-slate-600"
             }`}
           >
             <BriefcaseBusiness className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
@@ -300,8 +300,8 @@ export function PremiumOnlineCardPreview({
             className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border sm:h-8 sm:w-8 ${
               fullWidthLayout
                 ? lightFullWidth
-                  ? "border-violet-200 bg-white/75 text-violet-700"
-                  : "border-white/16 bg-white/[0.06] text-violet-100"
+                  ? "border-blue-200 bg-white/75 text-blue-700"
+                  : "border-white/16 bg-white/[0.06] text-blue-100"
                 : "border-slate-200 bg-white/80 text-slate-600"
             }`}
           >
@@ -323,7 +323,7 @@ export function PremiumOnlineCardPreview({
         className={`inline-flex items-center gap-2 font-semibold uppercase tracking-[0.22em] ${
           compact ? "text-[9px]" : "text-[10px] sm:text-[11px]"
         } ${
-          fullWidthLayout ? (lightFullWidth ? "text-violet-800/78" : "text-violet-200/82") : "text-slate-500"
+          fullWidthLayout ? (lightFullWidth ? "text-blue-800/78" : "text-blue-200/82") : "text-slate-500"
         }`}
       >
         <MessageSquareQuote className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
@@ -413,11 +413,11 @@ export function PremiumOnlineCardPreview({
             },
           ].map((item) => (
             <div key={item.key} className="group space-y-2">
-              <div className="inline-flex items-center gap-2.5 text-violet-200/75">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/14 bg-white/[0.07] text-violet-100 transition-colors group-hover:border-violet-300/60 group-hover:text-white">
+              <div className="inline-flex items-center gap-2.5 text-blue-200/75">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/14 bg-white/[0.07] text-blue-100 transition-colors group-hover:border-blue-300/60 group-hover:text-white">
                   <item.icon className="h-4 w-4" />
                 </span>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/75">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/75">
                   {item.label}
                 </span>
               </div>
@@ -440,7 +440,7 @@ export function PremiumOnlineCardPreview({
                       href={item.href}
                       target={item.href.startsWith("http") ? "_blank" : undefined}
                       rel={item.href.startsWith("http") ? "noreferrer noopener" : undefined}
-                      className="underline decoration-violet-300/30 underline-offset-4 transition hover:decoration-violet-300"
+                      className="underline decoration-blue-300/30 underline-offset-4 transition hover:decoration-blue-300"
                     >
                       {item.value}
                     </a>
@@ -524,8 +524,8 @@ export function PremiumOnlineCardPreview({
                   lightFullWidth ? "text-slate-950" : "text-white"
                 } sm:px-8 sm:py-8 lg:px-12 lg:py-10`
             : compact
-              ? "overflow-hidden rounded-[28px] border border-violet-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(168,85,247,0.34),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(145deg,#10081f_0%,#0f0b22_45%,#0b0a1b_100%)] px-4 py-3 text-white shadow-[0_24px_70px_rgba(8,6,28,0.5),inset_0_1px_0_rgba(196,181,253,0.2)] sm:px-5 sm:py-4 lg:px-7 lg:py-5"
-              : "overflow-hidden rounded-[36px] border border-violet-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(168,85,247,0.34),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(145deg,#10081f_0%,#0f0b22_45%,#0b0a1b_100%)] px-4 py-4 text-white shadow-[0_35px_90px_rgba(8,6,28,0.65),inset_0_1px_0_rgba(196,181,253,0.2)] sm:px-8 sm:py-6 lg:px-12 lg:py-8"
+              ? "overflow-hidden rounded-[28px] border border-blue-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(37,99,235,0.36),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(14,165,233,0.24),transparent_35%),linear-gradient(145deg,#07152c_0%,#081a33_45%,#061225_100%)] px-4 py-3 text-white shadow-[0_24px_70px_rgba(3,10,26,0.5),inset_0_1px_0_rgba(147,197,253,0.2)] sm:px-5 sm:py-4 lg:px-7 lg:py-5"
+              : "overflow-hidden rounded-[36px] border border-blue-400/24 bg-[radial-gradient(circle_at_14%_16%,rgba(37,99,235,0.36),transparent_38%),radial-gradient(circle_at_88%_6%,rgba(14,165,233,0.24),transparent_35%),linear-gradient(145deg,#07152c_0%,#081a33_45%,#061225_100%)] px-4 py-4 text-white shadow-[0_35px_90px_rgba(3,10,26,0.65),inset_0_1px_0_rgba(147,197,253,0.2)] sm:px-8 sm:py-6 lg:px-12 lg:py-8"
           : "overflow-hidden rounded-[32px] border border-slate-200/85 bg-[linear-gradient(140deg,#f8fcff_0%,#ffffff_44%,#eef6ff_100%)] px-5 py-5 shadow-[0_28px_80px_rgba(15,23,42,0.09)] sm:px-8 sm:py-8"
       } ${className ?? ""}`}
     >
@@ -533,7 +533,7 @@ export function PremiumOnlineCardPreview({
         <>
           <div
             className={`pointer-events-none absolute -right-32 -top-24 h-72 w-72 rounded-full blur-[100px] vizitka-ambient-float ${
-              lightFullWidth ? "bg-violet-200/45" : "bg-fuchsia-500/25"
+              lightFullWidth ? "bg-blue-200/45" : "bg-blue-500/28"
             }`}
           />
           <div
@@ -544,14 +544,14 @@ export function PremiumOnlineCardPreview({
           <div
             className={`pointer-events-none absolute inset-0 ${
               lightFullWidth
-                ? "bg-[radial-gradient(circle_at_82%_28%,rgba(124,58,237,0.08),transparent_36%)]"
+                ? "bg-[radial-gradient(circle_at_82%_28%,rgba(37,99,235,0.08),transparent_36%)]"
                 : "bg-[radial-gradient(circle_at_82%_28%,rgba(255,255,255,0.08),transparent_36%)]"
             }`}
           />
           {!seamless ? (
             <div
               className={`pointer-events-none absolute inset-[1px] border ${
-                lightFullWidth ? "border-violet-100" : "border-white/7"
+                lightFullWidth ? "border-blue-100" : "border-white/7"
               } ${compact ? "rounded-[27px]" : "rounded-[35px]"}`}
             />
           ) : null}
@@ -593,7 +593,7 @@ export function PremiumOnlineCardPreview({
                 compact ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-[11px]"
               } ${
 	              fullWidthLayout
-	                ? "border-violet-300/40 bg-white/[0.06] text-violet-100"
+	                ? "border-blue-300/40 bg-white/[0.06] text-blue-100"
 	                : "border-slate-300 bg-white/90 text-slate-700"
 	            }`}
 	          >
@@ -637,7 +637,7 @@ export function PremiumOnlineCardPreview({
                     type="button"
                     onClick={meetingCta.onClick}
                     disabled={meetingCta.disabled || meetingCta.busy}
-                    className="online-card-action relative isolate inline-flex min-w-[210px] items-center justify-center gap-2 overflow-hidden rounded-[16px] border border-white/35 bg-[linear-gradient(120deg,rgba(124,58,237,0.82)_0%,rgba(168,85,247,0.72)_55%,rgba(192,132,252,0.82)_100%)] px-4 py-2.5 text-sm font-bold text-white shadow-[0_16px_32px_rgba(124,58,237,0.34),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 hover:shadow-[0_18px_38px_rgba(124,58,237,0.46),inset_0_1px_0_rgba(255,255,255,0.56)] before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-white/85 before:opacity-70 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow"
+                    className="online-card-action relative isolate inline-flex min-w-[210px] items-center justify-center gap-2 overflow-hidden rounded-[16px] border border-white/35 bg-[linear-gradient(120deg,rgba(29,78,216,0.9)_0%,rgba(37,99,235,0.84)_55%,rgba(56,189,248,0.82)_100%)] px-4 py-2.5 text-sm font-bold text-white shadow-[0_16px_32px_rgba(37,99,235,0.38),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 hover:shadow-[0_18px_38px_rgba(37,99,235,0.48),inset_0_1px_0_rgba(255,255,255,0.56)] before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-white/85 before:opacity-70 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow"
                   >
                     <CalendarPlus2 className="h-4 w-4" />
                     {meetingCta.busy ? "Odesílám..." : meetingCtaLabel}
@@ -655,7 +655,7 @@ export function PremiumOnlineCardPreview({
                     type="button"
                     onClick={meetingCta.onClick}
                     disabled={meetingCta.disabled || meetingCta.busy}
-                    className={`online-card-action relative isolate inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-[20px] border border-white/35 bg-[linear-gradient(120deg,rgba(124,58,237,0.82)_0%,rgba(168,85,247,0.72)_55%,rgba(192,132,252,0.82)_100%)] font-bold text-white shadow-[0_22px_44px_rgba(124,58,237,0.4),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 hover:shadow-[0_24px_50px_rgba(124,58,237,0.5),inset_0_1px_0_rgba(255,255,255,0.56)] before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-white/85 before:opacity-70 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow sm:w-auto ${
+                    className={`online-card-action relative isolate inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-[20px] border border-white/35 bg-[linear-gradient(120deg,rgba(29,78,216,0.9)_0%,rgba(37,99,235,0.84)_55%,rgba(56,189,248,0.82)_100%)] font-bold text-white shadow-[0_22px_44px_rgba(37,99,235,0.42),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 hover:shadow-[0_24px_50px_rgba(37,99,235,0.52),inset_0_1px_0_rgba(255,255,255,0.56)] before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-white/85 before:opacity-70 disabled:cursor-not-allowed disabled:opacity-70 vizitka-cta-glow sm:w-auto ${
                       compact
                         ? "min-w-[220px] px-5 py-2.5 text-base"
                         : "min-w-[190px] px-4 py-2 text-sm sm:min-w-[260px] sm:px-7 sm:py-3 sm:text-lg"

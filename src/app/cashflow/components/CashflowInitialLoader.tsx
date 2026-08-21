@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ArrowUpRight, CalendarRange, TrendingUp } from "lucide-react";
 
 import introStyles from "../cashflowIntro.module.css";
@@ -6,63 +6,22 @@ import introStyles from "../cashflowIntro.module.css";
 type CashflowInitialLoaderProps = {
   completing: boolean;
   tipsterMode?: boolean;
+  progress: number;
+  stageText?: string | null;
+  detailText?: string | null;
 };
-
-const ADVISOR_STAGES = [
-  "Načítám provize",
-  "Kontroluji aktivní smlouvy",
-  "Skládám provize do měsíců",
-  "Páruji výpisy s výplatami",
-  "Počítám čisté cashflow",
-  "Připravuji provizní kalendář",
-];
-
-const TIPSTER_STAGES = [
-  "Načítám TIP provize",
-  "Kontroluji sjednané tipy",
-  "Skládám výplaty do měsíců",
-  "Počítám očekávané cashflow",
-  "Připravuji provizní kalendář",
-];
 
 export function CashflowInitialLoader({
   completing,
   tipsterMode = false,
+  progress,
+  stageText,
+  detailText,
 }: CashflowInitialLoaderProps) {
-  const [progress, setProgress] = useState(0);
-  const [stageIndex, setStageIndex] = useState(0);
-  const stages = useMemo(
-    () => (tipsterMode ? TIPSTER_STAGES : ADVISOR_STAGES),
-    [tipsterMode]
-  );
-
-  useEffect(() => {
-    if (completing) return;
-
-    const interval = window.setInterval(() => {
-      setProgress((current) => {
-        if (current >= 96) return current;
-        if (current < 18) return Math.min(96, current + 5);
-        if (current < 58) return Math.min(96, current + 3);
-        return Math.min(96, current + 1);
-      });
-    }, 145);
-
-    return () => window.clearInterval(interval);
-  }, [completing]);
-
-  useEffect(() => {
-    if (completing) return;
-
-    const interval = window.setInterval(() => {
-      setStageIndex((current) => (current + 1) % stages.length);
-    }, 1150);
-
-    return () => window.clearInterval(interval);
-  }, [completing, stages]);
-
   const visibleProgress = completing ? 100 : progress;
-  const stageText = completing ? "Hotovo. Otevírám kalendář." : stages[stageIndex];
+  const visibleStageText = completing
+    ? "Hotovo. Otevírám kalendář."
+    : stageText || (tipsterMode ? "Načítám TIP provize" : "Načítám provize");
   const progressStyle = useMemo(
     () => ({ width: `${Math.max(0, Math.min(100, visibleProgress))}%` }),
     [visibleProgress]
@@ -97,11 +56,16 @@ export function CashflowInitialLoader({
             </div>
 
             <h1
-              key={stageText}
+              key={visibleStageText}
               className={`${introStyles.initialLoaderStage} mt-5 max-w-4xl text-3xl font-semibold leading-tight text-black sm:text-4xl`}
             >
-              {stageText}
+              {visibleStageText}
             </h1>
+            {!completing && detailText && (
+              <p className="mt-3 text-base font-medium text-black/55 sm:text-lg">
+                {detailText}
+              </p>
+            )}
           </div>
 
           <div

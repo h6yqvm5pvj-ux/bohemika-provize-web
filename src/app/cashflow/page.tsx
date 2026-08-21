@@ -338,7 +338,13 @@ export default function CashflowPage() {
 
   const cashflowDataEnabled =
     profileReady && Boolean(dataEmail) && hasInternalProfile === true;
-  const { loading, ready: cashflowReady, cashflowItems, hasTeam } = useCashflowData({
+  const {
+    loading,
+    ready: cashflowReady,
+    cashflowItems,
+    hasTeam,
+    loadingProgress,
+  } = useCashflowData({
     userEmail: dataEmail,
     scopeFilter,
     productFilter,
@@ -597,6 +603,11 @@ export default function CashflowPage() {
             <CashflowInitialLoader
               completing={initialLoaderCompleting}
               tipsterMode={isTipsterMode}
+              progress={profileReady ? loadingProgress.percent : 2}
+              stageText={
+                profileReady ? loadingProgress.label : "Načítám uživatelský profil"
+              }
+              detailText={profileReady ? loadingProgress.detail : null}
             />
           ) : (
             <>

@@ -3503,6 +3503,31 @@ async function fetchContractsForOwners(
   };
 }
 
+async function countContractEntriesForOwners(
+  owners: string[]
+): Promise<number | null> {
+  if (!adminDb) return null;
+  if (owners.length === 0) return 0;
+
+  try {
+    const counts = await Promise.all(
+      owners.map(async (owner) => {
+        const snapshot = await adminDb!
+          .collection("users")
+          .doc(owner)
+          .collection("entries")
+          .count()
+          .get();
+        return snapshot.data().count;
+      })
+    );
+    return counts.reduce((sum, count) => sum + count, 0);
+  } catch (error) {
+    console.warn("GET /api/contracts/list: count pro cashflow selhal.", error);
+    return null;
+  }
+}
+
 const toNonEmptyCandidateValues = (values: Array<string | null | undefined>): string[] =>
   Array.from(
     new Set(
@@ -4025,6 +4050,12 @@ export async function handleContractsGet(
     includeTeam,
     teamEmails,
   });
+  const totalCountPromise =
+    responseShape === "cashflow" &&
+    cursor == null &&
+    !hasContractListFilters(listFilters)
+      ? countContractEntriesForOwners(owners)
+      : Promise.resolve<number | null>(null);
 
   let primaryRes: Awaited<ReturnType<typeof fetchContractsForOwners>>;
   let teamRes: Awaited<ReturnType<typeof fetchContractsForOwners>> | null = null;
@@ -4074,6 +4105,7 @@ export async function handleContractsGet(
   }
 
   const { list, hasMore, nextCursor, nextCursorToken } = primaryRes;
+  const totalCount = await totalCountPromise;
   const filterStatementData = (contract: ContractResponseItem) =>
     filterStatementDerivedContractDataForViewer({
       contract,
@@ -4095,6 +4127,7 @@ export async function handleContractsGet(
     hasTeam: teamEmails.length > 0,
     teamEmails,
     contracts: visibleContracts,
+    totalCount,
     hasMore,
     nextCursor,
     nextCursorToken,

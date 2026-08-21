@@ -13,6 +13,11 @@ import { totalWithMultipliers } from "../lib/commissionTotals";
 import { computeLegacyFrequencyOverrideTotal } from "../lib/managerOverrideTotals";
 import { generateCashflow } from "./generator";
 import {
+  initialCashflowLoadingProgress,
+  ownContractsLoadingPercent,
+  type CashflowLoadingProgress,
+} from "./loadingProgress";
+import {
   CASHFLOW_FORECAST_YEARS,
   matchesProductFilter,
   stripTotalRows,
@@ -49,6 +54,7 @@ type UseCashflowDataResult = {
   ready: boolean;
   cashflowItems: CashflowItem[];
   hasTeam: boolean;
+  loadingProgress: CashflowLoadingProgress;
 };
 
 type ContractsApiResponse = {
@@ -59,6 +65,7 @@ type ContractsApiResponse = {
   hasTeam?: boolean;
   teamEmails?: string[];
   contracts?: (EntryDoc & { adviserEmail?: string | null })[];
+  totalCount?: number | null;
   hasMore?: boolean;
   nextCursorToken?: string | null;
   nextCursor?: number | null;
@@ -128,11 +135,16 @@ const CONTRACTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const CASHFLOW_MIN_LOADING_MS = 250;
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 type SnapshotMode = "standard" | "tipster";
+type SnapshotProgressListener = (progress: CashflowLoadingProgress) => void;
 const contractsSnapshotCache: Record<
   string,
   { ts: number; payload: RawContractsSnapshot }
 > = {};
 const contractsSnapshotInFlight: Partial<Record<string, Promise<RawContractsSnapshot>>> = {};
+const contractsSnapshotProgressListeners = new Map<
+  string,
+  Set<SnapshotProgressListener>
+>();
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
@@ -174,6 +186,18 @@ const getContractsUpdatedAtMs = (): number => {
 };
 
 const snapshotCacheKey = (email: string, mode: SnapshotMode): string => `${email}::${mode}`;
+
+const emitSnapshotProgress = (
+  cacheKey: string,
+  progress: CashflowLoadingProgress
+): void => {
+  contractsSnapshotProgressListeners
+    .get(cacheKey)
+    ?.forEach((listener) => listener(progress));
+};
+
+const formatLoadedCount = (value: number): string =>
+  Math.max(0, value).toLocaleString("cs-CZ");
 
 const isSnapshotFresh = (
   snapshotTs: number,
@@ -277,8 +301,14 @@ const normalizeSubscriptionPaymentForCashflow = (
 
 async function fetchContractsSnapshot(
   email: string,
-  mode: SnapshotMode
+  mode: SnapshotMode,
+  onProgress: SnapshotProgressListener
 ): Promise<RawContractsSnapshot> {
+  onProgress({
+    percent: 4,
+    label: "Ověřuji přístup k datům",
+    detail: null,
+  });
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error("Nejsi přihlášený.");
 
@@ -446,7 +476,12 @@ async function fetchContractsSnapshot(
 
   const collectScope = async (
     scope: "my" | "team",
-    onFirstPage?: (hint: ScopeFirstPageHint) => void
+    onFirstPage?: (hint: ScopeFirstPageHint) => void,
+    onPage?: (progress: {
+      loaded: number;
+      total: number | null;
+      done: boolean;
+    }) => void
   ): Promise<ScopeResult> => {
     const entries: EntryDoc[] = [];
     const seen = new Set<string>();
@@ -458,6 +493,7 @@ async function fetchContractsSnapshot(
     let commissionModeHint: CommissionMode | null = null;
     let hasTeamHint = false;
     let teamEmailsHint: string[] = [];
+    let totalHint: number | null = null;
 
     while (hasMore && pages < CONTRACTS_MAX_PAGES) {
       const response = await requestContracts(scope, cursor);
@@ -469,6 +505,12 @@ async function fetchContractsSnapshot(
         teamEmailsHint = Array.isArray(response.teamEmails)
           ? response.teamEmails.map((item) => normalizeEmail(item)).filter(Boolean)
           : [];
+        totalHint =
+          typeof response.totalCount === "number" &&
+          Number.isFinite(response.totalCount) &&
+          response.totalCount >= 0
+            ? response.totalCount
+            : null;
         onFirstPage?.({
           positionHint,
           commissionModeHint,
@@ -481,7 +523,10 @@ async function fetchContractsSnapshot(
       const chunk = (response.contracts ?? []) as (EntryDoc & {
         adviserEmail?: string | null;
       })[];
-      if (chunk.length === 0) break;
+      if (chunk.length === 0) {
+        onPage?.({ loaded: entries.length, total: totalHint, done: true });
+        break;
+      }
 
       chunk.forEach((item) => {
         const ownerEmail = normalizeEmail(
@@ -519,6 +564,11 @@ async function fetchContractsSnapshot(
       }
       cursor = nextCursor;
       hasMore = Boolean(response.hasMore) && Boolean(nextCursor);
+      onPage?.({
+        loaded: entries.length,
+        total: totalHint,
+        done: !hasMore,
+      });
     }
 
     if (pages >= CONTRACTS_MAX_PAGES && hasMore) {
@@ -537,9 +587,33 @@ async function fetchContractsSnapshot(
   };
 
   let teamScopePromise: Promise<ScopeResult> | null = null;
+  let ownScopeComplete = false;
+  let latestTeamPage: { loaded: number; total: number | null; done: boolean } | null = null;
+  const reportTeamPage = (page: {
+    loaded: number;
+    total: number | null;
+    done: boolean;
+  }) => {
+    latestTeamPage = page;
+    if (!ownScopeComplete) return;
+    const ratio =
+      page.done
+        ? 1
+        : page.total != null && page.total > 0
+          ? Math.min(0.99, page.loaded / page.total)
+          : Math.min(0.9, page.loaded / 1_000);
+    onProgress({
+      percent: Math.round(78 + ratio * 9),
+      label: "Načítám týmové provize",
+      detail:
+        page.total != null
+          ? `${formatLoadedCount(page.loaded)} z ${formatLoadedCount(page.total)}`
+          : `${formatLoadedCount(page.loaded)} načteno`,
+    });
+  };
   const startTeamScopePromise = (): Promise<ScopeResult> => {
     if (!teamScopePromise) {
-      teamScopePromise = collectScope("team");
+      teamScopePromise = collectScope("team", undefined, reportTeamPage);
       teamScopePromise.catch(() => undefined);
     }
     return teamScopePromise;
@@ -558,7 +632,17 @@ async function fetchContractsSnapshot(
   });
 
   if (mode === "tipster") {
+    onProgress({
+      percent: 18,
+      label: "Načítám TIP provize",
+      detail: null,
+    });
     const tipPayouts = await tipPayoutsPromise;
+    onProgress({
+      percent: 96,
+      label: "Počítám očekávané cashflow",
+      detail: `${formatLoadedCount(tipPayouts.length)} TIP výplat`,
+    });
     return {
       email,
       myPosition: null,
@@ -571,18 +655,46 @@ async function fetchContractsSnapshot(
     };
   }
 
-  const ownResult = await collectScope("my", (hint) => {
-    if (hint.hasTeamHint || hint.teamEmailsHint.length > 0) {
-      void startTeamScopePromise();
+  const ownResult = await collectScope(
+    "my",
+    (hint) => {
+      if (hint.hasTeamHint || hint.teamEmailsHint.length > 0) {
+        void startTeamScopePromise();
+      }
+    },
+    ({ loaded, total, done }) => {
+      onProgress({
+        percent: ownContractsLoadingPercent({ loaded, total, done }),
+        label: "Načítám smlouvy",
+        detail:
+          total != null
+            ? `${formatLoadedCount(loaded)} z ${formatLoadedCount(total)}`
+            : `${formatLoadedCount(loaded)} načteno`,
+      });
     }
-  });
+  );
   const myPosition = ownResult.positionHint ?? null;
   const myCommissionMode = ownResult.commissionModeHint ?? null;
+  ownScopeComplete = true;
+  onProgress({
+    percent: 76,
+    label: "Vlastní smlouvy načteny",
+    detail: `${formatLoadedCount(ownResult.entries.length)} záznamů`,
+  });
   let teamEntriesRaw: EntryDoc[] = [];
   let hasAnyTeam =
     ownResult.hasTeamHint || (ownResult.teamEmailsHint?.length ?? 0) > 0;
 
   if (hasAnyTeam) {
+    if (latestTeamPage) {
+      reportTeamPage(latestTeamPage);
+    } else {
+      onProgress({
+        percent: 78,
+        label: "Načítám týmové provize",
+        detail: null,
+      });
+    }
     try {
       const teamResult = await (teamScopePromise ?? startTeamScopePromise());
       teamEntriesRaw = teamResult.entries;
@@ -597,8 +709,20 @@ async function fetchContractsSnapshot(
     }
   }
 
+  onProgress({
+    percent: 88,
+    label: "Páruji výpisy s výplatami",
+    detail: null,
+  });
   const tipPayouts = await tipPayoutsPromise;
   const subscriptionPayments = await subscriptionPaymentsPromise;
+  onProgress({
+    percent: 96,
+    label: "Počítám čisté cashflow",
+    detail: `${formatLoadedCount(
+      ownResult.entries.length + teamEntriesRaw.length
+    )} smluvních záznamů`,
+  });
 
   return {
     email,
@@ -614,32 +738,52 @@ async function fetchContractsSnapshot(
 
 async function getContractsSnapshot(
   email: string,
-  mode: SnapshotMode
+  mode: SnapshotMode,
+  onProgress: SnapshotProgressListener
 ): Promise<RawContractsSnapshot> {
   const cacheKey = snapshotCacheKey(email, mode);
-  const cached = contractsSnapshotCache[cacheKey];
-  const updatedAtMs = getContractsUpdatedAtMs();
-  if (cached && isSnapshotFresh(cached.ts, updatedAtMs)) {
-    return cached.payload;
-  }
-  if (cached && !isSnapshotFresh(cached.ts, updatedAtMs)) {
-    delete contractsSnapshotCache[cacheKey];
-  }
+  const listeners = contractsSnapshotProgressListeners.get(cacheKey) ?? new Set();
+  listeners.add(onProgress);
+  contractsSnapshotProgressListeners.set(cacheKey, listeners);
 
-  if (contractsSnapshotInFlight[cacheKey]) {
-    return contractsSnapshotInFlight[cacheKey];
+  try {
+    const cached = contractsSnapshotCache[cacheKey];
+    const updatedAtMs = getContractsUpdatedAtMs();
+    if (cached && isSnapshotFresh(cached.ts, updatedAtMs)) {
+      onProgress({
+        percent: 96,
+        label: "Používám načtená data",
+        detail: null,
+      });
+      return cached.payload;
+    }
+    if (cached && !isSnapshotFresh(cached.ts, updatedAtMs)) {
+      delete contractsSnapshotCache[cacheKey];
+    }
+
+    if (!contractsSnapshotInFlight[cacheKey]) {
+      contractsSnapshotInFlight[cacheKey] = fetchContractsSnapshot(
+        email,
+        mode,
+        (progress) => emitSnapshotProgress(cacheKey, progress)
+      )
+        .then((payload) => {
+          contractsSnapshotCache[cacheKey] = { ts: Date.now(), payload };
+          return payload;
+        })
+        .finally(() => {
+          delete contractsSnapshotInFlight[cacheKey];
+        });
+    }
+
+    return await contractsSnapshotInFlight[cacheKey];
+  } finally {
+    const currentListeners = contractsSnapshotProgressListeners.get(cacheKey);
+    currentListeners?.delete(onProgress);
+    if (currentListeners?.size === 0) {
+      contractsSnapshotProgressListeners.delete(cacheKey);
+    }
   }
-
-  contractsSnapshotInFlight[cacheKey] = fetchContractsSnapshot(email, mode)
-    .then((payload) => {
-      contractsSnapshotCache[cacheKey] = { ts: Date.now(), payload };
-      return payload;
-    })
-    .finally(() => {
-      delete contractsSnapshotInFlight[cacheKey];
-    });
-
-  return contractsSnapshotInFlight[cacheKey];
 }
 
 export function useCashflowData({
@@ -661,6 +805,9 @@ export function useCashflowData({
   const [snapshot, setSnapshot] = useState<RawContractsSnapshot | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
   const [ready, setReady] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<CashflowLoadingProgress>(
+    initialCashflowLoadingProgress
+  );
 
   useEffect(() => {
     let finishLoadingTimer: number | null = null;
@@ -669,6 +816,7 @@ export function useCashflowData({
       setHasTeam(false);
       setLoading(false);
       setReady(false);
+      setLoadingProgress(initialCashflowLoadingProgress());
       return;
     }
 
@@ -700,13 +848,26 @@ export function useCashflowData({
       setLoading(!hasCachedPayload);
       if (!hasCachedPayload) {
         setReady(false);
+        setLoadingProgress(initialCashflowLoadingProgress());
       }
 
       try {
         const emailRaw = userEmail.trim();
         const email = emailRaw.toLowerCase();
         if (!email) throw new Error("Chybí e-mail uživatele");
-        const payload = await getContractsSnapshot(email, snapshotMode);
+        const payload = await getContractsSnapshot(email, snapshotMode, (progress) => {
+          if (cancelled) return;
+          setLoadingProgress((current) =>
+            progress.percent >= current.percent ? progress : current
+          );
+        });
+        if (cancelled) return;
+        setLoadingProgress({
+          percent: 98,
+          label: "Skládám provize do měsíců",
+          detail: null,
+        });
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         if (cancelled) return;
         setSnapshot(payload);
         setHasTeam(payload.hasAnyTeam);
@@ -1099,5 +1260,6 @@ export function useCashflowData({
     ready: dataReady,
     cashflowItems,
     hasTeam: snapshotMatchesCurrentUser ? hasTeam : false,
+    loadingProgress,
   };
 }

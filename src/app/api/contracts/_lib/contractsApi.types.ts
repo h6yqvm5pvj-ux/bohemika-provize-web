@@ -460,6 +460,7 @@ export type ContractsResponse = {
   hasTeam: boolean;
   teamEmails: string[];
   contracts: ContractResponseItem[];
+  totalCount?: number | null;
   hasMore: boolean;
   nextCursor: number | null;
   nextCursorToken: string | null;

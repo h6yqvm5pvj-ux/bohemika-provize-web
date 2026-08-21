@@ -96,24 +96,24 @@ export function OnlineCardTestimonials({
         <article
           className={`w-[360px] rounded-2xl border px-4 py-3 text-left sm:w-[420px] ${
             light
-              ? "border-violet-200/80 bg-white text-slate-950"
-              : "border-violet-300/20 bg-white/[0.055] text-white"
+              ? "border-blue-200/80 bg-white text-slate-950"
+              : "border-blue-300/20 bg-white/[0.055] text-white"
           }`}
         >
           <div className="flex items-start gap-3">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-extrabold tracking-wide text-white shadow-[0_8px_18px_rgba(124,58,237,0.35)]">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-extrabold tracking-wide text-white shadow-[0_8px_18px_rgba(37,99,235,0.36)]">
               {getInitials(author)}
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-3">
                 <span className={`truncate text-sm font-bold ${light ? "text-slate-950" : "text-white"}`}>{author}</span>
                 {dateLabel ? (
-                  <time className={`shrink-0 text-[11px] font-medium ${light ? "text-slate-500" : "text-violet-100/60"}`}>
+                  <time className={`shrink-0 text-[11px] font-medium ${light ? "text-slate-500" : "text-blue-100/60"}`}>
                     {dateLabel}
                   </time>
                 ) : null}
               </div>
-              <p className={`mt-1.5 line-clamp-2 text-sm leading-relaxed ${light ? "text-slate-600" : "text-violet-50/88"}`}>
+              <p className={`mt-1.5 line-clamp-2 text-sm leading-relaxed ${light ? "text-slate-600" : "text-blue-50/88"}`}>
                 {testimonial.quote}
               </p>
             </div>
@@ -192,18 +192,18 @@ export function OnlineCardTestimonials({
         reveal ? "online-card-scroll-reveal" : ""
       } ${
         light
-          ? "bg-[linear-gradient(180deg,rgba(250,245,255,0.94)_0%,rgba(255,255,255,0.98)_100%)]"
-          : "bg-[linear-gradient(180deg,rgba(13,10,29,0.99)_0%,rgba(8,7,18,0.99)_100%)]"
+          ? "bg-[linear-gradient(180deg,rgba(239,246,255,0.94)_0%,rgba(255,255,255,0.98)_100%)]"
+          : "bg-[linear-gradient(180deg,rgba(8,26,51,0.99)_0%,rgba(5,13,30,0.99)_100%)]"
       }`}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(124,58,237,0.16),transparent_34%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(37,99,235,0.18),transparent_34%)]" />
       <div className={`relative z-10 mx-auto ${mode === "showcase" ? "max-w-[1680px]" : "max-w-5xl"}`}>
         <div className="text-left sm:text-center">
           <p
             className={`mx-auto inline-flex items-center gap-2 rounded-full border px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
               light
-                ? "border-violet-200 bg-white text-violet-800"
-                : "border-violet-300/35 bg-white/[0.05] text-violet-100"
+                ? "border-blue-200 bg-white text-blue-800"
+                : "border-blue-300/35 bg-white/[0.05] text-blue-100"
             }`}
           >
             <MessageSquareQuote className="h-3.5 w-3.5" />
@@ -235,7 +235,7 @@ export function OnlineCardTestimonials({
             <button
               type="button"
               onClick={openReview}
-              className="online-card-action inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-violet-700 px-5 py-2.5 text-sm font-bold text-white shadow-[0_16px_34px_rgba(124,58,237,0.28)] transition hover:-translate-y-0.5 hover:bg-violet-800"
+              className="online-card-action inline-flex items-center gap-2 rounded-full border border-blue-300/35 bg-blue-700 px-5 py-2.5 text-sm font-bold text-white shadow-[0_16px_34px_rgba(37,99,235,0.32)] transition hover:-translate-y-0.5 hover:bg-blue-800"
             >
               <MessageSquareQuote className="h-4 w-4" />
               {copy.writeReview}
@@ -251,20 +251,20 @@ export function OnlineCardTestimonials({
             role="dialog"
             aria-modal="true"
             aria-labelledby="online-card-review-title"
-            className="max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-white shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:max-h-[calc(100dvh-3rem)] sm:p-6"
+            className="max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-[28px] border border-blue-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(96,165,250,0.24),transparent_34%),linear-gradient(155deg,#071a36_0%,#061225_100%)] p-4 text-white shadow-[0_34px_90px_rgba(2,8,23,0.72),inset_0_1px_0_rgba(147,197,253,0.2)] sm:max-h-[calc(100dvh-3rem)] sm:p-6"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/80">
                   {copy.testimonialsKicker}
                 </p>
                 <h2 id="online-card-review-title" className="mt-1 text-xl font-bold tracking-[-0.02em] text-white">{copy.reviewTitle}</h2>
-                <p className="mt-1 text-sm text-violet-100/75">{copy.reviewDescription}</p>
+                <p className="mt-1 text-sm text-blue-100/75">{copy.reviewDescription}</p>
               </div>
               <button
                 type="button"
                 onClick={closeReview}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-violet-100 transition hover:bg-white/18"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-blue-100 transition hover:bg-white/18"
                 aria-label={copy.closeForm}
               >
                 <X className="h-4 w-4" />
@@ -285,7 +285,7 @@ export function OnlineCardTestimonials({
                 </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-violet-50">
+                <label className="text-sm font-semibold text-blue-50">
                   {copy.reviewName}
                   <input
                     type="text"
@@ -293,10 +293,10 @@ export function OnlineCardTestimonials({
                     onChange={(event) => setReview((current) => ({ ...current, author: event.target.value.slice(0, 80) }))}
                     placeholder={copy.reviewNamePlaceholder}
                     maxLength={80}
-                    className="mt-1.5 w-full rounded-xl border border-white/14 bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none placeholder:text-violet-100/45 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/20"
+                    className="mt-1.5 w-full rounded-xl border border-white/14 bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none placeholder:text-blue-100/45 focus:border-blue-300/45 focus:ring-2 focus:ring-blue-300/20"
                   />
                 </label>
-                <label className="text-sm font-semibold text-violet-50">
+                <label className="text-sm font-semibold text-blue-50">
                   {copy.reviewContext}
                   <input
                     type="text"
@@ -304,11 +304,11 @@ export function OnlineCardTestimonials({
                     onChange={(event) => setReview((current) => ({ ...current, context: event.target.value.slice(0, 120) }))}
                     placeholder={copy.reviewContextPlaceholder}
                     maxLength={120}
-                    className="mt-1.5 w-full rounded-xl border border-white/14 bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none placeholder:text-violet-100/45 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/20"
+                    className="mt-1.5 w-full rounded-xl border border-white/14 bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none placeholder:text-blue-100/45 focus:border-blue-300/45 focus:ring-2 focus:ring-blue-300/20"
                   />
                 </label>
               </div>
-              <label className="block text-sm font-semibold text-violet-50">
+              <label className="block text-sm font-semibold text-blue-50">
                 {copy.reviewText}
                 <textarea
                   value={review.quote}
@@ -316,15 +316,15 @@ export function OnlineCardTestimonials({
                   placeholder={copy.reviewTextPlaceholder}
                   maxLength={600}
                   rows={5}
-                  className="mt-1.5 w-full resize-y rounded-xl border border-white/14 bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none placeholder:text-violet-100/45 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/20"
+                  className="mt-1.5 w-full resize-y rounded-xl border border-white/14 bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none placeholder:text-blue-100/45 focus:border-blue-300/45 focus:ring-2 focus:ring-blue-300/20"
                 />
               </label>
-              <label className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-violet-100/82">
+              <label className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-blue-100/82">
                 <input
                   type="checkbox"
                   checked={review.consent}
                   onChange={(event) => setReview((current) => ({ ...current, consent: event.target.checked }))}
-                  className="mt-0.5 h-4 w-4 rounded border-white/30 bg-white/10 text-violet-600 focus:ring-violet-300"
+                  className="mt-0.5 h-4 w-4 rounded border-white/30 bg-white/10 text-blue-600 focus:ring-blue-300"
                 />
                 <span>{copy.reviewConsent}</span>
               </label>
@@ -336,7 +336,7 @@ export function OnlineCardTestimonials({
               <button
                 type="submit"
                 disabled={submitting}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-700 px-4 py-3 text-sm font-bold text-white shadow-[0_16px_34px_rgba(124,58,237,0.28)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-65"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-700 px-4 py-3 text-sm font-bold text-white shadow-[0_16px_34px_rgba(37,99,235,0.32)] transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-65"
               >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareQuote className="h-4 w-4" />}
                 {submitting ? copy.reviewSubmitting : copy.reviewSubmit}

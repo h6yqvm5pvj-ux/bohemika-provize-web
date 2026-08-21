@@ -464,8 +464,8 @@ export default function OnlineCardPublicClient({
       <div
         className={`pointer-events-none fixed inset-0 z-0 transition-colors duration-300 ${
           lightMode
-            ? "bg-[radial-gradient(circle_at_18%_8%,rgba(124,58,237,0.12),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]"
-            : "bg-[radial-gradient(circle_at_15%_12%,#271245_0%,#110a21_36%,#080715_72%,#05040f_100%)]"
+            ? "bg-[radial-gradient(circle_at_18%_8%,rgba(37,99,235,0.12),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]"
+            : "bg-[radial-gradient(circle_at_15%_12%,#0b2a52_0%,#07172f_36%,#050d1e_72%,#030817_100%)]"
         }`}
         aria-hidden="true"
       />
@@ -475,21 +475,21 @@ export default function OnlineCardPublicClient({
         onPointerLeave={resetShellPointer}
         className={`online-card-public-shell online-card-theme-${theme} relative z-10 w-full overflow-hidden transition-colors duration-300 ${
           lightMode
-            ? "bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_48%,#ffffff_100%)] text-slate-950"
-            : "bg-[linear-gradient(180deg,#10081f_0%,#0f0b22_48%,#080715_100%)] text-white"
+            ? "bg-[linear-gradient(180deg,#ffffff_0%,#eff6ff_48%,#ffffff_100%)] text-slate-950"
+            : "bg-[linear-gradient(180deg,#07152c_0%,#081a33_48%,#050d1e_100%)] text-white"
         }`}
       >
         <div className="online-card-pointer-glow" aria-hidden="true" />
         <div className="online-card-scroll-progress" aria-hidden="true" />
         <div
           className={`sticky top-0 z-30 flex h-12 items-center justify-between gap-1 border-b px-2.5 py-1.5 backdrop-blur-xl sm:absolute sm:right-5 sm:top-5 sm:h-auto sm:gap-2 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none ${
-            lightMode ? "border-violet-100/90 bg-white/82" : "border-white/8 bg-[#10081f]/82"
+            lightMode ? "border-blue-100/90 bg-white/82" : "border-white/8 bg-[#07152c]/82"
           }`}
         >
           <button
             type="button"
             onClick={handleShareOnlineCard}
-            className="online-card-action inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-violet-300/25 bg-violet-700 text-xs font-bold text-white shadow-[0_10px_20px_rgba(124,58,237,0.24)] transition hover:bg-violet-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
+            className="online-card-action inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-blue-300/30 bg-blue-700 text-xs font-bold text-white shadow-[0_10px_20px_rgba(37,99,235,0.28)] transition hover:bg-blue-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
             aria-label={copy.public.share}
           >
             <Share2 className="h-3.5 w-3.5" />
@@ -498,7 +498,7 @@ export default function OnlineCardPublicClient({
           <button
             type="button"
             onClick={handleDownloadContactVCard}
-            className="online-card-action inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-violet-300/25 bg-violet-700 text-xs font-bold text-white shadow-[0_10px_20px_rgba(124,58,237,0.24)] transition hover:bg-violet-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
+            className="online-card-action inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-blue-300/30 bg-blue-700 text-xs font-bold text-white shadow-[0_10px_20px_rgba(37,99,235,0.28)] transition hover:bg-blue-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
             aria-label={copy.public.saveContact}
           >
             <Download className="h-3.5 w-3.5" />
@@ -507,8 +507,8 @@ export default function OnlineCardPublicClient({
           <div
             className={`inline-flex h-8 items-center rounded-[11px] border p-0.5 text-[11px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.16)] backdrop-blur sm:h-auto sm:rounded-full sm:p-1 sm:text-xs ${
               lightMode
-                ? "border-violet-200 bg-white/90 text-slate-700"
-                : "border-white/16 bg-slate-950/42 text-violet-100"
+                ? "border-blue-200 bg-white/90 text-slate-700"
+                : "border-white/16 bg-slate-950/42 text-blue-100"
             }`}
             aria-label={copy.public.displayMode}
           >
@@ -517,7 +517,7 @@ export default function OnlineCardPublicClient({
               onClick={() => setTheme("dark")}
               aria-pressed={!lightMode}
               className={`inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5 ${
-                !lightMode ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]" : "hover:bg-violet-50"
+                !lightMode ? "bg-blue-700 text-white shadow-[0_8px_22px_rgba(37,99,235,0.36)]" : "hover:bg-blue-50"
               }`}
             >
               <Moon className="h-3.5 w-3.5" />
@@ -528,7 +528,7 @@ export default function OnlineCardPublicClient({
               onClick={() => setTheme("light")}
               aria-pressed={lightMode}
               className={`inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5 ${
-                lightMode ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]" : "hover:bg-white/10"
+                lightMode ? "bg-blue-700 text-white shadow-[0_8px_22px_rgba(37,99,235,0.36)]" : "hover:bg-white/10"
               }`}
             >
               <Sun className="h-3.5 w-3.5" />
@@ -538,8 +538,8 @@ export default function OnlineCardPublicClient({
           <div
             className={`inline-flex h-8 items-center rounded-[11px] border p-0.5 text-[11px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.16)] backdrop-blur sm:h-auto sm:rounded-full sm:p-1 sm:text-xs ${
               lightMode
-                ? "border-violet-200 bg-white/90 text-slate-700"
-                : "border-white/16 bg-slate-950/42 text-violet-100"
+                ? "border-blue-200 bg-white/90 text-slate-700"
+                : "border-white/16 bg-slate-950/42 text-blue-100"
             }`}
             aria-label={copy.public.language}
           >
@@ -552,7 +552,7 @@ export default function OnlineCardPublicClient({
                 aria-label={option.label}
                 className={`inline-flex h-7 w-7 items-center justify-center gap-1 rounded-[8px] transition sm:h-auto sm:w-auto sm:rounded-full sm:px-3 sm:py-1.5 ${
                   locale === option.id
-                    ? "bg-violet-700 text-white shadow-[0_8px_22px_rgba(124,58,237,0.34)]"
+                    ? "bg-blue-700 text-white shadow-[0_8px_22px_rgba(37,99,235,0.36)]"
                     : "hover:bg-white/10"
                 }`}
               >
@@ -617,11 +617,11 @@ export default function OnlineCardPublicClient({
               activeOfficePhoto ? "py-10 sm:px-10 sm:py-16" : "py-8 sm:px-10 sm:py-12"
             } [animation-delay:680ms] ${
               lightMode
-                ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(250,245,255,0.94)_100%)]"
-                : "bg-[linear-gradient(180deg,rgba(10,8,24,0.99)_0%,rgba(13,10,29,0.99)_100%)]"
+                ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(239,246,255,0.94)_100%)]"
+                : "bg-[linear-gradient(180deg,rgba(7,21,44,0.99)_0%,rgba(8,26,51,0.99)_100%)]"
             }`}
           >
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(124,58,237,0.12),transparent_34%)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(37,99,235,0.14),transparent_34%)]" />
             <div
               className={`relative z-10 mx-auto gap-5 ${
                 activeOfficePhoto
@@ -703,7 +703,7 @@ export default function OnlineCardPublicClient({
                         type="button"
                         onClick={() => setOfficePhotoIndex(index)}
                         className={`h-2.5 rounded-full transition ${
-                          index === safeOfficePhotoIndex ? "w-6 bg-violet-200" : "w-2.5 bg-white/35 hover:bg-white/60"
+                          index === safeOfficePhotoIndex ? "w-6 bg-blue-200" : "w-2.5 bg-white/35 hover:bg-white/60"
                         }`}
                         aria-label={`${copy.public.showOfficePhoto} ${index + 1}`}
                       />
@@ -719,16 +719,16 @@ export default function OnlineCardPublicClient({
                     activeOfficePhoto
                       ? `relative flex min-h-[310px] flex-col overflow-hidden rounded-[28px_28px_28px_10px] border p-6 shadow-[0_24px_60px_rgba(3,2,14,0.22)] sm:p-8 lg:min-h-0 lg:p-10 ${
                           lightMode
-                            ? "border-violet-200/85 bg-white/80"
-                            : "border-violet-200/[0.16] bg-white/[0.035]"
+                            ? "border-blue-200/85 bg-white/80"
+                            : "border-blue-200/[0.16] bg-white/[0.035]"
                         }`
                       : "mx-auto space-y-4"
                   }`}
                 >
                   {activeOfficePhoto ? (
                     <>
-                      <div className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(196,181,253,0.35)_1px,transparent_1px),linear-gradient(90deg,rgba(196,181,253,0.35)_1px,transparent_1px)] [background-size:38px_38px]" />
-                      <div className="pointer-events-none absolute -right-8 bottom-6 max-w-[130%] select-none whitespace-nowrap text-5xl font-bold tracking-[-0.08em] text-violet-300/[0.12] sm:text-7xl" aria-hidden="true">
+                      <div className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(147,197,253,0.35)_1px,transparent_1px),linear-gradient(90deg,rgba(147,197,253,0.35)_1px,transparent_1px)] [background-size:38px_38px]" />
+                      <div className="pointer-events-none absolute -right-8 bottom-6 max-w-[130%] select-none whitespace-nowrap text-5xl font-bold tracking-[-0.08em] text-blue-300/[0.12] sm:text-7xl" aria-hidden="true">
                         {officeLocationDisplay}
                       </div>
                       <Image
@@ -744,10 +744,10 @@ export default function OnlineCardPublicClient({
                   ) : null}
                   <div className={activeOfficePhoto ? "relative z-10 flex h-full flex-col" : ""}>
                   {!activeOfficePhoto ? (
-                    <Building2 className="mx-auto h-10 w-10 text-violet-200/75 vizitka-float-soft" strokeWidth={1.45} />
+                    <Building2 className="mx-auto h-10 w-10 text-blue-200/75 vizitka-float-soft" strokeWidth={1.45} />
                   ) : null}
-                  <p className={`inline-flex w-fit items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
-                    lightMode ? "text-violet-800" : "text-violet-100"
+                  <p className={`inline-flex w-fit items-center gap-2 rounded-full border border-blue-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
+                    lightMode ? "text-blue-800" : "text-blue-100"
                   } ${
                     activeOfficePhoto ? "" : "mx-auto"
                   }`}>
@@ -764,10 +764,10 @@ export default function OnlineCardPublicClient({
                       {officeAddressText}
                     </p>
                   ) : (
-                    <p className={`mt-5 text-sm ${lightMode ? "text-slate-500" : "text-violet-100/70"}`}>{copy.public.noOfficeAddress}</p>
+                    <p className={`mt-5 text-sm ${lightMode ? "text-slate-500" : "text-blue-100/70"}`}>{copy.public.noOfficeAddress}</p>
                   )}
                   {activeOfficePhoto ? (
-                    <p className={`mt-5 max-w-[33ch] text-sm leading-relaxed ${lightMode ? "text-slate-600" : "text-violet-100/72"}`}>
+                    <p className={`mt-5 max-w-[33ch] text-sm leading-relaxed ${lightMode ? "text-slate-600" : "text-blue-100/72"}`}>
                       {copy.public.officeWelcome}
                     </p>
                   ) : null}
@@ -776,7 +776,7 @@ export default function OnlineCardPublicClient({
                     <button
                       type="button"
                       onClick={openModal}
-                      className="online-card-action relative isolate inline-flex items-center gap-2 overflow-hidden rounded-full border border-white/35 bg-[linear-gradient(120deg,rgba(124,58,237,0.82)_0%,rgba(168,85,247,0.72)_55%,rgba(192,132,252,0.82)_100%)] px-4 py-2 text-sm font-bold text-white shadow-[0_16px_32px_rgba(124,58,237,0.34),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-white/85 before:opacity-70 vizitka-cta-glow"
+                      className="online-card-action relative isolate inline-flex items-center gap-2 overflow-hidden rounded-full border border-white/35 bg-[linear-gradient(120deg,rgba(29,78,216,0.9)_0%,rgba(37,99,235,0.84)_55%,rgba(56,189,248,0.82)_100%)] px-4 py-2 text-sm font-bold text-white shadow-[0_16px_32px_rgba(37,99,235,0.38),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-white/85 before:opacity-70 vizitka-cta-glow"
                     >
                       <CalendarDays className="h-4 w-4" />
                       {copy.preview.scheduleMeeting}
@@ -789,8 +789,8 @@ export default function OnlineCardPublicClient({
                         onClick={() => trackOnlineCardEvent(slug, "map_click")}
                         className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
                           lightMode
-                            ? "border-violet-200 bg-white/70 text-violet-900 hover:bg-violet-50"
-                            : "border-violet-300/35 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                            ? "border-blue-200 bg-white/70 text-blue-900 hover:bg-blue-50"
+                            : "border-blue-300/35 bg-white/[0.06] text-white hover:bg-white/[0.12]"
                         }`}
                       >
                         <MapPin className="h-4 w-4" />
@@ -808,18 +808,18 @@ export default function OnlineCardPublicClient({
           data-vizitka-reveal
           className={`online-card-public-section online-card-scroll-reveal relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:720ms] ${
             lightMode
-              ? "bg-[linear-gradient(180deg,rgba(250,245,255,0.94)_0%,rgba(255,255,255,0.98)_100%)]"
-              : "bg-[linear-gradient(180deg,rgba(13,10,29,0.99)_0%,rgba(8,7,18,0.99)_100%)]"
+              ? "bg-[linear-gradient(180deg,rgba(239,246,255,0.94)_0%,rgba(255,255,255,0.98)_100%)]"
+              : "bg-[linear-gradient(180deg,rgba(8,26,51,0.99)_0%,rgba(5,13,30,0.99)_100%)]"
           }`}
         >
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(124,58,237,0.1),transparent_44%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(37,99,235,0.12),transparent_44%)]" />
           <div className="relative z-10 mx-auto max-w-[1680px]">
             <div className="text-center">
               <p
                 className={`mx-auto inline-flex items-center gap-2 rounded-full border px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
                   lightMode
-                    ? "border-violet-300/55 bg-violet-50 text-violet-800"
-                    : "border-violet-300/35 bg-white/[0.05] text-violet-100"
+                    ? "border-blue-300/55 bg-blue-50 text-blue-800"
+                    : "border-blue-300/35 bg-white/[0.05] text-blue-100"
                 }`}
               >
                 <Mail className="h-3.5 w-3.5" />
@@ -829,7 +829,7 @@ export default function OnlineCardPublicClient({
 
             <div
               className={`mt-7 grid gap-x-0 gap-y-7 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)_minmax(0,1.2fr)_minmax(0,.8fr)_minmax(0,.85fr)] xl:divide-x ${
-                lightMode ? "xl:divide-violet-200" : "xl:divide-white/[0.09]"
+                lightMode ? "xl:divide-blue-200" : "xl:divide-white/[0.09]"
               }`}
             >
               {contactItems.map((item) => (
@@ -841,13 +841,13 @@ export default function OnlineCardPublicClient({
                     <span
                       className={`inline-flex h-9 w-9 shrink-0 items-center justify-center transition duration-300 group-hover:-translate-y-0.5 ${
                         lightMode
-                          ? "text-violet-700 group-hover:text-violet-950"
-                          : "text-violet-200 group-hover:text-white"
+                          ? "text-blue-700 group-hover:text-blue-950"
+                          : "text-blue-200 group-hover:text-white"
                       }`}
                     >
                       <item.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
                     </span>
-                    <span className={`text-[10px] font-bold uppercase tracking-[0.18em] ${lightMode ? "text-violet-700/70" : "text-violet-200/75"}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-[0.18em] ${lightMode ? "text-blue-700/70" : "text-blue-200/75"}`}>
                       {item.label}
                     </span>
                   </div>
@@ -864,7 +864,7 @@ export default function OnlineCardPublicClient({
                               trackOnlineCardEvent(slug, item.analyticsEvent);
                             }
                           }}
-                          className="underline decoration-violet-300/45 underline-offset-4 transition hover:decoration-violet-500"
+                          className="underline decoration-blue-300/45 underline-offset-4 transition hover:decoration-blue-500"
                         >
                           {item.value}
                         </a>
@@ -883,7 +883,7 @@ export default function OnlineCardPublicClient({
               <button
                 type="button"
                 onClick={handleDownloadContactVCard}
-                className="online-card-action inline-flex w-full items-center justify-center gap-2 rounded-[16px] border border-violet-300/25 bg-violet-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(124,58,237,0.34)] transition hover:-translate-y-0.5 hover:bg-violet-800 sm:w-auto"
+                className="online-card-action inline-flex w-full items-center justify-center gap-2 rounded-[16px] border border-blue-300/30 bg-blue-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(37,99,235,0.38)] transition hover:-translate-y-0.5 hover:bg-blue-800 sm:w-auto"
               >
                 <Download className="h-4 w-4" />
                 {copy.public.saveContact}
@@ -903,22 +903,22 @@ export default function OnlineCardPublicClient({
 
       {open ? (
         <div className="fixed inset-0 z-[95] flex items-end justify-center bg-[#070512]/74 p-0 backdrop-blur-xl sm:items-center sm:p-4 vizitka-anim-up">
-          <div className="relative max-h-[100dvh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-[30px] border border-violet-300/25 bg-[#120a25] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-white shadow-[0_34px_100px_rgba(7,6,25,0.76),inset_0_1px_0_rgba(221,214,254,0.16)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-[32px] sm:p-6 vizitka-anim-up [animation-delay:60ms]">
-            <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-500/25 blur-[90px]" />
+          <div className="relative max-h-[100dvh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-[30px] border border-blue-300/25 bg-[#071a36] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-white shadow-[0_34px_100px_rgba(3,10,26,0.76),inset_0_1px_0_rgba(191,219,254,0.16)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-[32px] sm:p-6 vizitka-anim-up [animation-delay:60ms]">
+            <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-blue-500/25 blur-[90px]" />
             <div className="pointer-events-none absolute -bottom-32 left-1/4 h-48 w-80 rounded-full bg-indigo-500/10 blur-[80px]" />
             <div className="relative flex items-start justify-between gap-3">
               <div className="flex items-start gap-3.5">
-                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-200/25 bg-violet-400/15 text-violet-100 shadow-[0_10px_24px_rgba(124,58,237,0.28)]">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-200/25 bg-blue-400/15 text-blue-100 shadow-[0_10px_24px_rgba(37,99,235,0.3)]">
                   <CalendarDays className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-violet-200/80">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-200/80">
                     {copy.public.scheduleKicker}
                   </p>
                   <h2 className="mt-1 text-xl font-bold tracking-[-0.035em] text-white sm:text-2xl">
                     {copy.public.scheduleTitle}
                   </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-violet-100/70">
+                  <p className="mt-1 text-sm leading-relaxed text-blue-100/70">
                     {copy.public.scheduleDescription}
                   </p>
                 </div>
@@ -926,7 +926,7 @@ export default function OnlineCardPublicClient({
               <button
                 type="button"
                 onClick={closeModal}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.07] text-violet-100 transition hover:rotate-90 hover:bg-white/[0.14]"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.07] text-blue-100 transition hover:rotate-90 hover:bg-white/[0.14]"
                 aria-label={copy.public.closeForm}
               >
                 <X className="h-4 w-4" />

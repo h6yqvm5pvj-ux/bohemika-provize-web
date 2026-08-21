@@ -112,11 +112,11 @@ export default async function OnlineCardPage({
     : resolvedSearchParams.lang;
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_12%,#271245_0%,#110a21_36%,#080715_72%,#05040f_100%)]">
-      <div className="pointer-events-none absolute -left-24 top-12 h-96 w-96 rounded-full bg-violet-500/28 blur-[110px] vizitka-ambient-float" />
-      <div className="pointer-events-none absolute -right-32 top-[22%] h-[32rem] w-[32rem] rounded-full bg-indigo-500/24 blur-[130px] vizitka-ambient-float [animation-delay:-4.5s] [animation-duration:21s]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_84%_4%,rgba(139,92,246,0.22),transparent_34%),radial-gradient(circle_at_18%_72%,rgba(59,130,246,0.16),transparent_40%),radial-gradient(circle_at_72%_78%,rgba(14,165,233,0.1),transparent_44%)] vizitka-bg-shift" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(192,132,252,0.52),transparent)] vizitka-line-pulse" />
+    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_15%_12%,#0b2a52_0%,#07172f_36%,#050d1e_72%,#030817_100%)]">
+      <div className="pointer-events-none absolute -left-24 top-12 h-96 w-96 rounded-full bg-blue-500/28 blur-[110px] vizitka-ambient-float" />
+      <div className="pointer-events-none absolute -right-32 top-[22%] h-[32rem] w-[32rem] rounded-full bg-cyan-500/20 blur-[130px] vizitka-ambient-float [animation-delay:-4.5s] [animation-duration:21s]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_84%_4%,rgba(37,99,235,0.24),transparent_34%),radial-gradient(circle_at_18%_72%,rgba(59,130,246,0.18),transparent_40%),radial-gradient(circle_at_72%_78%,rgba(14,165,233,0.12),transparent_44%)] vizitka-bg-shift" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(96,165,250,0.55),transparent)] vizitka-line-pulse" />
 
       <div className="relative w-full">
         <OnlineCardPublicClient
