@@ -58,6 +58,11 @@ type GlobalSearchCommandProps = {
 
 const TOOL_RESULTS = [
   {
+    title: "ČPP vs. Kooperativa — cestovní pojištění",
+    description: "Srovnání variant a limitů cestovního pojištění",
+    href: "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
+  },
+  {
     title: "Radar výročí",
     description: "Pomůcka pro výročí smluv",
     href: "/pomucky/radar-vyroci",

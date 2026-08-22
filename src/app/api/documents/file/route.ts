@@ -21,6 +21,7 @@ const DOCUMENT_RATE_LIMIT_WINDOW_MS = 60_000;
 type DocumentMeta = {
   fileName: string;
   contentType: string;
+  localPath?: string;
 };
 
 type ResolvedDocumentFile = DocumentMeta & {
@@ -71,6 +72,96 @@ const DOCUMENTS: Record<string, DocumentMeta> = {
   "cpp-neon-conditions-2026": {
     fileName: "cpp-neon-04-2026.pdf",
     contentType: "application/pdf",
+  },
+  "cpp-travel-vppcp": {
+    fileName: "VPPCP.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/VPPCP.pdf",
+  },
+  "cpp-travel-dppap": {
+    fileName: "DPPAP.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPAP.pdf",
+  },
+  "cpp-travel-dppcov-1-23": {
+    fileName: "DPPCOV_1_23.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPCOV_1_23.pdf",
+  },
+  "cpp-travel-dppcp-2022-06": {
+    fileName: "DPPCP_2022_06.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPCP_2022_06.pdf",
+  },
+  "cpp-travel-dppgp-2022-06": {
+    fileName: "DPPGP_2022_06.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPGP_2022_06.pdf",
+  },
+  "cpp-travel-dppgup": {
+    fileName: "DPPGUP.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPGUP.pdf",
+  },
+  "cpp-travel-dppletp": {
+    fileName: "DPPLETP.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPLETP.pdf",
+  },
+  "cpp-travel-dpplp-1-23": {
+    fileName: "DPPLP_1_23.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPLP_1_23.pdf",
+  },
+  "cpp-travel-dpplv-1-23": {
+    fileName: "DPPLV_1_23.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPLV_1_23.pdf",
+  },
+  "cpp-travel-dppodc": {
+    fileName: "DPPODC.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPODC.pdf",
+  },
+  "cpp-travel-dppstp-1-23": {
+    fileName: "DPPSTP_1_23.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPSTP_1_23.pdf",
+  },
+  "cpp-travel-dppurc-1-23": {
+    fileName: "DPPURC_1_23.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPURC_1_23.pdf",
+  },
+  "cpp-travel-dppzav-2022-06": {
+    fileName: "DPPZAV_2022_06.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPZAV_2022_06.pdf",
+  },
+  "cpp-travel-dppzp-1-23": {
+    fileName: "DPPZP_1_23.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPZP_1_23.pdf",
+  },
+  "cpp-travel-dppzvp": {
+    fileName: "DPPZVP.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/DPPZVP.pdf",
+  },
+  "cpp-travel-ipid-1-cp-cp2-2023": {
+    fileName: "IPID_Cestovni_pojisteni_CPP_1_23.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/cpp/IPID_Cestovni_pojisteni_CPP_1_23.pdf",
+  },
+  "koop-travel-kolumbus-m750-23": {
+    fileName: "koopkolumbus.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/kooperativa/koopkolumbus.pdf",
+  },
+  "koop-travel-ipid-07-2023": {
+    fileName: "IPID_Kolumbus_07_2023.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/kooperativa/IPID_Kolumbus_07_2023.pdf",
   },
   "nn-zivot-vypoved": {
     fileName: "nnvypoved.pdf",
@@ -205,11 +296,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const filePath = join(process.cwd(), "private", "dokumenty", meta.fileName);
+    const filePath = join(
+      process.cwd(),
+      "private",
+      "dokumenty",
+      meta.localPath ?? meta.fileName
+    );
 
     try {
       resolved = {
-        ...meta,
+        fileName: meta.fileName,
+        contentType: meta.contentType,
         bytes: await readFile(filePath),
       };
     } catch {

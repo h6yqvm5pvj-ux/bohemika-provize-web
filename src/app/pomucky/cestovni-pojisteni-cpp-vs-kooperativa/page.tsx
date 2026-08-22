@@ -1,0 +1,2428 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  Activity,
+  ArrowLeft,
+  Baby,
+  Bike,
+  BriefcaseMedical,
+  CarFront,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  Clock3,
+  Download,
+  FileText,
+  Globe2,
+  HeartHandshake,
+  Info,
+  Loader2,
+  Luggage,
+  PawPrint,
+  Plane,
+  ShieldAlert,
+  ShieldCheck,
+  Snowflake,
+  Sparkles,
+  Stethoscope,
+  Trophy,
+  Users,
+} from "lucide-react";
+
+import { AppLayout } from "@/components/AppLayout";
+import { HelpDialog } from "@/components/HelpDialog";
+import { auth } from "@/app/firebase-auth";
+import { fetchAuthedBlobOrThrow } from "@/app/lib/authenticatedApi";
+import { secureDocumentPath } from "@/app/lib/secureDocuments";
+import {
+  institutionLogoFrameClass,
+  institutionLogoImageClass,
+  institutionLogoKeyFromInsurerName,
+} from "@/app/lib/institutionLogoDisplay";
+
+type CppVariantKey = "mini" | "opti" | "maxi";
+type KoopVariantKey = "klasik" | "plus";
+type ComparisonSection =
+  | "Obecné informace"
+  | "Sport a vybavení"
+  | "Zdraví"
+  | "Úrazové pojištění"
+  | "Odpovědnost"
+  | "Zavazadla"
+  | "Let"
+  | "Cesta a komplikace"
+  | "Ochrana"
+  | "Terorismus"
+  | "Veterinární léčba";
+type VerdictTone = "cpp" | "koop" | "balanced" | "attention";
+
+type Variant = {
+  label: string;
+  helper: string;
+  treatment: number;
+  rescue: number;
+  teeth: number;
+  companionTotal: number;
+  companionDay: number;
+  liability: number;
+  legal: number | null;
+  baggage: number;
+  baggageValuables: number | null;
+  death: number;
+  permanentInjury: number;
+};
+
+type ProductValue = {
+  headline: string;
+  detail: string;
+  source?: string;
+  points?: string[];
+  sections?: Array<{
+    label: string;
+    text?: string;
+    items?: string[];
+    emphasis?: "default" | "benefit" | "exclusion";
+  }>;
+  metric?: number | null;
+  badge?: string;
+  exclusions?: LiabilityExclusions;
+};
+
+type LiabilityExclusionGroup = {
+  title: string;
+  items: string[];
+};
+
+type LiabilityExclusions = {
+  insurer: "ČPP" | "Kooperativa";
+  source: string;
+  scope: string;
+  interpretationNote?: string;
+  groups: LiabilityExclusionGroup[];
+  generalConditionsNote: string;
+};
+
+type ComparisonRow = {
+  id: string;
+  section: ComparisonSection;
+  icon: typeof Stethoscope;
+  title: string;
+  description: string;
+  verdict: {
+    tone: VerdictTone;
+    label: string;
+    detail: string;
+  };
+  differences?: Array<{
+    label: string;
+    cpp: string;
+    koop: string;
+    advantage: "cpp" | "koop" | "neutral";
+  }>;
+  sharedPoints?: string[];
+  cpp: ProductValue;
+  koop: ProductValue;
+};
+
+const CPP_VARIANTS: Record<CppVariantKey, Variant> = {
+  mini: {
+    label: "MINI",
+    helper: "Základní limity",
+    treatment: 2_500_000,
+    rescue: 2_500_000,
+    teeth: 7_000,
+    companionTotal: 10_000,
+    companionDay: 2_000,
+    liability: 2_500_000,
+    legal: 50_000,
+    baggage: 15_000,
+    baggageValuables: 5_000,
+    death: 100_000,
+    permanentInjury: 200_000,
+  },
+  opti: {
+    label: "OPTI",
+    helper: "Střední varianta",
+    treatment: 10_000_000,
+    rescue: 10_000_000,
+    teeth: 20_000,
+    companionTotal: 20_000,
+    companionDay: 2_500,
+    liability: 5_000_000,
+    legal: 200_000,
+    baggage: 25_000,
+    baggageValuables: 8_000,
+    death: 200_000,
+    permanentInjury: 400_000,
+  },
+  maxi: {
+    label: "MAXI",
+    helper: "Nejvyšší limity",
+    treatment: 100_000_000,
+    rescue: 100_000_000,
+    teeth: 30_000,
+    companionTotal: 30_000,
+    companionDay: 3_000,
+    liability: 10_000_000,
+    legal: 500_000,
+    baggage: 50_000,
+    baggageValuables: 10_000,
+    death: 500_000,
+    permanentInjury: 1_000_000,
+  },
+};
+
+const KOOP_VARIANTS: Record<KoopVariantKey, Variant> = {
+  klasik: {
+    label: "KLASIK",
+    helper: "Základní varianta",
+    treatment: 10_000_000,
+    rescue: 500_000,
+    teeth: 20_000,
+    companionTotal: 10_000,
+    companionDay: 2_000,
+    liability: 5_000_000,
+    legal: null,
+    baggage: 30_000,
+    baggageValuables: null,
+    death: 200_000,
+    permanentInjury: 400_000,
+  },
+  plus: {
+    label: "PLUS",
+    helper: "Vyšší varianta",
+    treatment: 100_000_000,
+    rescue: 1_000_000,
+    teeth: 30_000,
+    companionTotal: 15_000,
+    companionDay: 3_000,
+    liability: 8_000_000,
+    legal: 200_000,
+    baggage: 50_000,
+    baggageValuables: null,
+    death: 400_000,
+    permanentInjury: 600_000,
+  },
+};
+
+const CPP_TERMS_DOCUMENTS = [
+  { id: "cpp-travel-ipid-1-cp-cp2-2023", label: "Informační dokument IPID", code: "IPID 1/CP/CP2/2023", fileName: "IPID_Cestovni_pojisteni_CPP_1_23.pdf" },
+  { id: "cpp-travel-vppcp", label: "Všeobecné podmínky", code: "VPPCP 1/18", fileName: "VPPCP.pdf" },
+  { id: "cpp-travel-dppap", label: "Auto PLUS", code: "DPPAP 1/18", fileName: "DPPAP.pdf" },
+  { id: "cpp-travel-dppcov-1-23", label: "Covid PLUS", code: "DPPCOV 1/23", fileName: "DPPCOV_1_23.pdf" },
+  { id: "cpp-travel-dppcp-2022-06", label: "Cesta PLUS", code: "DPPCP 1/22", fileName: "DPPCP_2022_06.pdf" },
+  { id: "cpp-travel-dppgp-2022-06", label: "Golf PLUS", code: "DPPGP 1/22", fileName: "DPPGP_2022_06.pdf" },
+  { id: "cpp-travel-dppgup", label: "Guard PLUS", code: "DPPGUP 1/20", fileName: "DPPGUP.pdf" },
+  { id: "cpp-travel-dppletp", label: "Let PLUS", code: "DPPLETP 1/18", fileName: "DPPLETP.pdf" },
+  { id: "cpp-travel-dpplp-1-23", label: "Léto PLUS", code: "DPPLP 1/23", fileName: "DPPLP_1_23.pdf" },
+  { id: "cpp-travel-dpplv-1-23", label: "Léčebné výlohy", code: "DPPLV 1/23", fileName: "DPPLV_1_23.pdf" },
+  { id: "cpp-travel-dppodc", label: "Odpovědnost", code: "DPPODC 1/18", fileName: "DPPODC.pdf" },
+  { id: "cpp-travel-dppstp-1-23", label: "Storno PLUS", code: "DPPSTP 1/23", fileName: "DPPSTP_1_23.pdf" },
+  { id: "cpp-travel-dppurc-1-23", label: "Úrazové pojištění", code: "DPPURC 1/23", fileName: "DPPURC_1_23.pdf" },
+  { id: "cpp-travel-dppzav-2022-06", label: "Zavazadla", code: "DPPZAV 1/22", fileName: "DPPZAV_2022_06.pdf" },
+  { id: "cpp-travel-dppzp-1-23", label: "Zima PLUS", code: "DPPZP 1/23", fileName: "DPPZP_1_23.pdf" },
+  { id: "cpp-travel-dppzvp", label: "Zvíře PLUS", code: "DPPZVP 1/18", fileName: "DPPZVP.pdf" },
+] as const;
+
+const KOOP_TERMS_DOCUMENTS = [
+  { id: "koop-travel-ipid-07-2023", label: "Informační dokument IPID", code: "KOLUMBUS · 07/2023", fileName: "IPID_Kolumbus_07_2023.pdf" },
+  { id: "koop-travel-kolumbus-m750-23", label: "Kompletní podmínky KOLUMBUS", code: "M-750/23", fileName: "koopkolumbus.pdf" },
+] as const;
+
+const COMPARISON_SECTIONS: Array<{ label: ComparisonSection; id: string }> = [
+  { label: "Obecné informace", id: "obecne-informace" },
+  { label: "Sport a vybavení", id: "sport-a-vybaveni" },
+  { label: "Zdraví", id: "zdravi" },
+  { label: "Úrazové pojištění", id: "urazove-pojisteni" },
+  { label: "Odpovědnost", id: "odpovednost" },
+  { label: "Zavazadla", id: "zavazadla" },
+  { label: "Let", id: "let" },
+  { label: "Cesta a komplikace", id: "cesta-a-komplikace" },
+  { label: "Ochrana", id: "ochrana" },
+  { label: "Terorismus", id: "terorismus" },
+  { label: "Veterinární léčba", id: "veterinarni-lecba" },
+];
+
+const SECTION_ANCHORS = Object.fromEntries(
+  COMPARISON_SECTIONS.map((section) => [section.label, section.id])
+) as Record<ComparisonSection, string>;
+
+const CPP_LIABILITY_EXCLUSIONS: LiabilityExclusions = {
+  insurer: "ČPP",
+  source: "DPPODC 1/18, čl. 7; současně se použijí VPPCP 1/18 a pojistná smlouva",
+  scope: "Kompletní přehled zvláštních výluk pojištění odpovědnosti podle čl. 7 DPPODC 1/18.",
+  groups: [
+    {
+      title: "Výluky podle čl. 7 odst. 1",
+      items: [
+        "a) Újma vzniklá uložením nebo uplatňováním finančních sankcí.",
+        "b) Újma související s činností, kterou pojištěný vykonává neoprávněně.",
+        "c) Újma související s činností, pro kterou zákon ukládá povinné pojištění odpovědnosti, s provozní činností nebo jinou výdělečnou činností.",
+        "d) Újma z odpovědnosti převzaté nad rámec právních předpisů.",
+        "e) Újma vzniklá prodlením se splněním smluvní povinnosti.",
+        "f) Nárok z pojištění odpovědnosti zaměstnavatele při pracovním úrazu nebo nemoci z povolání.",
+        "g) Újma na majetku, který pojištěný užívá neoprávněně.",
+        "h) Újma způsobená postupným znečištěním životního prostředí.",
+      ],
+    },
+    {
+      title: "Vozidla, letadla a plavidla – čl. 7 odst. 2",
+      items: [
+        "a) Vlastnictví nebo provoz vozidla či plavidla, pokud je náhrada předmětem povinného pojištění odpovědnosti z jejich provozu.",
+        "b) Vlastnictví nebo provoz letadel a vozidel na vzduchovém polštáři, včetně konstrukce, oprav nebo instalačních prací na letadlech.",
+        "c) Vlastnictví nebo provoz ostatních plavidel.",
+      ],
+    },
+    {
+      title: "Další věci a činnosti – čl. 7 odst. 3",
+      items: [
+        "a) Držba zchátralé nebo neudržované nemovité věci sloužící k přechodnému pobytu během cesty.",
+        "b) Újma na převzaté věci; výluka se nepoužije na krytou nemovitost sloužící k přechodnému pobytu, její movité vybavení ani na převzatou zapůjčenou věc.",
+        "c) Ztráta, kromě ztráty vzniklé v důsledku smrti, ztráty vědomí nebo úrazu pojištěného.",
+        "d) Újma způsobená plavidlem na jiném plavidle, na věcech přepravovaných plavidlem nebo při společné havárii plavidel.",
+        "e) Vlastnictví nebo provoz rádiem řízených modelů na nevhodných plochách nebo plochách, které k tomu nejsou určeny.",
+        "f) Provoz rádiem řízených modelů v rozporu s místními právními předpisy.",
+        "g) Motoristická a letecká sportovní činnost nebo profesionální sportovní činnost.",
+        "h) Poškození, zničení nebo pohřešování záznamů na zvukových, obrazových a datových nosičích.",
+        "i) Újma na nehmotném majetku.",
+        "j) Újma na přirozených právech člověka, která nesouvisí s ublížením na zdraví nebo usmrcením.",
+      ],
+    },
+    {
+      title: "Osoby a propojené společnosti – čl. 7 odst. 4",
+      items: [
+        "a) Újma vzniklá osobám blízkým pojištěnému a osobám jim blízkým.",
+        "b) Újma vzniklá osobám zaměstnaným nebo vypomáhajícím v domácnosti pojištěného při výkonu této činnosti.",
+        "c) Újma vzniklá právnické osobě, ve které má pojištěný nebo jeho blízcí majetkovou účast nebo ve které je pojištěný statutárním orgánem či společníkem.",
+      ],
+    },
+    {
+      title: "Mezinárodní sankce – čl. 7 odst. 5",
+      items: [
+        "ČPP neposkytne plnění, pokud by tím porušila právní předpisy nebo mezinárodní úmluvy upravující mezinárodní sankce na ochranu míru, bezpečnosti, základních lidských práv nebo boj proti terorismu.",
+      ],
+    },
+  ],
+  generalConditionsNote:
+    "Vedle těchto zvláštních výluk se použijí také výluky ve VPPCP 1/18, ujednání pojistné smlouvy a právní předpisy.",
+};
+
+const KOOP_LIABILITY_EXCLUSIONS: LiabilityExclusions = {
+  insurer: "Kooperativa",
+  source: "M-750/23, Pojištění odpovědnosti, čl. 5, str. 39–40; obecné výluky str. 55–56",
+  scope: "Kompletní přehled zvláštních výluk pojištění odpovědnosti podle čl. 5 podmínek M-750/23.",
+  interpretationNote:
+    "Výluku věcí, které klient užívá nebo má u sebe, je nutné číst společně s čl. 1: profesionálně pronajatá movitá věc je výslovně kryta do 10 000 Kč. Varianta PLUS navíc hradí do 10 000 Kč spoluúčast na vozidle pronajatém písemnou smlouvou od profesionální autopůjčovny; KLASIK toto krytí nemá.",
+  groups: [
+    {
+      title: "Výluky podle čl. 5 odst. 1",
+      items: [
+        "a) Újma způsobená úmyslně, včetně svévole nebo škodolibosti.",
+        "b) Újma na věci nebo zvířeti, které klient užívá neoprávněně.",
+        "c) Újma na movité věci nebo zvířeti, které klient oprávněně užívá nebo má u sebe. Výluka se nepoužije na vymezené věci při praktickém vyučování či stáži, vybavení ubytovacího zařízení a při sjednání také na krytou spoluúčast u pronajatého vozidla.",
+        "d) Újma na movité věci nebo zvířeti převzatém ke splnění závazku; výjimkou jsou vymezené věci při praktickém vyučování nebo stáži.",
+        "e) Újma způsobená znečištěním životního prostředí.",
+        "f) Újma z porušení právní povinnosti nebo jiné skutečnosti, o které klient při uzavření smlouvy věděl nebo mohl vědět.",
+        "g) Újma při profesionální sportovní činnosti.",
+        "h) Újma při výdělečné činnosti nebo v přímé souvislosti s ní.",
+        "i) Pracovní úraz nebo nemoc z povolání, včetně vyjmenovaných náhrad zdravotnímu a nemocenskému pojištění.",
+        "j) Újma související s požitím alkoholu nebo aplikací omamných či psychotropních látek.",
+        "k) Újma z provozu motorového vozidla nebo plavidla, k jehož vedení je vyžadován průkaz způsobilosti.",
+        "l) Újma související s létáním, včetně sportovních létajících zařízení, bezmotorových letadel, balonů, seskoků a letů s padákem.",
+        "m) Újma související s činností nebo vztahem, pro které zákon ukládá povinné pojištění odpovědnosti, bez ohledu na vznik nároku z tohoto pojištění.",
+        "n) Újma vzniklá zavlečením nebo rozšířením nakažlivé choroby lidí, zvířat nebo rostlin.",
+        "o) Újma související s vlastnictvím nebo používáním zbraní, střeliva, pyrotechniky či výbušnin.",
+        "p) Újma související s vlastnictvím nebo držbou nemovitosti.",
+        "q) Újma způsobená zvířetem vyvezeným či získaným k podnikání nebo chovaným k výdělečným účelům.",
+        "r) Újma způsobená divokým nebo exotickým zvířetem.",
+        "s) Újma způsobená psem při výkonu práva myslivosti nebo služebním psem při služebním výkonu.",
+      ],
+    },
+    {
+      title: "Smluvně rozšířená odpovědnost a sankce – čl. 5 odst. 2",
+      items: [
+        "a) Újma, pokud klient převzal povinnost k náhradě v širším rozsahu než stanoví zákon, včetně smluvně prodloužené promlčecí lhůty nebo vzdání se námitky promlčení.",
+        "b) Pokuty, penále a jiné smluvní, správní nebo trestní sankce či platby represivního, exemplárního nebo preventivního charakteru.",
+      ],
+    },
+    {
+      title: "Blízké osoby a propojené společnosti – čl. 5 odst. 3",
+      items: [
+        "a) Újma, kterou je klient povinen nahradit manželovi, registrovanému partnerovi, sourozenci, příbuzným v přímé řadě nebo osobám žijícím s ním ve společné domácnosti.",
+        "b) Újma, kterou je klient povinen nahradit právnické osobě, se kterou je majetkově propojen.",
+      ],
+    },
+    {
+      title: "Další výluky – čl. 5 odst. 4",
+      items: [
+        "Použít se mohou také další výluky uvedené v pojistné smlouvě, ostatních částech pojistných podmínek nebo vyplývající z právních předpisů.",
+      ],
+    },
+  ],
+  generalConditionsNote:
+    "Zvláštní výluky odpovědnosti neruší obecné výluky M-750/23. Ty se použijí vedle nich, pokud zvláštní ustanovení neurčí jinak.",
+};
+
+const moneyFormatter = new Intl.NumberFormat("cs-CZ", {
+  style: "currency",
+  currency: "CZK",
+  maximumFractionDigits: 0,
+});
+
+function formatMoney(value: number): string {
+  if (value >= 1_000_000) {
+    const millions = value / 1_000_000;
+    return `${new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 }).format(millions)} mil. Kč`;
+  }
+  return moneyFormatter.format(value).replace(/\sKč$/, " Kč");
+}
+
+function limitVerdict(cppValue: number, koopValue: number): ComparisonRow["verdict"] {
+  if (cppValue > koopValue) {
+    return {
+      tone: "cpp",
+      label: "Vyšší limit ČPP",
+      detail: `${formatMoney(cppValue)} oproti ${formatMoney(koopValue)}.`,
+    };
+  }
+  if (koopValue > cppValue) {
+    return {
+      tone: "koop",
+      label: "Vyšší limit Kooperativy",
+      detail: `${formatMoney(koopValue)} oproti ${formatMoney(cppValue)}.`,
+    };
+  }
+  return {
+    tone: "balanced",
+    label: "Shodný limit",
+    detail: `Obě zvolené varianty mají limit ${formatMoney(cppValue)}.`,
+  };
+}
+
+function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
+  const cppAnimalLimit = cpp.label === "MINI" ? 10_000 : cpp.label === "OPTI" ? 20_000 : 40_000;
+  const cppQuarantinePartLimit = cpp.label === "MINI" ? 10_000 : cpp.label === "OPTI" ? 15_000 : 25_000;
+  const cppQuarantineTotalLimit = cppQuarantinePartLimit * 2;
+  const cppCovidTreatmentLimit = cpp.label === "MINI" ? 200_000 : cpp.label === "OPTI" ? 300_000 : 500_000;
+  const cppTerrorismTreatmentLimit = cpp.label === "MINI" ? 200_000 : cpp.label === "OPTI" ? 300_000 : 500_000;
+  const cppBorrowedThingLimit = Math.min(cpp.liability * 0.1, 500_000);
+
+  const rows: ComparisonRow[] = [
+    {
+      id: "territorial-scope",
+      section: "Obecné informace",
+      icon: Globe2,
+      title: "Kam klient cestuje",
+      description: "Územní varianta musí být uvedena v pojistné smlouvě. Rozdíl je hlavně ve střední světové zóně.",
+      verdict: {
+        tone: "koop",
+        label: "Kooperativa zahrnuje Kanadu už bez USA",
+        detail: "ČPP ve variantě Svět mimo USA a Kanadu vylučuje obě země. Kooperativa ve variantě Svět bez USA vylučuje ČR a USA, nikoli Kanadu.",
+      },
+      cpp: {
+        headline: "ČR · Evropa · svět bez USA a Kanady · svět",
+        detail: "Rozhoduje územní varianta uvedená ve smlouvě",
+        source: "ČPP IPID 1/CP/CP2/2023, str. 2; VPPCP 1/18, čl. 3",
+        badge: "Obecné informace IPID",
+        points: ["Pro cestu do Kanady nestačí varianta Svět mimo USA a Kanadu."],
+        metric: null,
+      },
+      koop: {
+        headline: "ČR · Evropa · svět bez USA · svět včetně USA",
+        detail: "Kanada spadá už do varianty Svět bez USA",
+        source: "Kooperativa IPID KOLUMBUS 07/2023, str. 2; M-750/23, str. 51–52",
+        badge: "Obecné informace IPID",
+        points: [
+          "Evropa zahrnuje také Azory, Madeiru, Baleáry, Kanárské ostrovy, Egypt, Izrael, Jordánsko, Kapverdy, Kypr, Maroko, Tunisko a Turecko.",
+          "U některých pojištění nelze zvolit územní platnost ČR; přesný výčet stanoví podmínky.",
+        ],
+        metric: null,
+      },
+    },
+    {
+      id: "insurance-duration",
+      section: "Obecné informace",
+      icon: Clock3,
+      title: "Klient potřebuje dlouhou nebo opakovanou ochranu",
+      description: "Jednorázové pojištění je nutné odlišit od ročního produktu pro opakované výjezdy.",
+      verdict: {
+        tone: "balanced",
+        label: "Jednorázová cesta je prakticky srovnatelná",
+        detail: "ČPP lze sjednat až na 365 dní a jednorázový KOLUMBUS až na jeden rok. Hranice 45 dní platí pouze pro každou cestu v produktech KOLUMBUS ABONENT a ABONENT RODINA.",
+      },
+      cpp: {
+        headline: "až 365 dní",
+        detail: "Dlouhodobá nepřetržitá cesta",
+        source: "ČPP IPID 1/CP/CP2/2023, str. 2; VPPCP 1/18, čl. 16",
+        badge: "Jednorázové pojištění",
+        points: ["Pojištění se sjednává na dobu určitou podle potřeb klienta, maximálně 365 dní."],
+        metric: null,
+      },
+      koop: {
+        headline: "KOLUMBUS až 1 rok",
+        detail: "ABONENT: každá jednotlivá cesta nejvýše 45 dní",
+        source: "Kooperativa IPID KOLUMBUS 07/2023, str. 1; M-750/23, str. 7–8 a 51",
+        badge: "Jednorázové i roční pojištění",
+        points: [
+          "Jednorázový KOLUMBUS lze sjednat maximálně na jeden rok.",
+          "KOLUMBUS ABONENT a ABONENT RODINA umožňují neomezený počet výjezdů během roku, ale každý nejvýše na 45 po sobě jdoucích kalendářních dní.",
+        ],
+        metric: null,
+      },
+    },
+    {
+      id: "payment-and-cover-start",
+      section: "Obecné informace",
+      icon: FileText,
+      title: "Klient potřebuje vědět, kdy zaplatit a kdy začíná krytí",
+      description: "Lhůta k úhradě a okamžik počátku pojištění nejsou totéž. Rozhodující údaje musí být v konkrétní smlouvě.",
+      verdict: {
+        tone: "attention",
+        label: "Zkontrolovat platbu i počátek ve smlouvě",
+        detail: "ČPP požaduje odeslání platby do 24 hodin od vytvoření návrhu. U Kooperativy je jednorázové pojistné splatné v den uzavření smlouvy; její STORNO začíná až následující den po úplném zaplacení.",
+      },
+      cpp: {
+        headline: "platbu odeslat do 24 hodin",
+        detail: "Od vytvoření návrhu pojistné smlouvy",
+        source: "ČPP IPID 1/CP/CP2/2023, str. 2",
+        badge: "Platba a počátek",
+        points: [
+          "Datum a čas vytvoření návrhu i lhůta pro přijetí platby jsou uvedeny ve smlouvě.",
+          "Pojištění začíná dnem a hodinou počátku uvedenými ve smlouvě, není-li ujednáno jinak.",
+        ],
+        metric: null,
+      },
+      koop: {
+        headline: "splatné v den uzavření smlouvy",
+        detail: "Jednorázové pojistné se hradí na účet a způsobem uvedeným ve smlouvě",
+        source: "Kooperativa IPID KOLUMBUS 07/2023, str. 2",
+        badge: "Platba a počátek",
+        points: [
+          "Cestovní pojištění začíná datem a časem počátku uvedenými ve smlouvě.",
+          "Pojištění STORNO vzniká až dnem následujícím po úplném zaplacení pojistného.",
+        ],
+        metric: null,
+      },
+    },
+    {
+      id: "general-exclusions-and-duties",
+      section: "Obecné informace",
+      icon: ShieldAlert,
+      title: "Klient potřebuje znát obecné výluky a povinnosti",
+      description: "Nejdřív jsou vedle sebe jen skutečné rozdíly. Společné body neopakujeme v obou sloupcích.",
+      verdict: {
+        tone: "attention",
+        label: "Rozhodují čtyři hlavní rozdíly",
+        detail: "Nejvýraznější je čekací doba po odjezdu a rozdílný přístup k alkoholu. IPID je však jen souhrn; úplný rozsah určují podmínky konkrétního krytí.",
+      },
+      differences: [
+        {
+          label: "Sjednání až po odjezdu",
+          cpp: "Bez plnění první 3 kalendářní dny.",
+          koop: "Bez plnění prvních 24 hodin.",
+          advantage: "koop",
+        },
+        {
+          label: "Alkohol a návykové látky",
+          cpp: "Může krátit plnění až o polovinu; platí výjimka pro řádně předepsaný lék bez varování.",
+          koop: "IPID uvádí výluku u léčebných výloh, úrazu a odpovědnosti způsobených pod vlivem.",
+          advantage: "cpp",
+        },
+        {
+          label: "Potíže vzniklé před odjezdem",
+          cpp: "IPID je v obecném souhrnu výslovně neuvádí; konkrétní krytí je nutné ověřit v podmínkách.",
+          koop: "U léčebných výloh výslovně vylučuje úraz a onemocnění vzniklé před odjezdem.",
+          advantage: "neutral",
+        },
+        {
+          label: "Dlouhá cesta",
+          cpp: "Jednorázové pojištění lze sjednat až na 365 dní.",
+          koop: "Jednorázový KOLUMBUS až na 1 rok; u ABONENTU neplní od 46. dne jedné cesty.",
+          advantage: "neutral",
+        },
+      ],
+      sharedPoints: [
+        "Obě IPID uvádějí úmyslné jednání a válečné události.",
+        "Obě omezují události spojené s jadernou energií; přesné znění dalších kontaminačních výluk se liší.",
+        "U obou rozhoduje sjednaný limit, konkrétní smlouva a zvláštní podmínky daného krytí.",
+      ],
+      cpp: {
+        headline: "Specifika ČPP",
+        detail: "Rizikové oblasti, řízení, zimní sporty, kybernetické nebezpečí a expedice",
+        source: "ČPP IPID 1/CP/CP2/2023, str. 1–2",
+        badge: "Souhrn IPID",
+        metric: null,
+        sections: [
+          {
+            label: "Další body uvedené v IPID ČPP",
+            items: [
+              "Řízení dopravního prostředku bez příslušného oprávnění.",
+              "Cesty do oblasti vyhlášené za území se zvýšeným bezpečnostním rizikem.",
+              "Lyžování nebo snowboarding na místech, která k tomu nejsou určena.",
+              "Podvodné a nepoctivé jednání, zásah úřední moci, aktivní účast na teroristickém činu a neoprávněně užívaný majetek.",
+              "Kybernetické nebezpečí, toxické látky, genetické změny, testování dopravních prostředků a expedice do extrémních oblastí.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Obecné povinnosti klienta",
+            items: [
+              "Pravdivě odpovídat, hlásit změny a škodu, řádně platit pojistné a oznámit jiné pojištění stejného rizika.",
+              "Předcházet škodě, při sportu dodržovat bezpečnost a používat ochranné pomůcky.",
+              "Před cestou zajistit povinná a potřebná očkování a lékařské prohlídky.",
+            ],
+          },
+        ],
+      },
+      koop: {
+        headline: "Specifika Kooperativy",
+        detail: "Léčebné výlohy, rizikové sporty, užívané věci a zavazadla předaná dopravci",
+        source: "Kooperativa IPID KOLUMBUS 07/2023, str. 1–2",
+        badge: "Souhrn IPID",
+        metric: null,
+        sections: [
+          {
+            label: "Další body uvedené v IPID Kooperativy",
+            items: [
+              "U léčebných výloh preventivní vyšetření, zubní náhrady a náklady spojené s duševní poruchou.",
+              "Rizikové sportovní aktivity mohou vyžadovat odpovídající rozsah pojištění.",
+              "Odpovědnost za škodu na užívaných movitých věcech; výjimkou je vybavení ubytovacího zařízení.",
+              "Škody na věcech předaných k přepravě.",
+              "Chemická nebo biologická kontaminace.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Obecné povinnosti klienta",
+            items: [
+              "Pravdivě a úplně odpovídat na dotazy a přiměřeně předcházet vzniku škody.",
+              "Po škodě zabránit zvětšování následků; při akutní nemoci nebo úrazu neprodleně vyhledat lékaře a dodržovat léčbu.",
+              "Plnit další povinnosti uvedené ve smlouvě a podmínkách.",
+            ],
+          },
+        ],
+      },
+    },
+    {
+      id: "own-sports-equipment",
+      section: "Sport a vybavení",
+      icon: Bike,
+      title: "Klientovi ukradnou nebo poškodí vlastní vybavení",
+      description: "Srovnání náhrady hodnoty vlastního kola, potápěčské výstroje nebo jiného sportovního vybavení.",
+      verdict: {
+        tone: "cpp",
+        label: "Výhoda ČPP pro vlastní vybavení",
+        detail: "Léto PLUS kryje vymezenou vlastní výbavu přímo. Sportovní připojištění Kooperativy hodnotu vlastní věci nehradí; samostatné pojištění zavazadel má jiný rozsah a nekryje věci předané dopravci.",
+      },
+      cpp: {
+        headline: "35 000 Kč / servis 3 500 Kč",
+        detail: "Léto PLUS · odcizení vloupáním či loupeží, zničení a specificky vymezená ztráta",
+        source: "DPPLP 1/23, čl. 2, 4–6",
+        badge: "Volitelné připojištění Léto PLUS",
+        points: [
+          "Odcizení, zničení a ztráta se plní v nové ceně celkem do 35 000 Kč.",
+          "U poškozené věci je servis omezen samostatným limitem 3 500 Kč.",
+        ],
+        sections: [
+          {
+            label: "Co se považuje za letní vybavení",
+            items: [
+              "Kolo, potápěčská a rybářská výbava, surf, windsurf, pramice, kánoe, kajak a raft.",
+              "Ztrátou se rozumí jen situace, kdy klient nemohl věc chránit kvůli smrti, ztrátě vědomí nebo úrazu.",
+            ],
+          },
+          {
+            label: "Hlavní výluky",
+            items: [
+              "Krádež ze stanu mimo oficiální kemp, z úschovny nebo společných prostor ubytování.",
+              "Krádež z odstaveného auta mezi 22.00 a 6.00 bez přítomnosti pojištěného či pověřené dospělé osoby.",
+              "Běžná údržba a opotřebení.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+      koop: {
+        headline: "Sportovní připojištění vlastní věc nehradí",
+        detail: `Samostatné pojištění zavazadel má ve variantě ${koop.label} limit ${formatMoney(koop.baggage)}, ale jen pro vyjmenovaná nebezpečí`,
+        source: "M-750/23, str. 11 a 33–36",
+        badge: "ÚZO + volitelné sportovní připojištění",
+        points: [
+          "Zavazadla mohou krýt vlastní sportovní výbavu při dopravní nehodě, krádeži s překonáním překážky, loupeži, požáru nebo vyjmenovaném živlu.",
+          "Věci předané dopravci k přepravě – včetně vlastní sportovní výbavy – jsou z pojištění zavazadel vyloučeny.",
+          "Sportovní připojištění může při poškození vlastní věci zaplatit pronájem náhradní výbavy, nikoli hodnotu původní věci.",
+        ],
+        sections: [
+          {
+            label: "Rozhodující rozdíl",
+            text: "Pojištění zavazadel není pojištěním každého poškození či prostého zmizení věci. Musí nastat některé z přesně vyjmenovaných nebezpečí a současně nesmí platit výluka.",
+            emphasis: "exclusion",
+          },
+        ],
+      },
+    },
+    {
+      id: "replacement-sports-equipment",
+      section: "Sport a vybavení",
+      icon: Bike,
+      title: "Klient si musí půjčit náhradní vybavení",
+      description: "Vlastní výbava byla během pojištění poškozena, zničena, odcizena nebo ztracena.",
+      verdict: {
+        tone: "koop",
+        label: "Výhoda Kooperativy",
+        detail: "Má dvojnásobný celkový limit a širší definici amatérského vybavení.",
+      },
+      cpp: {
+        headline: "až 5 000 Kč",
+        detail: "Léto PLUS · 500 Kč za každých 24 hodin",
+        source: "DPPLP 1/23, čl. 2 odst. 2 a čl. 4 odst. 5b",
+        badge: "Volitelné připojištění Léto PLUS",
+        points: ["Také při nedodání nebo zpoždění vybavení dopravcem"],
+        metric: 5_000,
+      },
+      koop: {
+        headline: "až 10 000 Kč",
+        detail: "Účelně vynaložené náklady na náhradní pronájem",
+        source: "M-750/23, str. 12 a 35–36",
+        badge: "Volitelné sportovní připojištění",
+        points: ["Kola, lyže, snowboardy, tenis, golf, horolezectví, potápění a další amatérské vybavení"],
+        metric: 10_000,
+        sections: [
+          {
+            label: "Pozor na formulaci ztráty",
+            text: "Článek o pojistné události uvádí poškození, zničení nebo odcizení; následující podmínka zmiňuje také ztrátu. U nároku založeného pouze na ztrátě je proto vhodné předem vyžádat výklad pojistitele.",
+            emphasis: "exclusion",
+          },
+        ],
+      },
+    },
+    {
+      id: "rented-sports-equipment",
+      section: "Sport a vybavení",
+      icon: ShieldCheck,
+      title: "Klient poškodí pronajaté sportovní vybavení",
+      description: "Posuzujeme odpovědnost vůči profesionální půjčovně, od které si klient vybavení prokazatelně pronajal.",
+      verdict: {
+        tone: "cpp",
+        label: "Vyšší limit u ČPP",
+        detail: `ČPP kryje věc zapůjčenou od profesionální půjčovny až do ${formatMoney(cppBorrowedThingLimit)}. Kooperativa uvádí 10 000 Kč v odpovědnosti a 5 000 Kč ve sportovním připojištění; limity nelze automaticky sčítat.`,
+      },
+      cpp: {
+        headline: formatMoney(cppBorrowedThingLimit),
+        detail: "Věc zapůjčená · 10 % limitu odpovědnosti, nejvýše 500 000 Kč",
+        source: "DPPODC 1/18, čl. 2 odst. 2b a čl. 8 bod 37",
+        badge: "Volitelné pojištění odpovědnosti",
+        points: [
+          "Musí jít o movitou věc převzatou do oprávněného užívání od osoby, jejíž podnikatelskou činností je půjčování věcí.",
+          "Léto PLUS tuto odpovědnost neřeší; krytí vychází ze samostatného pojištění odpovědnosti.",
+        ],
+        metric: cppBorrowedThingLimit,
+      },
+      koop: {
+        headline: "10 000 Kč / 5 000 Kč",
+        detail: "ÚZO: pronajatá movitá věc 10 000 Kč; sportovní připojištění: pronajatá sportovní výbava 5 000 Kč",
+        source: "M-750/23, str. 11–12, 35 a 37–40",
+        badge: "ÚZO + volitelné sportovní připojištění",
+        points: [
+          "U škody poškozením nebo zničením pronajaté movité věci uvádí odpovědnost sublimit 10 000 Kč.",
+          "Sportovní připojištění výslovně kryje poškození, zničení nebo odcizení pronajatého sportovního vybavení do 5 000 Kč.",
+          "Jde o dvě ustanovení jedněch podmínek; nelze bez dalšího předpokládat součet obou limitů.",
+        ],
+        metric: 10_000,
+        sections: [
+          {
+            label: "Hlavní omezení",
+            items: [
+              "Nehradí profesionální či výdělečné užívání ani události pod vlivem alkoholu nebo drog.",
+              "Nehradí smluvně rozšířenou odpovědnost, pokuty a sankce ani škody vůči blízkým osobám.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+    },
+    {
+      id: "unused-summer-holiday",
+      section: "Sport a vybavení",
+      icon: CircleAlert,
+      title: "Klient kvůli úrazu nebo hospitalizaci nevyužije dovolenou",
+      description: "ČPP vyplácí pevnou částku za den, Kooperativa nahrazuje část doložené ceny nevyužitých služeb.",
+      verdict: {
+        tone: "balanced",
+        label: "Odlišný princip plnění",
+        detail: "ČPP je obnosové a jednoduché; Kooperativa může podle ceny služby vyplatit více, ale vyžaduje doložené náklady.",
+      },
+      cpp: {
+        headline: "800 Kč / 24 hodin",
+        detail: "Léto PLUS · celkem až 8 000 Kč",
+        source: "DPPLP 1/23, čl. 2 odst. 3, čl. 4 a 5",
+        badge: "Volitelné připojištění Léto PLUS",
+        points: ["Plnění od dne následujícího po úrazu nebo přijetí k hospitalizaci"],
+        sections: [
+          {
+            label: "Výluky",
+            text: "Plánovaná vyšetření, lázně a onemocnění či úraz vzniklé před sjednáním smlouvy.",
+            emphasis: "exclusion",
+          },
+        ],
+      },
+      koop: {
+        headline: koop.label === "PLUS" ? "až 15 000 Kč" : "až 10 000 Kč",
+        detail: "80 % doložených nákladů na nespotřebované cestovní služby",
+        source: "M-750/23, str. 11 a 41–42",
+        badge: "Balíček ÚZO",
+        points: ["Musí jít o službu, kterou zdravotní stav prokazatelně neumožnil dále čerpat"],
+      },
+    },
+    {
+      id: "sports-scope",
+      section: "Sport a vybavení",
+      icon: Activity,
+      title: "Klient provozuje nebezpečný sport nebo jede na závody",
+      description: "Samotné připojištění vybavení automaticky neznamená, že je pojištěná i sportovní činnost a léčebné výlohy z ní.",
+      verdict: {
+        tone: "attention",
+        label: "Nutné individuálně ověřit",
+        detail: "Vždy zvlášť kontrolujte krytí sportovní činnosti a krytí vybavení.",
+      },
+      cpp: {
+        headline: "Nutné odpovídající sjednání sportu",
+        detail: "Bez odchylného ujednání Léto PLUS nekryje události související s nebezpečnými sporty ani organizovanými soutěžemi a tréninky",
+        source: "VPPCP 1/18, čl. 8 a 16; DPPLP 1/23, čl. 5 odst. 4",
+        badge: "Rozhoduje typ cesty a smlouva",
+        points: ["Sportovní činnost nebo soutěž musí být v pojistné smlouvě kryta odpovídajícím typem cesty či zvláštním ujednáním"],
+      },
+      koop: {
+        headline: "Amatérská činnost",
+        detail: "Sportovní vybavení nesmí být užíváno profesionálně ani při výdělečné činnosti",
+        source: "M-750/23, str. 12, 28–29 a 35–36",
+        badge: "Sport a vybavení se posuzují odděleně",
+        points: ["Zařazení konkrétního sportu pro léčebné výlohy je nutné ověřit odděleně"],
+      },
+    },
+    {
+      id: "winter-equipment",
+      section: "Sport a vybavení",
+      icon: Snowflake,
+      title: "Klient jede na zimní dovolenou",
+      description: "Vedle lyží a snowboardu porovnáváme také uzavření areálu, lavinový zával a nevyužitou dovolenou.",
+      verdict: {
+        tone: "cpp",
+        label: "Širší řešení u ČPP",
+        detail: "Zima PLUS spojuje vlastní výbavu s několika typicky zimními komplikacemi.",
+      },
+      cpp: {
+        headline: "Zima PLUS",
+        detail: "Specializovaný balíček pro vlastní vybavení i zimní cestu",
+        source: "DPPZP 1/23, čl. 2, 4–6",
+        badge: "Volitelné připojištění Zima PLUS",
+        points: [
+          "Odcizení, zničení a specificky vymezená ztráta vybavení 35 000 Kč; servis poškozené výbavy 3 500 Kč.",
+          "Náhradní pronájem 500 Kč za 24 hodin, celkem 5 000 Kč.",
+          "Náhradní ubytování nebo doprava při lavinovém závalu celkem 20 000 Kč.",
+        ],
+        sections: [
+          {
+            label: "Další plnění",
+            items: [
+              "Nevyužitý přepravní doklad: 800 Kč za 24 hodin, celkem 8 000 Kč.",
+              "Nevyužitá zimní dovolená: 800 Kč za 24 hodin, celkem 8 000 Kč.",
+            ],
+            emphasis: "benefit",
+          },
+          {
+            label: "Důležité podmínky",
+            items: [
+              "U uzavření areálu se neplní při době kratší než 24 hodin, v období 16. 4.–14. 12. ani u přepravního dokladu zakoupeného na méně než dva dny.",
+              "Lyžařské středisko musí ležet alespoň 1 000 m n. m.",
+              "U lavinového závalu musí být cesta odložena o více než 12 hodin oproti plánovanému odjezdu či příjezdu.",
+              "U krádeže platí omezení pro úschovny, společné prostory a odstavený automobil mezi 22.00 a 6.00.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+      koop: {
+        headline: "Obecné sportovní krytí",
+        detail: "Lyže a snowboardy jsou součástí definice sportovního vybavení",
+        source: "M-750/23, str. 12, 33–36 a 41–42",
+        badge: "Volitelné sportovní připojištění",
+        points: ["Náhradní pronájem 10 000 Kč", "Škoda na pronajaté výbavě 5 000 Kč"],
+        sections: [
+          {
+            label: "Rozdíl proti Zima PLUS",
+            items: [
+              "Připojištění samo nehradí hodnotu vlastních lyží či snowboardu; případná škoda se posuzuje podle sjednaného pojištění zavazadel.",
+              "Nemá samostatné plnění za uzavření areálu ani lavinový zával. Nevyužité služby může za stanovených podmínek řešit obecné pojištění nevyužité cestovní služby.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+    },
+    {
+      id: "golf",
+      section: "Sport a vybavení",
+      icon: Trophy,
+      title: "Klient jede na golfovou dovolenou",
+      description: "ČPP má specializované golfové krytí. Kooperativa řadí golfové hole mezi sportovní vybavení, ale rozsah je užší.",
+      verdict: {
+        tone: "cpp",
+        label: "Širší řešení u ČPP",
+        detail: "Golf PLUS kryje vlastní hole, Green Fee i náklady spojené s Hole-in-One.",
+      },
+      cpp: {
+        headline: "Golf PLUS",
+        detail: "Vlastní výbava, náhradní pronájem, Green Fee a Hole-in-One",
+        source: "DPPGP 1/22, čl. 2–6",
+        badge: "Volitelné připojištění Golf PLUS",
+        points: ["Vybavení celkem 40 000 Kč", "Náhradní pronájem 15 000 Kč", "Green Fee 15 000 Kč; Hole-in-One 30 000 Kč"],
+        sections: [
+          {
+            label: "Rozsah škody na vlastní výbavě",
+            text: "Nejde o pojištění každého náhodného poškození. Podmínky uvádějí živelní událost, únik kapaliny z technického zařízení, krádež vloupáním, loupež a specificky definovanou ztrátu.",
+            emphasis: "exclusion",
+          },
+          {
+            label: "Důležité podmínky",
+            items: [
+              "Limit vlastní výbavy je 30 000 Kč na jednotlivou věc a 40 000 Kč celkem; výbava musí být v golfovém obalu.",
+              "Hole-in-One vyžaduje oficiální turnaj, potvrzení rozhodčího a účet za pohoštění.",
+              "Podmínky současně bez odchylného ujednání vylučují organizované sportovní soutěže a trénink; krytí turnaje proto musí odpovídat pojistné smlouvě.",
+            ],
+          },
+        ],
+      },
+      koop: {
+        headline: "Obecné sportovní krytí",
+        detail: "Golfové hole jsou zahrnuté v definici amatérského sportovního vybavení",
+        source: "M-750/23, str. 12, 33–36",
+        badge: "Volitelné sportovní připojištění",
+        points: ["Náhradní pronájem 10 000 Kč", "Škoda na pronajatých holích 5 000 Kč"],
+        sections: [
+          {
+            label: "Rozdíl proti Golf PLUS",
+            text: `Sportovní připojištění nemá zvláštní plnění za Green Fee, Hole-in-One ani hodnotu vlastních golfových holí. Hodnotu vlastních holí může při vyjmenovaném nebezpečí řešit pojištění zavazadel s celkovým limitem ${formatMoney(koop.baggage)}.`,
+            emphasis: "exclusion",
+          },
+        ],
+      },
+    },
+    {
+      id: "treatment",
+      section: "Zdraví",
+      icon: BriefcaseMedical,
+      title: "Klient potřebuje lékařské ošetření nebo hospitalizaci",
+      description: "Celkový limit pro nezbytnou zdravotní péči v zahraničí.",
+      verdict: limitVerdict(cpp.treatment, koop.treatment),
+      cpp: {
+        headline: formatMoney(cpp.treatment),
+        detail: "Celkový limit léčebných výloh",
+        source: "DPPLV 1/23, čl. 2 a 5",
+        badge: "Základní léčebné výlohy",
+        points: ["Repatriace do ČR", "Hospitalizace, operace a léky"],
+        metric: cpp.treatment,
+      },
+      koop: {
+        headline: formatMoney(koop.treatment),
+        detail: "Celkový limit léčebných výloh",
+        source: "M-750/23, str. 10 a 23–29",
+        badge: "Základní léčebné výlohy",
+        points: ["Repatriace do ČR", "Hospitalizace, operace a léky"],
+        metric: koop.treatment,
+      },
+    },
+    {
+      id: "covid-treatment",
+      section: "Zdraví",
+      icon: ShieldAlert,
+      title: "Klient v zahraničí onemocní covidem-19",
+      description: "Léčba covidu má vlastní sublimit a nelze pro ni automaticky použít celý limit běžných léčebných výloh.",
+      verdict: {
+        tone: "koop",
+        label: "Vyšší limit Kooperativy",
+        detail: `${formatMoney(5_000_000)} oproti ${formatMoney(cppCovidTreatmentLimit)} u zvolené varianty ČPP.`,
+      },
+      cpp: {
+        headline: formatMoney(cppCovidTreatmentLimit),
+        detail: `Sublimit léčby covidu-19 ve variantě ${cpp.label}`,
+        source: "DPPLV 1/23, čl. 2 odst. 5 a čl. 5 odst. 2",
+        badge: "Součást léčebných výloh",
+        points: ["Nevztahuje se na země označené MZV jako země s extrémním výskytem nákazy covid-19"],
+        metric: cppCovidTreatmentLimit,
+      },
+      koop: {
+        headline: "5 mil. Kč",
+        detail: "Nezbytné a přiměřené náklady na léčbu covidu-19 v obou variantách",
+        source: "M-750/23, str. 11 a 23–24",
+        badge: "COVID zdarma k LVZ",
+        points: ["Pojištění COVID musí být uvedeno mezi sjednanými pojištěními"],
+        metric: 5_000_000,
+      },
+    },
+    {
+      id: "rescue",
+      section: "Zdraví",
+      icon: HeartHandshake,
+      title: "Klienta musí zachránit v horách nebo terénu",
+      description: "Důležitý limit pro hory, vrtulník a záchranu v terénu.",
+      verdict: {
+        tone: "cpp",
+        label: "Výrazná výhoda ČPP",
+        detail: "ČPP váže záchranu na celý limit léčebných výloh, Kooperativa má samostatný nižší sublimit.",
+      },
+      cpp: {
+        headline: formatMoney(cpp.rescue),
+        detail: "Záchrana pojištěného v tísni",
+        source: "DPPLV 1/23, čl. 2 odst. 2 a čl. 5",
+        badge: "Součást léčebných výloh",
+        points: ["Limit kopíruje zvolený limit léčebných výloh"],
+        metric: cpp.rescue,
+      },
+      koop: {
+        headline: formatMoney(koop.rescue),
+        detail: "Zásah záchranných složek",
+        source: "M-750/23, str. 10 a 23–29",
+        badge: "Součást léčebných výloh",
+        points: [koop.label === "PLUS" ? "Vyšší limit varianty PLUS" : "Limit varianty KLASIK"],
+        metric: koop.rescue,
+      },
+    },
+    {
+      id: "teeth",
+      section: "Zdraví",
+      icon: Stethoscope,
+      title: "Klienta začne akutně bolet zub",
+      description: "Sublimit pro neodkladné ošetření při akutní bolesti.",
+      verdict: limitVerdict(cpp.teeth, koop.teeth),
+      cpp: {
+        headline: formatMoney(cpp.teeth),
+        detail: "Sublimit ošetření zubů",
+        source: "DPPLV 1/23, čl. 2 odst. 1b a čl. 5",
+        badge: "Součást léčebných výloh",
+        metric: cpp.teeth,
+      },
+      koop: {
+        headline: formatMoney(koop.teeth),
+        detail: "Sublimit ošetření zubů",
+        source: "M-750/23, str. 10 a 24–25",
+        badge: "Součást léčebných výloh",
+        metric: koop.teeth,
+      },
+    },
+    {
+      id: "companion",
+      section: "Zdraví",
+      icon: Users,
+      title: "Zdravotní stav vyžaduje přítomnost blízké osoby",
+      description: "Když zdravotní stav vyžaduje přítomnost blízké osoby.",
+      verdict: limitVerdict(cpp.companionTotal, koop.companionTotal),
+      cpp: {
+        headline: formatMoney(cpp.companionTotal),
+        detail: `max. ${formatMoney(cpp.companionDay)} za den`,
+        source: "DPPLV 1/23, čl. 2 odst. 1f a čl. 5",
+        badge: "Součást léčebných výloh",
+        points: ["Doprovod musí být z lékařského hlediska nutný a předem schválený asistencí nebo pojistitelem"],
+        metric: cpp.companionTotal,
+      },
+      koop: {
+        headline: formatMoney(koop.companionTotal),
+        detail: `Ubytování max. ${formatMoney(koop.companionDay)} za den`,
+        source: "M-750/23, str. 10 a 25–26",
+        badge: "Součást léčebných výloh",
+        points: ["Doprava schválené doprovázející osoby se hradí do celkového limitu léčebných výloh"],
+        metric: koop.companionTotal,
+      },
+    },
+    {
+      id: "pregnancy",
+      section: "Zdraví",
+      icon: Baby,
+      title: "Na cestě nastanou komplikace v těhotenství",
+      description: "Rozsah léčebných výloh spojených s těhotenstvím není u produktů vymezen stejně.",
+      verdict: {
+        tone: "attention",
+        label: "Odlišné časové vymezení",
+        detail: "Nelze rozhodnout jen podle názvu varianty; zásadní je týden těhotenství a charakter komplikace.",
+      },
+      cpp: {
+        headline: "do 24. týdne",
+        detail: "Nezbytné ošetření, léčení a hospitalizace související s těhotenstvím",
+        source: "DPPLV 1/23, čl. 2 odst. 1a",
+        badge: "Součást léčebných výloh",
+        points: ["Rozhoduje přesný týden těhotenství v době události"],
+        metric: null,
+      },
+      koop: {
+        headline: "do 10 týdnů před porodem",
+        detail: "Neočekávané akutní komplikace při bezprostředním ohrožení matky nebo plodu",
+        source: "M-750/23, str. 27–28",
+        badge: "Součást léčebných výloh",
+        points: ["Nevztahuje se na komplikace v rámci rizikového těhotenství"],
+        metric: null,
+      },
+    },
+    {
+      id: "baggage-delay",
+      section: "Zavazadla",
+      icon: Luggage,
+      title: "Odbavené zavazadlo má zpoždění",
+      description: "Obě pojišťovny hradí doložený nákup nezbytných náhradních věcí, ale liší se časovou hranicí, limitem a podmínkami příletu.",
+      verdict: {
+        tone: "balanced",
+        label: "Každá má jinou výhodu",
+        detail: "ČPP plní už od 3 hodin zpoždění. Kooperativa začíná od 6 hodin, ale má vyšší maximální limit.",
+      },
+      cpp: {
+        headline: "až 5 000 Kč",
+        detail: "Prokazatelně zaplacené nezbytné věci osobní potřeby",
+        source: "DPPLETP 1/18, čl. 2–5",
+        points: [
+          "Řádně registrované zavazadlo zpožděné leteckým dopravcem nejméně o 3 hodiny.",
+          "Při škodě není nutné kontaktovat asistenční službu.",
+        ],
+        metric: 5_000,
+        badge: "Volitelné připojištění Let PLUS",
+        sections: [
+          {
+            label: "Kdy vzniká nárok",
+            items: [
+              "Klient odevzdal řádně registrované zavazadlo leteckému dopravci.",
+              "Zavazadlo letecký dopravce zpozdil nejméně o 3 hodiny.",
+              "Klient kvůli zpoždění prokazatelně zakoupil nezbytné věci osobní potřeby.",
+            ],
+            emphasis: "benefit",
+          },
+          {
+            label: "Co klient doloží",
+            items: [
+              "Písemné potvrzení leteckého dopravce o zpoždění a délce jeho trvání.",
+              "Originály účtenek za pořízené nezbytné věci osobní potřeby.",
+            ],
+          },
+          {
+            label: "Co se nehradí / omezení",
+            items: [
+              "ČPP neplní, pokud je zpoždění zavazadla kratší než 3 hodiny.",
+              "Plnění je pouze za doložený nákup nezbytných věcí osobní potřeby, nejvýše 5 000 Kč.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+      koop: {
+        headline: koop.label === "PLUS" ? "až 10 000 Kč" : "až 8 000 Kč",
+        detail: koop.label === "PLUS" ? "Doložené náklady; hodinový strop 1 500 Kč od 7. hodiny" : "Doložené náklady; hodinový strop 1 000 Kč od 7. hodiny",
+        source: "M-750/23, str. 11 a 36",
+        points: [
+          "Doložené náklady na nezbytné náhradní věci při zpoždění nejméně 6 hodin.",
+          "Po návratu do země bydliště se toto pojištění neuplatní.",
+        ],
+        metric: koop.label === "PLUS" ? 10_000 : 8_000,
+        badge: "Balíček ÚZO",
+        sections: [
+          {
+            label: "Kdy vzniká nárok",
+            items: [
+              "Klient odevzdal řádně registrovaná zavazadla leteckému dopravci.",
+              "Událost souvisí s oficiálně registrovaným letem.",
+              "Zavazadla chybí po příletu plánovaným letem do přestupní stanice nebo cílové destinace, nikoli po návratu do země bydliště.",
+            ],
+            emphasis: "benefit",
+          },
+          {
+            label: "Co klient doloží",
+            items: [
+              "Doklady o nákupu nezbytných náhradních věcí.",
+              "Písemné potvrzení dopravce o převzetí zavazadel, jejich zpoždění, délce zpoždění a poskytnuté kompenzaci.",
+            ],
+          },
+          {
+            label: "Co se nehradí / omezení",
+            items: [
+              "Ubytování, stravování a doprava se nepovažují za náhradní věci.",
+              "Kooperativa neplní v rozsahu kompenzace od dopravce. Pokud dopravce zaplatí až později, odpovídající část pojistného plnění se vrací.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+    },
+    {
+      id: "flight-delay",
+      section: "Let",
+      icon: Plane,
+      title: "Let má zpoždění nebo je zrušen",
+      description: "Samostatné srovnání nákladů vzniklých kvůli zpoždění či zrušení letu.",
+      verdict: {
+        tone: "balanced",
+        label: "Každá má jinou výhodu",
+        detail: "ČPP má kratší tříhodinovou hranici. Kooperativa nabízí vyšší limit a zahrnuje více druhů doložených nákladů.",
+      },
+      cpp: {
+        headline: "až 5 000 Kč",
+        detail: "Náhradní ubytování a strava při zpoždění pravidelné linky",
+        source: "DPPLETP 1/18, čl. 2–5",
+        points: [
+          "Zpoždění musí způsobit letecký dopravce a trvat nejméně 3 hodiny.",
+          "Při škodě není nutné kontaktovat asistenční službu.",
+          "Únos letadla: pevné plnění 10 000 Kč.",
+        ],
+        metric: 5_000,
+        badge: "Volitelné připojištění Let PLUS",
+        sections: [
+          {
+            label: "Kdy vzniká nárok",
+            items: [
+              "Zpoždění pravidelné letecké linky způsobil letecký dopravce a trvá nejméně 3 hodiny.",
+              "Klient kvůli zpoždění prokazatelně zaplatil náhradní ubytování nebo stravu.",
+            ],
+            emphasis: "benefit",
+          },
+          {
+            label: "Co klient doloží",
+            items: [
+              "Písemné potvrzení dopravce o zpoždění a délce jeho trvání.",
+              "Originály účtenek za náhradní ubytování a stravu.",
+            ],
+          },
+          {
+            label: "Co se nehradí / omezení",
+            items: [
+              "Zpoždění kratší než 3 hodiny.",
+              "Zpoždění nepravidelné letecké linky (charteru).",
+              "Zmeškání odletu vlastním zaviněním pojištěného.",
+              "Zpoždění kvůli stávce nebo jinému opatření dopravce, cestovní kanceláře či organizátora služby, které bylo známé už před plánovaným odletem.",
+              "Finanční ztráta pojištěného.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Další plnění a služby",
+            items: [
+              "Při únosu letadla ČPP vyplatí 10 000 Kč; klient doloží potvrzení dopravce o únosu a době jeho trvání.",
+              "Při škodě není nutné kontaktovat asistenční službu.",
+            ],
+          },
+        ],
+      },
+      koop: {
+        headline: koop.label === "PLUS" ? "až 10 000 Kč" : "až 8 000 Kč",
+        detail: "Strava, úschova zavazadel, doprava do ubytování a ubytování",
+        source: "M-750/23, str. 11 a 36–37",
+        points: [
+          koop.label === "PLUS" ? "Doložené náklady jsou omezeny stropem 1 500 Kč za 7. a každou další hodinu." : "Doložené náklady jsou omezeny stropem 1 000 Kč za 7. a každou další hodinu.",
+          "Zpoždění nejméně 6 hodin nebo zrušení letu nejvýše 2 hodiny před odletem.",
+          "Pokud se klient kvůli události nemůže včas vrátit do ČR, lze po souhlasu prodloužit pojištění maximálně o 2 dny.",
+        ],
+        metric: koop.label === "PLUS" ? 10_000 : 8_000,
+        badge: "Balíček ÚZO",
+        sections: [
+          {
+            label: "Kdy vzniká nárok",
+            items: [
+              "Kooperativa hradí přiměřené a prokazatelně zaplacené náklady na stravu, úschovu zavazadel, dopravu do místa ubytování a ubytování.",
+              "Podmínkou je zpoždění odletu nejméně o 6 hodin nebo zrušení letu nejvýše 2 hodiny před plánovaným odletem.",
+            ],
+            emphasis: "benefit",
+          },
+          {
+            label: "Co klient doloží",
+            items: [
+              "Doklady prokazující délku zpoždění nebo okamžik zrušení letu.",
+              "Doklady o zaplacení stravy, úschovy zavazadel, dopravy do ubytování a ubytování.",
+              "Potvrzení, zda dopravce poskytl kompenzaci a v jaké výši.",
+            ],
+          },
+          {
+            label: "Co se nehradí / omezení",
+            text: "Kooperativa nehradí tu část nákladů, kterou nahradil dopravce. Pokud dopravce zaplatí až po výplatě pojistného plnění, má Kooperativa právo na vrácení odpovídající částky.",
+            emphasis: "exclusion",
+          },
+          {
+            label: "Další plnění a služby",
+            items: [
+              "Pokud se klient kvůli události nemůže do konce pojištění vrátit do ČR, lze se souhlasem Kooperativy nebo asistence prodloužit pojištění nejvýše o 2 dny.",
+              "Asistence se vztahuje na zpoždění delší než 3 hodiny, zrušení letu, odepření nástupu, zmeškání návazného letu nebo snížení dopravní třídy.",
+              "Telefonicky vysvětlí základní práva cestujícího a možnosti řešení letecké nepravidelnosti.",
+              "Může vůči dopravci uplatnit nárok podle příslušného nařízení EU. Klient musí uzavřít příkazní smlouvu a poskytnout součinnost.",
+              "Poskytovateli asistence náleží odměna minimálně 19 % z částky, kterou pro klienta na dopravci vymůže; konkrétní odměnu upravuje příkazní smlouva.",
+              "Při žádosti o pomoc klient sdělí identifikační údaje, číslo pojistné smlouvy, popis situace, telefonní kontakt a další potřebné informace.",
+            ],
+          },
+        ],
+      },
+    },
+    {
+      id: "quarantine",
+      section: "Cesta a komplikace",
+      icon: HeartHandshake,
+      title: "Klientovi je v zahraničí nařízena karanténa",
+      description: "Obě pojišťovny řeší dodatečné ubytování, stravu a náhradní dopravu do ČR.",
+      verdict: {
+        tone: "balanced",
+        label: "Záleží na variantě a výši nákladů",
+        detail: "ČPP hradí účelné náklady ve dvou limitech; Kooperativa 80 % vícenákladů v jednom limitu 30 000 Kč.",
+      },
+      cpp: {
+        headline: `Covid PLUS · ${formatMoney(cppQuarantineTotalLimit)}`,
+        detail: `Preventivně nařízená karanténa · celkový limit ve variantě ${cpp.label}`,
+        source: "DPPCOV 1/23, čl. 2–5",
+        badge: "Volitelné připojištění Covid PLUS",
+        metric: cppQuarantineTotalLimit,
+        points: [
+          `Ubytování a strava: ${formatMoney(cppQuarantinePartLimit)}`,
+          `Náhradní doprava: ${formatMoney(cppQuarantinePartLimit)}`,
+          "Je nutné kontaktovat asistenční službu.",
+        ],
+        sections: [
+          {
+            label: "Kdy vzniká nárok",
+            items: [
+              "Klient vycestoval do zahraničí a tam mu státní nebo zdravotní instituce preventivně nařídila karanténu kvůli výskytu covidu-19.",
+              "Kvůli karanténě účelně zaplatil ubytování a stravu nad rámec již uhrazeného pobytu.",
+              "Náhradní doprava se hradí, pokud po skončení karantény nebylo možné využít původně plánovaný způsob návratu.",
+            ],
+            emphasis: "benefit",
+          },
+          {
+            label: "Co klient doloží",
+            items: [
+              "Zprávu o nařízení preventivní karantény nebo lékařské potvrzení.",
+              "Doklady o úhradě náhradního ubytování, stravy a případně náhradní dopravy.",
+              "Klient musí při vzniku události kontaktovat asistenční službu.",
+            ],
+          },
+          {
+            label: "Co se nehradí / omezení",
+            items: [
+              "Karanténa byla nařízena před sjednáním pojištění nebo bylo předem známo, že bude nařízena.",
+              "Náklady uhradil stát nebo už byly zahrnuty v zaplaceném pobytu.",
+              "Událost nastala na území ČR.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+      koop: {
+        headline: "KARANTÉNA · 30 000 Kč",
+        detail: "80 % doložených vícenákladů na jednu pojištěnou osobu",
+        source: "M-750/23, str. 8, 12, 46–47 a 52",
+        badge: "Zdarma k LVZ · musí být sjednáno",
+        metric: 30_000,
+        points: [
+          "Strava, ubytování a náhradní doprava ze zahraničí do ČR.",
+          "Typicky když nařízená karanténa prodlouží pobyt nebo znemožní plánovaný návrat.",
+        ],
+        sections: [
+          {
+            label: "Kdy vzniká nárok",
+            items: [
+              "Klient má sjednané léčebné výlohy pro Evropu nebo svět a pojištění KARANTÉNA je uvedeno v pojistné smlouvě.",
+              "Klientovi byla v zahraničí kvůli výskytu covidu-19 nařízena karanténa.",
+              "Kvůli karanténě v zahraničí nebo při zpáteční cestě vznikly nezbytné a přiměřené vícenáklady na stravu, ubytování nebo náhradní dopravu do ČR.",
+            ],
+            emphasis: "benefit",
+          },
+          {
+            label: "Co klient doloží",
+            items: [
+              "Doklad o nařízené karanténě.",
+              "Doklady o zaplacení vzniklých vícenákladů.",
+              "Přiměřeně se použijí také povinnosti stanovené pro pojištění STORNO.",
+            ],
+          },
+          {
+            label: "Co se nehradí / omezení",
+            items: [
+              "Kooperativa neplní, pokud bylo možné vznik události před odjezdem předvídat, zejména když už byla v cílové destinaci nařízena povinná preventivní karanténa.",
+              "Pojištění KARANTÉNA se nevztahuje na území ČR.",
+              "Hradí se 80 % doložených vícenákladů, celkem nejvýše 30 000 Kč.",
+              "Jiné náklady než nezbytná a přiměřená strava, ubytování nebo náhradní doprava do ČR toto připojištění nekryje.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+    },
+    {
+      id: "after-departure",
+      section: "Cesta a komplikace",
+      icon: Clock3,
+      title: "Klient sjedná pojištění až po odjezdu",
+      description: "Pokud nové pojištění nenavazuje na předchozí smlouvu stejné pojišťovny, běží čekací doba.",
+      verdict: {
+        tone: "koop",
+        label: "Výhoda Kooperativy",
+        detail: "Čekací doba je 24 hodin místo tří kalendářních dnů.",
+      },
+      cpp: {
+        headline: "3 kalendářní dny",
+        detail: "Čekací doba po uzavření smlouvy na již nastoupené cestě",
+        source: "VPPCP 1/18, čl. 7 odst. 8",
+        badge: "Obecné ustanovení",
+        points: ["Nevztahuje se na navazující pojištění"],
+        metric: null,
+      },
+      koop: {
+        headline: "24 hodin",
+        detail: "Čekací doba od sjednání po odjezdu do zahraničí",
+        source: "M-750/23, str. 3 a 54",
+        badge: "Obecné ustanovení",
+        points: ["Nevztahuje se na bezprostředně navazující pojištění u Kooperativy"],
+        metric: null,
+      },
+    },
+    {
+      id: "unused",
+      section: "Cesta a komplikace",
+      icon: CircleAlert,
+      title: "Klient musí cestu přerušit nebo se předčasně vrátit",
+      description: "Kompenzace při předčasném návratu, hospitalizaci nebo nevyužité službě.",
+      verdict: {
+        tone: "balanced",
+        label: "Odlišný princip plnění",
+        detail: "ČPP vyplácí částku za nevyužité dny; Kooperativa hradí doložené náklady a ve vážných případech může zajistit dražší návrat.",
+      },
+      cpp: {
+        headline: "až 28 000 Kč",
+        detail: "Cesta plus — 2 000 Kč za každý nevyužitý den",
+        source: "DPPCP 1/22, čl. 2–4",
+        points: ["Maximálně za 14 dní", "Při pojistné události je nutné kontaktovat asistenční službu"],
+        metric: 28_000,
+        badge: "Připojištění Cesta plus",
+      },
+      koop: {
+        headline: koop.label === "PLUS" ? "až 15 000 Kč" : "až 10 000 Kč",
+        detail: "Standardní limit přerušení cesty i nevyužité cestovní služby",
+        source: "M-750/23, str. 11 a 41–42",
+        points: [
+          "Nevyužitá cestovní služba: 80 % doložených nákladů.",
+          "V přesně vymezených naléhavých případech může let do ČR zajištěný asistencí dosáhnout až 250 000 Kč.",
+        ],
+        metric: koop.label === "PLUS" ? 15_000 : 10_000,
+        badge: "Balíček ÚZO",
+      },
+    },
+    {
+      id: "cancellation",
+      section: "Cesta a komplikace",
+      icon: FileText,
+      title: "Klient musí cestu zrušit před odjezdem",
+      description: "Samostatně sjednávané pojištění storna zakoupené cestovní služby.",
+      verdict: {
+        tone: "attention",
+        label: "ČPP uvádí produktové maximum 60 000 Kč",
+        detail: "U ČPP je maximální sjednatelná pojistná částka 60 000 Kč; konkrétní smlouva může mít nižší částku. Kooperativa v dodaném IPID ani M-750/23 jeden univerzální maximální strop neuvádí.",
+      },
+      cpp: {
+        headline: "100 % · až 60 000 Kč",
+        detail: "Nejvýše do pojistné částky sjednané ve smlouvě",
+        source: "ČPP IPID 1/CP/CP2/2023, str. 1; DPPSTP 1/23, čl. 3–6",
+        points: [
+          "60 000 Kč je maximální sjednatelná pojistná částka produktu, nikoli automatický limit každé smlouvy.",
+          "Sjednat nejpozději 3. den od úhrady.",
+          "Při sjednání méně než 14 dní před cestou je spoluúčast 50 %.",
+        ],
+        metric: null,
+        badge: "Volitelné připojištění Storno PLUS",
+      },
+      koop: {
+        headline: "80 % nebo 100 % stornopoplatků",
+        detail: "Maximálně do odpovídajícího podílu celkové ceny služby uvedené ve smlouvě",
+        source: "M-750/23, str. 11 a 42–44",
+        points: [
+          "100 % se hradí jen u vymezených závažných zdravotních důvodů a úmrtí; u ostatních sjednaných důvodů 80 %.",
+          "Sjednat nejpozději do 3 pracovních dnů po zaplacení služby.",
+        ],
+        metric: null,
+        badge: "Volitelné pojištění STORNO",
+      },
+    },
+    {
+      id: "vehicle-assistance",
+      section: "Cesta a komplikace",
+      icon: CarFront,
+      title: "Auto se porouchá nebo havaruje v zahraničí",
+      description: "Obě služby řeší vozidlo i posádku, ale jinak nastavují odtah, ubytování, vyproštění a náhradní auto.",
+      verdict: {
+        tone: "balanced",
+        label: "Záleží na prioritě klienta",
+        detail: "Kooperativa má náhradní auto a vyšší souhrnný kilometrový strop počítaný odlišným způsobem; ČPP má delší místní odtah, více nocí a kryté vyproštění.",
+      },
+      cpp: {
+        headline: "Auto PLUS",
+        detail: "Místní odtah 100 km; návrat vozidla do ČR do 1 500 km",
+        source: "DPPAP 1/18, čl. 4–6",
+        badge: "Volitelné připojištění Auto PLUS",
+        points: ["Oprava 1 normohodina; vyproštění 20 000 Kč", "Ubytování 2 000 Kč/os./noc, nejvýše 3 noci", "Bez uvedeného náhradního vozidla"],
+        sections: [
+          {
+            label: "Podmínka návratu",
+            text: "Odtah do ČR a návrat posádky vznikají, pokud vozidlo nelze opravit do 60 hodin nebo bylo odcizeno. Služby se řeší přes asistenci.",
+          },
+        ],
+      },
+      koop: {
+        headline: "Asistence HOLIDAY",
+        detail: "Místní odtah 50 km; návrat do ČR v souhrnném stropu 4 000 km včetně příjezdu a návratu odtahového vozidla",
+        source: "M-750/23, str. 12 a 47–50",
+        badge: "Volitelné připojištění HOLIDAY",
+        points: ["Náhradní vozidlo až 5 dní", "Ubytování nejvýše 2 noci, obvykle 40 EUR/os./noc", "Telefonické tlumočení a náhradní řidič"],
+        sections: [
+          {
+            label: "Důležité podmínky",
+            items: [
+              "Návrat do ČR až při neopravitelnosti do 48 hodin; do 4 000 km se započítává i cesta odtahového vozidla z ČR a zpět.",
+              "Vyproštění vozidla mimo komunikaci nebo převráceného vozidla není součástí služby.",
+              "Vozidlo nesmí být starší 20 let a služby musí organizovat asistence.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+    },
+    {
+      id: "liability",
+      section: "Odpovědnost",
+      icon: ShieldCheck,
+      title: "Klient způsobí újmu jiné osobě",
+      description: "Újma na zdraví nebo majetku při běžném občanském životě během cesty. Níže jsou porovnány zvláštní výluky odpovědnosti; absence položky u druhé pojišťovny sama o sobě neznamená, že ji kryje.",
+      verdict: limitVerdict(cpp.liability, koop.liability),
+      cpp: {
+        headline: formatMoney(cpp.liability),
+        detail: "Celkový limit odpovědnosti",
+        source: "DPPODC 1/18, čl. 2–8",
+        points: [
+          `Právní zastoupení a obhajoba: ${formatMoney(cpp.legal ?? 0)}`,
+          `Věc zapůjčená od profesionální půjčovny: ${formatMoney(cppBorrowedThingLimit)}`,
+          "Při sjednaných pracovních cestách také újma na svěřené věci vzniklá při plnění pracovních úkolů.",
+        ],
+        sections: [
+          {
+            label: "Společné nebo obdobné výluky",
+            items: [
+              "Finanční sankce; neoprávněná činnost nebo neoprávněné užívání majetku.",
+              "Výdělečná a provozní činnost, profesionální sport, činnost s povinným pojištěním odpovědnosti a nároky z pracovního úrazu či nemoci z povolání.",
+              "Odpovědnost převzatá nad rámec právních předpisů.",
+              "Vozidla a plavidla v rozsahu povinného pojištění, letadla a další vyjmenované dopravní prostředky.",
+              "Postupné znečištění životního prostředí.",
+              "Újma vůči blízkým osobám, osobám jim blízkým a majetkově či personálně propojeným právnickým osobám.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Užívané, převzaté a zapůjčené věci",
+            items: [
+              "Obecně se nehradí újma na převzaté věci.",
+              "Výjimkou je nemovitost sloužící k přechodnému pobytu a její movité vybavení.",
+              `Zapůjčená věc je kryta do 10 % limitu odpovědnosti, nejvýše ${formatMoney(cppBorrowedThingLimit)}.`,
+              "Při sjednaných pracovních cestách může být kryta také svěřená věc poškozená při plnění pracovních úkolů.",
+            ],
+          },
+          {
+            label: "Další výslovné výluky ČPP",
+            text: "Jde o položky výslovně uvedené ve zvláštních podmínkách ČPP; jejich absence ve zvláštním seznamu Kooperativy automaticky neznamená krytí.",
+            items: [
+              "Prodlení se splněním smluvní povinnosti.",
+              "Držba zchátralé nebo neudržované nemovitosti určené k přechodnému pobytu.",
+              "Ztráta věci, kromě ztráty v důsledku smrti, ztráty vědomí nebo úrazu pojištěného.",
+              "Motoristická a letecká sportovní činnost.",
+              "Rádiem řízené modely provozované na nevhodném či neurčeném místě nebo v rozporu s místními předpisy.",
+              "Záznamy na zvukových, obrazových a datových nosičích, nehmotný majetek a osobnostní práva nesouvisející s újmou na zdraví nebo usmrcením.",
+              "Újma osobám zaměstnaným nebo vypomáhajícím v domácnosti při této činnosti a plnění odporující mezinárodním sankcím.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Povinnosti při škodě",
+            items: [
+              "Bezodkladně přes asistenční službu oznámit okolnosti, které mohou vést ke škodě, i nárok uplatněný poškozeným přímo, u soudu nebo jiného orgánu.",
+              "Postupovat podle pokynů ČPP; bez jejího souhlasu se nezavázat k úhradě promlčeného nároku ani neuzavřít soudní smír.",
+              "Předložit požadované doklady ke škodné události.",
+            ],
+          },
+        ],
+        metric: cpp.liability,
+        badge: "Volitelné pojištění",
+        exclusions: CPP_LIABILITY_EXCLUSIONS,
+      },
+      koop: {
+        headline: formatMoney(koop.liability),
+        detail: "Celkový limit odpovědnosti bez spoluúčasti",
+        source: "M-750/23, str. 11 a 37–41",
+        points: [
+          koop.legal ? `Samostatné pojištění právní pomoci: ${formatMoney(koop.legal)}` : "Samostatné pojištění právní pomoci není v KLASIK pojištěno",
+          "Škoda na pronajaté movité věci: 10 000 Kč",
+          koop.label === "PLUS" ? "Spoluúčast na pronajatém motorovém vozidle: 10 000 Kč" : "Spoluúčast na pronajatém motorovém vozidle není v KLASIK pojištěna",
+        ],
+        sections: [
+          {
+            label: "Společné nebo obdobné výluky",
+            items: [
+              "Pokuty, penále a jiné sankce; neoprávněné užívání věci nebo zvířete.",
+              "Výdělečná činnost, profesionální sport, činnost s povinným pojištěním odpovědnosti a nároky z pracovního úrazu či nemoci z povolání.",
+              "Odpovědnost převzatá nad rámec právních předpisů, včetně smluvně prodlouženého promlčení nebo vzdání se námitky promlčení.",
+              "Provoz motorového vozidla a plavidla vyžadujícího průkaz způsobilosti a vyjmenované formy létání.",
+              "Znečištění životního prostředí bez omezení pouze na postupné znečištění.",
+              "Újma manželovi, registrovanému partnerovi, sourozenci, příbuzným v přímé řadě, členům domácnosti a majetkově propojené právnické osobě.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Užívané, převzaté a zapůjčené věci",
+            items: [
+              "Obecně se nehradí újma na movité věci nebo zvířeti, které klient užívá, má u sebe nebo převzal ke splnění svého závazku.",
+              "Výjimkou jsou věci či zvířata při nepracovní praktické výuce nebo stáži a vybavení ubytovacího zařízení.",
+              "Prokazatelně pronajatá movitá věc od profesionálního pronajímatele je kryta do sublimitu 10 000 Kč; motorová vozidla, motorová plavidla, plachetnice, letadla a létající zařízení jsou z tohoto krytí vyloučeny.",
+              koop.label === "PLUS" ? "Varianta PLUS hradí spoluúčast do 10 000 Kč u vozidla pronajatého písemnou smlouvou od profesionální autopůjčovny." : "Varianta KLASIK spoluúčast na pronajatém motorovém vozidle nekryje.",
+            ],
+          },
+          {
+            label: "Další výslovné výluky Kooperativy",
+            text: "Jde o položky výslovně uvedené ve zvláštních podmínkách Kooperativy; jejich absence ve zvláštním seznamu ČPP automaticky neznamená krytí.",
+            items: [
+              "Úmyslné jednání a události související s alkoholem, omamnými nebo psychotropními látkami.",
+              "Předem známé porušení právní povinnosti nebo jiná předem známá skutečnost vedoucí k újmě.",
+              "Zavlečení nebo rozšíření nakažlivé choroby lidí, zvířat či rostlin.",
+              "Vlastnictví nebo používání zbraní, střeliva, pyrotechniky či výbušnin a vlastnictví nebo držba nemovitosti.",
+              "Divoká a exotická zvířata, zvířata určená k podnikání či výdělku a lovecký nebo služební pes při výkonu.",
+              "Létání, balony, seskoky a lety s padákem.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Povinnosti při škodě",
+            items: [
+              "Bez zbytečného odkladu oznámit nárok poškozeného a vyjádřit se k odpovědnosti, požadované náhradě a její výši.",
+              "Oznámit zahájení soudního, správního, trestního nebo rozhodčího řízení a informovat Kooperativu o jeho průběhu a výsledku.",
+              "Bez souhlasu Kooperativy neuhradit promlčenou pohledávku ani uplatněný nárok neuspokojit, neuznat nebo smírně nevyřešit.",
+              "V řízení postupovat podle pokynů, vznést námitku promlčení a podat opravný prostředek, pokud se s Kooperativou nedohodne jinak.",
+              "Nezpůsobit vydání rozsudku pro zmeškání nebo pro uznání.",
+              "Při porušení zákazu úhrady promlčené pohledávky nebo uvedených procesních povinností Kooperativa nemusí poskytnout plnění.",
+            ],
+          },
+        ],
+        metric: koop.liability,
+        badge: "Balíček ÚZO",
+        exclusions: KOOP_LIABILITY_EXCLUSIONS,
+      },
+    },
+    {
+      id: "baggage",
+      section: "Zavazadla",
+      icon: Luggage,
+      title: "Klientovi poškodí nebo odcizí zavazadla",
+      description: "Celkový limit; u jednotlivých věcí a způsobu uložení platí další sublimity a výluky.",
+      verdict: limitVerdict(cpp.baggage, koop.baggage),
+      cpp: {
+        headline: formatMoney(cpp.baggage),
+        detail: "Celkový limit zavazadel",
+        source: "DPPZAV 1/22, čl. 2–7",
+        points: [
+          `Cennosti a ceniny při krádeži vloupáním nebo loupeži: ${formatMoney(cpp.baggageValuables ?? 0)}`,
+          "Plnění v nové ceně; škody způsobené dopravcem jsou vyloučeny.",
+        ],
+        sections: [
+          {
+            label: "Kdy vzniká krytá škoda",
+            items: [
+              "Poškození nebo zničení živelní událostí či únikem kapaliny z technického zařízení.",
+              "Odcizení krádeží vloupáním nebo loupeží.",
+              "Ztráta jen tehdy, když klient nemohl věc chránit kvůli smrti, ztrátě vědomí nebo úrazu.",
+            ],
+          },
+        ],
+        metric: cpp.baggage,
+        badge: "Volitelné pojištění",
+      },
+      koop: {
+        headline: formatMoney(koop.baggage),
+        detail: "Celkový limit zavazadel",
+        source: "M-750/23, str. 11 a 33–35",
+        points: [
+          "Věci ve stanu, přívěsu či nosiči: 3 000 Kč.",
+          "Cenné věci, peníze, ceniny, platební karty a další vyjmenované předměty jsou vyloučeny.",
+          "Věci předané dopravci k přepravě jsou vyloučeny.",
+        ],
+        sections: [
+          {
+            label: "Kdy vzniká krytá škoda",
+            text: "Musí jít o některé z vyjmenovaných nebezpečí, zejména dopravní nehodu, zdravotní indispozici znemožňující věc opatrovat, krádež s překonáním překážky, loupež, požár nebo vyjmenovaný živel.",
+          },
+        ],
+        metric: koop.baggage,
+        badge: "Balíček ÚZO",
+      },
+    },
+    {
+      id: "accident",
+      section: "Úrazové pojištění",
+      icon: Activity,
+      title: "Úraz zanechá trvalé následky nebo způsobí smrt",
+      description: "Obnosové úrazové pojištění vedle úhrady samotného léčení v zahraničí.",
+      verdict: limitVerdict(cpp.permanentInjury, koop.permanentInjury),
+      cpp: {
+        headline: formatMoney(cpp.permanentInjury),
+        detail: "Trvalé následky úrazu",
+        source: "DPPURC 1/23, čl. 5–10",
+        points: [`Smrt následkem úrazu: ${formatMoney(cpp.death)}`],
+        metric: cpp.permanentInjury,
+        badge: "Volitelné pojištění",
+      },
+      koop: {
+        headline: formatMoney(koop.permanentInjury),
+        detail: "Trvalé následky úrazu",
+        source: "M-750/23, str. 11 a 29–33",
+        points: [
+          `Smrt následkem úrazu: ${formatMoney(koop.death)}`,
+          koop.label === "PLUS" ? "Nemocnice: 1 000 Kč/den, max. 15 000 Kč" : "Nemocnice: 500 Kč/den, max. 7 500 Kč",
+          "Při dopravní nehodě může být plnění za trvalé následky dvojnásobné, jsou-li splněny podmínky ošetření a policejního šetření.",
+        ],
+        metric: koop.permanentInjury,
+        badge: "Balíček ÚZO",
+        sections: [
+          {
+            label: "Dvojnásobek při dopravní nehodě",
+            items: [
+              "Klient musí být ošetřen zdravotnickou záchrannou službou na místě nebo nejpozději do 24 hodin ve zdravotnickém zařízení.",
+              "Nehodu musí bezprostředně na místě šetřit policie nebo jiný příslušný orgán a musí vzniknout záznam o výsledku šetření.",
+            ],
+            emphasis: "benefit",
+          },
+        ],
+      },
+    },
+    {
+      id: "security",
+      section: "Terorismus",
+      icon: ShieldAlert,
+      title: "Klient se stane obětí teroristického činu",
+      description: "ČPP přidává samostatné finanční kompenzace; Kooperativa zachovává krytí újmy na zdraví v LVZ a úrazu.",
+      verdict: {
+        tone: "balanced",
+        label: "Jiný typ ochrany",
+        detail: "ČPP Guard PLUS přidává pevné cestovní a bezpečnostní kompenzace. Kooperativa má silnější zdravotní krytí teroristického činu v rámci celkového limitu LVZ.",
+      },
+      cpp: {
+        headline: "Guard PLUS",
+        detail: "Únos, zkrácení cesty, opuštění rizikové oblasti a náhradní ubytování",
+        source: "DPPLV 1/23, čl. 2 a 5; DPPGUP 1/20, čl. 2–5",
+        badge: "Volitelné připojištění Guard PLUS",
+        points: [
+          "Většina událostí Guard PLUS 50 000 Kč; fyzické napadení 40 000 Kč; výkupné se nehradí.",
+          `Léčebné výlohy související s terorismem mají ve variantě ${cpp.label} samostatný sublimit ${formatMoney(cppTerrorismTreatmentLimit)}.`,
+        ],
+      },
+      koop: {
+        headline: "LVZ a úraz zůstávají",
+        detail: "Újma na zdraví z teroristického činu je krytá, pokud se klient aktivně nepodílel",
+        source: "M-750/23, str. 23–32 a obecná ustanovení str. 55",
+        badge: "Léčebné výlohy a úraz",
+        points: [
+          `Léčebné výlohy se hradí v rámci celkového limitu ${formatMoney(koop.treatment)}; podmínky neuvádějí zvláštní nižší sublimit terorismu.`,
+          "Bez přímého balíčku pro únos, opuštění oblasti či náhradní ubytování; u ostatních pojištění se obecná výluka terorismu uplatní.",
+          "Při vycestování do oznámené rizikové oblasti nebo neprodleném neopuštění oblasti může být plnění odmítnuto.",
+        ],
+      },
+    },
+    {
+      id: "animal",
+      section: "Veterinární léčba",
+      icon: PawPrint,
+      title: "Klient cestuje se psem, kočkou nebo fretkou",
+      description: "Porovnání úhrady akutní veterinární péče o vlastní zvíře v zahraničí.",
+      verdict: {
+        tone: "cpp",
+        label: "Přímé krytí pouze u ČPP",
+        detail: "Zvíře PLUS hradí nezbytnou veterinární péči; KOLUMBUS stejný produkt nemá.",
+      },
+      cpp: {
+        headline: `Zvíře PLUS · ${formatMoney(cppAnimalLimit)}`,
+        detail: `Veterinární péče ve variantě ${cpp.label}; spoluúčast 500 Kč`,
+        source: "DPPZVP 1/18, čl. 2–6",
+        badge: "Volitelné připojištění Zvíře PLUS",
+        points: ["Výkony, materiál, hospitalizace, medikace a náklady při smrti či utracení"],
+        sections: [
+          {
+            label: "Podmínky a výluky",
+            items: [
+              "Zdravé čipované zvíře s platným osvědčením a pasem, vstupní věk od 3 měsíců do 10 let.",
+              "Bez preventivní péče, vrozených vad, porodu, repatriace uhynulého zvířete a péče v ČR.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
+      koop: {
+        headline: "Bez přímého protějšku",
+        detail: "KOLUMBUS nehradí veterinární léčbu vlastního zvířete",
+        source: "M-750/23, sjednatelná pojištění str. 7–12",
+        badge: "Bez samostatného krytí",
+        points: ["Odpovědnost může řešit újmu, kterou zvíře způsobí někomu jinému"],
+      },
+    },
+  ];
+
+  const sectionOrder = new Map(
+    COMPARISON_SECTIONS.map((section, index) => [section.label, index])
+  );
+
+  return rows.sort(
+    (left, right) =>
+      (sectionOrder.get(left.section) ?? Number.MAX_SAFE_INTEGER) -
+      (sectionOrder.get(right.section) ?? Number.MAX_SAFE_INTEGER)
+  );
+}
+
+function VariantPicker<T extends string>({
+  label,
+  value,
+  variants,
+  onChange,
+  tone,
+}: {
+  label: string;
+  value: T;
+  variants: Record<T, Variant>;
+  onChange: (value: T) => void;
+  tone: "cpp" | "koop";
+}) {
+  const activeClasses =
+    tone === "cpp"
+      ? "border-blue-600 bg-blue-700 text-white shadow-[0_10px_24px_rgba(29,78,216,0.22)]"
+      : "border-emerald-600 bg-emerald-700 text-white shadow-[0_10px_24px_rgba(4,120,87,0.22)]";
+  const focusClasses = tone === "cpp" ? "focus-visible:ring-blue-300" : "focus-visible:ring-emerald-300";
+  const variantEntries = Object.entries(variants) as [T, Variant][];
+
+  return (
+    <fieldset>
+      <legend className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </legend>
+      <div className={`grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-1.5 ${variantEntries.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+        {variantEntries.map(([key, variant]) => {
+          const active = value === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onChange(key)}
+              aria-pressed={active}
+              className={`min-w-0 rounded-xl border px-2 py-2.5 text-center transition focus-visible:outline-none focus-visible:ring-2 ${focusClasses} ${
+                active
+                  ? activeClasses
+                  : "border-transparent bg-white text-slate-600 hover:border-slate-200 hover:text-slate-950"
+              }`}
+            >
+              <span className="block truncate text-xs font-black">{variant.label}</span>
+              <span className={`mt-0.5 hidden truncate text-[9px] font-bold sm:block ${active ? "text-white/75" : "text-slate-400"}`}>
+                {variant.helper}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+function ProductHeader({
+  insurer,
+  product,
+  logoPath,
+  tone,
+  children,
+}: {
+  insurer: string;
+  product: string;
+  logoPath: string;
+  tone: "cpp" | "koop";
+  children: ReactNode;
+}) {
+  const logoKey = institutionLogoKeyFromInsurerName(insurer);
+  return (
+    <div className={`relative overflow-hidden border-b border-slate-200 px-4 py-4 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0 ${tone === "cpp" ? "bg-blue-50/70" : "bg-emerald-50/65"}`}>
+      <span className={`absolute inset-x-0 top-0 h-1 ${tone === "cpp" ? "bg-blue-700" : "bg-emerald-700"}`} />
+      <div className="flex items-center gap-3">
+        <span className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white bg-white shadow-sm ${institutionLogoFrameClass(logoKey, "compact")}`}>
+          <Image src={logoPath} alt={insurer} fill sizes="64px" className={institutionLogoImageClass(logoKey)} />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">{insurer}</span>
+          <span className="block truncate text-base font-black text-slate-950">{product}</span>
+        </span>
+      </div>
+      <div className="mt-4">{children}</div>
+    </div>
+  );
+}
+
+function VerdictCard({ verdict }: { verdict: ComparisonRow["verdict"] }) {
+  const styles = {
+    cpp: "border-blue-200 bg-blue-50 text-blue-950",
+    koop: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    balanced: "border-violet-200 bg-violet-50 text-violet-950",
+    attention: "border-amber-200 bg-amber-50 text-amber-950",
+  } satisfies Record<VerdictTone, string>;
+  const iconStyles = {
+    cpp: "text-blue-700",
+    koop: "text-emerald-700",
+    balanced: "text-violet-600",
+    attention: "text-amber-600",
+  } satisfies Record<VerdictTone, string>;
+  const VerdictIcon = verdict.tone === "attention" ? CircleAlert : verdict.tone === "balanced" ? Info : Sparkles;
+
+  return (
+    <div className={`mt-4 rounded-xl border p-3 ${styles[verdict.tone]}`}>
+      <div className="flex items-center gap-2">
+        <VerdictIcon className={`h-3.5 w-3.5 shrink-0 ${iconStyles[verdict.tone]}`} />
+        <p className="text-[10px] font-black uppercase tracking-[0.11em]">{verdict.label}</p>
+      </div>
+      <p className="mt-1.5 text-xs font-semibold leading-5 opacity-80">{verdict.detail}</p>
+    </div>
+  );
+}
+
+function DifferenceSummary({
+  differences,
+  sharedPoints,
+}: {
+  differences: NonNullable<ComparisonRow["differences"]>;
+  sharedPoints?: ComparisonRow["sharedPoints"];
+}) {
+  return (
+    <div className="mt-4 space-y-2.5">
+      <p className="text-[10px] font-black uppercase tracking-[0.13em] text-slate-500">Rozdíly, které rozhodují</p>
+      {differences.map((difference) => (
+        <div key={difference.label} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <p className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.09em] text-slate-700">
+            {difference.label}
+          </p>
+          <div className="grid grid-cols-1 divide-y divide-slate-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-1 lg:divide-x-0 lg:divide-y 2xl:grid-cols-2 2xl:divide-x 2xl:divide-y-0">
+            <div className={`p-2.5 ${difference.advantage === "cpp" ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : "bg-blue-50/35"}`}>
+              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-blue-700">
+                ČPP{difference.advantage === "cpp" ? " · výhoda" : ""}
+              </p>
+              <p className="mt-1 text-[11px] font-bold leading-4 text-slate-700">{difference.cpp}</p>
+            </div>
+            <div className={`p-2.5 ${difference.advantage === "koop" ? "bg-emerald-50 ring-1 ring-inset ring-emerald-200" : "bg-emerald-50/35"}`}>
+              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-emerald-700">
+                Kooperativa{difference.advantage === "koop" ? " · výhoda" : ""}
+              </p>
+              <p className="mt-1 text-[11px] font-bold leading-4 text-slate-700">{difference.koop}</p>
+            </div>
+          </div>
+        </div>
+      ))}
+      {sharedPoints && sharedPoints.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-slate-100/70 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600">Společné – uvedeno jen jednou</p>
+          <ul className="mt-2 space-y-1.5">
+            {sharedPoints.map((point) => (
+              <li key={point} className="flex gap-2 text-[11px] font-semibold leading-4 text-slate-600">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LiabilityExclusionsDialog({
+  exclusions,
+  tone,
+  isOpen,
+  onClose,
+}: {
+  exclusions: LiabilityExclusions;
+  tone: "cpp" | "koop";
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const toneClasses =
+    tone === "cpp"
+      ? {
+          source: "border-blue-200 bg-blue-50 text-blue-800",
+          number: "bg-blue-700 text-white",
+          accent: "border-blue-200 bg-blue-50/55",
+        }
+      : {
+          source: "border-emerald-200 bg-emerald-50 text-emerald-800",
+          number: "bg-emerald-700 text-white",
+          accent: "border-emerald-200 bg-emerald-50/55",
+        };
+
+  return (
+    <HelpDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`Výluky odpovědnosti – ${exclusions.insurer}`}
+      description={exclusions.scope}
+    >
+      <div className={`rounded-2xl border p-4 ${toneClasses.accent}`}>
+        <p className={`inline-flex items-start gap-2 text-xs font-black leading-5 ${toneClasses.source}`}>
+          <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>Zdroj: {exclusions.source}</span>
+        </p>
+      </div>
+
+      {exclusions.interpretationNote && (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-950">
+          <p className="font-black uppercase tracking-[0.1em] text-amber-800">Důležitá návaznost</p>
+          <p className="mt-1.5">{exclusions.interpretationNote}</p>
+        </div>
+      )}
+
+      <div className="mt-4 space-y-4">
+        {exclusions.groups.map((group, groupIndex) => (
+          <section key={group.title} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${toneClasses.number}`}>
+                {groupIndex + 1}
+              </span>
+              <h3 className="text-sm font-black text-slate-950">{group.title}</h3>
+            </div>
+            <ul className="divide-y divide-slate-100 px-4">
+              {group.items.map((item) => (
+                <li key={item} className="flex gap-3 py-3 text-xs font-medium leading-5 text-slate-700 sm:text-sm sm:leading-6">
+                  <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-800">Platí také obecné podmínky</p>
+            <p className="mt-1.5 text-xs font-semibold leading-5 text-rose-950">{exclusions.generalConditionsNote}</p>
+          </div>
+        </div>
+      </div>
+    </HelpDialog>
+  );
+}
+
+function ProductCell({ value, otherValue, tone }: { value: ProductValue; otherValue: ProductValue; tone: "cpp" | "koop" }) {
+  const isHigher = value.metric != null && otherValue.metric != null && value.metric > otherValue.metric;
+  const isSame = value.metric != null && otherValue.metric != null && value.metric === otherValue.metric;
+  const accent = tone === "cpp" ? "blue" : "emerald";
+  const [isExclusionsOpen, setIsExclusionsOpen] = useState(false);
+
+  return (
+    <div className={`h-full border-b border-slate-100 p-4 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0 ${tone === "cpp" ? "bg-blue-50/30" : "bg-emerald-50/25"}`}>
+      <article className="h-full rounded-2xl border border-white bg-white/85 p-4 shadow-[0_8px_28px_rgba(15,23,42,0.065)] ring-1 ring-slate-900/[0.04]">
+        <p className={`mb-3 text-[10px] font-black uppercase tracking-[0.14em] lg:hidden ${tone === "cpp" ? "text-blue-800" : "text-emerald-800"}`}>
+          {tone === "cpp" ? "ČPP" : "Kooperativa"}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {value.badge && (
+            <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] ${accent === "blue" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800"}`}>
+              {value.badge}
+            </span>
+          )}
+          {isHigher && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-violet-700">
+              <Sparkles className="h-3 w-3" /> Vyšší limit
+            </span>
+          )}
+          {isSame && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-slate-600">
+              Shodný limit
+            </span>
+          )}
+        </div>
+        <p className={`mt-3 text-2xl font-black tracking-tight ${tone === "cpp" ? "text-blue-800" : "text-emerald-800"}`}>
+          {value.headline}
+        </p>
+        <p className="mt-1 text-sm font-bold leading-5 text-slate-700">{value.detail}</p>
+        {value.source && (
+          <p className="mt-2 inline-flex items-start gap-1.5 text-[10px] font-bold leading-4 text-slate-400">
+            <FileText className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>Zdroj: {value.source}</span>
+          </p>
+        )}
+        {value.points && (
+          <ul className="mt-3 space-y-2">
+            {value.points.map((point) => (
+              <li key={point} className="flex gap-2 text-xs font-medium leading-5 text-slate-600">
+                <Check className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${tone === "cpp" ? "text-blue-600" : "text-emerald-600"}`} />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {value.exclusions && (
+          <button
+            type="button"
+            onClick={() => setIsExclusionsOpen(true)}
+            className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 ${
+              tone === "cpp"
+                ? "border-blue-200 bg-blue-50 text-blue-800 hover:border-blue-300 hover:bg-blue-100 focus-visible:ring-blue-300"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100 focus-visible:ring-emerald-300"
+            }`}
+          >
+            <ShieldAlert className="h-4 w-4" />
+            Zobrazit výluky
+          </button>
+        )}
+        {value.sections && (
+          <details className="group mt-4 rounded-xl border border-slate-200 bg-slate-50/70">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.11em] text-slate-600 transition hover:text-slate-950 [&::-webkit-details-marker]:hidden">
+              Podmínky a výluky
+              <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="space-y-3 border-t border-slate-200 p-3">
+              {value.sections.map((section) => {
+                const sectionClasses =
+                  section.emphasis === "exclusion"
+                    ? "border-rose-200 bg-rose-50/80"
+                    : section.emphasis === "benefit"
+                      ? "border-emerald-200 bg-emerald-50/75"
+                      : "border-slate-200 bg-white";
+                const labelClasses =
+                  section.emphasis === "exclusion"
+                    ? "text-rose-800"
+                    : section.emphasis === "benefit"
+                      ? "text-emerald-800"
+                      : "text-slate-700";
+
+                return (
+                  <section key={section.label} className={`rounded-xl border p-3 ${sectionClasses}`}>
+                    <h3 className={`text-[10px] font-black uppercase tracking-[0.12em] ${labelClasses}`}>
+                      {section.label}
+                    </h3>
+                    {section.text && (
+                      <p className="mt-1.5 text-xs font-semibold leading-5 text-slate-700">
+                        {section.text}
+                      </p>
+                    )}
+                    {section.items && (
+                      <ul className="mt-2 space-y-1.5">
+                        {section.items.map((item) => (
+                          <li key={item} className="flex gap-2 text-xs font-medium leading-5 text-slate-600">
+                            <span className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${section.emphasis === "exclusion" ? "bg-rose-500" : section.emphasis === "benefit" ? "bg-emerald-500" : "bg-slate-400"}`} />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          </details>
+        )}
+      </article>
+      {value.exclusions && (
+        <LiabilityExclusionsDialog
+          exclusions={value.exclusions}
+          tone={tone}
+          isOpen={isExclusionsOpen}
+          onClose={() => setIsExclusionsOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+export default function TravelInsuranceComparisonPage() {
+  const [cppVariantKey, setCppVariantKey] = useState<CppVariantKey>("maxi");
+  const [koopVariantKey, setKoopVariantKey] = useState<KoopVariantKey>("plus");
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
+  const [documentDownloadError, setDocumentDownloadError] = useState<string | null>(null);
+  const cpp = CPP_VARIANTS[cppVariantKey];
+  const koop = KOOP_VARIANTS[koopVariantKey];
+  const rows = useMemo(() => buildRows(cpp, koop), [cpp, koop]);
+
+  const handleDocumentDownload = async ({
+    id,
+    fileName,
+  }: {
+    id: string;
+    fileName: string;
+  }) => {
+    if (downloadingDocumentId) return;
+
+    setDownloadingDocumentId(id);
+    setDocumentDownloadError(null);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error("Pro stažení dokumentu je nutné přihlášení.");
+      }
+
+      const blob = await fetchAuthedBlobOrThrow(
+        currentUser,
+        secureDocumentPath(id, { download: true })
+      );
+      if (blob.size === 0) {
+        throw new Error("Stažený dokument je prázdný.");
+      }
+
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_500);
+    } catch (error) {
+      setDocumentDownloadError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Dokument se nepodařilo stáhnout."
+      );
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  };
+
+  return (
+    <AppLayout active="tools">
+      <div className="relative w-full max-w-[1500px] space-y-5 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_48%,#ffffff_100%)] px-0 pb-10 sm:px-3">
+        <header className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.16),transparent_27%),radial-gradient(circle_at_8%_0%,rgba(37,99,235,0.14),transparent_28%),linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] px-5 py-6 shadow-[0_18px_55px_rgba(15,23,42,0.09)] sm:px-8 sm:py-8">
+          <Link href="/pomucky" className="inline-flex items-center gap-1.5 text-xs font-black text-slate-500 transition hover:text-slate-950">
+            <ArrowLeft className="h-4 w-4" /> Zpět na pomůcky
+          </Link>
+          <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 shadow-sm">
+            <Plane className="h-3.5 w-3.5" /> Srovnání cestovního pojištění
+          </div>
+          <h1 className="mt-4 max-w-4xl text-3xl font-black leading-[1.02] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+            ČPP vs. Kooperativa
+          </h1>
+          <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
+            Vyber varianty a porovnej, jak každá pojišťovna řeší konkrétní situace klienta. Verdikt platí vždy jen pro danou situaci; u každého krytí vidíš způsob sjednání i přesný zdroj v dodaných podmínkách.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-bold text-slate-600">Jednorázové cestovní pojištění</span>
+            <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-bold text-slate-600">ČPP IPID + VPPCP 1/18 + dodané DPP</span>
+            <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-bold text-slate-600">Kooperativa IPID + M-750/23</span>
+          </div>
+        </header>
+
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">Stejná asistenční služba</p>
+            <p className="mt-2 text-sm font-bold leading-5 text-emerald-950">Asistenční služby pro ČPP i Kooperativu zajišťuje Global Assistance.</p>
+          </div>
+          <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">Hory a záchrana</p>
+            <p className="mt-2 text-sm font-bold leading-5 text-violet-950">ČPP váže záchranu v tísni na celý limit léčebných výloh; u MAXI je to až 100 mil. Kč.</p>
+          </div>
+          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">Letecké komplikace</p>
+            <p className="mt-2 text-sm font-bold leading-5 text-sky-950">ČPP řeší zpožděná zavazadla už od 3 hodin; Kooperativa od 6 hodin, ale s vyšším limitem.</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">Jak pomůcku číst</p>
+            <p className="mt-2 text-sm font-bold leading-5 text-amber-950">Výběr varianty mění její limity. Položky označené jako volitelné připojištění nejsou automaticky součástí zvolené varianty.</p>
+          </div>
+        </section>
+
+        <nav aria-label="Části srovnání" className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)] sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Přejít na situace</span>
+            {COMPARISON_SECTIONS.map((section) => (
+              <a
+                key={section.id}
+                href={`#${section.id}`}
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
+              >
+                {section.label}
+              </a>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Význam závěru v dané situaci</span>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-800">Výhoda ČPP</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700">Výhoda Kooperativy</span>
+            <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-black text-violet-700">Odlišný princip</span>
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-700">Nutno ověřit</span>
+          </div>
+        </nav>
+
+        <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+          <div>
+            <div className="relative z-40 grid grid-cols-1 border-b border-slate-200 bg-white/95 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur-xl lg:sticky lg:top-2 lg:[grid-template-columns:minmax(245px,.78fr)_repeat(2,minmax(320px,1fr))]">
+              <div className="flex items-center border-b border-slate-200 px-5 py-4 lg:border-b-0 lg:border-r">
+                <div>
+                  <span className="inline-flex items-center gap-2 text-sm font-black text-slate-950"><Info className="h-4 w-4 text-violet-600" /> Situace a závěr</span>
+                  <p className="mt-1 text-xs font-medium text-slate-500">Limity reagují na varianty vpravo.</p>
+                </div>
+              </div>
+              <ProductHeader insurer="ČPP" product="Cestovní pojištění" logoPath="/icons/cpp.png" tone="cpp">
+                <VariantPicker label="Varianta ČPP" value={cppVariantKey} variants={CPP_VARIANTS} onChange={setCppVariantKey} tone="cpp" />
+              </ProductHeader>
+              <ProductHeader insurer="Kooperativa" product="KOLUMBUS" logoPath="/icons/koop.png" tone="koop">
+                <VariantPicker label="Varianta Kooperativy" value={koopVariantKey} variants={KOOP_VARIANTS} onChange={setKoopVariantKey} tone="koop" />
+              </ProductHeader>
+            </div>
+
+            {rows.map((row, index) => {
+              const Icon = row.icon;
+              const startsSection = index === 0 || rows[index - 1].section !== row.section;
+              return (
+                <div key={row.id}>
+                  {startsSection && (
+                    <div id={SECTION_ANCHORS[row.section]} className="scroll-mt-28 border-b border-slate-200 bg-slate-900 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+                      {row.section}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 border-b border-slate-100 last:border-b-0 lg:[grid-template-columns:minmax(245px,.78fr)_repeat(2,minmax(320px,1fr))]">
+                    <div className="border-b border-slate-100 bg-slate-50/55 px-5 py-5 lg:border-b-0 lg:border-r">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-violet-100 bg-white text-violet-600 shadow-sm"><Icon className="h-4.5 w-4.5" /></span>
+                      <h2 className="mt-3 text-base font-black leading-5 text-slate-950">{row.title}</h2>
+                      <p className="mt-2 text-xs font-medium leading-5 text-slate-600">{row.description}</p>
+                      <VerdictCard verdict={row.verdict} />
+                      {row.differences && (
+                        <DifferenceSummary differences={row.differences} sharedPoints={row.sharedPoints} />
+                      )}
+                    </div>
+                    <ProductCell value={row.cpp} otherValue={row.koop} tone="cpp" />
+                    <ProductCell value={row.koop} otherValue={row.cpp} tone="koop" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-[1fr_1.3fr]">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_34px_rgba(15,23,42,0.06)]">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Rychlá orientace podle potřeby</p>
+            <div className="mt-4 space-y-3">
+              {[
+                ["Co nejvyšší horská záchrana", "ČPP MAXI"],
+                ["Silný základ léčebných výloh", "ČPP MAXI nebo Kooperativa PLUS"],
+                ["Vlastní zimní nebo golfové vybavení", "ČPP Zima PLUS / Golf PLUS"],
+                ["Veterinární péče na cestě", "ČPP Zvíře PLUS"],
+                ["Náhradní auto při poruše", "Kooperativa HOLIDAY"],
+                ["Vlastní letní sportovní vybavení", "ČPP Léto PLUS"],
+                ["Dřívější plnění za zpožděný kufr", "ČPP Let plus"],
+                ["Kanada bez připojištění USA", "Kooperativa · svět bez USA"],
+                ["Jedna souvislá cesta delší než 45 dní", "ČPP nebo jednorázový KOLUMBUS"],
+                ["Právní pomoc a spoluúčast na pronajatém autě", "Kooperativa PLUS + ÚZO"],
+              ].map(([need, answer]) => (
+                <div key={need} className="flex items-start justify-between gap-4 rounded-xl bg-slate-50 px-3 py-3">
+                  <span className="text-xs font-semibold leading-5 text-slate-600">{need}</span>
+                  <span className="max-w-[48%] text-right text-xs font-black leading-5 text-slate-950">{answer}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 text-slate-950 shadow-[0_12px_34px_rgba(15,23,42,0.06)] sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                <FileText className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">Pojistné podmínky ke stažení</p>
+                <h2 className="mt-1 text-lg font-black text-slate-950">Podklady použité v tomto srovnání</h2>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+                  Jde o dokumenty dodané k této pomůcce. Stažení je dostupné pouze přihlášeným uživatelům.
+                </p>
+              </div>
+            </div>
+
+            {documentDownloadError && (
+              <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700">
+                {documentDownloadError}
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-blue-950">ČPP</h3>
+                    <p className="mt-0.5 text-xs font-semibold text-blue-800">1 IPID + 1 všeobecný + 14 doplňkových dokumentů</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800 shadow-sm">16 PDF</span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {CPP_TERMS_DOCUMENTS.map((document) => (
+                    <button
+                      key={document.id}
+                      type="button"
+                      disabled={downloadingDocumentId !== null}
+                      onClick={() => void handleDocumentDownload(document)}
+                      className="group flex min-w-0 items-center gap-2 rounded-xl border border-blue-100 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {downloadingDocumentId === document.id ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-700" />
+                      ) : (
+                        <Download className="h-4 w-4 shrink-0 text-blue-700" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-black text-slate-900">{document.label}</span>
+                        <span className="block truncate text-[10px] font-bold text-slate-500">
+                          {downloadingDocumentId === document.id ? "Stahuji PDF…" : document.code}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-emerald-950">Kooperativa</h3>
+                    <p className="mt-0.5 text-xs font-semibold text-emerald-700">IPID + kompletní podmínky KOLUMBUS</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-emerald-700 shadow-sm">2 PDF</span>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {KOOP_TERMS_DOCUMENTS.map((document) => (
+                    <button
+                      key={document.id}
+                      type="button"
+                      disabled={downloadingDocumentId !== null}
+                      onClick={() => void handleDocumentDownload(document)}
+                      className="group flex min-w-0 items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {downloadingDocumentId === document.id ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-700" />
+                      ) : (
+                        <Download className="h-4 w-4 shrink-0 text-emerald-700" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-black text-slate-900">{document.label}</span>
+                        <span className="block truncate text-[10px] font-bold text-slate-500">
+                          {downloadingDocumentId === document.id ? "Stahuji PDF…" : document.code}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-[11px] font-medium leading-5 text-emerald-900/75">
+                  Obsahuje předsmluvní informace, souhrn limitů i úplná ustanovení jednotlivých pojištění.
+                </p>
+              </section>
+            </div>
+
+            <div className="mt-5 border-t border-slate-200 pt-4">
+              <p className="text-xs font-semibold leading-5 text-slate-600">
+                Srovnání je zpracováno výhradně z výše uvedených dodaných PDF. Před sjednáním vždy ověř cílovou oblast, typ cesty, sporty, věk klienta, zdravotní stav, délku pobytu, zvolená připojištění a přesný rozsah v konkrétní pojistné smlouvě.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </AppLayout>
+  );
+}

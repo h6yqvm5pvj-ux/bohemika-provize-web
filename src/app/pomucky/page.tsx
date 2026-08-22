@@ -22,6 +22,7 @@ import {
   HeartPulse,
   Home,
   Landmark,
+  Plane,
   PenTool,
   PiggyBank,
   Scale,
@@ -47,6 +48,7 @@ const FILTERS = [
   "Životní pojištění",
   "Pojištění majetku",
   "Pojištění vozidel",
+  "Cestovní pojištění",
   "Finance",
   "Investice",
   "Obecné",
@@ -59,6 +61,7 @@ const FILTER_TAB_LABEL: Record<FilterKey, string> = {
   Všechny: "Všechny",
   "Pojištění majetku": "Majetek",
   "Pojištění vozidel": "Auto",
+  "Cestovní pojištění": "Cestovní",
   "Životní pojištění": "Život",
   Finance: "Finance",
   Investice: "Investice",
@@ -69,9 +72,10 @@ const CATEGORY_RANK: Record<ToolCategory, number> = {
   "Životní pojištění": 0,
   "Pojištění majetku": 1,
   "Pojištění vozidel": 2,
-  Finance: 3,
-  Investice: 4,
-  Obecné: 5,
+  "Cestovní pojištění": 3,
+  Finance: 4,
+  Investice: 5,
+  Obecné: 6,
 };
 
 type FilterVisual = {
@@ -119,6 +123,15 @@ const FILTER_VISUALS: Record<FilterKey, FilterVisual> = {
       "border-rose-200/90 bg-white/88 text-rose-800 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50/75",
     helper: "Invalidita, pracovní neschopnost a srovnání životních produktů.",
   },
+  "Cestovní pojištění": {
+    icon: Plane,
+    active:
+      "border-sky-500 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-white",
+    glow: "shadow-[0_16px_36px_rgba(3,105,161,0.32)]",
+    inactive:
+      "border-sky-200/90 bg-white/88 text-sky-800 hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-50/75",
+    helper: "Srovnání limitů, připojištění a situací na cestách.",
+  },
   Finance: {
     icon: BarChart3,
     active:
@@ -163,6 +176,9 @@ const CATEGORY_VISUALS: Record<
   "Životní pojištění": {
     icon: "text-rose-100 group-hover:text-rose-50",
   },
+  "Cestovní pojištění": {
+    icon: "text-sky-100 group-hover:text-sky-50",
+  },
   Finance: {
     icon: "text-emerald-100 group-hover:text-emerald-50",
   },
@@ -178,6 +194,7 @@ const CATEGORY_BADGE_LABEL: Record<ToolCategory, string> = {
   "Pojištění majetku": "MAJETEK",
   "Pojištění vozidel": "AUTO",
   "Životní pojištění": "ŽIVOT",
+  "Cestovní pojištění": "CESTOVNÍ",
   Finance: "FINANCE",
   Investice: "INVESTICE",
   Obecné: "OBECNÉ",
@@ -409,6 +426,14 @@ export default function ToolsPage() {
         description: "Vizualizuj si výplatu do budoucna.",
         icon: TrendingUp,
         href: "/pomucky/projekce-vykonu",
+      },
+      {
+        key: "cestovni-pojisteni-cpp-vs-kooperativa",
+        category: "Cestovní pojištění",
+        title: "ČPP vs. Kooperativa — cestovní pojištění",
+        description: "Interaktivní porovnání variant, limitů a připojištění cestovního pojištění.",
+        icon: Plane,
+        href: "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
       },
       {
         key: "nastaveni-zivotniho-pojisteni",
