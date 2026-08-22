@@ -254,6 +254,8 @@ const CPP_LIABILITY_EXCLUSIONS: LiabilityExclusions = {
   insurer: "ČPP",
   source: "DPPODC 1/18, čl. 7; současně se použijí VPPCP 1/18 a pojistná smlouva",
   scope: "Kompletní přehled zvláštních výluk pojištění odpovědnosti podle čl. 7 DPPODC 1/18.",
+  interpretationNote:
+    "Výluka vlastnictví nebo provozu vozidla se použije v rozsahu, v němž má újmu hradit povinné pojištění odpovědnosti z provozu vozidla. Samotné pronajaté vozidlo není z definice zapůjčené věci výslovně vyloučeno: vozidlo z profesionální autopůjčovny proto může být kryto jako zapůjčená věc. Nejde však o automatické proplacení smluvní spoluúčasti, pokuty ani odpovědnosti převzaté nad rámec zákona.",
   groups: [
     {
       title: "Výluky podle čl. 7 odst. 1",
@@ -1498,7 +1500,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         source: "DPPODC 1/18, čl. 2–8",
         points: [
           `Právní zastoupení a obhajoba: ${formatMoney(cpp.legal ?? 0)}`,
-          `Věc zapůjčená od profesionální půjčovny: ${formatMoney(cppBorrowedThingLimit)}`,
+          `Věc zapůjčená od profesionální půjčovny, podle znění podmínek i pronajaté vozidlo: ${formatMoney(cppBorrowedThingLimit)}`,
           "Při sjednaných pracovních cestách také újma na svěřené věci vzniklá při plnění pracovních úkolů.",
         ],
         sections: [
@@ -1520,6 +1522,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
               "Obecně se nehradí újma na převzaté věci.",
               "Výjimkou je nemovitost sloužící k přechodnému pobytu a její movité vybavení.",
               `Zapůjčená věc je kryta do 10 % limitu odpovědnosti, nejvýše ${formatMoney(cppBorrowedThingLimit)}.`,
+              "Definice zapůjčené věci nevylučuje motorové vozidlo; vůz převzatý k užívání od profesionální autopůjčovny proto může do tohoto krytí spadat.",
               "Při sjednaných pracovních cestách může být kryta také svěřená věc poškozená při plnění pracovních úkolů.",
             ],
           },
@@ -1609,6 +1612,93 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         metric: koop.liability,
         badge: "Balíček ÚZO",
         exclusions: KOOP_LIABILITY_EXCLUSIONS,
+      },
+    },
+    {
+      id: "rental-car-liability",
+      section: "Odpovědnost",
+      icon: CarFront,
+      title: "Klient poškodí vozidlo z autopůjčovny",
+      description: "ČPP a Kooperativa zde nekryjí stejnou věc: ČPP řeší zákonnou odpovědnost za škodu na zapůjčené věci, Kooperativa PLUS výslovně sjednanou spoluúčast.",
+      verdict: {
+        tone: "balanced",
+        label: "Odlišný princip krytí",
+        detail:
+          koop.label === "PLUS"
+            ? `ČPP může krýt zákonnou náhradu škody na pronajatém vozidle až do ${formatMoney(cppBorrowedThingLimit)}. Kooperativa PLUS výslovně hradí pouze spoluúčast do 10 000 Kč.`
+            : `ČPP může krýt zákonnou náhradu škody na pronajatém vozidle až do ${formatMoney(cppBorrowedThingLimit)}. Kooperativa KLASIK pojištění spoluúčasti na pronajatém vozidle neobsahuje.`,
+      },
+      cpp: {
+        headline: `až ${formatMoney(cppBorrowedThingLimit)}`,
+        detail: "Zákonná odpovědnost za škodu na vozidle od profesionální autopůjčovny",
+        source: "DPPODC 1/18, čl. 2 odst. 2 písm. b), čl. 7 odst. 1 písm. d) a odst. 2 písm. a), čl. 8 body 37–38",
+        badge: "Zapůjčená věc",
+        points: [
+          "Zapůjčenou věcí je movitá věc převzatá k oprávněnému užívání od podnikatele, jehož činností je půjčování věcí.",
+          "Motorové vozidlo není z této definice ani ze sublimitu zapůjčené věci výslovně vyloučeno.",
+        ],
+        metric: null,
+        sections: [
+          {
+            label: "Co může být kryto",
+            items: [
+              "Zákonem stanovená povinnost klienta nahradit autopůjčovně škodu na samotném pronajatém vozidle.",
+              `Sublimit činí 10 % z celkového limitu odpovědnosti, nejvýše 500 000 Kč; ve zvolené variantě jde o ${formatMoney(cppBorrowedThingLimit)}.`,
+              "Pojištění odpovědnosti ČPP je sjednáno bez spoluúčasti pojištěného.",
+            ],
+            emphasis: "benefit",
+          },
+          {
+            label: "Co z toho nelze automaticky dovodit",
+            items: [
+              "Podmínky neslibují samostatné automatické proplacení každé smluvní spoluúčasti z havarijního krytí autopůjčovny.",
+              "Nekryje se odpovědnost převzatá smlouvou nad rámec právních předpisů ani smluvní či jiné finanční sankce.",
+              "Škodu způsobenou provozem auta jiné osobě řeší povinné ručení pronajatého vozidla; cestovní odpovědnost ji v tomto rozsahu vylučuje.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Postup při škodě",
+            text: "Klient má událost bezodkladně oznámit prostřednictvím asistenční služby a bez souhlasu ČPP nárok neuznávat ani se nezavazovat k jeho úhradě.",
+          },
+        ],
+      },
+      koop: {
+        headline: koop.label === "PLUS" ? "spoluúčast až 10 000 Kč" : "v KLASIK není pojištěno",
+        detail:
+          koop.label === "PLUS"
+            ? "Výslovná úhrada spoluúčasti na škodě na pronajatém motorovém vozidle"
+            : "Pojištění spoluúčasti na pronajatém vozidle je součástí pouze varianty PLUS",
+        source: "M-750/23, str. 11 a 37–38",
+        badge: koop.label === "PLUS" ? "Varianta PLUS" : "Varianta KLASIK",
+        points: [
+          koop.label === "PLUS"
+            ? "Vozidlo musí být pronajato písemnou smlouvou od podnikatele provozujícího pronájem motorových vozidel."
+            : "Pro toto krytí je nutné zvolit variantu PLUS.",
+          "Obecný sublimit 10 000 Kč pro pronajaté movité věci motorová vozidla výslovně nezahrnuje; vozidlo řeší jen samostatné pojištění spoluúčasti.",
+        ],
+        metric: null,
+        sections: [
+          {
+            label: koop.label === "PLUS" ? "Co je výslovně kryto" : "Co chybí v KLASIK",
+            items:
+              koop.label === "PLUS"
+                ? [
+                    "Spoluúčast na škodě způsobené na pronajatém motorovém vozidle, maximálně 10 000 Kč.",
+                    "Pronájem musí být doložen písemnou smlouvou s profesionální autopůjčovnou.",
+                  ]
+                : ["K úhradě spoluúčasti na pronajatém motorovém vozidle není ve variantě KLASIK sjednán limit."],
+            emphasis: koop.label === "PLUS" ? "benefit" : "exclusion",
+          },
+          {
+            label: "Důležité rozlišení",
+            items: [
+              "Limit 10 000 Kč se vztahuje na spoluúčast, nikoli automaticky na celou škodu na vozidle.",
+              "Odpovědnost za škodu způsobenou provozem motorového vozidla jiné osobě je z cestovní odpovědnosti vyloučena.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
       },
     },
     {
@@ -2314,7 +2404,8 @@ export default function TravelInsuranceComparisonPage() {
                 ["Dřívější plnění za zpožděný kufr", "ČPP Let plus"],
                 ["Kanada bez připojištění USA", "Kooperativa · svět bez USA"],
                 ["Jedna souvislá cesta delší než 45 dní", "ČPP nebo jednorázový KOLUMBUS"],
-                ["Právní pomoc a spoluúčast na pronajatém autě", "Kooperativa PLUS + ÚZO"],
+                ["Zákonná odpovědnost za škodu na autě z autopůjčovny", "ČPP · zapůjčená věc"],
+                ["Výslovné pojištění spoluúčasti na pronajatém autě", "Kooperativa PLUS · 10 000 Kč"],
               ].map(([need, answer]) => (
                 <div key={need} className="flex items-start justify-between gap-4 rounded-xl bg-slate-50 px-3 py-3">
                   <span className="text-xs font-semibold leading-5 text-slate-600">{need}</span>
