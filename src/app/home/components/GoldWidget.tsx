@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { Coins, Minus, TrendingDown, TrendingUp } from "lucide-react";
 
 import { type AppLanguage } from "@/lib/appLanguage";
 import { formatMoney } from "../homeUtils";
@@ -12,33 +13,22 @@ type Props = {
   goldChangeAbs: number | null;
   goldDir: "up" | "down" | "flat";
   goldError: string | null;
-  onRefresh: () => void;
 };
 
 const GOLD_WIDGET_COPY: Record<
   AppLanguage,
   {
-    coinAlt: string;
     currentPrice: string;
     loading: string;
-    updatedAt: string;
-    unknownTime: string;
     dailyMove: string;
     noChange: string;
-    refresh: string;
-    locale: string;
   }
 > = {
   cs: {
-    coinAlt: "Zlatá mince 1 oz",
     currentPrice: "Aktuální cena zlata / 1 oz",
     loading: "Načítám…",
-    updatedAt: "Aktualizace",
-    unknownTime: "Čas zatím neznám",
     dailyMove: "Denní pohyb",
     noChange: "Bez změny",
-    refresh: "Obnovit cenu zlata",
-    locale: "cs-CZ",
   },
 };
 
@@ -51,114 +41,78 @@ export function GoldWidget({
   goldChangeAbs,
   goldDir,
   goldError,
-  onRefresh,
 }: Props) {
   const copy = GOLD_WIDGET_COPY[language];
   const goldCardClass = isLiteUI
-    ? "relative w-full overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-4 transition-[border-color,box-shadow] duration-200 hover:border-slate-300 focus-within:border-slate-300 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.35)] sm:px-6 sm:py-5"
-    : "relative w-full overflow-hidden rounded-[26px] border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.07)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_14px_32px_rgba(15,23,42,0.11)] focus-within:border-slate-300 focus-within:shadow-[0_14px_32px_rgba(15,23,42,0.11),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-6 sm:py-5";
+    ? "relative min-w-0 h-full overflow-hidden rounded-[30px] border border-amber-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(245,158,11,0.24),transparent_42%),linear-gradient(165deg,#271347_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white transition-[border-color,box-shadow] duration-200 hover:border-amber-200/60 focus-within:border-amber-200/60 focus-within:shadow-[0_0_0_1px_rgba(253,230,138,0.25)] sm:px-7 sm:py-6"
+    : "relative min-w-0 h-full overflow-hidden rounded-[30px] border border-amber-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(245,158,11,0.24),transparent_42%),linear-gradient(165deg,#271347_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-amber-200/60 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(253,230,138,0.2)] focus-within:border-amber-200/60 focus-within:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(253,230,138,0.25)] sm:px-7 sm:py-6";
 
   const trendClass =
     goldDir === "up"
-      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+      ? "text-emerald-300"
       : goldDir === "down"
-        ? "border-rose-300 bg-rose-50 text-rose-700"
-        : "border-slate-300 bg-slate-100 text-slate-700";
+        ? "text-rose-300"
+        : "text-slate-300";
 
   const trendAbsClass =
     goldDir === "up"
-      ? "text-emerald-700"
+      ? "text-emerald-200"
       : goldDir === "down"
-        ? "text-rose-700"
-        : "text-slate-700";
+        ? "text-rose-200"
+        : "text-slate-300";
+
+  const TrendIcon =
+    goldDir === "up" ? TrendingUp : goldDir === "down" ? TrendingDown : Minus;
 
   return (
-    <section className={goldCardClass}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_88%_0%,rgba(245,158,11,0.16),transparent_42%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_4%_100%,rgba(15,23,42,0.07),transparent_44%)]" />
+    <section className={goldCardClass} data-fixed-box-theme="slate">
+      <Image
+        src="/images/investicni-zlato-pamp.png"
+        alt=""
+        width={1536}
+        height={1024}
+        aria-hidden="true"
+        priority
+        className="pointer-events-none absolute -bottom-12 -right-16 z-0 w-[250px] select-none object-contain opacity-[0.2] saturate-75 [mask-image:linear-gradient(to_right,transparent_0%,black_38%,black_100%)] sm:-bottom-20 sm:-right-12 sm:w-[335px]"
+      />
 
-      <div className="relative flex flex-col gap-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="shrink-0">
-              <Image
-                src="/icons/1oZpredni.png"
-                alt={copy.coinAlt}
-                width={1000}
-                height={1000}
-                className="h-[108px] w-auto object-contain sm:h-[122px]"
-                priority
-              />
-            </div>
+      <div className="relative z-10 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_180px] 2xl:items-start 2xl:gap-5">
+        <div className="min-w-0">
+          <h2 className="flex max-w-full items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-amber-50 sm:text-3xl">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-100/45 bg-amber-300/15">
+              <Coins className="h-4.5 w-4.5 text-amber-200" strokeWidth={2.2} aria-hidden="true" />
+            </span>
+            <span className="min-w-0">{copy.currentPrice}</span>
+          </h2>
 
-            <div className="flex flex-col gap-1">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                {copy.currentPrice}
-              </div>
-              <div className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[3rem]">
-                {goldLoading ? copy.loading : goldData ? formatMoney(goldData.czkPerOz) : "—"}
-              </div>
-              <div className="text-[12px] text-slate-500">
-                {goldData?.ts
-                  ? `${copy.updatedAt} ${new Date(goldData.ts).toLocaleTimeString(copy.locale, {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}`
-                  : copy.unknownTime}
-              </div>
-              <div className="mt-1 inline-flex w-fit items-center gap-2">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                  {copy.dailyMove}
-                </span>
-                <div
-                  className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${trendClass}`}
-                >
-                  <span className="text-sm">
-                    {goldDir === "up" ? "▲" : goldDir === "down" ? "▼" : "—"}
-                  </span>
-                  <span>
-                    {goldChangePct == null
-                      ? copy.noChange
-                      : `${goldChangePct > 0 ? "+" : ""}${goldChangePct.toFixed(2)} %`}
-                  </span>
-                  {goldChangeAbs != null ? (
-                    <span className={trendAbsClass}>
-                      ({goldChangeAbs > 0 ? "+" : ""}
-                      {formatMoney(Math.abs(goldChangeAbs))})
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
+          <p className="mt-4 whitespace-nowrap text-[2.4rem] font-black leading-[0.96] tracking-[-0.03em] text-amber-200 sm:text-[2.95rem]">
+            {goldLoading && !goldData ? copy.loading : goldData ? formatMoney(goldData.czkPerOz) : "—"}
+          </p>
 
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={goldLoading}
-              aria-label={copy.refresh}
-              title={copy.refresh}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden="true"
-                className={`h-4 w-4 ${goldLoading ? "animate-spin" : ""}`}
-              >
-                <path
-                  d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            {goldError ? <span className="text-xs text-rose-600">{goldError}</span> : null}
-          </div>
+          {goldError ? <p className="mt-2 text-xs font-semibold text-rose-200">{goldError}</p> : null}
         </div>
+
+        <aside className="min-w-0 2xl:justify-self-end">
+          <div className={`flex min-w-0 items-center gap-2 2xl:mt-14 ${trendClass}`}>
+            <TrendIcon className="h-5 w-5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-100/60">{copy.dailyMove}</p>
+              <p className="flex flex-wrap items-baseline gap-x-2 font-black">
+                <span className="text-base sm:text-lg">
+                  {goldChangePct == null
+                    ? copy.noChange
+                    : `${goldChangePct > 0 ? "+" : ""}${goldChangePct.toFixed(2)} %`}
+                </span>
+                {goldChangeAbs != null ? (
+                  <span className={`text-xs sm:text-sm ${trendAbsClass}`}>
+                    {goldChangeAbs > 0 ? "+" : goldChangeAbs < 0 ? "−" : ""}
+                    {formatMoney(Math.abs(goldChangeAbs))}
+                  </span>
+                ) : null}
+              </p>
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
   );

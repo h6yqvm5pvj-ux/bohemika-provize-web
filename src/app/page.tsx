@@ -621,7 +621,7 @@ export default function HomePage() {
   const teamHistoryMonths = useMemo(() => {
     if (!shouldLoadAdvisorHome || !homeWidgets.teamLeaderboard) return 0;
     if (lbRange === "sixMonths") return 6;
-    if (lbRange === "year") return new Date().getMonth();
+    if (lbRange === "year") return 12;
     return 0;
   }, [lbRange, homeWidgets.teamLeaderboard, shouldLoadAdvisorHome]);
 
@@ -874,10 +874,6 @@ export default function HomePage() {
     void pushHomeSettingsToCloud({ homePerformanceMode: mode });
   };
 
-  const refreshGoldWidget = () => {
-    setGoldReloadKey((k) => k + 1);
-  };
-
   const refreshHomeData = () => {
     if (!advisorDataEmail) return;
     invalidateHomeCache(advisorDataEmail);
@@ -1010,7 +1006,10 @@ export default function HomePage() {
   useEffect(() => {
     if (!homeWidgets.goldWidget) return;
     let cancelled = false;
+    let requestInFlight = false;
     const loadGold = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
       setGoldLoading(true);
       setGoldError(null);
       try {
@@ -1036,12 +1035,22 @@ export default function HomePage() {
           setGoldData(null);
         }
       } finally {
+        requestInFlight = false;
         if (!cancelled) setGoldLoading(false);
       }
     };
     void loadGold();
+    const intervalId = window.setInterval(() => {
+      void loadGold();
+    }, 5 * 60_000);
+    const handleWindowFocus = () => {
+      void loadGold();
+    };
+    window.addEventListener("focus", handleWindowFocus);
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
     };
   }, [homeWidgets.goldWidget, goldReloadKey, copy.goldFetch]);
 
@@ -1165,7 +1174,6 @@ export default function HomePage() {
             goldChangeAbs={goldChangeAbs}
             goldDir={goldDir as "up" | "down" | "flat"}
             goldError={goldError}
-            onRefresh={refreshGoldWidget}
           />
         );
       case "summary":
@@ -1238,7 +1246,7 @@ export default function HomePage() {
         );
         return (
           <section
-            className={`relative z-30 ${reorderEnabled ? "h-full" : ""} space-y-3 rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-8 sm:py-7 ${
+            className={`relative z-30 space-y-3 rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-8 sm:py-7 ${
               reorderEnabled && draggingSection === id ? "opacity-50" : ""
             } ${reorderEnabled ? "cursor-move" : ""}`}
             draggable={reorderEnabled}
@@ -1365,26 +1373,6 @@ export default function HomePage() {
     }
   };
 
-  const sectionSpan: Record<HomeSection, string> = {
-    gold: "md:col-span-1",
-    summary: shouldExpandProductionSummary ? "md:col-span-2" : "md:col-span-1",
-    expectedPayout: "md:col-span-1",
-    goal: "md:col-span-1",
-    leaderboard: "md:col-span-1",
-    quickActions: "md:col-span-1",
-    chart: "md:col-span-2",
-  };
-
-  const sectionRowSpan: Record<HomeSection, string> = {
-    gold: "",
-    summary: "",
-    expectedPayout: "",
-    goal: "",
-    leaderboard: "",
-    quickActions: "",
-    chart: "",
-  };
-
   const saveMonthlyGoal = async (value: number) => {
     const currentUser = auth.currentUser;
     if (!normalizedEmail || !currentUser) return;
@@ -1506,6 +1494,9 @@ export default function HomePage() {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     sixMonthsAgo.setHours(0, 0, 0, 0);
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    twelveMonthsAgo.setHours(0, 0, 0, 0);
 
     const lifeProducts: Product[] = [
       "neon",
@@ -1530,7 +1521,7 @@ export default function HomePage() {
           continue;
         }
       } else if (lbRange === "year") {
-        if (signed.getFullYear() !== currentYear) continue;
+        if (signed < twelveMonthsAgo) continue;
       } else if (lbRange === "sixMonths") {
         if (signed < sixMonthsAgo) continue;
       }
@@ -1711,7 +1702,7 @@ export default function HomePage() {
               ) : null}
             </Link>
 
-            <div className="relative z-30">
+            <div className="relative z-[100]">
               <button
                 type="button"
                 onClick={() => setWidgetPanelOpen((prev) => !prev)}
@@ -1723,19 +1714,14 @@ export default function HomePage() {
               </button>
 
               {widgetPanelOpen && (
-                <div className="fixed left-1/2 top-[min(42vh,22rem)] z-50 max-h-[calc(100vh-7rem)] w-[calc(100vw-2rem)] max-w-[24rem] -translate-x-1/2 overflow-y-auto rounded-[26px] border border-violet-100 bg-white p-2 shadow-[0_24px_70px_rgba(49,25,105,0.28)] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:z-40 sm:mt-3 sm:w-[23rem] sm:max-w-none sm:translate-x-0">
+                <div className="fixed left-1/2 top-[min(42vh,22rem)] z-[110] max-h-[calc(100vh-7rem)] w-[calc(100vw-2rem)] max-w-[24rem] -translate-x-1/2 overflow-y-auto rounded-[26px] border border-violet-100 bg-white p-2 shadow-[0_24px_70px_rgba(49,25,105,0.28)] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:z-[110] sm:mt-3 sm:w-[23rem] sm:max-w-none sm:translate-x-0">
                   <div className="rounded-[20px] bg-gradient-to-br from-violet-700 via-violet-600 to-indigo-800 px-4 py-4 !text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
                         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-white/15 [&_svg]:!stroke-white">
                           <SlidersHorizontal size={19} aria-hidden="true" />
                         </span>
-                        <div>
-                          <div className="text-base font-extrabold !text-white">{copy.customizeTitle}</div>
-                          <p className="mt-1 text-xs leading-5 !text-violet-100">
-                            Změny se automaticky uloží do tvého profilu.
-                          </p>
-                        </div>
+                        <div className="text-base font-extrabold !text-white">{copy.customizeTitle}</div>
                       </div>
                       <button
                         type="button"
@@ -1828,13 +1814,7 @@ export default function HomePage() {
         </div>
         </div>
 
-        <div
-          className={
-            reorderEnabled
-              ? "grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 grid-flow-row-dense"
-              : "columns-1 md:columns-2 [column-gap:1rem] sm:[column-gap:1.25rem]"
-          }
-        >
+        <div className="columns-1 md:columns-2 [column-gap:1rem] sm:[column-gap:1.25rem]">
           {visibleSections.map((sec) => {
             const isDragging = draggingSection === sec;
             const isHoverTarget = reorderEnabled && hoverSection === sec && !isDragging;
@@ -1842,15 +1822,11 @@ export default function HomePage() {
             return (
               <div
                 key={sec}
-                className={
-                  reorderEnabled
-                    ? [sectionSpan[sec], sectionRowSpan[sec]].filter(Boolean).join(" ")
-                    : `mb-4 break-inside-avoid sm:mb-5 ${
-                        (sec === "summary" && shouldExpandProductionSummary) || sec === "chart"
-                          ? "md:[column-span:all]"
-                          : ""
-                      }`
-                }
+                className={`mb-4 break-inside-avoid sm:mb-5 ${
+                  (sec === "summary" && shouldExpandProductionSummary) || sec === "chart"
+                    ? "md:[column-span:all]"
+                    : ""
+                }`}
               >
                 <div
                   draggable={reorderEnabled}
@@ -1877,7 +1853,7 @@ export default function HomePage() {
                     isHoverTarget
                       ? "rounded-3xl bg-slate-100 ring-2 ring-slate-400 ring-offset-2 ring-offset-white"
                       : ""
-                  } ${reorderEnabled ? "h-full" : ""}`}
+                  }`}
                 >
                   {reorderEnabled && (
                     <div className="pointer-events-none absolute right-3 top-3 z-10">

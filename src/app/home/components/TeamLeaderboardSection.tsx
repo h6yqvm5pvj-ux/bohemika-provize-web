@@ -1,4 +1,4 @@
-import { Trophy } from "lucide-react";
+import { HeartPulse, Layers3, Trophy } from "lucide-react";
 import { AnimatedMoney } from "./AnimatedNumbers";
 
 import { type AppLanguage } from "@/lib/appLanguage";
@@ -36,9 +36,9 @@ const TEAM_LEADERBOARD_COPY: Record<
     title: "Žebříček týmu",
     life: "Život",
     other: "Vedlejší produkty",
-    month: "Aktuální měsíc",
-    sixMonths: "Posledních 6 měsíců",
-    year: "Aktuální rok",
+    month: "Tento měsíc",
+    sixMonths: "6M",
+    year: "12M",
     loading: "Načítám týmovou produkci…",
     empty: "Pro zvolené období a typ produktu zatím nemá tým žádnou produkci.",
     premium: "Pojistné",
@@ -58,8 +58,8 @@ export function TeamLeaderboardSection({
 }: Props) {
   const copy = TEAM_LEADERBOARD_COPY[language];
   const leaderboardClass = isLiteUI
-    ? "relative h-full overflow-hidden rounded-[30px] border border-slate-200 bg-white px-5 py-5 text-slate-900 sm:px-7 sm:py-6"
-    : "relative h-full overflow-hidden rounded-[30px] border border-slate-200 bg-white px-5 py-5 text-slate-900 shadow-[0_12px_28px_rgba(15,23,42,0.08)] sm:px-7 sm:py-6";
+    ? "relative h-full overflow-hidden rounded-[30px] border border-sky-300/30 bg-[radial-gradient(circle_at_14%_0%,rgba(56,189,248,0.2),transparent_42%),linear-gradient(165deg,#271347_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white transition-[border-color,box-shadow] duration-200 hover:border-sky-200/55 sm:px-7 sm:py-6"
+    : "relative h-full overflow-hidden rounded-[30px] border border-sky-300/30 bg-[radial-gradient(circle_at_14%_0%,rgba(56,189,248,0.2),transparent_42%),linear-gradient(165deg,#271347_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-sky-200/55 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(186,230,253,0.18)] sm:px-7 sm:py-6";
 
   const visibleEntries = entries.slice(0, 10);
 
@@ -94,42 +94,60 @@ export function TeamLeaderboardSection({
   };
 
   const chipGroupClass =
-    "inline-flex rounded-full border border-violet-100/34 bg-violet-950/40 p-1";
+    "inline-flex rounded-full border border-violet-100/30 bg-violet-950/45 p-0.5";
   const activeChipClass =
-    "rounded-full border border-violet-900/65 bg-violet-900/85 px-3 py-1.5 font-semibold text-violet-50 shadow-[0_8px_20px_rgba(26,10,60,0.35)]";
+    "inline-flex h-8 items-center whitespace-nowrap rounded-full border border-sky-200/30 bg-sky-300/18 px-2.5 font-semibold text-sky-50 shadow-[0_8px_20px_rgba(26,10,60,0.35)]";
   const idleChipClass =
-    "rounded-full border border-transparent px-3 py-1.5 font-semibold text-violet-100/72 transition hover:text-violet-50";
+    "inline-flex h-8 items-center whitespace-nowrap rounded-full border border-transparent px-2.5 font-semibold text-violet-100/65 transition hover:bg-white/[0.06] hover:text-violet-50";
+  const productChipClass =
+    "inline-flex h-8 w-8 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200/70";
 
   return (
     <section className={leaderboardClass} data-fixed-box-theme="slate">
-      <div className="relative z-10 mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="relative z-10 mb-4 flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">{copy.kicker}</p>
-          <h2 className="mt-1 inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-[1.75rem]">
-            <Trophy className="h-6 w-6 text-amber-500" strokeWidth={1.9} aria-hidden="true" />
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-100/60">{copy.kicker}</p>
+          <h2 className="mt-1 inline-flex items-center gap-3 text-2xl font-extrabold tracking-[-0.02em] text-violet-50 sm:text-[1.75rem]">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-sky-100/40 bg-sky-300/15">
+              <Trophy className="h-4.5 w-4.5 text-amber-300" strokeWidth={2.1} aria-hidden="true" />
+            </span>
             <span>{copy.title}</span>
           </h2>
         </div>
 
-        <div className="flex flex-col items-start gap-2 text-[11px] sm:items-end sm:text-xs">
-          <div className={chipGroupClass}>
+        <div className="flex shrink-0 flex-nowrap items-center gap-2 text-[10px] sm:justify-end">
+          <div className={`${chipGroupClass} gap-0.5`} role="group" aria-label="Typ produktu">
             <button
               type="button"
               onClick={() => onProductFilterChange("life")}
-              className={lbProductFilter === "life" ? activeChipClass : idleChipClass}
+              className={`${productChipClass} ${
+                lbProductFilter === "life"
+                  ? "border-fuchsia-200/45 bg-fuchsia-300/22 text-fuchsia-100 shadow-[0_7px_18px_rgba(192,38,211,0.2)]"
+                  : "border-transparent text-violet-100/60 hover:bg-white/[0.06] hover:text-violet-50"
+              }`}
+              aria-label={copy.life}
+              aria-pressed={lbProductFilter === "life"}
+              title={copy.life}
             >
-              {copy.life}
+              <HeartPulse className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
             </button>
             <button
               type="button"
               onClick={() => onProductFilterChange("other")}
-              className={lbProductFilter === "other" ? activeChipClass : idleChipClass}
+              className={`${productChipClass} ${
+                lbProductFilter === "other"
+                  ? "border-sky-200/45 bg-sky-300/22 text-sky-100 shadow-[0_7px_18px_rgba(14,165,233,0.2)]"
+                  : "border-transparent text-violet-100/60 hover:bg-white/[0.06] hover:text-violet-50"
+              }`}
+              aria-label={copy.other}
+              aria-pressed={lbProductFilter === "other"}
+              title={copy.other}
             >
-              {copy.other}
+              <Layers3 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
             </button>
           </div>
 
-          <div className={chipGroupClass}>
+          <div className={chipGroupClass} role="group" aria-label="Období žebříčku">
             <button
               type="button"
               onClick={() => onRangeChange("month")}

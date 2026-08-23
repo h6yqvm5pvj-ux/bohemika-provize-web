@@ -43,7 +43,7 @@ const MONTHLY_GOAL_COPY: Record<
     cancel: "Zrušit",
     saving: "Ukládám…",
     save: "Uložit",
-    monthlyGoal: "Měsíční cíl:",
+    monthlyGoal: "Měsíční cíl",
     completed: "Splněno",
     loading: "Načítám…",
     editGoal: "Upravit cíl",
@@ -105,26 +105,20 @@ export function MonthlyGoalSection({
   };
 
   const goalCardClass = isLiteUI
-    ? "relative min-w-0 h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-4 py-5 transition-[border-color,box-shadow] duration-200 hover:border-slate-300 focus-within:border-slate-300 focus-within:shadow-[0_0_0_1px_rgba(148,163,184,0.35)] sm:px-10 sm:py-7"
-    : "relative min-w-0 h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white px-4 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.1)] focus-within:border-slate-300 focus-within:shadow-[0_12px_28px_rgba(15,23,42,0.1),0_0_0_1px_rgba(148,163,184,0.35)] sm:px-10 sm:py-7";
+    ? "relative min-w-0 h-full overflow-hidden rounded-[30px] border border-rose-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(244,63,94,0.24),transparent_42%),linear-gradient(165deg,#271347_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white transition-[border-color,box-shadow] duration-200 hover:border-rose-200/60 focus-within:border-rose-200/60 focus-within:shadow-[0_0_0_1px_rgba(254,205,211,0.25)] sm:px-7 sm:py-6"
+    : "relative min-w-0 h-full overflow-hidden rounded-[30px] border border-rose-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(244,63,94,0.24),transparent_42%),linear-gradient(165deg,#271347_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-rose-200/60 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(254,205,211,0.2)] focus-within:border-rose-200/60 focus-within:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(254,205,211,0.25)] sm:px-7 sm:py-6";
 
   return (
     <section className={`monthly-goal-card ${goalCardClass}`}>
-      <div
+      <Image
+        src="/icons/cilmesice.webp"
+        alt=""
+        width={3000}
+        height={3000}
+        quality={100}
         aria-hidden="true"
-        className="monthly-goal-ghost-wrap pointer-events-none absolute inset-y-0 right-0 z-0 w-[52%] overflow-hidden"
-      >
-        <Image
-          src="/icons/cilmesice.webp"
-          alt=""
-          width={3000}
-          height={3000}
-          quality={100}
-          sizes="(min-width: 640px) 520px, 440px"
-          className="monthly-goal-ghost-logo absolute right-[-70px] top-[54%] w-[440px] -translate-y-1/2 select-none opacity-[0.2] saturate-[1.28] contrast-110 sm:right-[-50px] sm:w-[520px]"
-          priority={false}
-        />
-      </div>
+        className="pointer-events-none absolute -bottom-16 -right-12 z-0 w-[210px] select-none object-contain opacity-[0.2] saturate-75 sm:-bottom-20 sm:-right-10 sm:w-[275px]"
+      />
       {editOpen && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
@@ -142,7 +136,7 @@ export function MonthlyGoalSection({
                 autoFocus
                 min={0}
               />
-              {error ? <div className="text-xs text-rose-300">{error}</div> : null}
+              {error ? <div className="text-xs font-medium text-rose-600">{error}</div> : null}
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -168,24 +162,27 @@ export function MonthlyGoalSection({
           </div>
         </div>
       )}
-      <div className="relative z-10 flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="relative z-10 flex flex-col gap-5">
+        <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_180px] 2xl:items-start 2xl:gap-5">
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 text-2xl font-semibold text-slate-900">
-              <Target className="h-6 w-6 text-slate-700" strokeWidth={2} aria-hidden="true" />
-              <span>{copy.monthlyGoal}</span>
-            </div>
-            <div className="mt-1 text-[2.5rem] leading-[1] font-semibold tracking-tight text-slate-900 sm:text-[3rem]">
+            <h2 className="flex max-w-full items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-rose-50 sm:text-3xl">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-rose-100/45 bg-rose-300/15">
+                <Target className="h-4.5 w-4.5 text-rose-200" strokeWidth={2.2} aria-hidden="true" />
+              </span>
+              <span className="min-w-0">{copy.monthlyGoal}</span>
+            </h2>
+            <p className="mt-4 whitespace-nowrap text-[2.4rem] font-black leading-[0.96] tracking-[-0.03em] text-rose-200 sm:text-[2.95rem]">
               {goalDisplayValue}
-            </div>
+            </p>
           </div>
-          <div className="self-start sm:self-auto sm:text-right">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{copy.completed}</div>
-            <div className="text-3xl font-semibold text-slate-900">
+
+          <div className="self-start 2xl:justify-self-end 2xl:text-right">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-100/65">{copy.completed}</div>
+            <div className="text-3xl font-black tracking-[-0.03em] text-rose-50">
               {loading ? (
-                <span className="inline-flex items-center gap-2 text-base font-medium text-slate-500">
+                <span className="inline-flex items-center gap-2 text-base font-medium text-rose-100/70">
                   <span
-                    className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
+                    className="h-4 w-4 animate-spin rounded-full border-2 border-rose-100/30 border-t-rose-100"
                     aria-hidden="true"
                   />
                   <span>{copy.loading}</span>
@@ -197,7 +194,7 @@ export function MonthlyGoalSection({
             <button
               type="button"
               onClick={() => setEditOpen(true)}
-              className="mt-2 whitespace-nowrap inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-900 transition hover:bg-slate-50 sm:mt-3"
+              className="mt-2 inline-flex whitespace-nowrap items-center gap-1.5 rounded-full border border-rose-100/40 bg-rose-300/15 px-3 py-1.5 text-[11px] font-semibold text-rose-50 transition hover:border-rose-100/65 hover:bg-rose-300/25 sm:mt-3"
             >
               <Pencil className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
               {copy.editGoal}
@@ -206,13 +203,13 @@ export function MonthlyGoalSection({
         </div>
 
         <div className="flex flex-col gap-2">
-          <div className="relative h-3.5 w-full overflow-hidden rounded-full border border-slate-200 bg-slate-50">
+          <div className="relative h-2.5 w-full overflow-hidden rounded-full border border-rose-100/20 bg-white/[0.08]">
             <div
               className={`h-full rounded-full ${progressFillClass}`}
               style={{ width: `${loading ? 0 : progressForBar}%` }}
             />
           </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-500">
+          <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-100/55">
             <span>0 %</span>
             <span>100 %</span>
           </div>

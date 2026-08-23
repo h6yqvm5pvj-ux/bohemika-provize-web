@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowRight, WalletCards } from "lucide-react";
+import Image from "next/image";
+import { WalletCards } from "lucide-react";
 
 import { type AppLanguage } from "@/lib/appLanguage";
 import { formatMoney } from "../homeUtils";
@@ -21,7 +21,6 @@ const EXPECTED_PAYOUT_COPY: Record<
   {
     currentMonth: string;
     title: string;
-    detail: string;
     loadingTitle: string;
     loadingAccent: string;
     loadingStages: [string, string, string];
@@ -33,7 +32,6 @@ const EXPECTED_PAYOUT_COPY: Record<
   cs: {
     currentMonth: "aktuální měsíc",
     title: "Očekávaná výplata",
-    detail: "Detail",
     loadingTitle: "Načítám data výplaty",
     loadingAccent: "Výplata",
     loadingStages: [
@@ -101,22 +99,24 @@ export function ExpectedPayoutSection({
 
   return (
     <section className={cardClass} data-fixed-box-theme="slate">
+      <Image
+        src="/images/money-wallet.png"
+        alt=""
+        width={1268}
+        height={1241}
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-12 -right-10 z-0 w-[180px] select-none object-contain opacity-[0.24] saturate-75 sm:-bottom-14 sm:-right-8 sm:w-[235px]"
+      />
+
       {loading ? (
         <div className="relative z-10 flex h-full flex-col gap-4">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="inline-flex items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:whitespace-nowrap sm:text-3xl">
+          <div className="flex items-start gap-3">
+            <h2 className="flex max-w-full items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:text-3xl">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
                 <WalletCards className="h-4.5 w-4.5 text-emerald-200" strokeWidth={2.2} aria-hidden="true" />
               </span>
-              <span>{copy.title}</span>
+              <span className="min-w-0">{copy.title}</span>
             </h2>
-            <Link
-              href="/cashflow"
-              className="inline-flex items-center gap-1.5 rounded-full border border-violet-100/45 bg-violet-300/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-violet-50 transition hover:border-violet-100/70 hover:bg-violet-300/30"
-            >
-              {copy.detail}
-              <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-            </Link>
           </div>
 
           <LoadingProgressPanel
@@ -128,13 +128,13 @@ export function ExpectedPayoutSection({
           />
         </div>
       ) : (
-        <div className="relative z-10 grid gap-4 md:grid-cols-[minmax(0,1fr)_230px] md:items-start md:gap-5">
+        <div className="relative z-10 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_180px] 2xl:items-start 2xl:gap-5">
           <div className="min-w-0">
-            <h2 className="inline-flex items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:whitespace-nowrap sm:text-3xl">
+            <h2 className="flex max-w-full items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:text-3xl">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
                 <WalletCards className="h-4.5 w-4.5 text-emerald-200" strokeWidth={2.2} aria-hidden="true" />
               </span>
-              <span>{copy.title}</span>
+              <span className="min-w-0">{copy.title}</span>
             </h2>
 
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-violet-100/75">
@@ -145,16 +145,8 @@ export function ExpectedPayoutSection({
             </p>
           </div>
 
-          <aside className="min-w-0 flex flex-col md:justify-self-end">
-            <Link
-              href="/cashflow"
-              className="inline-flex w-fit self-start items-center gap-1.5 rounded-full border border-violet-100/45 bg-violet-300/20 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-50 transition hover:border-violet-100/70 hover:bg-violet-300/30 md:self-end"
-            >
-              {copy.detail}
-              <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-            </Link>
-
-            <dl className="mt-6 space-y-1.5 md:mt-14">
+          <aside className="flex min-w-0 flex-col 2xl:justify-self-end">
+            <dl className="space-y-1.5 2xl:mt-14">
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/72">{copy.gross}</dt>
                 <dd className="text-sm font-semibold text-violet-50 sm:text-base">{formatMoney(safeGross)}</dd>

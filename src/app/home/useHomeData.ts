@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { auth } from "@/app/firebase";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
@@ -147,6 +147,11 @@ type UserProfileApiResponse = {
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
 const HOME_CACHE_VERSION = "v4-range-aware";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
+const TEAM_HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
+const teamHistoryRangeCache = new Map<
+  string,
+  { ts: number; entries: EntryDoc[] }
+>();
 
 export const invalidateHomeCache = (email?: string | null) => {
   if (!email) return;
@@ -155,6 +160,11 @@ export const invalidateHomeCache = (email?: string | null) => {
   Object.keys(homeDataCache).forEach((key) => {
     if (key.includes(keyPart)) {
       delete homeDataCache[key];
+    }
+  });
+  Array.from(teamHistoryRangeCache.keys()).forEach((key) => {
+    if (key.startsWith(`${normalizedEmail}|`)) {
+      teamHistoryRangeCache.delete(key);
     }
   });
 
@@ -173,6 +183,107 @@ const normalizeCursorToken = (
     return String(legacyCursor);
   }
   return null;
+};
+
+const normalizeTeamHistoryMonths = (months: number): number =>
+  Math.max(0, Math.min(12, Math.floor(months)));
+
+const teamHistoryRangeCacheKey = (email: string, months: number): string => {
+  const now = new Date();
+  return `${email.toLowerCase()}|${now.getFullYear()}-${now.getMonth()}|${normalizeTeamHistoryMonths(months)}`;
+};
+
+const fetchTeamHistoryRange = async (
+  email: string,
+  months: number
+): Promise<EntryDoc[]> => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error("Nejsi přihlášený.");
+
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const safeMonths = normalizeTeamHistoryMonths(months);
+  const rangeStart =
+    safeMonths > 0
+      ? new Date(currentYear, currentMonth - safeMonths, 1)
+      : new Date(currentYear, currentMonth - 1, 1);
+  const rangeEnd = new Date(currentYear, currentMonth + 1, 1);
+  const rangeStartMs = rangeStart.getTime();
+  let bearerToken = await currentUser.getIdToken();
+  const entries: EntryDoc[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  let hasMore = true;
+  let pages = 0;
+
+  while (hasMore && pages < 60) {
+    const params = new URLSearchParams({
+      scope: "team",
+      shape: "home",
+      limit: "50",
+      signedFrom: String(rangeStartMs),
+    });
+    if (cursor) params.set("cursor", cursor);
+
+    const requestWithToken = async (token: string) =>
+      fetch(`/api/contracts/list?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+    let response = await requestWithToken(bearerToken);
+    if (response.status === 401) {
+      bearerToken = await currentUser.getIdToken(true);
+      response = await requestWithToken(bearerToken);
+    }
+
+    const payload = (await response.json()) as ContractsApiResponse;
+    if (!response.ok || payload.ok === false) {
+      const error = new Error(
+        payload.error || "Nepodařilo se načíst historii týmové produkce."
+      ) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
+    }
+
+    pages += 1;
+    const chunk = payload.contracts ?? [];
+    if (chunk.length === 0) break;
+
+    let oldestTsOnPage: number | null = null;
+    chunk.forEach((item) => {
+      const owner = (
+        item.adviserEmail ?? item.userEmail ?? email
+      ).toLowerCase();
+      const id = String(item.id ?? "").trim();
+      if (!owner || !id) return;
+
+      const key = `${owner}___${id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      const mapped: EntryDoc = {
+        ...item,
+        id,
+        userEmail: owner,
+      };
+      const signed = entrySignedDate(mapped);
+      if (!signed || signed < rangeStart || signed >= rangeEnd) return;
+
+      entries.push(mapped);
+      const signedTs = signed.getTime();
+      if (oldestTsOnPage == null || signedTs < oldestTsOnPage) {
+        oldestTsOnPage = signedTs;
+      }
+    });
+
+    cursor = normalizeCursorToken(payload.nextCursorToken, payload.nextCursor);
+    hasMore = Boolean(payload.hasMore) && Boolean(cursor);
+    if (oldestTsOnPage != null && oldestTsOnPage < rangeStartMs) break;
+  }
+
+  return entries;
 };
 
 export function useHomeData({
@@ -198,9 +309,62 @@ export function useHomeData({
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [loading, setLoading] = useState(true);
+  const baseLoadKeyRef = useRef<string | null>(null);
+  const baseLoadCompletedRef = useRef(false);
 
   useEffect(() => {
-    if (!email) return;
+    if (!email) {
+      baseLoadKeyRef.current = null;
+      baseLoadCompletedRef.current = false;
+      return;
+    }
+
+    const baseLoadKey = `${email}|${initialHasTeam ? "team" : "solo"}|${
+      loadPersonalHistory ? "history" : "summary"
+    }|${reloadKey}`;
+    const rangeOnlyChange =
+      baseLoadKeyRef.current === baseLoadKey && baseLoadCompletedRef.current;
+
+    if (rangeOnlyChange) {
+      let rangeCancelled = false;
+      const safeMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
+      const cacheKey = teamHistoryRangeCacheKey(email, safeMonths);
+      const cached = teamHistoryRangeCache.get(cacheKey);
+
+      if (cached && Date.now() - cached.ts < TEAM_HISTORY_CACHE_TTL_MS) {
+        setTeamEntries(cached.entries);
+        setHistoryLoading(false);
+        return () => {
+          rangeCancelled = true;
+        };
+      }
+
+      setHistoryLoading(true);
+      void fetchTeamHistoryRange(email, safeMonths)
+        .then((entries) => {
+          if (rangeCancelled) return;
+          teamHistoryRangeCache.set(cacheKey, { ts: Date.now(), entries });
+          setTeamEntries(entries);
+        })
+        .catch((error) => {
+          if (rangeCancelled) return;
+          if ((error as { status?: number } | null)?.status === 403) {
+            setTeamEntries([]);
+          } else {
+            console.error("Chyba při načítání historie týmové produkce:", error);
+          }
+        })
+        .finally(() => {
+          if (!rangeCancelled) setHistoryLoading(false);
+        });
+
+      return () => {
+        rangeCancelled = true;
+      };
+    }
+
+    baseLoadKeyRef.current = baseLoadKey;
+    baseLoadCompletedRef.current = false;
     let cancelled = false;
 
     const applyCachedHomeState = (payload: HomeCachePayload) => {
@@ -244,10 +408,7 @@ export function useHomeData({
         const personalRangeStart = loadPersonalHistory
           ? new Date(currentYear, currentMonth - 11, 1)
           : monthStart;
-        const safeTeamHistoryMonths = Math.max(
-          0,
-          Math.min(12, Math.floor(teamHistoryMonths))
-        );
+        const safeTeamHistoryMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
         const loadTeamHistory = safeTeamHistoryMonths > 0;
         const teamRangeStart = loadTeamHistory
           ? new Date(currentYear, currentMonth - safeTeamHistoryMonths, 1)
@@ -661,6 +822,11 @@ export function useHomeData({
           teamImmediatePrevSum: teamPrevMonth.immediate,
         };
 
+        teamHistoryRangeCache.set(
+          teamHistoryRangeCacheKey(email, safeTeamHistoryMonths),
+          { ts: Date.now(), entries: payload.teamEntries }
+        );
+
         if (!cancelled) {
           setMyEntries(payload.myEntries);
           setTeamEntries(payload.teamEntries);
@@ -682,10 +848,7 @@ export function useHomeData({
         const currentYear = now.getFullYear();
         const forceReload = reloadKey > 0;
 
-        const safeTeamHistoryMonths = Math.max(
-          0,
-          Math.min(12, Math.floor(teamHistoryMonths))
-        );
+        const safeTeamHistoryMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
         const cacheKey = `${HOME_CACHE_VERSION}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|team-${safeTeamHistoryMonths}`;
         const cached = homeDataCache[cacheKey];
         if (cached?.payload) {
@@ -774,6 +937,7 @@ export function useHomeData({
         }
       } finally {
         if (!cancelled) {
+          baseLoadCompletedRef.current = true;
           setLoading(false);
           setSummaryLoading(false);
           setHistoryLoading(false);

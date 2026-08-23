@@ -1,11 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
-  ArrowLeft,
   Baby,
   Bike,
   Briefcase,
@@ -3506,10 +3504,7 @@ export default function TravelInsuranceComparisonPage() {
     <AppLayout active="tools">
       <div className="relative w-full max-w-[1900px] space-y-5 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_48%,#ffffff_100%)] px-0 pb-10 sm:px-3">
         <header className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.16),transparent_27%),radial-gradient(circle_at_8%_0%,rgba(37,99,235,0.14),transparent_28%),linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] px-5 py-6 shadow-[0_18px_55px_rgba(15,23,42,0.09)] sm:px-8 sm:py-8">
-          <Link href="/pomucky" className="inline-flex items-center gap-1.5 text-xs font-black text-slate-500 transition hover:text-slate-950">
-            <ArrowLeft className="h-4 w-4" /> Zpět na pomůcky
-          </Link>
-          <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 shadow-sm">
+          <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 shadow-sm">
             <Plane className="h-3.5 w-3.5" /> Srovnání cestovního pojištění
           </div>
           <h1 className="mt-4 max-w-4xl text-3xl font-black leading-[1.02] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
