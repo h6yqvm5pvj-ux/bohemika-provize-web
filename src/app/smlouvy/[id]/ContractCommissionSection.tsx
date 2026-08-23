@@ -401,7 +401,10 @@ export const payoutStatusForCodes = (
   const hasStorno = records.some(isStornoPayoutRecord);
   const displayRecords = nonStornoRecords.length > 0 ? activeRecords : records;
 
-  if (paidAmount >= Math.max(0, expectedAmount - COMMISSION_PAYOUT_AMOUNT_TOLERANCE)) {
+  if (
+    paidAmount > 0 &&
+    paidAmount >= Math.max(0, expectedAmount - COMMISSION_PAYOUT_AMOUNT_TOLERANCE)
+  ) {
     return { status: "paid", paidAmount, records: displayRecords };
   }
   if (paidAmount > 0) return { status: "partial", paidAmount, records: displayRecords };

@@ -360,6 +360,15 @@ const baseCommissionCodeForStatementComparison = (
   return closingRoleMatch ? `A${closingRoleMatch[1]}` : code;
 };
 
+const managerCommissionCodeForSystemItems = (
+  value: string | null | undefined
+): string => {
+  const code = normalizeStatementCommissionCode(value);
+  if (/^NB\d+/.test(code)) return "B0301";
+  if (/^NV(?:PZ?|Z)?\d+/.test(code)) return "A101";
+  return baseCommissionCodeForStatementComparison(code);
+};
+
 const isNeonInitialCommissionCode = (value: string | null | undefined): boolean => {
   const code = baseCommissionCodeForStatementComparison(value);
   return code === "A101" || code === "B0301";
@@ -1410,6 +1419,7 @@ export {
   monthKeyFromIndex,
   monthKeyFromStatementPeriod,
   monthKeyIndex,
+  managerCommissionCodeForSystemItems,
   normalizeCommissionTitle,
   normalizeContractNumberForMatch,
   normalizeExternalHref,

@@ -8,6 +8,31 @@ import {
 import type { ContractCommissionPayout } from "./contractDetailTypes";
 
 describe("contract commission payout display helpers", () => {
+  it("keeps a small commission pending when no payout was recorded", () => {
+    const state = payoutStatusForCodes([], ["A101"], 9.12);
+
+    expect(state.status).toBe("pending");
+    expect(state.paidAmount).toBe(0);
+    expect(state.records).toEqual([]);
+  });
+
+  it("marks a small commission as paid when its payout was recorded", () => {
+    const payouts: ContractCommissionPayout[] = [
+      {
+        code: "A101",
+        amount: 9.12,
+        expectedAmount: 9.12,
+        difference: 0,
+        status: "paid",
+      },
+    ];
+
+    const state = payoutStatusForCodes(payouts, ["A101"], 9.12);
+
+    expect(state.status).toBe("paid");
+    expect(state.paidAmount).toBe(9.12);
+  });
+
   it("does not turn a later storno payout into a missing commission difference", () => {
     const payouts: ContractCommissionPayout[] = [
       {

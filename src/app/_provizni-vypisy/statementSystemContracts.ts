@@ -4,6 +4,7 @@ import type { CommissionMode, Position, Product } from "@/app/types/domain";
 
 import { contractMatchKey } from "./statementContractMatching";
 import {
+  ANNUAL_PREMIUM_TOLERANCE,
   formatLocalDate,
   formatSystemDate,
   normalizeCommissionTitle,
@@ -121,6 +122,52 @@ export const systemContractAnnualPremiumBase = (
   return Number.isFinite(monthlyPremium) && monthlyPremium > 0
     ? Math.round(monthlyPremium * 12 * 100) / 100
     : null;
+};
+
+export const systemContractAnnualPremiumDelta = (
+  contract: MatchedSystemContract | null | undefined
+): number | null => {
+  const timelineChange = (contract?.lifePremiumChanges ?? []).find(
+    (change) => change.id === contract?.id
+  );
+  const candidates = [
+    timelineChange?.annualPremiumDelta,
+    Number(timelineChange?.premiumDelta) * 12,
+    Number(contract?.premiumDelta) * 12,
+    Number(contract?.premiumIncreaseAmount) * 12,
+  ];
+
+  for (const value of candidates) {
+    const amount = Number(value);
+    if (Number.isFinite(amount) && Math.abs(amount) > ANNUAL_PREMIUM_TOLERANCE) {
+      return Math.round(amount * 100) / 100;
+    }
+  }
+
+  return null;
+};
+
+const systemContractPaymentPremiumDelta = (
+  contract: MatchedSystemContract | null | undefined
+): number | null => {
+  const timelineChange = (contract?.lifePremiumChanges ?? []).find(
+    (change) => change.id === contract?.id
+  );
+  const candidates = [
+    timelineChange?.premiumDelta,
+    Number(timelineChange?.annualPremiumDelta) / 12,
+    contract?.premiumDelta,
+    contract?.premiumIncreaseAmount,
+  ];
+
+  for (const value of candidates) {
+    const amount = Number(value);
+    if (Number.isFinite(amount) && Math.abs(amount) > ANNUAL_PREMIUM_TOLERANCE) {
+      return Math.round(amount * 100) / 100;
+    }
+  }
+
+  return null;
 };
 
 const systemContractEntryType = (
@@ -267,6 +314,40 @@ export const matchedSystemContract = (
   if (contracts.length === 1) return contracts[0];
   if (!matchContractsRepresentSingleFamily(contracts)) return null;
   return primarySystemContractForFamily(contracts);
+};
+
+export const matchedSystemContractForPremiumIncrease = ({
+  match,
+  statementPremiumBase,
+  statementBasePeriod,
+}: {
+  match: ContractMatchState | null;
+  statementPremiumBase: number;
+  statementBasePeriod: "annual" | "payment";
+}): MatchedSystemContract | null => {
+  if (match?.status !== "matched") return null;
+  const contracts = dedupeEquivalentSystemContracts(match.contracts);
+  if (contracts.length === 1) return contracts[0];
+  if (!matchContractsRepresentSingleFamily(contracts)) return null;
+
+  const timeline = sortSystemContractTimeline(contracts);
+  const endorsements = timeline.filter(systemContractIsEndorsement);
+  const matchingEndorsement = endorsements.find((contract) => {
+    const premiumDelta =
+      statementBasePeriod === "annual"
+        ? systemContractAnnualPremiumDelta(contract)
+        : systemContractPaymentPremiumDelta(contract);
+    return (
+      premiumDelta != null &&
+      Math.abs(Math.abs(premiumDelta) - statementPremiumBase) <= ANNUAL_PREMIUM_TOLERANCE
+    );
+  });
+
+  return (
+    matchingEndorsement ??
+    endorsements[endorsements.length - 1] ??
+    primarySystemContractForFamily(timeline)
+  );
 };
 
 export const systemMatchHasSingleFamilyHistory = (

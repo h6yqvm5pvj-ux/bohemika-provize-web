@@ -318,6 +318,13 @@ function computeItemsForEntry(entry, position, mode) {
       return formulas.calculateAllianzAuto(amount, frequency, position, coefficientSignedDateIso);
     case "uniqaAuto":
       return formulas.calculateUniqaAuto(amount, frequency, position, coefficientSignedDateIso);
+    case "kooperativaAuto":
+      return formulas.calculateKooperativaAuto(
+        amount,
+        frequency,
+        position,
+        coefficientSignedDateIso
+      );
     case "flexi":
       return formulas.calculateFlexi(
         amount,

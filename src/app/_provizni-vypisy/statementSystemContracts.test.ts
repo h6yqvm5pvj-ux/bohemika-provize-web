@@ -5,6 +5,7 @@ import {
   dedupeEquivalentSystemContracts,
   isUnpairedContractMatch,
   matchedSystemContract,
+  matchedSystemContractForPremiumIncrease,
   normalizePositionValue,
   statementProductMatchesSystemProduct,
   systemCommissionMonthlyBase,
@@ -109,6 +110,41 @@ describe("system contract matching helpers", () => {
     expect(matchedSystemContract(match)).toBe(original);
     expect(systemMatchHasSingleFamilyHistory(match)).toBe(true);
     expect(systemMatchHistoryLabel(match)).toBe("1 dodatek");
+  });
+
+  it("resolves an increase commission to the endorsement premium delta", () => {
+    const original = contract("original", {
+      rootContractEntryId: "root-1",
+      inputAmount: 1_496,
+    });
+    const olderEndorsement = contract("older-endorsement", {
+      entryType: "endorsement",
+      rootContractEntryId: "root-1",
+      parentContractEntryId: "original",
+      premiumDelta: 300,
+      calculationInputAmount: 300,
+      policyStartDate: "2026-05-01",
+    });
+    const matchingEndorsement = contract("matching-endorsement", {
+      entryType: "endorsement",
+      rootContractEntryId: "root-1",
+      parentContractEntryId: "original",
+      premiumDelta: 517,
+      calculationInputAmount: 517,
+      policyStartDate: "2026-06-30",
+    });
+    const match = {
+      status: "matched" as const,
+      contracts: [matchingEndorsement, original, olderEndorsement],
+    };
+
+    expect(
+      matchedSystemContractForPremiumIncrease({
+        match,
+        statementPremiumBase: 6_204,
+        statementBasePeriod: "annual",
+      })
+    ).toBe(matchingEndorsement);
   });
 
   it("does not resolve unrelated matching candidates as one contract", () => {

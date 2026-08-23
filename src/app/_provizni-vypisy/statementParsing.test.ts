@@ -7,6 +7,7 @@ import {
   INVESTMENT_SECTION_PRODUCT_CODES,
   isInvestmentSectionProductCode,
   isLifeSplitProductCode,
+  managerCommissionCodeForSystemItems,
   monthKeyFromStatementPeriod,
   normalizeContractNumberForMatch,
   parseLocalDate,
@@ -15,6 +16,13 @@ import {
 import { createStatementProductMappingIndex } from "./statementProductMap";
 
 describe("commission statement parsing helpers", () => {
+  it("maps premium-increase manager codes to endorsement commission items", () => {
+    expect(managerCommissionCodeForSystemItems("NB0301")).toBe("B0301");
+    expect(managerCommissionCodeForSystemItems("NV101")).toBe("A101");
+    expect(managerCommissionCodeForSystemItems("NVP101")).toBe("A101");
+    expect(managerCommissionCodeForSystemItems("B3601")).toBe("B3601");
+  });
+
   it("normalizes contract numbers for matching", () => {
     expect(normalizeContractNumberForMatch(" 12 34 / ab ")).toBe("1234/AB");
   });

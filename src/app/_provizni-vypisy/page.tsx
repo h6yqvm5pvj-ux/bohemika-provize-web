@@ -174,6 +174,7 @@ import {
   isUnpairedContractMatch,
   matchContractsRepresentSingleFamily,
   matchedSystemContract,
+  matchedSystemContractForPremiumIncrease,
   normalizeCommissionModeValue,
   normalizePositionValue,
   primarySystemContractForFamily,
@@ -181,6 +182,7 @@ import {
   statementProductMatchesSystemProduct,
   systemCommissionMonthlyBase,
   systemContractAnnualPremiumBase,
+  systemContractAnnualPremiumDelta,
   systemContractIsEndorsement,
   systemContractIsStorno,
   systemContractPosition,
@@ -241,6 +243,7 @@ import {
   monthKeyFromIndex,
   monthKeyFromStatementPeriod,
   monthKeyIndex,
+  managerCommissionCodeForSystemItems,
   normalizeCommissionTitle,
   normalizeContractNumberForMatch,
   normalizeProductCode,
@@ -1784,29 +1787,6 @@ const systemContractExpectsImmediateB36 = (
   return false;
 };
 
-const systemContractAnnualPremiumDelta = (
-  contract: MatchedSystemContract | null | undefined
-): number | null => {
-  const timelineChange = (contract?.lifePremiumChanges ?? []).find(
-    (change) => change.id === contract?.id
-  );
-  const candidates = [
-    timelineChange?.annualPremiumDelta,
-    Number(timelineChange?.premiumDelta) * 12,
-    Number(contract?.premiumDelta) * 12,
-    Number(contract?.premiumIncreaseAmount) * 12,
-  ];
-
-  for (const value of candidates) {
-    const amount = Number(value);
-    if (Number.isFinite(amount) && Math.abs(amount) > ANNUAL_PREMIUM_TOLERANCE) {
-      return Math.round(amount * 100) / 100;
-    }
-  }
-
-  return null;
-};
-
 const annualAmountsMatch = (
   left: number | null | undefined,
   right: number | null | undefined
@@ -1863,6 +1843,23 @@ const matchedSystemContractForLifeSplit = (
     annualAmountsMatch(systemContractAnnualPremiumBase(item), contract.annualPremium)
   );
   return matchingBase ?? primarySystemContractForFamily(timeline);
+};
+
+const matchedSystemContractForManagerCommissionRow = (
+  row: ManagerCommissionRow,
+  match: ContractMatchState | null
+): MatchedSystemContract | null => {
+  if (classifyGeneralCommissionCode(row.product, row.type).kind !== "increase") {
+    return matchedSystemContract(match);
+  }
+
+  return matchedSystemContractForPremiumIncrease({
+    match,
+    statementPremiumBase: row.base,
+    statementBasePeriod: resolveStatementProduct(row.product).usesAnnualPremiumBase
+      ? "annual"
+      : "payment",
+  });
 };
 
 const lifePremiumBaseComparisonForContract = (
@@ -4044,7 +4041,7 @@ const commissionItemCodeMatchesStatementCode = (
   rowCode: string
 ): boolean => {
   const code = baseCommissionCodeForStatementComparison(itemCode);
-  const comparableRowCode = baseCommissionCodeForStatementComparison(rowCode);
+  const comparableRowCode = managerCommissionCodeForSystemItems(rowCode);
   if (!code || !comparableRowCode) return false;
   if (code === comparableRowCode) return true;
   const rangeMatch = code.match(/^([A-Z]+)(\d+)-([A-Z]+)(\d+)$/);
@@ -6359,7 +6356,7 @@ function ManagerCommissionRowCard({
   ).length;
   const classification = classifyGeneralCommissionCode(row.product, row.type);
   const match = contractMatchForNumber(matchesByContractNumber, row.contractNumber, "team");
-  const matchedContract = matchedSystemContract(match);
+  const matchedContract = matchedSystemContractForManagerCommissionRow(row, match);
   const rowBaseComparisonMap = new Map<string, PremiumBaseComparison>();
   rowItems.forEach((item) => {
     const comparison = managerCommissionBaseComparison(item, matchedContract);
@@ -6835,7 +6832,7 @@ function ManagerCommissionsSection({
                 row.contractNumber,
                 "team"
               );
-              const matchedContract = matchedSystemContract(match);
+              const matchedContract = matchedSystemContractForManagerCommissionRow(row, match);
               const comparison = buildManagerCommissionAmountComparison(
                 row,
                 matchedContract,

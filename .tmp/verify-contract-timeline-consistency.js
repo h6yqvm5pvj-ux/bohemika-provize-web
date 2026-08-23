@@ -162,8 +162,9 @@ function collectSubordinates(managerEmail, childrenByManager) {
 
 async function main() {
   const args = process.argv.slice(2);
+  const owner = normalizeEmail(parseArgValue(args, '--owner', null));
   const manager = normalizeEmail(parseArgValue(args, '--manager', 'jakub.rauscher@bohemika.eu'));
-  if (!manager) throw new Error('Missing --manager');
+  if (!owner && !manager) throw new Error('Missing --owner or --manager');
 
   const credentials = loadCredentials();
   if (!credentials) throw new Error('Missing FIREBASE_ADMIN_* credentials.');
@@ -220,7 +221,7 @@ async function main() {
     childrenByManager.set(u.managerEmail, Array.from(new Set(arr)));
   });
 
-  const subordinateEmails = collectSubordinates(manager, childrenByManager);
+  const subordinateEmails = owner ? [owner] : collectSubordinates(manager, childrenByManager);
   if (subordinateEmails.length === 0) {
     console.log(`No subordinates for ${manager}.`);
     return;
@@ -317,7 +318,7 @@ async function main() {
     }
   }
 
-  console.log(`Manager: ${manager}`);
+  console.log(owner ? `Owner: ${owner}` : `Manager: ${manager}`);
   console.log(`Subordinates: ${subordinateEmails.length}`);
   console.log(`Scanned contract entries: ${scannedContracts}`);
   console.log(`Missing contractSignedDate: ${missingSignedDate}`);
