@@ -430,8 +430,8 @@ export default function ToolsPage() {
       {
         key: "cestovni-pojisteni-cpp-vs-kooperativa",
         category: "Cestovní pojištění",
-        title: "ČPP vs. Kooperativa — cestovní pojištění",
-        description: "Interaktivní porovnání variant, limitů a připojištění cestovního pojištění.",
+        title: "ČPP vs. Kooperativa vs. AXA — cestovní pojištění",
+        description: "Interaktivní porovnání variant, limitů, výluk a připojištění tří cestovních pojištění.",
         icon: Plane,
         href: "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
       },

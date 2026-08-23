@@ -163,6 +163,61 @@ const DOCUMENTS: Record<string, DocumentMeta> = {
     contentType: "application/pdf",
     localPath: "cestovni-pojisteni/kooperativa/IPID_Kolumbus_07_2023.pdf",
   },
+  "axa-travel-vppcp-2026-06-15": {
+    fileName: "AXA_VPPCP_2026-06-15.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_VPPCP_2026-06-15.pdf",
+  },
+  "axa-travel-ipid": {
+    fileName: "AXA_IPID.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_IPID.pdf",
+  },
+  "axa-travel-overview": {
+    fileName: "AXA_Zakladni_informace.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Zakladni_informace.pdf",
+  },
+  "axa-travel-cancellation": {
+    fileName: "AXA_Storno_cesty.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Storno_cesty.pdf",
+  },
+  "axa-travel-risk-sports": {
+    fileName: "AXA_Rizikove_sporty.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Rizikove_sporty.pdf",
+  },
+  "axa-travel-manual-work": {
+    fileName: "AXA_Manualni_prace.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Manualni_prace.pdf",
+  },
+  "axa-travel-flight": {
+    fileName: "AXA_Cestovani_letadlem.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Cestovani_letadlem.pdf",
+  },
+  "axa-travel-pets": {
+    fileName: "AXA_Domaci_mazlicci.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Domaci_mazlicci.pdf",
+  },
+  "axa-travel-drink": {
+    fileName: "AXA_Drink_povolen.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Drink_povolen.pdf",
+  },
+  "axa-travel-rental-car": {
+    fileName: "AXA_Pujcene_vozidlo.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Pujcene_vozidlo.pdf",
+  },
+  "axa-travel-auto-assistance": {
+    fileName: "AXA_Autoasistence.pdf",
+    contentType: "application/pdf",
+    localPath: "cestovni-pojisteni/axa/AXA_Autoasistence.pdf",
+  },
   "nn-zivot-vypoved": {
     fileName: "nnvypoved.pdf",
     contentType: "application/pdf",

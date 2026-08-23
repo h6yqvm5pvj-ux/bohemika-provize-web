@@ -45,6 +45,8 @@ import {
 
 type CppVariantKey = "mini" | "opti" | "maxi";
 type KoopVariantKey = "klasik" | "plus";
+type AxaVariantKey = "reference" | "komfort" | "excelent";
+type InsurerTone = "cpp" | "koop" | "axa";
 type ComparisonSection =
   | "Obecné informace"
   | "Sport a vybavení"
@@ -57,7 +59,7 @@ type ComparisonSection =
   | "Ochrana"
   | "Terorismus"
   | "Veterinární léčba";
-type VerdictTone = "cpp" | "koop" | "balanced" | "attention";
+type VerdictTone = InsurerTone | "balanced" | "attention";
 
 type Variant = {
   label: string;
@@ -97,7 +99,7 @@ type LiabilityExclusionGroup = {
 };
 
 type LiabilityExclusions = {
-  insurer: "ČPP" | "Kooperativa";
+  insurer: "ČPP" | "Kooperativa" | "AXA";
   source: string;
   scope: string;
   interpretationNote?: string;
@@ -120,14 +122,16 @@ type ComparisonRow = {
     label: string;
     cpp: string;
     koop: string;
-    advantage: "cpp" | "koop" | "neutral";
+    axa: string;
+    advantage: InsurerTone | "neutral";
   }>;
   sharedPoints?: string[];
   cpp: ProductValue;
   koop: ProductValue;
+  axa: ProductValue;
 };
 
-const CPP_VARIANTS: Record<CppVariantKey, Variant> = {
+export const CPP_VARIANTS: Record<CppVariantKey, Variant> = {
   mini: {
     label: "MINI",
     helper: "Základní limity",
@@ -175,7 +179,7 @@ const CPP_VARIANTS: Record<CppVariantKey, Variant> = {
   },
 };
 
-const KOOP_VARIANTS: Record<KoopVariantKey, Variant> = {
+export const KOOP_VARIANTS: Record<KoopVariantKey, Variant> = {
   klasik: {
     label: "KLASIK",
     helper: "Základní varianta",
@@ -208,7 +212,55 @@ const KOOP_VARIANTS: Record<KoopVariantKey, Variant> = {
   },
 };
 
-const CPP_TERMS_DOCUMENTS = [
+export const AXA_VARIANTS: Record<AxaVariantKey, Variant> = {
+  reference: {
+    label: "REFERENCE",
+    helper: "Základní zdravotní krytí",
+    treatment: 2_500_000,
+    rescue: 2_500_000,
+    teeth: 6_000,
+    companionTotal: 0,
+    companionDay: 0,
+    liability: 0,
+    legal: null,
+    baggage: 0,
+    baggageValuables: null,
+    death: 0,
+    permanentInjury: 0,
+  },
+  komfort: {
+    label: "KOMFORT",
+    helper: "Rozšířená varianta",
+    treatment: 15_000_000,
+    rescue: 15_000_000,
+    teeth: 11_000,
+    companionTotal: 0,
+    companionDay: 0,
+    liability: 5_000_000,
+    legal: 20_000,
+    baggage: 30_000,
+    baggageValuables: null,
+    death: 250_000,
+    permanentInjury: 500_000,
+  },
+  excelent: {
+    label: "EXCELENT",
+    helper: "Nejvyšší varianta",
+    treatment: 500_000_000,
+    rescue: 500_000_000,
+    teeth: 20_000,
+    companionTotal: 0,
+    companionDay: 0,
+    liability: 25_000_000,
+    legal: 100_000,
+    baggage: 60_000,
+    baggageValuables: null,
+    death: 500_000,
+    permanentInjury: 1_000_000,
+  },
+};
+
+export const CPP_TERMS_DOCUMENTS = [
   { id: "cpp-travel-ipid-1-cp-cp2-2023", label: "Informační dokument IPID", code: "IPID 1/CP/CP2/2023", fileName: "IPID_Cestovni_pojisteni_CPP_1_23.pdf" },
   { id: "cpp-travel-vppcp", label: "Všeobecné podmínky", code: "VPPCP 1/18", fileName: "VPPCP.pdf" },
   { id: "cpp-travel-dppap", label: "Auto PLUS", code: "DPPAP 1/18", fileName: "DPPAP.pdf" },
@@ -227,9 +279,23 @@ const CPP_TERMS_DOCUMENTS = [
   { id: "cpp-travel-dppzvp", label: "Zvíře PLUS", code: "DPPZVP 1/18", fileName: "DPPZVP.pdf" },
 ] as const;
 
-const KOOP_TERMS_DOCUMENTS = [
+export const KOOP_TERMS_DOCUMENTS = [
   { id: "koop-travel-ipid-07-2023", label: "Informační dokument IPID", code: "KOLUMBUS · 07/2023", fileName: "IPID_Kolumbus_07_2023.pdf" },
   { id: "koop-travel-kolumbus-m750-23", label: "Kompletní podmínky KOLUMBUS", code: "M-750/23", fileName: "koopkolumbus.pdf" },
+] as const;
+
+export const AXA_TERMS_DOCUMENTS = [
+  { id: "axa-travel-ipid", label: "Informační dokument IPID", code: "Cestovní pojištění 06/2026", fileName: "AXA_IPID.pdf" },
+  { id: "axa-travel-vppcp-2026-06-15", label: "Všeobecné pojistné podmínky", code: "VPPCP 15. 6. 2026", fileName: "AXA_VPPCP_2026-06-15.pdf" },
+  { id: "axa-travel-overview", label: "Základní informace a limity", code: "Přehled 05/2026", fileName: "AXA_Zakladni_informace.pdf" },
+  { id: "axa-travel-cancellation", label: "Storno cesty", code: "Doplňkové pojištění", fileName: "AXA_Storno_cesty.pdf" },
+  { id: "axa-travel-risk-sports", label: "Rizikové sporty", code: "Doplňkové pojištění", fileName: "AXA_Rizikove_sporty.pdf" },
+  { id: "axa-travel-manual-work", label: "Manuální práce", code: "Doplňkové pojištění", fileName: "AXA_Manualni_prace.pdf" },
+  { id: "axa-travel-flight", label: "Cestování letadlem", code: "Doplňkové pojištění", fileName: "AXA_Cestovani_letadlem.pdf" },
+  { id: "axa-travel-pets", label: "Domácí mazlíčci", code: "Doplňkové pojištění", fileName: "AXA_Domaci_mazlicci.pdf" },
+  { id: "axa-travel-drink", label: "Drink povolen", code: "Doplňkové pojištění", fileName: "AXA_Drink_povolen.pdf" },
+  { id: "axa-travel-rental-car", label: "Půjčené vozidlo", code: "Doplňkové pojištění", fileName: "AXA_Pujcene_vozidlo.pdf" },
+  { id: "axa-travel-auto-assistance", label: "Autoasistence", code: "Doplňkové pojištění", fileName: "AXA_Autoasistence.pdf" },
 ] as const;
 
 const COMPARISON_SECTIONS: Array<{ label: ComparisonSection; id: string }> = [
@@ -368,6 +434,58 @@ const KOOP_LIABILITY_EXCLUSIONS: LiabilityExclusions = {
     "Zvláštní výluky odpovědnosti neruší obecné výluky M-750/23. Ty se použijí vedle nich, pokud zvláštní ustanovení neurčí jinak.",
 };
 
+const AXA_LIABILITY_EXCLUSIONS: LiabilityExclusions = {
+  insurer: "AXA",
+  source: "AXA VPPCP ze dne 15. 6. 2026, část II čl. 9 a část III oddíl C čl. 2, str. 7–8 a 12–13",
+  scope: "Úplný přehled zvláštních výluk odpovědnosti podle oddílu C doplněný o obecné výluky, které se použijí současně.",
+  interpretationNote:
+    "Základní odpovědnost AXA výslovně vylučuje škodu na vypůjčené, najaté, svěřené nebo za úplatu užívané věci. Škodu na půjčeném sportovním vybavení může při vyjmenovaném nebezpečí řešit pojištění zavazadel; spoluúčast na vozidle z oficiální zahraniční půjčovny řeší samostatné připojištění Půjčené vozidlo do 60 000 Kč.",
+  groups: [
+    {
+      title: "Činnosti, osoby a smluvní závazky",
+      items: [
+        "Újma související s výkonem povolání, výdělečné či odborné činnosti, studijní stáže nebo dobrovolnictví bez ohledu na odměnu.",
+        "Újma rodinným příslušníkům, osobám ve společné domácnosti a spolucestujícím.",
+        "Újma z porušení smluvních povinností nebo ze záruk převzatých nad rámec právních předpisů.",
+        "Újma související s porušením povinnosti předcházet vzniku újmy a minimalizovat ji.",
+      ],
+    },
+    {
+      title: "Vozidla, věci a majetek",
+      items: [
+        "Újma související s používáním motorových i nemotorových vozidel včetně elektrokoloběžek, plavidel, letadel, modelů a dronů; výjimkou jsou běžné koloběžky, jízdní kola a elektrokola.",
+        "Újma na přepravovaném nákladu nebo hotovosti.",
+        "Újma na věci vypůjčené, najaté, svěřené, předané k úschově, držení, přepravě či zpracování nebo užívané za úplatu; výjimkou jsou věci ubytovacího zařízení a samotné ubytovací zařízení.",
+        "Újma na věci užívané bez právního titulu, proti vůli nebo bez vědomí vlastníka.",
+        "Újma související s vlastnictvím, držením, nájmem, správou nebo neoprávněným užíváním nemovitosti včetně svépomocných prací.",
+      ],
+    },
+    {
+      title: "Životní prostředí, nemoci, zbraně a zvířata",
+      items: [
+        "Ekologická újma na životním prostředí.",
+        "Újma související s přenesením nebo rozšířením nakažlivé choroby na lidi, zvířata nebo rostliny.",
+        "Újma související s vlastnictvím, držením, údržbou nebo používáním zbraní a újma při lovu či výkonu práva myslivosti.",
+        "Újma způsobená zvířetem, které klient vlastní nebo s ním cestuje; tato výluka se neuplatní pro psa či kočku při sjednaném připojištění domácích mazlíčků.",
+      ],
+    },
+    {
+      title: "Obecné výluky důležité pro odpovědnost",
+      items: [
+        "Předvídatelná nebo před sjednáním známá újma, úmysl, sebevražda či pokus, výtržnost nebo trestný čin a porušení místních právních předpisů.",
+        "Nedodržení bezpečnostních nařízení a doporučení nebo nepoužití předepsaných ochranných pomůcek.",
+        "Válka, mise, bojové akce, vzpoura, nepokoje, stávka či zásah veřejné moci; radioaktivní záření a chemická nebo biologická kontaminace.",
+        "Epidemie či pandemie s výjimkou covidu-19 a cesta do oblasti, před kterou varuje MZV, WHO nebo obdobná instituce; u varianty EXCELENT se výjimka týká pouze varování kvůli covidu-19.",
+        "Souvislost s alkoholem; připojištění Drink povolen odstraňuje tuto výluku pouze u léčebných výloh, nikoli u odpovědnosti. Dále drogy, závislost a psychické poruchy.",
+        "Profesionální sport; rizikový sport nebo soutěž a trénink bez příslušného připojištění; manuální práce bez připojištění. Připojištění manuální práce však odpovědnost nerozšiřuje.",
+        "Expedice do extrémních či odlehlých oblastí, pyrotechnika, výkon činnosti bezpečnostních a záchranných sborů a řízení bez platného českého oprávnění pro danou kategorii.",
+      ],
+    },
+  ],
+  generalConditionsNote:
+    "Vedle uvedených bodů se použijí další výluky a povinnosti ve VPPCP, konkrétní pojistné smlouvě a právních předpisech. Tabulka plnění a oddíl K řadí do připojištění rizikových sportů také odpovědnost, ale obecná výluka v části II čl. 9 písm. q) výslovně zmiňuje její neuplatnění pouze u léčebných výloh a úrazu. Pro odpovědnost při rizikovém sportu je proto vhodné vyžádat písemné potvrzení AXA. Manuální práce ani Drink povolen odpovědnost nerozšiřují.",
+};
+
 const moneyFormatter = new Intl.NumberFormat("cs-CZ", {
   style: "currency",
   currency: "CZK",
@@ -382,35 +500,53 @@ function formatMoney(value: number): string {
   return moneyFormatter.format(value).replace(/\sKč$/, " Kč");
 }
 
-function limitVerdict(cppValue: number, koopValue: number): ComparisonRow["verdict"] {
-  if (cppValue > koopValue) {
+function limitVerdict(cppValue: number, koopValue: number, axaValue: number): ComparisonRow["verdict"] {
+  const values = [
+    { tone: "cpp" as const, label: "ČPP", value: cppValue },
+    { tone: "koop" as const, label: "Kooperativa", value: koopValue },
+    { tone: "axa" as const, label: "AXA", value: axaValue },
+  ];
+  const highest = Math.max(...values.map((entry) => entry.value));
+  const winners = values.filter((entry) => entry.value === highest);
+
+  if (winners.length === 1) {
+    const winner = winners[0];
     return {
-      tone: "cpp",
-      label: "Vyšší limit ČPP",
-      detail: `${formatMoney(cppValue)} oproti ${formatMoney(koopValue)}.`,
+      tone: winner.tone,
+      label: `Vyšší limit ${winner.label}`,
+      detail: `${formatMoney(winner.value)}; ostatní zvolené varianty mají ${values
+        .filter((entry) => entry !== winner)
+        .map((entry) => `${entry.label} ${formatMoney(entry.value)}`)
+        .join(" a ")}.`,
     };
   }
-  if (koopValue > cppValue) {
+
+  if (winners.length === values.length) {
     return {
-      tone: "koop",
-      label: "Vyšší limit Kooperativy",
-      detail: `${formatMoney(koopValue)} oproti ${formatMoney(cppValue)}.`,
+      tone: "balanced",
+      label: "Shodný limit",
+      detail: `Všechny zvolené varianty mají limit ${formatMoney(highest)}.`,
     };
   }
+
   return {
     tone: "balanced",
-    label: "Shodný limit",
-    detail: `Obě zvolené varianty mají limit ${formatMoney(cppValue)}.`,
+    label: "Nejvyšší limit je shodný",
+    detail: `${winners.map((entry) => entry.label).join(" a ")} mají ${formatMoney(highest)}.`,
   };
 }
 
-function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
+export function buildRows(cpp: Variant, koop: Variant, axa: Variant): ComparisonRow[] {
   const cppAnimalLimit = cpp.label === "MINI" ? 10_000 : cpp.label === "OPTI" ? 20_000 : 40_000;
   const cppQuarantinePartLimit = cpp.label === "MINI" ? 10_000 : cpp.label === "OPTI" ? 15_000 : 25_000;
   const cppQuarantineTotalLimit = cppQuarantinePartLimit * 2;
   const cppCovidTreatmentLimit = cpp.label === "MINI" ? 200_000 : cpp.label === "OPTI" ? 300_000 : 500_000;
   const cppTerrorismTreatmentLimit = cpp.label === "MINI" ? 200_000 : cpp.label === "OPTI" ? 300_000 : 500_000;
   const cppBorrowedThingLimit = Math.min(cpp.liability * 0.1, 500_000);
+  const axaHasExtendedCover = axa.label !== "REFERENCE";
+  const axaHasExcelentCover = axa.label === "EXCELENT";
+  const axaQuarantineLimit = axa.label === "EXCELENT" ? 60_000 : axa.label === "KOMFORT" ? 30_000 : 0;
+  const axaCompanionNight = axa.label === "EXCELENT" ? 200 : axa.label === "KOMFORT" ? 150 : 100;
 
   const rows: ComparisonRow[] = [
     {
@@ -422,7 +558,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       verdict: {
         tone: "koop",
         label: "Kooperativa zahrnuje Kanadu už bez USA",
-        detail: "ČPP ve variantě Svět mimo USA a Kanadu vylučuje obě země. Kooperativa ve variantě Svět bez USA vylučuje ČR a USA, nikoli Kanadu.",
+        detail: "Kooperativa ve variantě Svět bez USA nevylučuje Kanadu. ČPP i AXA mají střední světovou zónu bez USA a Kanady.",
       },
       cpp: {
         headline: "ČR · Evropa · svět bez USA a Kanady · svět",
@@ -443,6 +579,17 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         ],
         metric: null,
       },
+      axa: {
+        headline: "Evropa · svět bez USA a Kanady · svět",
+        detail: "Česká republika je s přesně vymezenými výjimkami mimo územní rozsah",
+        source: "AXA VPPCP 15. 6. 2026, část II čl. 7, str. 7",
+        badge: "Územní zóny",
+        points: [
+          "Evropa zahrnuje také Izrael, Turecko, Tunisko, Gruzii, Kanárské ostrovy, Egypt a Maroko.",
+          "V ČR mohou platit storno, zmeškaný odjezd, vybraná letecká rizika a autoasistence při cestě do zahraničí nebo návratu.",
+        ],
+        metric: null,
+      },
     },
     {
       id: "insurance-duration",
@@ -452,8 +599,8 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       description: "Jednorázové pojištění je nutné odlišit od ročního produktu pro opakované výjezdy.",
       verdict: {
         tone: "balanced",
-        label: "Jednorázová cesta je prakticky srovnatelná",
-        detail: "ČPP lze sjednat až na 365 dní a jednorázový KOLUMBUS až na jeden rok. Hranice 45 dní platí pouze pro každou cestu v produktech KOLUMBUS ABONENT a ABONENT RODINA.",
+        label: "Jednorázově téměř rok u všech tří",
+        detail: "ČPP uvádí nejvýše 365 dní, KOLUMBUS jeden rok a AXA podle VPP dobu kratší než 365 dní. U opakovaných cest se liší maximální délka jednoho výjezdu.",
       },
       cpp: {
         headline: "až 365 dní",
@@ -474,6 +621,18 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         ],
         metric: null,
       },
+      axa: {
+        headline: "méně než 365 dní",
+        detail: "Opakované výjezdy: každá cesta nejvýše 90 po sobě jdoucích dní",
+        source: "AXA VPPCP 15. 6. 2026, část II čl. 1 a 5, str. 1 a 5–6; Základní informace 05/2026",
+        badge: "Jednorázové i opakované výjezdy",
+        points: [
+          "VPP definují jednorázové pojištění jako dobu kratší než 365 dní; stručný přehled používá formulaci od jednoho dne až do jednoho roku.",
+          "Opakované výjezdy jsou na dobu neurčitou a umožňují neomezený počet cest, každou maximálně na 90 dní.",
+          "Po jednorázové smlouvě delší než 180 dní lze další jednorázové pojištění sjednat nejdříve 30 dní po jejím konci.",
+        ],
+        metric: null,
+      },
     },
     {
       id: "payment-and-cover-start",
@@ -484,7 +643,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       verdict: {
         tone: "attention",
         label: "Zkontrolovat platbu i počátek ve smlouvě",
-        detail: "ČPP požaduje odeslání platby do 24 hodin od vytvoření návrhu. U Kooperativy je jednorázové pojistné splatné v den uzavření smlouvy; její STORNO začíná až následující den po úplném zaplacení.",
+        detail: "AXA smlouva vzniká zaplacením a při sjednání s počátkem ve stejný den běží čtyřhodinová čekací doba. U všech tří je nutné ověřit údaje konkrétní smlouvy.",
       },
       cpp: {
         headline: "platbu odeslat do 24 hodin",
@@ -508,13 +667,24 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         ],
         metric: null,
       },
+      axa: {
+        headline: "smlouva vzniká zaplacením",
+        detail: "Při počátku ve stejný den krytí nejdříve za 4 hodiny",
+        source: "AXA IPID, str. 2; VPPCP 15. 6. 2026, část II čl. 3 a 5, str. 5–6",
+        badge: "Platba a počátek",
+        points: [
+          "Běžně jednorázové pojištění začíná v 00:01 dne počátku uvedeného ve smlouvě, pokud bylo pojistné zaplaceno.",
+          "Storno a zmeškaný odjezd vznikají u jednorázového pojištění okamžikem zaplacení a končí nástupem cesty.",
+        ],
+        metric: null,
+      },
     },
     {
       id: "general-exclusions-and-duties",
       section: "Obecné informace",
       icon: ShieldAlert,
       title: "Klient potřebuje znát obecné výluky a povinnosti",
-      description: "Nejdřív jsou vedle sebe jen skutečné rozdíly. Společné body neopakujeme v obou sloupcích.",
+      description: "Nejdřív jsou vedle sebe jen skutečné rozdíly. Společné body neopakujeme ve všech třech sloupcích.",
       verdict: {
         tone: "attention",
         label: "Rozhodují čtyři hlavní rozdíly",
@@ -525,31 +695,35 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           label: "Sjednání až po odjezdu",
           cpp: "Bez plnění první 3 kalendářní dny.",
           koop: "Bez plnění prvních 24 hodin.",
-          advantage: "koop",
+          axa: "Při počátku ve stejný den začíná nejdříve 4 hodiny po sjednání. VPP však nemají samostatné ustanovení, které by výslovně potvrzovalo sjednání až po odjezdu.",
+          advantage: "neutral",
         },
         {
           label: "Alkohol a návykové látky",
           cpp: "Může krátit plnění až o polovinu; platí výjimka pro řádně předepsaný lék bez varování.",
           koop: "IPID uvádí výluku u léčebných výloh, úrazu a odpovědnosti způsobených pod vlivem.",
-          advantage: "cpp",
+          axa: "Obecná výluka; připojištění Drink povolen obnoví jen léčebné výlohy, při nejvýše 0,8 ‰ naměřených do 2 hodin.",
+          advantage: "neutral",
         },
         {
           label: "Potíže vzniklé před odjezdem",
           cpp: "IPID je v obecném souhrnu výslovně neuvádí; konkrétní krytí je nutné ověřit v podmínkách.",
           koop: "U léčebných výloh výslovně vylučuje úraz a onemocnění vzniklé před odjezdem.",
+          axa: "Vylučuje dřívější projevené zdravotní potíže; stabilizované chronické onemocnění má vymezenou výjimku, EXCELENT navíc sublimit chronického onemocnění.",
           advantage: "neutral",
         },
         {
           label: "Dlouhá cesta",
           cpp: "Jednorázové pojištění lze sjednat až na 365 dní.",
           koop: "Jednorázový KOLUMBUS až na 1 rok; u ABONENTU neplní od 46. dne jedné cesty.",
+          axa: "VPP: jednorázově méně než 365 dní; opakované výjezdy nejvýše 90 dní na jednu cestu.",
           advantage: "neutral",
         },
       ],
       sharedPoints: [
-        "Obě IPID uvádějí úmyslné jednání a válečné události.",
-        "Obě omezují události spojené s jadernou energií; přesné znění dalších kontaminačních výluk se liší.",
-        "U obou rozhoduje sjednaný limit, konkrétní smlouva a zvláštní podmínky daného krytí.",
+        "Všechny tři produkty vylučují úmyslné jednání a vymezují válečné události.",
+        "Všechny tři omezují události spojené s jadernou energií; přesné znění dalších kontaminačních výluk se liší.",
+        "U všech rozhoduje sjednaný limit, konkrétní smlouva a zvláštní podmínky daného krytí.",
       ],
       cpp: {
         headline: "Specifika ČPP",
@@ -607,6 +781,33 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: "Specifika AXA",
+        detail: "Předvídatelnost, varování před cestou, ochranné pomůcky a přesně vymezené činnosti",
+        source: "AXA IPID, str. 2; VPPCP 15. 6. 2026, část II čl. 8–10, str. 7–9",
+        badge: "IPID + úplné VPP",
+        metric: null,
+        sections: [
+          {
+            label: "Důležité obecné výluky AXA",
+            items: [
+              "Předvídatelná nebo před sjednáním známá událost, úmysl, porušení práva a bezpečnostních doporučení nebo nepoužití ochranných pomůcek.",
+              "Válka, nepokoje, stávka, zásah veřejné moci, radioaktivita a chemická či biologická kontaminace.",
+              "Varování MZV, WHO nebo obdobné instituce před cestou; u EXCELENT se výjimka týká jen varování souvisejícího s covidem-19.",
+              "Profesionální sport, rizikový sport či soutěž bez připojištění, manuální práce bez připojištění a expedice do extrémních oblastí.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Obecné povinnosti klienta",
+            items: [
+              "Škodu bez zbytečného odkladu oznámit, pravdivě popsat a předložit všechny doklady; řídit se pokyny pojistitele a AXA Assistance.",
+              "Předcházet škodě, minimalizovat následky, zajistit důkazy, případně policejní potvrzení, a oznámit další pojištění stejného rizika.",
+              "U opakovaných výjezdů prokázat datum odjezdu a návratu do ČR.",
+            ],
+          },
+        ],
+      },
     },
     {
       id: "own-sports-equipment",
@@ -615,9 +816,9 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       title: "Klientovi ukradnou nebo poškodí vlastní vybavení",
       description: "Srovnání náhrady hodnoty vlastního kola, potápěčské výstroje nebo jiného sportovního vybavení.",
       verdict: {
-        tone: "cpp",
-        label: "Výhoda ČPP pro vlastní vybavení",
-        detail: "Léto PLUS kryje vymezenou vlastní výbavu přímo. Sportovní připojištění Kooperativy hodnotu vlastní věci nehradí; samostatné pojištění zavazadel má jiný rozsah a nekryje věci předané dopravci.",
+        tone: "balanced",
+        label: "Rozhoduje druh škody a ocenění",
+        detail: "ČPP Léto PLUS plní vymezenou letní výbavu v nové ceně. Kooperativa a AXA ji mohou řešit ze zavazadel jen při vyjmenovaných nebezpečích; AXA navíc plní v časové ceně.",
       },
       cpp: {
         headline: "35 000 Kč / servis 3 500 Kč",
@@ -665,6 +866,34 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: axaHasExtendedCover ? `${formatMoney(axa.baggage)} · časová cena` : "V REFERENCE není pojištěno",
+        detail: axaHasExtendedCover
+          ? "Sportovní vybavení je součástí pojištění zavazadel při vyjmenovaných nebezpečích"
+          : "Pojištění zavazadel začíná až ve variantě KOMFORT",
+        source: "AXA VPPCP 15. 6. 2026, část III oddíl G čl. 1–3, str. 16–17",
+        badge: axaHasExtendedCover ? `Varianta ${axa.label}` : "Bez zavazadel",
+        points: axaHasExtendedCover
+          ? [
+              `Celkový limit ${formatMoney(axa.baggage)}, na jednu věc ${formatMoney(axaHasExcelentCover ? 20_000 : 10_000)}.`,
+              "Kryje živel, odcizení z uzamčené určené místnosti či úschovny, vloupání do skrytého zavazadlového prostoru nebo střešního boxu, dopravní nehodu a loupež.",
+              "Škoda během svěření dopravci je kryta jen s připojištěním Cestování letadlem.",
+            ]
+          : ["Pro krytí sportovního vybavení je nutné zvolit KOMFORT nebo EXCELENT."],
+        metric: axaHasExtendedCover ? axa.baggage : 0,
+        sections: axaHasExtendedCover
+          ? [
+              {
+                label: "Důležitá omezení",
+                items: [
+                  "Nejde o krytí každého poškození ani prosté ztráty; musí nastat vyjmenované nebezpečí.",
+                  "Kolo je kryto jen při stanoveném způsobu uložení. Věci nesmějí zůstat v odstaveném vozidle nebo přívěsu mezi 22.00 a 6.00.",
+                ],
+                emphasis: "exclusion" as const,
+              },
+            ]
+          : undefined,
+      },
     },
     {
       id: "replacement-sports-equipment",
@@ -700,6 +929,14 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: "Bez náhrady pronájmu",
+        detail: "AXA neuvádí plnění za půjčení náhradního sportovního vybavení",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl G a K, str. 2–3 a 16–19",
+        badge: "Bez přímého protějšku",
+        points: ["Pojištění zavazadel může řešit škodu na vlastní věci, nikoli náklad na její náhradní pronájem."],
+        metric: 0,
+      },
     },
     {
       id: "rented-sports-equipment",
@@ -708,9 +945,9 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       title: "Klient poškodí pronajaté sportovní vybavení",
       description: "Posuzujeme odpovědnost vůči profesionální půjčovně, od které si klient vybavení prokazatelně pronajal.",
       verdict: {
-        tone: "cpp",
-        label: "Vyšší limit u ČPP",
-        detail: `ČPP kryje věc zapůjčenou od profesionální půjčovny až do ${formatMoney(cppBorrowedThingLimit)}. Kooperativa uvádí 10 000 Kč v odpovědnosti a 5 000 Kč ve sportovním připojištění; limity nelze automaticky sčítat.`,
+        tone: "balanced",
+        label: "Tři rozdílné mechanismy",
+        detail: `ČPP řeší zákonnou odpovědnost do ${formatMoney(cppBorrowedThingLimit)}, Kooperativa má dva nízké sublimity a AXA ${axaHasExtendedCover ? "kryje oficiálně půjčenou sportovní věc ze zavazadel při vyjmenovaném nebezpečí" : "ve variantě REFERENCE toto krytí nemá"}.`,
       },
       cpp: {
         headline: formatMoney(cppBorrowedThingLimit),
@@ -745,6 +982,22 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: axaHasExtendedCover ? `až ${formatMoney(axa.baggage)}` : "V REFERENCE není pojištěno",
+        detail: axaHasExtendedCover
+          ? `Půjčené sportovní vybavení v pojištění zavazadel · limit na věc ${formatMoney(axaHasExcelentCover ? 20_000 : 10_000)}`
+          : "Bez pojištění zavazadel a odpovědnosti",
+        source: "AXA VPPCP 15. 6. 2026, část III oddíl G čl. 1–3, str. 16–17",
+        badge: axaHasExtendedCover ? `Varianta ${axa.label}` : "Bez krytí",
+        points: axaHasExtendedCover
+          ? [
+              "Věc musí být pro danou cestu prokazatelně zapůjčena z oficiální půjčovny sportovních potřeb.",
+              "Při škodě klient doloží potvrzení půjčovny o částce, kterou půjčovně uhradil.",
+              "Plní se v časové ceně a jen při vyjmenovaném živelním, odcizovacím či dopravním nebezpečí.",
+            ]
+          : ["Kryté zavazadlo včetně půjčeného sportovního vybavení mají až KOMFORT a EXCELENT."],
+        metric: axaHasExtendedCover ? axa.baggage : 0,
+      },
     },
     {
       id: "unused-summer-holiday",
@@ -778,6 +1031,17 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         badge: "Balíček ÚZO",
         points: ["Musí jít o službu, kterou zdravotní stav prokazatelně neumožnil dále čerpat"],
       },
+      axa: {
+        headline: axaHasExcelentCover ? "500 Kč/den · nejvýše 5 000 Kč" : `Ve variantě ${axa.label} není pojištěno`,
+        detail: axaHasExcelentCover
+          ? "Pouze při krytém předčasném návratu, ne obecně kvůli vlastnímu úrazu na dovolené"
+          : "Nevyužitou dovolenou obsahuje jen EXCELENT a jen ve vazbě na předčasný návrat",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl I, str. 2 a 17–18",
+        badge: axaHasExcelentCover ? "Varianta EXCELENT" : "Bez přímého protějšku",
+        points: axaHasExcelentCover
+          ? ["Důvodem předčasného návratu musí být úmrtí nebo neočekávaná hospitalizace rodinného příslušníka či škoda na vlastním majetku nad 200 000 Kč."]
+          : ["K této konkrétní situaci vlastního úrazu či hospitalizace AXA samostatné denní plnění neuvádí."],
+      },
     },
     {
       id: "sports-scope",
@@ -803,6 +1067,22 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         source: "M-750/23, str. 12, 28–29 a 35–36",
         badge: "Sport a vybavení se posuzují odděleně",
         points: ["Zařazení konkrétního sportu pro léčebné výlohy je nutné ověřit odděleně"],
+      },
+      axa: {
+        headline: axaHasExtendedCover ? "Připojištění rizikových sportů" : "V REFERENCE nelze připojistit",
+        detail: axaHasExtendedCover
+          ? "Rozšíří léčebné výlohy, úraz a odpovědnost pro vyjmenované sporty"
+          : "Rizikové sporty jsou sjednatelné pouze ke KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, část II čl. 9 a část III oddíl K, str. 8 a 19; Rizikové sporty",
+        badge: "Samostatné připojištění",
+        points: axaHasExtendedCover
+          ? [
+              "Kryje vyjmenované rizikové sporty na rekreační úrovni a veřejně organizované soutěže či přípravu na ně.",
+              "Pro soutěž a trénink je připojištění nutné i u jinak běžného sportu.",
+              "Tabulka a zvláštní oddíl K uvádějí také odpovědnost, ale obecná výluka zmiňuje výjimku jen pro léčebné výlohy a úraz; odpovědnost je vhodné písemně potvrdit.",
+              "Profesionální sport a výslovně nepojistitelné aktivity zůstávají vyloučené; neuvedený sport vyžaduje předchozí písemné potvrzení AXA.",
+            ]
+          : ["Pro rizikový sport musí klient zvolit vyšší základní variantu a sjednat připojištění."],
       },
     },
     {
@@ -864,6 +1144,18 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: axaHasExtendedCover ? `Zavazadla ${formatMoney(axa.baggage)}` : "V REFERENCE bez vybavení",
+        detail: "Nemá specializovaný zimní balíček s uzavřením areálu nebo lavinovým závalem",
+        source: "AXA VPPCP 15. 6. 2026, část III oddíl G a přílohy sportů, str. 16–17 a 22–31",
+        badge: axaHasExtendedCover ? `Varianta ${axa.label}` : "Bez zavazadel",
+        points: axaHasExtendedCover
+          ? [
+              `Lyže a snowboard lze při vyjmenovaném nebezpečí řešit jako sportovní vybavení; limit na jednu věc je ${formatMoney(axaHasExcelentCover ? 20_000 : 10_000)}.`,
+              "Samostatné plnění za uzavření areálu, lavinový zával nebo náhradní pronájem podmínky neuvádějí.",
+            ]
+          : ["REFERENCE neobsahuje pojištění zavazadel."],
+      },
     },
     {
       id: "golf",
@@ -912,6 +1204,18 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: axaHasExtendedCover ? `Zavazadla ${formatMoney(axa.baggage)}` : "V REFERENCE bez vybavení",
+        detail: "Golf nemá vlastní specializovaný balíček",
+        source: "AXA VPPCP 15. 6. 2026, část III oddíl G a přílohy sportů, str. 16–17 a 22–31",
+        badge: axaHasExtendedCover ? `Varianta ${axa.label}` : "Bez zavazadel",
+        points: axaHasExtendedCover
+          ? [
+              `Golfové vybavení se může při vyjmenovaném nebezpečí posoudit jako zavazadlo; limit na věc ${formatMoney(axaHasExcelentCover ? 20_000 : 10_000)}.`,
+              "Green Fee, Hole-in-One ani náhradní pronájem nejsou samostatně pojištěny.",
+            ]
+          : ["REFERENCE neobsahuje pojištění zavazadel."],
+      },
     },
     {
       id: "treatment",
@@ -919,7 +1223,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       icon: BriefcaseMedical,
       title: "Klient potřebuje lékařské ošetření nebo hospitalizaci",
       description: "Celkový limit pro nezbytnou zdravotní péči v zahraničí.",
-      verdict: limitVerdict(cpp.treatment, koop.treatment),
+      verdict: limitVerdict(cpp.treatment, koop.treatment, axa.treatment),
       cpp: {
         headline: formatMoney(cpp.treatment),
         detail: "Celkový limit léčebných výloh",
@@ -936,6 +1240,19 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         points: ["Repatriace do ČR", "Hospitalizace, operace a léky"],
         metric: koop.treatment,
       },
+      axa: {
+        headline: formatMoney(axa.treatment),
+        detail: `Celkový limit léčebných výloh ve variantě ${axa.label}`,
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl A, str. 2 a 10–12",
+        badge: "Základní léčebné výlohy",
+        points: [
+          "Asistenční služby, repatriace a transporty do celkového limitu léčebných výloh.",
+          axaHasExcelentCover
+            ? "EXCELENT má navíc sublimit 1 000 000 Kč pro náhlou akutní událost související s chronickým onemocněním."
+            : "Stabilizované chronické onemocnění má vymezenou výjimku z výluky; ostatní chronické onemocnění kryje až EXCELENT.",
+        ],
+        metric: axa.treatment,
+      },
     },
     {
       id: "covid-treatment",
@@ -944,9 +1261,8 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       title: "Klient v zahraničí onemocní covidem-19",
       description: "Léčba covidu má vlastní sublimit a nelze pro ni automaticky použít celý limit běžných léčebných výloh.",
       verdict: {
-        tone: "koop",
-        label: "Vyšší limit Kooperativy",
-        detail: `${formatMoney(5_000_000)} oproti ${formatMoney(cppCovidTreatmentLimit)} u zvolené varianty ČPP.`,
+        ...limitVerdict(cppCovidTreatmentLimit, 5_000_000, axa.treatment),
+        detail: `Mimo destinaci s varováním se u AXA covid léčí do běžného limitu ${formatMoney(axa.treatment)}. V destinaci s varováním kryje covid pouze EXCELENT, a to do 25 mil. Kč.`,
       },
       cpp: {
         headline: formatMoney(cppCovidTreatmentLimit),
@@ -964,6 +1280,20 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         points: ["Pojištění COVID musí být uvedeno mezi sjednanými pojištěními"],
         metric: 5_000_000,
       },
+      axa: {
+        headline: axaHasExcelentCover ? `${formatMoney(axa.treatment)} / 25 mil. Kč` : formatMoney(axa.treatment),
+        detail: axaHasExcelentCover
+          ? "Běžná destinace / covid v oblasti s oficiálním varováním před cestou"
+          : "V běžné destinaci do celkového limitu; varovaná destinace je vyloučena",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část II čl. 9 a část III oddíl A, str. 2, 8 a 10–12",
+        badge: `Varianta ${axa.label}`,
+        points: [
+          axaHasExcelentCover
+            ? "EXCELENT ruší výluku varování před cestou jen tehdy, pokud varování souvisí s covidem-19; pro léčbu pak platí sublimit 25 000 000 Kč."
+            : "REFERENCE a KOMFORT nekryjí událost po nástupu cesty do oblasti, před kterou MZV, WHO nebo obdobná instituce varovala.",
+        ],
+        metric: axa.treatment,
+      },
     },
     {
       id: "rescue",
@@ -972,9 +1302,8 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       title: "Klienta musí zachránit v horách nebo terénu",
       description: "Důležitý limit pro hory, vrtulník a záchranu v terénu.",
       verdict: {
-        tone: "cpp",
-        label: "Výrazná výhoda ČPP",
-        detail: "ČPP váže záchranu na celý limit léčebných výloh, Kooperativa má samostatný nižší sublimit.",
+        ...limitVerdict(cpp.rescue, koop.rescue, axa.rescue),
+        detail: `ČPP i AXA vážou krytou záchranu na celý limit léčebných výloh; Kooperativa má samostatný limit ${formatMoney(koop.rescue)}. AXA nehradí pátrání, pokud zdraví či život neohrožuje úraz nebo nemoc.`,
       },
       cpp: {
         headline: formatMoney(cpp.rescue),
@@ -992,6 +1321,14 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         points: [koop.label === "PLUS" ? "Vyšší limit varianty PLUS" : "Limit varianty KLASIK"],
         metric: koop.rescue,
       },
+      axa: {
+        headline: formatMoney(axa.rescue),
+        detail: "Zásah horské služby při pojistné události do celkového limitu LVZ",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl A čl. 1–2, str. 2 a 10–12",
+        badge: "Součást léčebných výloh",
+        points: ["Vyhledávání nebo pátrání bez ohrožení zdraví či života v souvislosti s úrazem nebo onemocněním je vyloučeno."],
+        metric: axa.rescue,
+      },
     },
     {
       id: "teeth",
@@ -999,7 +1336,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       icon: Stethoscope,
       title: "Klienta začne akutně bolet zub",
       description: "Sublimit pro neodkladné ošetření při akutní bolesti.",
-      verdict: limitVerdict(cpp.teeth, koop.teeth),
+      verdict: limitVerdict(cpp.teeth, koop.teeth, axa.teeth),
       cpp: {
         headline: formatMoney(cpp.teeth),
         detail: "Sublimit ošetření zubů",
@@ -1014,6 +1351,14 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         badge: "Součást léčebných výloh",
         metric: koop.teeth,
       },
+      axa: {
+        headline: formatMoney(axa.teeth),
+        detail: "Sublimit akutního ošetření zubů",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl A čl. 1–2, str. 2 a 10–12",
+        badge: "Součást léčebných výloh",
+        points: ["Nehradí neakutní péči, endodoncii, náhrady, korunky, rovnátka, můstky ani odstranění zubního kamene."],
+        metric: axa.teeth,
+      },
     },
     {
       id: "companion",
@@ -1021,7 +1366,11 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       icon: Users,
       title: "Zdravotní stav vyžaduje přítomnost blízké osoby",
       description: "Když zdravotní stav vyžaduje přítomnost blízké osoby.",
-      verdict: limitVerdict(cpp.companionTotal, koop.companionTotal),
+      verdict: {
+        tone: "balanced",
+        label: "Limity nelze srovnat jedním číslem",
+        detail: "ČPP a Kooperativa uvádějí korunový limit pobytu. AXA hradí cestu do limitu léčebných výloh a ubytování v eurech za noc, nejvýše 10 nocí, ale váže návštěvu na přesné podmínky hospitalizace.",
+      },
       cpp: {
         headline: formatMoney(cpp.companionTotal),
         detail: `max. ${formatMoney(cpp.companionDay)} za den`,
@@ -1037,6 +1386,17 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         badge: "Součást léčebných výloh",
         points: ["Doprava schválené doprovázející osoby se hradí do celkového limitu léčebných výloh"],
         metric: koop.companionTotal,
+      },
+      axa: {
+        headline: `${axaCompanionNight} EUR/noc · max. 10 nocí`,
+        detail: "Doprava rodinného příslušníka do celkového limitu léčebných výloh",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl A čl. 1, str. 2 a 10–11",
+        badge: `Varianta ${axa.label}`,
+        points: [
+          "Typicky při hospitalizaci delší než 10 dní, pokud klient cestuje bez rodinného příslušníka; návštěva začíná od 11. dne.",
+          "Podmínky zvlášť řeší hospitalizované nezletilé dítě i případ, kdy je hospitalizován dospělý cestující s nezletilým dítětem.",
+        ],
+        metric: null,
       },
     },
     {
@@ -1066,17 +1426,99 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         points: ["Nevztahuje se na komplikace v rámci rizikového těhotenství"],
         metric: null,
       },
+      axa: {
+        headline: "do ukončeného 32. týdne",
+        detail: "Po 32. týdnu jsou komplikace vyloučeny; vyloučeno je i rizikové těhotenství a porod",
+        source: "AXA VPPCP 15. 6. 2026, část III oddíl A čl. 2, str. 11",
+        badge: "Součást léčebných výloh",
+        points: [
+          "Výluka zahrnuje také zjišťování těhotenství, interrupci, léčbu neplodnosti, umělé oplodnění, antikoncepci a hormonální léčbu.",
+        ],
+        metric: null,
+      },
+    },
+    {
+      id: "doctor-on-phone",
+      section: "Zdraví",
+      icon: Stethoscope,
+      title: "Klient chce konzultovat zdravotní stav na dálku",
+      description: "Samostatná služba Doktor na telefonu je ve zdrojových podmínkách výslovně vyčleněna jen u AXA EXCELENT.",
+      verdict: {
+        tone: "axa",
+        label: "Výslovná služba u AXA EXCELENT",
+        detail: "AXA umožňuje telefonickou nebo online konzultaci, videohovor či chat a podle situace lékařskou zprávu nebo e-recept.",
+      },
+      cpp: {
+        headline: "Bez samostatného limitu v podkladech",
+        detail: "Lékařskou pomoc a postup řeší asistenční služba v rámci léčebných výloh",
+        source: "DPPLV 1/23; VPPCP 1/18",
+        badge: "Asistenční postup",
+      },
+      koop: {
+        headline: "Bez samostatného limitu v podkladech",
+        detail: "Zdravotní asistenci řeší asistenční služba v rámci léčebných výloh",
+        source: "M-750/23, pojištění léčebných výloh",
+        badge: "Asistenční postup",
+      },
+      axa: {
+        headline: axaHasExcelentCover ? "Doktor na telefonu · ano" : `Ve variantě ${axa.label} není`,
+        detail: axaHasExcelentCover
+          ? "Telefon, online konzultace, videohovor nebo chat"
+          : "Samostatné pojištění Doktor na telefonu obsahuje pouze EXCELENT",
+        source: "AXA IPID, str. 1; VPPCP 15. 6. 2026, přehled plnění a část III oddíl B, str. 2 a 12",
+        badge: axaHasExcelentCover ? "Varianta EXCELENT" : "Bez služby",
+        points: axaHasExcelentCover
+          ? ["Služba je dostupná 24 hodin denně, 7 dní v týdnu a může zahrnout lékařskou zprávu nebo e-recept; náklady na samotný hovor či online připojení se nehradí."]
+          : ["Pro tuto službu je nutné zvolit variantu EXCELENT."],
+      },
+    },
+    {
+      id: "alcohol",
+      section: "Zdraví",
+      icon: CircleAlert,
+      title: "Událost vznikne v souvislosti s alkoholem",
+      description: "Pozor na rozdíl mezi krácením, úplnou výlukou a připojištěním, které obnovuje pouze léčebné výlohy.",
+      verdict: {
+        tone: "axa",
+        label: "AXA nabízí jasně vymezené připojištění",
+        detail: "Drink povolen kryje léčebné výlohy do zvoleného limitu při alkoholu nejvýše 0,8 ‰. Neobnovuje úrazové pojištění ani odpovědnost.",
+      },
+      cpp: {
+        headline: "plnění lze snížit až o polovinu",
+        detail: "Při příčinné souvislosti s alkoholem, omamnými či toxickými látkami nebo léky",
+        source: "VPPCP 1/18, čl. 8 odst. 3",
+        badge: "Krácení plnění",
+        points: ["Výjimkou je řádně předepsaný lék, pokud klient nebyl lékařem ani výrobcem upozorněn na zákaz dané činnosti."],
+      },
+      koop: {
+        headline: "výluka podle druhu pojištění",
+        detail: "Podmínky výslovně vylučují související léčebné výlohy, úraz i odpovědnost",
+        source: "M-750/23, zvláštní a obecné výluky jednotlivých pojištění",
+        badge: "Bez zvláštního připojištění",
+        points: ["Přesný dopad se posuzuje podle příčinné souvislosti a ustanovení konkrétního pojištění."],
+      },
+      axa: {
+        headline: "Drink povolen · do 0,8 ‰",
+        detail: `Pouze léčebné výlohy do limitu ${formatMoney(axa.treatment)}`,
+        source: "AXA VPPCP 15. 6. 2026, část II čl. 9 a část III oddíl O, str. 8 a 20; Drink povolen",
+        badge: "Volitelné ke všem variantám",
+        points: [
+          "Hodnota do 0,8 ‰ musí být naměřena bezprostředně, nejpozději do 2 hodin od události.",
+          "Připojištění neplatí při činnosti, kterou místní právo pod vlivem zakazuje, například při řízení vozidla.",
+          "Úrazové plnění, odpovědnost ani jiné složky cestovního pojištění toto připojištění neobnovuje.",
+        ],
+      },
     },
     {
       id: "baggage-delay",
       section: "Zavazadla",
       icon: Luggage,
       title: "Odbavené zavazadlo má zpoždění",
-      description: "Obě pojišťovny hradí doložený nákup nezbytných náhradních věcí, ale liší se časovou hranicí, limitem a podmínkami příletu.",
+      description: "ČPP a Kooperativa nahrazují doložený nákup nezbytných věcí. AXA při splnění podmínek vyplácí pevnou částku bez vazby na účtenky.",
       verdict: {
         tone: "balanced",
-        label: "Každá má jinou výhodu",
-        detail: "ČPP plní už od 3 hodin zpoždění. Kooperativa začíná od 6 hodin, ale má vyšší maximální limit.",
+        label: "Rozhoduje čas a způsob plnění",
+        detail: "ČPP začíná už od 3 hodin. Kooperativa od 6 hodin může nahradit vyšší doložené náklady; AXA od 6 hodin vyplácí obnos 5 000 Kč.",
       },
       cpp: {
         headline: "až 5 000 Kč",
@@ -1152,17 +1594,42 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: axaHasExtendedCover ? "pevně 5 000 Kč" : "V REFERENCE nelze sjednat",
+        detail: axaHasExtendedCover
+          ? "Obnosové plnění při zpoždění řádně odbavených zavazadel o 6 nebo více hodin"
+          : "Připojištění Cestování letadlem je dostupné jen ke KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl M, str. 3 a 19; Cestování letadlem",
+        badge: "Volitelné připojištění Cestování letadlem",
+        points: axaHasExtendedCover
+          ? [
+              "Plnění není vázáno na skutečnou výši nákupu náhradních věcí; jde o sjednanou kompenzaci.",
+              "Nevztahuje se na zpoždění při návratu ze zahraničí bez ohledu na místo příletu.",
+              "Klient doloží letenku a údaje o letu, potvrzení letecké společnosti o skutečném dodání a zavazadlové visačky.",
+            ]
+          : ["Pro letecké připojištění je nutné zvolit KOMFORT nebo EXCELENT."],
+        metric: axaHasExtendedCover ? 5_000 : 0,
+        sections: axaHasExtendedCover
+          ? [
+              {
+                label: "Další výluka",
+                text: "AXA neplní, pokud zpoždění zavazadel způsobila stávka nebo jiné dopravní či přepravní omezení probíhající nebo oznámené v době odletu.",
+                emphasis: "exclusion" as const,
+              },
+            ]
+          : undefined,
+      },
     },
     {
       id: "flight-delay",
       section: "Let",
       icon: Plane,
       title: "Let má zpoždění nebo je zrušen",
-      description: "Samostatné srovnání nákladů vzniklých kvůli zpoždění či zrušení letu.",
+      description: "ČPP a Kooperativa nahrazují vymezené náklady; AXA kompenzuje zpožděný přílet pevnou sazbou za hodinu.",
       verdict: {
         tone: "balanced",
-        label: "Každá má jinou výhodu",
-        detail: "ČPP má kratší tříhodinovou hranici. Kooperativa nabízí vyšší limit a zahrnuje více druhů doložených nákladů.",
+        label: "Tři různé principy",
+        detail: "ČPP plní doloženou stravu a ubytování už od 3 hodin, Kooperativa širší náklady od 6 hodin nebo při včas oznámeném zrušení a AXA obnos za zpožděný přílet po prvních 6 hodinách.",
       },
       cpp: {
         headline: "až 5 000 Kč",
@@ -1257,17 +1724,99 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: axaHasExtendedCover ? "500 Kč/h · nejvýše 10 000 Kč" : "V REFERENCE nelze sjednat",
+        detail: axaHasExtendedCover
+          ? "Za každou započatou hodinu čekání až po uplynutí prvních 6 hodin"
+          : "Připojištění Cestování letadlem je dostupné jen ke KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl M, str. 3 a 19; Cestování letadlem",
+        badge: "Volitelné připojištění Cestování letadlem",
+        points: axaHasExtendedCover
+          ? [
+              "Posuzuje se zpoždění příletu do cílové destinace v zahraničí nebo ze zahraničí zpět, nikoli jen zpoždění odletu.",
+              "Kryté příčiny jsou stávka, provozní důvod, selhání stroje a nepřízeň počasí.",
+              "Za prvních 6 hodin zpoždění nevzniká plnění; poté 500 Kč za každou započatou hodinu, celkem nejvýše 10 000 Kč.",
+            ]
+          : ["Pro letecké připojištění je nutné zvolit KOMFORT nebo EXCELENT."],
+        metric: axaHasExtendedCover ? 10_000 : 0,
+        sections: axaHasExtendedCover
+          ? [
+              {
+                label: "Co se nehradí / omezení",
+                items: [
+                  "Zpoždění či zrušení kvůli stávce nebo provoznímu důvodu známému už 24 hodin před check-inem.",
+                  "Klient se řádně a včas nezaregistroval k odletu, pokud mu v tom nezabránila předem neznámá stávka či provozní důvod.",
+                  "Let byl opožděn nebo zrušen nařízením civilního leteckého úřadu či obdobné autority.",
+                ],
+                emphasis: "exclusion" as const,
+              },
+              {
+                label: "Co klient doloží",
+                items: [
+                  "Letenku, číslo letu, dopravce, letiště a plánované časy příletu a odletu.",
+                  "Potvrzení letecké společnosti o skutečném zpoždění, případně zrušení letu.",
+                ],
+              },
+            ]
+          : undefined,
+      },
+    },
+    {
+      id: "missed-departure",
+      section: "Cesta a komplikace",
+      icon: Plane,
+      title: "Klient zmešká plánovaný odjezd",
+      description: "Nejde o zpožděný let, ale o náhradní dopravu poté, co klient kvůli kryté překážce nestihne původní spoj.",
+      verdict: {
+        tone: "axa",
+        label: "Nejširší výslovný limit u AXA EXCELENT",
+        detail: `AXA EXCELENT hradí náhradní dopravu do zahraničního cíle do 20 000 Kč. Kooperativa hradí do 5 000 Kč zmeškaný odjezd ze zahraničí zpět do ČR; jde tedy o opačný směr cesty.`,
+      },
+      cpp: {
+        headline: "Bez samostatného limitu v dodaných podkladech",
+        detail: "Cesta PLUS řeší jiné formy přerušení či nevyužití cesty",
+        source: "DPPCP 1/22; přehled dodaných podmínek ČPP",
+        badge: "Bez přímého protějšku",
+        points: ["Případnou související pomoc je nutné posoudit podle jiné sjednané asistence a konkrétní příčiny."],
+      },
+      koop: {
+        headline: "5 000 Kč",
+        detail: "Mimořádná doprava v ekonomické třídě ze zahraničí zpět do ČR",
+        source: "M-750/23, pojištění léčebných výloh, přehled limitů a čl. 7 odst. 2 písm. d), str. 10 a 26",
+        badge: "Součást léčebných výloh",
+        points: [
+          "Důvodem může být dopravní nehoda vozidla či vlaku cestou na odjezd, mimořádné zrušení nebo zkrácení veřejné dopravy, předem neohlášená stávka nebo živelní událost.",
+          "Kryje cestu ze zahraničí do ČR, nikoli náhradní odjezd z ČR do zahraniční destinace.",
+        ],
+        metric: 5_000,
+      },
+      axa: {
+        headline: axaHasExcelentCover ? "až 20 000 Kč" : `Ve variantě ${axa.label} není pojištěno`,
+        detail: axaHasExcelentCover
+          ? "Náhradní doprava do místa pobytu v zahraničí"
+          : "Pojištění zmeškaného odjezdu obsahuje pouze EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl H, str. 2 a 17",
+        badge: axaHasExcelentCover ? "Varianta EXCELENT" : "Bez krytí",
+        points: axaHasExcelentCover
+          ? [
+              "Původní odjezd z ČR musí být zmeškán kvůli dopravní nehodě či technické poruše prostředku cestou na odjezd nebo zpoždění meziměstské hromadné dopravy.",
+              "Náhradní dopravu musí klient předem odsouhlasit s AXA Assistance.",
+              "Neplní se známá porucha před nástupem cesty ani předem známé či předpokládatelné zpoždění meziměstské dopravy.",
+            ]
+          : ["Pro toto krytí je nutné zvolit variantu EXCELENT."],
+        metric: axaHasExcelentCover ? 20_000 : 0,
+      },
     },
     {
       id: "quarantine",
       section: "Cesta a komplikace",
       icon: HeartHandshake,
       title: "Klientovi je v zahraničí nařízena karanténa",
-      description: "Obě pojišťovny řeší dodatečné ubytování, stravu a náhradní dopravu do ČR.",
+      description: "Všechny tři produkty mohou řešit dodatečné ubytování, stravu a náhradní dopravu do ČR, ale jinak nastavují procento i limity.",
       verdict: {
         tone: "balanced",
         label: "Záleží na variantě a výši nákladů",
-        detail: "ČPP hradí účelné náklady ve dvou limitech; Kooperativa 80 % vícenákladů v jednom limitu 30 000 Kč.",
+        detail: `ČPP a AXA mají oddělený limit pro pobyt a návrat. Kooperativa hradí 80 % vícenákladů do 30 000 Kč. Ve zvolené AXA je celkem ${formatMoney(axaQuarantineLimit)}.`,
       },
       cpp: {
         headline: `Covid PLUS · ${formatMoney(cppQuarantineTotalLimit)}`,
@@ -1349,6 +1898,37 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: axaQuarantineLimit > 0 ? `celkem až ${formatMoney(axaQuarantineLimit)}` : "V REFERENCE není pojištěno",
+        detail:
+          axa.label === "EXCELENT"
+            ? "Ubytování a strava 30 000 Kč + návrat do ČR 30 000 Kč"
+            : axa.label === "KOMFORT"
+              ? "Ubytování a strava 15 000 Kč + návrat do ČR 15 000 Kč"
+              : "Covid karanténu obsahují pouze KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl A, str. 2 a 10–12",
+        badge: axaQuarantineLimit > 0 ? `Součást varianty ${axa.label}` : "Bez krytí",
+        metric: axaQuarantineLimit,
+        points: axaQuarantineLimit > 0
+          ? [
+              "Hradí účelně vynaložené náklady na ubytování a stravu po dobu Covid karantény a náklady na návrat do ČR.",
+              "Karanténa musí být preventivně nařízena v souvislosti s covidem-19.",
+            ]
+          : ["Pro krytí Covid karantény je nutné zvolit KOMFORT nebo EXCELENT."],
+        sections: axaQuarantineLimit > 0
+          ? [
+              {
+                label: "Důležitá omezení",
+                items: [
+                  "Nehradí se karanténa, pokud klient vlastní vinou nesplnil vstupní podmínky cílové destinace.",
+                  "Nehradí se karanténa, kterou vstupní podmínky dané země vyžadují bez ohledu na konkrétní pojistnou událost.",
+                  "Parkovné se nehradí.",
+                ],
+                emphasis: "exclusion" as const,
+              },
+            ]
+          : undefined,
+      },
     },
     {
       id: "after-departure",
@@ -1357,9 +1937,9 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       title: "Klient sjedná pojištění až po odjezdu",
       description: "Pokud nové pojištění nenavazuje na předchozí smlouvu stejné pojišťovny, běží čekací doba.",
       verdict: {
-        tone: "koop",
-        label: "Výhoda Kooperativy",
-        detail: "Čekací doba je 24 hodin místo tří kalendářních dnů.",
+        tone: "attention",
+        label: "U AXA nelze zaměnit dvě odlišná pravidla",
+        detail: "ČPP výslovně uvádí 3 kalendářní dny po sjednání na nastoupené cestě a Kooperativa 24 hodin. AXA stanoví 4 hodiny při počátku ve stejný den, ale výslovné pravidlo pro sjednání až po odjezdu v dodaných VPP není.",
       },
       cpp: {
         headline: "3 kalendářní dny",
@@ -1375,6 +1955,17 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         source: "M-750/23, str. 3 a 54",
         badge: "Obecné ustanovení",
         points: ["Nevztahuje se na bezprostředně navazující pojištění u Kooperativy"],
+        metric: null,
+      },
+      axa: {
+        headline: "4 hodiny · nutno ověřit po odjezdu",
+        detail: "Obecné pravidlo pro shodný den počátku a uzavření není výslovnou úpravou sjednání na nastoupené cestě",
+        source: "AXA VPPCP 15. 6. 2026, část II čl. 5 odst. 4, str. 6; Základní informace 05/2026",
+        badge: "Počátek ve stejný den",
+        points: [
+          "Podmínky stanoví čtyřhodinový odklad obecně pro smlouvu s počátkem ve stejný den, ne jako samostatný článek nazvaný sjednání po odjezdu.",
+          "Před sjednáním po odjezdu je nutné ověřit, zda AXA takový návrh přijme. Smlouva vzniká zaplacením a rozhoduje datum počátku uvedené ve smlouvě.",
+        ],
         metric: null,
       },
     },
@@ -1408,6 +1999,21 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         metric: koop.label === "PLUS" ? 15_000 : 10_000,
         badge: "Balíček ÚZO",
       },
+      axa: {
+        headline: axaHasExcelentCover ? "doprava 20 000 Kč + až 5 000 Kč" : `Ve variantě ${axa.label} není pojištěno`,
+        detail: axaHasExcelentCover
+          ? "Předčasný návrat a 500 Kč za každý den nevyužité dovolené"
+          : "Pojištění předčasného návratu je pouze v EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl I, str. 2 a 17–18",
+        badge: axaHasExcelentCover ? "Varianta EXCELENT" : "Bez krytí",
+        metric: axaHasExcelentCover ? 25_000 : 0,
+        points: axaHasExcelentCover
+          ? [
+              "Kryté důvody: úmrtí či neočekávaná hospitalizace rodinného příslušníka nebo škoda na vlastním majetku nad 200 000 Kč.",
+              "Předčasná doprava musí nahradit původně plánovaný způsob návratu; nehradí se návrat méně než 36 hodin před plánovaným termínem.",
+            ]
+          : ["Pro předčasný návrat a denní kompenzaci nevyužité dovolené je nutný EXCELENT."],
+      },
     },
     {
       id: "cancellation",
@@ -1416,9 +2022,9 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       title: "Klient musí cestu zrušit před odjezdem",
       description: "Samostatně sjednávané pojištění storna zakoupené cestovní služby.",
       verdict: {
-        tone: "attention",
-        label: "ČPP uvádí produktové maximum 60 000 Kč",
-        detail: "U ČPP je maximální sjednatelná pojistná částka 60 000 Kč; konkrétní smlouva může mít nižší částku. Kooperativa v dodaném IPID ani M-750/23 jeden univerzální maximální strop neuvádí.",
+        tone: "axa",
+        label: "Nejvyšší výslovný strop uvádí AXA",
+        detail: "AXA umožňuje sjednat pojistnou částku až 500 000 Kč se spoluúčastí 20 %. ČPP uvádí produktové maximum 60 000 Kč; Kooperativa v dodaných podmínkách jeden univerzální maximální strop neuvádí.",
       },
       cpp: {
         headline: "100 % · až 60 000 Kč",
@@ -1443,13 +2049,36 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         metric: null,
         badge: "Volitelné pojištění STORNO",
       },
+      axa: {
+        headline: "až 500 000 Kč · spoluúčast 20 %",
+        detail: "Nejvýše do pojistné částky uvedené ve smlouvě",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl J, str. 3 a 18–19; Storno cesty",
+        badge: "Volitelné ke všem variantám",
+        points: [
+          "Při sjednání méně než 15 dní před začátkem cesty musí být storno uzavřeno nejpozději v den úplného zaplacení cestovní služby.",
+          "Kryté důvody zahrnují vymezené akutní zdravotní události, úmrtí, závažnou škodu na majetku, vloupání vyžadující přítomnost, nedobrovolnou ztrátu zaměstnání a rozvod.",
+          "Při současném připojištění mazlíčka může být důvodem i jeho náhlé závažné onemocnění nebo úraz.",
+        ],
+        sections: [
+          {
+            label: "Hlavní omezení",
+            items: [
+              "Před sjednáním projevené zdravotní potíže a odkladná péče.",
+              "Těhotenství po ukončeném 31. týdnu.",
+              "Události v cíli související s geopolitickou či klimatickou situací, epidemií, zamítnutím víza nebo nemožností čerpat dovolenou.",
+              "Pojistné, poplatky za vízum a jiné položky, které nejsou krytým stornopoplatkem.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
     },
     {
       id: "vehicle-assistance",
       section: "Cesta a komplikace",
       icon: CarFront,
       title: "Auto se porouchá nebo havaruje v zahraničí",
-      description: "Obě služby řeší vozidlo i posádku, ale jinak nastavují odtah, ubytování, vyproštění a náhradní auto.",
+      description: "Všechny tři služby řeší vozidlo i posádku, ale jinak nastavují odtah, ubytování, repatriaci a náhradní auto.",
       verdict: {
         tone: "balanced",
         label: "Záleží na prioritě klienta",
@@ -1486,14 +2115,42 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: "Autoasistence",
+        detail: "Oprava na místě 1 hodina nebo odtah; repatriace vozidla do ČR až 55 000 Kč",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl Q, str. 3 a 20–21; Autoasistence",
+        badge: "Volitelné jen k jednorázové cestě",
+        points: [
+          "V ČR hotel 1 noc do 2 000 Kč/os./noc nebo náhradní vozidlo kategorie B na 1 den; v zahraničí 2 noci do 80 EUR/os./noc nebo vůz na 2 dny.",
+          "Parkovné nejvýše 3 dny; v zahraničí sešrotování vozidla do 500 EUR.",
+          "Repatriace do ČR do 55 000 Kč, pokud vozidlo nelze v zahraničí opravit do 5 pracovních dní.",
+        ],
+        sections: [
+          {
+            label: "Základní podmínky",
+            items: [
+              "Vozidlo do 3,5 tuny, nejvýše 15 let staré, registrované v ČR a nepoužívané k pronájmu za úplatu.",
+              "Území musí být v zelenokaretním systému; v ČR platí jen při cestě do zahraničí nebo návratu.",
+              "Způsob pomoci organizuje AXA Assistance; samostatně objednané služby se bez souhlasu nehradí.",
+            ],
+            emphasis: "exclusion",
+          },
+        ],
+      },
     },
     {
       id: "liability",
       section: "Odpovědnost",
       icon: ShieldCheck,
       title: "Klient způsobí újmu jiné osobě",
-      description: "Újma na zdraví nebo majetku při běžném občanském životě během cesty. Níže jsou porovnány zvláštní výluky odpovědnosti; absence položky u druhé pojišťovny sama o sobě neznamená, že ji kryje.",
-      verdict: limitVerdict(cpp.liability, koop.liability),
+      description: "Újma na zdraví nebo majetku při běžném občanském životě během cesty. Absence položky v jednom seznamu výluk sama o sobě neznamená, že ji daný produkt kryje.",
+      verdict: {
+        tone: axa.liability > Math.max(cpp.liability, koop.liability) ? "axa" : cpp.liability > koop.liability ? "cpp" : "koop",
+        label: axa.liability > Math.max(cpp.liability, koop.liability) ? "Nejvyšší limit zdraví u AXA" : cpp.liability > koop.liability ? "Vyšší souhrnný limit ČPP" : "Vyšší souhrnný limit Kooperativy",
+        detail: axaHasExtendedCover
+          ? `AXA rozděluje limity: zdraví ${formatMoney(axa.liability)}, věc ${formatMoney(axaHasExcelentCover ? 10_000_000 : 1_500_000)}${axaHasExcelentCover ? " a ušlý zisk 1 mil. Kč" : ""}. ČPP a Kooperativa uvádějí celkový limit.`
+          : "REFERENCE pojištění odpovědnosti neobsahuje; ČPP a Kooperativa jej ve zvolených variantách mají.",
+      },
       cpp: {
         headline: formatMoney(cpp.liability),
         detail: "Celkový limit odpovědnosti",
@@ -1549,7 +2206,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
             ],
           },
         ],
-        metric: cpp.liability,
+        metric: null,
         badge: "Volitelné pojištění",
         exclusions: CPP_LIABILITY_EXCLUSIONS,
       },
@@ -1609,9 +2266,47 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
             ],
           },
         ],
-        metric: koop.liability,
+        metric: null,
         badge: "Balíček ÚZO",
         exclusions: KOOP_LIABILITY_EXCLUSIONS,
+      },
+      axa: {
+        headline: axaHasExtendedCover ? `zdraví ${formatMoney(axa.liability)}` : "V REFERENCE není pojištěno",
+        detail: axaHasExtendedCover
+          ? `Věc ${formatMoney(axaHasExcelentCover ? 10_000_000 : 1_500_000)}${axaHasExcelentCover ? "; ušlý zisk 1 mil. Kč" : "; ušlý zisk není pojištěn"}`
+          : "Odpovědnost obsahují pouze KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl C, str. 2 a 12–13",
+        points: axaHasExtendedCover
+          ? [
+              `Právní ochrana je samostatně do ${formatMoney(axa.legal ?? 0)}.`,
+              "Hradí zákonnou odpovědnost podle práva země, kde klient třetí osobě během zahraniční cesty způsobil újmu.",
+              "Škoda na věci se hradí v časové ceně.",
+            ]
+          : ["Pro odpovědnost a právní ochranu je nutné zvolit alespoň KOMFORT."],
+        sections: axaHasExtendedCover
+          ? [
+              {
+                label: "Užívané a pronajaté věci",
+                items: [
+                  "Základní odpovědnost nehradí věci vypůjčené, najaté, svěřené, předané k úschově či užívané za úplatu.",
+                  "Výjimkou jsou věci ubytovacího zařízení a samotné ubytovací zařízení.",
+                  "Půjčené sportovní vybavení může při vyjmenovaném nebezpečí řešit pojištění zavazadel; spoluúčast na půjčeném vozidle jen samostatné připojištění.",
+                ],
+                emphasis: "exclusion" as const,
+              },
+              {
+                label: "Povinnosti při škodě",
+                items: [
+                  "Bez zbytečného odkladu oznámit událost i uplatněný nárok, uvést poškozené a svědky a dodat důkazy, fotografie a policejní protokol.",
+                  "Oznámit soudní, správní či rozhodčí řízení a postupovat podle pokynů AXA.",
+                  "Bez souhlasu nic neuznávat, neslibovat úhradu ani neuzavírat smír; proti nepříznivému rozhodnutí se včas odvolat, pokud AXA neurčí jinak.",
+                ],
+              },
+            ]
+          : undefined,
+        metric: null,
+        badge: axaHasExtendedCover ? `Varianta ${axa.label}` : "Bez krytí",
+        exclusions: AXA_LIABILITY_EXCLUSIONS,
       },
     },
     {
@@ -1619,14 +2314,11 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       section: "Odpovědnost",
       icon: CarFront,
       title: "Klient poškodí vozidlo z autopůjčovny",
-      description: "ČPP a Kooperativa zde nekryjí stejnou věc: ČPP řeší zákonnou odpovědnost za škodu na zapůjčené věci, Kooperativa PLUS výslovně sjednanou spoluúčast.",
+      description: "ČPP řeší možnou zákonnou odpovědnost za zapůjčenou věc. Kooperativa PLUS a AXA výslovně pojišťují spoluúčast, ale s velmi rozdílným limitem.",
       verdict: {
-        tone: "balanced",
-        label: "Odlišný princip krytí",
-        detail:
-          koop.label === "PLUS"
-            ? `ČPP může krýt zákonnou náhradu škody na pronajatém vozidle až do ${formatMoney(cppBorrowedThingLimit)}. Kooperativa PLUS výslovně hradí pouze spoluúčast do 10 000 Kč.`
-            : `ČPP může krýt zákonnou náhradu škody na pronajatém vozidle až do ${formatMoney(cppBorrowedThingLimit)}. Kooperativa KLASIK pojištění spoluúčasti na pronajatém vozidle neobsahuje.`,
+        tone: "axa",
+        label: "Nejvyšší výslovné krytí spoluúčasti u AXA",
+        detail: `AXA lze ke každé variantě připojistit do 60 000 Kč. Kooperativa PLUS má 10 000 Kč. ČPP může krýt zákonnou odpovědnost do ${formatMoney(cppBorrowedThingLimit)}, nejde však o samostatný příslib úhrady smluvní spoluúčasti.`,
       },
       cpp: {
         headline: `až ${formatMoney(cppBorrowedThingLimit)}`,
@@ -1700,6 +2392,35 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: "spoluúčast až 60 000 Kč",
+        detail: "Vozidlo nebo motorový skútr z oficiální půjčovny v zahraničí",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl P, str. 3 a 20; Půjčené vozidlo",
+        badge: "Volitelné ke všem variantám",
+        points: [
+          "Kryje vyúčtovanou spoluúčast z pojištění půjčeného vozidla při živelní události, dopravní nehodě, vandalismu nebo odcizení.",
+          "Vozidlo musí být půjčeno v zahraničí z oficiální autopůjčovny a v době události je musí řídit pojištěný.",
+        ],
+        metric: null,
+        sections: [
+          {
+            label: "Co se nehradí",
+            items: [
+              "Vozidlo půjčené v České republice nebo v neoficiální půjčovně.",
+              "Událost, při které vůz řídil někdo jiný než pojištěný.",
+              "Penále, smluvní poplatky a smluvní pokuty.",
+            ],
+            emphasis: "exclusion",
+          },
+          {
+            label: "Co klient udělá a doloží",
+            items: [
+              "Ihned po převzetí vyfotí vozidlo ze všech stran a detailně zdokumentuje stávající poškození.",
+              "Událost oznámí policii a doloží smlouvu, vyúčtování spoluúčasti a potvrzení půjčovny nebo zahraničního pojistitele.",
+            ],
+          },
+        ],
+      },
     },
     {
       id: "baggage",
@@ -1707,7 +2428,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       icon: Luggage,
       title: "Klientovi poškodí nebo odcizí zavazadla",
       description: "Celkový limit; u jednotlivých věcí a způsobu uložení platí další sublimity a výluky.",
-      verdict: limitVerdict(cpp.baggage, koop.baggage),
+      verdict: limitVerdict(cpp.baggage, koop.baggage, axa.baggage),
       cpp: {
         headline: formatMoney(cpp.baggage),
         detail: "Celkový limit zavazadel",
@@ -1747,6 +2468,35 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         metric: koop.baggage,
         badge: "Balíček ÚZO",
       },
+      axa: {
+        headline: axaHasExtendedCover ? formatMoney(axa.baggage) : "V REFERENCE není pojištěno",
+        detail: axaHasExtendedCover
+          ? `Časová cena; limit na jednu věc ${formatMoney(axaHasExcelentCover ? 20_000 : 10_000)}`
+          : "Pojištění zavazadel obsahují až KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl G, str. 2 a 16–17",
+        points: axaHasExtendedCover
+          ? [
+              "Osobní doklady: 8 000 Kč; EXCELENT navíc zahrnuje obchodní vybavení.",
+              "Kryté jsou živel, odcizení z určené uzamčené místnosti či úschovny, vloupání do skrytého zavazadlového prostoru nebo střešního boxu, dopravní nehoda a loupež.",
+              "Škoda na věci svěřené dopravci je běžně vyloučena; výluka se neuplatní při sjednaném připojištění Cestování letadlem.",
+            ]
+          : ["Pro pojištění zavazadel je nutné zvolit KOMFORT nebo EXCELENT."],
+        sections: axaHasExtendedCover
+          ? [
+              {
+                label: "Hlavní omezení",
+                items: [
+                  "Vloupání do stanu nebo přívěsu se nehradí; výjimkou je obytný vůz nebo obytný karavan.",
+                  "Věci nesmějí zůstat v zavazadlovém prostoru odstaveného vozidla nebo přívěsu mezi 22.00 a 6.00.",
+                  "Vyloučeny jsou mimo jiné peníze, cennosti, platební karty, jízdenky, vstupenky, klíče, alkohol, zbraně a zvířata.",
+                ],
+                emphasis: "exclusion" as const,
+              },
+            ]
+          : undefined,
+        metric: axa.baggage,
+        badge: axaHasExtendedCover ? `Varianta ${axa.label}` : "Bez krytí",
+      },
     },
     {
       id: "accident",
@@ -1754,7 +2504,7 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
       icon: Activity,
       title: "Úraz zanechá trvalé následky nebo způsobí smrt",
       description: "Obnosové úrazové pojištění vedle úhrady samotného léčení v zahraničí.",
-      verdict: limitVerdict(cpp.permanentInjury, koop.permanentInjury),
+      verdict: limitVerdict(cpp.permanentInjury, koop.permanentInjury, axa.permanentInjury),
       cpp: {
         headline: formatMoney(cpp.permanentInjury),
         detail: "Trvalé následky úrazu",
@@ -1785,17 +2535,84 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           },
         ],
       },
+      axa: {
+        headline: axaHasExtendedCover ? formatMoney(axa.permanentInjury) : "V REFERENCE není pojištěno",
+        detail: axaHasExtendedCover ? "Trvalé následky úrazu" : "Úrazové pojištění obsahují až KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl F, str. 2 a 15–16",
+        points: axaHasExtendedCover
+          ? [
+              `Smrt následkem úrazu: ${formatMoney(axa.death)}.`,
+              "Plnění za trvalé následky vzniká, pokud celkové ohodnocení dosáhne alespoň 10 % podle oceňovací tabulky.",
+              "Rozsah se posuzuje po ustálení následků, nejdříve po roce; nejpozději do tří let od úrazu.",
+            ]
+          : ["Pro úrazové plnění je nutné zvolit KOMFORT nebo EXCELENT."],
+        metric: axa.permanentInjury,
+        badge: axaHasExtendedCover ? `Varianta ${axa.label}` : "Bez krytí",
+      },
+    },
+    {
+      id: "manual-work",
+      section: "Ochrana",
+      icon: Activity,
+      title: "Klient v zahraničí vykonává manuální práci",
+      description: "Administrativní pracovní cesta není totéž jako manuální práce. U AXA ji řeší samostatné připojištění, které rozšiřuje jen léčebné výlohy a úraz.",
+      verdict: {
+        tone: "attention",
+        label: "Typ práce musí být přesně uveden a ověřen",
+        detail: "AXA nabízí konkrétní připojištění ke KOMFORT a EXCELENT, ale rizikové činnosti zůstávají vyloučené a odpovědnost se nerozšiřuje. U ČPP a Kooperativy rozhoduje sjednaný typ pracovní cesty a podmínky konkrétní činnosti.",
+      },
+      cpp: {
+        headline: "Rozhoduje typ pracovní cesty",
+        detail: "Krytí práce musí odpovídat pojistné smlouvě; odpovědnost může při sjednaných pracovních cestách zahrnout svěřenou věc",
+        source: "VPPCP 1/18; DPPODC 1/18, čl. 2",
+        badge: "Ověřit ve smlouvě",
+        points: ["Samotné turistické cestovní pojištění nelze bez kontroly považovat za pojištění manuální pracovní činnosti."],
+      },
+      koop: {
+        headline: "Rozhoduje pracovní činnost a smlouva",
+        detail: "Výdělečná činnost je mimo běžnou odpovědnost; rozsah léčebných výloh je nutné sjednat podle charakteru cesty",
+        source: "M-750/23, obecné a zvláštní výluky",
+        badge: "Ověřit ve smlouvě",
+        points: ["Profesionální či výdělečná činnost může mít samostatná omezení a není automaticky kryta běžným turistickým rozsahem."],
+      },
+      axa: {
+        headline: axaHasExtendedCover ? "Připojištění manuální práce" : "V REFERENCE nelze připojistit",
+        detail: axaHasExtendedCover
+          ? `Léčebné výlohy do ${formatMoney(axa.treatment)} a úraz do limitu varianty`
+          : "Dostupné jen ke KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, část II čl. 9 a část III oddíl L, str. 8 a 19; Manuální práce",
+        badge: "Samostatné připojištění",
+        points: axaHasExtendedCover
+          ? [
+              "Platí pro podnikatelskou, pracovní, výdělečnou i neplacenou dobrovolnickou manuální činnost.",
+              "Rozšiřuje pouze léčebné výlohy a úrazové pojištění; odpovědnost při práci zůstává vyloučena.",
+            ]
+          : ["Pro manuální práci je nutné zvolit KOMFORT nebo EXCELENT a připojištění sjednat."],
+        sections: axaHasExtendedCover
+          ? [
+              {
+                label: "Rizikové činnosti zůstávají vyloučené",
+                items: [
+                  "Práce v hlubinných dolech, záchranné a havarijní práce a práce s výbušninami.",
+                  "Práce s vysokým rizikem akutní otravy či popálenin, práce pod vodou a činnost kaskadérů nebo krotitelů.",
+                  "Činnost továrních jezdců nebo pilotů; o rizikovosti konkrétní činnosti rozhoduje pojistitel.",
+                ],
+                emphasis: "exclusion" as const,
+              },
+            ]
+          : undefined,
+      },
     },
     {
       id: "security",
       section: "Terorismus",
       icon: ShieldAlert,
       title: "Klient se stane obětí teroristického činu",
-      description: "ČPP přidává samostatné finanční kompenzace; Kooperativa zachovává krytí újmy na zdraví v LVZ a úrazu.",
+      description: "ČPP přidává samostatné finanční kompenzace. Kooperativa řeší újmu na zdraví v LVZ a úrazu; AXA nemá samostatný teroristický balíček, ale upravuje automatické prodloužení pojištění.",
       verdict: {
         tone: "balanced",
         label: "Jiný typ ochrany",
-        detail: "ČPP Guard PLUS přidává pevné cestovní a bezpečnostní kompenzace. Kooperativa má silnější zdravotní krytí teroristického činu v rámci celkového limitu LVZ.",
+        detail: "ČPP Guard PLUS přidává pevné cestovní a bezpečnostní kompenzace. Kooperativa zachovává popsané zdravotní krytí. AXA při objektivně znemožněném návratu kvůli teroristickému činu automaticky prodlužuje dobu pojištění, ale nemá zvláštní finanční limit pro únos či opuštění oblasti.",
       },
       cpp: {
         headline: "Guard PLUS",
@@ -1818,17 +2635,28 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
           "Při vycestování do oznámené rizikové oblasti nebo neprodleném neopuštění oblasti může být plnění odmítnuto.",
         ],
       },
+      axa: {
+        headline: "Bez samostatného finančního balíčku",
+        detail: "Automatické prodloužení, pokud teroristický čin objektivně brání návratu",
+        source: "AXA VPPCP 15. 6. 2026, část II čl. 5 a 9, str. 6–8",
+        badge: "Obecná ustanovení",
+        points: [
+          "Pojistná doba či účinnost se při uvíznutí automaticky prodlouží na dobu nezbytnou k návratu do ČR.",
+          "Podmínky neuvádějí samostatné plnění za únos, výkupné, evakuaci z rizikové oblasti ani náhradní ubytování z důvodu terorismu.",
+          "Válečné události, bojové akce, vzpoury, povstání, jiné nepokoje, stávky a zásah veřejné moci jsou obecně vyloučeny; rozhoduje přesná příčina události a ostatní výluky.",
+        ],
+      },
     },
     {
       id: "animal",
       section: "Veterinární léčba",
       icon: PawPrint,
       title: "Klient cestuje se psem, kočkou nebo fretkou",
-      description: "Porovnání úhrady akutní veterinární péče o vlastní zvíře v zahraničí.",
+      description: "Porovnání úhrady akutní veterinární péče o vlastní zvíře v zahraničí. AXA pojišťuje jen psa nebo kočku, nikoli fretku.",
       verdict: {
-        tone: "cpp",
-        label: "Přímé krytí pouze u ČPP",
-        detail: "Zvíře PLUS hradí nezbytnou veterinární péči; KOLUMBUS stejný produkt nemá.",
+        tone: "balanced",
+        label: "ČPP má širší druhy zvířat, AXA pevný limit 30 000 Kč",
+        detail: `ČPP zahrnuje psa, kočku i fretku a limit podle varianty ${formatMoney(cppAnimalLimit)}. AXA ke KOMFORT a EXCELENT nabízí psa nebo kočku s veterinární péčí 30 000 Kč a samostatně dopravou k veterináři 30 000 Kč.`,
       },
       cpp: {
         headline: `Zvíře PLUS · ${formatMoney(cppAnimalLimit)}`,
@@ -1853,6 +2681,33 @@ function buildRows(cpp: Variant, koop: Variant): ComparisonRow[] {
         source: "M-750/23, sjednatelná pojištění str. 7–12",
         badge: "Bez samostatného krytí",
         points: ["Odpovědnost může řešit újmu, kterou zvíře způsobí někomu jinému"],
+      },
+      axa: {
+        headline: axaHasExtendedCover ? "péče 30 000 Kč + doprava 30 000 Kč" : "V REFERENCE nelze připojistit",
+        detail: axaHasExtendedCover ? "Pes nebo kočka ve věku 3 měsíce až 10 let" : "Dostupné jen ke KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl N, str. 3 a 19–20; Domácí mazlíčci",
+        badge: "Volitelné připojištění domácích mazlíčků",
+        points: axaHasExtendedCover
+          ? [
+              "Zvíře musí patřit pojištěnému, být označeno mikročipem nebo tetováním a splňovat podmínky vstupu do cílové země.",
+              `Odpovědnost za škodu způsobenou mazlíčkem se rozšíří do limitu odpovědnosti zvolené varianty ${formatMoney(axa.liability)}.`,
+              "Při současném připojištění storna může být jeho náhlé závažné onemocnění či úraz také krytým důvodem zrušení cesty.",
+            ]
+          : ["Pro připojištění psa nebo kočky je nutné zvolit KOMFORT nebo EXCELENT."],
+        sections: axaHasExtendedCover
+          ? [
+              {
+                label: "Hlavní výluky",
+                items: [
+                  "Potíže vzniklé v ČR, před počátkem nebo mimo dobu pojištění a péče, kterou lze odložit do návratu.",
+                  "Cesta za léčbou, vrozené, dědičné, vývojové a chronické vady s vymezenou výjimkou první diagnózy.",
+                  "Březost, očkování, paraziti, prevence, kosmetická péče a doprava, po níž se veterinární ošetření neuskutečnilo.",
+                  "Fretka nespadá do definice domácího mazlíčka AXA.",
+                ],
+                emphasis: "exclusion" as const,
+              },
+            ]
+          : undefined,
       },
     },
   ];
@@ -1879,13 +2734,15 @@ function VariantPicker<T extends string>({
   value: T;
   variants: Record<T, Variant>;
   onChange: (value: T) => void;
-  tone: "cpp" | "koop";
+  tone: InsurerTone;
 }) {
   const activeClasses =
     tone === "cpp"
       ? "border-blue-600 bg-blue-700 text-white shadow-[0_10px_24px_rgba(29,78,216,0.22)]"
-      : "border-emerald-600 bg-emerald-700 text-white shadow-[0_10px_24px_rgba(4,120,87,0.22)]";
-  const focusClasses = tone === "cpp" ? "focus-visible:ring-blue-300" : "focus-visible:ring-emerald-300";
+      : tone === "koop"
+        ? "border-emerald-600 bg-emerald-700 text-white shadow-[0_10px_24px_rgba(4,120,87,0.22)]"
+        : "border-indigo-700 bg-indigo-800 text-white shadow-[0_10px_24px_rgba(49,46,129,0.22)]";
+  const focusClasses = tone === "cpp" ? "focus-visible:ring-blue-300" : tone === "koop" ? "focus-visible:ring-emerald-300" : "focus-visible:ring-indigo-300";
   const variantEntries = Object.entries(variants) as [T, Variant][];
 
   return (
@@ -1930,13 +2787,13 @@ function ProductHeader({
   insurer: string;
   product: string;
   logoPath: string;
-  tone: "cpp" | "koop";
+  tone: InsurerTone;
   children: ReactNode;
 }) {
   const logoKey = institutionLogoKeyFromInsurerName(insurer);
   return (
-    <div className={`relative overflow-hidden border-b border-slate-200 px-4 py-4 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0 ${tone === "cpp" ? "bg-blue-50/70" : "bg-emerald-50/65"}`}>
-      <span className={`absolute inset-x-0 top-0 h-1 ${tone === "cpp" ? "bg-blue-700" : "bg-emerald-700"}`} />
+    <div className={`relative overflow-hidden border-b border-slate-200 px-4 py-4 last:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0 ${tone === "cpp" ? "bg-blue-50/70" : tone === "koop" ? "bg-emerald-50/65" : "bg-indigo-50/65"}`}>
+      <span className={`absolute inset-x-0 top-0 h-1 ${tone === "cpp" ? "bg-blue-700" : tone === "koop" ? "bg-emerald-700" : "bg-indigo-800"}`} />
       <div className="flex items-center gap-3">
         <span className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white bg-white shadow-sm ${institutionLogoFrameClass(logoKey, "compact")}`}>
           <Image src={logoPath} alt={insurer} fill sizes="64px" className={institutionLogoImageClass(logoKey)} />
@@ -1955,12 +2812,14 @@ function VerdictCard({ verdict }: { verdict: ComparisonRow["verdict"] }) {
   const styles = {
     cpp: "border-blue-200 bg-blue-50 text-blue-950",
     koop: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    axa: "border-indigo-200 bg-indigo-50 text-indigo-950",
     balanced: "border-violet-200 bg-violet-50 text-violet-950",
     attention: "border-amber-200 bg-amber-50 text-amber-950",
   } satisfies Record<VerdictTone, string>;
   const iconStyles = {
     cpp: "text-blue-700",
     koop: "text-emerald-700",
+    axa: "text-indigo-700",
     balanced: "text-violet-600",
     attention: "text-amber-600",
   } satisfies Record<VerdictTone, string>;
@@ -1992,7 +2851,7 @@ function DifferenceSummary({
           <p className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.09em] text-slate-700">
             {difference.label}
           </p>
-          <div className="grid grid-cols-1 divide-y divide-slate-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-1 lg:divide-x-0 lg:divide-y 2xl:grid-cols-2 2xl:divide-x 2xl:divide-y-0">
+          <div className="divide-y divide-slate-100">
             <div className={`p-2.5 ${difference.advantage === "cpp" ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : "bg-blue-50/35"}`}>
               <p className="text-[9px] font-black uppercase tracking-[0.1em] text-blue-700">
                 ČPP{difference.advantage === "cpp" ? " · výhoda" : ""}
@@ -2004,6 +2863,12 @@ function DifferenceSummary({
                 Kooperativa{difference.advantage === "koop" ? " · výhoda" : ""}
               </p>
               <p className="mt-1 text-[11px] font-bold leading-4 text-slate-700">{difference.koop}</p>
+            </div>
+            <div className={`p-2.5 ${difference.advantage === "axa" ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : "bg-indigo-50/35"}`}>
+              <p className="text-[9px] font-black uppercase tracking-[0.1em] text-indigo-700">
+                AXA{difference.advantage === "axa" ? " · výhoda" : ""}
+              </p>
+              <p className="mt-1 text-[11px] font-bold leading-4 text-slate-700">{difference.axa}</p>
             </div>
           </div>
         </div>
@@ -2032,7 +2897,7 @@ function LiabilityExclusionsDialog({
   onClose,
 }: {
   exclusions: LiabilityExclusions;
-  tone: "cpp" | "koop";
+  tone: InsurerTone;
   isOpen: boolean;
   onClose: () => void;
 }) {
@@ -2043,11 +2908,17 @@ function LiabilityExclusionsDialog({
           number: "bg-blue-700 text-white",
           accent: "border-blue-200 bg-blue-50/55",
         }
-      : {
+      : tone === "koop"
+        ? {
           source: "border-emerald-200 bg-emerald-50 text-emerald-800",
           number: "bg-emerald-700 text-white",
           accent: "border-emerald-200 bg-emerald-50/55",
-        };
+          }
+        : {
+            source: "border-indigo-200 bg-indigo-50 text-indigo-800",
+            number: "bg-indigo-800 text-white",
+            accent: "border-indigo-200 bg-indigo-50/55",
+          };
 
   return (
     <HelpDialog
@@ -2104,21 +2975,22 @@ function LiabilityExclusionsDialog({
   );
 }
 
-function ProductCell({ value, otherValue, tone }: { value: ProductValue; otherValue: ProductValue; tone: "cpp" | "koop" }) {
-  const isHigher = value.metric != null && otherValue.metric != null && value.metric > otherValue.metric;
-  const isSame = value.metric != null && otherValue.metric != null && value.metric === otherValue.metric;
-  const accent = tone === "cpp" ? "blue" : "emerald";
+function ProductCell({ value, otherValues, tone }: { value: ProductValue; otherValues: ProductValue[]; tone: InsurerTone }) {
+  const comparableMetrics = otherValues.flatMap((otherValue) => otherValue.metric == null ? [] : [otherValue.metric]);
+  const isHigher = value.metric != null && comparableMetrics.length > 0 && comparableMetrics.every((metric) => value.metric! > metric);
+  const isSame = value.metric != null && comparableMetrics.length > 0 && comparableMetrics.every((metric) => value.metric === metric);
+  const accent = tone === "cpp" ? "blue" : tone === "koop" ? "emerald" : "indigo";
   const [isExclusionsOpen, setIsExclusionsOpen] = useState(false);
 
   return (
-    <div className={`h-full border-b border-slate-100 p-4 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0 ${tone === "cpp" ? "bg-blue-50/30" : "bg-emerald-50/25"}`}>
+    <div className={`h-full border-b border-slate-100 p-4 last:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0 ${tone === "cpp" ? "bg-blue-50/30" : tone === "koop" ? "bg-emerald-50/25" : "bg-indigo-50/25"}`}>
       <article className="h-full rounded-2xl border border-white bg-white/85 p-4 shadow-[0_8px_28px_rgba(15,23,42,0.065)] ring-1 ring-slate-900/[0.04]">
-        <p className={`mb-3 text-[10px] font-black uppercase tracking-[0.14em] lg:hidden ${tone === "cpp" ? "text-blue-800" : "text-emerald-800"}`}>
-          {tone === "cpp" ? "ČPP" : "Kooperativa"}
+        <p className={`mb-3 text-[10px] font-black uppercase tracking-[0.14em] xl:hidden ${tone === "cpp" ? "text-blue-800" : tone === "koop" ? "text-emerald-800" : "text-indigo-800"}`}>
+          {tone === "cpp" ? "ČPP" : tone === "koop" ? "Kooperativa" : "AXA"}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {value.badge && (
-            <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] ${accent === "blue" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800"}`}>
+            <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] ${accent === "blue" ? "bg-blue-100 text-blue-800" : accent === "emerald" ? "bg-emerald-100 text-emerald-800" : "bg-indigo-100 text-indigo-800"}`}>
               {value.badge}
             </span>
           )}
@@ -2133,7 +3005,7 @@ function ProductCell({ value, otherValue, tone }: { value: ProductValue; otherVa
             </span>
           )}
         </div>
-        <p className={`mt-3 text-2xl font-black tracking-tight ${tone === "cpp" ? "text-blue-800" : "text-emerald-800"}`}>
+        <p className={`mt-3 text-2xl font-black tracking-tight ${tone === "cpp" ? "text-blue-800" : tone === "koop" ? "text-emerald-800" : "text-indigo-800"}`}>
           {value.headline}
         </p>
         <p className="mt-1 text-sm font-bold leading-5 text-slate-700">{value.detail}</p>
@@ -2147,7 +3019,7 @@ function ProductCell({ value, otherValue, tone }: { value: ProductValue; otherVa
           <ul className="mt-3 space-y-2">
             {value.points.map((point) => (
               <li key={point} className="flex gap-2 text-xs font-medium leading-5 text-slate-600">
-                <Check className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${tone === "cpp" ? "text-blue-600" : "text-emerald-600"}`} />
+                <Check className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${tone === "cpp" ? "text-blue-600" : tone === "koop" ? "text-emerald-600" : "text-indigo-600"}`} />
                 <span>{point}</span>
               </li>
             ))}
@@ -2160,7 +3032,9 @@ function ProductCell({ value, otherValue, tone }: { value: ProductValue; otherVa
             className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 ${
               tone === "cpp"
                 ? "border-blue-200 bg-blue-50 text-blue-800 hover:border-blue-300 hover:bg-blue-100 focus-visible:ring-blue-300"
-                : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100 focus-visible:ring-emerald-300"
+                : tone === "koop"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100 focus-visible:ring-emerald-300"
+                  : "border-indigo-200 bg-indigo-50 text-indigo-800 hover:border-indigo-300 hover:bg-indigo-100 focus-visible:ring-indigo-300"
             }`}
           >
             <ShieldAlert className="h-4 w-4" />
@@ -2230,11 +3104,13 @@ function ProductCell({ value, otherValue, tone }: { value: ProductValue; otherVa
 export default function TravelInsuranceComparisonPage() {
   const [cppVariantKey, setCppVariantKey] = useState<CppVariantKey>("maxi");
   const [koopVariantKey, setKoopVariantKey] = useState<KoopVariantKey>("plus");
+  const [axaVariantKey, setAxaVariantKey] = useState<AxaVariantKey>("excelent");
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [documentDownloadError, setDocumentDownloadError] = useState<string | null>(null);
   const cpp = CPP_VARIANTS[cppVariantKey];
   const koop = KOOP_VARIANTS[koopVariantKey];
-  const rows = useMemo(() => buildRows(cpp, koop), [cpp, koop]);
+  const axa = AXA_VARIANTS[axaVariantKey];
+  const rows = useMemo(() => buildRows(cpp, koop, axa), [cpp, koop, axa]);
 
   const handleDocumentDownload = async ({
     id,
@@ -2282,7 +3158,7 @@ export default function TravelInsuranceComparisonPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="relative w-full max-w-[1500px] space-y-5 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_48%,#ffffff_100%)] px-0 pb-10 sm:px-3">
+      <div className="relative w-full max-w-[1900px] space-y-5 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_48%,#ffffff_100%)] px-0 pb-10 sm:px-3">
         <header className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_92%_10%,rgba(16,185,129,0.16),transparent_27%),radial-gradient(circle_at_8%_0%,rgba(37,99,235,0.14),transparent_28%),linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] px-5 py-6 shadow-[0_18px_55px_rgba(15,23,42,0.09)] sm:px-8 sm:py-8">
           <Link href="/pomucky" className="inline-flex items-center gap-1.5 text-xs font-black text-slate-500 transition hover:text-slate-950">
             <ArrowLeft className="h-4 w-4" /> Zpět na pomůcky
@@ -2291,7 +3167,7 @@ export default function TravelInsuranceComparisonPage() {
             <Plane className="h-3.5 w-3.5" /> Srovnání cestovního pojištění
           </div>
           <h1 className="mt-4 max-w-4xl text-3xl font-black leading-[1.02] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-            ČPP vs. Kooperativa
+            ČPP vs. Kooperativa vs. AXA
           </h1>
           <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
             Vyber varianty a porovnej, jak každá pojišťovna řeší konkrétní situace klienta. Verdikt platí vždy jen pro danou situaci; u každého krytí vidíš způsob sjednání i přesný zdroj v dodaných podmínkách.
@@ -2300,21 +3176,22 @@ export default function TravelInsuranceComparisonPage() {
             <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-bold text-slate-600">Jednorázové cestovní pojištění</span>
             <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-bold text-slate-600">ČPP IPID + VPPCP 1/18 + dodané DPP</span>
             <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-bold text-slate-600">Kooperativa IPID + M-750/23</span>
+            <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-xs font-bold text-slate-600">AXA IPID + VPPCP 15. 6. 2026 + doplňkové přehledy</span>
           </div>
         </header>
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">Stejná asistenční služba</p>
-            <p className="mt-2 text-sm font-bold leading-5 text-emerald-950">Asistenční služby pro ČPP i Kooperativu zajišťuje Global Assistance.</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">Asistenční společnosti</p>
+            <p className="mt-2 text-sm font-bold leading-5 text-emerald-950">ČPP a Kooperativu zajišťuje Global Assistance. AXA využívá AXA ASSISTANCE CZ.</p>
           </div>
           <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">Hory a záchrana</p>
-            <p className="mt-2 text-sm font-bold leading-5 text-violet-950">ČPP váže záchranu v tísni na celý limit léčebných výloh; u MAXI je to až 100 mil. Kč.</p>
+            <p className="mt-2 text-sm font-bold leading-5 text-violet-950">ČPP i AXA vážou krytou horskou záchranu na celý limit léčebných výloh; AXA EXCELENT má 500 mil. Kč.</p>
           </div>
           <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">Letecké komplikace</p>
-            <p className="mt-2 text-sm font-bold leading-5 text-sky-950">ČPP řeší zpožděná zavazadla už od 3 hodin; Kooperativa od 6 hodin, ale s vyšším limitem.</p>
+            <p className="mt-2 text-sm font-bold leading-5 text-sky-950">ČPP řeší zpožděný kufr už od 3 hodin; Kooperativa a AXA od 6 hodin, ale každá jiným způsobem.</p>
           </div>
           <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">Jak pomůcku číst</p>
@@ -2339,6 +3216,7 @@ export default function TravelInsuranceComparisonPage() {
             <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Význam závěru v dané situaci</span>
             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-800">Výhoda ČPP</span>
             <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700">Výhoda Kooperativy</span>
+            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">Výhoda AXA</span>
             <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-black text-violet-700">Odlišný princip</span>
             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-700">Nutno ověřit</span>
           </div>
@@ -2346,8 +3224,8 @@ export default function TravelInsuranceComparisonPage() {
 
         <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
           <div>
-            <div className="relative z-40 grid grid-cols-1 border-b border-slate-200 bg-white/95 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur-xl lg:sticky lg:top-2 lg:[grid-template-columns:minmax(245px,.78fr)_repeat(2,minmax(320px,1fr))]">
-              <div className="flex items-center border-b border-slate-200 px-5 py-4 lg:border-b-0 lg:border-r">
+            <div className="relative z-40 grid grid-cols-1 border-b border-slate-200 bg-white/95 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur-xl xl:sticky xl:top-2 xl:[grid-template-columns:minmax(220px,.68fr)_repeat(3,minmax(280px,1fr))]">
+              <div className="flex items-center border-b border-slate-200 px-5 py-4 xl:border-b-0 xl:border-r">
                 <div>
                   <span className="inline-flex items-center gap-2 text-sm font-black text-slate-950"><Info className="h-4 w-4 text-violet-600" /> Situace a závěr</span>
                   <p className="mt-1 text-xs font-medium text-slate-500">Limity reagují na varianty vpravo.</p>
@@ -2358,6 +3236,9 @@ export default function TravelInsuranceComparisonPage() {
               </ProductHeader>
               <ProductHeader insurer="Kooperativa" product="KOLUMBUS" logoPath="/icons/koop.png" tone="koop">
                 <VariantPicker label="Varianta Kooperativy" value={koopVariantKey} variants={KOOP_VARIANTS} onChange={setKoopVariantKey} tone="koop" />
+              </ProductHeader>
+              <ProductHeader insurer="AXA" product="Cestovní pojištění" logoPath="/icons/axalogo.png" tone="axa">
+                <VariantPicker label="Varianta AXA" value={axaVariantKey} variants={AXA_VARIANTS} onChange={setAxaVariantKey} tone="axa" />
               </ProductHeader>
             </div>
 
@@ -2371,8 +3252,8 @@ export default function TravelInsuranceComparisonPage() {
                       {row.section}
                     </div>
                   )}
-                  <div className="grid grid-cols-1 border-b border-slate-100 last:border-b-0 lg:[grid-template-columns:minmax(245px,.78fr)_repeat(2,minmax(320px,1fr))]">
-                    <div className="border-b border-slate-100 bg-slate-50/55 px-5 py-5 lg:border-b-0 lg:border-r">
+                  <div className="grid grid-cols-1 border-b border-slate-100 last:border-b-0 xl:[grid-template-columns:minmax(220px,.68fr)_repeat(3,minmax(280px,1fr))]">
+                    <div className="border-b border-slate-100 bg-slate-50/55 px-5 py-5 xl:border-b-0 xl:border-r">
                       <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-violet-100 bg-white text-violet-600 shadow-sm"><Icon className="h-4.5 w-4.5" /></span>
                       <h2 className="mt-3 text-base font-black leading-5 text-slate-950">{row.title}</h2>
                       <p className="mt-2 text-xs font-medium leading-5 text-slate-600">{row.description}</p>
@@ -2381,8 +3262,9 @@ export default function TravelInsuranceComparisonPage() {
                         <DifferenceSummary differences={row.differences} sharedPoints={row.sharedPoints} />
                       )}
                     </div>
-                    <ProductCell value={row.cpp} otherValue={row.koop} tone="cpp" />
-                    <ProductCell value={row.koop} otherValue={row.cpp} tone="koop" />
+                    <ProductCell value={row.cpp} otherValues={[row.koop, row.axa]} tone="cpp" />
+                    <ProductCell value={row.koop} otherValues={[row.cpp, row.axa]} tone="koop" />
+                    <ProductCell value={row.axa} otherValues={[row.cpp, row.koop]} tone="axa" />
                   </div>
                 </div>
               );
@@ -2395,17 +3277,19 @@ export default function TravelInsuranceComparisonPage() {
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Rychlá orientace podle potřeby</p>
             <div className="mt-4 space-y-3">
               {[
-                ["Co nejvyšší horská záchrana", "ČPP MAXI"],
-                ["Silný základ léčebných výloh", "ČPP MAXI nebo Kooperativa PLUS"],
+                ["Co nejvyšší horská záchrana", "AXA EXCELENT · 500 mil. Kč"],
+                ["Silný základ léčebných výloh", "AXA EXCELENT · 500 mil. Kč"],
                 ["Vlastní zimní nebo golfové vybavení", "ČPP Zima PLUS / Golf PLUS"],
-                ["Veterinární péče na cestě", "ČPP Zvíře PLUS"],
+                ["Veterinární péče na cestě", "ČPP Zvíře PLUS nebo AXA mazlíčci"],
                 ["Náhradní auto při poruše", "Kooperativa HOLIDAY"],
                 ["Vlastní letní sportovní vybavení", "ČPP Léto PLUS"],
                 ["Dřívější plnění za zpožděný kufr", "ČPP Let plus"],
                 ["Kanada bez připojištění USA", "Kooperativa · svět bez USA"],
-                ["Jedna souvislá cesta delší než 45 dní", "ČPP nebo jednorázový KOLUMBUS"],
+                ["Jedna souvislá cesta delší než 45 dní", "Všechny tři jednorázově"],
                 ["Zákonná odpovědnost za škodu na autě z autopůjčovny", "ČPP · zapůjčená věc"],
-                ["Výslovné pojištění spoluúčasti na pronajatém autě", "Kooperativa PLUS · 10 000 Kč"],
+                ["Výslovné pojištění spoluúčasti na pronajatém autě", "AXA · 60 000 Kč"],
+                ["Manuální práce", "AXA KOMFORT / EXCELENT + připojištění"],
+                ["Alkohol do 0,8 ‰ u léčebných výloh", "AXA + Drink povolen"],
               ].map(([need, answer]) => (
                 <div key={need} className="flex items-start justify-between gap-4 rounded-xl bg-slate-50 px-3 py-3">
                   <span className="text-xs font-semibold leading-5 text-slate-600">{need}</span>
@@ -2435,7 +3319,7 @@ export default function TravelInsuranceComparisonPage() {
               </div>
             )}
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            <div className="mt-5 grid gap-4 xl:grid-cols-3">
               <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -2502,6 +3386,42 @@ export default function TravelInsuranceComparisonPage() {
                 </div>
                 <p className="mt-3 text-[11px] font-medium leading-5 text-emerald-900/75">
                   Obsahuje předsmluvní informace, souhrn limitů i úplná ustanovení jednotlivých pojištění.
+                </p>
+              </section>
+
+              <section className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-indigo-950">AXA</h3>
+                    <p className="mt-0.5 text-xs font-semibold text-indigo-700">IPID + úplné VPP + 9 tematických přehledů</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-indigo-700 shadow-sm">11 PDF</span>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {AXA_TERMS_DOCUMENTS.map((document) => (
+                    <button
+                      key={document.id}
+                      type="button"
+                      disabled={downloadingDocumentId !== null}
+                      onClick={() => void handleDocumentDownload(document)}
+                      className="group flex min-w-0 items-center gap-2 rounded-xl border border-indigo-100 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {downloadingDocumentId === document.id ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-indigo-700" />
+                      ) : (
+                        <Download className="h-4 w-4 shrink-0 text-indigo-700" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-black text-slate-900">{document.label}</span>
+                        <span className="block truncate text-[10px] font-bold text-slate-500">
+                          {downloadingDocumentId === document.id ? "Stahuji PDF…" : document.code}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-[11px] font-medium leading-5 text-indigo-900/75">
+                  Pojistitelem je INTER PARTNER ASSISTANCE, S. A.; asistenční služby poskytuje AXA ASSISTANCE CZ, s. r. o.
                 </p>
               </section>
             </div>
