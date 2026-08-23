@@ -8,6 +8,8 @@ type HelpDialogProps = {
   isOpen: boolean;
   title: string;
   description?: string;
+  eyebrow?: string;
+  eyebrowIcon?: ReactNode;
   onClose: () => void;
   children: ReactNode;
 };
@@ -16,6 +18,8 @@ export function HelpDialog({
   isOpen,
   title,
   description,
+  eyebrow = "Nápověda",
+  eyebrowIcon,
   onClose,
   children,
 }: HelpDialogProps) {
@@ -55,8 +59,10 @@ export function HelpDialog({
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
           <div className="min-w-0">
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-              <CircleHelp className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-              Nápověda
+              {eyebrowIcon ?? (
+                <CircleHelp className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+              )}
+              {eyebrow}
             </div>
             <h2 id="help-dialog-title" className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
               {title}

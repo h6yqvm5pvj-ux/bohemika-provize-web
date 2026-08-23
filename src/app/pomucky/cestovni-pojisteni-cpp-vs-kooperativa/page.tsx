@@ -2,12 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowLeft,
   Baby,
   Bike,
+  Briefcase,
   BriefcaseMedical,
   CarFront,
   Check,
@@ -15,6 +16,7 @@ import {
   CircleAlert,
   Clock3,
   Download,
+  Files,
   FileText,
   Globe2,
   HeartHandshake,
@@ -56,7 +58,7 @@ type ComparisonSection =
   | "Zavazadla"
   | "Let"
   | "Cesta a komplikace"
-  | "Ochrana"
+  | "Pracovní cesta a manuální práce"
   | "Terorismus"
   | "Veterinární léčba";
 type VerdictTone = InsurerTone | "balanced" | "attention";
@@ -75,12 +77,18 @@ type Variant = {
   baggageValuables: number | null;
   death: number;
   permanentInjury: number;
+  hospitalDay: number;
+  hospitalTotal: number;
 };
 
 type ProductValue = {
   headline: string;
   detail: string;
   source?: string;
+  keyFact?: {
+    label: string;
+    value: string;
+  };
   points?: string[];
   sections?: Array<{
     label: string;
@@ -105,6 +113,13 @@ type LiabilityExclusions = {
   interpretationNote?: string;
   groups: LiabilityExclusionGroup[];
   generalConditionsNote: string;
+};
+
+type TermsDocument = {
+  readonly id: string;
+  readonly label: string;
+  readonly code: string;
+  readonly fileName: string;
 };
 
 type ComparisonRow = {
@@ -146,6 +161,8 @@ export const CPP_VARIANTS: Record<CppVariantKey, Variant> = {
     baggageValuables: 5_000,
     death: 100_000,
     permanentInjury: 200_000,
+    hospitalDay: 0,
+    hospitalTotal: 0,
   },
   opti: {
     label: "OPTI",
@@ -161,6 +178,8 @@ export const CPP_VARIANTS: Record<CppVariantKey, Variant> = {
     baggageValuables: 8_000,
     death: 200_000,
     permanentInjury: 400_000,
+    hospitalDay: 0,
+    hospitalTotal: 0,
   },
   maxi: {
     label: "MAXI",
@@ -176,6 +195,8 @@ export const CPP_VARIANTS: Record<CppVariantKey, Variant> = {
     baggageValuables: 10_000,
     death: 500_000,
     permanentInjury: 1_000_000,
+    hospitalDay: 0,
+    hospitalTotal: 0,
   },
 };
 
@@ -194,6 +215,8 @@ export const KOOP_VARIANTS: Record<KoopVariantKey, Variant> = {
     baggageValuables: null,
     death: 200_000,
     permanentInjury: 400_000,
+    hospitalDay: 500,
+    hospitalTotal: 7_500,
   },
   plus: {
     label: "PLUS",
@@ -209,6 +232,8 @@ export const KOOP_VARIANTS: Record<KoopVariantKey, Variant> = {
     baggageValuables: null,
     death: 400_000,
     permanentInjury: 600_000,
+    hospitalDay: 1_000,
+    hospitalTotal: 15_000,
   },
 };
 
@@ -227,6 +252,8 @@ export const AXA_VARIANTS: Record<AxaVariantKey, Variant> = {
     baggageValuables: null,
     death: 0,
     permanentInjury: 0,
+    hospitalDay: 0,
+    hospitalTotal: 0,
   },
   komfort: {
     label: "KOMFORT",
@@ -242,6 +269,8 @@ export const AXA_VARIANTS: Record<AxaVariantKey, Variant> = {
     baggageValuables: null,
     death: 250_000,
     permanentInjury: 500_000,
+    hospitalDay: 0,
+    hospitalTotal: 0,
   },
   excelent: {
     label: "EXCELENT",
@@ -257,6 +286,8 @@ export const AXA_VARIANTS: Record<AxaVariantKey, Variant> = {
     baggageValuables: null,
     death: 500_000,
     permanentInjury: 1_000_000,
+    hospitalDay: 0,
+    hospitalTotal: 0,
   },
 };
 
@@ -298,6 +329,36 @@ export const AXA_TERMS_DOCUMENTS = [
   { id: "axa-travel-auto-assistance", label: "Autoasistence", code: "Doplňkové pojištění", fileName: "AXA_Autoasistence.pdf" },
 ] as const;
 
+const DOCUMENT_GROUPS: ReadonlyArray<{
+  tone: InsurerTone;
+  insurer: string;
+  logoPath: string;
+  description: string;
+  documents: readonly TermsDocument[];
+}> = [
+  {
+    tone: "cpp",
+    insurer: "ČPP",
+    logoPath: "/icons/cpp.png",
+    description: "1 IPID + 1 všeobecný + 14 doplňkových dokumentů",
+    documents: CPP_TERMS_DOCUMENTS,
+  },
+  {
+    tone: "koop",
+    insurer: "Kooperativa",
+    logoPath: "/icons/koop.png",
+    description: "IPID + kompletní podmínky KOLUMBUS",
+    documents: KOOP_TERMS_DOCUMENTS,
+  },
+  {
+    tone: "axa",
+    insurer: "AXA",
+    logoPath: "/icons/axalogo.png",
+    description: "IPID + úplné VPP + 9 tematických přehledů",
+    documents: AXA_TERMS_DOCUMENTS,
+  },
+];
+
 const COMPARISON_SECTIONS: Array<{
   label: ComparisonSection;
   id: string;
@@ -312,7 +373,11 @@ const COMPARISON_SECTIONS: Array<{
   { label: "Cesta a komplikace", id: "cesta-a-komplikace", icon: Clock3 },
   { label: "Sport a vybavení", id: "sport-a-vybaveni", icon: Bike },
   { label: "Veterinární léčba", id: "veterinarni-lecba", icon: PawPrint },
-  { label: "Ochrana", id: "ochrana", icon: ShieldAlert },
+  {
+    label: "Pracovní cesta a manuální práce",
+    id: "pracovni-cesta-a-manualni-prace",
+    icon: Briefcase,
+  },
   { label: "Terorismus", id: "terorismus", icon: CircleAlert },
 ];
 
@@ -2502,14 +2567,24 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
       id: "accident",
       section: "Úrazové pojištění",
       icon: Activity,
-      title: "Úraz zanechá trvalé následky nebo způsobí smrt",
-      description: "Obnosové úrazové pojištění vedle úhrady samotného léčení v zahraničí.",
-      verdict: limitVerdict(cpp.permanentInjury, koop.permanentInjury, axa.permanentInjury),
+      title: "Úraz zanechá trvalé následky",
+      description: "Pojišťovna vyplatí příslušné procento z pojistné částky podle rozsahu trvalých následků a oceňovací tabulky.",
+      verdict: {
+        tone: "balanced",
+        label: "Porovnat limit i minimální rozsah",
+        detail: "ČPP zakládá nárok už od 2 %, Kooperativa od 5 % a AXA od 10 % celkového ohodnocení trvalých následků.",
+      },
       cpp: {
         headline: formatMoney(cpp.permanentInjury),
         detail: "Trvalé následky úrazu",
-        source: "DPPURC 1/23, čl. 5–10",
-        points: [`Smrt následkem úrazu: ${formatMoney(cpp.death)}`],
+        source: "DPPURC 1/23, čl. 8 a 10",
+        keyFact: {
+          label: "Minimální rozsah pro vznik nároku",
+          value: "2 %",
+        },
+        points: [
+          "Následky lze uplatnit po ustálení, nejdříve jeden rok po úrazu; pokud se neustálí, rozhoduje stav po třech letech.",
+        ],
         metric: cpp.permanentInjury,
         badge: "Volitelné pojištění",
       },
@@ -2517,9 +2592,11 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
         headline: formatMoney(koop.permanentInjury),
         detail: "Trvalé následky úrazu",
         source: "M-750/23, str. 11 a 29–33",
+        keyFact: {
+          label: "Minimální rozsah pro vznik nároku",
+          value: "5 %",
+        },
         points: [
-          `Smrt následkem úrazu: ${formatMoney(koop.death)}`,
-          koop.label === "PLUS" ? "Nemocnice: 1 000 Kč/den, max. 15 000 Kč" : "Nemocnice: 500 Kč/den, max. 7 500 Kč",
           "Při dopravní nehodě může být plnění za trvalé následky dvojnásobné, jsou-li splněny podmínky ošetření a policejního šetření.",
         ],
         metric: koop.permanentInjury,
@@ -2539,10 +2616,14 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
         headline: axaHasExtendedCover ? formatMoney(axa.permanentInjury) : "V REFERENCE není pojištěno",
         detail: axaHasExtendedCover ? "Trvalé následky úrazu" : "Úrazové pojištění obsahují až KOMFORT a EXCELENT",
         source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl F, str. 2 a 15–16",
+        keyFact: axaHasExtendedCover
+          ? {
+              label: "Minimální rozsah pro vznik nároku",
+              value: "10 %",
+            }
+          : undefined,
         points: axaHasExtendedCover
           ? [
-              `Smrt následkem úrazu: ${formatMoney(axa.death)}.`,
-              "Plnění za trvalé následky vzniká, pokud celkové ohodnocení dosáhne alespoň 10 % podle oceňovací tabulky.",
               "Rozsah se posuzuje po ustálení následků, nejdříve po roce; nejpozději do tří let od úrazu.",
             ]
           : ["Pro úrazové plnění je nutné zvolit KOMFORT nebo EXCELENT."],
@@ -2551,8 +2632,85 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
       },
     },
     {
+      id: "accident-death",
+      section: "Úrazové pojištění",
+      icon: Activity,
+      title: "Úraz způsobí smrt pojištěného",
+      description: "Jednorázové obnosové plnění oprávněné osobě za smrt následkem úrazu.",
+      verdict: limitVerdict(cpp.death, koop.death, axa.death),
+      cpp: {
+        headline: formatMoney(cpp.death),
+        detail: "Smrt následkem úrazu",
+        source: "DPPURC 1/23, čl. 8–9",
+        points: [
+          "Smrt musí nastat nejpozději do tří let od úrazu.",
+          "Pokud už ČPP plnila za trvalé následky téhož úrazu, vyplatí jen případný rozdíl do částky pro případ smrti.",
+        ],
+        metric: cpp.death,
+        badge: "Volitelné pojištění",
+      },
+      koop: {
+        headline: formatMoney(koop.death),
+        detail: "Smrt následkem úrazu",
+        source: "M-750/23, str. 11 a 29–33",
+        points: ["Smrt musí nastat následkem úrazu nejpozději do tří let od jeho vzniku."],
+        metric: koop.death,
+        badge: "Balíček ÚZO",
+      },
+      axa: {
+        headline: axaHasExtendedCover ? formatMoney(axa.death) : "V REFERENCE není pojištěno",
+        detail: axaHasExtendedCover ? "Smrt následkem úrazu" : "Úrazové pojištění obsahují až KOMFORT a EXCELENT",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl F, str. 2 a 15–16",
+        points: axaHasExtendedCover
+          ? ["Jednorázové plnění se vyplácí oprávněné osobě při smrti pojištěného následkem úrazu."]
+          : ["Pro úrazové plnění je nutné zvolit KOMFORT nebo EXCELENT."],
+        metric: axa.death,
+        badge: axaHasExtendedCover ? `Varianta ${axa.label}` : "Bez krytí",
+      },
+    },
+    {
+      id: "accident-hospitalization",
+      section: "Úrazové pojištění",
+      icon: BriefcaseMedical,
+      title: "Nemoc nebo úraz si vyžádá pobyt v nemocnici",
+      description: "Porovnáváme denní peněžní kompenzaci za hospitalizaci, nikoli úhradu nemocniční léčby z léčebných výloh.",
+      verdict: limitVerdict(cpp.hospitalTotal, koop.hospitalTotal, axa.hospitalTotal),
+      cpp: {
+        headline: "Samostatná denní dávka není",
+        detail: "DPPURC uvádějí jen smrt a trvalé následky úrazu",
+        source: "DPPURC 1/23, čl. 8–10",
+        points: [
+          "Nezbytná hospitalizace v zahraničí může být hrazena z léčebných výloh, nejde však o denní peněžní kompenzaci klientovi.",
+        ],
+        metric: cpp.hospitalTotal,
+        badge: "Bez obnosové dávky",
+      },
+      koop: {
+        headline: `${formatMoney(koop.hospitalDay)} / den`,
+        detail: `Celkem nejvýše ${formatMoney(koop.hospitalTotal)}`,
+        source: "M-750/23, str. 11 a 29–33",
+        points: [
+          "Hospitalizace musí trvat minimálně tři dny, tedy dvě noci.",
+          "Kryje pobyt v nemocnici následkem nemoci nebo úrazu i za účelem vyšetření či stanovení diagnózy, pokud nastal během pojištění.",
+          "Za den hospitalizace se počítá každá půlnoc; maximálně se plní za 15 dní a až po ukončení pobytu.",
+        ],
+        metric: koop.hospitalTotal,
+        badge: "Balíček ÚZO",
+      },
+      axa: {
+        headline: "Samostatná denní dávka není",
+        detail: "Úrazové pojištění uvádí jen smrt a trvalé následky",
+        source: "AXA VPPCP 15. 6. 2026, přehled plnění a část III oddíl F, str. 2 a 15–16",
+        points: [
+          "Nezbytná hospitalizace v zahraničí může být hrazena z léčebných výloh, nejde však o denní peněžní kompenzaci klientovi.",
+        ],
+        metric: axa.hospitalTotal,
+        badge: "Bez obnosové dávky",
+      },
+    },
+    {
       id: "manual-work",
-      section: "Ochrana",
+      section: "Pracovní cesta a manuální práce",
       icon: Activity,
       title: "Klient v zahraničí vykonává manuální práci",
       description: "Administrativní pracovní cesta není totéž jako manuální práce. U AXA ji řeší samostatné připojištění, které rozšiřuje jen léčebné výlohy a úraz.",
@@ -2975,6 +3133,126 @@ function LiabilityExclusionsDialog({
   );
 }
 
+function termsDocumentIcon(documentId: string): typeof FileText {
+  if (documentId.includes("auto") || documentId.includes("rental-car")) return CarFront;
+  if (documentId.includes("flight") || documentId.includes("letp")) return Plane;
+  if (documentId.includes("pets") || documentId.includes("zvp")) return PawPrint;
+  if (documentId.includes("sports") || documentId.includes("lp-1-23")) return Bike;
+  if (documentId.includes("gp-2022") || documentId.includes("golf")) return Trophy;
+  if (documentId.includes("zp-1-23")) return Snowflake;
+  if (documentId.includes("liability") || documentId.includes("odc")) return ShieldCheck;
+  if (documentId.includes("accident") || documentId.includes("urc")) return Activity;
+  if (documentId.includes("baggage") || documentId.includes("zav")) return Luggage;
+  if (documentId.includes("manual-work")) return Briefcase;
+  if (documentId.includes("drink")) return CircleAlert;
+  if (documentId.includes("cancellation") || documentId.includes("stp")) return Clock3;
+  if (documentId.includes("ipid") || documentId.includes("overview")) return Info;
+  return FileText;
+}
+
+function DocumentsDialog({
+  group,
+  isOpen,
+  downloadingDocumentId,
+  downloadError,
+  onDownload,
+  onClose,
+}: {
+  group: (typeof DOCUMENT_GROUPS)[number];
+  isOpen: boolean;
+  downloadingDocumentId: string | null;
+  downloadError: string | null;
+  onDownload: (document: TermsDocument) => void;
+  onClose: () => void;
+}) {
+  const toneClasses = {
+    cpp: {
+      summary: "border-blue-200 bg-blue-50 text-blue-950",
+      count: "bg-blue-700 text-white",
+      item: "border-blue-100 hover:border-blue-300 hover:bg-blue-50/60",
+      icon: "bg-blue-50 text-blue-700",
+      download: "text-blue-700",
+    },
+    koop: {
+      summary: "border-emerald-200 bg-emerald-50 text-emerald-950",
+      count: "bg-emerald-700 text-white",
+      item: "border-emerald-100 hover:border-emerald-300 hover:bg-emerald-50/60",
+      icon: "bg-emerald-50 text-emerald-700",
+      download: "text-emerald-700",
+    },
+    axa: {
+      summary: "border-indigo-200 bg-indigo-50 text-indigo-950",
+      count: "bg-indigo-800 text-white",
+      item: "border-indigo-100 hover:border-indigo-300 hover:bg-indigo-50/60",
+      icon: "bg-indigo-50 text-indigo-700",
+      download: "text-indigo-700",
+    },
+  }[group.tone];
+
+  return (
+    <HelpDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      eyebrow="Pojistné podmínky"
+      eyebrowIcon={<Files className="h-3.5 w-3.5" aria-hidden="true" />}
+      title={`Dokumenty ${group.insurer}`}
+      description="Kliknutím na dokument se přihlášenému uživateli stáhne příslušné PDF. Názvy jsou uvedené v plném znění."
+    >
+      <div className={`flex items-center justify-between gap-4 rounded-2xl border p-4 ${toneClasses.summary}`}>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
+            <Files className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-black">{group.insurer}</p>
+            <p className="mt-0.5 text-xs font-semibold leading-5 opacity-80">{group.description}</p>
+          </div>
+        </div>
+        <span className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-black ${toneClasses.count}`}>
+          {group.documents.length} PDF
+        </span>
+      </div>
+
+      {downloadError && (
+        <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700">
+          {downloadError}
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        {group.documents.map((document) => {
+          const DocumentIcon = termsDocumentIcon(document.id);
+          const isDownloading = downloadingDocumentId === document.id;
+          return (
+            <button
+              key={document.id}
+              type="button"
+              disabled={downloadingDocumentId !== null}
+              onClick={() => onDownload(document)}
+              className={`group flex min-h-20 items-center gap-3 rounded-2xl border bg-white px-3.5 py-3 text-left shadow-sm transition hover:shadow-md disabled:cursor-wait disabled:opacity-60 ${toneClasses.item}`}
+            >
+              <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${toneClasses.icon}`}>
+                <DocumentIcon className="h-4.5 w-4.5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-black leading-5 text-slate-950">{document.label}</span>
+                <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">
+                  {isDownloading ? "Stahuji PDF…" : document.code}
+                </span>
+              </span>
+              {isDownloading ? (
+                <Loader2 className={`h-4 w-4 shrink-0 animate-spin ${toneClasses.download}`} />
+              ) : (
+                <Download className={`h-4 w-4 shrink-0 ${toneClasses.download}`} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </HelpDialog>
+  );
+}
+
 function ProductCell({ value, otherValues, tone }: { value: ProductValue; otherValues: ProductValue[]; tone: InsurerTone }) {
   const comparableMetrics = otherValues.flatMap((otherValue) => otherValue.metric == null ? [] : [otherValue.metric]);
   const isHigher = value.metric != null && comparableMetrics.length > 0 && comparableMetrics.every((metric) => value.metric! > metric);
@@ -3014,6 +3292,43 @@ function ProductCell({ value, otherValues, tone }: { value: ProductValue; otherV
             <FileText className="mt-0.5 h-3 w-3 shrink-0" />
             <span>Zdroj: {value.source}</span>
           </p>
+        )}
+        {value.keyFact && (
+          <div
+            className={`mt-4 rounded-2xl border px-3.5 py-3 ${
+              tone === "cpp"
+                ? "border-blue-200 bg-blue-50"
+                : tone === "koop"
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-indigo-200 bg-indigo-50"
+            }`}
+          >
+            <p
+              className={`text-[9px] font-black uppercase tracking-[0.12em] ${
+                tone === "cpp"
+                  ? "text-blue-700"
+                  : tone === "koop"
+                    ? "text-emerald-700"
+                    : "text-indigo-700"
+              }`}
+            >
+              {value.keyFact.label}
+            </p>
+            <div className="mt-1 flex items-end gap-2">
+              <span
+                className={`text-3xl font-black leading-none tracking-tight ${
+                  tone === "cpp"
+                    ? "text-blue-900"
+                    : tone === "koop"
+                      ? "text-emerald-900"
+                      : "text-indigo-900"
+                }`}
+              >
+                {value.keyFact.value}
+              </span>
+              <span className="pb-0.5 text-[10px] font-bold text-slate-500">celkové ohodnocení</span>
+            </div>
+          </div>
         )}
         {value.points && (
           <ul className="mt-3 space-y-2">
@@ -3106,10 +3421,11 @@ export default function TravelInsuranceComparisonPage() {
   const [koopVariantKey, setKoopVariantKey] = useState<KoopVariantKey>("plus");
   const [axaVariantKey, setAxaVariantKey] = useState<AxaVariantKey>("excelent");
   const [openSections, setOpenSections] = useState<Set<ComparisonSection>>(
-    () => new Set(["Léčebné výlohy"])
+    () => new Set()
   );
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [documentDownloadError, setDocumentDownloadError] = useState<string | null>(null);
+  const [documentsDialogTone, setDocumentsDialogTone] = useState<InsurerTone | null>(null);
   const cpp = CPP_VARIANTS[cppVariantKey];
   const koop = KOOP_VARIANTS[koopVariantKey];
   const axa = AXA_VARIANTS[axaVariantKey];
@@ -3122,29 +3438,8 @@ export default function TravelInsuranceComparisonPage() {
       })),
     [rows]
   );
-  const allSectionsOpen = openSections.size === COMPARISON_SECTIONS.length;
-
-  useEffect(() => {
-    const openSectionFromHash = () => {
-      const sectionId = window.location.hash.slice(1);
-      const section = COMPARISON_SECTIONS.find((candidate) => candidate.id === sectionId);
-      if (!section) return;
-
-      setOpenSections((current) => {
-        if (current.has(section.label)) return current;
-        const next = new Set(current);
-        next.add(section.label);
-        return next;
-      });
-    };
-
-    const initialHashTimer = window.setTimeout(openSectionFromHash, 0);
-    window.addEventListener("hashchange", openSectionFromHash);
-    return () => {
-      window.clearTimeout(initialHashTimer);
-      window.removeEventListener("hashchange", openSectionFromHash);
-    };
-  }, []);
+  const activeDocumentGroup =
+    DOCUMENT_GROUPS.find((group) => group.tone === documentsDialogTone) ?? null;
 
   const toggleSection = (section: ComparisonSection) => {
     setOpenSections((current) => {
@@ -3158,23 +3453,9 @@ export default function TravelInsuranceComparisonPage() {
     });
   };
 
-  const openAndScrollToSection = ({
-    id,
-    label,
-  }: {
-    id: string;
-    label: ComparisonSection;
-  }) => {
-    setOpenSections((current) => {
-      if (current.has(label)) return current;
-      const next = new Set(current);
-      next.add(label);
-      return next;
-    });
-    window.history.replaceState(null, "", `#${id}`);
-    window.setTimeout(() => {
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+  const openDocumentsDialog = (tone: InsurerTone) => {
+    setDocumentDownloadError(null);
+    setDocumentsDialogTone(tone);
   };
 
   const handleDocumentDownload = async ({
@@ -3264,50 +3545,8 @@ export default function TravelInsuranceComparisonPage() {
           </div>
         </section>
 
-        <nav aria-label="Části srovnání" className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)] sm:px-5">
+        <aside aria-label="Význam závěrů srovnání" className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)] sm:px-5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Přejít na situace</span>
-            {COMPARISON_SECTIONS.map((section) => {
-              const isOpen = openSections.has(section.label);
-              const SectionIcon = section.icon;
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  aria-expanded={isOpen}
-                  aria-controls={`${section.id}-content`}
-                  onClick={() => openAndScrollToSection(section)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-black transition ${
-                    isOpen
-                      ? "border-violet-300 bg-violet-50 text-violet-800"
-                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
-                  }`}
-                >
-                  <SectionIcon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
-                  {section.label}
-                </button>
-              );
-            })}
-            <div className="ml-auto flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setOpenSections(new Set(COMPARISON_SECTIONS.map((section) => section.label)))}
-                disabled={allSectionsOpen}
-                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-default disabled:opacity-40"
-              >
-                Rozbalit vše
-              </button>
-              <button
-                type="button"
-                onClick={() => setOpenSections(new Set())}
-                disabled={openSections.size === 0}
-                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-default disabled:opacity-40"
-              >
-                Sbalit vše
-              </button>
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
             <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Význam závěru v dané situaci</span>
             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-800">Výhoda ČPP</span>
             <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700">Výhoda Kooperativy</span>
@@ -3315,7 +3554,7 @@ export default function TravelInsuranceComparisonPage() {
             <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-black text-violet-700">Odlišný princip</span>
             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-700">Nutno ověřit</span>
           </div>
-        </nav>
+        </aside>
 
         <section className="rounded-[26px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
           <div>
@@ -3452,110 +3691,55 @@ export default function TravelInsuranceComparisonPage() {
             )}
 
             <div className="mt-5 grid gap-4 xl:grid-cols-3">
-              <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-black text-blue-950">ČPP</h3>
-                    <p className="mt-0.5 text-xs font-semibold text-blue-800">1 IPID + 1 všeobecný + 14 doplňkových dokumentů</p>
-                  </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-blue-800 shadow-sm">16 PDF</span>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {CPP_TERMS_DOCUMENTS.map((document) => (
-                    <button
-                      key={document.id}
-                      type="button"
-                      disabled={downloadingDocumentId !== null}
-                      onClick={() => void handleDocumentDownload(document)}
-                      className="group flex min-w-0 items-center gap-2 rounded-xl border border-blue-100 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
-                    >
-                      {downloadingDocumentId === document.id ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-700" />
-                      ) : (
-                        <Download className="h-4 w-4 shrink-0 text-blue-700" />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-black text-slate-900">{document.label}</span>
-                        <span className="block truncate text-[10px] font-bold text-slate-500">
-                          {downloadingDocumentId === document.id ? "Stahuji PDF…" : document.code}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
+              {DOCUMENT_GROUPS.map((group) => {
+                const logoKey = institutionLogoKeyFromInsurerName(group.insurer);
+                const cardClasses =
+                  group.tone === "cpp"
+                    ? "border-blue-200 bg-blue-50/65 text-blue-950"
+                    : group.tone === "koop"
+                      ? "border-emerald-200 bg-emerald-50/65 text-emerald-950"
+                      : "border-indigo-200 bg-indigo-50/65 text-indigo-950";
+                const buttonClasses =
+                  group.tone === "cpp"
+                    ? "border-blue-200 text-blue-800 hover:border-blue-300 hover:bg-blue-100"
+                    : group.tone === "koop"
+                      ? "border-emerald-200 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100"
+                      : "border-indigo-200 text-indigo-800 hover:border-indigo-300 hover:bg-indigo-100";
 
-              <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-black text-emerald-950">Kooperativa</h3>
-                    <p className="mt-0.5 text-xs font-semibold text-emerald-700">IPID + kompletní podmínky KOLUMBUS</p>
-                  </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-emerald-700 shadow-sm">2 PDF</span>
-                </div>
-                <div className="mt-3 grid gap-2">
-                  {KOOP_TERMS_DOCUMENTS.map((document) => (
-                    <button
-                      key={document.id}
-                      type="button"
-                      disabled={downloadingDocumentId !== null}
-                      onClick={() => void handleDocumentDownload(document)}
-                      className="group flex min-w-0 items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
-                    >
-                      {downloadingDocumentId === document.id ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-emerald-700" />
-                      ) : (
-                        <Download className="h-4 w-4 shrink-0 text-emerald-700" />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-black text-slate-900">{document.label}</span>
-                        <span className="block truncate text-[10px] font-bold text-slate-500">
-                          {downloadingDocumentId === document.id ? "Stahuji PDF…" : document.code}
+                return (
+                  <section key={group.tone} className={`flex min-h-40 flex-col rounded-2xl border p-4 ${cardClasses}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white bg-white shadow-sm ${institutionLogoFrameClass(logoKey, "compact")}`}>
+                          <Image
+                            src={group.logoPath}
+                            alt={group.insurer}
+                            fill
+                            sizes="64px"
+                            className={institutionLogoImageClass(logoKey)}
+                          />
                         </span>
+                        <div className="min-w-0">
+                          <h3 className="text-base font-black">{group.insurer}</h3>
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[10px] font-black shadow-sm">
+                        {group.documents.length} PDF
                       </span>
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-3 text-[11px] font-medium leading-5 text-emerald-900/75">
-                  Obsahuje předsmluvní informace, souhrn limitů i úplná ustanovení jednotlivých pojištění.
-                </p>
-              </section>
-
-              <section className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-black text-indigo-950">AXA</h3>
-                    <p className="mt-0.5 text-xs font-semibold text-indigo-700">IPID + úplné VPP + 9 tematických přehledů</p>
-                  </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-indigo-700 shadow-sm">11 PDF</span>
-                </div>
-                <div className="mt-3 grid gap-2">
-                  {AXA_TERMS_DOCUMENTS.map((document) => (
-                    <button
-                      key={document.id}
-                      type="button"
-                      disabled={downloadingDocumentId !== null}
-                      onClick={() => void handleDocumentDownload(document)}
-                      className="group flex min-w-0 items-center gap-2 rounded-xl border border-indigo-100 bg-white px-3 py-2.5 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
-                    >
-                      {downloadingDocumentId === document.id ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-indigo-700" />
-                      ) : (
-                        <Download className="h-4 w-4 shrink-0 text-indigo-700" />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-black text-slate-900">{document.label}</span>
-                        <span className="block truncate text-[10px] font-bold text-slate-500">
-                          {downloadingDocumentId === document.id ? "Stahuji PDF…" : document.code}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-3 text-[11px] font-medium leading-5 text-indigo-900/75">
-                  Pojistitelem je INTER PARTNER ASSISTANCE, S. A.; asistenční služby poskytuje AXA ASSISTANCE CZ, s. r. o.
-                </p>
-              </section>
+                    </div>
+                    <div className="mt-auto pt-5">
+                      <button
+                        type="button"
+                        onClick={() => openDocumentsDialog(group.tone)}
+                        className={`flex w-full items-center justify-center gap-2 rounded-xl border bg-white px-3 py-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 ${buttonClasses}`}
+                      >
+                        <Files className="h-4 w-4" />
+                        Zobrazit dokumenty {group.insurer}
+                      </button>
+                    </div>
+                  </section>
+                );
+              })}
             </div>
 
             <div className="mt-5 border-t border-slate-200 pt-4">
@@ -3565,6 +3749,17 @@ export default function TravelInsuranceComparisonPage() {
             </div>
           </div>
         </section>
+
+        {activeDocumentGroup && (
+          <DocumentsDialog
+            group={activeDocumentGroup}
+            isOpen
+            downloadingDocumentId={downloadingDocumentId}
+            downloadError={documentDownloadError}
+            onDownload={(document) => void handleDocumentDownload(document)}
+            onClose={() => setDocumentsDialogTone(null)}
+          />
+        )}
       </div>
     </AppLayout>
   );

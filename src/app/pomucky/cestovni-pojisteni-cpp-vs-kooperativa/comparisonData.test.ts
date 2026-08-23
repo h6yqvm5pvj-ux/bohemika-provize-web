@@ -38,6 +38,8 @@ const EXPECTED_ROW_IDS = [
   "doctor-on-phone",
   "alcohol",
   "accident",
+  "accident-death",
+  "accident-hospitalization",
   "liability",
   "rental-car-liability",
   "baggage",
@@ -91,16 +93,19 @@ describe("travel insurance comparison data", () => {
         label: "MINI", helper: "Základní limity", treatment: 2_500_000, rescue: 2_500_000,
         teeth: 7_000, companionTotal: 10_000, companionDay: 2_000, liability: 2_500_000,
         legal: 50_000, baggage: 15_000, baggageValuables: 5_000, death: 100_000, permanentInjury: 200_000,
+        hospitalDay: 0, hospitalTotal: 0,
       },
       opti: {
         label: "OPTI", helper: "Střední varianta", treatment: 10_000_000, rescue: 10_000_000,
         teeth: 20_000, companionTotal: 20_000, companionDay: 2_500, liability: 5_000_000,
         legal: 200_000, baggage: 25_000, baggageValuables: 8_000, death: 200_000, permanentInjury: 400_000,
+        hospitalDay: 0, hospitalTotal: 0,
       },
       maxi: {
         label: "MAXI", helper: "Nejvyšší limity", treatment: 100_000_000, rescue: 100_000_000,
         teeth: 30_000, companionTotal: 30_000, companionDay: 3_000, liability: 10_000_000,
         legal: 500_000, baggage: 50_000, baggageValuables: 10_000, death: 500_000, permanentInjury: 1_000_000,
+        hospitalDay: 0, hospitalTotal: 0,
       },
     });
 
@@ -109,11 +114,13 @@ describe("travel insurance comparison data", () => {
         label: "KLASIK", helper: "Základní varianta", treatment: 10_000_000, rescue: 500_000,
         teeth: 20_000, companionTotal: 10_000, companionDay: 2_000, liability: 5_000_000,
         legal: null, baggage: 30_000, baggageValuables: null, death: 200_000, permanentInjury: 400_000,
+        hospitalDay: 500, hospitalTotal: 7_500,
       },
       plus: {
         label: "PLUS", helper: "Vyšší varianta", treatment: 100_000_000, rescue: 1_000_000,
         teeth: 30_000, companionTotal: 15_000, companionDay: 3_000, liability: 8_000_000,
         legal: 200_000, baggage: 50_000, baggageValuables: null, death: 400_000, permanentInjury: 600_000,
+        hospitalDay: 1_000, hospitalTotal: 15_000,
       },
     });
   });
@@ -129,6 +136,8 @@ describe("travel insurance comparison data", () => {
       baggage: 0,
       death: 0,
       permanentInjury: 0,
+      hospitalDay: 0,
+      hospitalTotal: 0,
     });
     expect(AXA_VARIANTS.komfort).toMatchObject({
       label: "KOMFORT",
@@ -140,6 +149,8 @@ describe("travel insurance comparison data", () => {
       baggage: 30_000,
       death: 250_000,
       permanentInjury: 500_000,
+      hospitalDay: 0,
+      hospitalTotal: 0,
     });
     expect(AXA_VARIANTS.excelent).toMatchObject({
       label: "EXCELENT",
@@ -151,6 +162,8 @@ describe("travel insurance comparison data", () => {
       baggage: 60_000,
       death: 500_000,
       permanentInjury: 1_000_000,
+      hospitalDay: 0,
+      hospitalTotal: 0,
     });
   });
 
@@ -210,6 +223,43 @@ describe("travel insurance comparison data", () => {
       expect(getAxaValue(key, "baggage").metric).toBe(values.baggage);
       expect(getAxaValue(key, "accident").metric).toBe(values.accident);
     }
+  });
+
+  it("keeps death, permanent injury and hospital cash benefits separate", () => {
+    const plusRows = getRows("excelent");
+    const findPlusRow = (id: string) => {
+      const row = plusRows.find((candidate) => candidate.id === id);
+      expect(row, `missing accident row ${id}`).toBeDefined();
+      return row!;
+    };
+
+    expect(findPlusRow("accident").cpp.metric).toBe(1_000_000);
+    expect(findPlusRow("accident").koop.metric).toBe(600_000);
+    expect(findPlusRow("accident").axa.metric).toBe(1_000_000);
+    expect(findPlusRow("accident").cpp.keyFact?.value).toBe("2 %");
+    expect(findPlusRow("accident").koop.keyFact?.value).toBe("5 %");
+    expect(findPlusRow("accident").axa.keyFact?.value).toBe("10 %");
+    expect(findPlusRow("accident-death").cpp.metric).toBe(500_000);
+    expect(findPlusRow("accident-death").koop.metric).toBe(400_000);
+    expect(findPlusRow("accident-death").axa.metric).toBe(500_000);
+    expect(findPlusRow("accident-hospitalization").cpp.metric).toBe(0);
+    expect(findPlusRow("accident-hospitalization").koop.metric).toBe(15_000);
+    expect(
+      findPlusRow("accident-hospitalization").koop.headline.replaceAll("\u00a0", " ")
+    ).toContain("1 000 Kč");
+    expect(findPlusRow("accident-hospitalization").axa.metric).toBe(0);
+
+    const klasikRows = buildRows(
+      CPP_VARIANTS.mini,
+      KOOP_VARIANTS.klasik,
+      AXA_VARIANTS.reference
+    );
+    const klasikHospitalization = klasikRows.find(
+      (row) => row.id === "accident-hospitalization"
+    );
+    expect(klasikHospitalization?.koop.metric).toBe(7_500);
+    expect(klasikHospitalization?.koop.headline.replaceAll("\u00a0", " ")).toContain("500 Kč");
+    expect(klasikRows.find((row) => row.id === "accident")?.axa.keyFact).toBeUndefined();
   });
 
   it("enforces AXA add-on and variant availability", () => {
@@ -341,6 +391,7 @@ describe("travel insurance comparison data", () => {
     ]) {
       expect(cppAccidentText, `missing ČPP accident evidence: ${evidence}`).toContain(evidence);
     }
+    expect(cppAccidentText).not.toContain("kompenzace pobytu v nemocnici");
 
     const cppBaggageText = await extractPdfText(
       join(documentsRoot, "cpp/DPPZAV_2022_06.pdf")
@@ -365,6 +416,7 @@ describe("travel insurance comparison data", () => {
       "Pojištění zavazadel 30 000 50 000",
       "Odpovědnost za újmu 5 000 000 8 000 000",
       "spoluúčast na zapůjčeném vozidle nepojištěno 10 000",
+      "kompenzace pobytu v nemocnici 500 /den, max. 7 500 1 000 /den, max. 15 000",
       "nájem náhradního sportovního vybavení 10 000 10 000",
       "náhrada za újmu na pronajatém sportovním vybavení 5 000 5 000",
       "nejméně o 6 hodin",
@@ -401,5 +453,6 @@ describe("travel insurance comparison data", () => {
     ]) {
       expect(termsText, `missing source evidence: ${evidence}`).toContain(evidence);
     }
+    expect(termsText).not.toContain("kompenzace pobytu v nemocnici");
   }, 20_000);
 });
