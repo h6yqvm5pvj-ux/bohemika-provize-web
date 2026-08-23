@@ -1066,7 +1066,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "unused-summer-holiday",
-      section: "Sport a vybavení",
+      section: "Cesta a komplikace",
       icon: CircleAlert,
       title: "Klient kvůli úrazu nebo hospitalizaci nevyužije dovolenou",
       description: "ČPP vyplácí pevnou částku za den, Kooperativa nahrazuje část doložené ceny nevyužitých služeb.",

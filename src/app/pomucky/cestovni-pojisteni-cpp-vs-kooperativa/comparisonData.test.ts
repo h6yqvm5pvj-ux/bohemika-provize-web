@@ -207,6 +207,14 @@ describe("travel insurance comparison data", () => {
     ]);
   });
 
+  it("places unused summer holiday with travel complications, not sports equipment", () => {
+    const row = getRows("excelent").find(
+      (candidate) => candidate.id === "unused-summer-holiday"
+    );
+
+    expect(row?.section).toBe("Cesta a komplikace");
+  });
+
   it("changes AXA core limits with the selected variant", () => {
     const expected = {
       reference: { treatment: 2_500_000, rescue: 2_500_000, teeth: 6_000, baggage: 0, accident: 0 },
