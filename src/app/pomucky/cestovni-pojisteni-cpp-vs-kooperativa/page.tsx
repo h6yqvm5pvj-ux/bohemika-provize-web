@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -50,7 +50,7 @@ type InsurerTone = "cpp" | "koop" | "axa";
 type ComparisonSection =
   | "Obecné informace"
   | "Sport a vybavení"
-  | "Zdraví"
+  | "Léčebné výlohy"
   | "Úrazové pojištění"
   | "Odpovědnost"
   | "Zavazadla"
@@ -298,23 +298,23 @@ export const AXA_TERMS_DOCUMENTS = [
   { id: "axa-travel-auto-assistance", label: "Autoasistence", code: "Doplňkové pojištění", fileName: "AXA_Autoasistence.pdf" },
 ] as const;
 
-const COMPARISON_SECTIONS: Array<{ label: ComparisonSection; id: string }> = [
-  { label: "Obecné informace", id: "obecne-informace" },
-  { label: "Sport a vybavení", id: "sport-a-vybaveni" },
-  { label: "Zdraví", id: "zdravi" },
-  { label: "Úrazové pojištění", id: "urazove-pojisteni" },
-  { label: "Odpovědnost", id: "odpovednost" },
-  { label: "Zavazadla", id: "zavazadla" },
-  { label: "Let", id: "let" },
-  { label: "Cesta a komplikace", id: "cesta-a-komplikace" },
-  { label: "Ochrana", id: "ochrana" },
-  { label: "Terorismus", id: "terorismus" },
-  { label: "Veterinární léčba", id: "veterinarni-lecba" },
+const COMPARISON_SECTIONS: Array<{
+  label: ComparisonSection;
+  id: string;
+  icon: typeof Stethoscope;
+}> = [
+  { label: "Léčebné výlohy", id: "lecebne-vylohy", icon: Stethoscope },
+  { label: "Odpovědnost", id: "odpovednost", icon: ShieldCheck },
+  { label: "Obecné informace", id: "obecne-informace", icon: Info },
+  { label: "Úrazové pojištění", id: "urazove-pojisteni", icon: Activity },
+  { label: "Zavazadla", id: "zavazadla", icon: Luggage },
+  { label: "Let", id: "let", icon: Plane },
+  { label: "Cesta a komplikace", id: "cesta-a-komplikace", icon: Clock3 },
+  { label: "Sport a vybavení", id: "sport-a-vybaveni", icon: Bike },
+  { label: "Veterinární léčba", id: "veterinarni-lecba", icon: PawPrint },
+  { label: "Ochrana", id: "ochrana", icon: ShieldAlert },
+  { label: "Terorismus", id: "terorismus", icon: CircleAlert },
 ];
-
-const SECTION_ANCHORS = Object.fromEntries(
-  COMPARISON_SECTIONS.map((section) => [section.label, section.id])
-) as Record<ComparisonSection, string>;
 
 const CPP_LIABILITY_EXCLUSIONS: LiabilityExclusions = {
   insurer: "ČPP",
@@ -1219,7 +1219,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "treatment",
-      section: "Zdraví",
+      section: "Léčebné výlohy",
       icon: BriefcaseMedical,
       title: "Klient potřebuje lékařské ošetření nebo hospitalizaci",
       description: "Celkový limit pro nezbytnou zdravotní péči v zahraničí.",
@@ -1256,7 +1256,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "covid-treatment",
-      section: "Zdraví",
+      section: "Léčebné výlohy",
       icon: ShieldAlert,
       title: "Klient v zahraničí onemocní covidem-19",
       description: "Léčba covidu má vlastní sublimit a nelze pro ni automaticky použít celý limit běžných léčebných výloh.",
@@ -1297,7 +1297,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "rescue",
-      section: "Zdraví",
+      section: "Léčebné výlohy",
       icon: HeartHandshake,
       title: "Klienta musí zachránit v horách nebo terénu",
       description: "Důležitý limit pro hory, vrtulník a záchranu v terénu.",
@@ -1332,7 +1332,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "teeth",
-      section: "Zdraví",
+      section: "Léčebné výlohy",
       icon: Stethoscope,
       title: "Klienta začne akutně bolet zub",
       description: "Sublimit pro neodkladné ošetření při akutní bolesti.",
@@ -1362,7 +1362,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "companion",
-      section: "Zdraví",
+      section: "Léčebné výlohy",
       icon: Users,
       title: "Zdravotní stav vyžaduje přítomnost blízké osoby",
       description: "Když zdravotní stav vyžaduje přítomnost blízké osoby.",
@@ -1401,7 +1401,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "pregnancy",
-      section: "Zdraví",
+      section: "Léčebné výlohy",
       icon: Baby,
       title: "Na cestě nastanou komplikace v těhotenství",
       description: "Rozsah léčebných výloh spojených s těhotenstvím není u produktů vymezen stejně.",
@@ -1439,7 +1439,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "doctor-on-phone",
-      section: "Zdraví",
+      section: "Léčebné výlohy",
       icon: Stethoscope,
       title: "Klient chce konzultovat zdravotní stav na dálku",
       description: "Samostatná služba Doktor na telefonu je ve zdrojových podmínkách výslovně vyčleněna jen u AXA EXCELENT.",
@@ -1474,7 +1474,7 @@ export function buildRows(cpp: Variant, koop: Variant, axa: Variant): Comparison
     },
     {
       id: "alcohol",
-      section: "Zdraví",
+      section: "Léčebné výlohy",
       icon: CircleAlert,
       title: "Událost vznikne v souvislosti s alkoholem",
       description: "Pozor na rozdíl mezi krácením, úplnou výlukou a připojištěním, které obnovuje pouze léčebné výlohy.",
@@ -3105,12 +3105,77 @@ export default function TravelInsuranceComparisonPage() {
   const [cppVariantKey, setCppVariantKey] = useState<CppVariantKey>("maxi");
   const [koopVariantKey, setKoopVariantKey] = useState<KoopVariantKey>("plus");
   const [axaVariantKey, setAxaVariantKey] = useState<AxaVariantKey>("excelent");
+  const [openSections, setOpenSections] = useState<Set<ComparisonSection>>(
+    () => new Set(["Léčebné výlohy"])
+  );
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [documentDownloadError, setDocumentDownloadError] = useState<string | null>(null);
   const cpp = CPP_VARIANTS[cppVariantKey];
   const koop = KOOP_VARIANTS[koopVariantKey];
   const axa = AXA_VARIANTS[axaVariantKey];
   const rows = useMemo(() => buildRows(cpp, koop, axa), [cpp, koop, axa]);
+  const sectionGroups = useMemo(
+    () =>
+      COMPARISON_SECTIONS.map((section) => ({
+        ...section,
+        rows: rows.filter((row) => row.section === section.label),
+      })),
+    [rows]
+  );
+  const allSectionsOpen = openSections.size === COMPARISON_SECTIONS.length;
+
+  useEffect(() => {
+    const openSectionFromHash = () => {
+      const sectionId = window.location.hash.slice(1);
+      const section = COMPARISON_SECTIONS.find((candidate) => candidate.id === sectionId);
+      if (!section) return;
+
+      setOpenSections((current) => {
+        if (current.has(section.label)) return current;
+        const next = new Set(current);
+        next.add(section.label);
+        return next;
+      });
+    };
+
+    const initialHashTimer = window.setTimeout(openSectionFromHash, 0);
+    window.addEventListener("hashchange", openSectionFromHash);
+    return () => {
+      window.clearTimeout(initialHashTimer);
+      window.removeEventListener("hashchange", openSectionFromHash);
+    };
+  }, []);
+
+  const toggleSection = (section: ComparisonSection) => {
+    setOpenSections((current) => {
+      const next = new Set(current);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      return next;
+    });
+  };
+
+  const openAndScrollToSection = ({
+    id,
+    label,
+  }: {
+    id: string;
+    label: ComparisonSection;
+  }) => {
+    setOpenSections((current) => {
+      if (current.has(label)) return current;
+      const next = new Set(current);
+      next.add(label);
+      return next;
+    });
+    window.history.replaceState(null, "", `#${id}`);
+    window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
 
   const handleDocumentDownload = async ({
     id,
@@ -3202,15 +3267,45 @@ export default function TravelInsuranceComparisonPage() {
         <nav aria-label="Části srovnání" className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)] sm:px-5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Přejít na situace</span>
-            {COMPARISON_SECTIONS.map((section) => (
-              <a
-                key={section.id}
-                href={`#${section.id}`}
-                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
+            {COMPARISON_SECTIONS.map((section) => {
+              const isOpen = openSections.has(section.label);
+              const SectionIcon = section.icon;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  aria-expanded={isOpen}
+                  aria-controls={`${section.id}-content`}
+                  onClick={() => openAndScrollToSection(section)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-black transition ${
+                    isOpen
+                      ? "border-violet-300 bg-violet-50 text-violet-800"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
+                  }`}
+                >
+                  <SectionIcon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
+                  {section.label}
+                </button>
+              );
+            })}
+            <div className="ml-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setOpenSections(new Set(COMPARISON_SECTIONS.map((section) => section.label)))}
+                disabled={allSectionsOpen}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-default disabled:opacity-40"
               >
-                {section.label}
-              </a>
-            ))}
+                Rozbalit vše
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpenSections(new Set())}
+                disabled={openSections.size === 0}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-default disabled:opacity-40"
+              >
+                Sbalit vše
+              </button>
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
             <span className="mr-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Význam závěru v dané situaci</span>
@@ -3222,9 +3317,9 @@ export default function TravelInsuranceComparisonPage() {
           </div>
         </nav>
 
-        <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+        <section className="rounded-[26px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
           <div>
-            <div className="relative z-40 grid grid-cols-1 border-b border-slate-200 bg-white/95 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur-xl xl:sticky xl:top-2 xl:[grid-template-columns:minmax(220px,.68fr)_repeat(3,minmax(280px,1fr))]">
+            <div className="relative z-40 grid grid-cols-1 overflow-hidden rounded-t-[25px] border-b border-slate-200 bg-white/95 shadow-[0_12px_32px_rgba(15,23,42,0.12)] backdrop-blur-xl xl:sticky xl:top-2 xl:[grid-template-columns:minmax(220px,.68fr)_repeat(3,minmax(280px,1fr))]">
               <div className="flex items-center border-b border-slate-200 px-5 py-4 xl:border-b-0 xl:border-r">
                 <div>
                   <span className="inline-flex items-center gap-2 text-sm font-black text-slate-950"><Info className="h-4 w-4 text-violet-600" /> Situace a závěr</span>
@@ -3242,31 +3337,68 @@ export default function TravelInsuranceComparisonPage() {
               </ProductHeader>
             </div>
 
-            {rows.map((row, index) => {
-              const Icon = row.icon;
-              const startsSection = index === 0 || rows[index - 1].section !== row.section;
+            {sectionGroups.map((section) => {
+              const isOpen = openSections.has(section.label);
+              const SectionIcon = section.icon;
+              const situationLabel =
+                section.rows.length === 1
+                  ? "1 situace"
+                  : section.rows.length < 5
+                    ? `${section.rows.length} situace`
+                    : `${section.rows.length} situací`;
+
               return (
-                <div key={row.id}>
-                  {startsSection && (
-                    <div id={SECTION_ANCHORS[row.section]} className="scroll-mt-28 border-b border-slate-200 bg-slate-900 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-white">
-                      {row.section}
+                <section key={section.id} id={section.id} className="scroll-mt-28 border-b border-slate-700/40 last:overflow-hidden last:rounded-b-[25px] last:border-b-0">
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    aria-controls={`${section.id}-content`}
+                    onClick={() => toggleSection(section.label)}
+                    className="group flex w-full items-center justify-between gap-4 bg-slate-900 px-5 py-3 text-left text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/10 text-violet-200">
+                        <SectionIcon className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="truncate text-[10px] font-black uppercase tracking-[0.18em] sm:text-xs">
+                        {section.label}
+                      </span>
+                      <span className="shrink-0 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[9px] font-black tracking-normal text-slate-300">
+                        {situationLabel}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="hidden text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 sm:inline">
+                        {isOpen ? "Sbalit" : "Rozbalit"}
+                      </span>
+                      <ChevronDown className={`h-4 w-4 text-slate-300 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+                    </span>
+                  </button>
+
+                  {isOpen && (
+                    <div id={`${section.id}-content`}>
+                      {section.rows.map((row) => {
+                        const Icon = row.icon;
+                        return (
+                          <div key={row.id} className="grid grid-cols-1 border-b border-slate-100 last:border-b-0 xl:[grid-template-columns:minmax(220px,.68fr)_repeat(3,minmax(280px,1fr))]">
+                            <div className="border-b border-slate-100 bg-slate-50/55 px-5 py-5 xl:border-b-0 xl:border-r">
+                              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-violet-100 bg-white text-violet-600 shadow-sm"><Icon className="h-4.5 w-4.5" /></span>
+                              <h2 className="mt-3 text-base font-black leading-5 text-slate-950">{row.title}</h2>
+                              <p className="mt-2 text-xs font-medium leading-5 text-slate-600">{row.description}</p>
+                              <VerdictCard verdict={row.verdict} />
+                              {row.differences && (
+                                <DifferenceSummary differences={row.differences} sharedPoints={row.sharedPoints} />
+                              )}
+                            </div>
+                            <ProductCell value={row.cpp} otherValues={[row.koop, row.axa]} tone="cpp" />
+                            <ProductCell value={row.koop} otherValues={[row.cpp, row.axa]} tone="koop" />
+                            <ProductCell value={row.axa} otherValues={[row.cpp, row.koop]} tone="axa" />
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-                  <div className="grid grid-cols-1 border-b border-slate-100 last:border-b-0 xl:[grid-template-columns:minmax(220px,.68fr)_repeat(3,minmax(280px,1fr))]">
-                    <div className="border-b border-slate-100 bg-slate-50/55 px-5 py-5 xl:border-b-0 xl:border-r">
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-violet-100 bg-white text-violet-600 shadow-sm"><Icon className="h-4.5 w-4.5" /></span>
-                      <h2 className="mt-3 text-base font-black leading-5 text-slate-950">{row.title}</h2>
-                      <p className="mt-2 text-xs font-medium leading-5 text-slate-600">{row.description}</p>
-                      <VerdictCard verdict={row.verdict} />
-                      {row.differences && (
-                        <DifferenceSummary differences={row.differences} sharedPoints={row.sharedPoints} />
-                      )}
-                    </div>
-                    <ProductCell value={row.cpp} otherValues={[row.koop, row.axa]} tone="cpp" />
-                    <ProductCell value={row.koop} otherValues={[row.cpp, row.axa]} tone="koop" />
-                    <ProductCell value={row.axa} otherValues={[row.cpp, row.koop]} tone="axa" />
-                  </div>
-                </div>
+                </section>
               );
             })}
           </div>

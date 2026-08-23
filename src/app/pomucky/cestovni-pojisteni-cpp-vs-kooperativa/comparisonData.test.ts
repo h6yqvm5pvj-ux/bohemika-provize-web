@@ -182,6 +182,18 @@ describe("travel insurance comparison data", () => {
     }
   });
 
+  it("keeps the requested advisory section order", () => {
+    const sectionOrder = [
+      ...new Set(getRows("excelent").map((row) => row.section)),
+    ];
+
+    expect(sectionOrder.slice(0, 3)).toEqual([
+      "Léčebné výlohy",
+      "Odpovědnost",
+      "Obecné informace",
+    ]);
+  });
+
   it("changes AXA core limits with the selected variant", () => {
     const expected = {
       reference: { treatment: 2_500_000, rescue: 2_500_000, teeth: 6_000, baggage: 0, accident: 0 },
