@@ -17,6 +17,7 @@ import {
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
+import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
   isAutoProduct,
   isPropertyProduct,
@@ -2344,13 +2345,19 @@ const buildNeonRefreshStatementBaseUpdate = ({
     durationYears,
   });
   if (!result) return null;
+  const comparableResult = applyTipContractAdjustmentToCommissionResult({
+    product: productKey,
+    items: result.items,
+    total: result.total,
+    tipsterPercent: contract.tipContractTipsterPercent,
+  });
 
   return {
     statementAnnualPremiumBase,
     statementMonthlyPremiumBase,
     coefficientSet,
-    items: result.items,
-    total: result.total,
+    items: comparableResult.items,
+    total: comparableResult.total,
     managerOverrides: recomputeManagerOverridesForCoefficientSet({
       contract,
       adviserPosition: position,
@@ -2694,14 +2701,20 @@ const buildAutoInitialCommissionBaseUpdate = ({
     durationYears,
   });
   if (!result) return null;
+  const comparableResult = applyTipContractAdjustmentToCommissionResult({
+    product: productKey,
+    items: result.items,
+    total: result.total,
+    tipsterPercent: contract.tipContractTipsterPercent,
+  });
 
   return {
     statementAnnualPremiumBase,
     statementPaymentPremiumBase,
     statementHistoryEntry: initialEntry,
     coefficientSet,
-    items: result.items,
-    total: result.total,
+    items: comparableResult.items,
+    total: comparableResult.total,
     managerOverrides: recomputeManagerOverridesForCoefficientSet({
       contract,
       adviserPosition: position,
@@ -2884,6 +2897,12 @@ const detectCoefficientSetOverrideFromPayoutRows = (
         durationYears: rawDurationYears,
       });
       if (!result) return false;
+      const comparableResult = applyTipContractAdjustmentToCommissionResult({
+        product: productKey,
+        items: result.items,
+        total: result.total,
+        tipsterPercent: contract.tipContractTipsterPercent,
+      });
       const coefficientSignedDateIso = signedDateForCoefficientSetOverride({
         product: productKey,
         contractSignedDateIso: signedDateIso,
@@ -2891,7 +2910,7 @@ const detectCoefficientSetOverrideFromPayoutRows = (
       });
       const expected = expectedAmountFromItemsForCoefficientRow({
         productKey,
-        items: result.items,
+        items: comparableResult.items,
         row,
         frequencyRaw,
         position,
@@ -2919,6 +2938,12 @@ const detectCoefficientSetOverrideFromPayoutRows = (
     durationYears: rawDurationYears,
   });
   if (!result) return null;
+  const comparableResult = applyTipContractAdjustmentToCommissionResult({
+    product: productKey,
+    items: result.items,
+    total: result.total,
+    tipsterPercent: contract.tipContractTipsterPercent,
+  });
   const managerOverrides = recomputeManagerOverridesForCoefficientSet({
     contract,
     adviserPosition: position,
@@ -2932,8 +2957,8 @@ const detectCoefficientSetOverrideFromPayoutRows = (
 
   return {
     coefficientSet,
-    items: result.items,
-    total: Math.round(result.total * 100) / 100,
+    items: comparableResult.items,
+    total: comparableResult.total,
     managerOverrides,
     reason: `statement_matched_${coefficientSet}_coefficients`,
   };

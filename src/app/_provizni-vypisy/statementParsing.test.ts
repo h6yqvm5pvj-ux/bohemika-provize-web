@@ -11,6 +11,7 @@ import {
   monthKeyFromStatementPeriod,
   normalizeContractNumberForMatch,
   parseLocalDate,
+  resolveStatementPremiumBasePeriod,
   resolveStatementProduct,
 } from "./statementParsing";
 import { createStatementProductMappingIndex } from "./statementProductMap";
@@ -105,10 +106,13 @@ describe("commission statement parsing helpers", () => {
     expect(resolveStatementProduct("MAX_CIZIN_TEST")).toMatchObject({
       category: "foreigners",
     });
-    expect(resolveStatementProduct("SOBP_AU_Z")).toMatchObject({
-      productKey: "csobAuto",
-      category: "auto",
-    });
+    for (const code of ["ČSOBP_AU_Z", "CSOBP_AU_Z", "SOBP_AU_Z"]) {
+      expect(resolveStatementProduct(code)).toMatchObject({
+        productKey: "csobAuto",
+        category: "auto",
+        usesAnnualPremiumBase: true,
+      });
+    }
     expect(resolveStatementProduct("KOO_PRANI")).toMatchObject({
       category: "life",
     });
@@ -138,6 +142,61 @@ describe("commission statement parsing helpers", () => {
     });
     expect(isLifeSplitProductCode("CPP_NRF_LF", mapping)).toBe(false);
     expect(isInvestmentSectionProductCode("CPP_NRF_LF", mapping)).toBe(true);
+  });
+
+  it("resolves ČSOB Auto statement bases as annual without multiplying them again", () => {
+    expect(
+      resolveStatementPremiumBasePeriod({
+        product: "CSOBP_AU_Z",
+        statementBase: 10_436,
+        systemPaymentBase: 2_609,
+        systemFrequency: "quarterly",
+      })
+    ).toBe("annual");
+  });
+
+  it("infers annual versus payment bases for auto products with automatic rules", () => {
+    expect(
+      resolveStatementPremiumBasePeriod({
+        product: "CPP_ACPIV",
+        statementBase: 12_000,
+        systemPaymentBase: 3_000,
+        systemFrequency: "quarterly",
+      })
+    ).toBe("annual");
+    expect(
+      resolveStatementPremiumBasePeriod({
+        product: "CPP_ACPIV",
+        statementBase: 3_000,
+        systemPaymentBase: 3_000,
+        systemFrequency: "quarterly",
+      })
+    ).toBe("payment");
+  });
+
+  it("keeps an explicit statement-base override authoritative", () => {
+    const mapping = createStatementProductMappingIndex([
+      {
+        code: "CSOBP_AU_Z",
+        label: "ČSOB Auto",
+        productKey: "csobAuto",
+        category: "auto",
+        baseRule: "statement",
+        isLifeSplit: false,
+        isInvestmentSection: false,
+        note: null,
+      },
+    ]);
+
+    expect(
+      resolveStatementPremiumBasePeriod({
+        product: "CSOBP_AU_Z",
+        statementBase: 10_436,
+        systemPaymentBase: 2_609,
+        systemFrequency: "quarterly",
+        mappingIndex: mapping,
+      })
+    ).toBe("payment");
   });
 
   it("classifies life split commission codes including role split variants", () => {

@@ -198,6 +198,53 @@ const paymentsPerYearForFrequency = (frequency: string | null | undefined): numb
   }
 };
 
+type StatementPremiumBasePeriod = "annual" | "payment";
+
+const resolveStatementPremiumBasePeriod = ({
+  product,
+  statementBase,
+  systemPaymentBase,
+  systemFrequency,
+  fallbackPeriod,
+  mappingIndex,
+}: {
+  product: string;
+  statementBase: number;
+  systemPaymentBase: number;
+  systemFrequency: string | null | undefined;
+  fallbackPeriod?: StatementPremiumBasePeriod;
+  mappingIndex?: StatementProductMappingIndex | null;
+}): StatementPremiumBasePeriod => {
+  const resolvedMapping = statementProductMappingIndexFromInput(mappingIndex);
+  const rawCode = normalizeProductCode(product) || "NEZNAMY_PRODUKT";
+  const configuredProduct = resolvedMapping.products[rawCode];
+  const productMeta = resolveStatementProduct(product, resolvedMapping);
+
+  if (configuredProduct?.baseRule === "annual") return "annual";
+  if (configuredProduct?.baseRule === "statement") return "payment";
+
+  const fallback =
+    fallbackPeriod ?? (productMeta.usesAnnualPremiumBase ? "annual" : "payment");
+  if (productMeta.category !== "auto") return fallback;
+
+  const base = Number(statementBase);
+  const paymentBase = Number(systemPaymentBase);
+  const paymentsPerYear = paymentsPerYearForFrequency(systemFrequency);
+  if (
+    !Number.isFinite(base) ||
+    base <= 0 ||
+    !Number.isFinite(paymentBase) ||
+    paymentBase <= 0 ||
+    paymentsPerYear <= 1
+  ) {
+    return fallback;
+  }
+
+  const paymentDifference = Math.abs(base - paymentBase);
+  const annualDifference = Math.abs(base - paymentBase * paymentsPerYear);
+  return annualDifference <= paymentDifference ? "annual" : "payment";
+};
+
 const paymentFrequencyLabel = (frequency: string | null | undefined): string => {
   switch (normalizeCommissionTitle(frequency)) {
     case "monthly":
@@ -1440,6 +1487,7 @@ export {
   readStatementFile,
   resetActiveStatementProductMapping,
   resolveStatementProduct,
+  resolveStatementPremiumBasePeriod,
   setActiveStatementProductMapping,
   statementCorrectionSortValue,
   statementProductCategoryLabel,

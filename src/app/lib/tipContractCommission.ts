@@ -130,3 +130,30 @@ export const applyTipContractAdjustmentToCommissionItems = ({
     netBase,
   };
 };
+
+export const applyTipContractAdjustmentToCommissionResult = ({
+  product,
+  items,
+  total,
+  tipsterPercent,
+}: {
+  product: Product | null | undefined;
+  items: CommissionResultItemDTO[];
+  total: number;
+  tipsterPercent: unknown;
+}): { items: CommissionResultItemDTO[]; total: number } => {
+  const percent = Number(tipsterPercent);
+  if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+    return { items, total };
+  }
+
+  const adjusted = applyTipContractAdjustmentToCommissionItems({
+    product,
+    items,
+    tipsterPercent: percent,
+  });
+  return {
+    items: adjusted.items,
+    total: roundToCents(Math.max(0, total - adjusted.tipsterAmount)),
+  };
+};

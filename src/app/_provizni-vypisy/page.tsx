@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 
 import { isAutoProduct } from "@/app/lib/productCatalog";
+import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
   type CommissionMode,
   type CommissionCoefficientSet,
@@ -257,6 +258,7 @@ import {
   paymentsPerYearForFrequency,
   productLabelFromKey,
   readStatementFile,
+  resolveStatementPremiumBasePeriod,
   resolveStatementProduct,
   setActiveStatementProductMapping,
   statementCorrectionSortValue,
@@ -2263,7 +2265,13 @@ const lifeCoefficientOverrideInfo = (
         durationYears: rawDurationYears,
       });
       if (!result) return false;
-      const expected = expectedNeonAmountFromItems(result.items, row.type);
+      const comparableResult = applyTipContractAdjustmentToCommissionResult({
+        product: productKey,
+        items: result.items,
+        total: result.total,
+        tipsterPercent: systemContract.tipContractTipsterPercent,
+      });
+      const expected = expectedNeonAmountFromItems(comparableResult.items, row.type);
       return Math.abs(row.commission - expected) <= COMMISSION_AMOUNT_TOLERANCE;
     });
   });
@@ -2283,12 +2291,18 @@ const lifeCoefficientOverrideInfo = (
     durationYears: rawDurationYears,
   });
   if (!result) return null;
+  const comparableResult = applyTipContractAdjustmentToCommissionResult({
+    product: productKey,
+    items: result.items,
+    total: result.total,
+    tipsterPercent: systemContract.tipContractTipsterPercent,
+  });
 
   return {
     coefficientSet,
     currentSet,
-    items: result.items,
-    total: result.total,
+    items: comparableResult.items,
+    total: comparableResult.total,
   };
 };
 
@@ -2364,6 +2378,12 @@ const autoCoefficientOverrideInfo = (
         durationYears: rawDurationYears,
       });
       if (!result) return false;
+      const comparableResult = applyTipContractAdjustmentToCommissionResult({
+        product: productKey,
+        items: result.items,
+        total: result.total,
+        tipsterPercent: systemContract.tipContractTipsterPercent,
+      });
       const coefficientSignedDateIso = signedDateForCoefficientSetOverride({
         product: productKey,
         contractSignedDateIso: signedDateIso,
@@ -2376,7 +2396,12 @@ const autoCoefficientOverrideInfo = (
           coefficientSignedDateIso,
           row
         ) ??
-        expectedAutoAmountFromItems(result.items, row.type, row.commission, frequencyRaw);
+        expectedAutoAmountFromItems(
+          comparableResult.items,
+          row.type,
+          row.commission,
+          frequencyRaw
+        );
       return Math.abs(row.commission - expected) <= COMMISSION_AMOUNT_TOLERANCE;
     })
   );
@@ -2396,12 +2421,18 @@ const autoCoefficientOverrideInfo = (
     durationYears: rawDurationYears,
   });
   if (!result) return null;
+  const comparableResult = applyTipContractAdjustmentToCommissionResult({
+    product: productKey,
+    items: result.items,
+    total: result.total,
+    tipsterPercent: systemContract.tipContractTipsterPercent,
+  });
 
   return {
     coefficientSet,
     currentSet,
-    items: result.items,
-    total: result.total,
+    items: comparableResult.items,
+    total: comparableResult.total,
   };
 };
 
@@ -2521,26 +2552,7 @@ const autoPremiumBaseForMismatch = (
   systemContract: MatchedSystemContract | null
 ): { base: number; period: "annual" | "payment" } | null => {
   const rowsWithBase = contract.rows.filter((row) => row.base > 0);
-  const inferPeriod = (
-    base: number,
-    fallback: "annual" | "payment"
-  ): "annual" | "payment" => {
-    const systemPaymentAmount = systemCurrentPremiumPaymentBase(systemContract);
-    if (
-      base <= 0 ||
-      !Number.isFinite(systemPaymentAmount) ||
-      systemPaymentAmount <= 0
-    ) {
-      return fallback;
-    }
-
-    const paymentsPerYear = paymentsPerYearForFrequency(systemContract?.frequencyRaw);
-    if (paymentsPerYear <= 1) return fallback;
-
-    const paymentDifference = Math.abs(base - systemPaymentAmount);
-    const annualDifference = Math.abs(base - systemPaymentAmount * paymentsPerYear);
-    return paymentDifference <= annualDifference ? "payment" : "annual";
-  };
+  const systemPaymentAmount = systemCurrentPremiumPaymentBase(systemContract);
 
   const subsequentRow = rowsWithBase.find(
     (row) => classifyGeneralCommissionCode(row.product, row.type).kind === "subsequent"
@@ -2548,7 +2560,13 @@ const autoPremiumBaseForMismatch = (
   if (subsequentRow) {
     return {
       base: subsequentRow.base,
-      period: inferPeriod(subsequentRow.base, "payment"),
+      period: resolveStatementPremiumBasePeriod({
+        product: subsequentRow.product,
+        statementBase: subsequentRow.base,
+        systemPaymentBase: systemPaymentAmount,
+        systemFrequency: systemContract?.frequencyRaw,
+        fallbackPeriod: "payment",
+      }),
     };
   }
 
@@ -2558,33 +2576,17 @@ const autoPremiumBaseForMismatch = (
   if (closingRow) {
     return {
       base: closingRow.base,
-      period: inferPeriod(closingRow.base, "annual"),
+      period: resolveStatementPremiumBasePeriod({
+        product: closingRow.product,
+        statementBase: closingRow.base,
+        systemPaymentBase: systemPaymentAmount,
+        systemFrequency: systemContract?.frequencyRaw,
+        fallbackPeriod: "annual",
+      }),
     };
   }
 
   return null;
-};
-
-const statementBasePeriodClosestToSystem = (
-  statementBase: number,
-  systemContract: MatchedSystemContract | null,
-  fallback: "annual" | "payment"
-): "annual" | "payment" => {
-  const systemPaymentAmount = systemCommissionPaymentBase(systemContract);
-  if (
-    statementBase <= 0 ||
-    !Number.isFinite(systemPaymentAmount) ||
-    systemPaymentAmount <= 0
-  ) {
-    return fallback;
-  }
-
-  const paymentsPerYear = paymentsPerYearForFrequency(systemContract?.frequencyRaw);
-  if (paymentsPerYear <= 1) return fallback;
-
-  const paymentDifference = Math.abs(statementBase - systemPaymentAmount);
-  const annualDifference = Math.abs(statementBase - systemPaymentAmount * paymentsPerYear);
-  return annualDifference <= paymentDifference ? "annual" : "payment";
 };
 
 const otherProductPremiumBaseForComparison = (
@@ -2608,11 +2610,13 @@ const otherProductPremiumBaseForComparison = (
   return prioritizedRow
     ? {
         base: prioritizedRow.base,
-        period: statementBasePeriodClosestToSystem(
-          prioritizedRow.base,
-          systemContract,
-          "payment"
-        ),
+        period: resolveStatementPremiumBasePeriod({
+          product: prioritizedRow.product,
+          statementBase: prioritizedRow.base,
+          systemPaymentBase: systemCommissionPaymentBase(systemContract),
+          systemFrequency: systemContract?.frequencyRaw,
+          fallbackPeriod: "payment",
+        }),
       }
     : null;
 };
@@ -3361,9 +3365,15 @@ const expectedAutoAmountForStatementRowBase = (
     durationYears,
   });
   if (!result) return null;
+  const comparableResult = applyTipContractAdjustmentToCommissionResult({
+    product: productKey,
+    items: result.items,
+    total: result.total,
+    tipsterPercent: systemContract.tipContractTipsterPercent,
+  });
 
   const expected = expectedAutoAmountFromItems(
-    result.items,
+    comparableResult.items,
     row.type,
     row.commission,
     frequencyRaw
@@ -4093,6 +4103,17 @@ const expectedManagerAmountFromItems = (
   );
 };
 
+const managerCommissionStatementBasePeriod = (
+  row: ManagerCommissionRow,
+  systemContract: MatchedSystemContract | null
+): "annual" | "payment" =>
+  resolveStatementPremiumBasePeriod({
+    product: row.product,
+    statementBase: row.base,
+    systemPaymentBase: systemCommissionPaymentBase(systemContract),
+    systemFrequency: systemContract?.frequencyRaw,
+  });
+
 const managerCommissionPremiumBaseMismatch = (
   row: ManagerCommissionRow,
   systemContract: MatchedSystemContract | null
@@ -4106,25 +4127,30 @@ const managerCommissionPremiumBaseMismatch = (
     return null;
   }
 
-  const product = resolveStatementProduct(row.product);
-  if (product.usesAnnualPremiumBase) {
-    const mismatch = annualPremiumBaseMismatch(statementBase, systemContract);
-    if (!mismatch) return null;
-    return {
-      statementLabel: `${formatWholeMoney(mismatch.statementAnnualPremium)} Kč ročně`,
-      systemLabel: `${formatWholeMoney(mismatch.systemAnnualPremium)} Kč ročně`,
-      differenceLabel: `${formatWholeMoney(mismatch.difference)} Kč ročně`,
-    };
-  }
-
-  const mismatch = premiumBaseComparison(statementBase, systemContract, "payment");
+  const statementBasePeriod = managerCommissionStatementBasePeriod(row, systemContract);
+  const mismatch = premiumBaseComparison(
+    statementBase,
+    systemContract,
+    statementBasePeriod
+  );
   if (!mismatch) return null;
+  const comparableDifference =
+    statementBasePeriod === "annual" ? mismatch.annualDifference : mismatch.difference;
   if (
-    Math.abs(mismatch.difference) <= ANNUAL_PREMIUM_TOLERANCE ||
-    Math.round(mismatch.difference) === 0
+    Math.abs(comparableDifference) <= ANNUAL_PREMIUM_TOLERANCE ||
+    Math.round(comparableDifference) === 0
   ) {
     return null;
   }
+
+  if (statementBasePeriod === "annual") {
+    return {
+      statementLabel: `${formatWholeMoney(mismatch.statementAnnualPremiumBase)} Kč ročně`,
+      systemLabel: `${formatWholeMoney(mismatch.systemAnnualPremiumBase)} Kč ročně`,
+      differenceLabel: `${formatWholeMoney(mismatch.annualDifference)} Kč ročně`,
+    };
+  }
+
   return {
     statementLabel: `${formatWholeMoney(mismatch.statementPremiumBase)} Kč`,
     systemLabel: `${formatWholeMoney(mismatch.systemPremiumBase)} Kč`,
@@ -4141,11 +4167,10 @@ const managerCommissionBaseComparison = (
     return null;
   }
 
-  const product = resolveStatementProduct(row.product);
   const comparison = premiumBaseComparison(
     statementBase,
     systemContract,
-    product.usesAnnualPremiumBase ? "annual" : "payment"
+    managerCommissionStatementBasePeriod(row, systemContract)
   );
   if (!comparison) return null;
 
