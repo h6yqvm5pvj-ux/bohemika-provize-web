@@ -245,6 +245,14 @@ const resolveStatementPremiumBasePeriod = ({
   return annualDifference <= paymentDifference ? "annual" : "payment";
 };
 
+const usesIndependentStatementCommissionBase = (
+  product: string | null | undefined,
+  mappingIndex?: StatementProductMappingIndex | null
+): boolean => {
+  const productKey = resolveStatementProduct(product ?? "", mappingIndex).productKey;
+  return productKey === "pillowmajetek";
+};
+
 const paymentFrequencyLabel = (frequency: string | null | undefined): string => {
   switch (normalizeCommissionTitle(frequency)) {
     case "monthly":
@@ -1493,4 +1501,5 @@ export {
   statementProductCategoryLabel,
   toDateInputValue,
   usesB36CodeForProduct,
+  usesIndependentStatementCommissionBase,
 };

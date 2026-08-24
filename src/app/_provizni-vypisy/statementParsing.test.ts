@@ -13,6 +13,7 @@ import {
   parseLocalDate,
   resolveStatementPremiumBasePeriod,
   resolveStatementProduct,
+  usesIndependentStatementCommissionBase,
 } from "./statementParsing";
 import { createStatementProductMappingIndex } from "./statementProductMap";
 
@@ -72,6 +73,12 @@ describe("commission statement parsing helpers", () => {
     expect(resolveStatementProduct("CPP_ZAMEX")).toMatchObject({
       productKey: "zamex",
       category: "property",
+    });
+    expect(resolveStatementProduct("PIL_MAJ")).toMatchObject({
+      label: "Pillow Majetek",
+      productKey: "pillowmajetek",
+      category: "property",
+      usesAnnualPremiumBase: true,
     });
     expect(resolveStatementProduct("MAX_DOM3")).toMatchObject({
       productKey: "maxdomov",
@@ -153,6 +160,19 @@ describe("commission statement parsing helpers", () => {
         systemFrequency: "quarterly",
       })
     ).toBe("annual");
+  });
+
+  it("treats the Pillow Majetek statement base as an independent annual commission base", () => {
+    expect(
+      resolveStatementPremiumBasePeriod({
+        product: "PIL_MAJ",
+        statementBase: 3_456,
+        systemPaymentBase: 879,
+        systemFrequency: "quarterly",
+      })
+    ).toBe("annual");
+    expect(usesIndependentStatementCommissionBase("PIL_MAJ")).toBe(true);
+    expect(usesIndependentStatementCommissionBase("CPP_DOMEX+")).toBe(false);
   });
 
   it("infers annual versus payment bases for auto products with automatic rules", () => {

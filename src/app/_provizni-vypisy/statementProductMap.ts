@@ -284,6 +284,13 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
   }),
   defaultEntry({ code: "CPP_HAFAN", productKey: "cpphafan" }),
   defaultEntry({
+    code: "PIL_MAJ",
+    productKey: "pillowmajetek",
+    label: "Pillow Majetek",
+    category: "property",
+    baseRule: "annual",
+  }),
+  defaultEntry({
     code: "CPP_KP_III",
     label: "ČPP KOMPLEX",
     category: "business",

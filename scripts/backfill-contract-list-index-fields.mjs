@@ -2,13 +2,21 @@
 
 import nextEnv from "@next/env";
 import { createJiti } from "jiti";
+import { fileURLToPath } from "node:url";
 
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 
-const jiti = createJiti(import.meta.url);
+const jiti = createJiti(import.meta.url, {
+  alias: {
+    "@": fileURLToPath(new URL("../src", import.meta.url)),
+  },
+});
 const { adminDb } = jiti("../src/lib/server/firebaseAdmin.ts");
-const { contractListIndexFieldsForContract } = jiti(
+const {
+  contractListIndexFieldsForContract,
+  contractSearchIndexFieldsForContract,
+} = jiti(
   "../src/app/api/contracts/_lib/contractsApi.listFilters.ts"
 );
 
@@ -28,13 +36,23 @@ const parseArgValue = (key, fallback = null) => {
 const normalizeEmail = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
-const valuesEqual = (left, right) => (left ?? null) === (right ?? null);
+const valuesEqual = (left, right) => {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) return false;
+    return (
+      left.length === right.length &&
+      left.every((value, index) => value === right[index])
+    );
+  }
+  return (left ?? null) === (right ?? null);
+};
 
 const buildPatch = ({ ownerEmail, data }) => {
   const expected = {
     userEmail: ownerEmail,
     paid: data?.paid === true,
     ...contractListIndexFieldsForContract(data ?? {}),
+    ...contractSearchIndexFieldsForContract(data ?? {}),
   };
   const patch = {};
 

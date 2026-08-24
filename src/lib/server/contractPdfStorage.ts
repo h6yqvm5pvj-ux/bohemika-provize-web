@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { Readable } from "node:stream";
 
 import { getStorage } from "firebase-admin/storage";
 
@@ -21,6 +22,11 @@ export type PublicContractPdfAttachment = Omit<
   "bucketName" | "storagePath"
 > & {
   hasFile: true;
+};
+
+export type ContractPdfAttachmentReadStream = {
+  stream: Readable;
+  sizeBytes: number;
 };
 
 const normalizeText = (value: unknown): string =>
@@ -328,6 +334,37 @@ export async function downloadContractPdfAttachment(
         .file(attachment.storagePath)
         .download();
       return bytes;
+    } catch (error) {
+      lastError = error;
+      if (!isStorageNotFoundError(error)) throw error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("PDF nebylo nalezeno.");
+}
+
+export async function createContractPdfAttachmentReadStream(
+  attachment: StoredContractPdfAttachment
+): Promise<ContractPdfAttachmentReadStream> {
+  const bucketCandidates = resolveStorageBucketCandidates(attachment.bucketName);
+  if (!bucketCandidates.length) {
+    throw new Error("Storage bucket není nakonfigurován.");
+  }
+
+  let lastError: unknown = null;
+  for (const bucketName of bucketCandidates) {
+    try {
+      const file = getStorage().bucket(bucketName).file(attachment.storagePath);
+      const [metadata] = await file.getMetadata();
+      const metadataSize = Number(metadata.size);
+
+      return {
+        stream: file.createReadStream(),
+        sizeBytes:
+          Number.isFinite(metadataSize) && metadataSize > 0
+            ? Math.floor(metadataSize)
+            : attachment.sizeBytes,
+      };
     } catch (error) {
       lastError = error;
       if (!isStorageNotFoundError(error)) throw error;

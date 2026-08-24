@@ -601,6 +601,7 @@ export default function OnlineCardPublicClient({
           onScheduleMeeting={openModal}
           goldPageHref={`/vizitka/${slug}/zlato`}
           lifeInsurancePageHref={`/vizitka/${slug}/zivotni-pojisteni`}
+          vehicleInsurancePageHref={`/vizitka/${slug}/pojisteni-vozidla`}
         />
         <OnlineCardTestimonials
           slug={slug}

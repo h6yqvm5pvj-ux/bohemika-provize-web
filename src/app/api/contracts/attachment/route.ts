@@ -1,3 +1,5 @@
+import { Readable } from "node:stream";
+
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -6,8 +8,8 @@ import { adminRoleAtLeast } from "@/lib/adminAccess";
 import {
   buildContractPdfStoredFileName,
   contractPdfContentDisposition,
+  createContractPdfAttachmentReadStream,
   deleteContractPdfAttachment,
-  downloadContractPdfAttachment,
   isStorageNotFoundError,
   normalizeStoredContractPdfAttachment,
   toPublicContractPdfAttachment,
@@ -226,9 +228,9 @@ export async function GET(req: NextRequest) {
     return withRateLimit(jsonError("Smlouva nemá uloženou PDF přílohu.", 404));
   }
 
-  let bytes: Buffer;
+  let download: Awaited<ReturnType<typeof createContractPdfAttachmentReadStream>>;
   try {
-    bytes = await downloadContractPdfAttachment(attachment);
+    download = await createContractPdfAttachmentReadStream(attachment);
   } catch (error) {
     if (isStorageNotFoundError(error)) {
       return withRateLimit(jsonError("PDF příloha nebyla nalezena.", 404));
@@ -237,13 +239,17 @@ export async function GET(req: NextRequest) {
     return withRateLimit(jsonError("PDF přílohu se nepodařilo načíst.", 500));
   }
 
+  download.stream.once("error", (error) => {
+    console.error("GET /api/contracts/attachment: stream PDF selhal:", error);
+  });
+  const responseStream = Readable.toWeb(download.stream) as ReadableStream<Uint8Array>;
+
   const shouldDownload = req.nextUrl.searchParams.get("download") === "1";
   return withRateLimit(
-    new NextResponse(new Uint8Array(bytes), {
+    new NextResponse(responseStream, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Length": String(bytes.length),
         "Content-Disposition": contractPdfContentDisposition(
           attachment.originalName,
           shouldDownload

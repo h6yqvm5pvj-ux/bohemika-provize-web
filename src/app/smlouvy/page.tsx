@@ -1,7 +1,7 @@
 // src/app/smlouvy/page.tsx
 "use client";
 
-import { Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
@@ -183,6 +183,9 @@ const COMMISSION_AUDIT_CODE_DEFS: {
 ];
 
 const LIFE_PRODUCTS = new Set<Product>(LIFE_PRODUCTS_LIST);
+const CONTRACT_SEARCH_DEBOUNCE_MS = 280;
+const CONTRACT_SEARCH_CACHE_TTL_MS = 60_000;
+const CONTRACT_SEARCH_CACHE_MAX_ENTRIES = 24;
 const GOLD_PRODUCT: Product = "comfortcc";
 const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   neon: "Životní pojištění NEON",
@@ -539,6 +542,7 @@ function ContractsPageContent() {
   const [listViewModeReadyForEmail, setListViewModeReadyForEmail] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
+  const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
   const [showRefreshOnly, setShowRefreshOnly] = useState(false);
   const [showStornoOnly, setShowStornoOnly] = useState(false);
@@ -571,6 +575,9 @@ function ContractsPageContent() {
     useState<ContractDetailWindowState | null>(null);
   const contractsListRef = useRef<HTMLDivElement | null>(null);
   const searchProgressHideTimerRef = useRef<number | null>(null);
+  const searchResponseCacheRef = useRef(
+    new Map<string, { expiresAt: number; data: ContractsApiResponse }>()
+  );
   const [contractsColumns, setContractsColumns] = useState(1);
   const [contractsWindowMetrics, setContractsWindowMetrics] = useState({
     scrollY: 0,
@@ -581,12 +588,13 @@ function ContractsPageContent() {
   const shouldRestoreView = searchParams?.get("restore") === "1";
   const globalSearchParam = (searchParams?.get("globalSearch") ?? "").trim().slice(0, 120);
   const normalizedUserEmail = normalizeEmail(user?.email);
-  const deferredSearchText = useDeferredValue(searchText);
   const hasImmediateSearchQuery = normalizeSearchValue(searchText).length > 0;
-  const hasSearchQuery = normalizeSearchValue(deferredSearchText).length > 0;
+  const hasSearchQuery = normalizeSearchValue(debouncedSearchText).length > 0;
+  const searchDebouncePending = searchText !== debouncedSearchText;
   const canShowTeamToggle =
     isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
-  const anniversaryModeActive = filterMode === "anniversary" && !hasSearchQuery;
+  const anniversaryModeActive =
+    filterMode === "anniversary" && !hasImmediateSearchQuery;
   const selectedCategoryList = useMemo(
     () => Array.from(selectedCategories).sort(),
     [selectedCategories]
@@ -609,7 +617,25 @@ function ContractsPageContent() {
       setSearchText(globalSearchParam);
     }
   }, [globalSearchParam]);
+
+  useEffect(() => {
+    if (!hasImmediateSearchQuery) {
+      setDebouncedSearchText("");
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchText(searchText);
+    }, CONTRACT_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [searchText, hasImmediateSearchQuery]);
+
+  useEffect(() => {
+    searchResponseCacheRef.current.clear();
+  }, [user?.email]);
+
   const serverFilterActive =
+    hasImmediateSearchQuery ||
     hasSearchQuery ||
     anniversaryModeActive ||
     showUnpaidOnly ||
@@ -622,7 +648,7 @@ function ContractsPageContent() {
     (showTeam && canShowTeamToggle && selectedSubordinateList.length > 0);
   const activeListFilters = useMemo<ContractsListFilters>(
     () => ({
-      query: deferredSearchText.trim(),
+      query: debouncedSearchText.trim(),
       filterMode: anniversaryModeActive ? "anniversary" : "latest",
       showUnpaidOnly,
       showRefreshOnly,
@@ -635,7 +661,7 @@ function ContractsPageContent() {
       selectedSubordinates: selectedSubordinateList,
     }),
     [
-      deferredSearchText,
+      debouncedSearchText,
       anniversaryModeActive,
       showUnpaidOnly,
       showRefreshOnly,
@@ -665,11 +691,13 @@ function ContractsPageContent() {
       cursor,
       includeTeam,
       filters,
+      signal,
     }: {
       scope: "my" | "team";
       cursor?: string | null;
       includeTeam?: boolean;
       filters?: ContractsListFilters;
+      signal?: AbortSignal;
     }) => {
       if (!user) {
         throw new Error("Nejsi přihlášený.");
@@ -713,9 +741,25 @@ function ContractsPageContent() {
         }
       }
 
+      const searchCacheKey =
+        filters?.query.trim() && !cursor
+          ? `${normalizeEmail(user.email)}:${params.toString()}`
+          : null;
+      if (searchCacheKey) {
+        const cached = searchResponseCacheRef.current.get(searchCacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+          if (signal?.aborted) {
+            throw new DOMException("Request aborted", "AbortError");
+          }
+          return cached.data;
+        }
+        if (cached) searchResponseCacheRef.current.delete(searchCacheKey);
+      }
+
       const requestWithToken = async (token: string) =>
         fetch(`/api/contracts/list?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
+          signal,
         });
 
       let token: string;
@@ -735,7 +779,10 @@ function ContractsPageContent() {
       let res: Response;
       try {
         res = await requestWithToken(token);
-      } catch {
+      } catch (err) {
+        if ((err as { name?: string } | null)?.name === "AbortError") {
+          throw err;
+        }
         throw new Error(
           "Nepodařilo se spojit se serverem. Zkontroluj připojení a zkus to znovu."
         );
@@ -755,6 +802,19 @@ function ContractsPageContent() {
         );
       }
       if (!data) throw new Error("Nepodařilo se načíst smlouvy.");
+      if (searchCacheKey) {
+        searchResponseCacheRef.current.set(searchCacheKey, {
+          expiresAt: Date.now() + CONTRACT_SEARCH_CACHE_TTL_MS,
+          data,
+        });
+        while (
+          searchResponseCacheRef.current.size > CONTRACT_SEARCH_CACHE_MAX_ENTRIES
+        ) {
+          const oldestKey = searchResponseCacheRef.current.keys().next().value;
+          if (!oldestKey) break;
+          searchResponseCacheRef.current.delete(oldestKey);
+        }
+      }
       return data;
     },
     [user]
@@ -765,7 +825,8 @@ function ContractsPageContent() {
       startBefore: string | null,
       append: boolean,
       filters?: ContractsListFilters,
-      requestId?: number
+      requestId?: number,
+      signal?: AbortSignal
     ) => {
       if (!user?.email) {
         return { list: [] as ContractDoc[], oldest: null as Date | null, hasMore: false };
@@ -774,11 +835,15 @@ function ContractsPageContent() {
         scope: "my",
         cursor: startBefore,
         filters,
+        signal,
       });
       const list = (data.contracts as ContractDoc[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
 
+      if (signal?.aborted) {
+        return { list, oldest, hasMore };
+      }
       if (requestId != null && serverFilterRequestRef.current !== requestId) {
         return { list, oldest, hasMore };
       }
@@ -797,7 +862,8 @@ function ContractsPageContent() {
       startBefore: string | null,
       append: boolean,
       filters?: ContractsListFilters,
-      requestId?: number
+      requestId?: number,
+      signal?: AbortSignal
     ) => {
       const teamEmails = teamUsersRef.current.map((u) => u.email).filter(Boolean);
       if (teamEmails.length === 0) {
@@ -814,11 +880,15 @@ function ContractsPageContent() {
         scope: "team",
         cursor: startBefore,
         filters,
+        signal,
       });
       const list = (data.contracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
 
+      if (signal?.aborted) {
+        return { list, oldest, hasMore };
+      }
       if (requestId != null && serverFilterRequestRef.current !== requestId) {
         return { list, oldest, hasMore };
       }
@@ -1007,6 +1077,8 @@ function ContractsPageContent() {
   useEffect(() => {
     if (!user?.email) return;
 
+    if (searchDebouncePending) return;
+
     if (!serverFilterActive) {
       if (previousServerFilterActiveRef.current) {
         previousServerFilterActiveRef.current = false;
@@ -1019,6 +1091,7 @@ function ContractsPageContent() {
     const requestId = serverFilterRequestRef.current + 1;
     serverFilterRequestRef.current = requestId;
     let cancelled = false;
+    const controller = new AbortController();
     const includesCommissionAudit =
       activeListFilters.commissionAuditMode !== "off";
 
@@ -1033,11 +1106,24 @@ function ContractsPageContent() {
         const scope: "my" | "team" =
           showTeam && canShowTeamToggle ? "team" : "my";
         if (scope === "team") {
-          await fetchTeamPage(null, false, activeListFilters, requestId);
+          await fetchTeamPage(
+            null,
+            false,
+            activeListFilters,
+            requestId,
+            controller.signal
+          );
         } else {
-          await fetchMyPage(null, false, activeListFilters, requestId);
+          await fetchMyPage(
+            null,
+            false,
+            activeListFilters,
+            requestId,
+            controller.signal
+          );
         }
       } catch (e) {
+        if ((e as { name?: string } | null)?.name === "AbortError") return;
         if (cancelled || serverFilterRequestRef.current !== requestId) return;
         const msg = getErrorMessage(e, "Nepodařilo se načíst filtrované smlouvy.");
         if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
@@ -1059,9 +1145,11 @@ function ContractsPageContent() {
     void loadFiltered();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
     user?.email,
+    searchDebouncePending,
     serverFilterActive,
     activeListFilters,
     showTeam,
@@ -1081,6 +1169,7 @@ function ContractsPageContent() {
     if (typeof window === "undefined" || !user?.email) return;
 
     const triggerRefresh = () => {
+      searchResponseCacheRef.current.clear();
       void refreshContracts({ silent: true });
     };
 
@@ -1352,8 +1441,8 @@ function ContractsPageContent() {
   }, [showTeam, canShowTeamToggle, teamContracts, myContracts]);
 
   const filteredContracts = useMemo(() => {
-    const q = normalizeSearchValue(deferredSearchText);
-    const qContract = normalizeContractNumberForSearch(deferredSearchText);
+    const q = normalizeSearchValue(searchText);
+    const qContract = normalizeContractNumberForSearch(searchText);
     const anniversaryOnly = filterMode === "anniversary" && q.length === 0;
     let base = displayedContracts;
     const teamScopeActive = showTeam && canShowTeamToggle;
@@ -1466,7 +1555,7 @@ function ContractsPageContent() {
     showTeam,
     canShowTeamToggle,
     selectedSubordinates,
-    deferredSearchText,
+    searchText,
     showUnpaidOnly,
     showRefreshOnly,
     showStornoOnly,
@@ -1711,7 +1800,7 @@ function ContractsPageContent() {
   const isSearchProgressComplete =
     searchProgressVisible &&
     hasImmediateSearchQuery &&
-    searchText === deferredSearchText &&
+    searchText === debouncedSearchText &&
     !loading &&
     !loadingMore &&
     !isFilterPending;

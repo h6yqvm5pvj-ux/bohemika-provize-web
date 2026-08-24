@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 import type { ContractDoc, ContractListFilters } from "./contractsApi.types";
 import {
   buildContractListIndexedQueryClauses,
+  contractClientSearchKeys,
   contractListIndexFieldsForContract,
   contractListProductCategoryForProduct,
   contractMatchesListFilters,
   contractMatchesListSearch,
   contractMatchesRefreshFilter,
+  contractNumberSearchKeys,
+  contractSearchIndexFieldsForContract,
+  contractSearchLookupKeys,
   contractSortDate,
   hasContractListClientFilters,
   hasContractListFilters,
@@ -39,6 +43,33 @@ describe("contracts API list filters", () => {
   it("normalizes search text and contract numbers", () => {
     expect(normalizeSearchValue("  Žaneta  ")).toBe("zaneta");
     expect(normalizeContractNumberForSearch(" AB 12/34 ")).toBe("ab1234");
+  });
+
+  it("builds compact search keys for names and contract numbers", () => {
+    const clientKeys = contractClientSearchKeys("Petr Žluťoučký");
+    const numberKeys = contractNumberSearchKeys("AB 12/34");
+
+    expect(clientKeys).toContain("petr z");
+    expect(clientKeys).toContain("lut");
+    expect(clientKeys).toContain("zlutoucky");
+    expect(numberKeys).toContain("ab1234");
+    expect(numberKeys).toContain("123");
+    expect(contractSearchIndexFieldsForContract(contract())).toMatchObject({
+      clientSearchKeys: expect.arrayContaining(["novak"]),
+      contractNumberSearchKeys: expect.arrayContaining(["ab1234"]),
+    });
+  });
+
+  it("only uses the search index for queries with at least two characters", () => {
+    expect(contractSearchLookupKeys("x")).toBeNull();
+    expect(contractSearchLookupKeys(" Novák ")).toEqual({
+      client: "novak",
+      contractNumber: null,
+    });
+    expect(contractSearchLookupKeys("AB 12/34")).toEqual({
+      client: "ab 12/34",
+      contractNumber: "ab1234",
+    });
   });
 
   it("parses URL search params into bounded filters", () => {

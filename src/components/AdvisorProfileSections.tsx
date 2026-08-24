@@ -34,6 +34,7 @@ type AdvisorProfileSectionsProps = {
   connectToHero?: boolean;
   goldPageHref?: string;
   lifeInsurancePageHref?: string;
+  vehicleInsurancePageHref?: string;
 };
 
 const PARTNER_INSURERS: PartnerInsurer[] = [
@@ -156,6 +157,7 @@ export function AdvisorProfileSections({
   connectToHero = false,
   goldPageHref,
   lifeInsurancePageHref,
+  vehicleInsurancePageHref,
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
   const light = theme === "light";
@@ -220,6 +222,8 @@ export function AdvisorProfileSections({
             {ADVISOR_SERVICES.map((service, index) => {
               const servicePageHref = index === 0
                 ? lifeInsurancePageHref
+                : index === 2
+                  ? vehicleInsurancePageHref
                 : index === ADVISOR_SERVICES.length - 1
                   ? goldPageHref
                   : undefined;
@@ -237,7 +241,15 @@ export function AdvisorProfileSections({
                     window.location.assign(servicePageHref!);
                   }
                 } : undefined}
-                aria-label={index === 0 ? "Zjistit více o životním a úrazovém pojištění" : index === ADVISOR_SERVICES.length - 1 ? "Zjistit více o investičním zlatě a stříbru" : undefined}
+                aria-label={
+                  index === 0
+                    ? "Zjistit více o životním a úrazovém pojištění"
+                    : index === 2
+                      ? "Zjistit více o pojištění vozidel"
+                      : index === ADVISOR_SERVICES.length - 1
+                        ? "Zjistit více o investičním zlatě a stříbru"
+                        : undefined
+                }
                 className={`group inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-blue-50 sm:text-[15px] vizitka-anim-up ${
                   index >= ADVISOR_SERVICES.length - 2 ? "lg:translate-x-[calc(50%+0.375rem)]" : ""
                 } ${isDetailService ? "cursor-pointer rounded-xl outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-blue-200/80" : ""}`}

@@ -47,6 +47,7 @@ import {
   calculateCppAuto,
   calculateCsobAuto,
   calculateKooperativaAuto,
+  calculatePillowMajetek,
   calculatePillowAuto,
   calculateSlaviaFlotila,
   calculateUniqaAuto,
@@ -264,6 +265,7 @@ import {
   statementCorrectionSortValue,
   statementProductCategoryLabel,
   toDateInputValue,
+  usesIndependentStatementCommissionBase,
 } from "./statementParsing";
 import type { StatementProductMapEntry } from "./statementProductMap";
 import type {
@@ -2629,6 +2631,11 @@ const otherProductPremiumBaseComparisonForContract = (
   if (contractHasProductCategory(contract, "auto")) {
     return autoPremiumBaseComparisonForContract(contract, systemContract, statementPeriod);
   }
+  if (
+    contract.rows.some((row) => usesIndependentStatementCommissionBase(row.product))
+  ) {
+    return null;
+  }
 
   const statementBase = otherProductPremiumBaseForComparison(contract, systemContract);
   if (!statementBase) return null;
@@ -3702,6 +3709,39 @@ const rowsByGeneralKinds = (
     kinds.includes(classifyGeneralCommissionCode(row.product, row.type).kind)
   );
 
+const expectedAmountFromIndependentStatementBase = (
+  rows: CommissionRow[],
+  systemContract: MatchedSystemContract,
+  matcher: (title: string) => boolean
+): number | null => {
+  const position = systemContractPosition(systemContract);
+  if (!position || rows.length === 0) return null;
+
+  let hasExpectedAmount = false;
+  const expectedAmount = rows.reduce((sum, row) => {
+    if (!usesIndependentStatementCommissionBase(row.product)) return sum;
+    const annualBase = Number(row.base);
+    if (!Number.isFinite(annualBase) || annualBase <= 0) return sum;
+
+    const result = calculatePillowMajetek(annualBase, "annual", position);
+    const comparableResult = applyTipContractAdjustmentToCommissionResult({
+      product: "pillowmajetek",
+      items: result.items,
+      total: result.total,
+      tipsterPercent: systemContract.tipContractTipsterPercent,
+    });
+    const rowExpectedAmount = expectedClosestAmountFromItems(
+      comparableResult.items,
+      row.commission,
+      matcher
+    );
+    hasExpectedAmount = true;
+    return sum + rowExpectedAmount;
+  }, 0);
+
+  return hasExpectedAmount ? expectedAmount : null;
+};
+
 const otherProductContractHasOnlyTipRows = (contract: OtherProductContractPreview): boolean =>
   contract.rows.length > 0 &&
   contract.rows.some((row) => classifyGeneralCommissionCode(row.product, row.type).kind === "tip") &&
@@ -3901,11 +3941,12 @@ const buildOtherProductAmountComparisons = (
   const comparisons: CommissionAmountComparison[] = groups
     .map((group) => {
       const statementAmount = sumRows(group.rows);
-      const expectedPerPeriod = expectedClosestAmountFromItems(
-        items,
-        statementAmount,
-        group.matcher
-      );
+      const expectedPerPeriod =
+        expectedAmountFromIndependentStatementBase(
+          group.rows,
+          systemContract,
+          group.matcher
+        ) ?? expectedClosestAmountFromItems(items, statementAmount, group.matcher);
       const subsequentBundleInfo =
         group.key === "subsequent"
           ? subsequentPayoutBundleInfo({
@@ -4122,6 +4163,7 @@ const managerCommissionPremiumBaseMismatch = (
   systemLabel: string;
   differenceLabel: string;
 } | null => {
+  if (usesIndependentStatementCommissionBase(row.product)) return null;
   const statementBase = Number(row.base);
   if (!Number.isFinite(statementBase) || statementBase <= ANNUAL_PREMIUM_TOLERANCE) {
     return null;
@@ -4162,6 +4204,7 @@ const managerCommissionBaseComparison = (
   row: ManagerCommissionRow,
   systemContract: MatchedSystemContract | null
 ): PremiumBaseComparison | null => {
+  if (usesIndependentStatementCommissionBase(row.product)) return null;
   const statementBase = Number(row.base);
   if (!Number.isFinite(statementBase) || statementBase <= ANNUAL_PREMIUM_TOLERANCE) {
     return null;
@@ -4183,6 +4226,29 @@ const managerCommissionBaseComparison = (
     anniversaryDate: null,
     referenceDate: null,
   };
+};
+
+const expectedManagerAmountForStatementBase = (
+  row: ManagerCommissionRow,
+  systemContract: MatchedSystemContract,
+  expectedAmount: number
+): number => {
+  if (!usesIndependentStatementCommissionBase(row.product)) return expectedAmount;
+
+  const statementAnnualBase = Number(row.base);
+  const systemPaymentBase = systemCommissionPaymentBase(systemContract);
+  const systemAnnualBase =
+    systemPaymentBase * paymentsPerYearForFrequency(systemContract.frequencyRaw);
+  if (
+    !Number.isFinite(statementAnnualBase) ||
+    statementAnnualBase <= 0 ||
+    !Number.isFinite(systemAnnualBase) ||
+    systemAnnualBase <= 0
+  ) {
+    return expectedAmount;
+  }
+
+  return expectedAmount * (statementAnnualBase / systemAnnualBase);
 };
 
 const managerCommissionDifferenceReason = (
@@ -4241,7 +4307,11 @@ const buildManagerCommissionAmountComparison = (
   const items = override?.items ?? [];
   if (items.length === 0) return null;
 
-  const expectedAbsAmount = expectedManagerAmountFromItems(items, row);
+  const expectedAbsAmount = expectedManagerAmountForStatementBase(
+    row,
+    systemContract,
+    expectedManagerAmountFromItems(items, row)
+  );
   const expectedAmount = expectedAbsAmount;
   const status = comparisonStatus(
     row.commission,

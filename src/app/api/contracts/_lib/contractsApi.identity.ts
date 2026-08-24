@@ -18,6 +18,8 @@ const CREATE_REPLAY_IGNORED_FIELDS = new Set<string>([
   "total",
   "commissionMode",
   "refreshCommissionBase",
+  "clientSearchKeys",
+  "contractNumberSearchKeys",
   "tipContractTipsterName",
   "tipContractImmediateFirstYearGross",
   "tipContractImmediateFirstYearNet",

@@ -218,6 +218,8 @@ export type ContractDoc = {
   clientPhone?: string | null;
   clientAddress?: string | null;
   contractNumber?: string | null;
+  clientSearchKeys?: string[] | null;
+  contractNumberSearchKeys?: string[] | null;
   duplicateLookupKey?: string | null;
   maxxContractDetailUrl?: string | null;
   cppExtranetEntityTypeId?: string | number | null;

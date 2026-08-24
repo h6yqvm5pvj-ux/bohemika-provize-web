@@ -30,7 +30,10 @@ import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { isLifeProduct } from "@/app/lib/productCatalog";
+import {
+  isLifeProduct,
+  productInstitutionLogo,
+} from "@/app/lib/productCatalog";
 import {
   isAnnualSeparatedPeriodProduct,
   isPerPaymentSeparatedPeriodProduct,
@@ -1237,6 +1240,7 @@ export default function ContractDetailPage() {
     (contract?.frequencyRaw as PaymentFrequency | null | undefined) ??
     null;
   const prod = contract?.productKey as Product | undefined;
+  const institutionLogo = productInstitutionLogo(prod);
   const tipContractLifeProduct = isLifeProduct(prod ?? null);
   const tipContractBaseText = tipContractLifeProduct
     ? "Tipař má nárok pouze na podíl z provize A101."
@@ -4787,8 +4791,23 @@ export default function ContractDetailPage() {
           <div className="min-w-0">
             <div className={shellCardClass}>
             {/* HEADER */}
-            <header className="px-1 py-1">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <header className="relative isolate px-1 py-1">
+              {institutionLogo ? (
+                <div
+                  className="pointer-events-none absolute right-0 top-[-0.8rem] z-0 h-[120px] w-[230px] select-none overflow-hidden opacity-[0.075] mix-blend-multiply [mask-image:linear-gradient(to_left,black_58%,transparent_100%)] sm:right-1 sm:top-[-1.4rem] sm:h-[170px] sm:w-[420px]"
+                  aria-hidden="true"
+                >
+                  <Image
+                    src={institutionLogo}
+                    alt=""
+                    fill
+                    sizes="(min-width: 640px) 420px, 230px"
+                    className="object-contain object-right [filter:grayscale(1)_contrast(0.78)]"
+                  />
+                </div>
+              ) : null}
+
+              <div className="relative z-10 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div className="min-w-0">
                 {!isEmbedded && (
                   <Link
@@ -5542,7 +5561,7 @@ export default function ContractDetailPage() {
                           </dd>
                         </div>
                       )}
-                      {editMode ? (
+                      {editMode && (
                         <div className="flex justify-between gap-2">
                           <dt className={keyValueLabelClass}>Číslo smlouvy</dt>
                           <dd className={`${keyValueValueClass} w-40`}>
@@ -5555,18 +5574,7 @@ export default function ContractDetailPage() {
                             />
                           </dd>
                         </div>
-                      ) : (
-                        contract.contractNumber && (
-                          <div className="flex justify-between gap-2">
-                            <dt className={keyValueLabelClass}>
-                              Číslo smlouvy
-                            </dt>
-                            <dd className={keyValueValueClass}>
-                          {contract.contractNumber}
-                        </dd>
-                      </div>
-                    )
-                  )}
+                      )}
                 </dl>
               </div>
             </section>

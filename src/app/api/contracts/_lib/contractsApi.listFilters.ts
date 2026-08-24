@@ -104,6 +104,93 @@ export const normalizeContractNumberForSearch = (
   value?: string | null
 ): string => normalizeSearchValue(value).replace(/[^a-z0-9]/g, "");
 
+const CONTRACT_SEARCH_KEY_MIN_LENGTH = 2;
+const CONTRACT_SEARCH_TOKEN_MAX_LENGTH = 48;
+const CONTRACT_SEARCH_KEY_MAX_COUNT = 1_500;
+
+const addPrefixes = (target: Set<string>, value: string): void => {
+  for (
+    let end = CONTRACT_SEARCH_KEY_MIN_LENGTH;
+    end <= value.length && target.size < CONTRACT_SEARCH_KEY_MAX_COUNT;
+    end += 1
+  ) {
+    target.add(value.slice(0, end));
+  }
+};
+
+const addTokenSubstrings = (target: Set<string>, value: string): void => {
+  const bounded = value.slice(0, CONTRACT_SEARCH_TOKEN_MAX_LENGTH);
+  for (
+    let start = 0;
+    start <= bounded.length - CONTRACT_SEARCH_KEY_MIN_LENGTH &&
+    target.size < CONTRACT_SEARCH_KEY_MAX_COUNT;
+    start += 1
+  ) {
+    for (
+      let end = start + CONTRACT_SEARCH_KEY_MIN_LENGTH;
+      end <= bounded.length && target.size < CONTRACT_SEARCH_KEY_MAX_COUNT;
+      end += 1
+    ) {
+      target.add(bounded.slice(start, end));
+    }
+  }
+};
+
+export const contractClientSearchKeys = (
+  clientName?: string | null
+): string[] => {
+  const normalized = normalizeSearchValue(clientName).replace(/\s+/g, " ");
+  if (normalized.length < CONTRACT_SEARCH_KEY_MIN_LENGTH) return [];
+
+  const keys = new Set<string>();
+  addPrefixes(keys, normalized);
+  for (const token of normalized.match(/[a-z0-9]+/g) ?? []) {
+    addTokenSubstrings(keys, token);
+  }
+  return [...keys];
+};
+
+export const contractNumberSearchKeys = (
+  contractNumber?: string | null
+): string[] => {
+  const normalized = normalizeContractNumberForSearch(contractNumber).slice(
+    0,
+    CONTRACT_SEARCH_TOKEN_MAX_LENGTH
+  );
+  if (normalized.length < CONTRACT_SEARCH_KEY_MIN_LENGTH) return [];
+
+  const keys = new Set<string>();
+  addTokenSubstrings(keys, normalized);
+  return [...keys];
+};
+
+export const contractSearchIndexFieldsForContract = (
+  contract: Pick<ContractDoc, "clientName" | "contractNumber">
+): {
+  clientSearchKeys: string[];
+  contractNumberSearchKeys: string[];
+} => ({
+  clientSearchKeys: contractClientSearchKeys(contract.clientName),
+  contractNumberSearchKeys: contractNumberSearchKeys(contract.contractNumber),
+});
+
+export const contractSearchLookupKeys = (
+  query?: string | null
+): { client: string; contractNumber: string | null } | null => {
+  const client = normalizeSearchValue(query).replace(/\s+/g, " ");
+  if (client.length < CONTRACT_SEARCH_KEY_MIN_LENGTH) return null;
+  const contractNumber = normalizeContractNumberForSearch(query);
+  const looksLikeContractNumber = /\d/.test(contractNumber);
+  return {
+    client,
+    contractNumber:
+      looksLikeContractNumber &&
+      contractNumber.length >= CONTRACT_SEARCH_KEY_MIN_LENGTH
+        ? contractNumber
+        : null,
+  };
+};
+
 const parseCsvSet = <T extends string>(
   value: string | null,
   allowed: Set<T>

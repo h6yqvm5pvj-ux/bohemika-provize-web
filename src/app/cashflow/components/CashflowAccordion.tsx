@@ -106,10 +106,10 @@ export function CashflowAccordion({
                 <div className="flex shrink-0 items-end justify-end gap-2 sm:gap-3">
                   <div className="grid w-[min(44vw,174px)] grid-cols-1 gap-1 sm:max-w-[260px] sm:gap-2 md:w-full">
                     <dl className="px-1 text-right">
-                      <dt className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#c8aee4] sm:text-[10px] sm:tracking-[0.14em]">
+                      <dt className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#d9c1ef] sm:text-[12px] sm:tracking-[0.15em]">
                         Celkem
                       </dt>
-                      <dd className={`mt-0.5 whitespace-nowrap font-mono text-[1.18rem] font-semibold leading-none sm:mt-1 sm:text-[1.55rem] ${visual.amount}`}>
+                      <dd className="mt-1 whitespace-nowrap font-mono text-[1.35rem] font-bold leading-none tracking-[-0.025em] text-[#f0a5ff] [text-shadow:0_3px_18px_rgba(224,112,255,0.24)] sm:mt-1.5 sm:text-[2.05rem]">
                         {formatMoney(yearGroup.total)}
                       </dd>
                     </dl>

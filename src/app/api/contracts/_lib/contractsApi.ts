@@ -98,6 +98,8 @@ import {
   buildContractListIndexedQueryClauses,
   contractListIndexFieldsForContract,
   contractMatchesListFilters,
+  contractSearchIndexFieldsForContract,
+  contractSearchLookupKeys,
   contractSortDate,
   hasContractListClientFilters,
   hasContractListFilters,
@@ -603,8 +605,11 @@ const toContractResponseItem = (
   const signedDateIso = signedDate ? toIsoDay(signedDate) : null;
   const timelinePosition = resolveContractTimelinePosition(ownerContext, signedDateIso);
   const storedPosition = normalizePositionValue(data.position);
+  const publicData = { ...data };
+  delete publicData.clientSearchKeys;
+  delete publicData.contractNumberSearchKeys;
   return {
-    ...data,
+    ...publicData,
     contractPdfAttachment: toPublicContractPdfAttachment(
       (data as { contractPdfAttachment?: unknown }).contractPdfAttachment
     ),
@@ -3184,6 +3189,141 @@ async function fetchContractsForOwners(
     return itemKey < cursorKey;
   };
 
+  const searchLookup =
+    filters && cursor == null
+      ? contractSearchLookupKeys(filters.query)
+      : null;
+  if (searchLookup) {
+    const indexedCandidates = new Map<
+      string,
+      { doc: FirebaseFirestore.QueryDocumentSnapshot; ownerEmail: string }
+    >();
+    let indexedQueryFailed = false;
+    let indexedQueryTruncated = false;
+
+    for (let i = 0; i < owners.length; i += 10) {
+      const ownerChunk = owners.slice(i, i + 10);
+      const ownerResults = await Promise.all(
+        ownerChunk.map(async (ownerEmail) => {
+          try {
+            const entriesRef = db
+              .collection("users")
+              .doc(ownerEmail)
+              .collection("entries");
+            const queries = [
+              entriesRef
+                .where("clientSearchKeys", "array-contains", searchLookup.client)
+                .limit(pageLimit)
+                .get(),
+            ];
+            if (searchLookup.contractNumber) {
+              queries.push(
+                entriesRef
+                  .where(
+                    "contractNumberSearchKeys",
+                    "array-contains",
+                    searchLookup.contractNumber
+                  )
+                  .limit(pageLimit)
+                  .get()
+              );
+            }
+            return { ownerEmail, snaps: await Promise.all(queries) };
+          } catch (error) {
+            console.warn(
+              `GET /api/contracts/list: indexed search failed for ${ownerEmail}, falling back to scan.`,
+              error
+            );
+            return null;
+          }
+        })
+      );
+
+      for (const result of ownerResults) {
+        if (!result) {
+          indexedQueryFailed = true;
+          continue;
+        }
+        for (const snap of result.snaps) {
+          if (snap.size >= pageLimit) indexedQueryTruncated = true;
+          for (const doc of snap.docs) {
+            indexedCandidates.set(doc.ref.path, {
+              doc,
+              ownerEmail: result.ownerEmail,
+            });
+          }
+        }
+      }
+    }
+
+    // A zero-result lookup can mean that older entries have not been backfilled
+    // yet. Preserve correctness by using the existing scan in that case. Broad
+    // searches that hit the safety limit also fall back so sorting stays exact.
+    if (
+      !indexedQueryFailed &&
+      !indexedQueryTruncated &&
+      indexedCandidates.size > 0
+    ) {
+      for (const { doc, ownerEmail } of indexedCandidates.values()) {
+        const data = doc.data() as ContractDoc;
+        if (!shouldIncludeByCursor(data, doc.id, ownerEmail)) continue;
+        if (
+          filtersActive &&
+          filters &&
+          !contractMatchesListFilters(data, filters, ownerEmail)
+        ) {
+          continue;
+        }
+        const key = `${ownerEmail}___${doc.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        collected.push(
+          toContractListResponseItem({
+            docId: doc.id,
+            ownerEmail,
+            data,
+            shape: responseShape,
+            adviserName: ownerNames?.get(ownerEmail) ?? null,
+            ownerContext: ownerContexts?.get(ownerEmail) ?? null,
+          })
+        );
+      }
+
+      collected.sort((a, b) => {
+        const da = contractSortDate(a);
+        const dbDate = contractSortDate(b);
+        if (!da && !dbDate) return 0;
+        if (!da) return 1;
+        if (!dbDate) return -1;
+        const diff = dbDate.getTime() - da.getTime();
+        if (diff !== 0) return diff;
+        const keyA = responseCursorKey(a);
+        const keyB = responseCursorKey(b);
+        if (keyA === keyB) return 0;
+        return keyA > keyB ? -1 : 1;
+      });
+
+      const page = collected.slice(0, pageSize);
+      const hasMore = collected.length > pageSize;
+      const oldest =
+        page.length > 0 ? contractSortDate(page[page.length - 1]) : null;
+      const oldestKey =
+        page.length > 0 ? responseCursorKey(page[page.length - 1]) : null;
+      return {
+        list: page,
+        hasMore,
+        nextCursor: oldest ? oldest.getTime() : null,
+        nextCursorToken:
+          oldest && oldestKey
+            ? encodeCursorToken(oldest.getTime(), oldestKey)
+            : null,
+      };
+    }
+
+    collected.length = 0;
+    seen.clear();
+  }
+
   // Fast path for single-owner lists without client-side filters: let Firestore
   // page by date fields and keep the older full-scan path as a safe fallback.
   if (owners.length === 1) {
@@ -5249,6 +5389,7 @@ export async function handleContractsCreate(req: NextRequest) {
     const trustedPayload: NormalizedCreateEntryPayload = {
       ...normalizedEntry.payload,
       ...trustedListIndexFields,
+      ...contractSearchIndexFieldsForContract(normalizedEntry.payload),
       calculationInputAmount: commissionInputAmount,
       refreshCommissionBase,
       position: trustedPosition,
@@ -5728,6 +5869,7 @@ export async function handleContractsPatch(
             userEmail: normalizeEmail(data.userEmail) || ownerEmail,
             paid: data.paid === true,
             ...contractListIndexFieldsForContract(data),
+            ...contractSearchIndexFieldsForContract(data),
           },
           { merge: true }
         );
@@ -6204,6 +6346,10 @@ export async function handleContractsPatch(
       Object.assign(
         updatePayload,
         contractListIndexFieldsForContract({
+          ...currentData,
+          ...updatePayload,
+        }),
+        contractSearchIndexFieldsForContract({
           ...currentData,
           ...updatePayload,
         })

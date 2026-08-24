@@ -642,6 +642,8 @@ export type NormalizedCreateEntryPayload = {
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
   userEmail: string;
   contractNumber: string;
+  clientSearchKeys?: string[];
+  contractNumberSearchKeys?: string[];
   duplicateLookupKey: string | null;
   tipContractTipsterEmail: string | null;
   tipContractTipsterName: string | null;
