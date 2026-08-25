@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   addMonthsToMonthKey,
   classifyLifeSplitCommissionCode,
+  commissionCodeAliasesForPayoutHistory,
+  expectedPremiumIncreaseAmountFromItems,
   formatMonthKey,
   filterManagerCommissionRowsOffsetByDeductions,
   INVESTMENT_SECTION_PRODUCT_CODES,
@@ -26,6 +28,39 @@ describe("commission statement parsing helpers", () => {
     expect(managerCommissionCodeForSystemItems("NV101")).toBe("A101");
     expect(managerCommissionCodeForSystemItems("NVP101")).toBe("A101");
     expect(managerCommissionCodeForSystemItems("B3601")).toBe("B3601");
+    expect(commissionCodeAliasesForPayoutHistory("NV101")).toContain("A101");
+    expect(commissionCodeAliasesForPayoutHistory("NB0301")).toContain("B0301");
+  });
+
+  it("compares NV/NB increase rows with A101/B0301 items stored on an endorsement", () => {
+    const items = [
+      { code: "A101", title: "Okamžitá provize A101", amount: 2_010.1 },
+      { code: "B0301", title: "Provize B0301", amount: 578.83 },
+      { code: "B3601", title: "Provize po 3 letech B3601", amount: 2_447.29 },
+      { code: "TOTAL", title: "Celkem", amount: 5_036.22 },
+    ];
+
+    expect(
+      expectedPremiumIncreaseAmountFromItems(items, [
+        { type: "NV101" },
+        { type: "NB0301" },
+      ])
+    ).toBeCloseTo(2_588.93, 2);
+    expect(
+      expectedPremiumIncreaseAmountFromItems(items, [{ type: "NB0301" }])
+    ).toBeCloseTo(578.83, 2);
+  });
+
+  it("falls back to item titles for legacy endorsements without stored item codes", () => {
+    expect(
+      expectedPremiumIncreaseAmountFromItems(
+        [
+          { title: "Okamžitá provize A101", amount: 2_010.1 },
+          { title: "Provize B0301", amount: 578.83 },
+        ],
+        [{ type: "NV101" }, { type: "NB0301" }]
+      )
+    ).toBeCloseTo(2_588.93, 2);
   });
 
   it("keeps repeated manager rows with different amounts uniquely identifiable", () => {

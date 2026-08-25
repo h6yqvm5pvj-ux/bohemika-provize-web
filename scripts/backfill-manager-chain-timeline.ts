@@ -40,6 +40,7 @@ import {
   calculateZamex,
 } from "../src/app/lib/productFormulas";
 import { totalWithMultipliers } from "../src/app/lib/commissionTotals";
+import { computeLegacyFrequencyOverrideTotal } from "../src/app/lib/managerOverrideTotals";
 
 loadEnvConfig(process.cwd());
 
@@ -507,6 +508,7 @@ function normalizeResultItems(items: CommissionResultItemDTO[]): CommissionResul
     ...(typeof item.note === "string" && item.note.trim()
       ? { note: item.note.trim() }
       : {}),
+    ...(item.excludeFromTotal ? { excludeFromTotal: true } : {}),
   }));
 }
 
@@ -696,6 +698,7 @@ function normalizeManagerOverrides(raw: unknown): ManagerOverrideSnapshot[] {
           amount: normalizeAmount(it.amount ?? 0),
           code: normalizeCommissionCodeKey(it.code) || null,
           note: typeof it.note === "string" ? it.note.trim() : undefined,
+          ...(it.excludeFromTotal === true ? { excludeFromTotal: true } : {}),
         };
       });
     const cleaned = normalizeResultItems(stripTotalRows(items));
@@ -704,7 +707,7 @@ function normalizeManagerOverrides(raw: unknown): ManagerOverrideSnapshot[] {
       position: normalizePosition(row.position),
       commissionMode: normalizeMode(row.commissionMode),
       items: cleaned,
-      total: normalizeAmount(totalWithMultipliers(cleaned)),
+      total: normalizeAmount(row.total),
     });
   });
   return out.filter((row) => !!row.email);
@@ -823,7 +826,13 @@ function computeManagerOverridesForEntry(
 
     const mgrMap = new Map<
       string,
-      { title: string; amount: number; code?: string | null; note?: string | null }
+      {
+        title: string;
+        amount: number;
+        code?: string | null;
+        note?: string | null;
+        excludeFromTotal?: boolean;
+      }
     >();
     mgrItems.forEach((it) => {
       const key = commissionItemDiffKey(it);
@@ -833,6 +842,7 @@ function computeManagerOverridesForEntry(
         amount: normalizeAmount((prev?.amount ?? 0) + (it.amount ?? 0)),
         code: it.code ?? prev?.code ?? null,
         note: it.note ?? prev?.note ?? null,
+        excludeFromTotal: Boolean(prev?.excludeFromTotal || it.excludeFromTotal),
       });
     });
 
@@ -849,6 +859,9 @@ function computeManagerOverridesForEntry(
           title: mgrVal?.title ?? it.title,
           amount: rem,
           code: mgrVal?.code ?? it.code ?? null,
+          ...(mgrVal?.excludeFromTotal || it.excludeFromTotal
+            ? { excludeFromTotal: true }
+            : {}),
           ...(mgrVal?.note || it.note ? { note: mgrVal?.note ?? it.note } : {}),
         });
       }
@@ -861,13 +874,27 @@ function computeManagerOverridesForEntry(
           title: val.title,
           amount: normalizeAmount(val.amount),
           code: val.code ?? null,
+          ...(val.excludeFromTotal ? { excludeFromTotal: true } : {}),
           ...(val.note ? { note: val.note } : {}),
         });
       }
     });
 
     const normalizedItems = normalizeResultItems(diffItems);
-    const diffTotal = normalizeAmount(totalWithMultipliers(normalizedItems));
+    const product = normalizeProduct(entry.productKey);
+    const rawFrequency = entry.frequencyRaw;
+    const frequency =
+      typeof rawFrequency === "string"
+        ? (rawFrequency as PaymentFrequency)
+        : null;
+    const diffTotal = normalizeAmount(
+      computeLegacyFrequencyOverrideTotal({
+        productKey: product,
+        frequencyRaw: frequency,
+        items: normalizedItems,
+        fallbackTotal: totalWithMultipliers(normalizedItems),
+      })
+    );
 
     if (normalizedItems.length > 0 && diffTotal > 0) {
       diffs.push({
@@ -953,6 +980,12 @@ function collectSubordinates(
 async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
+  const contractFilter = new Set(
+    (parseArgValue(args, "--contracts") ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
 
   const managerEmail = normalizeEmail(
     parseArgValue(args, "--manager") ?? "jakub.rauscher@bohemika.eu"
@@ -1060,10 +1093,14 @@ async function main() {
         .collection("entries")
         .get();
 
-      scannedEntries += entriesSnap.size;
-
       for (const entrySnap of entriesSnap.docs) {
         const entry = entrySnap.data() as EntryRecord;
+        const contractNumber =
+          typeof entry.contractNumber === "string" ? entry.contractNumber.trim() : "";
+        if (contractFilter.size > 0 && !contractFilter.has(contractNumber)) {
+          continue;
+        }
+        scannedEntries += 1;
         const product = normalizeProduct(entry.productKey);
         if (!product) {
           skippedUnsupportedProduct += 1;
@@ -1117,10 +1154,7 @@ async function main() {
             ownerEmail,
             ownerDocId,
             entryId: entrySnap.id,
-            contractNumber:
-              typeof entry.contractNumber === "string"
-                ? entry.contractNumber.trim()
-                : "",
+            contractNumber,
             entryType:
               typeof entry.entryType === "string" ? entry.entryType : "contract",
             signedDateIso,

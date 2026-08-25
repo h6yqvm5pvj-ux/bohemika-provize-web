@@ -1,5 +1,5 @@
 import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
-import type { Product } from "@/app/types/domain";
+import type { CommissionResultItemDTO, Product } from "@/app/types/domain";
 
 import type {
   CommissionCodeRule,
@@ -489,6 +489,106 @@ const managerCommissionCodeForSystemItems = (
   if (/^NB\d+/.test(code)) return "B0301";
   if (/^NV(?:PZ?|Z)?\d+/.test(code)) return "A101";
   return baseCommissionCodeForStatementComparison(code);
+};
+
+const commissionCodeAliasesForPayoutHistory = (
+  value: string | null | undefined
+): string[] => {
+  const code = normalizeStatementCommissionCode(value);
+  if (!code) return [];
+
+  const aliases = new Set<string>();
+  const addAlias = (alias: string) => {
+    const normalized = normalizeStatementCommissionCode(alias);
+    if (!normalized) return;
+    aliases.add(normalized);
+    aliases.add(normalized.replace(/[_-]/g, ""));
+  };
+
+  addAlias(code);
+  const comparableSystemCode = managerCommissionCodeForSystemItems(code);
+  if (comparableSystemCode !== code) addAlias(comparableSystemCode);
+
+  const compact = code.replace(/[_-]/g, "");
+  const installmentRangeMatch = code.match(/^([AB])(\d{3})-\1(\d{3})$/);
+  if (installmentRangeMatch) {
+    const prefix = installmentRangeMatch[1] ?? "";
+    const start = Number(installmentRangeMatch[2]);
+    const end = Number(installmentRangeMatch[3]);
+    if (
+      prefix &&
+      Number.isInteger(start) &&
+      Number.isInteger(end) &&
+      end >= start &&
+      end - start <= 24
+    ) {
+      for (let item = start; item <= end; item += 1) {
+        addAlias(`${prefix}${String(item).padStart(3, "0")}`);
+      }
+    }
+  }
+
+  if (compact === "B36HALF" || compact === "B036HALF" || compact === "B3601HALF") {
+    ["B36_HALF", "B036_HALF", "B3601_HALF"].forEach(addAlias);
+  } else if (compact === "B36" || compact === "B036" || compact === "B3601") {
+    ["B36", "B036", "B3601"].forEach(addAlias);
+  } else if (compact === "B48" || compact === "B048" || compact === "B4801") {
+    ["B48", "B048", "B4801"].forEach(addAlias);
+  } else if (compact === "B101B104") {
+    ["B101-B104", "B101", "B102", "B103", "B104"].forEach(addAlias);
+  } else if (compact === "B201B206") {
+    ["B201-B206", "B201", "B202", "B203", "B204", "B205", "B206"].forEach(addAlias);
+  } else if (/^B20[1-6]$/.test(compact)) {
+    addAlias("B201-B206");
+  }
+
+  const closingRoleMatch = compact.match(/^(?:APZ|AP|AZ)(\d+)$/);
+  if (closingRoleMatch) addAlias(`A${closingRoleMatch[1]}`);
+
+  return [...aliases];
+};
+
+/**
+ * Výpisy označují provizi z dodatku kódy NV/NB, zatímco výpočet dodatku
+ * ukládá stejné složky pod původními kódy A101/B0301. Porovnáváme proto
+ * konkrétní kódy z řádků výpisu, ne obecný text "navýšení" v názvu položky.
+ */
+const expectedPremiumIncreaseAmountFromItems = (
+  items: CommissionResultItemDTO[] | null | undefined,
+  rows: Array<Pick<CommissionRow, "type">>
+): number => {
+  const expectedCodes = new Set(
+    rows
+      .map((row) => managerCommissionCodeForSystemItems(row.type))
+      .filter(Boolean)
+  );
+  const comparableItems = (items ?? []).filter((item) => {
+    const code = normalizeStatementCommissionCode(item.code);
+    const title = normalizeCommissionTitle(item.title);
+    return code !== "TOTAL" && title !== "celkem" && title !== "celkova provize";
+  });
+
+  return [...expectedCodes].reduce((sum, expectedCode) => {
+    const exactMatches = comparableItems.filter(
+      (item) => baseCommissionCodeForStatementComparison(item.code) === expectedCode
+    );
+    const matches =
+      exactMatches.length > 0
+        ? exactMatches
+        : comparableItems.filter((item) =>
+            normalizeCommissionTitle(item.title).includes(
+              normalizeCommissionTitle(expectedCode)
+            )
+          );
+    return (
+      sum +
+      matches.reduce(
+        (itemSum, item) =>
+          itemSum + (Number.isFinite(Number(item.amount)) ? Number(item.amount) : 0),
+        0
+      )
+    );
+  }, 0);
 };
 
 const isNeonInitialCommissionCode = (value: string | null | undefined): boolean => {
@@ -1588,6 +1688,7 @@ export {
   closestB36PaidAmount,
   commissionRowCanReplaceDeduction,
   commissionRowCorrectionKey,
+  commissionCodeAliasesForPayoutHistory,
   deductionOffsetsCommissionRow,
   filterCommissionRowsOffsetByDeductions,
   filterManagerCommissionRowsOffsetByDeductions,
@@ -1597,6 +1698,7 @@ export {
   formatSystemDate,
   formatWholeMoney,
   hasSjednatelExtranetFromDetailLink,
+  expectedPremiumIncreaseAmountFromItems,
   isInvestmentSectionProductCode,
   isLifePremiumIncreaseCommissionCode,
   isLifeSplitProductCode,

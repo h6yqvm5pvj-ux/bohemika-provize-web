@@ -11,6 +11,7 @@ import {
   loginAttemptLockoutMessage,
 } from "@/lib/server/loginAttemptLockout";
 import { resolveServerImpersonation } from "@/lib/server/impersonation";
+import { profilePatchScopeError } from "./profilePatchAuthorization";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 import { type CommissionMode, type Position } from "@/app/types/domain";
 import {
@@ -38,6 +39,7 @@ type ApiSuccess = {
   hasProfile: boolean;
   profile: Record<string, unknown>;
 };
+type ApiPatchSuccess = { ok: true; email: string };
 
 const PROFILE_GET_RATE_LIMIT = 180;
 const PROFILE_GET_WINDOW_MS = 60_000;
@@ -1137,14 +1139,20 @@ export async function PATCH(req: NextRequest) {
 
     const { email, rawTokenEmail, uid } = ctx;
     const declaredTargetEmail = normalizeEmail(req.nextUrl.searchParams.get("targetEmail"));
-    if (
-      (ctx.isImpersonating && declaredTargetEmail !== email) ||
-      (!ctx.isImpersonating && Boolean(declaredTargetEmail))
-    ) {
+    const body = await req.json().catch(() => null);
+    const bodyRecord = isPlainObject(body) ? body : {};
+    const scopeError = profilePatchScopeError({
+      isImpersonating: ctx.isImpersonating,
+      effectiveEmail: email,
+      declaredTargetEmail,
+      patchKeys: Object.keys(bodyRecord),
+      hasPositionTimeline: bodyRecord.positionTimeline != null,
+    });
+    if (scopeError) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Cílový uživatel se neshoduje s ověřenou impersonací.",
+          error: scopeError,
         } satisfies ApiError,
         { status: 403 }
       );
@@ -1163,21 +1171,6 @@ export async function PATCH(req: NextRequest) {
       );
       applyRateLimitHeaders(res.headers, rateLimit);
       return res;
-    }
-
-    const body = await req.json().catch(() => null);
-    const bodyRecord = isPlainObject(body) ? body : {};
-    if (
-      ctx.isImpersonating &&
-      (Object.keys(bodyRecord).length !== 1 || bodyRecord.positionTimeline == null)
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Při přepnutí za uživatele lze měnit pouze Historii kariéry.",
-        } satisfies ApiError,
-        { status: 403 }
-      );
     }
 
     const parsed = buildPatchFromBody(body, email);
@@ -1258,7 +1251,7 @@ export async function PATCH(req: NextRequest) {
 
     await adminDb.collection("users").doc(email).set(patch, { merge: true });
 
-    const res = NextResponse.json({ ok: true });
+    const res = NextResponse.json({ ok: true, email } satisfies ApiPatchSuccess);
     applyRateLimitHeaders(res.headers, rateLimit);
     return res;
   } catch (err) {

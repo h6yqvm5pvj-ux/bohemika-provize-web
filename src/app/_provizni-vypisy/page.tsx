@@ -231,9 +231,11 @@ import {
   baseCommissionCodeForStatementComparison,
   classifyGeneralCommissionCode,
   classifyLifeSplitCommissionCode,
+  commissionCodeAliasesForPayoutHistory,
   commissionRowCanReplaceDeduction,
   commissionRowCorrectionKey,
   deductionOffsetsCommissionRow,
+  expectedPremiumIncreaseAmountFromItems,
   formatLocalDate,
   formatMoney,
   formatMonthKey,
@@ -1319,61 +1321,6 @@ const rowsByKind = (
   kind: LifeSplitCommissionKind
 ): CommissionRow[] => contract.rows.filter((row) => row.lifeSplitKind === kind);
 
-const commissionCodeAliasesForPayoutHistory = (
-  value: string | null | undefined
-): string[] => {
-  const code = normalizeStatementCommissionCode(value);
-  if (!code) return [];
-
-  const aliases = new Set<string>();
-  const addAlias = (alias: string) => {
-    const normalized = normalizeStatementCommissionCode(alias);
-    if (!normalized) return;
-    aliases.add(normalized);
-    aliases.add(normalized.replace(/[_-]/g, ""));
-  };
-
-  addAlias(code);
-
-  const compact = code.replace(/[_-]/g, "");
-  const installmentRangeMatch = code.match(/^([AB])(\d{3})-\1(\d{3})$/);
-  if (installmentRangeMatch) {
-    const prefix = installmentRangeMatch[1] ?? "";
-    const start = Number(installmentRangeMatch[2]);
-    const end = Number(installmentRangeMatch[3]);
-    if (
-      prefix &&
-      Number.isInteger(start) &&
-      Number.isInteger(end) &&
-      end >= start &&
-      end - start <= 24
-    ) {
-      for (let item = start; item <= end; item += 1) {
-        addAlias(`${prefix}${String(item).padStart(3, "0")}`);
-      }
-    }
-  }
-
-  if (compact === "B36HALF" || compact === "B036HALF" || compact === "B3601HALF") {
-    ["B36_HALF", "B036_HALF", "B3601_HALF"].forEach(addAlias);
-  } else if (compact === "B36" || compact === "B036" || compact === "B3601") {
-    ["B36", "B036", "B3601"].forEach(addAlias);
-  } else if (compact === "B48" || compact === "B048" || compact === "B4801") {
-    ["B48", "B048", "B4801"].forEach(addAlias);
-  } else if (compact === "B101B104") {
-    ["B101-B104", "B101", "B102", "B103", "B104"].forEach(addAlias);
-  } else if (compact === "B201B206") {
-    ["B201-B206", "B201", "B202", "B203", "B204", "B205", "B206"].forEach(addAlias);
-  } else if (/^B20[1-6]$/.test(compact)) {
-    addAlias("B201-B206");
-  }
-
-  const closingRoleMatch = compact.match(/^(?:APZ|AP|AZ)(\d+)$/);
-  if (closingRoleMatch) addAlias(`A${closingRoleMatch[1]}`);
-
-  return [...aliases];
-};
-
 const payoutRecordCodeAliases = (payout: ContractCommissionPayoutRecord): string[] => {
   const aliases = new Set<string>();
   const addAliases = (value: string | null | undefined) => {
@@ -1733,6 +1680,9 @@ const missingAcceleratedB36Warning = (
   if (!systemContractExpectsImmediateB36(systemContract)) return null;
   const hasA101 = hasCommissionType(rows, "A101");
   const hasB0301 = hasCommissionType(rows, "B0301");
+  const hasPremiumIncrease = rows.some(
+    (row) => classifyGeneralCommissionCode(row.product, row.type).kind === "increase"
+  );
   const hasB0301InHistory = hasHistoricalB0301Payout(systemContract);
   if (!hasA101) return null;
   const hasCurrentB36HalfDeduction = b36Payments.some(
@@ -1754,7 +1704,9 @@ const missingAcceleratedB36Warning = (
       .map((product) => `${product.label} (${product.rawCode})`)
       .join(", "),
     detail: hasB0301
-      ? "Ve výpisu je A101 a B0301, ale není nalezená odpovídající 50% z B36 v ostatních platbách."
+      ? hasPremiumIncrease
+        ? "Ve výpisu je provize za navýšení NV/NB, ale není nalezená odpovídající 50% z B36 v ostatních platbách."
+        : "Ve výpisu je A101 a B0301, ale není nalezená odpovídající 50% z B36 v ostatních platbách."
       : hasB0301InHistory
         ? "Ve výpisu je A101 a B0301 už je zapsaná v historii smlouvy, ale není nalezená odpovídající 50% z B36 v ostatních platbách."
         : "Ve výpisu je A101. B0301 může přijít později po kartě klienta, ale u zrychleného režimu chybí odpovídající 50% z B36 v ostatních platbách.",
@@ -3663,7 +3615,7 @@ const buildLifeSplitAmountComparisons = (
       requiredNow: false,
       hasStatementRows: hasRowsForAmountComparison(increaseRows),
       statementAmount: sumRows(increaseRows),
-      expectedAmount: expectedAmountFromItems(items, (title) => title.includes("navyseni")),
+      expectedAmount: expectedPremiumIncreaseAmountFromItems(items, increaseRows),
     },
     {
       key: "subsequent",
@@ -3945,11 +3897,13 @@ const buildOtherProductAmountComparisons = (
     .map((group) => {
       const statementAmount = sumRows(group.rows);
       const expectedPerPeriod =
-        expectedAmountFromIndependentStatementBase(
-          group.rows,
-          systemContract,
-          group.matcher
-        ) ?? expectedClosestAmountFromItems(items, statementAmount, group.matcher);
+        group.key === "increase"
+          ? expectedPremiumIncreaseAmountFromItems(items, group.rows)
+          : expectedAmountFromIndependentStatementBase(
+                group.rows,
+                systemContract,
+                group.matcher
+              ) ?? expectedClosestAmountFromItems(items, statementAmount, group.matcher);
       const subsequentBundleInfo =
         group.key === "subsequent"
           ? subsequentPayoutBundleInfo({

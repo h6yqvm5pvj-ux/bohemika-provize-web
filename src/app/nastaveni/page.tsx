@@ -416,6 +416,11 @@ type SettingsTeamMembersResponse = {
   error?: string;
 };
 
+type SettingsProfilePatchResponse = {
+  ok: true;
+  email: string;
+};
+
 type DirectManagerInfo = {
   email: string;
   name: string;
@@ -1478,12 +1483,23 @@ export default function SettingsPage() {
       return { ok: false, error: "Nejsi přihlášený." };
     }
 
+    const liveImpersonatedEmail = normalizeEmail(
+      readAdminImpersonationState()?.email
+    );
+    if (liveImpersonatedEmail !== impersonatedEmail) {
+      return {
+        ok: false,
+        error: "Přepnutí uživatele se mezitím změnilo. Obnov stránku a změnu ulož znovu.",
+      };
+    }
+
     const patchKeys = Object.keys(partial);
+    const isLiveImpersonating = Boolean(liveImpersonatedEmail);
     const isImpersonatedTimelinePatch =
-      isImpersonating &&
+      isLiveImpersonating &&
       patchKeys.length === 1 &&
       patchKeys[0] === "positionTimeline";
-    if (isImpersonating && !isImpersonatedTimelinePatch) {
+    if (isLiveImpersonating && !isImpersonatedTimelinePatch) {
       return {
         ok: false,
         error: "Při přepnutí za uživatele lze měnit pouze Historii kariéry.",
@@ -1492,16 +1508,24 @@ export default function SettingsPage() {
 
     try {
       const profileEndpoint = isImpersonatedTimelinePatch
-        ? `/api/user/profile?targetEmail=${encodeURIComponent(impersonatedEmail)}`
+        ? `/api/user/profile?targetEmail=${encodeURIComponent(liveImpersonatedEmail)}`
         : "/api/user/profile";
-      await fetchAuthedJsonOrThrow(user, profileEndpoint, {
-        method: "PATCH",
-        headers: isImpersonatedTimelinePatch
-          ? { [ADMIN_IMPERSONATION_HEADER]: impersonatedEmail }
-          : undefined,
-        body: JSON.stringify(partial),
-      });
-      invalidateUserProfileCache(impersonatedEmail || user.email);
+      const response = await fetchAuthedJsonOrThrow<SettingsProfilePatchResponse>(
+        user,
+        profileEndpoint,
+        {
+          method: "PATCH",
+          headers: isImpersonatedTimelinePatch
+            ? { [ADMIN_IMPERSONATION_HEADER]: liveImpersonatedEmail }
+            : undefined,
+          body: JSON.stringify(partial),
+        }
+      );
+      const expectedEmail = liveImpersonatedEmail || normalizeEmail(user.email);
+      if (!expectedEmail || normalizeEmail(response.email) !== expectedEmail) {
+        throw new Error("Server nepotvrdil uložení ke správnému uživateli.");
+      }
+      invalidateUserProfileCache(expectedEmail);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("app:refresh-user-profile"));
       }
