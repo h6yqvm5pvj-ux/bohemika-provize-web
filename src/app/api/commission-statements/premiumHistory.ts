@@ -12,6 +12,7 @@ import {
   installmentPaymentsPerYear,
   isAutoSubsequentCommissionCode,
 } from "@/app/lib/productFormulas/autoCommission";
+import { commissionStatementIdentityKey } from "./statementIdentity";
 
 const PREMIUM_CHANGE_TOLERANCE = 12;
 const LEGACY_STATEMENT_CREATED_CONTRACT_WINDOW_MS = 15 * 60 * 1000;
@@ -313,51 +314,6 @@ const autoPremiumBeforeStatement = (
   );
 };
 
-const lifePremiumBeforeStatement = (
-  contract: PremiumHistoryContract,
-  referenceMs: number | null,
-  options: { allowCurrentFallback?: boolean } = {}
-): number | null => {
-  const allowCurrentFallback = options.allowCurrentFallback ?? true;
-  const history = contractPremiumHistoryArray(contract)
-    .filter(
-      (entry) =>
-        entry.premiumKind === "life_increase" &&
-        finiteMoneyOrNull(entry.newPremium) != null
-    )
-    .map((entry) => ({
-      dateMs: premiumHistoryEntryDateMs(entry),
-      newPremium: finiteMoneyOrNull(entry.newPremium),
-      previousPremium: finiteMoneyOrNull(entry.previousPremium),
-    }))
-    .sort((a, b) => (a.dateMs ?? 0) - (b.dateMs ?? 0));
-
-  if (history.length === 0) {
-    return allowCurrentFallback ? contractCurrentPremium(contract) : null;
-  }
-
-  if (referenceMs != null) {
-    const latestBefore = [...history]
-      .filter((item) => item.dateMs != null && item.dateMs < referenceMs)
-      .at(-1);
-    if (latestBefore?.newPremium != null) return latestBefore.newPremium;
-
-    if (allowCurrentFallback) {
-      const earliestKnownPrevious = history.find((item) => item.previousPremium != null);
-      if (earliestKnownPrevious?.previousPremium != null) {
-        return earliestKnownPrevious.previousPremium;
-      }
-    }
-
-    return null;
-  }
-
-  return (
-    history.at(-1)?.newPremium ??
-    (allowCurrentFallback ? contractCurrentPremium(contract) : null)
-  );
-};
-
 const isoDateFromMs = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
 export const premiumHistoryEntryFromStatementRow = ({
@@ -388,62 +344,9 @@ export const premiumHistoryEntryFromStatementRow = ({
   allowCurrentPremiumFallback?: boolean;
 }): PremiumStatementHistoryEntry | null => {
   if (row.premiumKind === "life_increase") {
-    if (contract.productKey !== row.productKey) return null;
-
-    const annualDifference = Math.round(row.basePremium * 100) / 100;
-    if (Math.abs(annualDifference) <= PREMIUM_CHANGE_TOLERANCE) return null;
-    const monthlyDifference = Math.round((annualDifference / 12) * 100) / 100;
-
-    const effectiveDateMs =
-      parseCzechDate(row.validFrom) ??
-      parseCzechDate(row.signedAt) ??
-      periodEndMs ??
-      toMillis(contract.policyStartDate) ??
-      nowMs;
-    const previousPremium = lifePremiumBeforeStatement(contract, effectiveDateMs, {
-      allowCurrentFallback: allowCurrentPremiumFallback,
-    });
-    if (previousPremium == null || previousPremium <= 0) return null;
-
-    const newPremium = Math.round((previousPremium + monthlyDifference) * 100) / 100;
-    if (newPremium <= 0) return null;
-
-    return {
-      key: compactHash(
-        [
-          statementId,
-          row.premiumKind,
-          row.rowId,
-          row.contractNumber,
-          row.productCode,
-          row.basePremium,
-          row.validFrom ?? "",
-        ].join(":"),
-        32
-      ),
-      premiumKind: row.premiumKind,
-      statementId,
-      statementNumber,
-      statementPeriod,
-      statementDate,
-      statementChronologyMs,
-      payoutMonthKey,
-      anniversaryNumber: 0,
-      anniversaryDate: isoDateFromMs(effectiveDateMs),
-      previousPremium,
-      newPremium,
-      difference: monthlyDifference,
-      previousAnnualPremium: Math.round(previousPremium * 12 * 100) / 100,
-      newAnnualPremium: Math.round(newPremium * 12 * 100) / 100,
-      differenceAnnual: annualDifference,
-      productCode: row.productCode,
-      commissionCode: row.commissionCode || null,
-      rowId: row.rowId,
-      validFrom: row.validFrom,
-      source: row.source,
-      writtenAtMs: nowMs,
-      writtenBy,
-    };
+    // U životních produktů je základna NV/NB řádku pouze podklad pro
+    // výpočet provize. Není to nové pojistné a nesmí vytvářet změnu smlouvy.
+    return null;
   }
 
   if (!isAutoProduct(contract.productKey ?? null) && !isPropertyProduct(contract.productKey ?? null)) {
@@ -594,8 +497,7 @@ const premiumHistorySemanticKey = (entry: PremiumStatementHistoryEntry): string 
   [
     entry.premiumKind,
     entry.source,
-    entry.statementId ||
-      [entry.statementNumber ?? "", entry.statementPeriod ?? "", entry.statementDate ?? ""].join("|"),
+    commissionStatementIdentityKey(entry),
     entry.rowId,
     entry.anniversaryNumber,
     entry.anniversaryDate,
@@ -610,8 +512,7 @@ const premiumHistoryRowIdentityKey = (entry: PremiumStatementHistoryEntry): stri
   [
     entry.premiumKind,
     entry.source,
-    entry.statementId ||
-      [entry.statementNumber ?? "", entry.statementPeriod ?? "", entry.statementDate ?? ""].join("|"),
+    commissionStatementIdentityKey(entry),
     entry.rowId,
     entry.anniversaryNumber,
     entry.anniversaryDate,

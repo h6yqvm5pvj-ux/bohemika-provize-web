@@ -198,6 +198,73 @@ const paymentsPerYearForFrequency = (frequency: string | null | undefined): numb
   }
 };
 
+const statementPaymentBundleCount = ({
+  statementBase,
+  systemPaymentBase,
+  statementCommission,
+  expectedCommissionPerPayment,
+  systemFrequency,
+  baseTolerance = 1,
+  commissionTolerance = 1,
+}: {
+  statementBase: number;
+  systemPaymentBase: number;
+  statementCommission: number;
+  expectedCommissionPerPayment: number;
+  systemFrequency: string | null | undefined;
+  baseTolerance?: number;
+  commissionTolerance?: number;
+}): number | null => {
+  const paymentsPerYear = paymentsPerYearForFrequency(systemFrequency);
+  if (paymentsPerYear <= 1) return null;
+
+  const values = [
+    statementBase,
+    systemPaymentBase,
+    statementCommission,
+    expectedCommissionPerPayment,
+  ];
+  if (values.some((value) => !Number.isFinite(value) || value <= 0)) return null;
+
+  const paymentCount = Math.round(statementBase / systemPaymentBase);
+  if (paymentCount < 2 || paymentCount > paymentsPerYear) return null;
+  if (
+    Math.abs(statementBase - systemPaymentBase * paymentCount) >
+    Math.max(0, baseTolerance)
+  ) {
+    return null;
+  }
+
+  const expectedCommission = expectedCommissionPerPayment * paymentCount;
+  if (
+    Math.abs(statementCommission - expectedCommission) >
+    Math.max(0, commissionTolerance)
+  ) {
+    return null;
+  }
+
+  return paymentCount;
+};
+
+const managerCommissionRowIdentity = (row: ManagerCommissionRow): string => {
+  const sourceKey = normalizeText(row.sourceKey);
+  if (sourceKey) return sourceKey;
+
+  const numberPart = (value: number): string =>
+    Number.isFinite(value) ? value.toFixed(2) : "unknown";
+  return [
+    normalizeText(row.id),
+    normalizeContractNumberForMatch(row.contractNumber),
+    normalizeProductCode(row.product),
+    normalizeText(row.type).toUpperCase(),
+    numberPart(row.base),
+    numberPart(row.commission),
+    numberPart(row.reserveFund),
+    normalizeText(row.career),
+    row.isStorno ? "storno" : "commission",
+  ].join(":");
+};
+
 type StatementPremiumBasePeriod = "annual" | "payment";
 
 const resolveStatementPremiumBasePeriod = ({
@@ -1113,12 +1180,18 @@ const parseOtherPayments = (doc: Document): OtherPayment[] => {
 
 const parseManagerCommissionRows = (
   table: HTMLTableElement,
-  isStorno: boolean
+  rowKind: "commission" | "deduction" | "storno",
+  sourcePrefix: string
 ): ManagerCommissionRow[] =>
   Array.from(table.tBodies[0]?.rows ?? [])
-    .map((row) => ({ cells: rowCells(row), detailUrl: contractDetailUrlFromRow(row) }))
+    .map((row, rowIndex) => ({
+      cells: rowCells(row),
+      detailUrl: contractDetailUrlFromRow(row),
+      sourceKey: `${sourcePrefix}:${rowIndex}`,
+    }))
     .filter(({ cells }) => /^\d+$/.test(cells[0] ?? "") && cells.length >= 13)
-    .map(({ cells, detailUrl }) => ({
+    .map(({ cells, detailUrl, sourceKey }) => ({
+      sourceKey,
       id: cells[0] ?? "",
       detailUrl,
       contractNumber: cells[1] ?? "",
@@ -1132,9 +1205,55 @@ const parseManagerCommissionRows = (
       career: cells[10] ?? "",
       commission: parseMoney(cells[11]),
       reserveFund: parseMoney(cells[12]),
-      isStorno,
+      isStorno: rowKind === "storno",
+      isDeduction: rowKind === "deduction",
     }))
     .filter((row) => row.contractNumber.length > 0);
+
+const managerDeductionOffsetsCommissionRow = (
+  row: ManagerCommissionRow,
+  deduction: ManagerCommissionRow
+): boolean =>
+  row.commission > 0 &&
+  !row.isStorno &&
+  !row.isDeduction &&
+  deduction.commission < 0 &&
+  Boolean(deduction.isDeduction) &&
+  normalizedRowText(row.contractNumber) === normalizedRowText(deduction.contractNumber) &&
+  normalizedRowText(row.product) === normalizedRowText(deduction.product) &&
+  normalizedRowText(row.type) === normalizedRowText(deduction.type) &&
+  normalizedRowText(row.career) === normalizedRowText(deduction.career) &&
+  normalizedRowText(row.percent) === normalizedRowText(deduction.percent) &&
+  moneyAmountsMatch(row.base, deduction.base) &&
+  moneyAmountsMatch(row.commission, Math.abs(deduction.commission)) &&
+  moneyAmountsMatch(row.reserveFund, Math.abs(deduction.reserveFund));
+
+const filterManagerCommissionRowsOffsetByDeductions = (
+  rows: ManagerCommissionRow[]
+): ManagerCommissionRow[] => {
+  const deductionIndexes = rows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row.isDeduction && row.commission < 0);
+  if (deductionIndexes.length === 0) return rows;
+
+  const usedDeductionIndexes = new Set<number>();
+  const offsetCommissionIndexes = new Set<number>();
+  rows.forEach((row, rowIndex) => {
+    const match = deductionIndexes.find(
+      ({ row: deduction, index }) =>
+        !usedDeductionIndexes.has(index) &&
+        managerDeductionOffsetsCommissionRow(row, deduction)
+    );
+    if (!match) return;
+    offsetCommissionIndexes.add(rowIndex);
+    usedDeductionIndexes.add(match.index);
+  });
+
+  return rows.filter(
+    (_, index) =>
+      !offsetCommissionIndexes.has(index) && !usedDeductionIndexes.has(index)
+  );
+};
 
 const parseManagerCommissions = (doc: Document): ManagerCommissionAdvisor[] => {
   const section = doc.getElementById("manazer");
@@ -1157,15 +1276,26 @@ const parseManagerCommissions = (doc: Document): ManagerCommissionAdvisor[] => {
       : null;
     const detailCell = detailRow?.cells[0];
     const rows: ManagerCommissionRow[] = [];
-    let detailTableIsStorno = false;
+    let detailTableKind: "commission" | "deduction" | "storno" = "commission";
+    let detailTableIndex = 0;
 
     for (const child of Array.from(detailCell?.children ?? [])) {
       if (child.tagName === "B") {
-        detailTableIsStorno = normalizeText(child.textContent).toUpperCase().includes("STORNA");
+        const heading = normalizeCommissionTitle(child.textContent);
+        if (heading.includes("storna")) detailTableKind = "storno";
+        else if (heading.includes("odecty")) detailTableKind = "deduction";
+        else if (heading.includes("provize")) detailTableKind = "commission";
       }
 
       if (child.tagName === "TABLE") {
-        rows.push(...parseManagerCommissionRows(child as HTMLTableElement, detailTableIsStorno));
+        rows.push(
+          ...parseManagerCommissionRows(
+            child as HTMLTableElement,
+            detailTableKind,
+            `${advisorNumber}:${detailTableIndex}`
+          )
+        );
+        detailTableIndex += 1;
       }
     }
 
@@ -1178,7 +1308,7 @@ const parseManagerCommissions = (doc: Document): ManagerCommissionAdvisor[] => {
       stornos: parseMoney(cells[5]),
       deductions: parseMoney(cells[6]),
       reserveFund: parseMoney(cells[7]),
-      rows,
+      rows: filterManagerCommissionRowsOffsetByDeductions(rows),
     });
   }
 
@@ -1460,6 +1590,7 @@ export {
   commissionRowCorrectionKey,
   deductionOffsetsCommissionRow,
   filterCommissionRowsOffsetByDeductions,
+  filterManagerCommissionRowsOffsetByDeductions,
   formatLocalDate,
   formatMoney,
   formatMonthKey,
@@ -1475,6 +1606,7 @@ export {
   monthKeyFromStatementPeriod,
   monthKeyIndex,
   managerCommissionCodeForSystemItems,
+  managerCommissionRowIdentity,
   normalizeCommissionTitle,
   normalizeContractNumberForMatch,
   normalizeExternalHref,
@@ -1498,6 +1630,7 @@ export {
   resolveStatementPremiumBasePeriod,
   setActiveStatementProductMapping,
   statementCorrectionSortValue,
+  statementPaymentBundleCount,
   statementProductCategoryLabel,
   toDateInputValue,
   usesB36CodeForProduct,

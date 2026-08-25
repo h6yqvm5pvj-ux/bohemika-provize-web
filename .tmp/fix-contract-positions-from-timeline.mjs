@@ -325,6 +325,8 @@ function computeItemsForEntry(entry, position, mode) {
         position,
         coefficientSignedDateIso
       );
+    case "cppcestovko":
+      return formulas.calculateCppCestovko(amount, position);
     case "flexi":
       return formulas.calculateFlexi(
         amount,
@@ -505,6 +507,18 @@ const comparableOverrides = (overrides) =>
     items: comparableItems(override?.items),
   }));
 
+const overrideSummary = (overrides) =>
+  comparableOverrides(overrides).map((override) => ({
+    email: override.email,
+    position: override.position,
+    mode: override.commissionMode,
+    total: roundMoney(override.total),
+    items: override.items.map((item) => ({
+      code: item.code,
+      amount: roundMoney(item.amount),
+    })),
+  }));
+
 const jsonChanged = (a, b) => JSON.stringify(a) !== JSON.stringify(b);
 
 async function loadOwnerProfile(db, email) {
@@ -591,6 +605,8 @@ function buildPatch(entry, expectedPosition) {
     newTotal: roundMoney(result.total),
     oldOverrides: Array.isArray(entry.managerOverrides) ? entry.managerOverrides.length : 0,
     newOverrides: managerOverrides.length,
+    oldOverrideSummary: overrideSummary(entry.managerOverrides),
+    newOverrideSummary: overrideSummary(managerOverrides),
   };
 }
 
@@ -618,6 +634,7 @@ async function main() {
 
   const ownerDocIds = [profile.docId];
   const planned = [];
+  const skippedRows = [];
   const counters = new Map();
   let scanned = 0;
   let mismatches = 0;
@@ -645,6 +662,15 @@ async function main() {
       const update = buildPatch(entry, match.position);
       if (update.skipped) {
         counters.set(update.reason, (counters.get(update.reason) ?? 0) + 1);
+        skippedRows.push({
+          contractNumber,
+          productKey: entry.productKey ?? null,
+          signedDateIso,
+          position: storedPosition,
+          managerOverrides: overrideSummary(entry.managerOverrides),
+          reason: update.reason,
+          path: entrySnap.ref.path,
+        });
         continue;
       }
       if (!update.hasChanges) continue;
@@ -677,6 +703,9 @@ async function main() {
   if (counters.size > 0) {
     console.log(`skipped=${JSON.stringify(Object.fromEntries(counters.entries()))}`);
   }
+  skippedRows.forEach((row) => {
+    console.log(`skipped_row=${JSON.stringify(row)}`);
+  });
 
   planned.forEach((row) => {
     console.log(
@@ -692,6 +721,10 @@ async function main() {
         row.path,
       ].join(" | ")
     );
+    if (row.updateKeys.includes("managerOverrides")) {
+      console.log(`  overrides_before=${JSON.stringify(row.oldOverrideSummary)}`);
+      console.log(`  overrides_after=${JSON.stringify(row.newOverrideSummary)}`);
+    }
   });
 
   if (!apply) {

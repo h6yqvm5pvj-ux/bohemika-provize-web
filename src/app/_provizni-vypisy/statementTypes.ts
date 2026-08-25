@@ -198,6 +198,8 @@ export type OtherProductContractPreview = {
 };
 
 export type ManagerCommissionRow = {
+  sourceKey?: string;
+  isDeduction?: boolean;
   id: string;
   detailUrl: string | null;
   contractNumber: string;

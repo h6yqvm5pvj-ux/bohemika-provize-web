@@ -4,11 +4,69 @@ import {
   applyIntelligentCashflowPrediction,
   applyStatementMissingPayoutShifts,
   calculateStornoFund,
+  dedupeCashflowCommissionStatements,
   INTELLIGENT_PREDICTION_CONFIG,
   matchesProductFilter,
   productLabel,
+  statementPayoutTotal,
 } from "./helpers";
-import type { CashflowItem } from "./types";
+import type { CashflowCommissionStatementSummary, CashflowItem } from "./types";
+
+const commissionStatement = (
+  overrides: Partial<CashflowCommissionStatementSummary> = {}
+): CashflowCommissionStatementSummary => ({
+  id: "statement-first-hash",
+  fileName: "vypis-15.html",
+  statementNumber: "15",
+  statementDate: "24.08.2026",
+  period: "01.07.2026 - 31.07.2026",
+  advisorNumber: "8680070421",
+  periodStartMs: Date.UTC(2026, 6, 1),
+  periodEndMs: Date.UTC(2026, 6, 31),
+  statementDateMs: Date.UTC(2026, 7, 24),
+  payoutMonthKey: "2026-8",
+  paidContractNumbers: ["809801005"],
+  paidCommissionKeys: ["809801005:A101"],
+  commissionTotal: 2194,
+  payoutTotal: 2194,
+  otherPaymentsTotal: 0,
+  managerCommissionTotal: 0,
+  createdAtMs: 1,
+  updatedAtMs: 1,
+  ...overrides,
+});
+
+describe("cashflow commission statements", () => {
+  it("counts a re-uploaded statement only once", () => {
+    const statements = [
+      commissionStatement(),
+      commissionStatement({
+        id: "statement-second-hash",
+        fileName: "vypis-15-znovu.html",
+        createdAtMs: 2,
+        updatedAtMs: 2,
+      }),
+    ];
+
+    expect(dedupeCashflowCommissionStatements(statements)).toEqual([statements[1]]);
+    expect(statementPayoutTotal(statements)).toBe(2194);
+  });
+
+  it("keeps two different statement periods separate", () => {
+    const statements = [
+      commissionStatement(),
+      commissionStatement({
+        id: "statement-next-month",
+        period: "01.08.2026 - 31.08.2026",
+        statementDate: "24.09.2026",
+        payoutTotal: 2500,
+      }),
+    ];
+
+    expect(dedupeCashflowCommissionStatements(statements)).toHaveLength(2);
+    expect(statementPayoutTotal(statements)).toBe(4694);
+  });
+});
 
 const subscriptionPayment = (): CashflowItem => ({
   id: "subscription-user@example.com___payment-1",

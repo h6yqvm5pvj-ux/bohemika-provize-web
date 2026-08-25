@@ -9,6 +9,7 @@ import {
   manualDiscrepancyToIssue,
   markedDiscrepancyKey,
   matchingAutoIssuesForMarkedItem,
+  statementBusinessIdentityKey,
   statementDiscrepancyKey,
   statementDiscrepancyLabel,
 } from "./statementDiscrepancies";
@@ -73,6 +74,27 @@ const manualItem = (
   note: " poznámka ",
   amountText: " 1 234 Kč ",
   ...overrides,
+});
+
+describe("statement business identity", () => {
+  it("treats renamed copies of the same statement as one statement", () => {
+    const first = minimalStatement({ fileName: "vypis-15.html" });
+    const renamed = minimalStatement({ fileName: "vypis-15-kopie.html" });
+
+    expect(statementBusinessIdentityKey(renamed)).toBe(statementBusinessIdentityKey(first));
+    expect(statementDiscrepancyKey(renamed)).not.toBe(statementDiscrepancyKey(first));
+  });
+
+  it("keeps statements of two advisors separate", () => {
+    const first = minimalStatement({
+      header: { ...minimalStatement().header, advisorNumber: "1001" },
+    });
+    const second = minimalStatement({
+      header: { ...minimalStatement().header, advisorNumber: "1002" },
+    });
+
+    expect(statementBusinessIdentityKey(second)).not.toBe(statementBusinessIdentityKey(first));
+  });
 });
 
 describe("statement discrepancy helpers", () => {

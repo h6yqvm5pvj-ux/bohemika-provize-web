@@ -24,6 +24,7 @@ export type SubscriptionSnapshot = {
 
 export type SubscriptionMeResponse = {
   ok?: boolean;
+  email?: string;
   subscription?: {
     status?: SubscriptionStatusValue;
     effectiveState?: SubscriptionEffectiveState;

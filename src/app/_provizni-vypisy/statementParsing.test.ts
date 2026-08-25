@@ -4,15 +4,18 @@ import {
   addMonthsToMonthKey,
   classifyLifeSplitCommissionCode,
   formatMonthKey,
+  filterManagerCommissionRowsOffsetByDeductions,
   INVESTMENT_SECTION_PRODUCT_CODES,
   isInvestmentSectionProductCode,
   isLifeSplitProductCode,
   managerCommissionCodeForSystemItems,
+  managerCommissionRowIdentity,
   monthKeyFromStatementPeriod,
   normalizeContractNumberForMatch,
   parseLocalDate,
   resolveStatementPremiumBasePeriod,
   resolveStatementProduct,
+  statementPaymentBundleCount,
   usesIndependentStatementCommissionBase,
 } from "./statementParsing";
 import { createStatementProductMappingIndex } from "./statementProductMap";
@@ -23,6 +26,85 @@ describe("commission statement parsing helpers", () => {
     expect(managerCommissionCodeForSystemItems("NV101")).toBe("A101");
     expect(managerCommissionCodeForSystemItems("NVP101")).toBe("A101");
     expect(managerCommissionCodeForSystemItems("B3601")).toBe("B3601");
+  });
+
+  it("keeps repeated manager rows with different amounts uniquely identifiable", () => {
+    const shared = {
+      id: "451334",
+      detailUrl: null,
+      contractNumber: "7503327308",
+      signedAt: "18.06.2026",
+      client: "Pazderková Kateřina",
+      role: "M",
+      product: "CPP_N_LIFE",
+      type: "A101",
+      percent: "3,52%",
+      career: "108",
+      reserveFund: 500,
+      isStorno: false,
+    };
+
+    const first = managerCommissionRowIdentity({
+      ...shared,
+      base: 22_800,
+      commission: 7_941,
+    });
+    const second = managerCommissionRowIdentity({
+      ...shared,
+      base: 23_580,
+      commission: 3_332,
+    });
+
+    expect(first).not.toBe(second);
+  });
+
+  it("removes manager commission rows fully canceled in the statement deductions", () => {
+    const shared = {
+      detailUrl: null,
+      contractNumber: "7503327308",
+      signedAt: "18.06.2026",
+      client: "Pazderková Kateřina",
+      role: "M",
+      product: "CPP_N_LIFE",
+      type: "A101",
+      percent: "3,52%",
+      career: "108",
+      isStorno: false,
+    };
+    const rows = filterManagerCommissionRowsOffsetByDeductions([
+      {
+        ...shared,
+        sourceKey: "manager:commission:0",
+        id: "451334",
+        base: 22_800,
+        commission: 7_941,
+        reserveFund: 1_191,
+      },
+      {
+        ...shared,
+        sourceKey: "manager:commission:1",
+        id: "451334",
+        base: 23_580,
+        commission: 3_332,
+        reserveFund: 500,
+      },
+      {
+        ...shared,
+        sourceKey: "manager:deduction:0",
+        isDeduction: true,
+        id: "451334",
+        base: 22_800,
+        commission: -7_941,
+        reserveFund: -1_191,
+      },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      base: 23_580,
+      commission: 3_332,
+      reserveFund: 500,
+    });
   });
 
   it("normalizes contract numbers for matching", () => {
@@ -37,6 +119,39 @@ describe("commission statement parsing helpers", () => {
       "2026-07"
     );
     expect(formatMonthKey(addMonthsToMonthKey("2026-07", 6))).toBe("01/2027");
+  });
+
+  it("recognizes multiple premium payments bundled into one statement row", () => {
+    expect(
+      statementPaymentBundleCount({
+        statementBase: 3_780,
+        systemPaymentBase: 1_890,
+        statementCommission: 76,
+        expectedCommissionPerPayment: 37.8,
+        systemFrequency: "quarterly",
+      })
+    ).toBe(2);
+  });
+
+  it("does not hide a base mismatch when the commission is not the same multiple", () => {
+    expect(
+      statementPaymentBundleCount({
+        statementBase: 3_780,
+        systemPaymentBase: 1_890,
+        statementCommission: 60,
+        expectedCommissionPerPayment: 37.8,
+        systemFrequency: "quarterly",
+      })
+    ).toBeNull();
+    expect(
+      statementPaymentBundleCount({
+        statementBase: 3_000,
+        systemPaymentBase: 1_890,
+        statementCommission: 76,
+        expectedCommissionPerPayment: 37.8,
+        systemFrequency: "quarterly",
+      })
+    ).toBeNull();
   });
 
   it("maps known statement products to internal product metadata", () => {

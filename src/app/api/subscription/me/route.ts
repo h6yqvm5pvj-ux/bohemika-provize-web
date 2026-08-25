@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
 import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
 
@@ -55,24 +56,46 @@ async function getAuthContext(req: NextRequest) {
     return { error: `Invalid or expired token (${code}): ${message}`, status: 401 } as const;
   }
 
-  const email = normalizeEmail(decoded.email);
-  if (!email || !EMAIL_RE.test(email)) {
+  const actorEmail = normalizeEmail(decoded.email);
+  const actorUid = String(decoded.uid ?? "").trim();
+  if (!actorEmail || !EMAIL_RE.test(actorEmail) || !actorUid) {
     return { error: "User e-mail missing in token", status: 401 } as const;
   }
 
-  const lockout = await getLoginAttemptLockoutError(req, email);
+  const lockout = await getLoginAttemptLockoutError(req, actorEmail);
   if (lockout) return lockout;
+
+  let email = actorEmail;
+  let uid = actorUid;
+  let rawTokenEmail = typeof decoded.email === "string" ? decoded.email.trim() : "";
+  const impersonationResult = await resolveServerImpersonation({
+    req,
+    actorEmail,
+    actorUid,
+    decoded: decoded as Record<string, unknown>,
+  });
+  if (!impersonationResult.ok) {
+    return {
+      error: impersonationResult.error,
+      status: impersonationResult.status,
+    } as const;
+  }
+  if (impersonationResult.impersonation) {
+    email = impersonationResult.impersonation.targetEmail;
+    uid = impersonationResult.impersonation.targetUid;
+    rawTokenEmail = impersonationResult.impersonation.targetEmail;
+  }
 
   const setupError = await getAdvisorSetupError({
     email,
-    uid: String(decoded.uid ?? "").trim(),
+    uid,
   });
   if (setupError) return setupError;
 
   return {
     email,
-    uid: String(decoded.uid ?? "").trim(),
-    rawTokenEmail: typeof decoded.email === "string" ? decoded.email.trim() : "",
+    uid,
+    rawTokenEmail,
   } as const;
 }
 

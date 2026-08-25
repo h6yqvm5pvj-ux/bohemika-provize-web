@@ -26,6 +26,18 @@ export const statementDiscrepancyKey = (statement: ParsedStatement): string => {
   return parts.join("::") || statement.fileName || "provizni-vypis";
 };
 
+export const statementBusinessIdentityKey = (statement: ParsedStatement): string => {
+  const number = normalizeText(statement.header.statementNumber).toLocaleLowerCase("cs-CZ");
+  const period = normalizeText(statement.header.period).toLocaleLowerCase("cs-CZ");
+  const date = normalizeText(statement.header.statementDate).toLocaleLowerCase("cs-CZ");
+  const advisor = normalizeText(statement.header.advisorNumber).toLocaleLowerCase("cs-CZ");
+
+  if (number && (period || date)) {
+    return `statement:${number}|${period}|${date}|${advisor}`;
+  }
+  return statementDiscrepancyKey(statement);
+};
+
 export const discrepancyIssueKey = (
   ...parts: Array<string | number | null | undefined>
 ): string =>

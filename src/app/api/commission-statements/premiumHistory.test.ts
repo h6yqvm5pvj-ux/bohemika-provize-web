@@ -59,6 +59,59 @@ const autoSubsequentRow: PremiumStatementRow = {
 };
 
 describe("premium statement history", () => {
+  it("never turns a life commission base into a premium change", () => {
+    const change = premiumHistoryEntryFromStatementRow({
+      row: {
+        premiumKind: "life_increase",
+        rowId: "450914",
+        contractNumber: "7503217987",
+        productCode: "CPP_N_LIFE",
+        productKey: "neon",
+        commissionCode: "NB0301",
+        basePremium: 6204,
+        signedAt: "09.06.2026",
+        validFrom: null,
+        source: "manager",
+      },
+      contract: {
+        productKey: "neon",
+        inputAmount: 517,
+        policyStartDate: "2026-06-30",
+        premiumStatementHistory: [],
+      },
+      statementId: "statement-76",
+      ...statementContext,
+      statementDate: "24.08.2026",
+      statementPeriod: "01.07.2026 - 31.07.2026",
+    });
+
+    expect(change).toBeNull();
+  });
+
+  it("does not duplicate history when the same statement is uploaded under another file hash", () => {
+    const first = premiumHistoryEntryFromStatementRow({
+      row: autoInitialRow,
+      contract: autoContract(),
+      statementId: "first-content-hash",
+      ...statementContext,
+      allowCurrentPremiumFallback: false,
+    });
+    const reuploaded = premiumHistoryEntryFromStatementRow({
+      row: autoInitialRow,
+      contract: autoContract(),
+      statementId: "second-content-hash",
+      ...statementContext,
+      nowMs: statementContext.nowMs + 10_000,
+      allowCurrentPremiumFallback: false,
+    });
+
+    const merged = mergePremiumHistoryRecords([first!], [reuploaded!], 120);
+
+    expect(merged.merged).toHaveLength(1);
+    expect(merged.added).toBe(0);
+    expect(merged.existingCount).toBe(1);
+  });
+
   it("detects only auto contracts that were created from commission statement metadata", () => {
     const createdAt = Date.UTC(2022, 4, 20, 9, 0, 0);
 

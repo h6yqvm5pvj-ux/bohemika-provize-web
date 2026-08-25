@@ -533,17 +533,20 @@ export function AppLayout({
   }, [user]);
 
   useEffect(() => {
-    if (!user || loadingProfile || accountType !== "tipster") return;
+    if (impersonation || !user || loadingProfile || accountType !== "tipster") return;
     if (!isTipsterAllowedRoute) {
       router.replace("/");
     }
-  }, [accountType, isTipsterAllowedRoute, loadingProfile, router, user]);
+  }, [accountType, impersonation, isTipsterAllowedRoute, loadingProfile, router, user]);
 
   const layoutCopy = APP_LAYOUT_COPY[language];
-  const tipsterRestrictedRoute = isTipsterAccount && !isTipsterAllowedRoute;
+  const tipsterRestrictedRoute =
+    !impersonation && isTipsterAccount && !isTipsterAllowedRoute;
+  const effectiveShowPaywall = showPaywall && !impersonation;
   const showAccountSetupMfaGraceBanner =
-    accountSetup.showMfaGraceBanner && !showPaywall;
-  const timelineSetupGateActive = accountSetup.timelineSetupGateActive;
+    accountSetup.showMfaGraceBanner && !effectiveShowPaywall && !impersonation;
+  const timelineSetupGateActive =
+    accountSetup.timelineSetupGateActive && !impersonation;
   const isAdminRequestsUser = adminRoleAtLeast(adminRole, "admin");
   const canAccessAdminArea = isAdminRequestsUser || canCreateUsers;
   const preparationSectionRouteDenied =
@@ -602,7 +605,7 @@ export function AppLayout({
       />
 
       <div className="relative flex min-h-screen">
-        {accountSetup.showWizard && !showPaywall ? (
+        {accountSetup.showWizard && !effectiveShowPaywall && !impersonation ? (
           <AccountSetupWizard
             ariaLabel={layoutCopy.accountSettings}
             logoutLabel={layoutCopy.logout}
@@ -667,7 +670,7 @@ export function AppLayout({
           hasTipsters={hasTipsters}
           isAdminRequestsUser={isAdminRequestsUser}
           canAccessAdminArea={canAccessAdminArea}
-          isTipsterAccount={isTipsterAccount}
+          isTipsterAccount={isTipsterAccount && !impersonation}
           isProfilePending={Boolean(user && loadingProfile)}
           timelineSetupGateActive={timelineSetupGateActive}
           mobileMenuOpen={mobileMenuOpen}
@@ -748,7 +751,7 @@ export function AppLayout({
 
             <SubscriptionGate
               subscriptionAccessState={subscriptionAccessState}
-              showPaywall={showPaywall}
+              showPaywall={effectiveShowPaywall}
               loadingProfile={loadingProfile}
               hasUser={Boolean(user)}
               blockReason={subscriptionBlockReason}

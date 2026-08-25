@@ -225,7 +225,8 @@ async function getAuthContext(req: NextRequest) {
   let email = actorEmail;
   let uid = actorUid;
   let rawTokenEmail = typeof decoded.email === "string" ? decoded.email.trim() : "";
-  if (req.method === "GET") {
+  let isImpersonating = false;
+  if (req.method === "GET" || req.method === "PATCH") {
     const impersonationResult = await resolveServerImpersonation({
       req,
       actorEmail,
@@ -239,6 +240,7 @@ async function getAuthContext(req: NextRequest) {
       } as const;
     }
     if (impersonationResult.impersonation) {
+      isImpersonating = true;
       email = impersonationResult.impersonation.targetEmail;
       uid = impersonationResult.impersonation.targetUid;
       rawTokenEmail = impersonationResult.impersonation.targetEmail;
@@ -249,6 +251,7 @@ async function getAuthContext(req: NextRequest) {
     email,
     uid,
     rawTokenEmail,
+    isImpersonating,
   } as const;
 }
 
@@ -1133,6 +1136,20 @@ export async function PATCH(req: NextRequest) {
     }
 
     const { email, rawTokenEmail, uid } = ctx;
+    const declaredTargetEmail = normalizeEmail(req.nextUrl.searchParams.get("targetEmail"));
+    if (
+      (ctx.isImpersonating && declaredTargetEmail !== email) ||
+      (!ctx.isImpersonating && Boolean(declaredTargetEmail))
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Cílový uživatel se neshoduje s ověřenou impersonací.",
+        } satisfies ApiError,
+        { status: 403 }
+      );
+    }
+
     const rateLimit = await consumeRateLimit({
       namespace: "api:user-profile:patch",
       key: email,
@@ -1149,6 +1166,20 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => null);
+    const bodyRecord = isPlainObject(body) ? body : {};
+    if (
+      ctx.isImpersonating &&
+      (Object.keys(bodyRecord).length !== 1 || bodyRecord.positionTimeline == null)
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Při přepnutí za uživatele lze měnit pouze Historii kariéry.",
+        } satisfies ApiError,
+        { status: 403 }
+      );
+    }
+
     const parsed = buildPatchFromBody(body, email);
     if ("error" in parsed) {
       return NextResponse.json(
@@ -1158,7 +1189,6 @@ export async function PATCH(req: NextRequest) {
     }
 
     const { patch } = parsed;
-    const bodyRecord = isPlainObject(body) ? body : {};
     const requestedAccountSetupCompletion = bodyRecord.accountSetupCompletedAt != null;
 
     if (requestedAccountSetupCompletion) {

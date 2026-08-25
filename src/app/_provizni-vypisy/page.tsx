@@ -212,6 +212,7 @@ import {
   discrepancyIssueKey,
   markedDiscrepancyKey,
   matchingAutoIssuesForMarkedItem,
+  statementBusinessIdentityKey,
   statementDiscrepancyKey,
   statementDiscrepancyLabel,
 } from "./statementDiscrepancies";
@@ -246,6 +247,7 @@ import {
   monthKeyFromStatementPeriod,
   monthKeyIndex,
   managerCommissionCodeForSystemItems,
+  managerCommissionRowIdentity,
   normalizeCommissionTitle,
   normalizeContractNumberForMatch,
   normalizeProductCode,
@@ -263,6 +265,7 @@ import {
   resolveStatementProduct,
   setActiveStatementProductMapping,
   statementCorrectionSortValue,
+  statementPaymentBundleCount,
   statementProductCategoryLabel,
   toDateInputValue,
   usesIndependentStatementCommissionBase,
@@ -4144,6 +4147,45 @@ const expectedManagerAmountFromItems = (
   );
 };
 
+type ManagerCommissionPaymentBundleInfo = {
+  paymentCount: number;
+  expectedAmount: number;
+  detailLines: string[];
+};
+
+const managerCommissionPaymentBundleInfo = (
+  row: ManagerCommissionRow,
+  systemContract: MatchedSystemContract | null,
+  currentUserEmail: string | null | undefined
+): ManagerCommissionPaymentBundleInfo | null => {
+  if (!systemContract || usesIndependentStatementCommissionBase(row.product)) return null;
+
+  const override = managerOverrideForViewer(systemContract, currentUserEmail);
+  const items = override?.items ?? [];
+  if (items.length === 0) return null;
+
+  const expectedPerPayment = expectedManagerAmountFromItems(items, row);
+  const systemPaymentBase = systemCommissionPaymentBase(systemContract);
+  const paymentCount = statementPaymentBundleCount({
+    statementBase: Number(row.base),
+    systemPaymentBase,
+    statementCommission: Number(row.commission),
+    expectedCommissionPerPayment: expectedPerPayment,
+    systemFrequency: systemContract.frequencyRaw,
+  });
+  if (paymentCount == null) return null;
+
+  const expectedAmount = Math.round(expectedPerPayment * paymentCount * 100) / 100;
+  const paymentLabel = paymentCount >= 2 && paymentCount <= 4 ? "platby" : "plateb";
+  return {
+    paymentCount,
+    expectedAmount,
+    detailLines: [
+      `Souhrnná výplata za ${paymentCount} ${paymentLabel}: ${formatWholeMoney(row.base)} Kč = ${paymentCount} × ${formatWholeMoney(systemPaymentBase)} Kč.`,
+    ],
+  };
+};
+
 const managerCommissionStatementBasePeriod = (
   row: ManagerCommissionRow,
   systemContract: MatchedSystemContract | null
@@ -4202,9 +4244,11 @@ const managerCommissionPremiumBaseMismatch = (
 
 const managerCommissionBaseComparison = (
   row: ManagerCommissionRow,
-  systemContract: MatchedSystemContract | null
+  systemContract: MatchedSystemContract | null,
+  currentUserEmail: string | null | undefined
 ): PremiumBaseComparison | null => {
   if (usesIndependentStatementCommissionBase(row.product)) return null;
+  if (managerCommissionPaymentBundleInfo(row, systemContract, currentUserEmail)) return null;
   const statementBase = Number(row.base);
   if (!Number.isFinite(statementBase) || statementBase <= ANNUAL_PREMIUM_TOLERANCE) {
     return null;
@@ -4219,7 +4263,7 @@ const managerCommissionBaseComparison = (
 
   return {
     ...comparison,
-    key: `manager-${row.id}-${row.contractNumber}-${row.type}-base`,
+    key: `manager-${managerCommissionRowIdentity(row)}-base`,
     label: "Základna pojistného",
     canBeAnniversaryPremiumChange: false,
     firstAnniversaryDate: null,
@@ -4307,11 +4351,18 @@ const buildManagerCommissionAmountComparison = (
   const items = override?.items ?? [];
   if (items.length === 0) return null;
 
-  const expectedAbsAmount = expectedManagerAmountForStatementBase(
+  const paymentBundle = managerCommissionPaymentBundleInfo(
     row,
     systemContract,
-    expectedManagerAmountFromItems(items, row)
+    currentUserEmail
   );
+  const expectedAbsAmount =
+    paymentBundle?.expectedAmount ??
+    expectedManagerAmountForStatementBase(
+      row,
+      systemContract,
+      expectedManagerAmountFromItems(items, row)
+    );
   const expectedAmount = expectedAbsAmount;
   const status = comparisonStatus(
     row.commission,
@@ -4320,18 +4371,19 @@ const buildManagerCommissionAmountComparison = (
   );
 
   return {
-    key: `manager-${row.id}-${row.contractNumber}-${row.type}-commission`,
-    label: `Meziprovize ${row.type || "—"}`,
+    key: `manager-${managerCommissionRowIdentity(row)}-commission`,
+    label: `Meziprovize ${row.type || "—"}${paymentBundle ? ` (${paymentBundle.paymentCount} platby)` : ""}`,
     statementAmount: row.commission,
     expectedAmount,
     difference: row.commission - expectedAmount,
     status,
+    detailLines: paymentBundle?.detailLines,
     ...managerCommissionDifferenceReason(row, systemContract, currentUserEmail, status),
   };
 };
 
 const managerCommissionRowKey = (advisorNumber: string, row: ManagerCommissionRow): string =>
-  `${advisorNumber}-${row.id}-${row.contractNumber}-${row.type}-${row.isStorno ? "storno" : "commission"}`;
+  `${advisorNumber}-${managerCommissionRowIdentity(row)}`;
 
 const amountComparisonStatusLabel = (status: CommissionAmountComparisonStatus): string => {
   switch (status) {
@@ -6454,7 +6506,11 @@ function ManagerCommissionRowCard({
   const matchedContract = matchedSystemContractForManagerCommissionRow(row, match);
   const rowBaseComparisonMap = new Map<string, PremiumBaseComparison>();
   rowItems.forEach((item) => {
-    const comparison = managerCommissionBaseComparison(item, matchedContract);
+    const comparison = managerCommissionBaseComparison(
+      item,
+      matchedContract,
+      currentUserEmail
+    );
     if (!comparison) return;
     const comparisonKey = [
       comparison.label,
@@ -8363,8 +8419,13 @@ export default function CommissionStatementsPage() {
       return;
     }
 
-    setStatements(parsedFiles.map((file) => file.statement));
-    setStatementFilesForProcessing(parsedFiles);
+    const uniqueParsedFiles = [
+      ...new Map(
+        parsedFiles.map((file) => [statementBusinessIdentityKey(file.statement), file])
+      ).values(),
+    ];
+    setStatements(uniqueParsedFiles.map((file) => file.statement));
+    setStatementFilesForProcessing(uniqueParsedFiles);
 
     if (!user) {
       setStatementSaveState({
@@ -8500,7 +8561,14 @@ export default function CommissionStatementsPage() {
 
     try {
       const token = await user.getIdToken();
-      const filesForProcessing = [...statementFilesForProcessing].sort(
+      const filesForProcessing = [
+        ...new Map(
+          statementFilesForProcessing.map((file) => [
+            statementBusinessIdentityKey(file.statement),
+            file,
+          ])
+        ).values(),
+      ].sort(
         (left, right) =>
           statementFileReadSortValue(left, statementFilesForProcessing.indexOf(left)) -
           statementFileReadSortValue(right, statementFilesForProcessing.indexOf(right))
@@ -8538,7 +8606,7 @@ export default function CommissionStatementsPage() {
 
       setStatementSaveState({
         status: "saved",
-        message: processedStatementLabel(statementFilesForProcessing.length, processingResults),
+        message: processedStatementLabel(filesForProcessing.length, processingResults),
       });
       setProcessingAuditSummary(processingSummary);
       setProcessedStatementIdsByKey((previous) => ({

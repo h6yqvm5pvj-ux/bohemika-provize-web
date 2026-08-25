@@ -1,7 +1,15 @@
 // src/app/nastaveni/page.tsx
 "use client";
 
-import { type ChangeEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import {
   Calculator,
@@ -40,8 +48,11 @@ import { auth } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
-  clearAdminImpersonationState,
+  ADMIN_IMPERSONATION_HEADER,
+  ADMIN_IMPERSONATION_EVENT,
+  ADMIN_IMPERSONATION_STORAGE_KEY,
   readAdminImpersonationState,
+  type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
 import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import {
@@ -705,6 +716,9 @@ export default function SettingsPage() {
   const onlineCardQueryAppliedRef = useRef(false);
   const metaLoadVersionRef = useRef(0);
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [impersonation, setImpersonation] =
+    useState<AdminImpersonationState | null>(null);
+  const [impersonationReady, setImpersonationReady] = useState(false);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
   const [position, setPosition] = useState<Position>("manazer7");
@@ -812,6 +826,16 @@ export default function SettingsPage() {
   const [userRequestDeletingId, setUserRequestDeletingId] = useState<string | null>(null);
   const [editingUserRequestId, setEditingUserRequestId] = useState<string | null>(null);
   const [userRequestsNowMs, setUserRequestsNowMs] = useState(() => Date.now());
+  const impersonatedEmail = normalizeEmail(impersonation?.email);
+  const isImpersonating = Boolean(impersonatedEmail);
+  const timelineGateActive = timelineSetupRequired && !isImpersonating;
+  const visibleSettingsTabs = useMemo(
+    () =>
+      isImpersonating
+        ? SETTINGS_TABS.filter((tab) => tab.id !== "account" && tab.id !== "requests")
+        : SETTINGS_TABS,
+    [isImpersonating]
+  );
 
   const applyMotionPreference = (off: boolean) => {
     if (typeof document === "undefined") return;
@@ -823,10 +847,24 @@ export default function SettingsPage() {
     }
   };
 
-  // auth
+  // auth + admin impersonation
   useLayoutEffect(() => {
-    if (!readAdminImpersonationState()) return;
-    clearAdminImpersonationState();
+    const syncImpersonation = () => {
+      setImpersonation(readAdminImpersonationState());
+      setImpersonationReady(true);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== ADMIN_IMPERSONATION_STORAGE_KEY) return;
+      syncImpersonation();
+    };
+
+    syncImpersonation();
+    window.addEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(ADMIN_IMPERSONATION_EVENT, syncImpersonation);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   useEffect(() => {
@@ -1095,23 +1133,32 @@ export default function SettingsPage() {
   useEffect(() => {
     let isCancelled = false;
     const loadVersion = ++metaLoadVersionRef.current;
-    const isCurrentLoad = (email: string) =>
-      !isCancelled &&
-      metaLoadVersionRef.current === loadVersion &&
-      normalizeEmail(auth.currentUser?.email) === email;
 
     const loadMeta = async () => {
+      if (!impersonationReady) return;
       if (!user) {
         setLoadingMeta(false);
         return;
       }
 
-      const emailRaw = user.email;
-      const email = normalizeEmail(emailRaw);
+      const actorEmail = normalizeEmail(user.email);
+      const email = normalizeEmail(impersonation?.email) || actorEmail;
       if (!email) {
         setLoadingMeta(false);
         return;
       }
+
+      const isCurrentLoad = () => {
+        const currentActorEmail = normalizeEmail(auth.currentUser?.email);
+        const currentProfileEmail =
+          normalizeEmail(readAdminImpersonationState()?.email) || currentActorEmail;
+        return (
+          !isCancelled &&
+          metaLoadVersionRef.current === loadVersion &&
+          currentActorEmail === actorEmail &&
+          currentProfileEmail === email
+        );
+      };
 
       setLoadingMeta(true);
 
@@ -1123,7 +1170,7 @@ export default function SettingsPage() {
           profile?: Record<string, unknown>;
         }>(user, "/api/user/profile", { method: "GET" });
 
-        if (!isCurrentLoad(email)) return;
+        if (!isCurrentLoad()) return;
 
         const payloadEmail = normalizeEmail(payload?.email);
         if (payloadEmail && payloadEmail !== email) {
@@ -1161,17 +1208,19 @@ export default function SettingsPage() {
 
           if (data.commissionMode) {
             setMode(data.commissionMode as CommissionMode);
-            if (typeof window !== "undefined") {
+            if (!isImpersonating && typeof window !== "undefined") {
               window.localStorage.setItem(
                 SETTINGS_KEYS.mode,
                 data.commissionMode as string
               );
             }
-          } else if (typeof window !== "undefined") {
+          } else if (!isImpersonating && typeof window !== "undefined") {
             const stored = window.localStorage.getItem(
               SETTINGS_KEYS.mode
             ) as CommissionMode | null;
             if (stored) setMode(stored);
+          } else {
+            setMode("accelerated");
           }
 
           setAgencyNumber(typeof data.agencyNumber === "string" ? data.agencyNumber.trim() : "");
@@ -1191,13 +1240,13 @@ export default function SettingsPage() {
 
           if (typeof data.monthlyGoal === "number") {
             setMonthlyGoal(data.monthlyGoal);
-            if (typeof window !== "undefined") {
+            if (!isImpersonating && typeof window !== "undefined") {
               window.localStorage.setItem(
                 SETTINGS_KEYS.monthlyGoal,
                 String(data.monthlyGoal)
               );
             }
-          } else if (typeof window !== "undefined") {
+          } else if (!isImpersonating && typeof window !== "undefined") {
             const stored = window.localStorage.getItem(
               SETTINGS_KEYS.monthlyGoal
             );
@@ -1205,7 +1254,7 @@ export default function SettingsPage() {
             if (Number.isFinite(n)) setMonthlyGoal(n);
           }
 
-          if (typeof data.reduceMotion === "boolean") {
+          if (!isImpersonating && typeof data.reduceMotion === "boolean") {
             setReduceMotion(data.reduceMotion);
             applyMotionPreference(data.reduceMotion);
             if (typeof window !== "undefined") {
@@ -1214,7 +1263,7 @@ export default function SettingsPage() {
                 data.reduceMotion ? "1" : "0"
               );
             }
-          } else if (typeof window !== "undefined") {
+          } else if (!isImpersonating && typeof window !== "undefined") {
             const storedMotion = window.localStorage.getItem(
               SETTINGS_KEYS.reduceMotion
             );
@@ -1233,9 +1282,7 @@ export default function SettingsPage() {
 
           setFcmActive(hasAnyPushToken(data as Record<string, unknown>));
 
-          if (data.notificationSettings) {
-            setNotificationSettings(normalizeNotificationSettings(data.notificationSettings));
-          }
+          setNotificationSettings(normalizeNotificationSettings(data.notificationSettings));
 
           const parsedTimeline = parsePositionTimeline(data.positionTimeline);
           setPositionTimelineDraft(parsedTimeline);
@@ -1255,7 +1302,8 @@ export default function SettingsPage() {
           setProfileStatus(null);
           setOnlineCardDraft(defaultOnlineCardFromUser(email, {}));
           setOnlineCardStatus(null);
-          if (typeof window !== "undefined") {
+          setNotificationSettings(DEFAULT_NOTIFICATION_SETTINGS);
+          if (!isImpersonating && typeof window !== "undefined") {
             const storedMode = window.localStorage.getItem(
               SETTINGS_KEYS.mode
             ) as CommissionMode | null;
@@ -1281,13 +1329,13 @@ export default function SettingsPage() {
             email,
             profileManagerEmailForHierarchy
           );
-          if (!isCurrentLoad(email)) return;
+          if (!isCurrentLoad()) return;
           setDirectManager(resolvedManager);
           if (resolvedManager?.email) {
             setManagerEmail(resolvedManager.email);
           }
         } catch (managerError) {
-          if (!isCurrentLoad(email)) return;
+          if (!isCurrentLoad()) return;
           console.warn("Přímého manažera se nepodařilo načíst z týmové hierarchie:", managerError);
           setDirectManager(
             profileManagerEmailForHierarchy
@@ -1299,10 +1347,10 @@ export default function SettingsPage() {
           );
         }
       } catch (e) {
-        if (!isCurrentLoad(email)) return;
+        if (!isCurrentLoad()) return;
         console.error("Chyba při načítání nastavení:", e);
       } finally {
-        if (isCurrentLoad(email)) {
+        if (isCurrentLoad()) {
           setLoadingMeta(false);
         }
       }
@@ -1313,7 +1361,7 @@ export default function SettingsPage() {
     return () => {
       isCancelled = true;
     };
-  }, [user]);
+  }, [impersonation?.email, impersonationReady, isImpersonating, user]);
 
   const loadSubscription = useCallback(async () => {
     if (!user) {
@@ -1332,6 +1380,11 @@ export default function SettingsPage() {
         "/api/subscription/me",
         { method: "GET" }
       );
+      const expectedEmail = impersonatedEmail || normalizeEmail(user.email);
+      const payloadEmail = normalizeEmail(payload?.email);
+      if (payloadEmail && payloadEmail !== expectedEmail) {
+        throw new Error("Předplatné se načetlo pro jiného uživatele.");
+      }
       const row = payload?.subscription;
       setSubscriptionSnapshot({
         status: (row?.status as SubscriptionStatusValue) || "none",
@@ -1351,7 +1404,7 @@ export default function SettingsPage() {
     } finally {
       setSubscriptionLoading(false);
     }
-  }, [user]);
+  }, [impersonatedEmail, user]);
 
   useEffect(() => {
     void loadSubscription();
@@ -1370,29 +1423,29 @@ export default function SettingsPage() {
   }, [timelineSaveFlashVisible]);
 
   useEffect(() => {
-    if (!timelineSetupRequired) return;
+    if (!timelineGateActive) return;
     if (activeTab !== "career") {
       setActiveTab("career");
     }
-  }, [timelineSetupRequired, activeTab]);
+  }, [timelineGateActive, activeTab]);
 
   useEffect(() => {
-    const currentTabExists = SETTINGS_TABS.some((tab) => tab.id === activeTab);
+    const currentTabExists = visibleSettingsTabs.some((tab) => tab.id === activeTab);
     if (!currentTabExists) {
       setActiveTab("profile");
     }
-  }, [activeTab]);
+  }, [activeTab, visibleSettingsTabs]);
 
   useEffect(() => {
     if (onlineCardQueryAppliedRef.current) return;
-    if (timelineSetupRequired) return;
+    if (timelineGateActive) return;
     if (typeof window === "undefined") return;
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
     if (requestedTab === "onlineCard" || requestedTab === "online-vizitka") {
       setActiveTab("onlineCard");
       onlineCardQueryAppliedRef.current = true;
     }
-  }, [timelineSetupRequired]);
+  }, [timelineGateActive]);
 
   useEffect(() => {
     if (loadingMeta || typeof window === "undefined") return;
@@ -1425,12 +1478,30 @@ export default function SettingsPage() {
       return { ok: false, error: "Nejsi přihlášený." };
     }
 
+    const patchKeys = Object.keys(partial);
+    const isImpersonatedTimelinePatch =
+      isImpersonating &&
+      patchKeys.length === 1 &&
+      patchKeys[0] === "positionTimeline";
+    if (isImpersonating && !isImpersonatedTimelinePatch) {
+      return {
+        ok: false,
+        error: "Při přepnutí za uživatele lze měnit pouze Historii kariéry.",
+      };
+    }
+
     try {
-      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+      const profileEndpoint = isImpersonatedTimelinePatch
+        ? `/api/user/profile?targetEmail=${encodeURIComponent(impersonatedEmail)}`
+        : "/api/user/profile";
+      await fetchAuthedJsonOrThrow(user, profileEndpoint, {
         method: "PATCH",
+        headers: isImpersonatedTimelinePatch
+          ? { [ADMIN_IMPERSONATION_HEADER]: impersonatedEmail }
+          : undefined,
         body: JSON.stringify(partial),
       });
-      invalidateUserProfileCache(user.email);
+      invalidateUserProfileCache(impersonatedEmail || user.email);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("app:refresh-user-profile"));
       }
@@ -2429,7 +2500,7 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    if (!user) {
+    if (!user || isImpersonating) {
       setUserRequests([]);
       setUserRequestsLoading(false);
       setUserRequestsError(null);
@@ -2439,7 +2510,7 @@ export default function SettingsPage() {
       return;
     }
     void loadUserRequests();
-  }, [user, loadUserRequests, resetUserRequestForm]);
+  }, [isImpersonating, user, loadUserRequests, resetUserRequestForm]);
 
   const handleChangePassword = async () => {
     if (!user || !user.email) {
@@ -2879,8 +2950,8 @@ export default function SettingsPage() {
     return null;
   }
 
-  const userEmail = user.email ?? "Neznámý e-mail";
-  const normalizedUserEmail = normalizeEmail(user.email);
+  const normalizedUserEmail = impersonatedEmail || normalizeEmail(user.email);
+  const userEmail = normalizedUserEmail || user.email || "Neznámý e-mail";
   const profileFullNameDisplay =
     fullName.trim() ||
     onlineCardDraft.fullName.trim() ||
@@ -3525,17 +3596,31 @@ export default function SettingsPage() {
           </div>
         ) : (
           <>
+            {isImpersonating ? (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-[0_8px_20px_rgba(146,64,14,0.08)]">
+                <p className="font-bold">
+                  Nastavení uživatele {impersonation?.name?.trim() || impersonatedEmail}
+                </p>
+                <p className="mt-1 text-xs text-amber-900/80">
+                  Historii kariéry můžeš jako admin upravit. Ostatní nastavení je pouze pro
+                  čtení; zabezpečení účtu a žádosti jsou dostupné jen skutečně přihlášenému
+                  uživateli.
+                </p>
+              </div>
+            ) : null}
+
             {timelineSetupRequired ? (
               <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-slate-900">
-                Před prvním použitím aplikace nejdřív nastav a ulož Historii kariéry. Ostatní
-                části Nastavení se zpřístupní po uložení timeline.
+                {isImpersonating
+                  ? "Uživatel zatím nemá uloženou Historii kariéry."
+                  : "Před prvním použitím aplikace nejdřív nastav a ulož Historii kariéry. Ostatní části Nastavení se zpřístupní po uložení timeline."}
               </div>
             ) : null}
 
             <div className="settings-tabs -mx-1 flex max-w-full gap-1 overflow-x-auto rounded-[18px] border border-slate-900 bg-slate-950 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.14)] sm:mx-0 sm:w-fit sm:flex-wrap sm:rounded-full sm:shadow-[0_16px_34px_rgba(15,23,42,0.16)]">
-              {SETTINGS_TABS.map((tab) => {
+              {visibleSettingsTabs.map((tab) => {
                 const active = activeTab === tab.id;
-                const tabDisabled = timelineSetupRequired && tab.id !== "career";
+                const tabDisabled = timelineGateActive && tab.id !== "career";
                 return (
                   <button
                     key={tab.id}
@@ -3559,8 +3644,12 @@ export default function SettingsPage() {
               })}
             </div>
 
+            <fieldset
+              disabled={isImpersonating && activeTab !== "career"}
+              className="contents"
+            >
             <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-stretch">
-              {activeTab === "career" && !timelineSetupRequired && (
+              {activeTab === "career" && !timelineGateActive && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
                 <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
                 <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
@@ -3587,6 +3676,7 @@ export default function SettingsPage() {
                           <button
                             key={m.id}
                             type="button"
+                            disabled={isImpersonating}
                             onClick={() => void handleModeChange(m.id)}
                             className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                               active
@@ -3627,7 +3717,7 @@ export default function SettingsPage() {
               </section>
               )}
 
-              {activeTab === "profile" && !timelineSetupRequired && (
+              {activeTab === "profile" && !timelineGateActive && (
                 <ProfileSettingsPanel
                   profileInitial={profileInitial}
                   profileDisplayName={profileDisplayName}
@@ -3692,7 +3782,7 @@ export default function SettingsPage() {
                 />
               )}
 
-              {activeTab === "notifications" && !timelineSetupRequired && (
+              {activeTab === "notifications" && !timelineGateActive && (
                 <NotificationsSettingsPanel
                   className={panelClass}
                   settings={notificationSettings}
@@ -3713,7 +3803,7 @@ export default function SettingsPage() {
                 />
               )}
 
-              {activeTab === "onlineCard" && !timelineSetupRequired && (
+              {activeTab === "onlineCard" && !timelineGateActive && (
                 <OnlineCardSettingsPanel
                   className={panelClass}
                   draft={onlineCardDraft}
@@ -3738,7 +3828,7 @@ export default function SettingsPage() {
                 />
               )}
 
-              {activeTab === "requests" && !timelineSetupRequired && (
+              {activeTab === "requests" && !timelineGateActive && (
                 <UserRequestsPanel
                   className={panelClass}
                   fieldClass={fieldClass}
@@ -3815,7 +3905,7 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {activeTab === "subscription" && !timelineSetupRequired && (
+            {activeTab === "subscription" && !timelineGateActive && (
               <SubscriptionSettingsPanel
                 className={panelClass}
                 loading={subscriptionLoading}
@@ -3826,7 +3916,7 @@ export default function SettingsPage() {
             )}
 
             {/* Zabezpečení */}
-            {activeTab === "account" && !timelineSetupRequired && (
+            {activeTab === "account" && !timelineGateActive && (
               <AccountSecurityPanel
                 className={panelClass}
                 fieldClass={fieldClass}
@@ -3912,6 +4002,7 @@ export default function SettingsPage() {
                 onDisableMfa={handleDisableMfa}
               />
             )}
+            </fieldset>
 
           </>
         )}

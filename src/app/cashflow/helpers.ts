@@ -1163,12 +1163,60 @@ export function groupItemsByMonth(
 export function statementPayoutTotal(
   statements: CashflowCommissionStatementSummary[] | undefined
 ): number | null {
-  const values = (statements ?? [])
+  const values = dedupeCashflowCommissionStatements(statements ?? [])
     .map((statement) => statement.payoutTotal)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 
   if (values.length === 0) return null;
   return Math.round(values.reduce((sum, value) => sum + value, 0) * 100) / 100;
+}
+
+const normalizeStatementIdentityPart = (value: unknown): string =>
+  String(value ?? "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("cs-CZ");
+
+const cashflowStatementIdentityKey = (
+  statement: CashflowCommissionStatementSummary
+): string => {
+  const number = normalizeStatementIdentityPart(statement.statementNumber);
+  const period = normalizeStatementIdentityPart(statement.period);
+  const date = normalizeStatementIdentityPart(statement.statementDate);
+  const advisor = normalizeStatementIdentityPart(statement.advisorNumber);
+  if (number && (period || date)) {
+    return `statement:${number}|${period}|${date}|${advisor}`;
+  }
+  return `id:${normalizeStatementIdentityPart(statement.id)}`;
+};
+
+const cashflowStatementRecency = (
+  statement: CashflowCommissionStatementSummary
+): number => statement.updatedAtMs ?? statement.createdAtMs ?? 0;
+
+export function dedupeCashflowCommissionStatements(
+  statements: CashflowCommissionStatementSummary[]
+): CashflowCommissionStatementSummary[] {
+  const byIdentity = new Map<string, CashflowCommissionStatementSummary>();
+  const order: string[] = [];
+
+  for (const statement of statements) {
+    const identity = cashflowStatementIdentityKey(statement);
+    const current = byIdentity.get(identity);
+    if (!current) {
+      byIdentity.set(identity, statement);
+      order.push(identity);
+      continue;
+    }
+    if (cashflowStatementRecency(statement) > cashflowStatementRecency(current)) {
+      byIdentity.set(identity, statement);
+    }
+  }
+
+  return order
+    .map((identity) => byIdentity.get(identity))
+    .filter((statement): statement is CashflowCommissionStatementSummary => Boolean(statement));
 }
 
 const monthGroupMetaFromKey = (

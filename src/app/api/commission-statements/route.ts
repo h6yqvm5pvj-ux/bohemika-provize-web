@@ -67,6 +67,7 @@ import {
   type StoredAutoPremiumStatementRow,
 } from "./premiumHistoryStatements";
 import { statementChronologyCanOverwrite } from "./statementChronologyGuards";
+import { commissionStatementIdentityKey } from "./statementIdentity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -699,8 +700,7 @@ const deductionOffsetsPayoutRow = (
   row.commission > 0 &&
   deduction.status === "storno" &&
   deduction.commission < 0 &&
-  row.source === "own" &&
-  deduction.source === "own" &&
+  row.source === deduction.source &&
   row.contractNumber === deduction.contractNumber &&
   normalizeProductCode(row.productCode) === normalizeProductCode(deduction.productCode) &&
   normalizeCommissionCodeKey(row.commissionCode) ===
@@ -718,8 +718,7 @@ const payoutRowCanReplaceDeduction = (
   row.commission > 0 &&
   deduction.status === "storno" &&
   deduction.commission < 0 &&
-  row.source === "own" &&
-  deduction.source === "own" &&
+  row.source === deduction.source &&
   row.contractNumber === deduction.contractNumber &&
   normalizeProductCode(row.productCode) === normalizeProductCode(deduction.productCode) &&
   normalizeCommissionCodeKey(row.commissionCode) ===
@@ -771,13 +770,19 @@ const extractCommissionPayoutRowsFromStoredHtml = (
     extractRowsFromStatementSection(ownMainHtml, "own"),
     extractRowsFromStatementSection(ownDeductionSectionHtml, "own", "own_deduction")
   );
+  const allManagerRows = extractRowsFromStatementSection(managerCommissionHtml, "manager");
+  const managerRows = splitPayoutRowsOffsetByDeductions(
+    allManagerRows.filter((row) => row.status === "paid"),
+    allManagerRows.filter((row) => row.status === "storno")
+  );
   const rows = [
     ...ownRows.payoutRows,
     ...extractB36HalfPayoutRowsFromOtherPayments(html),
     ...ownRows.deductionRows,
     ...extractRowsFromStatementSection(ownStornoHtml, "own", "own_storno"),
     ...extractRowsFromStatementSection(ownStornoSectionHtml, "own", "own_storno"),
-    ...extractRowsFromStatementSection(managerCommissionHtml, "manager"),
+    ...managerRows.payoutRows,
+    ...managerRows.deductionRows,
   ];
 
   const uniqueRows = new Map<string, CommissionStatementPayoutRow>();
@@ -1259,6 +1264,96 @@ const resolveEntryRefsByContractNumber = async (
 
 const statementCollection = (email: string) =>
   adminDb!.collection("usersPrivate").doc(email).collection("commissionStatements");
+
+const statementSnapshotIdentity = (
+  docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+): string => {
+  const data = docSnap.data() ?? {};
+  return commissionStatementIdentityKey({
+    statementId: docSnap.id,
+    statementNumber: data.statementNumber,
+    statementPeriod: data.period,
+    statementDate: data.statementDate,
+    advisorNumber: data.advisorNumber,
+  });
+};
+
+const statementSnapshotRecency = (
+  docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+): number =>
+  toMillis(docSnap.data()?.updatedAtMs) ??
+  toMillis(docSnap.data()?.processedAtMs) ??
+  toMillis(docSnap.data()?.createdAtMs) ??
+  0;
+
+const dedupeStatementSnapshots = (
+  docs: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[]
+): FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[] => {
+  const byIdentity = new Map<
+    string,
+    FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+  >();
+  const order: string[] = [];
+
+  for (const docSnap of docs) {
+    const identity = statementSnapshotIdentity(docSnap);
+    const current = byIdentity.get(identity);
+    if (!current) {
+      byIdentity.set(identity, docSnap);
+      order.push(identity);
+      continue;
+    }
+    if (statementSnapshotRecency(docSnap) > statementSnapshotRecency(current)) {
+      byIdentity.set(identity, docSnap);
+    }
+  }
+
+  return order
+    .map((identity) => byIdentity.get(identity))
+    .filter(
+      (
+        docSnap
+      ): docSnap is FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData> =>
+        Boolean(docSnap)
+    );
+};
+
+const findExistingStatementByBusinessIdentity = async ({
+  email,
+  statementIdentity,
+  statementNumber,
+}: {
+  email: string;
+  statementIdentity: string;
+  statementNumber: string | null;
+}) => {
+  if (!statementIdentity.startsWith("statement:") || !statementNumber) return null;
+
+  const snapshot = await statementCollection(email)
+    .where("statementNumber", "==", statementNumber)
+    .limit(40)
+    .get();
+  const matches = snapshot.docs
+    .filter((docSnap) => {
+      const data = docSnap.data() ?? {};
+      return (
+        commissionStatementIdentityKey({
+          statementId: docSnap.id,
+          statementNumber: data.statementNumber,
+          statementPeriod: data.period,
+          statementDate: data.statementDate,
+          advisorNumber: data.advisorNumber,
+        }) === statementIdentity
+      );
+    })
+    .sort(
+      (a, b) =>
+        (toMillis(b.data()?.updatedAtMs) ?? toMillis(b.data()?.createdAtMs) ?? 0) -
+        (toMillis(a.data()?.updatedAtMs) ?? toMillis(a.data()?.createdAtMs) ?? 0)
+    );
+
+  return matches[0]?.ref ?? null;
+};
 
 const serializeStatementDoc = (
   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>,
@@ -1795,12 +1890,7 @@ const payoutRecordCanonicalCommissionCode = (
 };
 
 const payoutRecordStatementKey = (record: ContractCommissionPayoutRecord): string =>
-  record.statementId ||
-  [
-    record.statementNumber ?? "",
-    record.statementPeriod ?? "",
-    record.statementDate ?? "",
-  ].join("|");
+  commissionStatementIdentityKey(record);
 
 const payoutRecordSemanticKey = (
   record: ContractCommissionPayoutRecord
@@ -4620,7 +4710,7 @@ const handleContractStatementRebuild = async ({
   }
 
   const statementsSnap = await statementCollection(ctxEmail).get();
-  const statementItems = statementsSnap.docs
+  const statementItems = dedupeStatementSnapshots(statementsSnap.docs)
     .map(savedStatementReprocessItemFromDoc)
     .filter((item): item is SavedStatementReprocessItem => {
       if (!item) return false;
@@ -4840,7 +4930,10 @@ export async function GET(req: NextRequest) {
         .get();
 
       return withRateLimitHeaders(
-        NextResponse.json({ ok: true, items: snap.docs.map(serializeStatementHistoryDoc) }),
+        NextResponse.json({
+          ok: true,
+          items: dedupeStatementSnapshots(snap.docs).map(serializeStatementHistoryDoc),
+        }),
         ctx
       );
     }
@@ -4853,7 +4946,7 @@ export async function GET(req: NextRequest) {
       .orderBy("periodStartMs", "desc")
       .limit(limit)
       .get();
-    const items = snap.docs
+    const items = dedupeStatementSnapshots(snap.docs)
       .map((docSnap) => serializeStatementDoc(docSnap, false))
       .filter((item) => !requestedMonthKey || item.payoutMonthKey === requestedMonthKey);
 
@@ -4977,6 +5070,8 @@ export async function POST(req: NextRequest) {
     : {}) as StatementSummaryPayload;
   const period = normalizeText(header.period, 80);
   const statementDate = normalizeText(header.statementDate, 32);
+  const statementNumber = normalizeText(header.statementNumber, 64);
+  const advisorNumber = normalizeText(header.advisorNumber, 64);
   const { periodStartMs, periodEndMs } = parsePeriodRange(period);
   const statementDateMs = parseCzechDate(statementDate);
   const statementChronologyMs = statementChronologyMsFromParts({
@@ -4987,11 +5082,27 @@ export async function POST(req: NextRequest) {
   });
   const payoutMonthKey = resolvePayoutMonthKey({ statementDateMs, periodEndMs, periodStartMs });
   const hash = createHash("sha256").update(html).digest("hex");
-  const docId = hash.slice(0, 32);
-  const docRef = statementCollection(ctx.email).doc(docId);
+  const statementIdentity = commissionStatementIdentityKey({
+    statementId: hash.slice(0, 32),
+    statementNumber,
+    statementPeriod: period,
+    statementDate,
+    advisorNumber,
+  });
+  const stableDocId = statementIdentity.startsWith("statement:")
+    ? compactHash(`${ctx.email}:${statementIdentity}`, 32)
+    : hash.slice(0, 32);
   const nowMs = Date.now();
 
   try {
+    const existingBusinessStatementRef = await findExistingStatementByBusinessIdentity({
+      email: ctx.email,
+      statementIdentity,
+      statementNumber,
+    });
+    const docRef =
+      existingBusinessStatementRef ?? statementCollection(ctx.email).doc(stableDocId);
+    const docId = docRef.id;
     const existing = await docRef.get();
     const createdAtMs = toMillis(existing.data()?.createdAtMs) ?? nowMs;
     const payload = {
@@ -4999,12 +5110,12 @@ export async function POST(req: NextRequest) {
       fileName,
       html,
       contentHash: hash,
-      advisorNumber: normalizeText(header.advisorNumber, 64),
+      advisorNumber,
       period,
       periodStartMs,
       periodEndMs,
       payoutMonthKey,
-      statementNumber: normalizeText(header.statementNumber, 64),
+      statementNumber,
       statementDate,
       statementDateMs,
       statementChronologyMs,

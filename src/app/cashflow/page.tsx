@@ -17,6 +17,7 @@ import {
   applyStatementPayoutTotalsToMonths,
   applyIntelligentCashflowPrediction,
   CASHFLOW_FORECAST_YEARS,
+  dedupeCashflowCommissionStatements,
   filterItemsByContractNumber,
   filterPastItems,
   filterPastStatementMonths,
@@ -306,7 +307,7 @@ export default function CashflowPage() {
           throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
         }
         if (!cancelled) {
-          setCommissionStatements(payload.items);
+          setCommissionStatements(dedupeCashflowCommissionStatements(payload.items));
           setStatementPreviewError(null);
         }
       } catch (error) {
