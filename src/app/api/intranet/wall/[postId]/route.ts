@@ -332,6 +332,7 @@ export async function PATCH(
     namespace: "api:intranet-wall:update",
     limit: PATCH_RATE_LIMIT,
     windowMs: PATCH_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
@@ -627,6 +628,7 @@ export async function DELETE(
     namespace: "api:intranet-wall:delete",
     limit: DELETE_RATE_LIMIT,
     windowMs: DELETE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

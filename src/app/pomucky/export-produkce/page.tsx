@@ -46,6 +46,10 @@ import {
   X,
 } from "lucide-react";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
 
 /* -------------------- lazy import PDF deps (kvůli Next/SSR) -------------------- */
 
@@ -1088,6 +1092,7 @@ function getDateRangeValidationError(
 
 export default function ExportProductionPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [profileFullName, setProfileFullName] = useState<string | null>(null);
 
   const [dateRangeOption, setDateRangeOption] =
@@ -1218,7 +1223,7 @@ export default function ExportProductionPage() {
   useEffect(() => {
     let alive = true;
     const loadDirectManager = async () => {
-      if (!user?.email) {
+      if (!user || !effectiveEmail) {
         setProfileFullName(null);
         setDirectManager(null);
         return;
@@ -1276,15 +1281,20 @@ export default function ExportProductionPage() {
     return () => {
       alive = false;
     };
-  }, [user]);
+  }, [effectiveEmail, user]);
 
   /* ------------------------- podřízení --------------------------- */
 
   useEffect(() => {
+    let alive = true;
     const loadSubs = async () => {
-      if (!user?.email) return;
+      if (!user || !effectiveEmail) {
+        setSubordinates([]);
+        setCurrentUserPosition(null);
+        return;
+      }
 
-      const email = normalizeEmail(user.email);
+      const email = effectiveEmail;
 
       setLoadingSubs(true);
       setErrorText(null);
@@ -1334,6 +1344,7 @@ export default function ExportProductionPage() {
             Boolean(member)
           );
 
+        if (!alive) return;
         setCurrentUserPosition((payload.position as Position | null | undefined) ?? null);
 
         const list: Subordinate[] = members
@@ -1355,15 +1366,19 @@ export default function ExportProductionPage() {
           return next;
         });
       } catch (e) {
+        if (!alive) return;
         console.error("Chyba při načítání podřízených", e);
         setErrorText("Nepodařilo se načíst podřízené (včetně celého týmu).");
       } finally {
-        setLoadingSubs(false);
+        if (alive) setLoadingSubs(false);
       }
     };
 
-    loadSubs();
-  }, [user]);
+    void loadSubs();
+    return () => {
+      alive = false;
+    };
+  }, [effectiveEmail, user]);
 
   useEffect(() => {
     if (scopeOption !== "selected" || !hasTeam) {
@@ -1595,11 +1610,14 @@ export default function ExportProductionPage() {
     filenameBase: string;
     snapshot: ExportShareSnapshot;
   }> => {
-    if (!user?.email) {
+    if (!user || !effectiveEmail) {
       throw new Error("Uživatel není přihlášený.");
     }
+    if (effectiveUserEmail(user.email) !== effectiveEmail) {
+      throw new Error("Přepnutí uživatele se změnilo. Export spusť znovu.");
+    }
 
-    const email = user.email.trim().toLowerCase();
+    const email = effectiveEmail;
     const generatedAt = new Date();
 
     const resolvedDateRange = getDateRange(dateRangeOption, {
@@ -2806,6 +2824,9 @@ export default function ExportProductionPage() {
       topProductAnnual: topProductEntry ? topProductEntry[1].annual : 0,
     };
 
+    if (effectiveUserEmail(user.email) !== email) {
+      throw new Error("Přepnutí uživatele se změnilo. Export spusť znovu.");
+    }
     return { html, filenameBase, snapshot };
   };
 

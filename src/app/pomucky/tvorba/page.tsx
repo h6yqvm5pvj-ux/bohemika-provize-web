@@ -31,6 +31,11 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { resolveUserProfilePatchRequest } from "@/app/lib/adminImpersonation";
+import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
 import { auth } from "@/app/firebase-auth";
 import { systemCondensedFont, systemSansFont, systemSerifFont } from "@/lib/fonts";
 
@@ -586,8 +591,10 @@ async function syncFooterProfileToCloud(
   user: FirebaseUser,
   profile: FooterProfile
 ): Promise<void> {
-  await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+  const profilePatch = resolveUserProfilePatchRequest();
+  await fetchAuthedJsonOrThrow(user, profilePatch.url, {
     method: "PATCH",
+    headers: profilePatch.headers,
     body: JSON.stringify({
       tvorbaFooterProfile: profile,
     }),
@@ -613,6 +620,8 @@ export default function TvorbaPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [officeAddress, setOfficeAddress] = useState("");
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const effectiveProfileEmail = useEffectiveUserEmail(authUser?.email);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [fontSizePx, setFontSizePx] = useState(15);
   const [fontFamilyKey, setFontFamilyKey] = useState(DEFAULT_FONT_KEY);
@@ -689,6 +698,7 @@ export default function TvorbaPage() {
     if (syncCloud && userEmail) {
       const currentUser = auth.currentUser;
       if (!currentUser) return;
+      if (effectiveUserEmail(currentUser.email) !== userEmail) return;
       try {
         await syncFooterProfileToCloud(currentUser, nextProfile);
       } catch (error) {
@@ -919,33 +929,29 @@ export default function TvorbaPage() {
   }, [pdfSettingsOpen]);
 
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, setAuthUser);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
-    const unsub = onAuthStateChanged(auth, (user) => {
-      const loadUserProfile = async () => {
-        const authEmail = user?.email ?? "";
-        if (!authEmail) {
-          if (!cancelled) {
-            setUserEmail(null);
-            const localProfile = readLocalFooterProfile(null);
-            if (localProfile) {
-              applyFooterProfile(localProfile);
-            }
-          }
+    const loadUserProfile = async () => {
+        const activeUser = authUser;
+        const normalized = effectiveProfileEmail;
+        if (!activeUser || !normalized) {
+          setUserEmail(null);
+          const localProfile = readLocalFooterProfile(null);
+          if (localProfile) applyFooterProfile(localProfile);
           return;
         }
 
-        const normalized = normalizeEmail(authEmail);
-        if (!normalized) return;
-        const activeUser = user;
-        if (!activeUser) return;
-
         if (!cancelled) {
           setUserEmail(normalized);
-          setEmail((prev) => prev || authEmail);
-          setFullName((prev) => prev || nameFromEmail(authEmail));
+          setEmail(normalized);
+          setFullName(nameFromEmail(normalized));
           const localProfile = readLocalFooterProfile(normalized);
           if (localProfile) {
-            applyFooterProfile(localProfile, authEmail);
+            applyFooterProfile(localProfile, normalized);
           }
         }
 
@@ -955,33 +961,34 @@ export default function TvorbaPage() {
             "/api/user/profile",
             { method: "GET" }
           );
-          if (cancelled) return;
+          if (
+            cancelled ||
+            effectiveUserEmail(auth.currentUser?.email) !== normalized
+          ) return;
           const profile = payload.profile?.tvorbaFooterProfile;
           if (!profile) return;
 
           const merged: FooterProfile = {
-            fullName: profile.fullName ?? nameFromEmail(authEmail),
+            fullName: profile.fullName ?? nameFromEmail(normalized),
             jobTitle: profile.jobTitle ?? "",
             companyId: profile.companyId ?? "",
             phone: profile.phone ?? "",
-            email: profile.email ?? authEmail,
+            email: profile.email ?? normalized,
             officeAddress: profile.officeAddress ?? "",
           };
-          applyFooterProfile(merged, authEmail);
+          applyFooterProfile(merged, normalized);
           writeLocalFooterProfile(normalized, merged);
         } catch (error) {
           console.error("Nepodařilo se načíst uloženou patičku:", error);
         }
-      };
+    };
 
-      void loadUserProfile();
-    });
+    void loadUserProfile();
 
     return () => {
       cancelled = true;
-      unsub();
     };
-  }, []);
+  }, [authUser, effectiveProfileEmail]);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -1746,7 +1753,7 @@ export default function TvorbaPage() {
 
       if (userEmail) {
         const currentUser = auth.currentUser;
-        if (currentUser) {
+        if (currentUser && effectiveUserEmail(currentUser.email) === userEmail) {
           await syncFooterProfileToCloud(currentUser, profileToSave);
         }
       }

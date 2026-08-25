@@ -26,6 +26,7 @@ import {
 } from "@/app/lib/secureDocuments";
 import { auth } from "@/app/firebase-auth";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
+import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 type InsuranceType = "life" | "nonLife";
@@ -2503,10 +2504,8 @@ function UniqaLifeAnniversaryLetterPreview({
 function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
   const documentFile = useSecureDocumentBlob(config.documentId);
   const isKooperativaPdf = config.id === KOOPERATIVA_TERMINATION_PDF_CONFIG.id;
-  const [advisorName, setAdvisorName] = useState(() =>
-    displayNameFromUser(auth.currentUser)
-  );
-  const [advisorEmail] = useState(() => auth.currentUser?.email?.trim() ?? "");
+  const advisorEmail = useEffectiveUserEmail(auth.currentUser?.email);
+  const [advisorName, setAdvisorName] = useState("");
   const [advisorPhone, setAdvisorPhone] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [checkboxes, setCheckboxes] = useState<Record<string, boolean>>({});
@@ -2523,7 +2522,8 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
 
-    const fallbackName = displayNameFromUser(currentUser);
+    const fallbackName = nameFromEmail(advisorEmail) || displayNameFromUser(currentUser);
+    setAdvisorName(fallbackName);
     getUserProfileCached(currentUser)
       .then((payload) => {
         if (cancelled) return;
@@ -2543,7 +2543,7 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
     return () => {
       cancelled = true;
     };
-  }, [isKooperativaPdf]);
+  }, [advisorEmail, isKooperativaPdf]);
 
   useEffect(() => {
     if (!isKooperativaPdf || !generatedFields.length) return;
@@ -2949,13 +2949,12 @@ function LifeInsurancePdfPreview({
   showMonthlyAnniversaryCalculator?: boolean;
 }) {
   const documentFile = useSecureDocumentBlob(config.documentId);
-  const [agentName, setAgentName] = useState(() =>
-    displayNameFromUser(auth.currentUser)
-  );
+  const effectiveEmail = useEffectiveUserEmail(auth.currentUser?.email);
+  const [agentName, setAgentName] = useState("");
   const [agentNumber, setAgentNumber] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
   const [fields, setFields] = useState<Record<string, string>>(() =>
-    createDefaultPdfFields(config.fields, displayNameFromUser(auth.currentUser))
+    createDefaultPdfFields(config.fields, nameFromEmail(effectiveEmail))
   );
   const [checkboxes, setCheckboxes] = useState<Record<string, boolean>>(() => createEmptyPdfCheckboxes(config.checkboxes));
   const [renderStatus, setRenderStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -2974,12 +2973,12 @@ function LifeInsurancePdfPreview({
     const currentUser = auth.currentUser;
     if (!currentUser) return;
 
-    const fallbackName = displayNameFromUser(currentUser);
+    const fallbackName = nameFromEmail(effectiveEmail) || displayNameFromUser(currentUser);
     if (fallbackName) {
-      setAgentName((prev) => prev || fallbackName);
+      setAgentName(fallbackName);
         setFields((prev) => ({
           ...prev,
-          agentName: prev.agentName?.trim() ? prev.agentName : fallbackName,
+          agentName: fallbackName,
           agentNumber: prev.agentNumber ?? "",
           agentPhone: prev.agentPhone ?? "",
           agentCompany: prev.agentCompany?.trim()
@@ -3024,7 +3023,7 @@ function LifeInsurancePdfPreview({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [effectiveEmail]);
 
   useEffect(() => {
     let cancelled = false;

@@ -19,6 +19,10 @@ import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
+import {
   formatMoney,
   positionLabel as positionLabelValue,
 } from "@/app/lib/formatters";
@@ -157,6 +161,7 @@ type RecipientOption = {
 
 export default function PlanProdukcePage() {
   const [user, setUser] = useState<User | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [profileFullName, setProfileFullName] = useState<string | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [directManager, setDirectManager] = useState<RecipientOption | null>(null);
@@ -188,11 +193,14 @@ export default function PlanProdukcePage() {
   const shareLookupSeq = useRef(0);
 
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, setUser);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
     let alive = true;
-    const unsub = onAuthStateChanged(auth, async (current) => {
-      if (!alive) return;
-      setUser(current);
-      if (!current?.email) {
+    const loadProfile = async () => {
+      if (!user || !effectiveEmail) {
         setProfileFullName(null);
         setPosition(null);
         setDirectManager(null);
@@ -200,7 +208,7 @@ export default function PlanProdukcePage() {
       }
       try {
         const payload = await fetchAuthedJsonOrThrow<UserProfileApiResponse>(
-          current,
+          user,
           "/api/user/profile",
           { method: "GET" }
         );
@@ -228,7 +236,7 @@ export default function PlanProdukcePage() {
         let managerName = nameFromEmail(managerEmail);
         try {
           const lookup = await fetchAuthedJsonOrThrow<UserLookupResponse>(
-            current,
+            user,
             `/api/user/lookup?email=${encodeURIComponent(managerEmail)}`,
             { method: "GET" }
           );
@@ -251,12 +259,13 @@ export default function PlanProdukcePage() {
         setPosition(null);
         setDirectManager(null);
       }
-    });
+    };
+
+    void loadProfile();
     return () => {
       alive = false;
-      unsub();
     };
-  }, []);
+  }, [effectiveEmail, user]);
 
   const estimates = useMemo(() => {
     const pos = position ?? "poradce1";
@@ -322,7 +331,7 @@ export default function PlanProdukcePage() {
       timeStyle: "short",
     });
 
-    const fullName = profileFullName || nameFromEmail(user?.email);
+    const fullName = profileFullName || nameFromEmail(effectiveEmail);
     const posLabel = positionLabel(position);
 
     const planRows = [
@@ -943,6 +952,10 @@ export default function PlanProdukcePage() {
 
   const handleSharePlan = async () => {
     if (!user) return;
+    if (!effectiveEmail || effectiveUserEmail(user.email) !== effectiveEmail) {
+      setShareErrorText("Přepnutí uživatele se změnilo. Plán odešli znovu.");
+      return;
+    }
 
     let recipient: RecipientOption | null = shareUseDirectManager
       ? directManager

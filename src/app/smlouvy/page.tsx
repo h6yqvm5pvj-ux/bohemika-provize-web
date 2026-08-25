@@ -51,6 +51,10 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney, toDate } from "@/app/lib/formatters";
 import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
+import {
   contractLifecycleStatus,
 } from "@/app/lib/contractLifecycle";
 import {
@@ -519,7 +523,10 @@ function ContractsPageContent() {
   const searchParams = useSearchParams();
   const [isFilterPending, startFilterTransition] = useTransition();
   const pendingScrollRestoreRef = useRef<number | null>(null);
-  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshInFlightRef = useRef<{
+    scopeEmail: string;
+    promise: Promise<void>;
+  } | null>(null);
   const lastSilentRefreshAtRef = useRef(0);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
@@ -587,7 +594,7 @@ function ContractsPageContent() {
   const lastListTransitionSignatureRef = useRef<string | null>(null);
   const shouldRestoreView = searchParams?.get("restore") === "1";
   const globalSearchParam = (searchParams?.get("globalSearch") ?? "").trim().slice(0, 120);
-  const normalizedUserEmail = normalizeEmail(user?.email);
+  const normalizedUserEmail = useEffectiveUserEmail(user?.email);
   const hasImmediateSearchQuery = normalizeSearchValue(searchText).length > 0;
   const hasSearchQuery = normalizeSearchValue(debouncedSearchText).length > 0;
   const searchDebouncePending = searchText !== debouncedSearchText;
@@ -632,7 +639,14 @@ function ContractsPageContent() {
 
   useEffect(() => {
     searchResponseCacheRef.current.clear();
-  }, [user?.email]);
+    serverFilterRequestRef.current += 1;
+    teamUsersRef.current = [];
+    setSelectedKeys(new Set());
+    setSelectedSubordinates(new Set());
+    setSelectMode(false);
+    setShowTeam(false);
+    setContractDetailWindow(null);
+  }, [normalizedUserEmail]);
 
   const serverFilterActive =
     hasImmediateSearchQuery ||
@@ -700,7 +714,14 @@ function ContractsPageContent() {
       signal?: AbortSignal;
     }) => {
       if (!user) {
-        throw new Error("Nejsi přihlášený.");
+        throw new DOMException("Authentication not ready", "AbortError");
+      }
+      const requestScopeEmail = normalizedUserEmail;
+      if (
+        !requestScopeEmail ||
+        effectiveUserEmail(user.email) !== requestScopeEmail
+      ) {
+        throw new DOMException("User scope changed", "AbortError");
       }
       const params = new URLSearchParams({ scope });
       params.set("shape", "contractList");
@@ -743,13 +764,16 @@ function ContractsPageContent() {
 
       const searchCacheKey =
         filters?.query.trim() && !cursor
-          ? `${normalizeEmail(user.email)}:${params.toString()}`
+          ? `${requestScopeEmail}:${params.toString()}`
           : null;
       if (searchCacheKey) {
         const cached = searchResponseCacheRef.current.get(searchCacheKey);
         if (cached && cached.expiresAt > Date.now()) {
           if (signal?.aborted) {
             throw new DOMException("Request aborted", "AbortError");
+          }
+          if (effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail) {
+            throw new DOMException("User scope changed", "AbortError");
           }
           return cached.data;
         }
@@ -802,6 +826,9 @@ function ContractsPageContent() {
         );
       }
       if (!data) throw new Error("Nepodařilo se načíst smlouvy.");
+      if (effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail) {
+        throw new DOMException("User scope changed", "AbortError");
+      }
       if (searchCacheKey) {
         searchResponseCacheRef.current.set(searchCacheKey, {
           expiresAt: Date.now() + CONTRACT_SEARCH_CACHE_TTL_MS,
@@ -817,7 +844,7 @@ function ContractsPageContent() {
       }
       return data;
     },
-    [user]
+    [normalizedUserEmail, user]
   );
 
   const fetchMyPage = useCallback(
@@ -828,7 +855,7 @@ function ContractsPageContent() {
       requestId?: number,
       signal?: AbortSignal
     ) => {
-      if (!user?.email) {
+      if (!user || !normalizedUserEmail) {
         return { list: [] as ContractDoc[], oldest: null as Date | null, hasMore: false };
       }
       const data = await apiFetchContracts({
@@ -854,7 +881,7 @@ function ContractsPageContent() {
 
       return { list, oldest, hasMore };
     },
-    [apiFetchContracts, user?.email]
+    [apiFetchContracts, normalizedUserEmail, user]
   );
 
   const fetchTeamPage = useCallback(
@@ -944,17 +971,17 @@ function ContractsPageContent() {
 
   const refreshContracts = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
-      const email = (user?.email ?? "").toLowerCase();
-      if (!email) return;
+      const email = normalizedUserEmail;
+      if (!user || !email) return;
       // Při aktivních serverových filtrech by tichý refresh přepsal filtrovaný dataset
       // první nefiltrouvanou stránkou a UI by viditelně probliklo.
       if (silent && serverFilterActive) return;
       if (silent && Date.now() - lastSilentRefreshAtRef.current < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) {
         return;
       }
-      if (refreshInFlightRef.current) {
+      if (refreshInFlightRef.current?.scopeEmail === email) {
         if (!silent) {
-          await refreshInFlightRef.current;
+          await refreshInFlightRef.current.promise;
         }
         return;
       }
@@ -963,8 +990,11 @@ function ContractsPageContent() {
         setLoadError(null);
         try {
           const data = await apiFetchContracts({ scope: "my", includeTeam: true });
+          if (effectiveUserEmail(auth.currentUser?.email) !== email) return;
           applyContractsPayload(email, data);
         } catch (e) {
+          if ((e as { name?: string } | null)?.name === "AbortError") return;
+          if (effectiveUserEmail(auth.currentUser?.email) !== email) return;
           const msg = getErrorMessage(e, "Nepodařilo se načíst nejnovější smlouvy.");
           if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
             console.warn("Dočasný výpadek sítě při načítání smluv:", msg);
@@ -973,23 +1003,25 @@ function ContractsPageContent() {
           }
           setLoadError(msg);
         } finally {
-          if (!silent) setLoading(false);
+          if (!silent && effectiveUserEmail(auth.currentUser?.email) === email) {
+            setLoading(false);
+          }
         }
       })();
 
-      refreshInFlightRef.current = task;
+      refreshInFlightRef.current = { scopeEmail: email, promise: task };
       try {
         await task;
       } finally {
         if (silent) {
           lastSilentRefreshAtRef.current = Date.now();
         }
-        if (refreshInFlightRef.current === task) {
+        if (refreshInFlightRef.current?.promise === task) {
           refreshInFlightRef.current = null;
         }
       }
     },
-    [user?.email, apiFetchContracts, applyContractsPayload, serverFilterActive]
+    [normalizedUserEmail, user, apiFetchContracts, applyContractsPayload, serverFilterActive]
   );
 
   // auth
@@ -1002,15 +1034,15 @@ function ContractsPageContent() {
 
   useEffect(() => {
     lastSilentRefreshAtRef.current = 0;
-  }, [user?.email]);
+  }, [normalizedUserEmail]);
 
   // load pozice + smlouvy
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      const email = (user?.email ?? "").toLowerCase();
-      if (!email) {
+      const email = normalizedUserEmail;
+      if (!email || !user) {
         setMyContracts([]);
         setTeamContracts([]);
         setCurrentUserPosition(null);
@@ -1072,10 +1104,10 @@ function ContractsPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [user?.email, refreshContracts, serverFilterActive]);
+  }, [normalizedUserEmail, user, refreshContracts, serverFilterActive]);
 
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user || !normalizedUserEmail) return;
 
     if (searchDebouncePending) return;
 
@@ -1148,7 +1180,8 @@ function ContractsPageContent() {
       controller.abort();
     };
   }, [
-    user?.email,
+    normalizedUserEmail,
+    user,
     searchDebouncePending,
     serverFilterActive,
     activeListFilters,
@@ -1166,7 +1199,7 @@ function ContractsPageContent() {
   }, [commissionAuditActive, commissionAuditFilterPending]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !user?.email) return;
+    if (typeof window === "undefined" || !user || !normalizedUserEmail) return;
 
     const triggerRefresh = () => {
       searchResponseCacheRef.current.clear();
@@ -1198,7 +1231,7 @@ function ContractsPageContent() {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("storage", onStorage);
     };
-  }, [user?.email, refreshContracts]);
+  }, [normalizedUserEmail, user, refreshContracts]);
 
   const subordinateFilterOptions = useMemo(() => {
     if (!canShowTeamToggle) return [] as { email: string; label: string }[];
@@ -1727,7 +1760,7 @@ function ContractsPageContent() {
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore) return;
-    if (!user?.email) return;
+    if (!user || !normalizedUserEmail) return;
     setLoadingMore(true);
     try {
       const requestId = serverFilterActive
@@ -1751,6 +1784,7 @@ function ContractsPageContent() {
         );
       }
     } catch (e) {
+      if ((e as { name?: string } | null)?.name === "AbortError") return;
       const msg = getErrorMessage(e, "Nepodařilo se načíst další smlouvy. Zkus to prosím znovu.");
       if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
         console.warn("Dočasný výpadek sítě při načítání dalších smluv:", msg);
@@ -1763,7 +1797,8 @@ function ContractsPageContent() {
     }
   }, [
     loadingMore,
-    user?.email,
+    normalizedUserEmail,
+    user,
     showTeam,
     canShowTeamToggle,
     teamHasMore,

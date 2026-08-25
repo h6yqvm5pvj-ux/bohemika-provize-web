@@ -48,6 +48,7 @@ export async function POST(
     namespace: "api:intranet-wall:comment-like",
     limit: COMMENT_LIKE_RATE_LIMIT,
     windowMs: COMMENT_LIKE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
@@ -155,4 +156,3 @@ export async function POST(
     );
   }
 }
-

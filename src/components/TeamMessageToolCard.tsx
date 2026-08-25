@@ -9,6 +9,7 @@ import {
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
+import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 
 type TeamOverviewApiResponse = {
   ok?: boolean;
@@ -22,6 +23,7 @@ const normalizeEmail = (value: unknown): string =>
 
 export function TeamMessageToolCard() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [hasTeam, setHasTeam] = useState<boolean | null>(null); // null = loading
 
   useEffect(() => {
@@ -30,34 +32,39 @@ export function TeamMessageToolCard() {
   }, []);
 
   useEffect(() => {
+    let alive = true;
     const loadSubordinates = async () => {
-      if (!user?.email) {
+      if (!user || !effectiveEmail) {
         setHasTeam(false);
         return;
       }
 
       try {
-        const email = normalizeEmail(user.email);
         const payload = await fetchAuthedJsonOrThrow<TeamOverviewApiResponse>(
           user,
           "/api/team-overview",
           { method: "GET" }
         );
+        if (!alive) return;
         const members = Array.isArray(payload?.members) ? payload.members : [];
         const directSubCount = members.filter(
-          (member) => normalizeEmail(member.managerEmail) === email
+          (member) => normalizeEmail(member.managerEmail) === effectiveEmail
         ).length;
         setHasTeam(directSubCount > 0);
       } catch (e) {
+        if (!alive) return;
         console.error("Chyba při načítání podřízených:", e);
         setHasTeam(false);
       }
     };
 
     if (user) {
-      loadSubordinates();
+      void loadSubordinates();
     }
-  }, [user]);
+    return () => {
+      alive = false;
+    };
+  }, [effectiveEmail, user]);
 
   // není přihlášený nebo nemá tým → kartičku vůbec neukazujeme
   if (!user || !hasTeam) return null;

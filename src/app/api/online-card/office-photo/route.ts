@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
     namespace: "api:online-card:office-photo:post",
     limit: UPLOAD_RATE_LIMIT,
     windowMs: UPLOAD_RATE_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

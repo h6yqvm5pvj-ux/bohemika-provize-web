@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
     namespace: "api:export-produkce:share:post",
     limit: EXPORT_SHARE_RATE_LIMIT,
     windowMs: EXPORT_SHARE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import {
@@ -23,6 +23,10 @@ import {
 
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
 import {
   COMPOSE_FILES_MAX_COUNT,
@@ -216,6 +220,7 @@ export default function PostaPage() {
   const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState<MailboxItem[]>([]);
@@ -278,9 +283,25 @@ export default function PostaPage() {
     };
   }, []);
 
-  const loadMailbox = async () => {
+  useEffect(() => {
+    setItems([]);
+    setUnreadCount(0);
+    setSelectedIds([]);
+    setSelectMode(false);
+    setExpandedGroupKeys([]);
+    setPreviewItem(null);
+    setSharedExportPreviewHtml(null);
+    setComposeModalOpen(false);
+    setQuickReplyOpen(false);
+    previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewAttachmentBlobUrlsRef.current = [];
+    setPreviewAttachmentBlobUrls({});
+  }, [effectiveEmail]);
+
+  const loadMailbox = useCallback(async () => {
     const currentUser = auth.currentUser;
-    if (!currentUser) return;
+    const scopeEmail = effectiveEmail;
+    if (!currentUser || !scopeEmail) return;
     setLoading(true);
     setError(null);
     try {
@@ -289,6 +310,7 @@ export default function PostaPage() {
         "/api/mailbox?limit=80",
         { method: "GET" }
       );
+      if (effectiveUserEmail(auth.currentUser?.email) !== scopeEmail) return;
       setItems(Array.isArray(data.items) ? data.items : []);
       setUnreadCount(
         typeof data.unreadCount === "number" && Number.isFinite(data.unreadCount)
@@ -296,11 +318,22 @@ export default function PostaPage() {
           : 0
       );
     } catch (err: any) {
-      setError(err?.message || "Poštu se nepodařilo načíst.");
+      if (effectiveUserEmail(auth.currentUser?.email) === scopeEmail) {
+        setError(err?.message || "Poštu se nepodařilo načíst.");
+      }
     } finally {
-      setLoading(false);
+      if (effectiveUserEmail(auth.currentUser?.email) === scopeEmail) {
+        setLoading(false);
+      }
     }
-  };
+  }, [effectiveEmail]);
+
+  const mailboxScopeIsCurrent = useCallback(
+    () =>
+      Boolean(effectiveEmail) &&
+      effectiveUserEmail(auth.currentUser?.email) === effectiveEmail,
+    [effectiveEmail]
+  );
 
   useEffect(() => {
     if (!authReady || !user) {
@@ -322,7 +355,7 @@ export default function PostaPage() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
     };
-  }, [authReady, user]);
+  }, [authReady, effectiveEmail, loadMailbox, user]);
 
   const receivedItems = useMemo(() => items.filter((item) => !isSentMailboxItem(item)), [items]);
   const activeReceivedItems = useMemo(() => {
@@ -567,7 +600,7 @@ export default function PostaPage() {
 
   const markItemsRead = async (ids: string[]) => {
     const currentUser = auth.currentUser;
-    if (!currentUser || ids.length === 0) return;
+    if (!currentUser || ids.length === 0 || !mailboxScopeIsCurrent()) return;
     setSaving(true);
     try {
       const payload = await fetchAuthedJsonOrThrow<MailboxPatchResponse>(
@@ -578,6 +611,7 @@ export default function PostaPage() {
           body: JSON.stringify({ ids }),
         }
       );
+      if (!mailboxScopeIsCurrent()) return;
       setItems((prev) =>
         prev.map((item) =>
           ids.includes(item.id)
@@ -597,7 +631,7 @@ export default function PostaPage() {
 
   const markAllRead = async () => {
     const currentUser = auth.currentUser;
-    if (!currentUser || unreadCount <= 0) return;
+    if (!currentUser || unreadCount <= 0 || !mailboxScopeIsCurrent()) return;
     setSaving(true);
     setError(null);
     try {
@@ -609,6 +643,7 @@ export default function PostaPage() {
           body: JSON.stringify({ markAllRead: true }),
         }
       );
+      if (!mailboxScopeIsCurrent()) return;
       setItems((prev) => prev.map((item) => ({ ...item, read: true, readAtMs: item.readAtMs ?? Date.now() })));
       if (typeof payload.unreadCount === "number" && Number.isFinite(payload.unreadCount)) {
         setUnreadCount(Math.max(0, Math.floor(payload.unreadCount)));
@@ -624,7 +659,7 @@ export default function PostaPage() {
 
   const deleteMailboxItems = async (ids: string[]) => {
     const currentUser = auth.currentUser;
-    if (!currentUser || ids.length === 0) return;
+    if (!currentUser || ids.length === 0 || !mailboxScopeIsCurrent()) return;
 
     setDeletingIds((prev) => [...new Set([...prev, ...ids])]);
     try {
@@ -636,6 +671,7 @@ export default function PostaPage() {
           body: JSON.stringify({ ids }),
         }
       );
+      if (!mailboxScopeIsCurrent()) return;
       setItems((prev) => prev.filter((item) => !ids.includes(item.id)));
       if (typeof payload.unreadCount === "number" && Number.isFinite(payload.unreadCount)) {
         setUnreadCount(Math.max(0, Math.floor(payload.unreadCount)));
@@ -652,7 +688,7 @@ export default function PostaPage() {
 
   const snoozeMailboxItems = async (ids: string[], snoozeUntilMs: number | null) => {
     const currentUser = auth.currentUser;
-    if (!currentUser || ids.length === 0) return;
+    if (!currentUser || ids.length === 0 || !mailboxScopeIsCurrent()) return;
 
     setSnoozingIds((prev) => [...new Set([...prev, ...ids])]);
     setError(null);
@@ -669,6 +705,7 @@ export default function PostaPage() {
           ),
         }
       );
+      if (!mailboxScopeIsCurrent()) return;
       const nowMs = Date.now();
       setSnoozeNowMs(nowMs);
       setItems((prev) =>
@@ -704,7 +741,7 @@ export default function PostaPage() {
 
   const archiveMailboxItems = async (ids: string[], archived: boolean) => {
     const currentUser = auth.currentUser;
-    if (!currentUser || ids.length === 0) return;
+    if (!currentUser || ids.length === 0 || !mailboxScopeIsCurrent()) return;
 
     setArchivingIds((prev) => [...new Set([...prev, ...ids])]);
     setError(null);
@@ -717,6 +754,7 @@ export default function PostaPage() {
           body: JSON.stringify({ ids, archived }),
         }
       );
+      if (!mailboxScopeIsCurrent()) return;
       const nowMs = Date.now();
       setItems((prev) =>
         prev.map((item) =>
@@ -1053,7 +1091,12 @@ export default function PostaPage() {
   };
 
   const handleQuickReplySend = async () => {
-    if (!user || !previewItem || previewItem.type !== "direct_message") return;
+    if (
+      !user ||
+      !previewItem ||
+      previewItem.type !== "direct_message" ||
+      !mailboxScopeIsCurrent()
+    ) return;
     if (!quickReplyRecipient) {
       setQuickReplyErrorText("U této zprávy nejde určit odesílatele.");
       return;
@@ -1081,6 +1124,7 @@ export default function PostaPage() {
         method: "POST",
         body: formData,
       });
+      if (!mailboxScopeIsCurrent()) return;
       setQuickReplyText("");
       setQuickReplyFiles([]);
       if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
@@ -1095,7 +1139,7 @@ export default function PostaPage() {
   };
 
   const handleComposeSend = async () => {
-    if (!user) return;
+    if (!user || !mailboxScopeIsCurrent()) return;
 
     let recipient = composeSelectedRecipient;
     if (!recipient) {
@@ -1136,6 +1180,7 @@ export default function PostaPage() {
         method: "POST",
         body: formData,
       });
+      if (!mailboxScopeIsCurrent()) return;
       closeComposeModal(true);
       await loadMailbox();
     } catch (err: any) {

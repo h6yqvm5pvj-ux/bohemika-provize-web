@@ -9,6 +9,7 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 import { auth } from "../../firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import type { Position } from "../../types/domain";
+import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 
 type UserNode = {
   email: string;
@@ -98,6 +99,7 @@ export default function StructurePage() {
   const svgPrefix = "structureTree";
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [nodes, setNodes] = useState<Map<string, UserNode>>(new Map());
@@ -115,11 +117,12 @@ export default function StructurePage() {
   }, []);
 
   useEffect(() => {
+    let alive = true;
     const load = async () => {
-      if (!user?.email) return;
+      if (!user || !effectiveEmail) return;
       setLoading(true);
       try {
-        const email = normalizeEmail(user.email);
+        const email = effectiveEmail;
 
         const map = new Map<string, UserNode>();
         try {
@@ -194,11 +197,13 @@ export default function StructurePage() {
           break;
         }
 
+        if (!alive) return;
         setNodes(map);
         setVisibleEmails(visible);
       } catch (e) {
+        if (!alive) return;
         console.error("Chyba při načítání struktury:", e);
-        const fallbackEmail = normalizeEmail(user.email);
+        const fallbackEmail = effectiveEmail;
         if (fallbackEmail) {
           const fallbackMap = new Map<string, UserNode>();
           fallbackMap.set(fallbackEmail, {
@@ -211,16 +216,19 @@ export default function StructurePage() {
           setVisibleEmails(new Set([fallbackEmail]));
         }
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     };
 
     void load();
-  }, [user]);
+    return () => {
+      alive = false;
+    };
+  }, [effectiveEmail, user]);
 
   const treeRoot = useMemo(() => {
-    if (!user?.email || nodes.size === 0 || visibleEmails.size === 0) return null;
-    const email = user.email.toLowerCase();
+    if (!effectiveEmail || nodes.size === 0 || visibleEmails.size === 0) return null;
+    const email = effectiveEmail;
 
     let rootEmail = email;
     let current = nodes.get(email)?.managerEmail ?? null;
@@ -241,7 +249,7 @@ export default function StructurePage() {
     });
 
     return buildTree(rootEmail, nodes, childrenByManager, visibleEmails);
-  }, [user, nodes, visibleEmails]);
+  }, [effectiveEmail, nodes, visibleEmails]);
 
   const layout = useMemo(() => {
     if (!treeRoot)
@@ -346,7 +354,7 @@ export default function StructurePage() {
     return () => window.removeEventListener("resize", centerTree);
   }, [centerTree, layout.width, layout.height, loading, treeRoot]);
 
-  const currentUserEmail = normalizeEmail(user?.email);
+  const currentUserEmail = effectiveEmail;
 
   if (!user) return null;
 

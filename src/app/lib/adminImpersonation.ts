@@ -18,6 +18,7 @@ const ALLOWED_API_PREFIXES = [
   "/api/advisor-tips",
   "/api/commission-statements",
   "/api/contracts",
+  "/api/intranet/wall",
   "/api/manager-snapshot",
   "/api/team-overview",
   "/api/tip-payouts",
@@ -25,6 +26,47 @@ const ALLOWED_API_PREFIXES = [
   "/api/tipster-tips",
   "/api/user-stats",
 ] as const;
+
+const ALLOWED_EXACT_API_REQUESTS = new Map<string, ReadonlySet<string>>([
+  ["/api/export-produkce/share", new Set(["POST"])],
+  ["/api/mailbox/compose", new Set(["POST"])],
+  ["/api/online-card/analytics", new Set(["GET"])],
+  ["/api/online-card/office-photo", new Set(["POST"])],
+  ["/api/plan-produkce/share", new Set(["POST"])],
+  ["/api/team-message", new Set(["POST"])],
+]);
+
+export function shouldImpersonateApiRequest(
+  pathname: string,
+  method: string
+): boolean {
+  const normalizedMethod = method.trim().toUpperCase() || "GET";
+  if (pathname === "/api/user/profile") {
+    return normalizedMethod === "GET";
+  }
+  if (pathname === "/api/subscription/me") {
+    return normalizedMethod === "GET";
+  }
+  if (pathname === "/api/mailbox") {
+    return (
+      normalizedMethod === "GET" ||
+      normalizedMethod === "PATCH" ||
+      normalizedMethod === "DELETE"
+    );
+  }
+  if (pathname === "/api/mailbox/attachment") {
+    return normalizedMethod === "GET";
+  }
+  if (pathname === "/api/mailbox/shared-preview") {
+    return normalizedMethod === "GET";
+  }
+  if (ALLOWED_EXACT_API_REQUESTS.get(pathname)?.has(normalizedMethod)) {
+    return true;
+  }
+  return ALLOWED_API_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
 
 export function readAdminImpersonationState(): AdminImpersonationState | null {
   if (typeof window === "undefined") return null;
@@ -93,6 +135,22 @@ export function clearAdminImpersonationState() {
   broadcastChange();
 }
 
+export function resolveUserProfilePatchRequest(): {
+  url: string;
+  headers?: Record<string, string>;
+  targetEmail: string | null;
+} {
+  const targetEmail = readAdminImpersonationState()?.email ?? null;
+  if (!targetEmail) {
+    return { url: "/api/user/profile", targetEmail: null };
+  }
+  return {
+    url: `/api/user/profile?targetEmail=${encodeURIComponent(targetEmail)}`,
+    headers: { [ADMIN_IMPERSONATION_HEADER]: targetEmail },
+    targetEmail,
+  };
+}
+
 const requestMethod = (input: RequestInfo | URL, init?: RequestInit): string => {
   const direct = init?.method;
   if (direct) return direct.toUpperCase();
@@ -124,24 +182,7 @@ const shouldAttachImpersonationHeader = (
   if (!url || url.origin !== window.location.origin) return false;
   const { pathname } = url;
   const method = requestMethod(input, init);
-  if (pathname === "/api/user/profile") {
-    return method === "GET";
-  }
-  if (pathname === "/api/subscription/me") {
-    return method === "GET";
-  }
-  if (pathname === "/api/mailbox") {
-    return method === "GET" || method === "PATCH" || method === "DELETE";
-  }
-  if (pathname === "/api/mailbox/attachment") {
-    return method === "GET";
-  }
-  if (pathname === "/api/mailbox/shared-preview") {
-    return method === "GET";
-  }
-  return ALLOWED_API_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
+  return shouldImpersonateApiRequest(pathname, method);
 };
 
 export function installAdminImpersonationFetchPatch() {

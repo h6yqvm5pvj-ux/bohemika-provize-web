@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import {
   ADMIN_IMPERSONATION_HEADER,
+  hasImpersonationHeaderValue,
   normalizeImpersonationEmail,
 } from "@/lib/adminImpersonationShared";
 import {
@@ -34,9 +35,15 @@ export async function resolveServerImpersonation({
   actorUid: string;
   decoded: Record<string, unknown>;
 }): Promise<ServerImpersonationResult> {
-  const targetEmail = normalizeImpersonationEmail(
-    req.headers.get(ADMIN_IMPERSONATION_HEADER)
-  );
+  const rawTargetEmail = req.headers.get(ADMIN_IMPERSONATION_HEADER);
+  const targetEmail = normalizeImpersonationEmail(rawTargetEmail);
+  if (hasImpersonationHeaderValue(rawTargetEmail) && !targetEmail) {
+    return {
+      ok: false,
+      error: "Cílový e-mail pro administrátorské zastoupení není platný.",
+      status: 400,
+    };
+  }
   if (!targetEmail) {
     return { ok: true, impersonation: null };
   }

@@ -34,6 +34,10 @@ import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase-auth";
 import { formatMoney } from "@/app/lib/formatters";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
+import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
 import SplitTitle from "../plan-produkce/SplitTitle";
 
 type StepId = "base" | "family" | "children" | "mortgage" | "confirm";
@@ -833,8 +837,8 @@ function advisorFooterFromProfile(
       readText(profile?.fullName) ||
       readText(profile?.name) ||
       readText(profile?.displayName) ||
-      displayNameFromUser(user) ||
-      nameFromEmail(fallbackEmail),
+      nameFromEmail(fallbackEmail) ||
+      displayNameFromUser(user),
     ico:
       readText(onlineCard?.ico) ||
       readText(profile?.ico) ||
@@ -1131,6 +1135,8 @@ function clamp(value: number, min: number, max: number): number {
 
 export default function LifeInsuranceSetupPage() {
   const pdfContentRef = useRef<HTMLDivElement | null>(null);
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(authUser?.email);
   const [step, setStep] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -1141,7 +1147,7 @@ export default function LifeInsuranceSetupPage() {
   const [pdfRenderLanguage, setPdfRenderLanguage] = useState<PdfLanguage>("cs");
   const [pdfGeneratedAt, setPdfGeneratedAt] = useState(() => new Date());
   const [advisorFooter, setAdvisorFooter] = useState<AdvisorFooterInfo>(() =>
-    advisorFooterFromProfile(null, auth.currentUser)
+    advisorFooterFromProfile(null, null)
   );
   const [providerRole, setProviderRole] = useState<ProviderRole>("main");
   const [employmentType, setEmploymentType] = useState<EmploymentType>("employee");
@@ -1350,20 +1356,32 @@ export default function LifeInsuranceSetupPage() {
       : 0;
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, setAuthUser);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
-    const loadFooter = (currentUser: FirebaseUser | null) => {
-      setAdvisorFooter(advisorFooterFromProfile(null, currentUser));
-      if (!currentUser) return;
+    const currentUser = authUser;
+    setAdvisorFooter(advisorFooterFromProfile(null, currentUser, effectiveEmail));
+    if (currentUser && effectiveEmail) {
 
       getUserProfileCached(currentUser, { force: true })
         .then((payload) => {
-          if (cancelled) return;
+          if (
+            cancelled ||
+            effectiveUserEmail(auth.currentUser?.email) !== effectiveEmail
+          ) return;
           const payloadEmail =
             typeof (payload as { email?: unknown }).email === "string"
               ? (payload as { email?: string }).email
               : "";
           setAdvisorFooter(
-            advisorFooterFromProfile(payload.profile, currentUser, payloadEmail)
+            advisorFooterFromProfile(
+              payload.profile,
+              currentUser,
+              payloadEmail || effectiveEmail
+            )
           );
         })
         .catch((error) => {
@@ -1372,18 +1390,12 @@ export default function LifeInsuranceSetupPage() {
             error
           );
         });
-    };
-
-    loadFooter(auth.currentUser);
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      loadFooter(currentUser);
-    });
+    }
 
     return () => {
       cancelled = true;
-      unsubscribe();
     };
-  }, []);
+  }, [authUser, effectiveEmail]);
 
   const updateValue = (key: InputKey, value: string) => {
     setValues((prev) => ({ ...prev, [key]: sanitizeInputValue(value) }));

@@ -400,6 +400,7 @@ export async function POST(req: NextRequest) {
     namespace: "api:team-message:post",
     limit: TEAM_MESSAGE_RATE_LIMIT,
     windowMs: TEAM_MESSAGE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
@@ -440,6 +441,39 @@ export async function POST(req: NextRequest) {
     target: "selected" as const,
     recipients: resolved.recipients,
   };
+
+  // The bearer token always belongs to the real administrator, so an upstream
+  // service cannot safely authorize a message as the represented manager. In
+  // impersonation mode dispatch locally with the already server-validated
+  // effective manager identity.
+  if (ctx.isImpersonating) {
+    const localResult = await sendTeamMessageViaPush({
+      req,
+      managerEmail: payload.managerEmail,
+      message: payload.message,
+      recipients: resolved.recipients,
+    });
+    if (localResult.ok) {
+      return withRateLimitHeaders(
+        NextResponse.json({
+          ok: true,
+          message:
+            localResult.sent === 1
+              ? "Zpráva byla odeslána 1 příjemci."
+              : `Zpráva byla odeslána ${localResult.sent} příjemcům.`,
+          delivery: "local-push-impersonation",
+        }),
+        ctx
+      );
+    }
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: localResult.error || "Zprávu se nepodařilo odeslat." },
+        { status: 502 }
+      ),
+      ctx
+    );
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);

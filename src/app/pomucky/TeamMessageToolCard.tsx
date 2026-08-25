@@ -4,9 +4,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { auth } from "../firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import type { Position } from "../types/domain";
+import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 
 function isManagerPosition(pos?: Position | null): boolean {
   if (!pos) return false;
@@ -14,6 +15,8 @@ function isManagerPosition(pos?: Position | null): boolean {
 }
 
 export function TeamMessageToolCard() {
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [shouldShow, setShouldShow] = useState(false);
   const [checked, setChecked] = useState(false);
 
@@ -30,20 +33,26 @@ export function TeamMessageToolCard() {
     typeof value === "string" ? value.trim().toLowerCase() : "";
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user?.email) {
+    const unsub = onAuthStateChanged(auth, setUser);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      if (!user || !effectiveEmail) {
         setShouldShow(false);
         setChecked(true);
         return;
       }
 
       try {
-        const email = normalizeEmail(user.email);
         const payload = await fetchAuthedJsonOrThrow<TeamOverviewApiResponse>(
           user,
           "/api/team-overview",
           { method: "GET" }
         );
+        if (!alive) return;
         const position = payload?.position ?? null;
 
         if (!isManagerPosition(position)) {
@@ -54,20 +63,24 @@ export function TeamMessageToolCard() {
 
         const members = Array.isArray(payload?.members) ? payload.members : [];
         const directSubCount = members.filter(
-          (member) => normalizeEmail(member.managerEmail) === email
+          (member) => normalizeEmail(member.managerEmail) === effectiveEmail
         ).length;
 
         setShouldShow(directSubCount > 0);
       } catch (err) {
+        if (!alive) return;
         console.error("TeamMessageToolCard – chyba při ověřování:", err);
         setShouldShow(false);
       } finally {
-        setChecked(true);
+        if (alive) setChecked(true);
       }
-    });
+    };
 
-    return () => unsub();
-  }, []);
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [effectiveEmail, user]);
 
   // dokud nevíme, nebo nemá tým, nic nezobrazuj
   if (!checked || !shouldShow) return null;

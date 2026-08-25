@@ -238,6 +238,7 @@ export async function POST(
     namespace: "api:intranet-wall:comment",
     limit: COMMENT_RATE_LIMIT,
     windowMs: COMMENT_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

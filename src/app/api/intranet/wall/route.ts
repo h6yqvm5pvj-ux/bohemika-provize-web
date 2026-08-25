@@ -902,6 +902,7 @@ export async function GET(req: NextRequest) {
     namespace: "api:intranet-wall:get",
     limit: GET_RATE_LIMIT,
     windowMs: GET_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
@@ -1030,6 +1031,7 @@ export async function POST(req: NextRequest) {
     namespace: "api:intranet-wall:post",
     limit: POST_RATE_LIMIT,
     windowMs: POST_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

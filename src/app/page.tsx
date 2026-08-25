@@ -26,7 +26,14 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import { readAdminImpersonationState } from "@/app/lib/adminImpersonation";
+import {
+  readAdminImpersonationState,
+  resolveUserProfilePatchRequest,
+} from "@/app/lib/adminImpersonation";
+import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
 import {
   getUserProfileCached,
   invalidateUserProfileCache,
@@ -603,10 +610,7 @@ export default function HomePage() {
   const [accessProfile, setAccessProfile] = useState<Record<string, unknown> | null>(null);
   const [accessProfileHasTeam, setAccessProfileHasTeam] = useState(false);
   const [mailUnreadCount, setMailUnreadCount] = useState(0);
-  const normalizedEmail = useMemo(
-    () => normalizeEmail(user?.email) || null,
-    [user?.email]
-  );
+  const normalizedEmail = useEffectiveUserEmail(user?.email) || null;
   const effectiveAdvisorEmail = useMemo(
     () => resolveEffectiveAdvisorEmail(user, accessProfile),
     [accessProfile, user]
@@ -722,6 +726,7 @@ export default function HomePage() {
     }
 
     let cancelled = false;
+    const requestScopeEmail = normalizedEmail;
 
     const loadProfile = (force = false) => {
       setAccessProfileReady(false);
@@ -729,7 +734,10 @@ export default function HomePage() {
 
       getUserProfileCached(user, { maxAgeMs: 60 * 1000, force })
         .then((payload) => {
-          if (cancelled) return;
+          if (
+            cancelled ||
+            effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail
+          ) return;
           const profile = (payload?.profile ?? {}) as Record<string, unknown>;
           setAccessProfile(profile);
           setAccessProfileHasTeam(payload?.hasTeam === true);
@@ -738,14 +746,22 @@ export default function HomePage() {
           }
         })
         .catch((error) => {
-          if (cancelled) return;
+          if (
+            cancelled ||
+            effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail
+          ) return;
           console.error("Ověření typu účtu selhalo:", error);
           setAccessProfile(null);
           setAccessProfileHasTeam(false);
           setAccessProfileError(HOME_COPY.cs.profileTypeLoadError);
         })
         .finally(() => {
-          if (!cancelled) setAccessProfileReady(true);
+          if (
+            !cancelled &&
+            effectiveUserEmail(auth.currentUser?.email) === requestScopeEmail
+          ) {
+            setAccessProfileReady(true);
+          }
         });
     };
 
@@ -760,7 +776,7 @@ export default function HomePage() {
       cancelled = true;
       window.removeEventListener("app:refresh-user-profile", onRefreshProfile);
     };
-  }, [authReady, user]);
+  }, [authReady, normalizedEmail, user]);
 
   useEffect(() => {
     if (!authReady || !user) {
@@ -769,6 +785,7 @@ export default function HomePage() {
     }
 
     let cancelled = false;
+    const requestScopeEmail = normalizedEmail;
     const loadUnreadCount = async () => {
       const currentUser = auth.currentUser;
       if (!currentUser) return;
@@ -778,7 +795,10 @@ export default function HomePage() {
           "/api/mailbox?countOnly=1",
           { method: "GET" }
         );
-        if (cancelled) return;
+        if (
+          cancelled ||
+          effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail
+        ) return;
         const count = Number(payload?.unreadCount ?? 0);
         setMailUnreadCount(
           Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
@@ -804,7 +824,7 @@ export default function HomePage() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
     };
-  }, [authReady, user]);
+  }, [authReady, normalizedEmail, user]);
 
   const pushHomeSettingsToCloud = useCallback(async (payload: {
     homeLayout?: HomeSection[];
@@ -814,9 +834,12 @@ export default function HomePage() {
   }) => {
     const currentUser = auth.currentUser;
     if (!normalizedEmail || !currentUser) return;
+    if (effectiveUserEmail(currentUser.email) !== normalizedEmail) return;
+    const profilePatch = resolveUserProfilePatchRequest();
     try {
-      await fetchAuthedJsonOrThrow(currentUser, "/api/user/profile", {
+      await fetchAuthedJsonOrThrow(currentUser, profilePatch.url, {
         method: "PATCH",
+        headers: profilePatch.headers,
         body: JSON.stringify(payload),
       });
       invalidateUserProfileCache(normalizedEmail);
@@ -867,7 +890,7 @@ export default function HomePage() {
 
   const updatePerformanceMode = (mode: PerformanceMode) => {
     setPerformanceMode(mode);
-    const key = homePerformanceKey(user?.email ?? null);
+    const key = homePerformanceKey(normalizedEmail);
     if (typeof window !== "undefined" && key) {
       window.localStorage.setItem(key, mode);
     }
@@ -1056,7 +1079,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const key = homeLayoutKey(user?.email ?? null);
+    const key = homeLayoutKey(normalizedEmail);
     if (!key) return;
     const raw = window.localStorage.getItem(key);
     if (!raw) {
@@ -1070,7 +1093,7 @@ export default function HomePage() {
     } catch {
       setHomeLayout(HOME_LAYOUT_DEFAULT);
     }
-  }, [user]);
+  }, [normalizedEmail]);
 
   const isManager = isManagerPosition(userMeta?.position ?? null) || hasTeam;
   const showTeamBox = hasTeam;
@@ -1376,10 +1399,13 @@ export default function HomePage() {
   const saveMonthlyGoal = async (value: number) => {
     const currentUser = auth.currentUser;
     if (!normalizedEmail || !currentUser) return;
+    if (effectiveUserEmail(currentUser.email) !== normalizedEmail) return;
+    const profilePatch = resolveUserProfilePatchRequest();
     try {
       invalidateHomeCache(normalizedEmail);
-      await fetchAuthedJsonOrThrow(currentUser, "/api/user/profile", {
+      await fetchAuthedJsonOrThrow(currentUser, profilePatch.url, {
         method: "PATCH",
+        headers: profilePatch.headers,
         body: JSON.stringify({ monthlyGoal: value }),
       });
       invalidateUserProfileCache(normalizedEmail);

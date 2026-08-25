@@ -29,6 +29,7 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import {
   POSITION_LABELS,
   formatMoney as formatMoneyValue,
@@ -251,6 +252,16 @@ function displayNameFromUser(user: User | null): string {
     .join(" ");
 }
 
+function displayNameFromEmail(email: string): string {
+  const localPart = email.split("@")[0] ?? "";
+  if (!localPart) return "Uživatel";
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ") || localPart;
+}
+
 function isPositionValue(value: unknown): value is Position {
   return (
     typeof value === "string" && POSITION_OPTIONS.includes(value as Position)
@@ -464,6 +475,7 @@ function addPayouts(target: Map<number, number>, payouts: Payout[]) {
 
 export default function ProjectionPage() {
   const [user, setUser] = useState<User | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [profileFullName, setProfileFullName] = useState<string | null>(null);
   const [selectedPosition, setSelectedPosition] =
     useState<Position>("poradce1");
@@ -494,19 +506,25 @@ export default function ProjectionPage() {
   const [selectedTeamYear, setSelectedTeamYear] = useState<number | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (current) => {
-      setUser(current);
-      if (!current?.email) {
+    const unsub = onAuthStateChanged(auth, setUser);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const loadProfile = async () => {
+      if (!user || !effectiveEmail) {
         setProfileFullName(null);
         setSelectedPosition("poradce1");
         return;
       }
       try {
         const payload = await fetchAuthedJsonOrThrow<UserProfileApiResponse>(
-          current,
+          user,
           "/api/user/profile",
           { method: "GET" }
         );
+        if (!alive) return;
         const fullName =
           typeof payload?.profile?.fullName === "string"
             ? payload.profile.fullName.trim()
@@ -519,13 +537,17 @@ export default function ProjectionPage() {
           setSelectedPosition("poradce1");
         }
       } catch (err) {
+        if (!alive) return;
         console.error("Načtení profilu pro projekci výkonu selhalo:", err);
         setProfileFullName(null);
         setSelectedPosition("poradce1");
       }
-    });
-    return () => unsub();
-  }, []);
+    };
+    void loadProfile();
+    return () => {
+      alive = false;
+    };
+  }, [effectiveEmail, user]);
 
   const startDate = useMemo(() => {
     const d = new Date();
@@ -708,7 +730,7 @@ export default function ProjectionPage() {
   }
 
   const renderIntro = () => {
-    const displayName = profileFullName || displayNameFromUser(user);
+    const displayName = profileFullName || (effectiveEmail ? displayNameFromEmail(effectiveEmail) : displayNameFromUser(user));
 
     return (
       <div className="flex min-h-[calc(100vh-2rem)] w-full flex-col gap-5">
@@ -1008,7 +1030,7 @@ export default function ProjectionPage() {
     };
 
     const hasTeamData = teamYears.some((y) => y.total > 0);
-    const managerName = profileFullName || displayNameFromUser(user);
+    const managerName = profileFullName || (effectiveEmail ? displayNameFromEmail(effectiveEmail) : displayNameFromUser(user));
 
     return (
       <div className="w-full space-y-6">

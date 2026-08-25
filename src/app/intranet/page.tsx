@@ -48,6 +48,7 @@ import {
   fetchAuthedBlobOrThrow,
   fetchAuthedJsonOrThrow,
 } from "@/app/lib/authenticatedApi";
+import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import {
   INTRANET_SECTIONS,
   INTRANET_SECTION_LABEL_BY_KEY,
@@ -1433,6 +1434,7 @@ function PollCard({
 
 export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("zivot");
   const [posts, setPosts] = useState<WallPost[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
@@ -1718,7 +1720,7 @@ export default function IntranetPage() {
       return;
     }
     void loadPosts(user, selectedSection);
-  }, [user, selectedSection]);
+  }, [effectiveEmail, user, selectedSection]);
 
   useEffect(() => {
     if (!pendingFocusPostId || loadingPosts) return;
@@ -2457,7 +2459,7 @@ export default function IntranetPage() {
   };
 
   const canDeletePost = (post: WallPost): boolean => {
-    const me = normalizeEmail(user?.email);
+    const me = effectiveEmail;
     const author = normalizeEmail(post.author.email);
     return !!me && !!author && me === author;
   };

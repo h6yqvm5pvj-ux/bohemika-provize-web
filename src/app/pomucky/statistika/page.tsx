@@ -8,6 +8,7 @@ import { CalendarDays, History, Plus, Save, X } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import {
   formatMoney as formatMoneyValue,
   positionLabel as positionLabelValue,
@@ -301,7 +302,7 @@ function StatistikaPageInner() {
   }, [year, month]);
   const searchParams = useSearchParams();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const currentUserEmail = useEffectiveUserEmail(currentUser?.email) || null;
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [commissionMode, setCommissionMode] = useState<CommissionMode | null>(null);
@@ -320,11 +321,6 @@ function StatistikaPageInner() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (current) => {
       setCurrentUser(current);
-      if (!current?.email) {
-        setCurrentUserEmail(null);
-        return;
-      }
-      setCurrentUserEmail(current.email.toLowerCase());
     });
 
     return () => unsubscribe();
@@ -347,7 +343,7 @@ function StatistikaPageInner() {
       setOwnerEmail(targetEmail);
       return;
     }
-    setOwnerEmail((prev) => prev ?? (currentUserEmail ? currentUserEmail.toLowerCase() : null));
+    setOwnerEmail(currentUserEmail ? currentUserEmail.toLowerCase() : null);
   }, [searchParams, currentUserEmail]);
 
   useEffect(() => {

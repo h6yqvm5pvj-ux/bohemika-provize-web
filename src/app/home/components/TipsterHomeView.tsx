@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import { aresGetEntityDetail, aresSearchEntities } from "@/app/lib/ares";
 import { type AppLanguage } from "@/lib/appLanguage";
 
@@ -554,6 +555,7 @@ export function TipsterHomeView({
   profile: Record<string, unknown>;
   language: AppLanguage;
 }) {
+  const effectiveEmail = useEffectiveUserEmail(user.email);
   const copy = TIPSTER_COPY[language];
   const [formOpen, setFormOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -581,7 +583,7 @@ export function TipsterHomeView({
     normalizeText(profile.fullName) ||
     normalizeText(profile.name) ||
     normalizeText(user.displayName) ||
-    normalizeEmail(user.email) ||
+    effectiveEmail ||
     copy.displayNameFallback;
   const recipientDisplayName =
     recipientEmail
@@ -1092,7 +1094,7 @@ export function TipsterHomeView({
       "",
       `${copy.fields.product}: ${productLabel(product, copy)}`,
       `${copy.fields.tipster}: ${displayName}`,
-      `${copy.fields.tipsterEmail}: ${normalizeEmail(user.email) || copy.fields.notProvided}`,
+      `${copy.fields.tipsterEmail}: ${effectiveEmail || copy.fields.notProvided}`,
       "",
     ];
 
@@ -1159,7 +1161,7 @@ export function TipsterHomeView({
     }
 
     return lines;
-  }, [copy, displayName, form, product, tipAttachments, user.email]);
+  }, [copy, displayName, effectiveEmail, form, product, tipAttachments]);
 
   const submitTip = async () => {
     const validationError = validateCurrentDetails();

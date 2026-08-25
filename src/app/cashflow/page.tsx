@@ -13,6 +13,10 @@ import { auth } from "../firebase";
 import { readAdminImpersonationState } from "@/app/lib/adminImpersonation";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
+import {
   applyStatementMissingPayoutShifts,
   applyStatementPayoutTotalsToMonths,
   applyIntelligentCashflowPrediction,
@@ -197,6 +201,7 @@ function CommissionStatementPreviewModal({
 
 export default function CashflowPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [profileReady, setProfileReady] = useState(false);
   const [hasInternalProfile, setHasInternalProfile] = useState<boolean | null>(null);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
@@ -242,6 +247,7 @@ export default function CashflowPage() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
+    const requestScopeEmail = effectiveEmail || effectiveUserEmail(user.email);
 
     const loadProfile = (force = false) => {
       setProfileReady(false);
@@ -249,22 +255,31 @@ export default function CashflowPage() {
 
       void getUserProfileCached(user, { force })
         .then((payload) => {
-          if (cancelled) return;
+          if (
+            cancelled ||
+            effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail
+          ) return;
           const nextHasProfile = payload.hasProfile === true;
           setHasInternalProfile(nextHasProfile);
           setAccountType(nextHasProfile ? resolveAccountType(payload.profile) : "advisor");
-          setDataEmail(resolveEffectiveDataEmail(user, payload.profile ?? null));
+          setDataEmail(requestScopeEmail || resolveEffectiveDataEmail(user, payload.profile ?? null));
         })
         .catch((error) => {
-          if (cancelled) return;
+          if (
+            cancelled ||
+            effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail
+          ) return;
           console.warn("Cashflow: profil uživatele se nepodařilo načíst.", error);
           setHasInternalProfile(false);
           setAccountType("advisor");
-          setDataEmail(resolveEffectiveDataEmail(user));
+          setDataEmail(requestScopeEmail || resolveEffectiveDataEmail(user));
           setProfileLoadError("Nepodařilo se načíst profil uživatele.");
         })
         .finally(() => {
-          if (!cancelled) setProfileReady(true);
+          if (
+            !cancelled &&
+            effectiveUserEmail(auth.currentUser?.email) === requestScopeEmail
+          ) setProfileReady(true);
         });
     };
 
@@ -279,7 +294,7 @@ export default function CashflowPage() {
       cancelled = true;
       window.removeEventListener("app:refresh-user-profile", onRefreshProfile);
     };
-  }, [user]);
+  }, [effectiveEmail, user]);
 
   useEffect(() => {
     if (!user) {

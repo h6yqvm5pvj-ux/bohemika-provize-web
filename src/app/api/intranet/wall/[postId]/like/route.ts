@@ -46,6 +46,7 @@ export async function POST(
     namespace: "api:intranet-wall:like",
     limit: LIKE_RATE_LIMIT,
     windowMs: LIKE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

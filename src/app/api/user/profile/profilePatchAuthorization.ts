@@ -6,13 +6,33 @@ type ProfilePatchScopeInput = {
   hasPositionTimeline: boolean;
 };
 
-export const profilePatchScopeError = ({
-  isImpersonating,
-  effectiveEmail,
-  declaredTargetEmail,
-  patchKeys,
-  hasPositionTimeline,
-}: ProfilePatchScopeInput): string | null => {
+const IMPERSONATED_PROFILE_PATCH_KEYS = new Set([
+  "fullName",
+  "commissionMode",
+  "agencyNumber",
+  "ico",
+  "phoneNumber",
+  "monthlyGoal",
+  "notifyMinutes",
+  "backgroundColor",
+  "fontTheme",
+  "reduceMotion",
+  "tipsterCollaborationMode",
+  "tipsterCommissionPercent",
+  "notificationSettings",
+  "positionTimeline",
+  "homeLayout",
+  "homeWidgets",
+  "homePerformanceMode",
+  "homeQuickActions",
+  "tvorbaFooterProfile",
+  "onlineCard",
+]);
+
+export const profilePatchScopeError = (
+  input: ProfilePatchScopeInput
+): string | null => {
+  const { isImpersonating, effectiveEmail, declaredTargetEmail } = input;
   if (
     (isImpersonating && declaredTargetEmail !== effectiveEmail) ||
     (!isImpersonating && Boolean(declaredTargetEmail))
@@ -22,11 +42,9 @@ export const profilePatchScopeError = ({
 
   if (
     isImpersonating &&
-    (patchKeys.length !== 1 ||
-      patchKeys[0] !== "positionTimeline" ||
-      !hasPositionTimeline)
+    input.patchKeys.some((key) => !IMPERSONATED_PROFILE_PATCH_KEYS.has(key))
   ) {
-    return "Při přepnutí za uživatele lze měnit pouze Historii kariéry.";
+    return "Toto nastavení účtu nelze měnit v administrátorském zastoupení.";
   }
 
   return null;

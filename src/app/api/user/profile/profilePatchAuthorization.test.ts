@@ -41,7 +41,7 @@ describe("profilePatchScopeError", () => {
     ).toBe("Cílový uživatel se neshoduje s ověřenou impersonací.");
   });
 
-  it("rejects non-career fields during impersonation", () => {
+  it("allows ordinary profile settings for the verified target", () => {
     expect(
       profilePatchScopeError({
         isImpersonating: true,
@@ -50,6 +50,20 @@ describe("profilePatchScopeError", () => {
         patchKeys: ["positionTimeline", "commissionMode"],
         hasPositionTimeline: true,
       })
-    ).toBe("Při přepnutí za uživatele lze měnit pouze Historii kariéry.");
+    ).toBeNull();
+  });
+
+  it("keeps security and account lifecycle fields on the real account", () => {
+    for (const key of ["mfaLastVerifiedPing", "lastActivePing", "accountSetupCompletedAt"]) {
+      expect(
+        profilePatchScopeError({
+          isImpersonating: true,
+          effectiveEmail: "petra.janackova@bohemika.eu",
+          declaredTargetEmail: "petra.janackova@bohemika.eu",
+          patchKeys: [key],
+          hasPositionTimeline: false,
+        })
+      ).toBe("Toto nastavení účtu nelze měnit v administrátorském zastoupení.");
+    }
   });
 });

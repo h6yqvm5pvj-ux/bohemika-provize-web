@@ -134,6 +134,7 @@ export async function GET(req: NextRequest) {
     namespace: "api:intranet-wall:attachment:get",
     limit: ATTACHMENT_RATE_LIMIT,
     windowMs: ATTACHMENT_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

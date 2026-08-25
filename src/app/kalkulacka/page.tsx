@@ -59,6 +59,7 @@ import { HelpDialog } from "@/components/HelpDialog";
 import {
   ADMIN_IMPERSONATION_EVENT,
   readAdminImpersonationState,
+  resolveUserProfilePatchRequest,
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
 import { formatMoney, positionLabel } from "@/app/lib/formatters";
@@ -3019,7 +3020,7 @@ export default function CalculatorPage() {
     if (value) {
       setCalculatorViewMode("commissionOnly");
     }
-    if (typeof window !== "undefined") {
+    if (!impersonatedUserEmail && typeof window !== "undefined") {
       window.localStorage.setItem(SETTINGS_KEYS.tipsterMode, value ? "1" : "0");
     }
 
@@ -3027,15 +3028,20 @@ export default function CalculatorPage() {
 
     setTipsterModeSaving(true);
     try {
-      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+      if (normalizeEmailValue(readAdminImpersonationState()?.email) !== impersonatedUserEmail) {
+        throw new Error("Přepnutí uživatele se změnilo. Změnu ulož znovu.");
+      }
+      const profilePatch = resolveUserProfilePatchRequest();
+      await fetchAuthedJsonOrThrow(user, profilePatch.url, {
         method: "PATCH",
+        headers: profilePatch.headers,
         body: JSON.stringify({ tipsterCollaborationMode: value }),
       });
     } catch (err) {
       console.error("Failed to persist tipster mode", err);
       setTipsterModeEnabled(previousTipsterMode);
       setCalculatorViewMode(previousViewMode);
-      if (typeof window !== "undefined") {
+      if (!impersonatedUserEmail && typeof window !== "undefined") {
         window.localStorage.setItem(
           SETTINGS_KEYS.tipsterMode,
           previousTipsterMode ? "1" : "0"
@@ -3049,7 +3055,7 @@ export default function CalculatorPage() {
   const setTipsterPercentDraft = (value: number): number => {
     const next = clampTipsterPercent(value);
     setTipsterPercent(next);
-    if (typeof window !== "undefined") {
+    if (!impersonatedUserEmail && typeof window !== "undefined") {
       window.localStorage.setItem(SETTINGS_KEYS.tipsterPercent, String(next));
     }
     return next;
@@ -3061,8 +3067,13 @@ export default function CalculatorPage() {
     if (!user) return;
 
     try {
-      await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
+      if (normalizeEmailValue(readAdminImpersonationState()?.email) !== impersonatedUserEmail) {
+        throw new Error("Přepnutí uživatele se změnilo. Změnu ulož znovu.");
+      }
+      const profilePatch = resolveUserProfilePatchRequest();
+      await fetchAuthedJsonOrThrow(user, profilePatch.url, {
         method: "PATCH",
+        headers: profilePatch.headers,
         body: JSON.stringify({ tipsterCommissionPercent: next }),
       });
     } catch (err) {

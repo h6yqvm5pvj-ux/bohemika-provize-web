@@ -6,6 +6,10 @@ import type { User as FirebaseUser } from "firebase/auth";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { readAdminImpersonationState } from "@/app/lib/adminImpersonation";
+import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import type { UserProfileResponse } from "@/app/lib/userProfileCache";
 import type { AccountType } from "@/components/account-setup/useAccountSetupFlow";
@@ -69,6 +73,7 @@ export function useUserProfileAccess({
   user,
   onLanguageResolved,
 }: UseUserProfileAccessOptions) {
+  const profileEmail = useEffectiveUserEmail(user?.email);
   const [subscriptionAccessState, setSubscriptionAccessState] =
     useState<SubscriptionAccessUiState>("none");
   const [subscriptionBlockReason, setSubscriptionBlockReason] =
@@ -148,6 +153,8 @@ export function useUserProfileAccess({
 
   const loadProfileForUser = useCallback(
     async (currentUser: FirebaseUser, options?: { force?: boolean }) => {
+      const requestScopeEmail = effectiveUserEmail(currentUser.email);
+      if (!requestScopeEmail) return;
       const force = options?.force === true;
       const warmPayload =
         !force && typeof userProfileCache.peekUserProfileCached === "function"
@@ -157,8 +164,10 @@ export function useUserProfileAccess({
           : null;
 
       if (warmPayload) {
-        applyProfilePayload(warmPayload, currentUser);
-        setLoadingProfile(false);
+        if (effectiveUserEmail(currentUser.email) === requestScopeEmail) {
+          applyProfilePayload(warmPayload, currentUser);
+          setLoadingProfile(false);
+        }
       } else {
         setLoadingProfile(true);
       }
@@ -168,8 +177,10 @@ export function useUserProfileAccess({
           maxAgeMs: PROFILE_CACHE_MAX_AGE_MS,
           force,
         });
+        if (effectiveUserEmail(currentUser.email) !== requestScopeEmail) return;
         applyProfilePayload(payload, currentUser);
       } catch (error) {
+        if (effectiveUserEmail(currentUser.email) !== requestScopeEmail) return;
         console.warn("Chyba při načítání subscription profilu:", error);
         setSubscriptionAccessState("none");
         setSubscriptionBlockReason("none");
@@ -180,7 +191,9 @@ export function useUserProfileAccess({
         setHasTipsters(false);
         setProfileLoadFailureVersion((prev) => prev + 1);
       } finally {
-        setLoadingProfile(false);
+        if (effectiveUserEmail(currentUser.email) === requestScopeEmail) {
+          setLoadingProfile(false);
+        }
       }
     },
     [applyProfilePayload]
@@ -194,9 +207,9 @@ export function useUserProfileAccess({
 
     setLoadingProfile(true);
     setHasInternalProfile(false);
-    setHasTeam(readCachedHasTeam(effectiveProfileEmail(user.email)) ?? true);
+    setHasTeam(readCachedHasTeam(profileEmail) ?? true);
     void loadProfileForUser(user);
-  }, [loadProfileForUser, resetProfileAccess, user]);
+  }, [loadProfileForUser, profileEmail, resetProfileAccess, user]);
 
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
@@ -215,6 +228,7 @@ export function useUserProfileAccess({
     const currentUser = user;
     const email = currentUser?.email?.toLowerCase();
     if (!currentUser || !email || !hasInternalProfile) return;
+    if (readAdminImpersonationState()) return;
     let cancelled = false;
     const shouldLog = process.env.NODE_ENV !== "production";
 

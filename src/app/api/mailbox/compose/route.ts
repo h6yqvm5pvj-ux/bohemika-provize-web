@@ -475,6 +475,7 @@ export async function POST(req: NextRequest) {
     namespace: "api:mailbox:compose:post",
     limit: MAILBOX_COMPOSE_RATE_LIMIT,
     windowMs: MAILBOX_COMPOSE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

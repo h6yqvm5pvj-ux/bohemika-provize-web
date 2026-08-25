@@ -16,6 +16,10 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
 
 type TargetMode = "all" | "selected";
 
@@ -210,7 +214,7 @@ function expandSelectedToDescendants(
 
 export default function TeamMessagePage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const userEmail = useEffectiveUserEmail(user?.email) || null;
   const [subordinates, setSubordinates] = useState<Subordinate[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -229,7 +233,6 @@ export default function TeamMessagePage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       setUser(fbUser);
-      setUserEmail(fbUser?.email?.trim().toLowerCase() ?? null);
     });
     return () => unsub();
   }, []);
@@ -240,6 +243,8 @@ export default function TeamMessagePage() {
       return;
     }
 
+    let alive = true;
+    const scopeEmail = userEmail;
     const load = async () => {
       setLoadingSubs(true);
       setErrorText(null);
@@ -271,17 +276,22 @@ export default function TeamMessagePage() {
           })
           .filter((item): item is TeamMember => item !== null);
 
-        const tree = buildSubordinateTree(normalizedMembers, userEmail);
+        if (!alive) return;
+        const tree = buildSubordinateTree(normalizedMembers, scopeEmail);
         setSubordinates(tree);
       } catch (e) {
+        if (!alive) return;
         console.error("Chyba při načítání podřízených:", e);
         setErrorText("Chyba při načítání podřízených. Zkus to prosím znovu.");
       } finally {
-        setLoadingSubs(false);
+        if (alive) setLoadingSubs(false);
       }
     };
 
     void load();
+    return () => {
+      alive = false;
+    };
   }, [user, userEmail]);
 
   useEffect(() => {
@@ -398,6 +408,10 @@ export default function TeamMessagePage() {
 
   const handleSend = async () => {
     if (!canSend || !user || !userEmail) return;
+    if (effectiveUserEmail(user.email) !== userEmail) {
+      setErrorText("Přepnutí uživatele se změnilo. Zprávu odešli znovu.");
+      return;
+    }
 
     setSending(true);
     setErrorText(null);

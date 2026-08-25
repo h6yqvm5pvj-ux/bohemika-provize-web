@@ -112,6 +112,7 @@ export async function POST(
     namespace: "api:intranet-wall:poll-vote",
     limit: POLL_VOTE_RATE_LIMIT,
     windowMs: POLL_VOTE_RATE_LIMIT_WINDOW_MS,
+    allowImpersonation: true,
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;

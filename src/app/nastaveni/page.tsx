@@ -837,7 +837,12 @@ export default function SettingsPage() {
   const visibleSettingsTabs = useMemo(
     () =>
       isImpersonating
-        ? SETTINGS_TABS.filter((tab) => tab.id !== "account" && tab.id !== "requests")
+        ? SETTINGS_TABS.filter(
+            (tab) =>
+              tab.id !== "account" &&
+              tab.id !== "subscription" &&
+              tab.id !== "requests"
+          )
         : SETTINGS_TABS,
     [isImpersonating]
   );
@@ -1493,21 +1498,10 @@ export default function SettingsPage() {
       };
     }
 
-    const patchKeys = Object.keys(partial);
     const isLiveImpersonating = Boolean(liveImpersonatedEmail);
-    const isImpersonatedTimelinePatch =
-      isLiveImpersonating &&
-      patchKeys.length === 1 &&
-      patchKeys[0] === "positionTimeline";
-    if (isLiveImpersonating && !isImpersonatedTimelinePatch) {
-      return {
-        ok: false,
-        error: "Při přepnutí za uživatele lze měnit pouze Historii kariéry.",
-      };
-    }
 
     try {
-      const profileEndpoint = isImpersonatedTimelinePatch
+      const profileEndpoint = isLiveImpersonating
         ? `/api/user/profile?targetEmail=${encodeURIComponent(liveImpersonatedEmail)}`
         : "/api/user/profile";
       const response = await fetchAuthedJsonOrThrow<SettingsProfilePatchResponse>(
@@ -1515,7 +1509,7 @@ export default function SettingsPage() {
         profileEndpoint,
         {
           method: "PATCH",
-          headers: isImpersonatedTimelinePatch
+          headers: isLiveImpersonating
             ? { [ADMIN_IMPERSONATION_HEADER]: liveImpersonatedEmail }
             : undefined,
           body: JSON.stringify(partial),
@@ -1731,7 +1725,7 @@ export default function SettingsPage() {
 
   const handleModeChange = async (value: CommissionMode) => {
     setMode(value);
-    if (typeof window !== "undefined") {
+    if (!isImpersonating && typeof window !== "undefined") {
       window.localStorage.setItem(SETTINGS_KEYS.mode, value);
     }
     await saveUserFields({ commissionMode: value });
@@ -1859,7 +1853,7 @@ export default function SettingsPage() {
     setOnlineCardStatus(null);
     setOnlineCardDraft((prev) => {
       const merged = { ...prev, ...patch };
-      const fallbackEmail = user?.email ?? "";
+      const fallbackEmail = impersonatedEmail || user?.email || "";
       const previousAutoSlug = resolveOnlineCardAutoSlug({
         fullName: prev.fullName,
         email: prev.email,
@@ -1970,7 +1964,7 @@ export default function SettingsPage() {
   };
 
   const handleSaveOnlineCard = async () => {
-    const ownerEmail = normalizeEmail(user?.email);
+    const ownerEmail = impersonatedEmail || normalizeEmail(user?.email);
     const fullName = onlineCardDraft.fullName.trim();
     const email = normalizeEmail(onlineCardDraft.email);
     const slug = slugifyOnlineCard(onlineCardDraft.slug);
@@ -2133,6 +2127,10 @@ export default function SettingsPage() {
   };
 
   const handleEnableBrowserPush = async () => {
+    if (isImpersonating) {
+      setTestPushStatus("Push zařízení lze spravovat jen pro skutečně přihlášený účet.");
+      return;
+    }
     if (!user) {
       setTestPushStatus("Nejsi přihlášený.");
       return;
@@ -2174,6 +2172,10 @@ export default function SettingsPage() {
   };
 
   const handleDisableBrowserPush = async () => {
+    if (isImpersonating) {
+      setTestPushStatus("Push zařízení lze spravovat jen pro skutečně přihlášený účet.");
+      return;
+    }
     if (!user) {
       setTestPushStatus("Nejsi přihlášený.");
       return;
@@ -2212,6 +2214,10 @@ export default function SettingsPage() {
   };
 
   const handleTestPush = async () => {
+    if (isImpersonating) {
+      setTestPushStatus("Test push lze odeslat jen pro skutečně přihlášený účet.");
+      return;
+    }
     if (!user) {
       setTestPushStatus("Nejsi přihlášený.");
       return;
@@ -3626,9 +3632,9 @@ export default function SettingsPage() {
                   Nastavení uživatele {impersonation?.name?.trim() || impersonatedEmail}
                 </p>
                 <p className="mt-1 text-xs text-amber-900/80">
-                  Historii kariéry můžeš jako admin upravit. Ostatní nastavení je pouze pro
-                  čtení; zabezpečení účtu a žádosti jsou dostupné jen skutečně přihlášenému
-                  uživateli.
+                  Profil, kariéru, notifikační preference a online vizitku upravuješ tomuto
+                  uživateli. Zabezpečení účtu, předplatné a zařízení pro push jsou dostupné
+                  jen skutečně přihlášenému uživateli.
                 </p>
               </div>
             ) : null}
@@ -3668,10 +3674,7 @@ export default function SettingsPage() {
               })}
             </div>
 
-            <fieldset
-              disabled={isImpersonating && activeTab !== "career"}
-              className="contents"
-            >
+            <fieldset className="contents">
             <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-stretch">
               {activeTab === "career" && !timelineGateActive && (
               <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
@@ -3700,7 +3703,6 @@ export default function SettingsPage() {
                           <button
                             key={m.id}
                             type="button"
-                            disabled={isImpersonating}
                             onClick={() => void handleModeChange(m.id)}
                             className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                               active

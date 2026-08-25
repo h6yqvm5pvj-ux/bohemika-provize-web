@@ -20,6 +20,10 @@ import {
   resolveServerImpersonation,
   type ServerImpersonationContext,
 } from "@/lib/server/impersonation";
+import {
+  ADMIN_IMPERSONATION_HEADER,
+  shouldRejectUnsupportedImpersonation,
+} from "@/lib/adminImpersonationShared";
 
 export type AuthedRateLimitContext = {
   token: string;
@@ -155,6 +159,22 @@ export async function requireAuthedRateLimited(
   let effectiveEmail = actorEmail;
   let effectiveUid = actorUid;
   let impersonation: ServerImpersonationContext | null = null;
+  if (
+    shouldRejectUnsupportedImpersonation(
+      req.headers.get(ADMIN_IMPERSONATION_HEADER),
+      allowImpersonation
+    )
+  ) {
+    const response = NextResponse.json(
+      {
+        ok: false,
+        error: "Tato operace nepodporuje administrátorské zastoupení uživatele.",
+      },
+      { status: 403 }
+    );
+    applyRateLimitHeaders(response.headers, rateLimit);
+    return { ok: false, response };
+  }
   if (allowImpersonation === true) {
     const impersonationResult = await resolveServerImpersonation({
       req,

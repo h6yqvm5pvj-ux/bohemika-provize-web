@@ -9,3 +9,12 @@ export const normalizeImpersonationEmail = (value: unknown): string => {
   const email = normalizeEmail(value);
   return EMAIL_RE.test(email) ? email : "";
 };
+
+export const hasImpersonationHeaderValue = (value: unknown): boolean =>
+  typeof value === "string" && value.trim().length > 0;
+
+export const shouldRejectUnsupportedImpersonation = (
+  headerValue: unknown,
+  allowImpersonation: boolean | undefined
+): boolean =>
+  hasImpersonationHeaderValue(headerValue) && allowImpersonation !== true;
