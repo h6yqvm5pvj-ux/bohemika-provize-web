@@ -51,7 +51,7 @@ type NotificationTypeOption = {
 };
 
 export const NOTIFICATION_TYPE_OPTIONS: readonly NotificationTypeOption[] = [
-  { id: "newContract", label: "Nová smlouva", icon: FileText },
+  { id: "newContract", label: "Nová smlouva / navýšení", icon: FileText },
   { id: "anniversary", label: "Výročí", icon: CalendarDays },
   { id: "unpaid", label: "Nezaplaceno", icon: Landmark },
   { id: "team", label: "Týmové akce", icon: UsersRound },

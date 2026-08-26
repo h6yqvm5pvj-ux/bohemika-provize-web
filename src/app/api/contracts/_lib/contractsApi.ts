@@ -39,13 +39,7 @@ import {
   normalizeTipContractTitle,
 } from "@/app/lib/tipContractCommission";
 import {
-  AUTO_PRODUCTS,
-  COMFORT_PRODUCTS,
   LIFE_PRODUCTS as CATALOG_LIFE_PRODUCTS,
-  LIABILITY_PRODUCTS,
-  PROPERTY_PRODUCTS,
-  TRAVEL_PRODUCTS,
-  productLabel,
 } from "@/app/lib/productCatalog";
 import type {
   AuthContextOptions,
@@ -167,6 +161,10 @@ import {
   selectContractListOwners,
   shouldFetchTeamContractsInParallel,
 } from "./contractsApi.access";
+import {
+  buildContractActivityNotificationContent,
+  resolveContractActivityNotificationKind,
+} from "./contractsApi.notifications";
 
 export { hasContractAccess } from "./contractsApi.access";
 
@@ -1466,12 +1464,12 @@ const hasResolvedTopManagerPosition = (
   return Boolean(directManager?.position);
 };
 
-type NewContractPushRecipient = {
+type ContractActivityPushRecipient = {
   email: string;
   tokens: string[];
 };
 
-const collectManagerNotificationEmailsForNewContract = ({
+const collectManagerNotificationEmailsForContractActivity = ({
   ownerEmail,
   managerEmailSnapshot,
   managerChain,
@@ -1498,7 +1496,7 @@ const collectManagerNotificationEmailsForNewContract = ({
   return [...out].slice(0, NEW_CONTRACT_PUSH_MAX_RECIPIENTS);
 };
 
-const isNewContractPushEnabled = (profile: Record<string, unknown>): boolean => {
+const isContractActivityPushEnabled = (profile: Record<string, unknown>): boolean => {
   const settingsRaw = isPlainObject(profile.notificationSettings)
     ? profile.notificationSettings
     : null;
@@ -1509,17 +1507,17 @@ const isNewContractPushEnabled = (profile: Record<string, unknown>): boolean => 
     ? settingsRaw.channels
     : null;
 
-  const newContractFlag = typesRaw?.newContract;
+  const contractActivityFlag = typesRaw?.newContract;
   const pushChannelFlag = channelsRaw?.push;
   const isTypeEnabled =
-    typeof newContractFlag === "boolean" ? newContractFlag : true;
+    typeof contractActivityFlag === "boolean" ? contractActivityFlag : true;
   const isPushChannelEnabled =
     typeof pushChannelFlag === "boolean" ? pushChannelFlag : true;
 
   return isTypeEnabled && isPushChannelEnabled;
 };
 
-const isRecentEnoughForNewContractPush = (
+const isRecentEnoughForContractActivityPush = (
   contractSignedDate: Date,
   nowMs = Date.now()
 ): boolean => {
@@ -1565,9 +1563,9 @@ const resolvePublicAppOrigin = (req: NextRequest): string => {
   return DEFAULT_PUBLIC_APP_ORIGIN;
 };
 
-const loadNewContractPushRecipients = async (
+const loadContractActivityPushRecipients = async (
   emails: string[]
-): Promise<NewContractPushRecipient[]> => {
+): Promise<ContractActivityPushRecipient[]> => {
   if (!adminDb) return [];
   const db = adminDb;
 
@@ -1587,7 +1585,7 @@ const loadNewContractPushRecipients = async (
         ...((privateSnap.data() as Record<string, unknown> | undefined) ?? {}),
       };
 
-      if (!isNewContractPushEnabled(mergedProfile)) return null;
+      if (!isContractActivityPushEnabled(mergedProfile)) return null;
 
       const tokens = collectPushTokens(mergedProfile).slice(
         0,
@@ -1597,10 +1595,10 @@ const loadNewContractPushRecipients = async (
     })
   );
 
-  return recipients.filter((row): row is NewContractPushRecipient => Boolean(row));
+  return recipients.filter((row): row is ContractActivityPushRecipient => Boolean(row));
 };
 
-const sendNewContractPushNotification = async ({
+const sendContractActivityPushNotification = async ({
   req,
   recipientEmails,
   ownerEmail,
@@ -1610,6 +1608,11 @@ const sendNewContractPushNotification = async ({
   productKey,
   inputAmount,
   frequencyRaw,
+  entryType,
+  premiumDelta,
+  premiumIncreaseAmount,
+  previousInputAmount,
+  newInputAmount,
 }: {
   req: NextRequest;
   recipientEmails: string[];
@@ -1620,57 +1623,44 @@ const sendNewContractPushNotification = async ({
   productKey: Product | null | undefined;
   inputAmount: number;
   frequencyRaw: PaymentFrequency | null | undefined;
+  entryType: "contract" | "endorsement";
+  premiumDelta: number | null | undefined;
+  premiumIncreaseAmount: number | null | undefined;
+  previousInputAmount: number | null | undefined;
+  newInputAmount: number | null | undefined;
 }) => {
   const ownerNameFromProfile = normalizeOptionalDisplayName(ownerName);
   const ownerDisplayName =
     ownerNameFromProfile && !ownerNameFromProfile.includes("@")
       ? ownerNameFromProfile
       : formatNameFromEmailAddress(ownerNameFromProfile ?? ownerEmail) ?? ownerEmail;
-  const normalizedFrequency: PaymentFrequency =
-    frequencyRaw === "monthly" ||
-    frequencyRaw === "quarterly" ||
-    frequencyRaw === "semiannual" ||
-    frequencyRaw === "annual"
-      ? frequencyRaw
-      : "annual";
-  const safeInputAmount = Number.isFinite(inputAmount) ? Math.max(0, inputAmount) : 0;
-  const annualPremium = safeInputAmount * paymentsPerYear(normalizedFrequency);
-  const isLifeProduct = Boolean(productKey && CATALOG_LIFE_PRODUCTS.includes(productKey));
-  const premiumForMessage = isLifeProduct ? annualPremium / 12 : annualPremium;
-  const premiumFormatted = `${new Intl.NumberFormat("cs-CZ", {
-    maximumFractionDigits: 0,
-  }).format(Math.round(premiumForMessage))} Kč`;
-  const productName = productLabel(productKey, "Neznámý produkt").toLocaleUpperCase("cs-CZ");
-  const thematicEmoji = productKey
-    ? AUTO_PRODUCTS.includes(productKey)
-      ? "🚗"
-      : TRAVEL_PRODUCTS.includes(productKey)
-      ? "✈️"
-      : COMFORT_PRODUCTS.includes(productKey)
-      ? "⚡"
-      : LIABILITY_PRODUCTS.includes(productKey)
-      ? "🛡️"
-      : PROPERTY_PRODUCTS.includes(productKey)
-      ? "🏠"
-      : CATALOG_LIFE_PRODUCTS.includes(productKey)
-      ? "❤️"
-      : "📄"
-    : "📄";
-  const message = `🎉 ${ownerDisplayName} sepsal právě ${productName} za ${premiumFormatted} ${thematicEmoji}`;
+  const content = buildContractActivityNotificationContent({
+    ownerDisplayName,
+    entryType,
+    productKey,
+    inputAmount,
+    frequencyRaw,
+    premiumDelta,
+    premiumIncreaseAmount,
+    previousInputAmount,
+    newInputAmount,
+  });
+  if (!content) return;
+  const { kind, mailboxTitle, message } = content;
 
   const contractDetailSlug = encodeURIComponent(`${ownerEmail}___${entryId}`);
   const deepLink = `/smlouvy/${contractDetailSlug}?from=list&source=push`;
   const baseUrl = resolvePublicAppOrigin(req);
   const webPushLink = `${baseUrl}${deepLink}`;
   const createdAtIso = new Date().toISOString();
-  const recipients = await loadNewContractPushRecipients(recipientEmails);
+  const recipients = await loadContractActivityPushRecipients(recipientEmails);
   if (recipients.length === 0) return;
 
   try {
     await writeMailboxEntries({
       recipientEmails: recipients.map((row) => row.email),
-      type: "new_contract",
-      title: "Nová smlouva v týmu",
+      type: kind,
+      title: mailboxTitle,
       body: message,
       deepLink,
       metadata: {
@@ -1678,10 +1668,11 @@ const sendNewContractPushNotification = async ({
         entryId,
         contractNumber: contractNumber ?? "",
         productKey: productKey ?? "",
+        premiumIncreaseAmount: content.premiumIncreaseAmount,
       },
     });
   } catch (error) {
-    console.error("Writing mailbox notification for new contract failed:", error);
+    console.error("Writing mailbox notification for contract activity failed:", error);
   }
 
   if (!adminMessaging) return;
@@ -1702,7 +1693,7 @@ const sendNewContractPushNotification = async ({
         body: message,
       },
       data: {
-        type: "new_contract",
+        type: kind,
         ownerEmail,
         entryId,
         contractNumber: contractNumber ?? "",
@@ -1716,22 +1707,13 @@ const sendNewContractPushNotification = async ({
         notification: {
           icon: "/pwa/icon-192.png",
           badge: "/pwa/icon-192.png",
-          tag: `bohemika-new-contract-${entryId}`,
+          tag: `bohemika-${kind}-${entryId}`,
           requireInteraction: false,
         },
       },
     });
   }
 };
-
-const paymentsPerYear = (frequency: PaymentFrequency): number =>
-  frequency === "monthly"
-    ? 12
-    : frequency === "quarterly"
-    ? 4
-    : frequency === "semiannual"
-    ? 2
-    : 1;
 
 const normalizeTitleKey = (title: string): string => {
   const normalized = title.toLowerCase();
@@ -5418,11 +5400,21 @@ export async function handleContractsCreate(req: NextRequest) {
       }),
     };
 
-    const newContractPushRecipients =
+    const contractActivityNotificationKind = resolveContractActivityNotificationKind({
+      entryType: trustedPayload.entryType,
+      productKey: trustedPayload.productKey,
+      inputAmount: trustedPayload.inputAmount,
+      frequencyRaw: trustedPayload.frequencyRaw,
+      premiumDelta: trustedPayload.premiumDelta,
+      premiumIncreaseAmount: trustedPayload.premiumIncreaseAmount,
+      previousInputAmount: trustedPayload.previousInputAmount,
+      newInputAmount: trustedPayload.newInputAmount,
+    });
+    const contractActivityPushRecipients =
       ENABLE_CONTRACT_CREATE_PUSH &&
-      trustedPayload.entryType === "contract" &&
-      isRecentEnoughForNewContractPush(trustedPayload.contractSignedDate)
-        ? collectManagerNotificationEmailsForNewContract({
+      contractActivityNotificationKind &&
+      isRecentEnoughForContractActivityPush(trustedPayload.contractSignedDate)
+        ? collectManagerNotificationEmailsForContractActivity({
             ownerEmail: targetOwnerEmail,
             managerEmailSnapshot: trustedManagerEmail,
             managerChain: trustedManagerChain,
@@ -5707,11 +5699,11 @@ export async function handleContractsCreate(req: NextRequest) {
         );
       }
 
-      if (newContractPushRecipients.length > 0) {
+      if (contractActivityPushRecipients.length > 0) {
         try {
-          await sendNewContractPushNotification({
+          await sendContractActivityPushNotification({
             req,
-            recipientEmails: newContractPushRecipients,
+            recipientEmails: contractActivityPushRecipients,
             ownerEmail: targetOwnerEmail,
             ownerName: trustedProfile.name,
             entryId: createdRef.id,
@@ -5719,10 +5711,15 @@ export async function handleContractsCreate(req: NextRequest) {
             productKey: trustedPayload.productKey,
             inputAmount: trustedPayload.inputAmount,
             frequencyRaw: trustedPayload.frequencyRaw,
+            entryType: trustedPayload.entryType,
+            premiumDelta: trustedPayload.premiumDelta,
+            premiumIncreaseAmount: trustedPayload.premiumIncreaseAmount,
+            previousInputAmount: trustedPayload.previousInputAmount,
+            newInputAmount: trustedPayload.newInputAmount,
           });
         } catch (pushErr) {
           console.warn(
-            "POST /api/contracts create: push notifikace o nové smlouvě selhala:",
+            "POST /api/contracts create: push notifikace o aktivitě smlouvy selhala:",
             pushErr
           );
         }
