@@ -24,6 +24,7 @@ const ALLOWED_API_PREFIXES = [
   "/api/tip-payouts",
   "/api/tips",
   "/api/tipster-tips",
+  "/api/tool-usage",
   "/api/user-stats",
 ] as const;
 
@@ -185,6 +186,17 @@ const shouldAttachImpersonationHeader = (
   return shouldImpersonateApiRequest(pathname, method);
 };
 
+export function withDefaultAdminImpersonationHeader(
+  base: HeadersInit | undefined,
+  targetEmail: string
+): Headers {
+  const headers = new Headers(base ?? {});
+  if (!headers.has(ADMIN_IMPERSONATION_HEADER)) {
+    headers.set(ADMIN_IMPERSONATION_HEADER, targetEmail);
+  }
+  return headers;
+}
+
 export function installAdminImpersonationFetchPatch() {
   if (typeof window === "undefined") return;
   const win = window as typeof window & {
@@ -203,13 +215,13 @@ export function installAdminImpersonationFetchPatch() {
       return originalFetch(input, init);
     }
 
-    const headers = new Headers(
+    const headers = withDefaultAdminImpersonationHeader(
       init?.headers ??
         (typeof Request !== "undefined" && input instanceof Request
           ? input.headers
-          : undefined)
+          : undefined),
+      state.email
     );
-    headers.set(ADMIN_IMPERSONATION_HEADER, state.email);
 
     return originalFetch(input, {
       ...(init ?? {}),

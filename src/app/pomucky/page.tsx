@@ -1,9 +1,16 @@
 // src/app/pomucky/page.tsx
 "use client";
 
-import { useMemo, useState, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+} from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUpRight,
@@ -30,6 +37,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Star,
   TrendingUp,
   Trophy,
   WalletCards,
@@ -40,6 +48,20 @@ import { AppLayout } from "@/components/AppLayout";
 import { InstitutionPortalLinksModal } from "./InstitutionPortalLinksModal";
 import styles from "./pomuckyWallArt.module.css";
 import { systemSansFont } from "@/lib/fonts";
+import { auth } from "@/app/firebase";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { ADMIN_IMPERSONATION_HEADER } from "@/app/lib/adminImpersonation";
+import {
+  effectiveUserEmail,
+  useEffectiveUserEmail,
+} from "@/app/lib/useAdminImpersonation";
+import {
+  compareToolHubUsage,
+  normalizeToolHubUsageMetric,
+  type ToolHubSortMode,
+  type ToolHubToolKey,
+  type ToolHubUsageMetric,
+} from "./toolHub";
 
 const toolsFont = systemSansFont;
 
@@ -220,7 +242,7 @@ const TACHOMETER_UPLOAD_TARGETS = [
 ] as const;
 
 type Tool = {
-  key: string;
+  key: ToolHubToolKey;
   category: ToolCategory;
   title: string;
   description: string;
@@ -230,6 +252,18 @@ type Tool = {
   render?: () => ReactElement;
   onClick?: () => void;
 };
+
+type ToolHubUsageResponse = {
+  ok?: boolean;
+  usage?: Partial<Record<ToolHubToolKey, ToolHubUsageMetric>>;
+  error?: string;
+};
+
+const SORT_OPTIONS: Array<{ key: ToolHubSortMode; label: string }> = [
+  { key: "personal", label: "Pro mě" },
+  { key: "popular", label: "Nejpoužívanější" },
+  { key: "alphabetical", label: "A–Z" },
+];
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -258,11 +292,228 @@ function CategoryBadge({ category }: { category: ToolCategory }) {
   );
 }
 
+function FavoriteButton({
+  active,
+  disabled,
+  title,
+  onToggle,
+}: {
+  active: boolean;
+  disabled: boolean;
+  title: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle();
+      }}
+      className={`absolute right-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-[0_10px_22px_rgba(15,23,42,0.24)] backdrop-blur transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-45 ${
+        active
+          ? "border-amber-300 bg-amber-300 text-amber-950"
+          : "border-white/35 bg-slate-950/55 text-white hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700"
+      }`}
+      aria-label={active ? `Odebrat ${title} z oblíbených` : `Přidat ${title} do oblíbených`}
+      title={active ? "Odebrat z oblíbených" : "Přidat do oblíbených"}
+    >
+      <Star className={`h-4.5 w-4.5 ${active ? "fill-current" : ""}`} />
+    </button>
+  );
+}
+
+function ToolCardContent({ tool }: { tool: Tool }) {
+  const ToolIcon = tool.icon;
+  const style = CATEGORY_VISUALS[tool.category];
+
+  return (
+    <>
+      <span
+        className="pointer-events-none absolute -left-12 -top-16 hidden h-44 w-44 rounded-full bg-violet-300/24 blur-3xl sm:block"
+        aria-hidden="true"
+      />
+      <span
+        className="pointer-events-none absolute -right-16 bottom-4 hidden h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl sm:block"
+        aria-hidden="true"
+      />
+      <span
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]"
+        aria-hidden="true"
+      />
+      <ToolIcon
+        className={`pointer-events-none absolute right-4 top-5 z-[1] h-[4.5rem] w-[4.5rem] opacity-[0.22] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.3] sm:right-5 sm:top-5 sm:h-[5.25rem] sm:w-[5.25rem] ${style.icon}`}
+        strokeWidth={1.35}
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10 flex w-full flex-col gap-2.5">
+        <div className="flex items-start">
+          <CategoryBadge category={tool.category} />
+        </div>
+
+        <div className="min-w-0 pr-8">
+          <h2 className="text-[1.18rem] font-bold leading-[1.1] text-[#f8fafc] sm:text-[1.34rem]">
+            {tool.title}
+          </h2>
+          <p className="mt-1.5 text-[0.82rem] leading-5 text-violet-100/75 sm:text-[0.9rem] sm:leading-6">
+            {tool.description}
+          </p>
+        </div>
+
+        <div className="mt-auto">
+          <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:px-3 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_18px_rgba(82,25,147,0.28)]">
+            <span className="text-[0.8rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.84rem]">
+              Otevřít pomůcku
+            </span>
+            <ArrowUpRight className="h-3.5 w-3.5 text-[#1b1036]" />
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function QuickAccessTool({
+  tool,
+  favorite,
+  onOpen,
+}: {
+  tool: Tool;
+  favorite: boolean;
+  onOpen: (toolKey: ToolHubToolKey) => void;
+}) {
+  const Icon = tool.icon;
+  const className =
+    "group inline-flex min-w-[220px] flex-1 items-center gap-3 rounded-2xl border border-violet-200/80 bg-white px-3 py-3 text-left shadow-[0_10px_26px_rgba(88,28,135,0.09)] transition hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-[0_16px_34px_rgba(88,28,135,0.14)]";
+  const content = (
+    <>
+      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]">
+        <Icon className="h-4.5 w-4.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-bold text-slate-950">
+          {tool.title}
+        </span>
+        <span className="mt-0.5 block text-[11px] font-semibold uppercase tracking-[0.1em] text-violet-700">
+          {favorite ? "Oblíbené" : "Naposledy použité"}
+        </span>
+      </span>
+      {favorite ? (
+        <Star className="h-4 w-4 shrink-0 fill-amber-300 text-amber-500" />
+      ) : (
+        <Clock3 className="h-4 w-4 shrink-0 text-slate-400" />
+      )}
+    </>
+  );
+
+  if (tool.onClick) {
+    return (
+      <button
+        type="button"
+        className={className}
+        onClick={() => {
+          onOpen(tool.key);
+          tool.onClick?.();
+        }}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  if (tool.external) {
+    return (
+      <a
+        href={tool.href ?? "#"}
+        target="_blank"
+        rel="noreferrer"
+        className={className}
+        onClick={() => onOpen(tool.key)}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      href={tool.href ?? "#"}
+      className={className}
+      onClick={() => onOpen(tool.key)}
+    >
+      {content}
+    </Link>
+  );
+}
+
 export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
   const [tachometerModalOpen, setTachometerModalOpen] = useState(false);
   const [linksModalOpen, setLinksModalOpen] = useState(false);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const effectiveEmail = useEffectiveUserEmail(user?.email);
+  const [usageByKey, setUsageByKey] = useState<
+    Partial<Record<ToolHubToolKey, ToolHubUsageMetric>>
+  >({});
+  const [sortMode, setSortMode] = useState<ToolHubSortMode>("personal");
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const [favoritePendingKeys, setFavoritePendingKeys] = useState<
+    Set<ToolHubToolKey>
+  >(new Set());
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user || !effectiveEmail) {
+      setUsageByKey({});
+      setUsageLoading(false);
+      setUsageError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const scopeEmail = effectiveEmail;
+    setUsageByKey({});
+    setUsageLoading(true);
+    setUsageError(null);
+
+    void fetchAuthedJsonOrThrow<ToolHubUsageResponse>(user, "/api/tool-usage", {
+      headers: { [ADMIN_IMPERSONATION_HEADER]: scopeEmail },
+    })
+      .then((payload) => {
+        if (
+          cancelled ||
+          effectiveUserEmail(auth.currentUser?.email) !== scopeEmail
+        ) {
+          return;
+        }
+        const next: Partial<Record<ToolHubToolKey, ToolHubUsageMetric>> = {};
+        Object.entries(payload.usage ?? {}).forEach(([key, value]) => {
+          next[key as ToolHubToolKey] = normalizeToolHubUsageMetric(value);
+        });
+        setUsageByKey(next);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Načtení používání pomůcek selhalo:", error);
+        setUsageError("Oblíbené a historie se teď nepodařily načíst.");
+      })
+      .finally(() => {
+        if (!cancelled) setUsageLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveEmail, user]);
 
   const tools: Tool[] = useMemo(
     () => [
@@ -479,6 +730,123 @@ export default function ToolsPage() {
     [setLinksModalOpen, setTachometerModalOpen]
   );
 
+  const recordToolOpen = useCallback(
+    (toolKey: ToolHubToolKey) => {
+      if (
+        !user ||
+        !effectiveEmail ||
+        effectiveUserEmail(user.email) !== effectiveEmail
+      ) {
+        return;
+      }
+
+      const nowMs = Date.now();
+      setUsageByKey((current) => {
+        const metric = normalizeToolHubUsageMetric(current[toolKey]);
+        return {
+          ...current,
+          [toolKey]: {
+            ...metric,
+            personalOpens: metric.personalOpens + 1,
+            globalOpens: metric.globalOpens + 1,
+            lastOpenedAtMs: nowMs,
+          },
+        };
+      });
+
+      void fetchAuthedJsonOrThrow(user, "/api/tool-usage", {
+        method: "POST",
+        headers: { [ADMIN_IMPERSONATION_HEADER]: effectiveEmail },
+        body: JSON.stringify({ action: "open", toolKey }),
+      }).catch((error) => {
+        console.warn(`Zápis otevření pomůcky ${toolKey} selhal:`, error);
+      });
+    },
+    [effectiveEmail, user]
+  );
+
+  const toggleFavorite = useCallback(
+    async (toolKey: ToolHubToolKey) => {
+      if (
+        !user ||
+        !effectiveEmail ||
+        favoritePendingKeys.has(toolKey) ||
+        effectiveUserEmail(user.email) !== effectiveEmail
+      ) {
+        return;
+      }
+
+      const previous = normalizeToolHubUsageMetric(usageByKey[toolKey]);
+      const favorite = !previous.favorite;
+      setFavoritePendingKeys((current) => new Set(current).add(toolKey));
+      setUsageByKey((current) => ({
+        ...current,
+        [toolKey]: {
+          ...normalizeToolHubUsageMetric(current[toolKey]),
+          favorite,
+        },
+      }));
+      setUsageError(null);
+
+      try {
+        await fetchAuthedJsonOrThrow(user, "/api/tool-usage", {
+          method: "POST",
+          headers: { [ADMIN_IMPERSONATION_HEADER]: effectiveEmail },
+          body: JSON.stringify({ action: "favorite", toolKey, favorite }),
+        });
+      } catch (error) {
+        console.warn(`Uložení oblíbené pomůcky ${toolKey} selhalo:`, error);
+        if (effectiveUserEmail(auth.currentUser?.email) === effectiveEmail) {
+          setUsageByKey((current) => ({
+            ...current,
+            [toolKey]: {
+              ...normalizeToolHubUsageMetric(current[toolKey]),
+              favorite: previous.favorite,
+            },
+          }));
+          setUsageError("Změnu oblíbených se nepodařilo uložit.");
+        }
+      } finally {
+        setFavoritePendingKeys((current) => {
+          const next = new Set(current);
+          next.delete(toolKey);
+          return next;
+        });
+      }
+    },
+    [effectiveEmail, favoritePendingKeys, usageByKey, user]
+  );
+
+  const favoriteTools = useMemo(
+    () =>
+      tools
+        .filter((tool) => usageByKey[tool.key]?.favorite === true)
+        .sort(
+          (a, b) =>
+            (usageByKey[b.key]?.lastOpenedAtMs ?? 0) -
+              (usageByKey[a.key]?.lastOpenedAtMs ?? 0) ||
+            a.title.localeCompare(b.title, "cs")
+        ),
+    [tools, usageByKey]
+  );
+
+  const recentTools = useMemo(
+    () =>
+      tools
+        .filter(
+          (tool) =>
+            !usageByKey[tool.key]?.favorite &&
+            (usageByKey[tool.key]?.lastOpenedAtMs ?? 0) > 0
+        )
+        .sort(
+          (a, b) =>
+            (usageByKey[b.key]?.lastOpenedAtMs ?? 0) -
+            (usageByKey[a.key]?.lastOpenedAtMs ?? 0)
+        )
+        .slice(0, 6),
+    [tools, usageByKey]
+  );
+
   const filterCounts = useMemo(() => {
     const normalizedQuery = normalizeSearchValue(searchQuery);
     const counts = Object.fromEntries(FILTERS.map((filter) => [filter, 0])) as Record<FilterKey, number>;
@@ -502,6 +870,17 @@ export default function ToolsPage() {
       });
 
       return filtered.sort((a, b) => {
+        if (sortMode === "alphabetical") {
+          return a.title.localeCompare(b.title, "cs");
+        }
+
+        const usageDiff = compareToolHubUsage(
+          usageByKey[a.key],
+          usageByKey[b.key],
+          sortMode
+        );
+        if (usageDiff !== 0) return usageDiff;
+
         if (activeFilter === "Všechny") {
           const rankDiff = CATEGORY_RANK[a.category] - CATEGORY_RANK[b.category];
           if (rankDiff !== 0) return rankDiff;
@@ -509,7 +888,7 @@ export default function ToolsPage() {
         return a.title.localeCompare(b.title, "cs");
       });
     },
-    [activeFilter, searchQuery, tools]
+    [activeFilter, searchQuery, sortMode, tools, usageByKey]
   );
 
   return (
@@ -592,6 +971,87 @@ export default function ToolsPage() {
             </div>
           </nav>
 
+          {favoriteTools.length > 0 || recentTools.length > 0 ? (
+            <section className="overflow-hidden rounded-[24px] border border-violet-200/80 bg-[linear-gradient(145deg,#ffffff_0%,#fbf8ff_55%,#f5f3ff_100%)] p-3.5 shadow-[0_18px_44px_rgba(88,28,135,0.1)] sm:p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-violet-700">
+                    Rychlý přístup
+                  </p>
+                  <h2 className="mt-0.5 text-lg font-bold text-slate-950">
+                    Oblíbené a naposledy použité
+                  </h2>
+                </div>
+                <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-[11px] font-semibold text-violet-800">
+                  Jen pro tento účet
+                </span>
+              </div>
+
+              <div className="flex gap-2.5 overflow-x-auto pb-1">
+                {favoriteTools.slice(0, 8).map((tool) => (
+                  <QuickAccessTool
+                    key={`favorite-${tool.key}`}
+                    tool={tool}
+                    favorite
+                    onOpen={recordToolOpen}
+                  />
+                ))}
+                {recentTools.map((tool) => (
+                  <QuickAccessTool
+                    key={`recent-${tool.key}`}
+                    tool={tool}
+                    favorite={false}
+                    onOpen={recordToolOpen}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200/85 bg-white/90 px-3.5 py-3 shadow-[0_10px_26px_rgba(15,23,42,0.06)] sm:px-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                Řazení katalogu
+              </p>
+              <p className="mt-0.5 text-sm text-slate-600">
+                {sortMode === "personal"
+                  ? "Oblíbené a tvoje naposledy používané nástroje jsou první."
+                  : sortMode === "popular"
+                    ? "Pořadí vychází z anonymního celkového počtu otevření."
+                    : "Pomůcky jsou seřazené podle názvu."}
+              </p>
+            </div>
+            <div className="flex max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
+              {SORT_OPTIONS.map((option) => {
+                const active = option.key === sortMode;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setSortMode(option.key)}
+                    className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
+                      active
+                        ? "bg-slate-950 text-white shadow-[0_8px_18px_rgba(15,23,42,0.24)]"
+                        : "bg-transparent text-slate-600 hover:bg-white hover:text-slate-950"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {usageLoading ? (
+              <p className="w-full text-xs font-medium text-slate-500">
+                Načítám osobní pořadí…
+              </p>
+            ) : usageError ? (
+              <p className="w-full text-xs font-semibold text-rose-700">
+                {usageError}
+              </p>
+            ) : null}
+          </section>
+
           {filteredTools.length === 0 ? (
             <div className="rounded-[30px] border border-slate-200/80 bg-white/82 px-6 py-10 text-center shadow-[0_20px_58px_rgba(15,23,42,0.1)] backdrop-blur-xl">
               <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
@@ -611,100 +1071,73 @@ export default function ToolsPage() {
                   return <div key={tool.key}>{tool.render()}</div>;
                 }
 
+                const favorite = usageByKey[tool.key]?.favorite === true;
+                const favoriteDisabled =
+                  !user ||
+                  !effectiveEmail ||
+                  favoritePendingKeys.has(tool.key);
+                const cardClassName = `${styles.toolCard} pomucky-tool-card group relative isolate flex h-full min-h-[162px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 text-left shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_30px_72px_rgba(10,5,30,0.54)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[188px] sm:rounded-[26px] sm:p-4 sm:shadow-[0_24px_58px_rgba(11,6,30,0.46)]`;
+                const favoriteControl = (
+                  <FavoriteButton
+                    active={favorite}
+                    disabled={favoriteDisabled}
+                    title={tool.title}
+                    onToggle={() => void toggleFavorite(tool.key)}
+                  />
+                );
+                const animationStyle = {
+                  animationDelay: `${Math.min(index * 45, 260)}ms`,
+                };
+
                 if (tool.onClick) {
-                  const ToolIcon = tool.icon;
-                  const style = CATEGORY_VISUALS[tool.category];
                   return (
-                    <button
-                      key={tool.key}
-                      type="button"
-                      onClick={tool.onClick}
-                      className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[162px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 text-left shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_30px_72px_rgba(10,5,30,0.54)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[188px] sm:rounded-[26px] sm:p-4 sm:shadow-[0_24px_58px_rgba(11,6,30,0.46)]`}
-                      style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
-                    >
-                      <span className="pointer-events-none absolute -left-12 -top-16 hidden h-44 w-44 rounded-full bg-violet-300/24 blur-3xl sm:block" aria-hidden="true" />
-                      <span className="pointer-events-none absolute -right-16 bottom-4 hidden h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl sm:block" aria-hidden="true" />
-                      <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]" aria-hidden="true" />
-                      <ToolIcon
-                        className={`pointer-events-none absolute right-4 top-5 z-[1] h-[4.5rem] w-[4.5rem] opacity-[0.22] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.3] sm:right-5 sm:top-5 sm:h-[5.25rem] sm:w-[5.25rem] ${style.icon}`}
-                        strokeWidth={1.35}
-                        aria-hidden="true"
-                      />
-
-                      <div className="relative z-10 flex w-full flex-col gap-2.5">
-                        <div className="flex items-start">
-                          <CategoryBadge category={tool.category} />
-                        </div>
-
-                        <div className="min-w-0">
-                          <h2 className="text-[1.18rem] font-bold leading-[1.1] text-[#f8fafc] sm:text-[1.34rem]">
-                            {tool.title}
-                          </h2>
-                          <p className="mt-1.5 text-[0.82rem] leading-5 text-violet-100/75 sm:text-[0.9rem] sm:leading-6">
-                            {tool.description}
-                          </p>
-                        </div>
-
-                        <div className="mt-auto">
-                          <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:px-3 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_18px_rgba(82,25,147,0.28)]">
-                            <span className="text-[0.8rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.84rem]">
-                              Otevřít pomůcku
-                            </span>
-                            <ArrowUpRight className="h-3.5 w-3.5 text-[#1b1036]" />
-                          </span>
-                        </div>
-                      </div>
-                    </button>
+                    <div key={tool.key} className="relative h-full">
+                      {favoriteControl}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          recordToolOpen(tool.key);
+                          tool.onClick?.();
+                        }}
+                        className={cardClassName}
+                        style={animationStyle}
+                      >
+                        <ToolCardContent tool={tool} />
+                      </button>
+                    </div>
                   );
                 }
 
-                const CardWrapper = tool.external ? "a" : Link;
-                const ToolIcon = tool.icon;
-                const style = CATEGORY_VISUALS[tool.category];
-                const wrapperProps = tool.external
-                  ? { href: tool.href ?? "#", target: "_blank", rel: "noreferrer" }
-                  : { href: tool.href ?? "#" };
+                if (tool.external) {
+                  return (
+                    <div key={tool.key} className="relative h-full">
+                      {favoriteControl}
+                      <a
+                        href={tool.href ?? "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => recordToolOpen(tool.key)}
+                        className={cardClassName}
+                        style={animationStyle}
+                      >
+                        <ToolCardContent tool={tool} />
+                      </a>
+                    </div>
+                  );
+                }
 
                 return (
-                  <CardWrapper
-                    key={tool.key}
-                    {...wrapperProps}
-                    className={`${styles.toolCard} pomucky-tool-card group relative isolate flex min-h-[162px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_30px_72px_rgba(10,5,30,0.54)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[188px] sm:rounded-[26px] sm:p-4 sm:shadow-[0_24px_58px_rgba(11,6,30,0.46)]`}
-                    style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
-                  >
-                    <span className="pointer-events-none absolute -left-12 -top-16 hidden h-44 w-44 rounded-full bg-violet-300/24 blur-3xl sm:block" aria-hidden="true" />
-                    <span className="pointer-events-none absolute -right-16 bottom-4 hidden h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl sm:block" aria-hidden="true" />
-                    <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]" aria-hidden="true" />
-                    <ToolIcon
-                      className={`pointer-events-none absolute right-4 top-5 z-[1] h-[4.5rem] w-[4.5rem] opacity-[0.22] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.3] sm:right-5 sm:top-5 sm:h-[5.25rem] sm:w-[5.25rem] ${style.icon}`}
-                      strokeWidth={1.35}
-                      aria-hidden="true"
-                    />
-
-                    <div className="relative z-10 flex w-full flex-col gap-2.5">
-                      <div className="flex items-start">
-                        <CategoryBadge category={tool.category} />
-                      </div>
-
-                      <div className="min-w-0">
-                        <h2 className="text-[1.18rem] font-bold leading-[1.1] text-[#f8fafc] sm:text-[1.34rem]">
-                          {tool.title}
-                        </h2>
-                        <p className="mt-1.5 text-[0.82rem] leading-5 text-violet-100/75 sm:text-[0.9rem] sm:leading-6">
-                          {tool.description}
-                        </p>
-                      </div>
-
-                      <div className="mt-auto">
-                        <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:px-3 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_18px_rgba(82,25,147,0.28)]">
-                          <span className="text-[0.8rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.84rem]">
-                            Otevřít pomůcku
-                          </span>
-                          <ArrowUpRight className="h-3.5 w-3.5 text-[#1b1036]" />
-                        </span>
-                      </div>
-                    </div>
-                  </CardWrapper>
+                  <div key={tool.key} className="relative h-full">
+                    {favoriteControl}
+                    <Link
+                      href={tool.href ?? "#"}
+                      onClick={() => recordToolOpen(tool.key)}
+                      className={cardClassName}
+                      style={animationStyle}
+                    >
+                      <ToolCardContent tool={tool} />
+                    </Link>
+                  </div>
                 );
               })}
             </section>

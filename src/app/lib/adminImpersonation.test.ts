@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldImpersonateApiRequest } from "./adminImpersonation";
+import {
+  ADMIN_IMPERSONATION_HEADER,
+  shouldImpersonateApiRequest,
+  withDefaultAdminImpersonationHeader,
+} from "./adminImpersonation";
 
 describe("shouldImpersonateApiRequest", () => {
   it.each([
@@ -11,6 +15,8 @@ describe("shouldImpersonateApiRequest", () => {
     ["/api/online-card/office-photo", "POST"],
     ["/api/online-card/analytics", "GET"],
     ["/api/intranet/wall/post-1/comments", "POST"],
+    ["/api/tool-usage", "GET"],
+    ["/api/tool-usage", "POST"],
   ])("scopes %s %s to the represented user", (pathname, method) => {
     expect(shouldImpersonateApiRequest(pathname, method)).toBe(true);
   });
@@ -25,5 +31,29 @@ describe("shouldImpersonateApiRequest", () => {
     ["/api/push/token", "POST", false],
   ])("applies the intended policy to %s %s", (pathname, method, expected) => {
     expect(shouldImpersonateApiRequest(pathname, method)).toBe(expected);
+  });
+});
+
+describe("withDefaultAdminImpersonationHeader", () => {
+  it("adds the current represented user when the request has no fixed scope", () => {
+    const headers = withDefaultAdminImpersonationHeader(
+      { Accept: "application/json" },
+      "petra.janackova@bohemika.eu"
+    );
+
+    expect(headers.get(ADMIN_IMPERSONATION_HEADER)).toBe(
+      "petra.janackova@bohemika.eu"
+    );
+  });
+
+  it("keeps an explicitly captured request scope", () => {
+    const headers = withDefaultAdminImpersonationHeader(
+      { [ADMIN_IMPERSONATION_HEADER]: "jakub.pokorny@bohemika.eu" },
+      "petra.janackova@bohemika.eu"
+    );
+
+    expect(headers.get(ADMIN_IMPERSONATION_HEADER)).toBe(
+      "jakub.pokorny@bohemika.eu"
+    );
   });
 });

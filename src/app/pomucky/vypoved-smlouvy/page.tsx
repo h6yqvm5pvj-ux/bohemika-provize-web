@@ -28,20 +28,18 @@ import { auth } from "@/app/firebase-auth";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import SplitTitle from "../plan-produkce/SplitTitle";
+import {
+  formatLocalDateInput,
+  getUniversalLetterForSelection,
+  getUniversalTerminationReasons,
+  type InsuranceType,
+  type TerminationReason,
+  type TerminationReasonOption,
+  type UniversalLetterCalculator,
+} from "./universalTermination";
 
-type InsuranceType = "life" | "nonLife";
-type TerminationReason =
-  | "anniversary"
-  | "twoMonths"
-  | "agreement"
-  | "periodEnd"
-  | "postClaim"
-  | "otherReason";
 type StepId = "type" | "reason" | "insurer";
-type TerminationReasonOption = {
-  id: TerminationReason;
-  label: string;
-};
+type DocumentViewMode = "official" | "universal";
 type PdfFieldDef = {
   key: string;
   label: string;
@@ -89,7 +87,9 @@ type GeneratedLetterPreviewConfig = {
   description: string;
   terminationSentence: string;
   refundAccountSentence?: string;
-  calculator: "annualAnniversary" | "twoMonths";
+  requiresOtherReason?: boolean;
+  calculator?: UniversalLetterCalculator;
+  uploadUrl?: string;
 };
 type OnlineFormConfig = {
   id: string;
@@ -153,36 +153,6 @@ const LIFE_TERMINATION_REASONS: TerminationReasonOption[] = [
   },
 ];
 
-const CSOB_NON_LIFE_TERMINATION_REASONS: TerminationReasonOption[] = [
-  {
-    id: "periodEnd",
-    label: "Ke konci pojistného období",
-  },
-  {
-    id: "twoMonths",
-    label: "Do dvou měsíců od uzavření smlouvy",
-  },
-  {
-    id: "postClaim",
-    label: "Po pojistné události",
-  },
-  {
-    id: "otherReason",
-    label: "Vypovědět smlouvu z jiného důvodu",
-  },
-];
-
-const UNIQA_NON_LIFE_TERMINATION_REASONS: TerminationReasonOption[] = [
-  {
-    id: "anniversary",
-    label: "K výročí s 6 týdenní výpovědní lhůtou",
-  },
-  {
-    id: "twoMonths",
-    label: "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou",
-  },
-];
-
 const INSURERS = [
   { label: "ČPP", logoPath: "/icons/cpp.png", logoClass: "p-2" },
   { label: "Kooperativa", logoPath: "/icons/koop-v2.png", logoClass: "p-2" },
@@ -201,22 +171,12 @@ type InsurerLabel = (typeof INSURERS)[number]["label"];
 const getAvailableReasons = (
   insuranceType: InsuranceType | null,
   insurer: InsurerLabel | null
-): TerminationReasonOption[] => {
-  if (insuranceType === "life") {
-    return insurer === "ČPP"
-      ? LIFE_TERMINATION_REASONS
-      : LIFE_TERMINATION_REASONS.filter((item) => item.id !== "agreement");
+): readonly TerminationReasonOption[] => {
+  if (!insuranceType || !insurer) return [];
+  if (insurer === "ČPP") {
+    return insuranceType === "life" ? LIFE_TERMINATION_REASONS : [];
   }
-
-  if (insuranceType === "nonLife" && insurer === "ČSOB") {
-    return CSOB_NON_LIFE_TERMINATION_REASONS;
-  }
-
-  if (insuranceType === "nonLife" && insurer === "UNIQA") {
-    return UNIQA_NON_LIFE_TERMINATION_REASONS;
-  }
-
-  return [];
+  return getUniversalTerminationReasons(insuranceType);
 };
 
 const CPP_AGREEMENT_DOCUMENT_ID: SecureDocumentId = "cpp-storno-dohodou";
@@ -232,51 +192,6 @@ const UNIQA_UPLOAD_URL = "https://epodatelna.uniqa.cz/klient/odeslani-zasilky";
 const AGREEMENT_PAGE_COUNT = 3;
 const STANDARD_TERMINATION_PAGE_COUNT = 2;
 const DEFAULT_AGENT_COMPANY = "Bohemika a.s.";
-
-const UNIQA_LIFE_ANNIVERSARY_LETTER_CONFIG: GeneratedLetterPreviewConfig = {
-  id: "uniqa-life-anniversary-letter",
-  eyebrow: "UNIQA životní pojištění",
-  title: "Náhled a doplnění PDF",
-  description:
-    "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
-  terminationSentence:
-    "K nejbližšímu výročí s 6 týdenní výpovědní lhůtou.",
-  calculator: "annualAnniversary",
-};
-
-const UNIQA_LIFE_TWO_MONTHS_LETTER_CONFIG: GeneratedLetterPreviewConfig = {
-  id: "uniqa-life-two-months-letter",
-  eyebrow: "UNIQA životní pojištění",
-  title: "Náhled a doplnění PDF",
-  description:
-    "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
-  terminationSentence:
-    "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou.",
-  calculator: "twoMonths",
-};
-
-const UNIQA_NON_LIFE_TWO_MONTHS_LETTER_CONFIG: GeneratedLetterPreviewConfig = {
-  id: "uniqa-non-life-two-months-letter",
-  eyebrow: "UNIQA neživotní pojištění",
-  title: "Náhled a doplnění PDF",
-  description:
-    "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
-  terminationSentence:
-    "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou.",
-  refundAccountSentence:
-    "Přeplatek na pojistném prosím zaslat na číslo účtu:",
-  calculator: "twoMonths",
-};
-
-const UNIQA_NON_LIFE_ANNIVERSARY_LETTER_CONFIG: GeneratedLetterPreviewConfig = {
-  id: "uniqa-non-life-anniversary-letter",
-  eyebrow: "UNIQA neživotní pojištění",
-  title: "Náhled a doplnění PDF",
-  description:
-    "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
-  terminationSentence: "K výročí s 6 týdenní výpovědní lhůtou.",
-  calculator: "annualAnniversary",
-};
 
 const CPP_AGREEMENT_PRINT_RULES = [
   "Storno dohodou může být akceptováno s datem účinnosti až 1 měsíc zpětně, doporučuji ponechat pravidlo vždy k výročnímu dni počátku pojištění.",
@@ -1044,7 +959,9 @@ function PeriodEndDeadlineBox() {
 
 function DeliveryTerminationDateBox() {
   const [contractSignedDateText, setContractSignedDateText] = useState("");
-  const [deliveryDateText, setDeliveryDateText] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState(() =>
+    formatLocalDateInput()
+  );
   const contractSignedDate = parseDateInput(contractSignedDateText);
   const deliveryDate = parseDateInput(deliveryDateText);
   const today = normalizeLocalDate(new Date());
@@ -1176,7 +1093,9 @@ function DeliveryTerminationDateBox() {
 
 function ClaimTerminationDateBox() {
   const [claimNoticeDateText, setClaimNoticeDateText] = useState("");
-  const [deliveryDateText, setDeliveryDateText] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState(() =>
+    formatLocalDateInput()
+  );
   const claimNoticeDate = parseDateInput(claimNoticeDateText);
   const deliveryDate = parseDateInput(deliveryDateText);
   const today = normalizeLocalDate(new Date());
@@ -1306,13 +1225,20 @@ function ClaimTerminationDateBox() {
   );
 }
 
-function CppMonthlyAnniversaryCalculatorModal({
+function MonthlyAnniversaryCalculatorModal({
   onClose,
+  eyebrow = "ČPP životní pojištění",
+  description =
+    "U životního pojištění ČPP je výročí každý měsíc podle dne počátku smlouvy. Výpověď musí být doručena nejpozději 6 týdnů před daným měsíčním výročím.",
 }: {
   onClose: () => void;
+  eyebrow?: string;
+  description?: string;
 }) {
   const [policyStartDateText, setPolicyStartDateText] = useState("");
-  const [deliveryDateText, setDeliveryDateText] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState(() =>
+    formatLocalDateInput()
+  );
   const policyStartDate = parseDateInput(policyStartDateText);
   const deliveryDate = parseDateInput(deliveryDateText);
   const isDeliveryBeforeStart =
@@ -1328,13 +1254,13 @@ function CppMonthlyAnniversaryCalculatorModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800">
-              ČPP životní pojištění
+              {eyebrow}
             </span>
             <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
               Kdy bude smlouva ukončena?
             </h3>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-              U životního pojištění ČPP je výročí každý měsíc podle dne počátku smlouvy. Výpověď musí být doručena nejpozději 6 týdnů před daným měsíčním výročím.
+              {description}
             </p>
           </div>
 
@@ -1454,13 +1380,17 @@ function CppMonthlyAnniversaryCalculatorModal({
   );
 }
 
-function UniqaAnnualAnniversaryCalculatorModal({
+function UniversalAnnualAnniversaryCalculatorModal({
   onClose,
+  eyebrow,
 }: {
   onClose: () => void;
+  eyebrow: string;
 }) {
   const [policyStartDateText, setPolicyStartDateText] = useState("");
-  const [deliveryDateText, setDeliveryDateText] = useState("");
+  const [deliveryDateText, setDeliveryDateText] = useState(() =>
+    formatLocalDateInput()
+  );
   const policyStartDate = parseDateInput(policyStartDateText);
   const deliveryDate = parseDateInput(deliveryDateText);
   const isDeliveryBeforeStart =
@@ -1476,7 +1406,7 @@ function UniqaAnnualAnniversaryCalculatorModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800">
-              UNIQA životní pojištění
+              {eyebrow}
             </span>
             <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
               Kdy bude smlouva ukončena?
@@ -1513,12 +1443,12 @@ function UniqaAnnualAnniversaryCalculatorModal({
             <div className="flex flex-col items-center gap-2">
               <label
                 className="text-sm font-semibold text-slate-900"
-                htmlFor="uniqa-policy-start-date"
+                htmlFor="universal-policy-start-date"
               >
                 Datum počátku smlouvy
               </label>
               <input
-                id="uniqa-policy-start-date"
+                id="universal-policy-start-date"
                 type="date"
                 value={policyStartDateText}
                 onChange={(event) => setPolicyStartDateText(event.target.value)}
@@ -1528,12 +1458,12 @@ function UniqaAnnualAnniversaryCalculatorModal({
             <div className="flex flex-col items-center gap-2">
               <label
                 className="text-sm font-semibold text-slate-900"
-                htmlFor="uniqa-delivery-date"
+                htmlFor="universal-delivery-date"
               >
                 Datum doručení výpovědi
               </label>
               <input
-                id="uniqa-delivery-date"
+                id="universal-delivery-date"
                 type="date"
                 value={deliveryDateText}
                 onChange={(event) => setDeliveryDateText(event.target.value)}
@@ -1602,14 +1532,20 @@ function UniqaAnnualAnniversaryCalculatorModal({
   );
 }
 
-function UniqaTwoMonthsCalculatorModal({ onClose }: { onClose: () => void }) {
+function UniversalTwoMonthsCalculatorModal({
+  onClose,
+  eyebrow,
+}: {
+  onClose: () => void;
+  eyebrow: string;
+}) {
   return (
     <div className="uniqa-no-print fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/62 px-3 py-4 backdrop-blur-[2.5px] sm:px-6 sm:py-6">
       <div className="w-full max-w-4xl rounded-[30px] border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_55%,#f5f0ff_100%)] p-4 shadow-[0_30px_80px_rgba(15,23,42,0.35)] sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800">
-              UNIQA životní pojištění
+              {eyebrow}
             </span>
             <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
               Kdy bude smlouva ukončena?
@@ -1630,6 +1566,55 @@ function UniqaTwoMonthsCalculatorModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <DeliveryTerminationDateBox />
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Zavřít
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UniversalPostClaimCalculatorModal({
+  onClose,
+  eyebrow,
+}: {
+  onClose: () => void;
+  eyebrow: string;
+}) {
+  return (
+    <div className="uniqa-no-print fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/62 px-3 py-4 backdrop-blur-[2.5px] sm:px-6 sm:py-6">
+      <div className="w-full max-w-4xl rounded-[30px] border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_55%,#f5f0ff_100%)] p-4 shadow-[0_30px_80px_rgba(15,23,42,0.35)] sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800">
+              {eyebrow}
+            </span>
+            <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
+              Kdy bude smlouva ukončena?
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+              Výpověď musí být doručena do 3 měsíců od oznámení pojistné události. Pojištění následně zanikne po 30 dnech od doručení.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Zavřít výpočet ukončení smlouvy"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <ClaimTerminationDateBox />
 
         <div className="mt-5 flex justify-end">
           <button
@@ -1694,6 +1679,8 @@ export default function ContractTerminationPage() {
   const [insurer, setInsurer] = useState<InsurerLabel | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
+  const [documentViewMode, setDocumentViewMode] =
+    useState<DocumentViewMode>("official");
   const availableReasons = getAvailableReasons(insuranceType, insurer);
   const requiresReasonStep = availableReasons.length > 0;
 
@@ -1734,16 +1721,6 @@ export default function ContractTerminationPage() {
     completed &&
     insuranceType === "life" &&
     insurer === "NN" &&
-    (reason === "anniversary" || reason === "twoMonths");
-  const showUniqaLifeLetter =
-    completed &&
-    insuranceType === "life" &&
-    insurer === "UNIQA" &&
-    (reason === "anniversary" || reason === "twoMonths");
-  const showUniqaNonLifeLetter =
-    completed &&
-    insuranceType === "nonLife" &&
-    insurer === "UNIQA" &&
     (reason === "anniversary" || reason === "twoMonths");
   const showMaximaNonLifeDocument =
     completed && insuranceType === "nonLife" && insurer === "Maxima";
@@ -1792,20 +1769,53 @@ export default function ContractTerminationPage() {
         : showCsobOtherReasonOnlineForm
           ? CSOB_OTHER_REASON_ONLINE_FORM_CONFIG
     : null;
-  const activeGeneratedLetterConfig = showUniqaLifeLetter
-    ? reason === "twoMonths"
-      ? UNIQA_LIFE_TWO_MONTHS_LETTER_CONFIG
-      : UNIQA_LIFE_ANNIVERSARY_LETTER_CONFIG
-    : showUniqaNonLifeLetter
-      ? reason === "twoMonths"
-        ? UNIQA_NON_LIFE_TWO_MONTHS_LETTER_CONFIG
-        : UNIQA_NON_LIFE_ANNIVERSARY_LETTER_CONFIG
+  const universalLetterDefinition = completed
+    ? getUniversalLetterForSelection({ insurer, insuranceType, reason })
+    : null;
+  const activeGeneratedLetterConfig: GeneratedLetterPreviewConfig | null =
+    universalLetterDefinition && insurer && insuranceType
+      ? {
+          id: `universal-termination-${insuranceType}-${universalLetterDefinition.idSuffix}`,
+          eyebrow: `${insurer} • ${
+            insuranceType === "life"
+              ? "životní pojištění"
+              : "neživotní pojištění"
+          }`,
+          title: "Univerzální výpověď",
+          description:
+            "Dopis doplň přímo v náhledu. Tisk vytiskne jednu A4 stranu s vyplněnými údaji.",
+          terminationSentence:
+            universalLetterDefinition.terminationSentence,
+          refundAccountSentence:
+            universalLetterDefinition.refundAccountSentence,
+          requiresOtherReason:
+            universalLetterDefinition.requiresOtherReason,
+          calculator: universalLetterDefinition.calculator,
+          uploadUrl:
+            insurer === "UNIQA"
+              ? UNIQA_UPLOAD_URL
+              : insurer === "Generali"
+                ? GENERALI_UPLOAD_URL
+                : undefined,
+        }
       : null;
   const activeDocument =
+    activeGeneratedLetterConfig ??
     activePdfConfig ??
     activeFillablePdfConfig ??
-    activeOnlineFormConfig ??
-    activeGeneratedLetterConfig;
+    activeOnlineFormConfig;
+  const hasOfficialDocument = Boolean(
+    activePdfConfig || activeFillablePdfConfig || activeOnlineFormConfig
+  );
+  const hasUniversalDocument = Boolean(activeGeneratedLetterConfig);
+  const visibleDocumentMode: DocumentViewMode =
+    documentViewMode === "official" && hasOfficialDocument
+      ? "official"
+      : documentViewMode === "universal" && hasUniversalDocument
+        ? "universal"
+        : hasOfficialDocument
+          ? "official"
+          : "universal";
 
   const validateCurrentStep = () => {
     if (currentStep === "insurer" && !insurer) {
@@ -1849,12 +1859,14 @@ export default function ContractTerminationPage() {
       return;
     }
 
+    setDocumentViewMode("official");
     setCompleted(true);
   };
 
   const goToPreviousStep = () => {
     setFormError(null);
     setCompleted(false);
+    setDocumentViewMode("official");
     setStep((prev) => Math.max(prev - 1, 0));
   };
 
@@ -1882,6 +1894,66 @@ export default function ContractTerminationPage() {
         ) : (
           <SplitTitle text="Výpověď smlouvy" />
         )}
+
+        {activeDocument ? (
+          <section className="sticky top-2 z-40 flex flex-col gap-3 rounded-[22px] border border-violet-200/80 bg-white/95 p-3 shadow-[0_16px_42px_rgba(88,28,135,0.16)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-3.5">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-violet-700">
+                Typ dokumentu
+              </p>
+              <p className="mt-0.5 text-sm font-semibold text-slate-700">
+                Vyber oficiální formulář pojišťovny, nebo univerzální výpověď.
+              </p>
+            </div>
+
+            <div
+              role="tablist"
+              aria-label="Typ dokumentu výpovědi"
+              className="grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-200 bg-slate-100 p-1.5"
+            >
+              {(
+                [
+                  {
+                    mode: "official" as const,
+                    label: "Oficiální",
+                    available: hasOfficialDocument,
+                  },
+                  {
+                    mode: "universal" as const,
+                    label: "Univerzální",
+                    available: hasUniversalDocument,
+                  },
+                ]
+              ).map((option) => {
+                const selected = visibleDocumentMode === option.mode;
+                return (
+                  <button
+                    key={option.mode}
+                    type="button"
+                    role="tab"
+                    disabled={!option.available}
+                    aria-selected={selected}
+                    title={
+                      option.available
+                        ? option.label
+                        : `${option.label} dokument není pro tuto volbu dostupný`
+                    }
+                    onClick={() => setDocumentViewMode(option.mode)}
+                    className={`min-w-[126px] rounded-xl px-4 py-2.5 text-sm font-bold transition ${
+                      selected
+                        ? "bg-slate-950 text-white shadow-[0_9px_22px_rgba(15,23,42,0.26)]"
+                        : option.available
+                          ? "bg-white text-slate-700 hover:text-slate-950"
+                          : "cursor-not-allowed bg-transparent text-slate-400 line-through opacity-60"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {!activeDocument ? (
           <section className="relative overflow-hidden rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6 vizitka-anim-up">
@@ -2154,31 +2226,49 @@ export default function ContractTerminationPage() {
           </section>
         ) : null}
 
-        {activePdfConfig ? (
-          <LifeInsurancePdfPreview
-            key={activePdfConfig.id}
-            config={activePdfConfig}
-            showMonthlyAnniversaryCalculator={showCppMonthlyAnniversaryCalculator}
-          />
-        ) : null}
-        {activeFillablePdfConfig ? (
-          <FillablePdfPreview key={activeFillablePdfConfig.id} config={activeFillablePdfConfig} />
-        ) : null}
-        {activeOnlineFormConfig ? (
-          <OnlineFormPanel key={activeOnlineFormConfig.id} config={activeOnlineFormConfig} />
-        ) : null}
         {activeGeneratedLetterConfig ? (
-          <UniqaLifeAnniversaryLetterPreview
-            key={activeGeneratedLetterConfig.id}
-            config={activeGeneratedLetterConfig}
-          />
+          <div
+            className={visibleDocumentMode === "universal" ? "" : "hidden"}
+            aria-hidden={visibleDocumentMode !== "universal"}
+          >
+            <UniversalTerminationLetterPreview
+              key={activeGeneratedLetterConfig.id}
+              config={activeGeneratedLetterConfig}
+            />
+          </div>
+        ) : null}
+        {hasOfficialDocument ? (
+          <div
+            className={visibleDocumentMode === "official" ? "space-y-6" : "hidden"}
+            aria-hidden={visibleDocumentMode !== "official"}
+          >
+            {activePdfConfig ? (
+              <LifeInsurancePdfPreview
+                key={activePdfConfig.id}
+                config={activePdfConfig}
+                showMonthlyAnniversaryCalculator={showCppMonthlyAnniversaryCalculator}
+              />
+            ) : null}
+            {activeFillablePdfConfig ? (
+              <FillablePdfPreview
+                key={activeFillablePdfConfig.id}
+                config={activeFillablePdfConfig}
+              />
+            ) : null}
+            {activeOnlineFormConfig ? (
+              <OnlineFormPanel
+                key={activeOnlineFormConfig.id}
+                config={activeOnlineFormConfig}
+              />
+            ) : null}
+          </div>
         ) : null}
       </div>
     </AppLayout>
   );
 }
 
-type UniqaLifeAnniversaryLetterFieldKey =
+type UniversalLetterFieldKey =
   | "contractNumber"
   | "policyholderName"
   | "personalId"
@@ -2187,15 +2277,12 @@ type UniqaLifeAnniversaryLetterFieldKey =
   | "email"
   | "place"
   | "signedDate"
-  | "refundAccount";
+  | "refundAccount"
+  | "otherReason";
 
-type UniqaLifeAnniversaryLetterFields = Record<
-  UniqaLifeAnniversaryLetterFieldKey,
-  string
->;
+type UniversalLetterFields = Record<UniversalLetterFieldKey, string>;
 
-const createEmptyUniqaLifeAnniversaryLetterFields =
-  (): UniqaLifeAnniversaryLetterFields => ({
+const createEmptyUniversalLetterFields = (): UniversalLetterFields => ({
     contractNumber: "",
     policyholderName: "",
     personalId: "",
@@ -2205,15 +2292,16 @@ const createEmptyUniqaLifeAnniversaryLetterFields =
     place: "",
     signedDate: "",
     refundAccount: "",
+    otherReason: "",
   });
 
-function UniqaLifeAnniversaryLetterPreview({
+function UniversalTerminationLetterPreview({
   config,
 }: {
   config: GeneratedLetterPreviewConfig;
 }) {
-  const [fields, setFields] = useState<UniqaLifeAnniversaryLetterFields>(() =>
-    createEmptyUniqaLifeAnniversaryLetterFields()
+  const [fields, setFields] = useState<UniversalLetterFields>(() =>
+    createEmptyUniversalLetterFields()
   );
   const [showTerminationCalculator, setShowTerminationCalculator] =
     useState(false);
@@ -2221,11 +2309,15 @@ function UniqaLifeAnniversaryLetterPreview({
     typeof document === "undefined" ? null : document.body;
 
   const updateField = (
-    key: UniqaLifeAnniversaryLetterFieldKey,
+    key: UniversalLetterFieldKey,
     value: string
   ) => {
     const maxLength =
-      key === "address" ? 180 : key === "refundAccount" ? 120 : 90;
+      key === "address" || key === "otherReason"
+        ? 180
+        : key === "refundAccount"
+          ? 120
+          : 90;
     setFields((prev) => ({
       ...prev,
       [key]: value.slice(0, maxLength),
@@ -2233,7 +2325,7 @@ function UniqaLifeAnniversaryLetterPreview({
   };
 
   const resetFields = () => {
-    setFields(createEmptyUniqaLifeAnniversaryLetterFields());
+    setFields(createEmptyUniversalLetterFields());
   };
 
   const printLetter = () => {
@@ -2241,7 +2333,7 @@ function UniqaLifeAnniversaryLetterPreview({
   };
 
   const renderInput = (
-    key: UniqaLifeAnniversaryLetterFieldKey,
+    key: UniversalLetterFieldKey,
     label: string,
     className = ""
   ) => (
@@ -2366,23 +2458,27 @@ function UniqaLifeAnniversaryLetterPreview({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowTerminationCalculator(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Kdy bude smlouva ukončena?
-          </button>
-          <a
-            href={UNIQA_UPLOAD_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
-          >
-            <Send className="h-4 w-4" />
-            Odeslat výpověď
-          </a>
+          {config.calculator ? (
+            <button
+              type="button"
+              onClick={() => setShowTerminationCalculator(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Kdy bude smlouva ukončena?
+            </button>
+          ) : null}
+          {config.uploadUrl ? (
+            <a
+              href={config.uploadUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
+            >
+              <Send className="h-4 w-4" />
+              Odeslat výpověď
+            </a>
+          ) : null}
           <button
             type="button"
             onClick={resetFields}
@@ -2405,11 +2501,24 @@ function UniqaLifeAnniversaryLetterPreview({
       {showTerminationCalculator && portalRoot
         ? createPortal(
             config.calculator === "twoMonths" ? (
-              <UniqaTwoMonthsCalculatorModal
+              <UniversalTwoMonthsCalculatorModal
+                eyebrow={config.eyebrow}
+                onClose={() => setShowTerminationCalculator(false)}
+              />
+            ) : config.calculator === "postClaim" ? (
+              <UniversalPostClaimCalculatorModal
+                eyebrow={config.eyebrow}
+                onClose={() => setShowTerminationCalculator(false)}
+              />
+            ) : config.calculator === "monthlyAnniversary" ? (
+              <MonthlyAnniversaryCalculatorModal
+                eyebrow={config.eyebrow}
+                description="U životního pojištění je výročí každý měsíc podle dne počátku smlouvy. Výpověď musí být doručena nejpozději 6 týdnů před daným měsíčním výročím."
                 onClose={() => setShowTerminationCalculator(false)}
               />
             ) : (
-              <UniqaAnnualAnniversaryCalculatorModal
+              <UniversalAnnualAnniversaryCalculatorModal
+                eyebrow={config.eyebrow}
                 onClose={() => setShowTerminationCalculator(false)}
               />
             ),
@@ -2420,7 +2529,7 @@ function UniqaLifeAnniversaryLetterPreview({
       <div className="uniqa-letter-pages mt-5 grid gap-5 bg-slate-100/80 p-3 sm:p-4">
         <article
           className="uniqa-letter-page mx-auto w-full max-w-[760px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
-          aria-label="Náhled výpovědi smlouvy UNIQA"
+          aria-label={`Náhled univerzální výpovědi – ${config.eyebrow}`}
         >
           <div className="uniqa-letter-content flex flex-col px-[8.5%] py-[9%] text-[clamp(12px,2.15vw,18px)] leading-8 text-slate-950">
             <h1 className="text-center text-[clamp(23px,4.4vw,34px)] font-bold text-slate-950">
@@ -2437,7 +2546,16 @@ function UniqaLifeAnniversaryLetterPreview({
                 )}
                 ,
               </p>
-              <p className="font-semibold">- {config.terminationSentence}</p>
+              <p className="font-semibold">
+                - {config.terminationSentence}{" "}
+                {config.requiresOtherReason
+                  ? renderInput(
+                      "otherReason",
+                      "Jiný důvod výpovědi",
+                      "inline-block w-[min(100%,360px)] align-baseline"
+                    )
+                  : null}
+              </p>
               {config.refundAccountSentence ? (
                 <p className="font-semibold">
                   {config.refundAccountSentence}{" "}
@@ -3348,7 +3466,7 @@ function LifeInsurancePdfPreview({
 
       {showTerminationCalculator && portalRoot
         ? createPortal(
-            <CppMonthlyAnniversaryCalculatorModal
+            <MonthlyAnniversaryCalculatorModal
               onClose={() => setShowTerminationCalculator(false)}
             />,
             portalRoot
