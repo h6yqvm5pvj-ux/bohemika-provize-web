@@ -37,6 +37,7 @@ import {
   institutionLogoImageClass,
   institutionLogoKeyFromPath,
 } from "@/app/lib/institutionLogoDisplay";
+import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import { type Position } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import introStyles from "../cashflow/cashflowIntro.module.css";
@@ -1830,7 +1831,7 @@ export default function TeamPage() {
       {
         id: createTimelineRowId(),
         position: selected.position ?? "poradce1",
-        validFrom: "",
+        validFrom: getNextCareerTimelineStart(prev),
         validTo: "",
       },
     ]);

@@ -70,6 +70,23 @@ export type AutoDetail = {
   carAnnualMileage?: string | null;
   carAllianzScope?: string | null;
   carLiabilityLimit?: number | null;
+  carSlaviaDetail?: {
+    liabilityVariant?: string | null;
+    liabilityPropertyLimit?: number | null;
+    priceGuarantee3Years?: boolean | null;
+    driverInjury?: boolean | null;
+    driverInjuryPermanentLimit?: number | null;
+    driverInjuryDeathLimit?: number | null;
+    tires?: boolean | null;
+    tiresLimit?: number | null;
+    tiresDeductible?: number | null;
+    keyLossTheftLimit?: number | null;
+    keyLossLimit?: number | null;
+    keyLossTheftDeductible?: number | null;
+    vandalismLimit?: number | null;
+    vandalismDeductible?: number | null;
+    animalDamageDeductible?: number | null;
+  } | null;
   carHullSumInsured?: number | null;
   carHullSumInsuredText?: string | null;
   carHullDeductible?: number | null;
@@ -288,6 +305,22 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
     return Boolean(normalized && normalized !== "—" && normalized !== "-");
   };
   const hasTpValue = hasTextValue(contract?.carTp) || hasTextValue(fields.carTp);
+  const slaviaDetail = prod === "slaviaauto" ? contract?.carSlaviaDetail : null;
+  const slaviaMoney = (value: number | undefined | null) =>
+    value != null && Number.isFinite(value) ? formatMoney(value) : "—";
+  const slaviaAddonDetail = (key: string): string | null => {
+    if (!slaviaDetail) return null;
+    switch (key) {
+      case "carAddonAnimalDamage":
+        return `Limit ${slaviaMoney(contract?.carAddonAnimalDamageLimit)} · spoluúčast ${slaviaMoney(slaviaDetail.animalDamageDeductible)}`;
+      case "carAddonVandalism":
+        return `Limit ${slaviaMoney(slaviaDetail.vandalismLimit)} · spoluúčast ${slaviaMoney(slaviaDetail.vandalismDeductible)}`;
+      case "carAddonKeyLossTheft":
+        return `Limit ${slaviaMoney(slaviaDetail.keyLossTheftLimit)} · pro ztrátu ${slaviaMoney(slaviaDetail.keyLossLimit)} · spoluúčast ${slaviaMoney(slaviaDetail.keyLossTheftDeductible)}`;
+      default:
+        return null;
+    }
+  };
 
   const hasHullData =
     contract?.carHullSumInsured != null ||
@@ -498,7 +531,9 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
         <SectionTitle icon={Shield} label="Povinné ručení" />
         <div className="text-sm text-slate-900">
           <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Limity</span>
+            <span className="text-slate-600">
+              {slaviaDetail ? "Limit újmy na zdraví" : "Limity"}
+            </span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <select
@@ -524,6 +559,28 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
               )}
             </span>
           </div>
+          {slaviaDetail?.liabilityPropertyLimit != null && (
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Limit škody na majetku</span>
+              <span className="font-semibold text-right">
+                {formatMoney(slaviaDetail.liabilityPropertyLimit)}
+              </span>
+            </div>
+          )}
+          {slaviaDetail?.liabilityVariant && (
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Varianta</span>
+              <span className="font-semibold text-right">
+                {slaviaDetail.liabilityVariant}
+              </span>
+            </div>
+          )}
+          {slaviaDetail?.priceGuarantee3Years === true && (
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Garance ceny na 3 roky</span>
+              <span className="font-semibold text-right">Sjednáno</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -661,6 +718,32 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
       <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
         <SectionTitle icon={Wrench} label="Připojištění" />
         <div className="space-y-1">
+          {!editMode && slaviaDetail?.driverInjury === true && (
+            <div className="space-y-1">
+              <ToggleRow
+                label="Úraz řidiče"
+                checked
+                onChange={() => undefined}
+                disabled
+              />
+              <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                Trvalé následky {slaviaMoney(slaviaDetail.driverInjuryPermanentLimit)} · smrt úrazem {slaviaMoney(slaviaDetail.driverInjuryDeathLimit)}
+              </p>
+            </div>
+          )}
+          {!editMode && slaviaDetail?.tires === true && (
+            <div className="space-y-1">
+              <ToggleRow
+                label="Pojištění pneumatik"
+                checked
+                onChange={() => undefined}
+                disabled
+              />
+              <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                Limit {slaviaMoney(slaviaDetail.tiresLimit)} · spoluúčast {slaviaMoney(slaviaDetail.tiresDeductible)}
+              </p>
+            </div>
+          )}
           {[
             { key: "carAddonEso", label: "ESO", checked: fields.carAddonEso },
             {
@@ -671,7 +754,14 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
             { key: "carAddonKlika", label: "Pojištění KLIKA", checked: fields.carAddonKlika },
             { key: "carAddonGlass", label: "Skla", checked: fields.carAddonGlass },
             { key: "carAddonAnimalCollision", label: "Střet se zvěří", checked: fields.carAddonAnimalCollision },
-            { key: "carAddonAnimalDamage", label: "Poškození zvěří", checked: fields.carAddonAnimalDamage },
+            {
+              key: "carAddonAnimalDamage",
+              label:
+                prod === "slaviaauto"
+                  ? "Poškození kabelů vozidla zvířetem"
+                  : "Poškození zvěří",
+              checked: fields.carAddonAnimalDamage,
+            },
             { key: "carAddonVandalism", label: "Vandalismus", checked: fields.carAddonVandalism },
             { key: "carAddonTheft", label: "Odcizení", checked: fields.carAddonTheft },
             { key: "carAddonNatural", label: "Živel", checked: fields.carAddonNatural },
@@ -718,7 +808,10 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
               const limitConfig = addonLimitConfig[item.key];
               const showLimitInput = Boolean(limitConfig && editMode && item.checked);
               const showLimitValue = Boolean(
-                limitConfig && !editMode && limitConfig.amount != null
+                limitConfig &&
+                  !editMode &&
+                  limitConfig.amount != null &&
+                  !(prod === "slaviaauto" && item.key === "carAddonAnimalDamage")
               );
               const showInlineLimit = item.key === "carAddonGlass" && limitConfig;
 
@@ -747,6 +840,11 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                     onChange={(val) => onChange(item.key as keyof AutoFields, val)}
                     disabled={!editMode}
                   />
+                  {!editMode && slaviaAddonDetail(item.key) && (
+                    <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      {slaviaAddonDetail(item.key)}
+                    </p>
+                  )}
                   {(showLimitInput || showLimitValue) && limitConfig && (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                       <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">

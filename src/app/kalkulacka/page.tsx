@@ -54,6 +54,7 @@ import {
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
 import { autoAssistancePlanLabel } from "@/app/lib/autoAssistanceLabels";
+import type { SlaviaAutoCoverageDetail } from "@/app/lib/parseSlaviaAutoPdf";
 import { AppLayout } from "@/components/AppLayout";
 import { HelpDialog } from "@/components/HelpDialog";
 import {
@@ -275,6 +276,15 @@ const parsedPdfRoundedNumberValue = (
 
 const parsedPdfBooleanValue = (parsed: ParsedContractPdf, key: string): boolean =>
   parsed[key] === true;
+
+const parsedSlaviaAutoDetailValue = (
+  parsed: ParsedContractPdf
+): SlaviaAutoCoverageDetail | null => {
+  const value = parsed.carSlaviaDetail;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as SlaviaAutoCoverageDetail)
+    : null;
+};
 
 const parsedPdfFrequencyValue = (
   parsed: ParsedContractPdf
@@ -875,6 +885,8 @@ export default function CalculatorPage() {
   const [autoCarAnnualMileage, setAutoCarAnnualMileage] = useState<string>("");
   const [autoCarAllianzScope, setAutoCarAllianzScope] = useState<string>("");
   const [autoCarLiabilityLimit, setAutoCarLiabilityLimit] = useState<number | null>(null);
+  const [autoCarSlaviaDetail, setAutoCarSlaviaDetail] =
+    useState<SlaviaAutoCoverageDetail | null>(null);
   const [autoCarHullSumInsured, setAutoCarHullSumInsured] = useState<number | null>(null);
   const [autoCarHullSumInsuredText, setAutoCarHullSumInsuredText] = useState<string>("");
   const [autoCarHullSumInsuredDraft, setAutoCarHullSumInsuredDraft] = useState<string>("");
@@ -2671,6 +2683,7 @@ export default function CalculatorPage() {
       setAutoCarAnnualMileage("");
       setAutoCarAllianzScope("");
       setAutoCarLiabilityLimit(null);
+      setAutoCarSlaviaDetail(null);
       setAutoCarHullSumInsured(null);
       setAutoCarHullSumInsuredText("");
       setAutoCarHullSumInsuredDraft("");
@@ -3436,6 +3449,7 @@ export default function CalculatorPage() {
       setAutoCarAnnualMileage("");
       setAutoCarAllianzScope("");
       setAutoCarLiabilityLimit(null);
+      setAutoCarSlaviaDetail(null);
       setAutoCarHullSumInsured(null);
       setAutoCarHullSumInsuredText("");
       setAutoCarHullSumInsuredDraft("");
@@ -3891,6 +3905,11 @@ export default function CalculatorPage() {
           applied += 2;
         }
       }
+      if ("carSlaviaDetail" in parsed) {
+        const slaviaDetail = parsedSlaviaAutoDetailValue(parsed);
+        setAutoCarSlaviaDetail(slaviaDetail);
+        if (slaviaDetail) applied += 1;
+      }
       if ("carHullSumInsured" in parsed) {
         const hullSumInsured =
           typeof parsed.carHullSumInsured === "number" &&
@@ -4011,6 +4030,18 @@ export default function CalculatorPage() {
         const addon = parsed.carAddonAnimalDamage === true;
         setAutoCarAddonAnimalDamage(addon);
         if (addon) applied += 1;
+      }
+      if ("carAddonAnimalDamageLimit" in parsed) {
+        const limit =
+          typeof parsed.carAddonAnimalDamageLimit === "number" &&
+          Number.isFinite(parsed.carAddonAnimalDamageLimit)
+            ? Math.round(parsed.carAddonAnimalDamageLimit)
+            : null;
+        setAutoCarAddonAnimalDamageLimit(limit);
+        if (limit != null) {
+          setAutoCarAddonAnimalDamage(true);
+          applied += 1;
+        }
       }
       if ("carAddonVandalism" in parsed) {
         const addon = parsed.carAddonVandalism === true;
@@ -4305,6 +4336,7 @@ export default function CalculatorPage() {
     setAutoCarAnnualMileage(parsedPdfTextValue(parsed, "carAnnualMileage"));
     setAutoCarAllianzScope(parsedPdfTextValue(parsed, "carAllianzScope"));
     setAutoCarLiabilityLimit(liabilityLimit);
+    setAutoCarSlaviaDetail(parsedSlaviaAutoDetailValue(parsed));
     if (hullSumInsuredText) {
       setAutoCarHullSumInsured(null);
       setAutoCarHullSumInsuredText(hullSumInsuredText);
@@ -4979,6 +5011,7 @@ export default function CalculatorPage() {
             importProduct === "allianzAuto" ||
             importProduct === "pillowAuto";
           const canSaveAssistance =
+            importProduct === "slaviaauto" ||
             importProduct === "kooperativaAuto" ||
             importProduct === "uniqaAuto" ||
             importProduct === "cppAuto" ||
@@ -5151,6 +5184,10 @@ export default function CalculatorPage() {
               ? parsedPdfTextValue(parsed, "carAllianzScope") || null
               : null,
             carLiabilityLimit: isAutoImportProduct ? carLiabilityLimit : null,
+            carSlaviaDetail:
+              importProduct === "slaviaauto"
+                ? parsedSlaviaAutoDetailValue(parsed)
+                : null,
             carHullSumInsured:
               isAutoImportProduct && canSaveHullSum ? carHullSumInsured : null,
             carHullSumInsuredText:
@@ -5512,6 +5549,7 @@ export default function CalculatorPage() {
     setAutoCarAnnualMileage("");
     setAutoCarAllianzScope("");
     setAutoCarLiabilityLimit(null);
+    setAutoCarSlaviaDetail(null);
     setAutoCarHullSumInsured(null);
     setAutoCarHullSumInsuredText("");
     setAutoCarHullSumInsuredDraft("");
@@ -6612,6 +6650,8 @@ export default function CalculatorPage() {
               product === "pillowAuto"
                 ? autoCarLiabilityLimit
                 : null,
+            carSlaviaDetail:
+              product === "slaviaauto" ? autoCarSlaviaDetail : null,
             carHullSumInsured:
               isKooperativaAutoDetailProduct(product) ||
               isUniqaAutoDetailProduct(product) ||
@@ -6684,6 +6724,7 @@ export default function CalculatorPage() {
                 ? autoCarHullRiskAnimalCollision
                 : null,
             carAssistancePlan:
+              isSlaviaAutoDetailProduct(product) ||
               isKooperativaAutoDetailProduct(product) ||
               isUniqaAutoDetailProduct(product) ||
               product === "cppAuto" ||
@@ -7390,6 +7431,7 @@ export default function CalculatorPage() {
           product === "allianzAuto" ||
           product === "pillowAuto",
         showAssistance:
+          isSlaviaAutoDetailProduct(product) ||
           isKooperativaAutoDetailProduct(product) ||
           isUniqaAutoDetailProduct(product) ||
           product === "cppAuto" ||
@@ -7651,6 +7693,22 @@ export default function CalculatorPage() {
         ...(limitText ? { sideLabel: "Limit", sideValue: limitText } : {}),
       });
     };
+    const addDetailedAddon = (
+      label: string,
+      value: boolean,
+      sideLabel: string,
+      sideValue: string
+    ) => {
+      if (!value) return;
+      items.push({
+        section: "addons",
+        label,
+        value: "Ano",
+        ...(sideValue.trim() ? { sideLabel, sideValue } : {}),
+      });
+    };
+    const moneyOrDash = (value: number | null | undefined) =>
+      typeof value === "number" && Number.isFinite(value) ? formatMoney(value) : "—";
 
     addText("vehicle", "Značka/model", autoCarMake);
     addText("vehicle", "RZ", autoCarPlate);
@@ -7663,7 +7721,26 @@ export default function CalculatorPage() {
       addText("vehicle", "Roční nájezd", autoCarAnnualMileage);
     }
     if (product === "allianzAuto") addText("vehicle", "Rozsah Allianz", autoCarAllianzScope);
-    addMoney("liability", "Limit odpovědnosti", autoCarLiabilityLimit);
+    if (product === "slaviaauto" && autoCarSlaviaDetail) {
+      addMoney("liability", "Limit újmy na zdraví", autoCarLiabilityLimit);
+      addMoney(
+        "liability",
+        "Limit škody na majetku",
+        autoCarSlaviaDetail.liabilityPropertyLimit ?? null
+      );
+      addText(
+        "liability",
+        "Varianta",
+        autoCarSlaviaDetail.liabilityVariant ?? ""
+      );
+      addBoolean(
+        "liability",
+        "Garance ceny na 3 roky",
+        autoCarSlaviaDetail.priceGuarantee3Years === true
+      );
+    } else {
+      addMoney("liability", "Limit odpovědnosti", autoCarLiabilityLimit);
+    }
     if (autoHullSumInsuredText) {
       addText("hull", "Havarijní pojistná částka", autoHullSumInsuredText);
     } else {
@@ -7692,12 +7769,47 @@ export default function CalculatorPage() {
       autoCarAddonAnimalCollision,
       autoCarAddonAnimalCollisionLimit
     );
-    addAddon(
-      "Poškození zvěří",
-      autoCarAddonAnimalDamage,
-      autoCarAddonAnimalDamageLimit
-    );
-    addAddon("Vandalismus", autoCarAddonVandalism);
+    if (product === "slaviaauto" && autoCarSlaviaDetail) {
+      addDetailedAddon(
+        "Poškození kabelů vozidla zvířetem",
+        autoCarAddonAnimalDamage,
+        "Limit / spoluúčast",
+        `${moneyOrDash(autoCarAddonAnimalDamageLimit)} / ${moneyOrDash(
+          autoCarSlaviaDetail.animalDamageDeductible
+        )}`
+      );
+      addDetailedAddon(
+        "Vandalismus",
+        autoCarAddonVandalism,
+        "Limit / spoluúčast",
+        `${moneyOrDash(autoCarSlaviaDetail.vandalismLimit)} / ${moneyOrDash(
+          autoCarSlaviaDetail.vandalismDeductible
+        )}`
+      );
+      addDetailedAddon(
+        "Úraz řidiče",
+        autoCarSlaviaDetail.driverInjury === true,
+        "Trvalé následky / smrt",
+        `${moneyOrDash(autoCarSlaviaDetail.driverInjuryPermanentLimit)} / ${moneyOrDash(
+          autoCarSlaviaDetail.driverInjuryDeathLimit
+        )}`
+      );
+      addDetailedAddon(
+        "Pojištění pneumatik",
+        autoCarSlaviaDetail.tires === true,
+        "Limit / spoluúčast",
+        `${moneyOrDash(autoCarSlaviaDetail.tiresLimit)} / ${moneyOrDash(
+          autoCarSlaviaDetail.tiresDeductible
+        )}`
+      );
+    } else {
+      addAddon(
+        "Poškození zvěří",
+        autoCarAddonAnimalDamage,
+        autoCarAddonAnimalDamageLimit
+      );
+      addAddon("Vandalismus", autoCarAddonVandalism);
+    }
     addAddon("Odcizení", autoCarAddonTheft, autoCarAddonTheftLimit);
     addAddon("Živel", autoCarAddonNatural, autoCarAddonNaturalLimit);
     addAddon(
@@ -7716,7 +7828,18 @@ export default function CalculatorPage() {
     addAddon("Požár/výbuch", autoCarAddonFireExplosion);
     addAddon("Právní poradenství", autoCarAddonLegalAdvice);
     addAddon("Úraz všech osob", autoCarAddonPassengerInjury);
-    addAddon("Ztráta/odcizení klíčů", autoCarAddonKeyLossTheft);
+    if (product === "slaviaauto" && autoCarSlaviaDetail) {
+      addDetailedAddon(
+        "Ztráta/odcizení klíčů",
+        autoCarAddonKeyLossTheft,
+        "Limit / ztráta / spoluúčast",
+        `${moneyOrDash(autoCarSlaviaDetail.keyLossTheftLimit)} / ${moneyOrDash(
+          autoCarSlaviaDetail.keyLossLimit
+        )} / ${moneyOrDash(autoCarSlaviaDetail.keyLossTheftDeductible)}`
+      );
+    } else {
+      addAddon("Ztráta/odcizení klíčů", autoCarAddonKeyLossTheft);
+    }
 
     return items;
   })();

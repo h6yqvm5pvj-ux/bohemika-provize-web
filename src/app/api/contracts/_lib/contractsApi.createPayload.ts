@@ -58,6 +58,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAnnualMileage",
   "carAllianzScope",
   "carLiabilityLimit",
+  "carSlaviaDetail",
   "carAssistancePlan",
   "carHullSumInsured",
   "carHullSumInsuredText",
@@ -307,6 +308,24 @@ export const DOMEX_DETAIL_ALLOWED_KEYS = new Set<string>([
   "note",
 ]);
 
+export const SLAVIA_AUTO_DETAIL_ALLOWED_KEYS = new Set<string>([
+  "liabilityVariant",
+  "liabilityPropertyLimit",
+  "priceGuarantee3Years",
+  "driverInjury",
+  "driverInjuryPermanentLimit",
+  "driverInjuryDeathLimit",
+  "tires",
+  "tiresLimit",
+  "tiresDeductible",
+  "keyLossTheftLimit",
+  "keyLossLimit",
+  "keyLossTheftDeductible",
+  "vandalismLimit",
+  "vandalismDeductible",
+  "animalDamageDeductible",
+]);
+
 const normalizeEmail = (email: string | null | undefined): string =>
   (email ?? "").trim().toLowerCase();
 
@@ -511,7 +530,12 @@ const toIsoDay = (value: Date): string => {
 
 export const sanitizeDetailObject = (
   value: unknown,
-  field: "neonDetail" | "flexiDetail" | "domexDetail" | "maxdomovDetail",
+  field:
+    | "neonDetail"
+    | "flexiDetail"
+    | "domexDetail"
+    | "maxdomovDetail"
+    | "carSlaviaDetail",
   allowedKeys: Set<string>
 ): ParseResult<Record<string, string | number | boolean | null> | null> => {
   if (value == null) return { ok: true, value: null };
@@ -664,6 +688,7 @@ export type NormalizedCreateEntryPayload = {
   carAnnualMileage: string | null;
   carAllianzScope: string | null;
   carLiabilityLimit: number | null;
+  carSlaviaDetail: Record<string, string | number | boolean | null> | null;
   carAssistancePlan: string | null;
   carHullSumInsured: number | null;
   carHullSumInsuredText: string | null;
@@ -893,6 +918,12 @@ export const normalizeCreateEntryPayload = ({
     "carLiabilityLimit"
   );
   if (!carLiabilityLimitParsed.ok) return carLiabilityLimitParsed;
+  const carSlaviaDetailParsed = sanitizeDetailObject(
+    raw.carSlaviaDetail,
+    "carSlaviaDetail",
+    SLAVIA_AUTO_DETAIL_ALLOWED_KEYS
+  );
+  if (!carSlaviaDetailParsed.ok) return carSlaviaDetailParsed;
   const carAssistancePlanParsed = parseOptionalTrimmedText(
     raw.carAssistancePlan,
     "carAssistancePlan",
@@ -1452,6 +1483,8 @@ export const normalizeCreateEntryPayload = ({
       carAnnualMileage: carAnnualMileageParsed.value,
       carAllianzScope: carAllianzScopeParsed.value,
       carLiabilityLimit: carLiabilityLimitParsed.value,
+      carSlaviaDetail:
+        productParsed.value === "slaviaauto" ? carSlaviaDetailParsed.value : null,
       carAssistancePlan: carAssistancePlanParsed.value,
       carHullSumInsured: carHullSumInsuredParsed.value,
       carHullSumInsuredText: carHullSumInsuredTextParsed.value,

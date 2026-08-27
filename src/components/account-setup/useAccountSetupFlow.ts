@@ -16,6 +16,7 @@ import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import * as userProfileCache from "@/app/lib/userProfileCache";
+import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import type { Position } from "@/app/types/domain";
 
 export type AccountType = "advisor" | "tipster";
@@ -567,7 +568,7 @@ export function useAccountSetupFlow({
       {
         id: createTimelineRowId(),
         position: "",
-        validFrom: "",
+        validFrom: getNextCareerTimelineStart(prev),
         validTo: "",
       },
     ]);

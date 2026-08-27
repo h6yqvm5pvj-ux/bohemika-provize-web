@@ -22,6 +22,10 @@ import { adminRoleAtLeast, resolveAdminRoleFromClaims } from "@/lib/adminAccess"
 import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
+import {
+  buildTeamOverviewReadModelDocuments,
+  TEAM_OVERVIEW_MODEL_VERSION,
+} from "@/lib/server/teamOverviewReadModel";
 import type {
   AccountType,
   AggregateMetrics,
@@ -41,7 +45,6 @@ const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT = 60;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS = 60_000;
-const TEAM_OVERVIEW_MODEL_VERSION = 5;
 const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
@@ -1563,6 +1566,14 @@ async function persistContractStatsToReadModel(
 
   for (const [ownerEmail, stat] of entries) {
     const activeStat = activeStats[ownerEmail] ?? emptyContractStats();
+    const documents = buildTeamOverviewReadModelDocuments({
+      ownerEmail,
+      stat,
+      activeStat,
+      yearMonth,
+      previousMonth,
+      updatedAtMs,
+    });
     const totalsRef = db.collection(TEAM_OVERVIEW_TOTALS_COLLECTION).doc(ownerEmail);
     const monthRef = db
       .collection(TEAM_OVERVIEW_MONTHLY_COLLECTION)
@@ -1573,53 +1584,17 @@ async function persistContractStatsToReadModel(
 
     batch.set(
       totalsRef,
-      {
-        version: TEAM_OVERVIEW_MODEL_VERSION,
-        ownerEmail,
-        total: finiteNumber(stat.total),
-        categories: stat.categories,
-        categoryMetrics: stat.categoryMetrics,
-        institutionMetrics: stat.institutionMetrics,
-        institutionByCategory: stat.institutionByCategory,
-        activeContractStats: {
-          total: finiteNumber(activeStat.total),
-          categories: activeStat.categories,
-          categoryMetrics: activeStat.categoryMetrics,
-          institutionMetrics: activeStat.institutionMetrics,
-          institutionByCategory: activeStat.institutionByCategory,
-        },
-        updatedAtMs,
-      },
+      documents.totals,
       { merge: true }
     );
     batch.set(
       monthRef,
-      {
-        version: TEAM_OVERVIEW_MODEL_VERSION,
-        ownerEmail,
-        yearMonth,
-        monthCount: finiteNumber(stat.month),
-        previousMonthToDateCount: finiteNumber(stat.previousMonthToDate),
-        monthMetrics: stat.monthMetrics ?? emptyAggregateMetrics(),
-        activeMonthCount: finiteNumber(activeStat.month),
-        activePreviousMonthToDateCount: finiteNumber(activeStat.previousMonthToDate),
-        activeMonthMetrics: activeStat.monthMetrics ?? emptyAggregateMetrics(),
-        updatedAtMs,
-      },
+      documents.currentMonth,
       { merge: true }
     );
     batch.set(
       previousMonthRef,
-      {
-        version: TEAM_OVERVIEW_MODEL_VERSION,
-        ownerEmail,
-        yearMonth: previousMonth,
-        monthCount: finiteNumber(stat.previousMonth),
-        monthMetrics: stat.previousMonthMetrics ?? emptyAggregateMetrics(),
-        activeMonthCount: finiteNumber(activeStat.previousMonth),
-        activeMonthMetrics: activeStat.previousMonthMetrics ?? emptyAggregateMetrics(),
-        updatedAtMs,
-      },
+      documents.previousMonth,
       { merge: true }
     );
 

@@ -114,6 +114,7 @@ import {
   mergeEmptyContractFields,
   mergeEmptyNeonDetailFields,
   mergeEmptyPropertyDetailFields,
+  mergeEmptySlaviaAutoDetailFields,
   PDF_REIMPORT_PARSERS,
 } from "./contractDetailPdfReimport";
 import { useContractDetails } from "./useContractDetails";
@@ -138,6 +139,8 @@ const ALLIANZ_AUTO_PAYMENT_CHECK_URL =
   "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
 const KOOPERATIVA_CONTRACT_STATUS_URL =
   "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
+const SLAVIA_CONTRACT_VERIFICATION_URL =
+  "https://www.slavia-pojistovna.cz/over-ps/";
 const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = true;
 
 function originalReplacementLabel(product?: Product | null): string {
@@ -3412,6 +3415,24 @@ export default function ContractDetailPage() {
         }
       }
 
+      const parsedSlaviaDetail = parsed.carSlaviaDetail;
+      if (
+        prod === "slaviaauto" &&
+        parsedSlaviaDetail &&
+        typeof parsedSlaviaDetail === "object" &&
+        !Array.isArray(parsedSlaviaDetail)
+      ) {
+        const slaviaMerge = mergeEmptySlaviaAutoDetailFields(
+          contract.carSlaviaDetail,
+          parsedSlaviaDetail as Record<string, unknown>
+        );
+        if (slaviaMerge.appliedCount > 0) {
+          apiUpdates.carSlaviaDetail = slaviaMerge.detail;
+          contractPatch.carSlaviaDetail = slaviaMerge.detail;
+          appliedCount += slaviaMerge.appliedCount;
+        }
+      }
+
       const riskFields = parsed.riskFields;
       if (
         prod === "neon" &&
@@ -4940,6 +4961,18 @@ export default function ContractDetailPage() {
                     <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Ověření stavu smlouvy</span>
                   </button>
+                )}
+
+                {prod === "slaviaauto" && (
+                  <a
+                    href={SLAVIA_CONTRACT_VERIFICATION_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={headerActionButtonClass}
+                  >
+                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+                    <span>Ověřit smlouvu</span>
+                  </a>
                 )}
 
                 {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (

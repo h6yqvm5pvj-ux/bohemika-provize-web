@@ -6,6 +6,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { checkAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
+import {
+  deleteMailboxStorageObjects,
+  resolveConfiguredMailboxStorageBuckets,
+} from "@/lib/server/mailboxAttachmentStorage";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
   prepareSafeUserAttachmentFile,
@@ -159,42 +163,6 @@ const sanitizeFileName = (value: string): string => {
   return stripped.slice(0, 120) || "priloha";
 };
 
-const normalizeBucketName = (value: string): string =>
-  value.trim().replace(/^gs:\/\//i, "").replace(/\/+$/, "");
-
-const resolveStorageBucketCandidates = (): string[] => {
-  const candidates: string[] = [];
-  const append = (value: string | null | undefined) => {
-    if (!value) return;
-    const normalized = normalizeBucketName(value);
-    if (!normalized) return;
-    if (!candidates.includes(normalized)) {
-      candidates.push(normalized);
-    }
-  };
-
-  append(process.env.FIREBASE_STORAGE_BUCKET);
-  append(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET);
-
-  const explicit = candidates[0] ?? "";
-  if (explicit.endsWith(".firebasestorage.app")) {
-    append(explicit.replace(/\.firebasestorage\.app$/i, ".appspot.com"));
-  } else if (explicit.endsWith(".appspot.com")) {
-    append(explicit.replace(/\.appspot\.com$/i, ".firebasestorage.app"));
-  }
-
-  const projectId =
-    process.env.FIREBASE_ADMIN_PROJECT_ID?.trim() ||
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ||
-    "";
-  if (projectId) {
-    append(`${projectId}.appspot.com`);
-    append(`${projectId}.firebasestorage.app`);
-  }
-
-  return candidates;
-};
-
 const isBucketMissingError = (error: unknown): boolean => {
   if (!error || typeof error !== "object") return false;
   const row = error as {
@@ -232,35 +200,45 @@ const uploadAttachmentsToBucket = async ({
   const attachments: MailboxAttachment[] = [];
   const uploadPrefix = `mailbox/${messageId}`;
 
-  for (let index = 0; index < files.length; index += 1) {
-    const file = files[index];
-    if (!file) continue;
-    const contentType = file.contentType;
-    const originalName = sanitizeFileName(normalizeText(file.file.name) || "priloha");
-    const objectPath = `${uploadPrefix}/${Date.now()}-${index}-${originalName}`;
-    const attachmentId = randomUUID();
-    const bytes = file.bytes;
+  try {
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      if (!file) continue;
+      const contentType = file.contentType;
+      const originalName = sanitizeFileName(normalizeText(file.file.name) || "priloha");
+      const objectPath = `${uploadPrefix}/${Date.now()}-${index}-${originalName}`;
+      const attachmentId = randomUUID();
+      const bytes = file.bytes;
 
-    await bucket.file(objectPath).save(bytes, {
-      resumable: false,
-      contentType,
-      metadata: {
+      await bucket.file(objectPath).save(bytes, {
+        resumable: false,
+        contentType,
         metadata: {
-          originalName,
-          uploadedBy: uploaderEmail,
+          metadata: {
+            originalName,
+            uploadedBy: uploaderEmail,
+          },
         },
-      },
-    });
+      });
 
-    attachments.push({
-      id: attachmentId,
-      name: normalizeText(file.file.name) || originalName,
-      url: buildMailboxAttachmentApiUrl(messageId, attachmentId),
-      contentType,
-      sizeBytes: bytes.length,
-      path: objectPath,
-      bucketName: bucket.name,
-    });
+      attachments.push({
+        id: attachmentId,
+        name: normalizeText(file.file.name) || originalName,
+        url: buildMailboxAttachmentApiUrl(messageId, attachmentId),
+        contentType,
+        sizeBytes: bytes.length,
+        path: objectPath,
+        bucketName: bucket.name,
+      });
+    }
+  } catch (error) {
+    const cleanup = await deleteMailboxStorageObjects(
+      attachments.map(({ path, bucketName }) => ({ messageId, path, bucketName }))
+    );
+    if (cleanup.failed > 0) {
+      console.error("Mailbox compose partial upload rollback failed.", cleanup);
+    }
+    throw error;
   }
 
   return attachments;
@@ -276,7 +254,7 @@ const uploadAttachmentsToStorage = async ({
   uploaderEmail: string;
 }): Promise<MailboxAttachment[]> => {
   if (!files.length) return [];
-  const bucketCandidates = resolveStorageBucketCandidates();
+  const bucketCandidates = resolveConfiguredMailboxStorageBuckets();
   if (!bucketCandidates.length) {
     throw new Error("Storage bucket není nakonfigurován.");
   }
@@ -491,6 +469,10 @@ export async function POST(req: NextRequest) {
   }
 
   let form: FormData;
+  let uploadedAttachments: MailboxAttachment[] = [];
+  let uploadedMessageId = "";
+  let mailboxDocumentPaths: string[] = [];
+
   try {
     form = await req.formData();
   } catch {
@@ -688,11 +670,13 @@ export async function POST(req: NextRequest) {
     const senderName = await resolveSenderName(ctx.email, ctx.uid);
     const createdAtMs = Date.now();
     const messageId = randomUUID();
+    uploadedMessageId = messageId;
     const attachments = await uploadAttachmentsToStorage({
       messageId,
       files: preparedFiles,
       uploaderEmail: ctx.email,
     });
+    uploadedAttachments = attachments;
     const publicAttachments = toPublicAttachments(attachments);
 
     const messagePreview = messageText || "Příloha bez textu.";
@@ -715,6 +699,7 @@ export async function POST(req: NextRequest) {
             .collection("tipsterTips")
             .doc()
         : null;
+    mailboxDocumentPaths = [recipientRef.path, senderRef.path];
     const recipientDeepLink = tipRef ? `/tipy/${encodeURIComponent(recipientRef.id)}` : "/posta";
     const senderDeepLink = tipRef ? `/tipy/${encodeURIComponent(tipRef.id)}` : "/posta";
 
@@ -816,6 +801,36 @@ export async function POST(req: NextRequest) {
       ctx
     );
   } catch (error) {
+    if (uploadedAttachments.length > 0) {
+      let shouldRollbackUploads = mailboxDocumentPaths.length === 0;
+      if (mailboxDocumentPaths.length > 0) {
+        try {
+          const snapshots = await Promise.all(
+            mailboxDocumentPaths.map((path) => adminDb!.doc(path).get())
+          );
+          shouldRollbackUploads = snapshots.every((snapshot) => !snapshot.exists);
+        } catch (verificationError) {
+          shouldRollbackUploads = false;
+          console.error(
+            "Mailbox compose could not verify whether failed message was committed; uploaded files were preserved.",
+            verificationError
+          );
+        }
+      }
+
+      if (shouldRollbackUploads) {
+        const cleanup = await deleteMailboxStorageObjects(
+          uploadedAttachments.map(({ path, bucketName }) => ({
+            messageId: uploadedMessageId,
+            path,
+            bucketName,
+          }))
+        );
+        if (cleanup.failed > 0) {
+          console.error("Mailbox compose upload rollback failed.", cleanup);
+        }
+      }
+    }
     console.error("POST /api/mailbox/compose failed", error);
     return withRateLimitHeaders(
       NextResponse.json(

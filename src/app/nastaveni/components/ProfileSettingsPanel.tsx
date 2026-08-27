@@ -2,14 +2,19 @@
 
 import {
   Building2,
+  Calculator,
   CheckCircle2,
   Landmark,
   Mail,
   PhoneCall,
   ShieldCheck,
+  Snail,
   UserRound,
   Wrench,
+  Zap,
 } from "lucide-react";
+
+import type { CommissionMode } from "../../types/domain";
 
 type InlineStatus = {
   type: "success" | "error" | "info";
@@ -22,7 +27,8 @@ type ProfileSettingsPanelProps = {
   profileStatus: InlineStatus | null;
   completionPercent: number;
   positionLabel: string;
-  commissionModeLabel: string;
+  commissionMode: CommissionMode;
+  commissionModes: { id: CommissionMode; label: string }[];
   managerNameDisplay: string;
   managerEmailDisplay: string;
   fieldClass: string;
@@ -42,6 +48,7 @@ type ProfileSettingsPanelProps = {
   onAgencyNumberChange: (value: string) => void;
   onIcoChange: (value: string) => void;
   onPhoneNumberChange: (value: string) => void;
+  onCommissionModeChange: (value: CommissionMode) => void | Promise<void>;
   onClearAppCache: () => void | Promise<void>;
   onSaveProfile: () => void | Promise<void>;
 };
@@ -58,7 +65,8 @@ export function ProfileSettingsPanel({
   profileStatus,
   completionPercent,
   positionLabel,
-  commissionModeLabel,
+  commissionMode,
+  commissionModes,
   managerNameDisplay,
   managerEmailDisplay,
   fieldClass,
@@ -78,6 +86,7 @@ export function ProfileSettingsPanel({
   onAgencyNumberChange,
   onIcoChange,
   onPhoneNumberChange,
+  onCommissionModeChange,
   onClearAppCache,
   onSaveProfile,
 }: ProfileSettingsPanelProps) {
@@ -164,11 +173,11 @@ export function ProfileSettingsPanel({
 
               <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3 sm:rounded-[20px] sm:px-4 sm:py-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Pozice a režim
+                  Aktuální pozice
                 </p>
                 <p className="mt-2 text-sm font-black text-slate-950">{positionLabel}</p>
                 <p className="mt-1 text-xs font-semibold text-slate-500">
-                  Provize: {commissionModeLabel}
+                  Pozice se určuje podle historie kariéry.
                 </p>
               </div>
 
@@ -180,6 +189,68 @@ export function ProfileSettingsPanel({
                 <p className="mt-1 text-xs font-semibold text-slate-500">
                   {managerEmailDisplay ? managerEmailDisplay : "Není doplněn v týmové hierarchii"}
                 </p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-col gap-3 rounded-[16px] border border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#faf5ff_100%)] p-3 shadow-[0_8px_20px_rgba(76,29,149,0.05)] sm:rounded-[20px] sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 sm:h-11 sm:w-11 sm:rounded-2xl">
+                  <Calculator size={19} strokeWidth={2.2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-700">
+                    Výchozí kalkulačka
+                  </p>
+                  <h3 className="mt-0.5 text-sm font-black text-slate-950">
+                    Režim provizí životního pojištění
+                  </h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                    Předvyplní se u nového výpočtu, v kalkulačce ho můžeš kdykoli změnit.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className="inline-flex w-full shrink-0 rounded-xl border border-violet-200 bg-violet-100/60 p-1 sm:w-auto sm:min-w-[320px]"
+                role="radiogroup"
+                aria-label="Výchozí režim provizí"
+              >
+                {commissionModes.map((modeItem) => {
+                  const active = commissionMode === modeItem.id;
+                  const isAccelerated = modeItem.id === "accelerated";
+
+                  return (
+                    <button
+                      key={modeItem.id}
+                      type="button"
+                      onClick={() => void onCommissionModeChange(modeItem.id)}
+                      className={`inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-bold transition ${
+                        active
+                          ? "border-violet-200 bg-white text-slate-950 shadow-[0_4px_12px_rgba(76,29,149,0.10)]"
+                          : "border-transparent text-slate-500 hover:text-violet-800"
+                      }`}
+                      role="radio"
+                      aria-checked={active}
+                    >
+                      {isAccelerated ? (
+                        <Zap
+                          size={14}
+                          strokeWidth={2.3}
+                          className={active ? "text-amber-500" : "text-amber-600"}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Snail
+                          size={14}
+                          strokeWidth={2.3}
+                          className={active ? "text-violet-600" : "text-slate-400"}
+                          aria-hidden="true"
+                        />
+                      )}
+                      {modeItem.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

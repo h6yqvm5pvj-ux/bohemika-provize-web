@@ -77,6 +77,32 @@ describe("contracts create payload parsing", () => {
     expect(payload.paid).toBe(true);
   });
 
+  it("keeps structured Slavia Auto coverage details", () => {
+    const payload = normalizedPayload(
+      baseEntry({
+        productKey: "slaviaauto",
+        frequencyRaw: "annual",
+        contractSignedDate: "2026-08-10",
+        policyStartDate: "2026-09-01",
+        neonDetail: null,
+        carSlaviaDetail: {
+          liabilityVariant: " Jubileum ",
+          priceGuarantee3Years: true,
+          driverInjuryPermanentLimit: 200_000,
+          tiresDeductible: 500,
+        },
+      })
+    );
+
+    expect(payload.carSlaviaDetail).toEqual({
+      liabilityVariant: "Jubileum",
+      priceGuarantee3Years: true,
+      driverInjuryPermanentLimit: 200_000,
+      tiresDeductible: 500,
+    });
+    expect(payload.neonDetail).toBeNull();
+  });
+
   it("keeps statement premium source metadata from commission statement prefill", () => {
     const payload = normalizedPayload(
       baseEntry({

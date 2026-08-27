@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  requireIpRateLimited,
-  withIpRateLimitHeaders,
+  requireAuthedRateLimited,
+  withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 
 export const runtime = "nodejs";
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type TrackedProductKey = "argor-1oz" | "argor-20g" | "pamp-1oz";
 
@@ -35,6 +36,10 @@ const REQUEST_TIMEOUT_MS = 12_000;
 const AGENT = "Bohemika-SmartApp/1.0";
 const COMFORT_PRICES_RATE_LIMIT = 120;
 const COMFORT_PRICES_RATE_LIMIT_WINDOW_MS = 60_000;
+const COMFORT_FALLBACK_MESSAGE =
+  "Aktuální ceny se nepodařilo obnovit; používá se poslední dostupný ceník.";
+const COMFORT_ERROR_MESSAGE = "Ceník Comfort Commodity se momentálně nepodařilo načíst.";
+const COMFORT_AUTH_ERROR_MESSAGE = "Pro načtení ceníku je nutné platné přihlášení.";
 
 let lastLiveState: LiveState | null = null;
 let cachedToken: { token: string; ts: number } | null = null;
@@ -273,19 +278,33 @@ async function loadLiveState(): Promise<LiveState> {
   return state;
 }
 
-export async function GET(req: Request) {
-  const guard = await requireIpRateLimited(req, {
+export async function GET(req: NextRequest) {
+  const guard = await requireAuthedRateLimited(req, {
     namespace: "api:comfort-prices:get",
     limit: COMFORT_PRICES_RATE_LIMIT,
     windowMs: COMFORT_PRICES_RATE_LIMIT_WINDOW_MS,
   });
-  if (!guard.ok) return guard.response;
-  const withRateLimit = (response: NextResponse) =>
-    withIpRateLimitHeaders(response, guard.ctx);
+  if (!guard.ok) {
+    const response =
+      guard.response.status === 401
+        ? NextResponse.json(
+            { ok: false, error: COMFORT_AUTH_ERROR_MESSAGE },
+            { status: 401 }
+          )
+        : guard.response.status >= 500
+          ? NextResponse.json({ ok: false, error: COMFORT_ERROR_MESSAGE }, { status: 500 })
+          : guard.response;
+    response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    return response;
+  }
+  const withPrivateRateLimitHeaders = (response: NextResponse) => {
+    response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    return withRateLimitHeaders(response, guard.ctx);
+  };
 
   try {
     const state = await loadLiveState();
-    return withRateLimit(
+    return withPrivateRateLimitHeaders(
       NextResponse.json({
         ok: true,
         source: "live",
@@ -293,25 +312,26 @@ export async function GET(req: Request) {
         prices: state.prices,
       })
     );
-  } catch (err: any) {
+  } catch (error: unknown) {
+    console.error("GET /api/comfort-prices failed.", error);
     if (lastLiveState) {
-      return withRateLimit(
+      return withPrivateRateLimitHeaders(
         NextResponse.json({
           ok: true,
           source: "fallback",
           stale: true,
           fetchedAt: lastLiveState.ts,
           prices: lastLiveState.prices,
-          message: String(err?.message || "Comfort sync failed; using cached snapshot."),
+          message: COMFORT_FALLBACK_MESSAGE,
         })
       );
     }
 
-    return withRateLimit(
+    return withPrivateRateLimitHeaders(
       NextResponse.json(
         {
           ok: false,
-          error: String(err?.message || "Comfort sync failed."),
+          error: COMFORT_ERROR_MESSAGE,
         },
         { status: 500 }
       )

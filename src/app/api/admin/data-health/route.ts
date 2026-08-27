@@ -8,6 +8,7 @@ import type {
   Category,
   ContractStats,
 } from "@/app/api/team-overview/teamOverview.types";
+import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
   isLifeProduct,
   productCategory,
@@ -22,6 +23,10 @@ import {
   normalizeStoredContractPdfAttachment,
 } from "@/lib/server/contractPdfStorage";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import {
+  buildTeamOverviewReadModelDocuments,
+  TEAM_OVERVIEW_MODEL_VERSION,
+} from "@/lib/server/teamOverviewReadModel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -146,7 +151,6 @@ const MAX_SCAN_LIMIT = 8_000;
 const DEFAULT_SAMPLE_LIMIT = 12;
 const MAX_SAMPLE_LIMIT = 40;
 const ORPHAN_REF_BATCH_SIZE = 30;
-const TEAM_TOTALS_MODEL_VERSION = 5;
 const TEAM_TOTALS_STALE_MS = 24 * 60 * 60 * 1000;
 const CONTRACT_REFS_COLLECTION = "contractRefs";
 const CONTRACT_NUMBER_CLAIMS_COLLECTION = "contractNumberClaims";
@@ -1207,33 +1211,23 @@ function expectedTeamOverviewOwners(
   });
 }
 
-function consumeTeamOverviewEntry({
+function accumulateTeamOverviewEntry({
   stats,
-  ownerSet,
-  entry,
-  seen,
+  ownerEmail,
+  data,
   previousMonthStart,
   previousMonthToDateEndMs,
   monthStart,
   currentMonthToDateEnd,
 }: {
   stats: Record<string, ContractStats>;
-  ownerSet: Set<string>;
-  entry: ContractEntry;
-  seen: Set<string>;
+  ownerEmail: string;
+  data: Record<string, unknown>;
   previousMonthStart: number;
   previousMonthToDateEndMs: number;
   monthStart: number;
   currentMonthToDateEnd: number;
-}): boolean {
-  const data = entry.rawData;
-  const ownerEmail = normalizeEmail(data.userEmail ?? entry.ownerEmail);
-  if (!ownerEmail || !ownerSet.has(ownerEmail)) return false;
-
-  const key = `${ownerEmail}___${entry.id}`;
-  if (seen.has(key)) return false;
-  seen.add(key);
-
+}): void {
   const current = stats[ownerEmail] ?? emptyContractStats();
   current.total += 1;
 
@@ -1268,6 +1262,51 @@ function consumeTeamOverviewEntry({
   }
 
   stats[ownerEmail] = current;
+}
+
+function consumeTeamOverviewEntry({
+  stats,
+  activeStats,
+  ownerSet,
+  entry,
+  seen,
+  now,
+  previousMonthStart,
+  previousMonthToDateEndMs,
+  monthStart,
+  currentMonthToDateEnd,
+}: {
+  stats: Record<string, ContractStats>;
+  activeStats: Record<string, ContractStats>;
+  ownerSet: Set<string>;
+  entry: ContractEntry;
+  seen: Set<string>;
+  now: Date;
+  previousMonthStart: number;
+  previousMonthToDateEndMs: number;
+  monthStart: number;
+  currentMonthToDateEnd: number;
+}): boolean {
+  const data = entry.rawData;
+  const ownerEmail = normalizeEmail(data.userEmail ?? entry.ownerEmail);
+  if (!ownerEmail || !ownerSet.has(ownerEmail)) return false;
+
+  const key = `${ownerEmail}___${entry.id}`;
+  if (seen.has(key)) return false;
+  seen.add(key);
+
+  const options = {
+    ownerEmail,
+    data,
+    previousMonthStart,
+    previousMonthToDateEndMs,
+    monthStart,
+    currentMonthToDateEnd,
+  };
+  accumulateTeamOverviewEntry({ stats, ...options });
+  if (contractLifecycleStatus(data, now) === "active") {
+    accumulateTeamOverviewEntry({ stats: activeStats, ...options });
+  }
   return true;
 }
 
@@ -1296,8 +1335,10 @@ async function rebuildTeamOverviewReadModels({
   const ownerEmails = expectedOwners.map((user) => user.email);
   const ownerSet = new Set(ownerEmails);
   const stats: Record<string, ContractStats> = {};
+  const activeStats: Record<string, ContractStats> = {};
   ownerEmails.forEach((ownerEmail) => {
     stats[ownerEmail] = emptyContractStats();
+    activeStats[ownerEmail] = emptyContractStats();
   });
 
   const now = new Date();
@@ -1314,9 +1355,11 @@ async function rebuildTeamOverviewReadModels({
     if (
       consumeTeamOverviewEntry({
         stats,
+        activeStats,
         ownerSet,
         entry,
         seen,
+        now,
         previousMonthStart,
         previousMonthToDateEndMs,
         monthStart,
@@ -1345,47 +1388,32 @@ async function rebuildTeamOverviewReadModels({
   };
 
   for (const [ownerEmail, stat] of Object.entries(stats)) {
+    const activeStat = activeStats[ownerEmail] ?? emptyContractStats();
+    const documents = buildTeamOverviewReadModelDocuments({
+      ownerEmail,
+      stat,
+      activeStat,
+      yearMonth,
+      previousMonth,
+      updatedAtMs,
+    });
     batch.set(
       db.collection(TEAM_OVERVIEW_TOTALS_COLLECTION).doc(ownerEmail),
-      {
-        version: TEAM_TOTALS_MODEL_VERSION,
-        ownerEmail,
-        total: stat.total,
-        categories: stat.categories,
-        categoryMetrics: stat.categoryMetrics,
-        institutionMetrics: stat.institutionMetrics,
-        institutionByCategory: stat.institutionByCategory,
-        updatedAtMs,
-      },
+      documents.totals,
       { merge: true }
     );
     batch.set(
       db
         .collection(TEAM_OVERVIEW_MONTHLY_COLLECTION)
         .doc(teamOverviewMonthDocId(ownerEmail, yearMonth)),
-      {
-        version: TEAM_TOTALS_MODEL_VERSION,
-        ownerEmail,
-        yearMonth,
-        monthCount: stat.month,
-        previousMonthToDateCount: stat.previousMonthToDate,
-        monthMetrics: stat.monthMetrics,
-        updatedAtMs,
-      },
+      documents.currentMonth,
       { merge: true }
     );
     batch.set(
       db
         .collection(TEAM_OVERVIEW_MONTHLY_COLLECTION)
         .doc(teamOverviewMonthDocId(ownerEmail, previousMonth)),
-      {
-        version: TEAM_TOTALS_MODEL_VERSION,
-        ownerEmail,
-        yearMonth: previousMonth,
-        monthCount: stat.previousMonth,
-        monthMetrics: stat.previousMonthMetrics,
-        updatedAtMs,
-      },
+      documents.previousMonth,
       { merge: true }
     );
     ops += 3;
@@ -1451,8 +1479,10 @@ function buildStaleTeamTotalsCheck({
     if (!total) {
       reasons.push("chybí teamOverviewTotals doc");
     } else {
-      if (total.version !== TEAM_TOTALS_MODEL_VERSION) {
-        reasons.push(`modelVersion ${total.version ?? "?"} místo ${TEAM_TOTALS_MODEL_VERSION}`);
+      if (total.version !== TEAM_OVERVIEW_MODEL_VERSION) {
+        reasons.push(
+          `modelVersion ${total.version ?? "?"} místo ${TEAM_OVERVIEW_MODEL_VERSION}`
+        );
       }
       if (!total.updatedAtMs) {
         reasons.push("chybí updatedAtMs");

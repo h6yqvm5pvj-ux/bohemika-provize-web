@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { auth } from "@/app/firebase-auth";
+import { fetchAuthedJson } from "@/app/lib/authenticatedApi";
 
 const OUNCE_G = 31.1034768; // trojská unce
 
@@ -409,8 +411,18 @@ async function fetchComfortPrices(): Promise<{
   message: string | null;
   prices: Partial<Record<ComfortPriceKey, ComfortLivePrice>>;
 }> {
-  const response = await fetch("/api/comfort-prices", { cache: "no-store" });
-  const payload = (await response.json().catch(() => null)) as ComfortPricesApiResponse | null;
+  await auth.authStateReady();
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error("Pro načtení ceníku Comfort Commodity se přihlas.");
+  }
+
+  const { response, data } = await fetchAuthedJson(
+    currentUser,
+    "/api/comfort-prices",
+    { cache: "no-store" }
+  );
+  const payload = data as ComfortPricesApiResponse | null;
 
   if (!response.ok || !payload || payload.ok !== true) {
     throw new Error(

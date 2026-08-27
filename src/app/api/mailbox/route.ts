@@ -6,6 +6,12 @@ import {
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import {
+  deleteMailboxStorageObjects,
+  parseMailboxAttachmentCleanupCandidate,
+  type MailboxAttachmentCleanupCandidate,
+  type MailboxStorageObject,
+} from "@/lib/server/mailboxAttachmentStorage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -177,6 +183,74 @@ const parseMailboxDoc = (
 
 const getMailboxCollection = (email: string) =>
   adminDb!.collection("usersPrivate").doc(email).collection("mailbox");
+
+const cleanupDeletedMailboxAttachments = async (
+  candidates: MailboxAttachmentCleanupCandidate[]
+) => {
+  const byMessageId = new Map<
+    string,
+    { participantEmails: Set<string>; storageObjects: Map<string, MailboxStorageObject> }
+  >();
+
+  candidates.forEach((candidate) => {
+    const group = byMessageId.get(candidate.messageId) ?? {
+      participantEmails: new Set<string>(),
+      storageObjects: new Map<string, MailboxStorageObject>(),
+    };
+    candidate.participantEmails.forEach((email) => group.participantEmails.add(email));
+    candidate.storageObjects.forEach((storageObject) => {
+      group.storageObjects.set(
+        `${storageObject.bucketName ?? ""}\n${storageObject.path}`,
+        storageObject
+      );
+    });
+    byMessageId.set(candidate.messageId, group);
+  });
+
+  const groups = [...byMessageId.entries()];
+  const unreferencedObjects: MailboxStorageObject[] = [];
+  let skippedReferenced = 0;
+  let skippedUnverified = 0;
+
+  for (let offset = 0; offset < groups.length; offset += 20) {
+    const chunk = groups.slice(offset, offset + 20);
+    const results = await Promise.all(
+      chunk.map(async ([messageId, group]) => {
+        const referenceChecks = await Promise.allSettled(
+          [...group.participantEmails].map((email) =>
+            getMailboxCollection(email)
+              .where("metadata.messageId", "==", messageId)
+              .limit(1)
+              .get()
+          )
+        );
+        if (referenceChecks.some((result) => result.status === "rejected")) {
+          return { kind: "unverified" as const, storageObjects: [] };
+        }
+        const remainsReferenced = referenceChecks.some(
+          (result) => result.status === "fulfilled" && !result.value.empty
+        );
+        return {
+          kind: remainsReferenced ? ("referenced" as const) : ("unreferenced" as const),
+          storageObjects: remainsReferenced ? [] : [...group.storageObjects.values()],
+        };
+      })
+    );
+
+    results.forEach((result) => {
+      if (result.kind === "referenced") skippedReferenced += 1;
+      if (result.kind === "unverified") skippedUnverified += 1;
+      unreferencedObjects.push(...result.storageObjects);
+    });
+  }
+
+  const storage = await deleteMailboxStorageObjects(unreferencedObjects);
+  return {
+    ...storage,
+    skippedReferenced,
+    skippedUnverified,
+  };
+};
 
 const getUnreadCount = async (email: string): Promise<number> => {
   const nowMs = Date.now();
@@ -496,11 +570,32 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const mailboxCol = getMailboxCollection(ctx.email);
+    const documentRefs = ids.map((id) => mailboxCol.doc(id));
+    const documentSnapshots = await Promise.all(documentRefs.map((ref) => ref.get()));
+    const attachmentCleanupCandidates = documentSnapshots
+      .map((snapshot) => {
+        const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+        return parseMailboxAttachmentCleanupCandidate(data.metadata, ctx.email);
+      })
+      .filter(
+        (candidate): candidate is MailboxAttachmentCleanupCandidate => candidate !== null
+      );
     const batch = adminDb.batch();
-    ids.forEach((id) => {
-      batch.delete(mailboxCol.doc(id));
+    documentRefs.forEach((ref) => {
+      batch.delete(ref);
     });
     await batch.commit();
+
+    try {
+      const cleanup = await cleanupDeletedMailboxAttachments(
+        attachmentCleanupCandidates
+      );
+      if (cleanup.failed > 0 || cleanup.skippedUnverified > 0) {
+        console.error("Mailbox DELETE attachment cleanup was incomplete.", cleanup);
+      }
+    } catch (cleanupError) {
+      console.error("Mailbox DELETE attachment cleanup failed.", cleanupError);
+    }
 
     const unreadCount = await getUnreadCount(ctx.email);
     return withRateLimitHeaders(

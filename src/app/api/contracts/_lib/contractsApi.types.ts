@@ -243,6 +243,23 @@ export type ContractDoc = {
   carAnnualMileage?: string | null;
   carAllianzScope?: string | null;
   carLiabilityLimit?: number | null;
+  carSlaviaDetail?: {
+    liabilityVariant?: string | null;
+    liabilityPropertyLimit?: number | null;
+    priceGuarantee3Years?: boolean | null;
+    driverInjury?: boolean | null;
+    driverInjuryPermanentLimit?: number | null;
+    driverInjuryDeathLimit?: number | null;
+    tires?: boolean | null;
+    tiresLimit?: number | null;
+    tiresDeductible?: number | null;
+    keyLossTheftLimit?: number | null;
+    keyLossLimit?: number | null;
+    keyLossTheftDeductible?: number | null;
+    vandalismLimit?: number | null;
+    vandalismDeductible?: number | null;
+    animalDamageDeductible?: number | null;
+  } | null;
   carAssistancePlan?: string | null;
   carHullSumInsured?: number | null;
   carHullSumInsuredText?: string | null;

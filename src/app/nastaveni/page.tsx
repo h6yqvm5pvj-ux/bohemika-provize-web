@@ -12,7 +12,6 @@ import {
 } from "react";
 import Image from "next/image";
 import {
-  Calculator,
   ChevronLeft,
   ChevronRight,
   Building2,
@@ -22,11 +21,9 @@ import {
   Mail,
   MapPin,
   PhoneCall,
-  Snail,
   Upload,
   QrCode as QrCodeIcon,
   X,
-  Zap,
 } from "lucide-react";
 
 import type { User as FirebaseUser } from "firebase/auth";
@@ -65,6 +62,7 @@ import {
   type PasskeyCredentialSummary,
 } from "@/app/lib/passkeys";
 import { invalidateUserProfileCache } from "@/app/lib/userProfileCache";
+import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import {
   deleteBrowserFcmToken,
   getBrowserFcmToken,
@@ -1543,7 +1541,7 @@ export default function SettingsPage() {
       {
         id: createTimelineRowId(),
         position,
-        validFrom: "",
+        validFrom: getNextCareerTimelineStart(prev),
         validTo: "",
       },
     ]);
@@ -2991,8 +2989,6 @@ export default function SettingsPage() {
   const profileInitial = profileDisplayName.trim().charAt(0).toUpperCase() || "P";
   const profilePositionLabel =
     POSITIONS.find((item) => item.id === position)?.label ?? "Nenastaveno";
-  const commissionModeLabel =
-    COMMISSION_MODES.find((item) => item.id === mode)?.label ?? "Nenastaveno";
   const managerNameDisplay =
     directManager?.name ||
     (managerEmail ? nameFromEmail(managerEmail) || managerEmail : "Nenastaveno");
@@ -3676,73 +3672,6 @@ export default function SettingsPage() {
 
             <fieldset className="contents">
             <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-stretch">
-              {activeTab === "career" && !timelineGateActive && (
-              <section className={`h-full space-y-4 lg:col-span-2 ${panelClass}`}>
-                <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#64748b_48%,#cbd5e1_100%)]" />
-                <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.18em] text-slate-900">
-                  <Calculator size={14} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-                  <span>Výchozí kalkulačka</span>
-                </h2>
-
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                      Výchozí režim provizí
-                    </label>
-                    <div
-                      className="inline-flex w-full max-w-md rounded-2xl border border-slate-300 bg-slate-100 p-1"
-                      role="radiogroup"
-                      aria-label="Výchozí režim provizí"
-                    >
-                      {COMMISSION_MODES.map((m) => {
-                        const active = mode === m.id;
-                        const isAccelerated = m.id === "accelerated";
-                        const isStandard = m.id === "standard";
-
-                        return (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => void handleModeChange(m.id)}
-                            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                              active
-                                ? "border border-slate-900 bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.1)]"
-                                : "border border-transparent text-slate-600 hover:text-slate-900"
-                            }`}
-                            role="radio"
-                            aria-checked={active}
-                          >
-                            {isAccelerated && (
-                              <Zap
-                                size={14}
-                                strokeWidth={2.2}
-                                className={active ? "text-amber-500" : "text-amber-600"}
-                                aria-hidden="true"
-                              />
-                            )}
-                            {isStandard && (
-                              <Snail
-                                size={14}
-                                strokeWidth={2.2}
-                                className={active ? "text-slate-600" : "text-slate-500"}
-                                aria-hidden="true"
-                              />
-                            )}
-                            {m.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Zrychlený / běžný režim se používá u životního pojištění.
-                    </p>
-                  </div>
-
-                </div>
-
-              </section>
-              )}
-
               {activeTab === "profile" && !timelineGateActive && (
                 <ProfileSettingsPanel
                   profileInitial={profileInitial}
@@ -3750,7 +3679,8 @@ export default function SettingsPage() {
                   profileStatus={profileStatus}
                   completionPercent={profileCompletionPercent}
                   positionLabel={profilePositionLabel}
-                  commissionModeLabel={commissionModeLabel}
+                  commissionMode={mode}
+                  commissionModes={COMMISSION_MODES}
                   managerNameDisplay={managerNameDisplay}
                   managerEmailDisplay={managerEmailDisplay}
                   fieldClass={fieldClass}
@@ -3782,6 +3712,7 @@ export default function SettingsPage() {
                     setPhoneNumber(value);
                     setProfileStatus(null);
                   }}
+                  onCommissionModeChange={handleModeChange}
                   onClearAppCache={handleClearAppCache}
                   onSaveProfile={handleSaveProfile}
                 />

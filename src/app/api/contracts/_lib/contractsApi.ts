@@ -104,6 +104,7 @@ import {
   DOMEX_DETAIL_ALLOWED_KEYS,
   FLEXI_DETAIL_ALLOWED_KEYS,
   NEON_DETAIL_ALLOWED_KEYS,
+  SLAVIA_AUTO_DETAIL_ALLOWED_KEYS,
   SUPPORTED_PRODUCTS,
   TIP_CONTRACT_PERCENT_MAX,
   TIP_CONTRACT_PERCENT_MIN,
@@ -268,6 +269,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAnnualMileage",
   "carAllianzScope",
   "carLiabilityLimit",
+  "carSlaviaDetail",
   "carHullSumInsured",
   "carHullSumInsuredText",
   "carHullDeductible",
@@ -2645,6 +2647,17 @@ const normalizePatchUpdates = (
 
     if (field === "maxdomovDetail") {
       const parsed = sanitizeDetailObject(rawValue, field, DOMEX_DETAIL_ALLOWED_KEYS);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "carSlaviaDetail") {
+      const parsed = sanitizeDetailObject(
+        rawValue,
+        field,
+        SLAVIA_AUTO_DETAIL_ALLOWED_KEYS
+      );
       if (!parsed.ok) return parsed;
       normalized[field] = parsed.value;
       continue;

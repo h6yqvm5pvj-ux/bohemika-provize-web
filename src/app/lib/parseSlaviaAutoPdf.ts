@@ -1,6 +1,24 @@
 // src/app/lib/parseSlaviaAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
+export type SlaviaAutoCoverageDetail = {
+  liabilityVariant?: string | null;
+  liabilityPropertyLimit?: number | null;
+  priceGuarantee3Years?: boolean | null;
+  driverInjury?: boolean | null;
+  driverInjuryPermanentLimit?: number | null;
+  driverInjuryDeathLimit?: number | null;
+  tires?: boolean | null;
+  tiresLimit?: number | null;
+  tiresDeductible?: number | null;
+  keyLossTheftLimit?: number | null;
+  keyLossLimit?: number | null;
+  keyLossTheftDeductible?: number | null;
+  vandalismLimit?: number | null;
+  vandalismDeductible?: number | null;
+  animalDamageDeductible?: number | null;
+};
+
 export type SlaviaAutoPdfResult = {
   contractNumber?: string | null;
   clientName?: string | null;
@@ -14,11 +32,14 @@ export type SlaviaAutoPdfResult = {
   carTp?: string | null;
   carOrv?: string | null;
   carLiabilityLimit?: number | null;
+  carAssistancePlan?: string | null;
   carAddonGlass?: boolean | null;
   carAddonAnimalCollision?: boolean | null;
   carAddonAnimalDamage?: boolean | null;
+  carAddonAnimalDamageLimit?: number | null;
   carAddonVandalism?: boolean | null;
   carAddonKeyLossTheft?: boolean | null;
+  carSlaviaDetail?: SlaviaAutoCoverageDetail | null;
 };
 
 const stripDiacritics = (text: string) =>
@@ -261,6 +282,64 @@ const extractDateByLabel = (
   return toDateInput(raw);
 };
 
+const moneyAmountsFromLines = (values: string[]): number[] => {
+  const matches = values.join(" ").matchAll(/(\d[\d\s\u00a0]*)\s*Kc\b/gi);
+  const amounts: number[] = [];
+  for (const match of matches) {
+    const amount = Number.parseInt((match[1] ?? "").replace(/\s+/g, ""), 10);
+    if (Number.isFinite(amount)) amounts.push(amount);
+  }
+  return amounts;
+};
+
+const sectionLinesBetween = (
+  lines: string[],
+  asciiLines: string[],
+  startLabel: RegExp,
+  endLabel: RegExp
+): { lines: string[]; asciiLines: string[] } | null => {
+  const start = asciiLines.findIndex((line) => startLabel.test(line));
+  if (start < 0) return null;
+  const relativeEnd = asciiLines.slice(start + 1).findIndex((line) => endLabel.test(line));
+  const end = relativeEnd >= 0 ? start + 1 + relativeEnd : asciiLines.length;
+  return {
+    lines: lines.slice(start + 1, end),
+    asciiLines: asciiLines.slice(start + 1, end),
+  };
+};
+
+type SelectedCoverage = {
+  selected: boolean;
+  amounts: number[];
+};
+
+const selectedCoverageByLabel = (
+  asciiLines: string[],
+  label: RegExp
+): SelectedCoverage => {
+  const start = asciiLines.findIndex((line) => label.test(line));
+  if (start < 0) return { selected: false, amounts: [] };
+
+  const relativeEnd = asciiLines
+    .slice(start + 1)
+    .findIndex((line) => /:\s*$/.test(line));
+  const end = relativeEnd >= 0 ? start + 1 + relativeEnd : asciiLines.length;
+  const asciiValueLines = asciiLines.slice(start + 1, end);
+  return {
+    selected: asciiValueLines.some((line) => /^sjednano\b/.test(line)),
+    amounts: moneyAmountsFromLines(asciiValueLines),
+  };
+};
+
+const readSectionValue = (
+  section: { lines: string[]; asciiLines: string[] } | null,
+  label: RegExp,
+  maxLookahead = 3
+): string | null => {
+  if (!section) return null;
+  return readNearestValueByLabel(section.lines, section.asciiLines, label, maxLookahead);
+};
+
 export async function parseSlaviaAutoPdf(file: File): Promise<SlaviaAutoPdfResult> {
   const buffer = await file.arrayBuffer();
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -402,13 +481,106 @@ export async function parseSlaviaAutoPdf(file: File): Promise<SlaviaAutoPdfResul
       4
     )
   );
-  result.carAddonKeyLossTheft = /ztrata\s+a\s+odcizeni\s+klicu/i.test(asciiText);
-  result.carAddonGlass = /pojisteni\s+skel/i.test(asciiText);
-  result.carAddonAnimalCollision = /pojisteni\s+stretu\s+se\s+(?:zviretem|zveri)/i.test(
-    asciiText
+
+  const liabilitySection = sectionLinesBetween(
+    lines,
+    asciiLines,
+    /^povinne\s+ruceni$/i,
+    /^asistence$/i
   );
-  result.carAddonVandalism = /\bvandalismus\b/i.test(asciiText);
-  result.carAddonAnimalDamage = /poskozeni\s+kabelu\s+vozidla\s+zviretem/i.test(asciiText);
+  const assistanceSection = sectionLinesBetween(
+    lines,
+    asciiLines,
+    /^asistence$/i,
+    /^cena\s+pov\s*:/i
+  );
+  const coverageSection = sectionLinesBetween(
+    lines,
+    asciiLines,
+    /^doplnkova\s+pojisteni$/i,
+    /^cena\s+za\s+doplnkova\s+pojisteni\s*:/i
+  );
+
+  const slaviaDetail: SlaviaAutoCoverageDetail = {};
+  const liabilityVariant = readSectionValue(liabilitySection, /^varianta\s*:/i);
+  if (liabilityVariant) slaviaDetail.liabilityVariant = liabilityVariant;
+  const liabilityPropertyLimit = normalizeLiabilityLimit(
+    readSectionValue(
+      liabilitySection,
+      /limit\s+plneni\s+pro\s+skodu\s+na\s+majetku\s+a\s+usly\s+zisk/i,
+      3
+    )
+  );
+  if (liabilityPropertyLimit != null) {
+    slaviaDetail.liabilityPropertyLimit = liabilityPropertyLimit;
+  }
+  const priceGuarantee = readSectionValue(
+    liabilitySection,
+    /garance\s+ceny\s+na\s+3\s+roky/i
+  );
+  if (priceGuarantee) {
+    slaviaDetail.priceGuarantee3Years = /^sjednano\b/i.test(
+      stripDiacritics(priceGuarantee).trim()
+    );
+  }
+
+  const assistanceVariant = readSectionValue(assistanceSection, /^varianta\s*:/i);
+  if (assistanceVariant) result.carAssistancePlan = assistanceVariant;
+
+  if (coverageSection) {
+    const driverInjury = selectedCoverageByLabel(
+      coverageSection.asciiLines,
+      /^uraz\s+ridice\s*:/i
+    );
+    const tires = selectedCoverageByLabel(
+      coverageSection.asciiLines,
+      /^pojisteni\s+pneumatik\s*:/i
+    );
+    const keyLossTheft = selectedCoverageByLabel(
+      coverageSection.asciiLines,
+      /^ztrata\s+a\s+odcizeni\s+klicu\s+od\s+vozidla\s*:/i
+    );
+    const vandalism = selectedCoverageByLabel(
+      coverageSection.asciiLines,
+      /^vandalismus\s*:/i
+    );
+    const animalDamage = selectedCoverageByLabel(
+      coverageSection.asciiLines,
+      /^poskozeni\s+kabelu\s+vozidla\s+zviretem\s*:/i
+    );
+    const glass = selectedCoverageByLabel(
+      coverageSection.asciiLines,
+      /^pojisteni\s+skel\s*:/i
+    );
+    const animalCollision = selectedCoverageByLabel(
+      coverageSection.asciiLines,
+      /^pojisteni\s+stretu\s+se\s+(?:zviretem|zveri)\s*:/i
+    );
+
+    slaviaDetail.driverInjury = driverInjury.selected;
+    slaviaDetail.driverInjuryPermanentLimit = driverInjury.amounts[0] ?? null;
+    slaviaDetail.driverInjuryDeathLimit = driverInjury.amounts[1] ?? null;
+    slaviaDetail.tires = tires.selected;
+    slaviaDetail.tiresLimit = tires.amounts[0] ?? null;
+    slaviaDetail.tiresDeductible = tires.amounts[1] ?? null;
+    slaviaDetail.keyLossTheftLimit = keyLossTheft.amounts[0] ?? null;
+    slaviaDetail.keyLossLimit = keyLossTheft.amounts[1] ?? null;
+    slaviaDetail.keyLossTheftDeductible = keyLossTheft.amounts[2] ?? null;
+    slaviaDetail.vandalismLimit = vandalism.amounts[0] ?? null;
+    slaviaDetail.vandalismDeductible = vandalism.amounts[1] ?? null;
+    slaviaDetail.animalDamageDeductible = animalDamage.amounts[1] ?? null;
+
+    result.carAddonKeyLossTheft = keyLossTheft.selected;
+    result.carAddonGlass = glass.selected;
+    result.carAddonAnimalCollision = animalCollision.selected;
+    result.carAddonVandalism = vandalism.selected;
+    result.carAddonAnimalDamage = animalDamage.selected;
+    result.carAddonAnimalDamageLimit = animalDamage.amounts[0] ?? null;
+  }
+
+  if (Object.keys(slaviaDetail).length > 0) {
+    result.carSlaviaDetail = slaviaDetail;
+  }
 
   if (!result.carVin) {
     // Fallback, když je VIN v jednom řádku i s labelem.

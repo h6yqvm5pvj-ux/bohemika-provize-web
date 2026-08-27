@@ -5,6 +5,7 @@ import {
   mergeEmptyContractFields,
   mergeEmptyNeonDetailFields,
   mergeEmptyPropertyDetailFields,
+  mergeEmptySlaviaAutoDetailFields,
   PDF_REIMPORT_PARSERS,
 } from "./contractDetailPdfReimport";
 
@@ -71,6 +72,28 @@ describe("PDF reimport detailu smlouvy", () => {
         waiverInvalidity: true,
       },
       appliedCount: 2,
+    });
+  });
+
+  it("doplní strukturovaný detail Slavia Auto bez přepsání uložených hodnot", () => {
+    const result = mergeEmptySlaviaAutoDetailFields(
+      { liabilityVariant: "Již uložená varianta" },
+      {
+        liabilityVariant: "Jubileum",
+        priceGuarantee3Years: true,
+        tiresLimit: "10 000",
+        tiresDeductible: 500,
+      }
+    );
+
+    expect(result).toEqual({
+      detail: {
+        liabilityVariant: "Již uložená varianta",
+        priceGuarantee3Years: true,
+        tiresLimit: 10_000,
+        tiresDeductible: 500,
+      },
+      appliedCount: 3,
     });
   });
 

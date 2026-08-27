@@ -24,6 +24,8 @@ type PropertyDetail = NonNullable<ContractDoc["maxdomovDetail"]>;
 type PropertyDetailField = keyof PropertyDetail;
 type NeonDetail = NonNullable<ContractDoc["neonDetail"]>;
 type NeonDetailField = keyof NeonDetail;
+type SlaviaAutoDetail = NonNullable<ContractDoc["carSlaviaDetail"]>;
+type SlaviaAutoDetailField = keyof SlaviaAutoDetail;
 type ContractUpdateField = keyof ContractDoc;
 
 export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
@@ -79,6 +81,7 @@ const PDF_CONTRACT_FIELD_MAP = [
   ["carAddonGlass", "carAddonGlass"],
   ["carAddonAnimalCollision", "carAddonAnimalCollision"],
   ["carAddonAnimalDamage", "carAddonAnimalDamage"],
+  ["carAddonAnimalDamageLimit", "carAddonAnimalDamageLimit"],
   ["carAddonVandalism", "carAddonVandalism"],
   ["carAddonTheft", "carAddonTheft"],
   ["carAddonNatural", "carAddonNatural"],
@@ -99,6 +102,7 @@ const NUMBER_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
   "carLiabilityLimit",
   "carHullSumInsured",
   "carHullDeductible",
+  "carAddonAnimalDamageLimit",
 ]);
 
 const BOOLEAN_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
@@ -262,6 +266,26 @@ const BOOLEAN_NEON_DETAIL_FIELDS = new Set<NeonDetailField>([
   "travelInsurance",
 ]);
 
+const NUMBER_SLAVIA_AUTO_DETAIL_FIELDS = new Set<SlaviaAutoDetailField>([
+  "liabilityPropertyLimit",
+  "driverInjuryPermanentLimit",
+  "driverInjuryDeathLimit",
+  "tiresLimit",
+  "tiresDeductible",
+  "keyLossTheftLimit",
+  "keyLossLimit",
+  "keyLossTheftDeductible",
+  "vandalismLimit",
+  "vandalismDeductible",
+  "animalDamageDeductible",
+]);
+
+const BOOLEAN_SLAVIA_AUTO_DETAIL_FIELDS = new Set<SlaviaAutoDetailField>([
+  "priceGuarantee3Years",
+  "driverInjury",
+  "tires",
+]);
+
 const isEmptyReimportValue = (value: unknown): boolean => {
   if (value == null) return true;
   if (typeof value === "string") return value.trim().length === 0;
@@ -341,6 +365,27 @@ const parsedPdfValueForNeonDetailField = (
   return value || null;
 };
 
+const parsedPdfValueForSlaviaAutoDetailField = (
+  field: SlaviaAutoDetailField,
+  rawValue: unknown
+): string | number | boolean | null => {
+  if (rawValue == null) return null;
+  if (NUMBER_SLAVIA_AUTO_DETAIL_FIELDS.has(field)) {
+    const value =
+      typeof rawValue === "number"
+        ? rawValue
+        : typeof rawValue === "string"
+          ? Number(rawValue.replace(/\s+/g, "").replace(",", "."))
+          : Number.NaN;
+    return Number.isFinite(value) ? Math.round(value) : null;
+  }
+  if (BOOLEAN_SLAVIA_AUTO_DETAIL_FIELDS.has(field)) {
+    return rawValue === true ? true : null;
+  }
+  const value = typeof rawValue === "string" ? rawValue.trim() : "";
+  return value || null;
+};
+
 export const mergeEmptyContractFields = (
   currentContract: ContractDoc,
   parsed: Record<string, unknown>
@@ -397,6 +442,34 @@ export const mergeEmptyNeonDetailFields = (
     if (parsedValue == null) continue;
 
     (detail as Record<NeonDetailField, string | number | boolean | null | undefined>)[
+      detailField
+    ] = parsedValue;
+    appliedCount += 1;
+  }
+
+  return { detail, appliedCount };
+};
+
+export const mergeEmptySlaviaAutoDetailFields = (
+  currentDetail: ContractDoc["carSlaviaDetail"],
+  parsedDetail: Record<string, unknown>
+): { detail: SlaviaAutoDetail; appliedCount: number } => {
+  const detail: SlaviaAutoDetail = { ...(currentDetail ?? {}) };
+  let appliedCount = 0;
+
+  for (const detailField of Object.keys(parsedDetail) as SlaviaAutoDetailField[]) {
+    const supported =
+      detailField === "liabilityVariant" ||
+      NUMBER_SLAVIA_AUTO_DETAIL_FIELDS.has(detailField) ||
+      BOOLEAN_SLAVIA_AUTO_DETAIL_FIELDS.has(detailField);
+    if (!supported) continue;
+    if (!isEmptyReimportValue(detail[detailField])) continue;
+    const parsedValue = parsedPdfValueForSlaviaAutoDetailField(
+      detailField,
+      parsedDetail[detailField]
+    );
+    if (parsedValue == null) continue;
+    (detail as Record<SlaviaAutoDetailField, string | number | boolean | null | undefined>)[
       detailField
     ] = parsedValue;
     appliedCount += 1;
