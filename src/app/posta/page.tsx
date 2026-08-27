@@ -1,16 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import {
   Archive,
   ArchiveRestore,
+  Bell,
   CheckCheck,
   ChevronDown,
-  Layers3,
   Loader2,
   Mail,
+  MoreHorizontal,
   Paperclip,
   RefreshCw,
   Search,
@@ -80,6 +88,59 @@ type MailboxDisplayRow =
       latestCreatedAtMs: number | null;
       latestItem: MailboxItem;
     };
+
+function MailboxActionMenu({
+  children,
+  label = "Další akce",
+}: {
+  children: ReactNode;
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition hover:border-violet-400 hover:bg-violet-50 hover:text-violet-800"
+        aria-label={label}
+        aria-expanded={open}
+      >
+        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div
+          className="absolute right-0 top-full z-50 mt-2 w-56 space-y-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest("button")) setOpen(false);
+          }}
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const normalizeGroupText = (value: string): string =>
   value
@@ -818,27 +879,28 @@ export default function PostaPage() {
     const snoozing = snoozingIds.includes(item.id);
     const archiving = archivingIds.includes(item.id);
     const attachments = item.type === "direct_message" ? parseMailboxAttachments(item) : [];
+    const isDirectMessage = item.type === "direct_message";
     const itemTitle = isTipsterTip ? tipsterTipListTitle(item) : item.title;
     const itemBody = isTipsterTip ? tipsterTipSenderText(item) : item.body;
 
     return (
       <div
         key={item.id}
-        className={`${styles.mailCard} ${styles.mailItemCard} group relative w-full overflow-hidden rounded-[20px] border ${
-          compact ? "p-3" : "p-4"
-        } text-left shadow-[0_8px_22px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)] ${
+        className={`${styles.mailCard} ${styles.mailItemCard} group relative w-full rounded-[20px] border focus-within:z-40 ${
+          compact ? "px-3 py-2.5" : "px-4 py-3"
+        } text-left shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow] hover:shadow-[0_14px_34px_rgba(15,23,42,0.09)] ${
           archived
             ? "border-slate-200 bg-slate-50/90 hover:border-slate-300"
             : isTipsterTip
-            ? "border-violet-200 bg-violet-50/70 hover:border-violet-300"
+            ? "border-violet-200 bg-[linear-gradient(145deg,#faf7ff_0%,#ffffff_58%)] hover:border-violet-300"
             : item.read
             ? "border-slate-200 bg-white hover:border-violet-200"
-            : "border-violet-300 bg-[linear-gradient(180deg,#fbf8ff_0%,#ffffff_100%)] hover:border-violet-400"
+            : "border-violet-300 bg-[linear-gradient(145deg,#f7f2ff_0%,#ffffff_62%)] hover:border-violet-400"
         }`}
         style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
       >
         <span
-          className={`absolute inset-y-0 left-0 w-1.5 ${
+          className={`absolute inset-y-2 left-0 w-1 rounded-r-full ${
             archived
               ? "bg-slate-300"
               : isTipsterTip
@@ -850,7 +912,7 @@ export default function PostaPage() {
           aria-hidden="true"
         />
 
-        <div className={`${styles.mailCardInner} flex items-start justify-between gap-3 pl-2`}>
+        <div className={`${styles.mailCardInner} flex items-center justify-between gap-4 pl-2`}>
           <button
             type="button"
             onClick={() => {
@@ -879,6 +941,20 @@ export default function PostaPage() {
                   isTipsterTip ? "bg-violet-500" : item.read ? "bg-slate-300" : "bg-violet-600"
                 }`}
               />
+              <span
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] ${
+                  isDirectMessage
+                    ? "border-sky-200 bg-sky-50 text-sky-700"
+                    : "border-violet-200 bg-violet-50 text-violet-700"
+                }`}
+              >
+                {isDirectMessage ? (
+                  <Mail className="h-3 w-3" aria-hidden="true" />
+                ) : (
+                  <Bell className="h-3 w-3" aria-hidden="true" />
+                )}
+                {isDirectMessage ? "Zpráva" : "Notifikace"}
+              </span>
               <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
                 {itemTitle}
               </p>
@@ -898,7 +974,7 @@ export default function PostaPage() {
                 </span>
               )}
             </div>
-            <p className="mt-1 line-clamp-2 text-sm text-slate-700">{itemBody}</p>
+            <p className="mt-1 line-clamp-1 text-sm text-slate-700">{itemBody}</p>
             {attachments.length > 0 ? (
               <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-600">
                 <Paperclip className="h-3.5 w-3.5" />
@@ -915,81 +991,82 @@ export default function PostaPage() {
             ) : snoozed ? (
               <p className="mt-1 text-xs font-medium text-violet-700">{formatSnoozedUntil(item)}</p>
             ) : null}
-            <p className="mt-2 text-xs text-slate-500">{formatDateTime(item.createdAtMs)}</p>
+            <p className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAtMs)}</p>
           </button>
-          <div className={`${styles.mailCardActions} flex shrink-0 flex-wrap items-center justify-end gap-2`}>
-            {!selectMode && archived ? (
-              <button
-                type="button"
-                onClick={() => void archiveMailboxItems([item.id], false)}
-                disabled={archiving}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <ArchiveRestore className="h-3.5 w-3.5" />
-                Vrátit
-              </button>
-            ) : null}
-            {!selectMode && !isSent && !archived ? (
-              snoozed ? (
+          {!selectMode ? (
+            <div className={`${styles.mailCardActions} flex shrink-0 items-center justify-end gap-2`}>
+              <MailboxActionMenu label={`Další akce: ${itemTitle}`}>
+                {archived ? (
+                  <button
+                    type="button"
+                    onClick={() => void archiveMailboxItems([item.id], false)}
+                    disabled={archiving}
+                    className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50"
+                  >
+                    <ArchiveRestore className="h-3.5 w-3.5" />
+                    Vrátit z archivu
+                  </button>
+                ) : null}
+                {!isSent && !archived ? snoozed ? (
+                  <button
+                    type="button"
+                    onClick={() => void snoozeMailboxItems([item.id], null)}
+                    disabled={snoozing}
+                    className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-violet-700 transition hover:bg-violet-50 disabled:opacity-50"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Zrušit připomenutí
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void snoozeMailboxItems([item.id], snoozeUntilAfterDays(1))}
+                      disabled={snoozing}
+                      className="w-full rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50"
+                    >
+                      Připomenout zítra
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void snoozeMailboxItems([item.id], snoozeUntilAfterDays(7))}
+                      disabled={snoozing}
+                      className="w-full rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50"
+                    >
+                      Připomenout za týden
+                    </button>
+                  </>
+                ) : null}
+                {!archived ? (
+                  <button
+                    type="button"
+                    onClick={() => void archiveMailboxItems([item.id], true)}
+                    disabled={archiving}
+                    className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    Archivovat
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() => void snoozeMailboxItems([item.id], null)}
-                  disabled={snoozing}
-                  className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => void deleteMailboxItems([item.id])}
+                  disabled={deleting}
+                  className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
                 >
-                  Vrátit
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleting ? "Mažu…" : "Smazat"}
                 </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void snoozeMailboxItems([item.id], snoozeUntilAfterDays(1))}
-                    disabled={snoozing}
-                    className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Připomenout zítra
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void snoozeMailboxItems([item.id], snoozeUntilAfterDays(7))}
-                    disabled={snoozing}
-                    className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Připomenout za týden
-                  </button>
-                </>
-              )
-            ) : null}
-            {!selectMode && !archived ? (
-              <button
-                type="button"
-                onClick={() => void archiveMailboxItems([item.id], true)}
-                disabled={archiving}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Archive className="h-3.5 w-3.5" />
-                Archivovat
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void deleteMailboxItems([item.id])}
-              disabled={deleting}
-              className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {deleting ? "Mažu…" : "Smazat"}
-            </button>
-            {!selectMode ? (
+              </MailboxActionMenu>
               <button
                 type="button"
                 onClick={() => void openItem(item)}
-                className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 transition group-hover:border-violet-500 group-hover:bg-violet-50 group-hover:text-slate-950"
+                className="rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_7px_16px_rgba(109,40,217,0.2)] transition hover:border-violet-800 hover:bg-violet-800"
               >
                 Otevřít
               </button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -1377,41 +1454,41 @@ export default function PostaPage() {
 
         <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-4 pt-3 text-slate-900 sm:pt-6">
           <section
-            className={`${styles.heroPanel} ${styles.mailHero} rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_18px_46px_rgba(15,23,42,0.08)] sm:p-5`}
+            className={`${styles.heroPanel} ${styles.mailHero} rounded-[26px] border border-white/70 bg-white/78 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-5`}
           >
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
               <div className="flex min-w-0 items-start gap-4">
-                <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-950 bg-slate-950 text-white shadow-[0_12px_28px_rgba(15,23,42,0.18)]">
+                <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 text-violet-800 shadow-[0_10px_28px_rgba(124,58,237,0.14)]">
                   <Mail className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
                 </span>
 
                 <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-800">
-                    Pošta
+                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-300/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                    Komunikace
                   </div>
 
-                  <h1 className="mt-2 text-3xl font-bold tracking-[-0.02em] text-slate-950 sm:text-4xl">
-                    Notifikační centrum
+                  <h1 className="mt-2 text-3xl font-bold tracking-[-0.025em] text-slate-950 sm:text-4xl">
+                    Pošta
                   </h1>
                   <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-600 sm:text-base">
-                    Přehled novinek z týmu, intranetu a reportů na jednom místě.
+                    Zprávy od kolegů a systémová upozornění na jednom místě.
                   </p>
                 </div>
               </div>
 
               <div className="flex flex-col gap-3 xl:items-end">
-                <div className={`${styles.heroStats} grid w-full grid-cols-3 gap-2 text-xs text-slate-600 sm:w-auto`}>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2">
-                    <div className="font-semibold uppercase tracking-[0.12em] text-slate-400">Nepřečtené</div>
+                <div className={`${styles.heroStats} grid w-full grid-cols-3 gap-2 text-xs sm:w-auto`}>
+                  <div className="rounded-2xl border border-violet-200/80 bg-violet-50/70 px-3 py-2">
+                    <div className="font-semibold uppercase tracking-[0.12em] text-slate-500">Nepřečtené</div>
                     <div className="mt-1 text-lg font-bold leading-none text-violet-800">{unreadCount}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2">
-                    <div className="font-semibold uppercase tracking-[0.12em] text-slate-400">Přijaté</div>
-                    <div className="mt-1 text-lg font-bold leading-none text-violet-800">{activeReceivedItems.length}</div>
+                  <div className="rounded-2xl border border-slate-200/90 bg-white/88 px-3 py-2">
+                    <div className="font-semibold uppercase tracking-[0.12em] text-slate-500">Přijaté</div>
+                    <div className="mt-1 text-lg font-bold leading-none text-slate-950">{activeReceivedItems.length}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2">
-                    <div className="font-semibold uppercase tracking-[0.12em] text-slate-400">Odeslané</div>
-                    <div className="mt-1 text-lg font-bold leading-none text-violet-800">{sentItems.length}</div>
+                  <div className="rounded-2xl border border-slate-200/90 bg-white/88 px-3 py-2">
+                    <div className="font-semibold uppercase tracking-[0.12em] text-slate-500">Odeslané</div>
+                    <div className="mt-1 text-lg font-bold leading-none text-slate-950">{sentItems.length}</div>
                   </div>
                 </div>
 
@@ -1420,7 +1497,7 @@ export default function PostaPage() {
                   type="button"
                   onClick={openComposeModal}
                   disabled={loading}
-                  className={`${styles.actionButton} inline-flex items-center gap-2 rounded-2xl border border-violet-700 bg-[linear-gradient(135deg,#020617_0%,#211442_52%,#6d28d9_100%)] px-4 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_32px_rgba(88,28,135,0.24)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:brightness-90`}
+                  className={`${styles.actionButton} inline-flex items-center gap-2 rounded-2xl border border-slate-900/80 bg-slate-950 px-4 py-2.5 text-sm font-bold !text-white shadow-[0_14px_34px_rgba(15,23,42,0.25)] transition hover:-translate-y-0.5 hover:bg-slate-900 disabled:cursor-not-allowed disabled:brightness-90`}
                 >
                   <SquarePen className="h-4 w-4" />
                   Napsat zprávu
@@ -1437,8 +1514,8 @@ export default function PostaPage() {
                   disabled={loading}
                   className={`${styles.actionButton} inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:brightness-90 ${
                     selectMode
-                      ? "border-violet-700 bg-[linear-gradient(135deg,#020617_0%,#211442_52%,#6d28d9_100%)] !text-white shadow-[0_14px_32px_rgba(88,28,135,0.24)]"
-                      : "border-slate-300 bg-white text-slate-800 shadow-[0_10px_24px_rgba(15,23,42,0.07)] hover:-translate-y-0.5 hover:border-violet-500 hover:bg-violet-50"
+                      ? "border-slate-900 bg-slate-950 !text-white shadow-[0_12px_28px_rgba(15,23,42,0.22)]"
+                      : "border-slate-300/80 bg-white/90 text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.07)] hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white"
                   }`}
                 >
                   Označit
@@ -1447,7 +1524,7 @@ export default function PostaPage() {
                   type="button"
                   onClick={() => void loadMailbox()}
                   disabled={loading || saving}
-                  className={`${styles.actionButton} inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-[0_10px_24px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60`}
+                  className={`${styles.actionButton} inline-flex items-center gap-2 rounded-2xl border border-slate-300/80 bg-white/90 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   <RefreshCw className="h-4 w-4" />
                   Obnovit
@@ -1456,7 +1533,7 @@ export default function PostaPage() {
                   type="button"
                   onClick={markAllRead}
                   disabled={saving || unreadCount <= 0}
-                  className={`${styles.actionButton} inline-flex items-center gap-2 rounded-2xl border border-violet-700 bg-violet-700 px-4 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_32px_rgba(124,58,237,0.24)] transition hover:-translate-y-0.5 hover:bg-violet-800 disabled:cursor-not-allowed disabled:brightness-90`}
+                  className={`${styles.actionButton} inline-flex items-center gap-2 rounded-2xl border border-violet-600 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_60%,#4c1d95_100%)] px-4 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_30px_rgba(109,40,217,0.24)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:brightness-90`}
                 >
                   <CheckCheck className="h-4 w-4" />
                   Vše přečteno
@@ -1466,9 +1543,9 @@ export default function PostaPage() {
             </div>
           </section>
 
-          <section className={`${styles.mailListPanel} overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.07)]`}>
-            <div className={`${styles.filterBar} flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5`}>
-              <div className={`${styles.filterTabs} inline-flex items-center rounded-2xl border border-slate-200 bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]`}>
+          <section className={`${styles.mailListPanel} overflow-visible rounded-[30px] border border-slate-200/90 bg-white/95 shadow-[0_18px_48px_rgba(15,23,42,0.08)]`}>
+            <div className={`${styles.filterBar} flex flex-wrap items-center justify-between gap-3 rounded-t-[30px] border-b border-slate-200/80 bg-white px-4 py-3 sm:px-5`}>
+              <div className={`${styles.filterTabs} inline-flex items-center rounded-2xl bg-slate-100 p-1`}>
                 <button
                   type="button"
                   onClick={() => setMailFilter("all")}
@@ -1531,7 +1608,7 @@ export default function PostaPage() {
               </div>
             </div>
 
-            <div className={`${styles.mailListBody} p-4 sm:p-5`}>
+            <div className={`${styles.mailListBody} rounded-b-[30px] bg-slate-50/55 p-3 sm:p-4`}>
             {selectMode ? (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-900">
@@ -1592,11 +1669,11 @@ export default function PostaPage() {
             ) : null}
 
             {loading ? (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {[0, 1, 2].map((idx) => (
                   <div
                     key={idx}
-                    className="h-[92px] animate-pulse rounded-[24px] border border-slate-200/85 bg-slate-100/80"
+                    className="h-[76px] animate-pulse rounded-[20px] border border-slate-200/85 bg-slate-100/80"
                   />
                 ))}
               </div>
@@ -1611,7 +1688,7 @@ export default function PostaPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {visibleRows.map((row, index) => {
                   if (row.kind === "item") return renderMailboxItemCard(row.item, index);
 
@@ -1622,14 +1699,18 @@ export default function PostaPage() {
                   const groupDeleting = row.items.some((item) => deletingIds.includes(item.id));
                   const groupSnoozed = row.items.every((item) => isMailboxSnoozed(item));
                   const groupSnoozing = row.items.some((item) => snoozingIds.includes(item.id));
+                  const groupIsDirectMessage = row.items.every(
+                    (item) => item.type === "direct_message"
+                  );
+                  const GroupKindIcon = groupIsDirectMessage ? Mail : Bell;
                   return (
                     <div key={row.key} className="space-y-2">
-                      <div className={`${styles.groupCard} relative overflow-hidden rounded-[20px] border border-violet-200 bg-[linear-gradient(180deg,#fbf8ff_0%,#ffffff_100%)] p-4 shadow-[0_8px_22px_rgba(15,23,42,0.05)]`}>
+                      <div className={`${styles.groupCard} relative rounded-[20px] border border-violet-200 bg-[linear-gradient(145deg,#f7f2ff_0%,#ffffff_62%)] px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)] focus-within:z-40`}>
                         <span
-                          className="absolute inset-y-0 left-0 w-1.5 bg-[linear-gradient(180deg,#020617_0%,#6d28d9_100%)]"
+                          className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,#020617_0%,#6d28d9_100%)]"
                           aria-hidden="true"
                         />
-                        <div className={`${styles.groupCardInner} flex flex-wrap items-start justify-between gap-3 pl-2`}>
+                        <div className={`${styles.groupCardInner} flex items-center justify-between gap-4 pl-2`}>
                           <button
                             type="button"
                             onClick={() => toggleExpandedGroup(row.key)}
@@ -1638,7 +1719,17 @@ export default function PostaPage() {
                           >
                             <div className={`${styles.groupTitleRow} flex min-w-0 items-center gap-2`}>
                               <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
-                                <Layers3 className="h-3.5 w-3.5" aria-hidden="true" />
+                                <GroupKindIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                              </span>
+                              <span
+                                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] ${
+                                  groupIsDirectMessage
+                                    ? "border-sky-200 bg-sky-50 text-sky-700"
+                                    : "border-violet-200 bg-violet-50 text-violet-700"
+                                }`}
+                              >
+                                <GroupKindIcon className="h-3 w-3" aria-hidden="true" />
+                                {groupIsDirectMessage ? "Zpráva" : "Notifikace"}
                               </span>
                               <p className="truncate text-sm font-semibold text-slate-950 sm:text-base">
                                 {row.title}
@@ -1649,83 +1740,79 @@ export default function PostaPage() {
                                 </span>
                               ) : null}
                             </div>
-                            <p className="mt-2 line-clamp-2 text-sm text-slate-700">{row.body}</p>
-                            <p className="mt-2 text-xs text-slate-500">
+                            <p className="mt-1 line-clamp-1 text-sm text-slate-700">{row.body}</p>
+                            <p className="mt-1 text-xs text-slate-500">
                               Poslední {formatDateTime(row.latestCreatedAtMs)}
                             </p>
                           </button>
 
-                          <div className={`${styles.groupCardActions} flex shrink-0 flex-wrap items-center justify-end gap-2`}>
-                            {groupArchived ? (
-                              <button
-                                type="button"
-                                onClick={() => void archiveMailboxItems(rowIds, false)}
-                                disabled={groupArchiving}
-                                className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <ArchiveRestore className="h-3.5 w-3.5" />
-                                Vrátit
-                              </button>
-                            ) : groupSnoozed ? (
-                              <button
-                                type="button"
-                                onClick={() => void snoozeMailboxItems(rowIds, null)}
-                                disabled={groupSnoozing}
-                                className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                Vrátit
-                              </button>
-                            ) : (
-                              <>
+                          <div className={`${styles.groupCardActions} flex shrink-0 items-center justify-end gap-2`}>
+                            <MailboxActionMenu label={`Další akce: ${row.title}`}>
+                              {groupArchived ? (
                                 <button
                                   type="button"
-                                  onClick={() => void snoozeMailboxItems(rowIds, snoozeUntilAfterDays(1))}
-                                  disabled={groupSnoozing}
-                                  className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  onClick={() => void archiveMailboxItems(rowIds, false)}
+                                  disabled={groupArchiving}
+                                  className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50"
                                 >
-                                  Připomenout zítra
+                                  <ArchiveRestore className="h-3.5 w-3.5" />
+                                  Vrátit z archivu
                                 </button>
+                              ) : groupSnoozed ? (
                                 <button
                                   type="button"
-                                  onClick={() => void snoozeMailboxItems(rowIds, snoozeUntilAfterDays(7))}
+                                  onClick={() => void snoozeMailboxItems(rowIds, null)}
                                   disabled={groupSnoozing}
-                                  className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-violet-700 transition hover:bg-violet-50 disabled:opacity-50"
                                 >
-                                  Připomenout za týden
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                  Zrušit připomenutí
                                 </button>
-                              </>
-                            )}
-                            {!groupArchived ? (
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => void snoozeMailboxItems(rowIds, snoozeUntilAfterDays(1))}
+                                    disabled={groupSnoozing}
+                                    className="w-full rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50"
+                                  >
+                                    Připomenout zítra
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void snoozeMailboxItems(rowIds, snoozeUntilAfterDays(7))}
+                                    disabled={groupSnoozing}
+                                    className="w-full rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50"
+                                  >
+                                    Připomenout za týden
+                                  </button>
+                                </>
+                              )}
+                              {!groupArchived ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void archiveMailboxItems(rowIds, true)}
+                                  disabled={groupArchiving}
+                                  className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50"
+                                >
+                                  <Archive className="h-3.5 w-3.5" />
+                                  Archivovat
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
-                                onClick={() => void archiveMailboxItems(rowIds, true)}
-                                disabled={groupArchiving}
-                                className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-violet-500 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => void deleteMailboxItems(rowIds)}
+                                disabled={groupDeleting}
+                                className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
                               >
-                                <Archive className="h-3.5 w-3.5" />
-                                Archivovat
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {groupDeleting ? "Mažu…" : "Smazat"}
                               </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => void deleteMailboxItems(rowIds)}
-                              disabled={groupDeleting}
-                              className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              {groupDeleting ? "Mažu…" : "Smazat"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void openItem(row.latestItem)}
-                              className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 transition hover:border-violet-500 hover:bg-violet-50 hover:text-slate-950"
-                            >
-                              Otevřít poslední
-                            </button>
+                            </MailboxActionMenu>
                             <button
                               type="button"
                               onClick={() => toggleExpandedGroup(row.key)}
-                              className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+                              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
                               aria-expanded={expanded}
                             >
                               {expanded ? "Sbalit" : "Rozbalit"}
@@ -1733,6 +1820,13 @@ export default function PostaPage() {
                                 className={`h-3.5 w-3.5 transition ${expanded ? "rotate-180" : ""}`}
                                 aria-hidden="true"
                               />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void openItem(row.latestItem)}
+                              className="rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_7px_16px_rgba(109,40,217,0.2)] transition hover:border-violet-800 hover:bg-violet-800"
+                            >
+                              Otevřít poslední
                             </button>
                           </div>
                         </div>

@@ -104,10 +104,9 @@ export function TeamLeaderboardSection({
 
   return (
     <section className={leaderboardClass} data-fixed-box-theme="slate">
-      <div className="relative z-10 mb-4 flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-sky-100/60">{copy.kicker}</p>
-          <h2 className="mt-1 inline-flex items-center gap-3 text-2xl font-extrabold tracking-[-0.02em] text-violet-50 sm:text-[1.75rem]">
+      <div className="relative z-10 mb-3">
+        <div className="min-w-0">
+          <h2 className="inline-flex items-center gap-3 text-2xl font-extrabold tracking-[-0.02em] text-violet-50 sm:text-[1.75rem]">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-sky-100/40 bg-sky-300/15">
               <Trophy className="h-4.5 w-4.5 text-amber-300" strokeWidth={2.1} aria-hidden="true" />
             </span>
@@ -115,7 +114,7 @@ export function TeamLeaderboardSection({
           </h2>
         </div>
 
-        <div className="flex shrink-0 flex-nowrap items-center gap-2 text-[10px] sm:justify-end">
+        <div className="mt-3 flex flex-nowrap items-center justify-end gap-2 text-[10px] md:absolute md:right-0 md:top-0 md:mt-0">
           <div className={`${chipGroupClass} gap-0.5`} role="group" aria-label="Typ produktu">
             <button
               type="button"
@@ -190,7 +189,7 @@ export function TeamLeaderboardSection({
           </p>
         </div>
       ) : (
-        <ol className="relative z-10 mt-2 space-y-2.5">
+        <ol className="relative z-10 space-y-2.5">
           {visibleEntries.map((row, idx) => {
             const accents = getRankAccent(idx);
 

@@ -4,10 +4,14 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import Image from "next/image";
 import {
+  ArrowDownRight,
+  ArrowUpRight,
   BarChart3,
+  Check,
   Copy,
   Mail,
   MessageSquare,
+  Minus,
   Network,
   PhoneCall,
   Search,
@@ -39,6 +43,7 @@ import introStyles from "../cashflow/cashflowIntro.module.css";
 import { TeamOverviewLoader } from "./TeamOverviewLoader";
 
 type AccountType = "advisor" | "tipster";
+type CopyableMemberField = "agencyNumber" | "phoneNumber" | "ico";
 
 type Member = {
   email: string;
@@ -243,6 +248,7 @@ type ContractStats = {
   total: number;
   month: number;
   previousMonth: number;
+  previousMonthToDate: number;
   monthMetrics: AggregateMetrics;
   previousMonthMetrics: AggregateMetrics;
   categories: Record<Category, number>;
@@ -254,6 +260,7 @@ type TipStats = {
   total: number;
   month: number;
   previousMonth: number;
+  previousMonthToDate: number;
   contracted: number;
 };
 const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
@@ -331,19 +338,25 @@ function sumAggregateMetrics(values: Array<Partial<AggregateMetrics> | null | un
 }
 
 function monthTrendSummary(current: number, previous: number): {
-  label: string;
+  valueLabel: string;
+  differenceLabel: string;
+  direction: "up" | "down" | "flat";
   className: string;
 } {
   if (previous <= 0 && current <= 0) {
     return {
-      label: "beze změny vs minulý měsíc",
-      className: "border-slate-200 bg-slate-50 text-slate-600",
+      valueLabel: "0 %",
+      differenceLabel: "beze změny",
+      direction: "flat",
+      className: "border-slate-200 bg-slate-50/90 text-slate-600",
     };
   }
   if (previous <= 0) {
     return {
-      label: `+${current} vs minulý měsíc`,
-      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      valueLabel: "Nové",
+      differenceLabel: `nově ${current}`,
+      direction: "up",
+      className: "border-emerald-200 bg-emerald-50/90 text-emerald-700",
     };
   }
 
@@ -352,17 +365,21 @@ function monthTrendSummary(current: number, previous: number): {
   const prefix = diff > 0 ? "+" : "";
   if (diff === 0) {
     return {
-      label: `0 % vs minulý měsíc`,
-      className: "border-slate-200 bg-slate-50 text-slate-600",
+      valueLabel: "0 %",
+      differenceLabel: "beze změny",
+      direction: "flat",
+      className: "border-slate-200 bg-slate-50/90 text-slate-600",
     };
   }
 
   return {
-    label: `${prefix}${diff} (${prefix}${pct} %) vs minulý měsíc`,
+    valueLabel: `${prefix}${pct} %`,
+    differenceLabel: `rozdíl ${prefix}${diff}`,
+    direction: diff > 0 ? "up" : "down",
     className:
       diff > 0
-        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-        : "border-rose-200 bg-rose-50 text-rose-700",
+        ? "border-emerald-200 bg-emerald-50/90 text-emerald-700"
+        : "border-rose-200 bg-rose-50/90 text-rose-700",
   };
 }
 
@@ -634,6 +651,8 @@ export default function TeamPage() {
   );
   const [detailTab, setDetailTab] = useState<"overview" | "subordinates" | "career">("overview");
   const [copiedEmail, setCopiedEmail] = useState(false);
+  const [copiedMemberField, setCopiedMemberField] =
+    useState<CopyableMemberField | null>(null);
   const [careerTimelineDraft, setCareerTimelineDraft] = useState<PositionTimelineItem[]>([]);
   const [careerTimelineLoading, setCareerTimelineLoading] = useState(false);
   const [careerTimelineSaving, setCareerTimelineSaving] = useState(false);
@@ -675,6 +694,7 @@ export default function TeamPage() {
     string | null
   >(null);
   const copyEmailTimerRef = useRef<number | null>(null);
+  const copyMemberFieldTimerRef = useRef<number | null>(null);
   const careerSaveTimerRef = useRef<number | null>(null);
   const endCollaborationTimerRef = useRef<number | null>(null);
   const weeklyReportRequestRef = useRef(false);
@@ -1217,12 +1237,19 @@ export default function TeamPage() {
   useEffect(() => {
     return () => {
       if (copyEmailTimerRef.current) window.clearTimeout(copyEmailTimerRef.current);
+      if (copyMemberFieldTimerRef.current) {
+        window.clearTimeout(copyMemberFieldTimerRef.current);
+      }
       if (careerSaveTimerRef.current) window.clearTimeout(careerSaveTimerRef.current);
       if (endCollaborationTimerRef.current) {
         window.clearTimeout(endCollaborationTimerRef.current);
       }
     };
   }, []);
+
+  useEffect(() => {
+    setCopiedMemberField(null);
+  }, [selectedEmail]);
 
   const selected = members.find((m) => m.email === selectedEmail) ?? null;
   const selectedAgencyNumber = selected?.agencyNumber?.trim() ?? "";
@@ -1345,12 +1372,20 @@ export default function TeamPage() {
     ? selectedTipStats?.month ?? 0
     : selectedContractStats?.month ?? 0;
   const selectedPreviousMonthCount = selectedIsTipster
-    ? selectedTipStats?.previousMonth ?? 0
-    : selectedContractStats?.previousMonth ?? 0;
+    ? selectedTipStats?.previousMonthToDate ?? selectedTipStats?.previousMonth ?? 0
+    : selectedContractStats?.previousMonthToDate ??
+      selectedContractStats?.previousMonth ??
+      0;
   const selectedMonthTrend = monthTrendSummary(
     selectedMonthCount,
     selectedPreviousMonthCount
   );
+  const SelectedMonthTrendIcon =
+    selectedMonthTrend.direction === "up"
+      ? ArrowUpRight
+      : selectedMonthTrend.direction === "down"
+        ? ArrowDownRight
+        : Minus;
   const selectedStatsUnavailable =
     contractsError ||
     (!contractsLoaded &&
@@ -1427,6 +1462,26 @@ export default function TeamPage() {
     }
   };
 
+  const handleCopyMemberField = async (
+    field: CopyableMemberField,
+    value: string
+  ) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedMemberField(field);
+      if (copyMemberFieldTimerRef.current) {
+        window.clearTimeout(copyMemberFieldTimerRef.current);
+      }
+      copyMemberFieldTimerRef.current = window.setTimeout(
+        () => setCopiedMemberField(null),
+        1500
+      );
+    } catch {
+      // clipboard může být blokovaný browserem
+    }
+  };
+
   const closeWeeklyReportModal = () => {
     if (weeklyReportSeenStorageKey && typeof window !== "undefined") {
       try {
@@ -1465,8 +1520,8 @@ export default function TeamPage() {
     if (diff <= ONLINE_THRESHOLD_MS) {
       return {
         statusLabel: "Online",
-        className: "bg-violet-50 text-violet-700 border-violet-300",
-        dotClassName: "bg-violet-500",
+        className: "bg-emerald-50 text-emerald-700 border-emerald-300",
+        dotClassName: "bg-emerald-500",
         title: `Aktivní ${new Date(ts).toLocaleString("cs-CZ")}`,
       };
     }
@@ -2178,42 +2233,101 @@ export default function TeamPage() {
 	                            </div>
 	                          </div>
 	                          <div className="team-detail-meta flex flex-wrap items-center gap-2 lg:max-w-[360px] lg:justify-end">
-	                            <span
-	                              className={[
-	                                "inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur",
+	                            <button
+	                              type="button"
+	                              onClick={() =>
+	                                void handleCopyMemberField(
+	                                  "agencyNumber",
+	                                  selectedAgencyNumber
+	                                )
+	                              }
+	                              disabled={!selectedAgencyNumber}
+	                              aria-label={
 	                                selectedAgencyNumber
-		                                  ? "border-white/24 bg-white/15 !text-white"
-		                                : "border-white/18 bg-white/10 !text-violet-100/75",
+	                                  ? "Zkopírovat agenturní číslo"
+	                                  : "Agenturní číslo není vyplněno"
+	                              }
+	                              title={selectedAgencyNumber ? "Kliknutím zkopírovat" : undefined}
+	                              className={[
+	                                "ui-focus inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur transition",
+	                                selectedAgencyNumber
+	                                  ? "cursor-copy border-white/24 bg-white/15 !text-white hover:border-white/45 hover:bg-white/25"
+	                                : "border-white/18 bg-white/10 !text-violet-100/75",
 	                              ].join(" ")}
 	                            >
 	                              <span className="min-w-0 break-all">
-	                                Agenturní číslo: {selectedAgencyNumber || "Nevyplněno"}
+	                                {copiedMemberField === "agencyNumber"
+	                                  ? "Zkopírováno"
+	                                  : `Agenturní číslo: ${selectedAgencyNumber || "Nevyplněno"}`}
 	                              </span>
-	                            </span>
-	                            <span
-	                              className={[
-	                                "inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur",
+	                              {selectedAgencyNumber ? (
+	                                copiedMemberField === "agencyNumber" ? (
+	                                  <Check size={13} strokeWidth={2.4} aria-hidden="true" />
+	                                ) : (
+	                                  <Copy size={12} strokeWidth={2} aria-hidden="true" />
+	                                )
+	                              ) : null}
+	                            </button>
+	                            <button
+	                              type="button"
+	                              onClick={() =>
+	                                void handleCopyMemberField("phoneNumber", selectedPhoneNumber)
+	                              }
+	                              disabled={!selectedPhoneNumber}
+	                              aria-label={
 	                                selectedPhoneNumber
-		                                  ? "border-white/24 bg-white/15 !text-white"
-		                                : "border-white/18 bg-white/10 !text-violet-100/75",
-	                              ].join(" ")}
-	                            >
-	                              <span className="min-w-0 break-all">
-	                                Tel.: {selectedPhoneNumber || "Nevyplněno"}
-	                              </span>
-	                            </span>
-	                            <span
+	                                  ? "Zkopírovat telefonní číslo"
+	                                  : "Telefonní číslo není vyplněno"
+	                              }
+	                              title={selectedPhoneNumber ? "Kliknutím zkopírovat" : undefined}
 	                              className={[
-	                                "inline-flex max-w-full items-start gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur",
-	                                selectedIco
-		                                  ? "border-white/24 bg-white/15 !text-white"
-		                                : "border-white/18 bg-white/10 !text-violet-100/75",
+	                                "ui-focus inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur transition",
+	                                selectedPhoneNumber
+	                                  ? "cursor-copy border-white/24 bg-white/15 !text-white hover:border-white/45 hover:bg-white/25"
+	                                : "border-white/18 bg-white/10 !text-violet-100/75",
 	                              ].join(" ")}
 	                            >
 	                              <span className="min-w-0 break-all">
-	                                IČO: {selectedIco || "Nevyplněno"}
+	                                {copiedMemberField === "phoneNumber"
+	                                  ? "Zkopírováno"
+	                                  : `Tel.: ${selectedPhoneNumber || "Nevyplněno"}`}
 	                              </span>
-	                            </span>
+	                              {selectedPhoneNumber ? (
+	                                copiedMemberField === "phoneNumber" ? (
+	                                  <Check size={13} strokeWidth={2.4} aria-hidden="true" />
+	                                ) : (
+	                                  <Copy size={12} strokeWidth={2} aria-hidden="true" />
+	                                )
+	                              ) : null}
+	                            </button>
+	                            <button
+	                              type="button"
+	                              onClick={() => void handleCopyMemberField("ico", selectedIco)}
+	                              disabled={!selectedIco}
+	                              aria-label={
+	                                selectedIco ? "Zkopírovat IČO" : "IČO není vyplněno"
+	                              }
+	                              title={selectedIco ? "Kliknutím zkopírovat" : undefined}
+	                              className={[
+	                                "ui-focus inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur transition",
+	                                selectedIco
+	                                  ? "cursor-copy border-white/24 bg-white/15 !text-white hover:border-white/45 hover:bg-white/25"
+	                                : "border-white/18 bg-white/10 !text-violet-100/75",
+	                              ].join(" ")}
+	                            >
+	                              <span className="min-w-0 break-all">
+	                                {copiedMemberField === "ico"
+	                                  ? "Zkopírováno"
+	                                  : `IČO: ${selectedIco || "Nevyplněno"}`}
+	                              </span>
+	                              {selectedIco ? (
+	                                copiedMemberField === "ico" ? (
+	                                  <Check size={13} strokeWidth={2.4} aria-hidden="true" />
+	                                ) : (
+	                                  <Copy size={12} strokeWidth={2} aria-hidden="true" />
+	                                )
+	                              ) : null}
+	                            </button>
 	                          </div>
 	                        </div>
 	                      </div>
@@ -2349,59 +2463,83 @@ export default function TeamPage() {
 
 	                      {detailTab === "overview" ? (
                         <>
-		                          <div className="team-overview-stats relative z-10 grid grid-cols-1 gap-3 border-b border-violet-100 py-4 sm:grid-cols-2 xl:grid-cols-4">
+		                          <div className="team-overview-stats relative z-10 grid grid-cols-1 items-start gap-2 border-b border-violet-100 py-3 sm:grid-cols-2 2xl:grid-cols-4">
 	                            <div className="team-stat-card relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_100%)] px-3 py-3 !text-white shadow-[0_16px_34px_rgba(76,29,149,0.20)]">
 	                              <span className="pointer-events-none absolute -right-10 -top-12 h-28 w-28 rounded-full bg-white/18 blur-2xl" />
                               <div className="relative z-10 text-[10px] font-semibold uppercase tracking-[0.16em] !text-violet-100/80">
                                 {selectedIsTipster ? "Celkem tipů" : "Celkem smluv"}
                               </div>
-                              <div className="relative z-10 mt-1 text-3xl font-bold leading-none !text-white">
+                              <div className="relative z-10 mt-1 text-3xl font-bold leading-none tabular-nums !text-white">
                                 {selectedStatsUnavailable
                                   ? "—"
                                   : selectedIsTipster
                                     ? tipCountLabel(selected.email, "total")
                                     : contractCountLabel(selected.email, "total")}
                               </div>
-                              <div
-                                className="relative z-10 mt-2 truncate text-xs font-semibold !text-violet-100/80"
-                                title={formatLastActive(selected.email)}
-                              >
-                                {selectedIsTipster
-                                  ? `${tipCountLabel(selected.email, "contracted")} sjednaných`
-                                  : `Naposledy ${formatRelative(lastActive[selected.email])}`}
-                              </div>
+                              {selectedIsTipster ? (
+                                <div className="relative z-10 mt-2 text-xs font-semibold leading-5 !text-violet-100/85">
+                                  {tipCountLabel(selected.email, "contracted")} sjednaných
+                                </div>
+                              ) : (
+                                <div className="relative z-10 mt-2" title={formatLastActive(selected.email)}>
+                                  <div className="text-[9px] font-semibold uppercase tracking-[0.13em] !text-violet-100/65">
+                                    Naposledy aktivní
+                                  </div>
+                                  <div className="mt-0.5 text-xs font-semibold leading-5 !text-violet-100/90">
+                                    {formatRelative(lastActive[selected.email])}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
                               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                                 {selectedIsTipster ? "Tipů tento měsíc" : "Smluv tento měsíc"}
                               </div>
-                              <div className="mt-1 text-3xl font-bold leading-none text-slate-950">
+                              <div className="mt-1 text-3xl font-bold leading-none tabular-nums text-slate-950">
                                 {selectedStatsUnavailable
                                   ? "—"
                                   : selectedIsTipster
                                     ? tipCountLabel(selected.email, "month")
                                     : contractCountLabel(selected.email, "month")}
                               </div>
-                              <span
-                                className={`mt-2 inline-flex max-w-full rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                                  selectedStatsUnavailable
-                                    ? "border-slate-200 bg-slate-50 text-slate-600"
-                                    : selectedMonthTrend.className
-                                }`}
-                              >
-                                {selectedStatsUnavailable ? "čekám na data" : selectedMonthTrend.label}
-                              </span>
+                              {selectedStatsUnavailable ? (
+                                <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-600">
+                                  Čekám na data
+                                </div>
+                              ) : (
+                                <>
+                                  <div
+                                    className={`mt-2 flex items-center gap-2 rounded-lg border px-2 py-1.5 ${selectedMonthTrend.className}`}
+                                    title={`Stejné období minulého měsíce: ${selectedPreviousMonthCount}`}
+                                  >
+                                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current/15 bg-white/65">
+                                      <SelectedMonthTrendIcon className="h-3.5 w-3.5" strokeWidth={2.3} aria-hidden="true" />
+                                    </span>
+                                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                      <span className="text-sm font-bold leading-none tabular-nums">
+                                        {selectedMonthTrend.valueLabel}
+                                      </span>
+                                      <span className="text-[9px] font-semibold opacity-80">
+                                        {selectedMonthTrend.differenceLabel}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="mt-1 text-[9px] font-semibold text-slate-400">
+                                    Stejné období min. měsíce: {selectedPreviousMonthCount}
+                                  </div>
+                                </>
+                              )}
                             </div>
 	                            <div className="team-stat-card rounded-2xl border border-violet-100 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(76,29,149,0.06)]">
                               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                                 Měsíční produkce
                               </div>
-                              <div className="mt-1 text-2xl font-bold leading-tight text-violet-700">
+                              <div className="mt-1 whitespace-nowrap text-2xl font-bold leading-tight tracking-[-0.02em] tabular-nums text-violet-700">
                                 {selectedStatsUnavailable
                                   ? "—"
                                   : formatMetricMoney(selectedMonthMetrics.monthlyPremium)}
                               </div>
-                              <div className="mt-1 truncate text-xs font-semibold text-slate-500">
+                              <div className="mt-1 text-xs font-semibold leading-5 text-slate-500">
                                 {selectedStatsUnavailable
                                   ? "bez dat"
                                   : `${selectedMonthMetrics.contracts} smluv tento měsíc`}
@@ -2411,12 +2549,12 @@ export default function TeamPage() {
                               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                                 Roční produkce
                               </div>
-                              <div className="mt-1 text-2xl font-bold leading-tight text-violet-700">
+                              <div className="mt-1 whitespace-nowrap text-2xl font-bold leading-tight tracking-[-0.02em] tabular-nums text-violet-700">
                                 {selectedStatsUnavailable
                                   ? "—"
                                   : formatMetricMoney(selectedTotalProduction.annualPremium)}
                               </div>
-                              <div className="mt-1 truncate text-xs font-semibold text-slate-500">
+                              <div className="mt-1 text-xs font-semibold leading-5 text-slate-500">
                                 {selectedStatsUnavailable
                                   ? "bez dat"
                                   : `${selectedTotalProduction.contracts} smluv celkem`}

@@ -41,7 +41,7 @@ const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT = 60;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS = 60_000;
-const TEAM_OVERVIEW_MODEL_VERSION = 4;
+const TEAM_OVERVIEW_MODEL_VERSION = 5;
 const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
@@ -365,6 +365,7 @@ function emptyContractStats(): ContractStats {
     total: 0,
     month: 0,
     previousMonth: 0,
+    previousMonthToDate: 0,
     monthMetrics: emptyAggregateMetrics(),
     previousMonthMetrics: emptyAggregateMetrics(),
     categories: emptyCategoryCounts(),
@@ -379,6 +380,7 @@ function emptyTipStats(): TipStats {
     total: 0,
     month: 0,
     previousMonth: 0,
+    previousMonthToDate: 0,
     contracted: 0,
   };
 }
@@ -388,6 +390,7 @@ function cloneContractStats(source: ContractStats): ContractStats {
     total: source.total,
     month: source.month,
     previousMonth: source.previousMonth ?? 0,
+    previousMonthToDate: source.previousMonthToDate ?? source.previousMonth ?? 0,
     monthMetrics: source.monthMetrics
       ? { ...source.monthMetrics }
       : emptyAggregateMetrics(),
@@ -555,6 +558,7 @@ function parseContractStatsFromTotalsDoc(data: Record<string, unknown>): Contrac
     total: finiteNumber(data.total),
     month: 0,
     previousMonth: 0,
+    previousMonthToDate: 0,
     monthMetrics: emptyAggregateMetrics(),
     previousMonthMetrics: emptyAggregateMetrics(),
     categories: parseCategoryCounts(data.categories),
@@ -572,6 +576,22 @@ function currentYearMonth(now: Date): string {
 
 function previousYearMonth(now: Date): string {
   return currentYearMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+}
+
+function previousMonthToDateEnd(now: Date): number {
+  const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousYear = previousMonth.getFullYear();
+  const previousMonthIndex = previousMonth.getMonth();
+  const lastDay = new Date(previousYear, previousMonthIndex + 1, 0).getDate();
+  return new Date(
+    previousYear,
+    previousMonthIndex,
+    Math.min(now.getDate(), lastDay),
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds()
+  ).getTime();
 }
 
 function monthDocId(ownerEmail: string, yearMonth: string): string {
@@ -1022,15 +1042,17 @@ function accumulateContractEntry({
   ownerEmail,
   data,
   previousMonthStart,
+  previousMonthToDateEndMs,
   monthStart,
-  nextMonthStart,
+  currentMonthToDateEnd,
 }: {
   stats: Record<string, ContractStats>;
   ownerEmail: string;
   data: Record<string, unknown>;
   previousMonthStart: number;
+  previousMonthToDateEndMs: number;
   monthStart: number;
-  nextMonthStart: number;
+  currentMonthToDateEnd: number;
 }) {
   const current = stats[ownerEmail] ?? emptyContractStats();
   current.total += 1;
@@ -1075,12 +1097,15 @@ function accumulateContractEntry({
 
   const signed = toDate(data.contractSignedDate ?? data.createdAt);
   const ts = signed?.getTime();
-  if (ts != null && ts >= monthStart && ts < nextMonthStart) {
+  if (ts != null && ts >= monthStart && ts <= currentMonthToDateEnd) {
     current.month += 1;
     addAggregateContract(current.monthMetrics, annualPremium, monthlyPremium);
   } else if (ts != null && ts >= previousMonthStart && ts < monthStart) {
     current.previousMonth += 1;
     addAggregateContract(current.previousMonthMetrics, annualPremium, monthlyPremium);
+    if (ts <= previousMonthToDateEndMs) {
+      current.previousMonthToDate += 1;
+    }
   }
 
   stats[ownerEmail] = current;
@@ -1096,8 +1121,9 @@ function consumeOwnerEntry({
   seen,
   now,
   previousMonthStart,
+  previousMonthToDateEndMs,
   monthStart,
-  nextMonthStart,
+  currentMonthToDateEnd,
 }: {
   stats: Record<string, ContractStats>;
   activeStats: Record<string, ContractStats>;
@@ -1108,8 +1134,9 @@ function consumeOwnerEntry({
   seen: Set<string>;
   now: Date;
   previousMonthStart: number;
+  previousMonthToDateEndMs: number;
   monthStart: number;
-  nextMonthStart: number;
+  currentMonthToDateEnd: number;
 }) {
   const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? ownerEmailRaw);
   if (!ownerEmail || !ownerSet.has(ownerEmail)) return;
@@ -1122,8 +1149,9 @@ function consumeOwnerEntry({
     ownerEmail,
     data,
     previousMonthStart,
+    previousMonthToDateEndMs,
     monthStart,
-    nextMonthStart,
+    currentMonthToDateEnd,
   };
   accumulateContractEntry({ stats, ...options });
   if (contractLifecycleStatus(data, now) === "active") {
@@ -1140,8 +1168,9 @@ function consumeTipsterContractEntry({
   seen,
   now,
   previousMonthStart,
+  previousMonthToDateEndMs,
   monthStart,
-  nextMonthStart,
+  currentMonthToDateEnd,
 }: {
   stats: Record<string, ContractStats>;
   activeStats: Record<string, ContractStats>;
@@ -1151,8 +1180,9 @@ function consumeTipsterContractEntry({
   seen: Set<string>;
   now: Date;
   previousMonthStart: number;
+  previousMonthToDateEndMs: number;
   monthStart: number;
-  nextMonthStart: number;
+  currentMonthToDateEnd: number;
 }) {
   const tipsterEmail = normalizeEmail(data.tipContractTipsterEmail as string | undefined);
   if (!tipsterEmail || !tipsterSet.has(tipsterEmail)) return;
@@ -1165,8 +1195,9 @@ function consumeTipsterContractEntry({
     ownerEmail: tipsterEmail,
     data,
     previousMonthStart,
+    previousMonthToDateEndMs,
     monthStart,
-    nextMonthStart,
+    currentMonthToDateEnd,
   };
   accumulateContractEntry({ stats, ...options });
   if (contractLifecycleStatus(data, now) === "active") {
@@ -1190,8 +1221,9 @@ async function buildContractStatsByOwnerFromEntries(
 
   const now = new Date();
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const previousMonthToDateEndMs = previousMonthToDateEnd(now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  const currentMonthToDateEnd = now.getTime();
 
   for (let i = 0; i < owners.length; i += FIRESTORE_IN_LIMIT) {
     const chunk = owners.slice(i, i + FIRESTORE_IN_LIMIT);
@@ -1213,8 +1245,9 @@ async function buildContractStatsByOwnerFromEntries(
         seen,
         now,
         previousMonthStart,
+        previousMonthToDateEndMs,
         monthStart,
-        nextMonthStart,
+        currentMonthToDateEnd,
       });
     }
   }
@@ -1240,8 +1273,9 @@ async function buildContractStatsByTipsterFromEntries(
   const seen = new Set<string>();
   const now = new Date();
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const previousMonthToDateEndMs = previousMonthToDateEnd(now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  const currentMonthToDateEnd = now.getTime();
 
   const consumeDoc = (
     docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
@@ -1255,8 +1289,9 @@ async function buildContractStatsByTipsterFromEntries(
       seen,
       now,
       previousMonthStart,
+      previousMonthToDateEndMs,
       monthStart,
-      nextMonthStart,
+      currentMonthToDateEnd,
     });
   };
 
@@ -1343,8 +1378,9 @@ async function buildTipStatsByTipster(
 
   const now = new Date();
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const previousMonthToDateEndMs = previousMonthToDateEnd(now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  const currentMonthToDateEnd = now.getTime();
 
   for (const email of emails) {
     const current = stats[email] ?? emptyTipStats();
@@ -1369,10 +1405,13 @@ async function buildTipStatsByTipster(
 
         const createdMs = tipCreatedAtMs(data);
         if (createdMs != null) {
-          if (createdMs >= monthStart && createdMs < nextMonthStart) {
+          if (createdMs >= monthStart && createdMs <= currentMonthToDateEnd) {
             current.month += 1;
           } else if (createdMs >= previousMonthStart && createdMs < monthStart) {
             current.previousMonth += 1;
+            if (createdMs <= previousMonthToDateEndMs) {
+              current.previousMonthToDate += 1;
+            }
           }
         }
       }
@@ -1455,8 +1494,12 @@ async function loadContractStatsFromReadModel(
         monthKey === yearMonth
       ) {
         parsed.month = finiteNumber(monthRaw.monthCount);
+        parsed.previousMonthToDate = finiteNumber(monthRaw.previousMonthToDateCount);
         parsed.monthMetrics = parseAggregateMetrics(monthRaw.monthMetrics);
         parsedActive.month = finiteNumber(monthRaw.activeMonthCount);
+        parsedActive.previousMonthToDate = finiteNumber(
+          monthRaw.activePreviousMonthToDateCount
+        );
         parsedActive.monthMetrics = parseAggregateMetrics(monthRaw.activeMonthMetrics);
       } else {
         ownersToRefresh.add(owner);
@@ -1556,8 +1599,10 @@ async function persistContractStatsToReadModel(
         ownerEmail,
         yearMonth,
         monthCount: finiteNumber(stat.month),
+        previousMonthToDateCount: finiteNumber(stat.previousMonthToDate),
         monthMetrics: stat.monthMetrics ?? emptyAggregateMetrics(),
         activeMonthCount: finiteNumber(activeStat.month),
+        activePreviousMonthToDateCount: finiteNumber(activeStat.previousMonthToDate),
         activeMonthMetrics: activeStat.monthMetrics ?? emptyAggregateMetrics(),
         updatedAtMs,
       },

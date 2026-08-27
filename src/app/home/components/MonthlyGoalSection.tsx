@@ -163,7 +163,7 @@ export function MonthlyGoalSection({
         </div>
       )}
       <div className="relative z-10 flex flex-col gap-5">
-        <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_180px] 2xl:items-start 2xl:gap-5">
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px] sm:items-start sm:gap-5">
           <div className="min-w-0">
             <h2 className="flex max-w-full items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-rose-50 sm:text-3xl">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-rose-100/45 bg-rose-300/15">
@@ -176,7 +176,7 @@ export function MonthlyGoalSection({
             </p>
           </div>
 
-          <div className="self-start 2xl:justify-self-end 2xl:text-right">
+          <div className="self-start sm:justify-self-end sm:text-right">
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-100/65">{copy.completed}</div>
             <div className="text-3xl font-black tracking-[-0.03em] text-rose-50">
               {loading ? (

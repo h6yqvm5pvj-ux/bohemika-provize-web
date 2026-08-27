@@ -146,7 +146,7 @@ const MAX_SCAN_LIMIT = 8_000;
 const DEFAULT_SAMPLE_LIMIT = 12;
 const MAX_SAMPLE_LIMIT = 40;
 const ORPHAN_REF_BATCH_SIZE = 30;
-const TEAM_TOTALS_MODEL_VERSION = 3;
+const TEAM_TOTALS_MODEL_VERSION = 5;
 const TEAM_TOTALS_STALE_MS = 24 * 60 * 60 * 1000;
 const CONTRACT_REFS_COLLECTION = "contractRefs";
 const CONTRACT_NUMBER_CLAIMS_COLLECTION = "contractNumberClaims";
@@ -284,6 +284,22 @@ const currentYearMonth = (now: Date): string =>
 const previousYearMonth = (now: Date): string =>
   currentYearMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
+const previousMonthToDateEnd = (now: Date): number => {
+  const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousYear = previousMonth.getFullYear();
+  const previousMonthIndex = previousMonth.getMonth();
+  const lastDay = new Date(previousYear, previousMonthIndex + 1, 0).getDate();
+  return new Date(
+    previousYear,
+    previousMonthIndex,
+    Math.min(now.getDate(), lastDay),
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds()
+  ).getTime();
+};
+
 const utcDayIndex = (ms: number): number => Math.floor(ms / (24 * 60 * 60 * 1000));
 
 const teamOverviewMonthDocId = (ownerEmail: string, yearMonth: string): string =>
@@ -387,6 +403,7 @@ function emptyContractStats(): ContractStats {
     total: 0,
     month: 0,
     previousMonth: 0,
+    previousMonthToDate: 0,
     monthMetrics: emptyAggregateMetrics(),
     previousMonthMetrics: emptyAggregateMetrics(),
     categories: emptyCategoryCounts(),
@@ -1196,16 +1213,18 @@ function consumeTeamOverviewEntry({
   entry,
   seen,
   previousMonthStart,
+  previousMonthToDateEndMs,
   monthStart,
-  nextMonthStart,
+  currentMonthToDateEnd,
 }: {
   stats: Record<string, ContractStats>;
   ownerSet: Set<string>;
   entry: ContractEntry;
   seen: Set<string>;
   previousMonthStart: number;
+  previousMonthToDateEndMs: number;
   monthStart: number;
-  nextMonthStart: number;
+  currentMonthToDateEnd: number;
 }): boolean {
   const data = entry.rawData;
   const ownerEmail = normalizeEmail(data.userEmail ?? entry.ownerEmail);
@@ -1237,12 +1256,15 @@ function consumeTeamOverviewEntry({
   current.institutionByCategory[category][institution] = byInstitutionForCategory;
 
   const signedMs = toMillis(data.contractSignedDate ?? data.createdAt);
-  if (signedMs != null && signedMs >= monthStart && signedMs < nextMonthStart) {
+  if (signedMs != null && signedMs >= monthStart && signedMs <= currentMonthToDateEnd) {
     current.month += 1;
     addAggregateContract(current.monthMetrics, annualPremium, monthlyPremium);
   } else if (signedMs != null && signedMs >= previousMonthStart && signedMs < monthStart) {
     current.previousMonth += 1;
     addAggregateContract(current.previousMonthMetrics, annualPremium, monthlyPremium);
+    if (signedMs <= previousMonthToDateEndMs) {
+      current.previousMonthToDate += 1;
+    }
   }
 
   stats[ownerEmail] = current;
@@ -1282,8 +1304,9 @@ async function rebuildTeamOverviewReadModels({
   const yearMonth = currentYearMonth(now);
   const previousMonth = previousYearMonth(now);
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const previousMonthToDateEndMs = previousMonthToDateEnd(now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  const currentMonthToDateEnd = now.getTime();
   const seen = new Set<string>();
   let consumedEntries = 0;
 
@@ -1295,8 +1318,9 @@ async function rebuildTeamOverviewReadModels({
         entry,
         seen,
         previousMonthStart,
+        previousMonthToDateEndMs,
         monthStart,
-        nextMonthStart,
+        currentMonthToDateEnd,
       })
     ) {
       consumedEntries += 1;
@@ -1344,6 +1368,7 @@ async function rebuildTeamOverviewReadModels({
         ownerEmail,
         yearMonth,
         monthCount: stat.month,
+        previousMonthToDateCount: stat.previousMonthToDate,
         monthMetrics: stat.monthMetrics,
         updatedAtMs,
       },

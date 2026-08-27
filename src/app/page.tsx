@@ -1267,9 +1267,12 @@ export default function HomePage() {
         const availableQA = QUICK_ACTION_OPTIONS.filter(
           (opt) => !quickActions.some((q) => q.key === opt.key)
         );
+        const quickActionsCardClass = isLiteUI
+          ? "relative z-30 min-w-0 h-full rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 focus-within:border-violet-200/60 focus-within:shadow-[0_0_0_1px_rgba(221,214,254,0.3)] sm:px-7 sm:py-6"
+          : "relative z-30 min-w-0 h-full rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.24)] focus-within:border-violet-200/60 focus-within:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.3)] sm:px-7 sm:py-6";
         return (
           <section
-            className={`relative z-30 space-y-3 rounded-[24px] border border-slate-200 bg-white px-5 py-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:px-8 sm:py-7 ${
+            className={`${quickActionsCardClass} ${
               reorderEnabled && draggingSection === id ? "opacity-50" : ""
             } ${reorderEnabled ? "cursor-move" : ""}`}
             draggable={reorderEnabled}
@@ -1277,13 +1280,13 @@ export default function HomePage() {
             onDragOver={(e) => handleSectionDragOver(e, id)}
             onDragEnd={handleSectionDragEnd}
           >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                  {copy.quickActions.kicker}
-                </p>
-                <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
-                  {copy.quickActions.title}
+            <div className="relative z-10 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="flex max-w-full items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:text-3xl">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
+                    <Zap className="h-4.5 w-4.5 text-amber-200" strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0">{copy.quickActions.title}</span>
                 </h2>
               </div>
               <div className="relative z-30">
@@ -1291,7 +1294,7 @@ export default function HomePage() {
                   type="button"
                   ref={qaButtonRef}
                   onClick={() => setQaPickerOpen((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
+                  className="inline-flex items-center gap-2 rounded-full border border-violet-100/35 bg-white/10 px-3 py-1.5 text-xs font-semibold text-violet-50 shadow-sm backdrop-blur-sm transition hover:border-violet-100/60 hover:bg-white/16"
                 >
                   {copy.quickActions.add}
                 </button>
@@ -1340,19 +1343,19 @@ export default function HomePage() {
             </div>
 
             {quickActions.length === 0 ? (
-              <p className="text-sm text-slate-600">
+              <p className="relative z-10 mt-4 text-sm leading-6 text-violet-100/72">
                 {copy.quickActions.empty}
               </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="relative z-10 mt-5 flex flex-wrap gap-2">
                 {quickActions.map((qa) => {
                   const actionText = resolveQuickActionText(qa, language);
                   return (
                     <div
                       key={qa.key}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900"
+                      className="inline-flex items-center gap-2 rounded-full border border-violet-100/28 bg-white/9 px-3 py-1.5 text-sm font-medium text-violet-50 shadow-sm backdrop-blur-sm transition hover:border-violet-100/50 hover:bg-white/14"
                     >
-                      <Link href={qa.href} className="hover:text-slate-700">
+                      <Link href={qa.href} className="transition hover:text-amber-200">
                         {actionText.title}
                       </Link>
                       <button
@@ -1360,7 +1363,7 @@ export default function HomePage() {
                         onClick={() =>
                           persistQuickActions((prev) => prev.filter((item) => item.key !== qa.key))
                         }
-                        className="text-[12px] text-slate-500 hover:text-rose-600"
+                        className="text-[12px] text-violet-100/55 transition hover:text-rose-300"
                         aria-label={`${copy.quickActions.removeAriaPrefix} ${actionText.title}`}
                       >
                         ×

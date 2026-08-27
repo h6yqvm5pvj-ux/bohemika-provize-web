@@ -220,7 +220,7 @@
       gap: 0.35rem !important;
     }
 
-    .team-detail-meta > span {
+    .team-detail-meta > button {
       border-radius: 999px !important;
       padding: 0.35rem 0.5rem !important;
       font-size: 0.68rem !important;
