@@ -1,0 +1,57 @@
+@layer utilities {
+.console {
+  color: #0f172a;
+}
+
+.console [class*="border-white/"] {
+  border-color: rgb(226 232 240) !important;
+}
+
+.console [class*="bg-slate-950/"] {
+  background-color: rgb(241 245 249) !important;
+}
+
+.console [class*="!text-white"] {
+  color: #0f172a !important;
+}
+
+.console [class*="!text-violet-100"] {
+  color: #475569 !important;
+}
+
+.console [class*="!text-violet-200"] {
+  color: #64748b !important;
+}
+
+.console [class*="text-violet-50"],
+.console [class*="text-violet-100"] {
+  color: #475569 !important;
+}
+
+.console [class*="text-violet-200"] {
+  color: #64748b !important;
+}
+
+.console [class*="text-violet-300"] {
+  color: #7c3aed !important;
+}
+
+.console [class*="bg-violet-500"],
+.console [class*="bg-violet-600"],
+.console [class*="bg-violet-700"],
+.console [class~="admin-on-violet"] {
+  color: #fff !important;
+}
+
+.console [class*="bg-violet-500"] *,
+.console [class*="bg-violet-600"] *,
+.console [class*="bg-violet-700"] *,
+.console [class~="admin-on-violet"] * {
+  color: #fff !important;
+  stroke: #fff !important;
+}
+
+.console .nav [class*="!text-white"] {
+  color: #fff !important;
+}
+}

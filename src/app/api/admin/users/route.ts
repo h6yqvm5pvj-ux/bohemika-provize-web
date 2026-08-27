@@ -23,6 +23,7 @@ const FULL_NAME_MAX_LEN = 120;
 const AGENCY_NUMBER_MAX_LEN = 80;
 const PHONE_NUMBER_MAX_LEN = 40;
 const PROFILE_ICO_MAX_LEN = 8;
+const ONLINE_CARD_SLUG_MAX_LEN = 64;
 type AccountType = "advisor" | "tipster";
 const ACCOUNT_TYPE_SET = new Set<AccountType>(["advisor", "tipster"]);
 const POSITION_SET = new Set<Position>([
@@ -105,6 +106,53 @@ const normalizeEmail = (value: unknown): string =>
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const slugifyOnlineCard = (value: string): string =>
+  value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, ONLINE_CARD_SLUG_MAX_LEN);
+
+async function resolveAvailableOnlineCardSlug({
+  preferredSlug,
+  ownerEmail,
+  ownerUid,
+}: {
+  preferredSlug: string;
+  ownerEmail: string;
+  ownerUid: string;
+}): Promise<string | null> {
+  if (!adminDb) return null;
+  const base = slugifyOnlineCard(preferredSlug) || "vizitka";
+
+  for (let suffix = 1; suffix <= 100; suffix += 1) {
+    const suffixText = suffix === 1 ? "" : `-${suffix}`;
+    const candidate = `${base.slice(0, ONLINE_CARD_SLUG_MAX_LEN - suffixText.length)}${suffixText}`;
+    if (candidate.length < 3 || !ONLINE_CARD_SLUG_RE.test(candidate)) continue;
+
+    const snap = await adminDb
+      .collection("users")
+      .where("onlineCard.slug", "==", candidate)
+      .limit(12)
+      .get();
+    const occupiedByOtherUser = snap.docs.some((docSnap) => {
+      const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+      const dataEmail = normalizeEmail(data.email);
+      const dataUid = normalizeText(data.userId);
+      return (
+        normalizeEmail(docSnap.id) !== ownerEmail &&
+        dataEmail !== ownerEmail &&
+        (!ownerUid || dataUid !== ownerUid)
+      );
+    });
+    if (!occupiedByOtherUser) return candidate;
+  }
+
+  return null;
+}
 
 const normalizeOptionalText = (value: unknown, maxLen: number): string | null => {
   if (value == null) return "";
@@ -491,6 +539,16 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    const hasOnlineCardEnabledPatch = Object.prototype.hasOwnProperty.call(
+      body,
+      "onlineCardEnabled"
+    );
+    if (hasOnlineCardEnabledPatch && typeof body.onlineCardEnabled !== "boolean") {
+      return NextResponse.json(
+        { ok: false, error: "Stav online vizitky má neplatnou hodnotu." } satisfies ApiError,
+        { status: 400 }
+      );
+    }
 
     const authUser = await adminAuth
       .getUserByEmail(email)
@@ -567,6 +625,51 @@ export async function PATCH(req: NextRequest) {
       patch.specialist = body.specialist;
     }
 
+    if (hasOnlineCardEnabledPatch) {
+      const publicSnapshot = await publicRef.get();
+      const publicData = publicSnapshot.exists
+        ? ((publicSnapshot.data() as Record<string, unknown> | undefined) ?? {})
+        : {};
+      const existingOnlineCard = isPlainObject(publicData.onlineCard)
+        ? publicData.onlineCard
+        : {};
+      const enabled = body.onlineCardEnabled === true;
+      const existingSlug = normalizeOnlineCardSlug(existingOnlineCard.slug);
+      const existingFullName = normalizeText(existingOnlineCard.fullName);
+      const cardFullName = existingFullName || fullName || email.split("@")[0] || email;
+      let slug = existingSlug;
+
+      if (enabled) {
+        slug =
+          (await resolveAvailableOnlineCardSlug({
+            preferredSlug:
+              slug.length >= 3 && ONLINE_CARD_SLUG_RE.test(slug)
+                ? slug
+                : cardFullName || email,
+            ownerEmail: email,
+            ownerUid: authUser?.uid ?? "",
+          })) ?? "";
+        if (!slug) {
+          return NextResponse.json(
+            { ok: false, error: "Pro online vizitku se nepodařilo vytvořit volnou URL." } satisfies ApiError,
+            { status: 409 }
+          );
+        }
+      }
+
+      patch.onlineCard = {
+        ...existingOnlineCard,
+        enabled,
+        slug,
+        ownerEmail: email,
+        fullName: cardFullName,
+        email,
+        phone: normalizeText(existingOnlineCard.phone) || phoneNumberRaw,
+        ico: normalizeText(existingOnlineCard.ico).replace(/\D+/g, "") || icoRaw,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     await publicRef.set(patch, { merge: true });
 
     return NextResponse.json({
@@ -580,6 +683,9 @@ export async function PATCH(req: NextRequest) {
         phoneNumber: phoneNumberRaw || null,
         accountType: accountTypeRaw || null,
         specialist: body.specialist === true,
+        onlineCard: hasOnlineCardEnabledPatch
+          ? summarizeOnlineCard(patch.onlineCard)
+          : undefined,
       },
     });
   } catch (error) {

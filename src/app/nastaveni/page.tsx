@@ -2882,13 +2882,13 @@ export default function SettingsPage() {
   };
 
   const handleCreatePasskey = async () => {
-    if (!user) return;
+    if (!user) return false;
     if (!passkeySupported) {
       setPasskeyStatus({
         type: "error",
         message: "Tento prohlížeč nebo zařízení přístupové klíče nepodporuje.",
       });
-      return;
+      return false;
     }
 
     setPasskeyBusy(true);
@@ -2909,6 +2909,7 @@ export default function SettingsPage() {
         message:
           "Přístupový klíč byl uložený. Příště se na tomto zařízení můžeš přihlásit bez kódu z Microsoft Authenticatoru.",
       });
+      return true;
     } catch (error) {
       setPasskeyStatus({
         type: "error",
@@ -2917,6 +2918,7 @@ export default function SettingsPage() {
           "Přístupový klíč se nepodařilo vytvořit."
         ),
       });
+      return false;
     } finally {
       setPasskeyBusy(false);
     }

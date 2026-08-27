@@ -18,6 +18,7 @@ import {
   QrCode as QrCodeIcon,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   Smartphone,
   X,
 } from "lucide-react";
@@ -102,7 +103,7 @@ type AccountSecurityPanelProps = {
   onRefreshAccountSessions: () => void | Promise<void>;
   onRevokeOtherSessions: () => void | Promise<void>;
   onPasskeyNameChange: (value: string) => void;
-  onCreatePasskey: () => void | Promise<void>;
+  onCreatePasskey: () => boolean | Promise<boolean>;
   onDeletePasskey: (credentialId: string) => void | Promise<void>;
   onRenamePasskey: (credentialId: string, name: string) => void | Promise<void>;
   onMfaPasswordChange: (value: string) => void;
@@ -121,6 +122,9 @@ const statusClass = (status: InlineStatus): string => {
   if (status.type === "info") return "border-slate-200 bg-white text-slate-700";
   return "border-rose-200 bg-rose-50 text-rose-700";
 };
+
+const formatPasskeyDate = (valueMs: number): string =>
+  new Date(valueMs).toLocaleDateString("cs-CZ");
 
 export function AccountSecurityPanel({
   className,
@@ -185,6 +189,8 @@ export function AccountSecurityPanel({
   onDisableMfa,
 }: AccountSecurityPanelProps) {
   const [passkeyHelpOpen, setPasskeyHelpOpen] = useState(false);
+  const [passkeyCreateOpen, setPasskeyCreateOpen] = useState(false);
+  const [passkeyCreateAttempted, setPasskeyCreateAttempted] = useState(false);
   const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
   const [editingPasskeyId, setEditingPasskeyId] = useState<string | null>(null);
   const [editingPasskeyName, setEditingPasskeyName] = useState("");
@@ -234,6 +240,27 @@ export function AccountSecurityPanel({
   const handleCancelDisableMfa = () => {
     resetMfaReauthDigits();
     onCancelDisableMfa();
+  };
+
+  const openPasskeyCreate = () => {
+    onPasskeyNameChange("");
+    setPasskeyCreateAttempted(false);
+    setPasskeyCreateOpen(true);
+  };
+
+  const closePasskeyCreate = () => {
+    if (passkeyBusy) return;
+    onPasskeyNameChange("");
+    setPasskeyCreateAttempted(false);
+    setPasskeyCreateOpen(false);
+  };
+
+  const handleCreatePasskey = async () => {
+    setPasskeyCreateAttempted(true);
+    const created = await onCreatePasskey();
+    if (!created) return;
+    setPasskeyCreateAttempted(false);
+    setPasskeyCreateOpen(false);
   };
 
   const focusMfaReauthInput = (index: number) => {
@@ -427,25 +454,15 @@ export function AccountSecurityPanel({
 
               <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl">
                 {passkeySupported ? (
-                  <>
-                    <input
-                      type="text"
-                      className={fieldClass}
-                      placeholder={passkeyPlatformAvailable ? "Název zařízení (např. iPhone)" : "Název přístupového klíče"}
-                      value={passkeyName}
-                      onChange={(event) => onPasskeyNameChange(event.target.value)}
-                      disabled={passkeyBusy}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void onCreatePasskey()}
-                      disabled={passkeyBusy}
-                      className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
-                    >
-                      <Fingerprint size={16} strokeWidth={2} aria-hidden="true" />
-                      {passkeyBusy ? "Otevírám ověření…" : "Zapnout přístupový klíč"}
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={openPasskeyCreate}
+                    disabled={passkeyBusy}
+                    className="inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-violet-700 bg-violet-700 px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_22px_rgba(109,40,217,0.22)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-2xl"
+                  >
+                    <Sparkles size={16} strokeWidth={2.2} aria-hidden="true" />
+                    Přidat zařízení
+                  </button>
                 ) : (
                   <div className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800">
                     Tento prohlížeč přístupové klíče nepodporuje.
@@ -477,11 +494,11 @@ export function AccountSecurityPanel({
                     return (
                       <div
                         key={credential.credentialId}
-                        className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:rounded-2xl"
+                        className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 sm:flex-row sm:items-center sm:rounded-2xl"
                       >
-                        <div className="flex min-w-0 items-start gap-3">
-                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-100 bg-violet-50 text-violet-700">
-                            <DeviceIcon size={17} strokeWidth={2.2} aria-hidden="true" />
+                        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-100 bg-violet-50 text-violet-700">
+                            <DeviceIcon size={15} strokeWidth={2.2} aria-hidden="true" />
                           </span>
                           <div className="min-w-0 flex-1">
                             {isEditing ? (
@@ -490,7 +507,7 @@ export function AccountSecurityPanel({
                                   type="text"
                                   value={editingPasskeyName}
                                   onChange={(event) => setEditingPasskeyName(event.target.value.slice(0, 80))}
-                                  className="min-w-0 flex-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
+                                  className="min-h-8 min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
                                   aria-label="Název přístupového klíče"
                                   autoFocus
                                 />
@@ -511,7 +528,7 @@ export function AccountSecurityPanel({
                                       })();
                                     }}
                                     disabled={isRenaming || editingPasskeyName.trim().length === 0}
-                                    className="inline-flex min-h-9 items-center justify-center rounded-xl bg-violet-700 px-3 text-xs font-bold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex min-h-8 items-center justify-center rounded-lg bg-violet-700 px-2.5 text-[11px] font-bold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     {isRenaming ? "Ukládám…" : "Uložit"}
                                   </button>
@@ -519,14 +536,14 @@ export function AccountSecurityPanel({
                                     type="button"
                                     onClick={() => setEditingPasskeyId(null)}
                                     disabled={isRenaming}
-                                    className="inline-flex min-h-9 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex min-h-8 items-center justify-center rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     Zrušit
                                   </button>
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <div className="flex min-w-0 items-center gap-1.5">
                                 <div className="truncate text-sm font-semibold text-slate-900">{credential.name}</div>
                                 <button
                                   type="button"
@@ -534,17 +551,17 @@ export function AccountSecurityPanel({
                                     setEditingPasskeyId(credential.credentialId);
                                     setEditingPasskeyName(credential.name);
                                   }}
-                                  className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-violet-700 transition hover:bg-violet-50"
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 transition hover:bg-violet-50"
                                 >
-                                  <Pencil size={11} strokeWidth={2.2} aria-hidden="true" />
+                                  <Pencil size={10} strokeWidth={2.2} aria-hidden="true" />
                                   Přejmenovat
                                 </button>
                               </div>
                             )}
-                            <div className="mt-1 text-[11px] text-slate-500">
-                              Přidáno {formatDateTime(credential.createdAtMs)}
+                            <div className="mt-0.5 truncate text-[10px] leading-4 text-slate-500">
+                              Přidáno {formatPasskeyDate(credential.createdAtMs)}
                               {credential.lastUsedAtMs
-                                ? ` · použito ${formatDateTime(credential.lastUsedAtMs)}`
+                                ? ` · použito ${formatPasskeyDate(credential.lastUsedAtMs)}`
                                 : ""}
                             </div>
                           </div>
@@ -554,7 +571,7 @@ export function AccountSecurityPanel({
                             type="button"
                             onClick={() => void onDeletePasskey(credential.credentialId)}
                             disabled={passkeyDeletingId === credential.credentialId}
-                            className="inline-flex min-h-[36px] w-fit shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 sm:self-end"
+                            className="inline-flex min-h-8 w-fit shrink-0 self-end items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
                           >
                             {passkeyDeletingId === credential.credentialId ? "Odebírám…" : "Odebrat"}
                           </button>
@@ -1359,6 +1376,104 @@ export function AccountSecurityPanel({
               </p>
             </div>
           </div>
+        </div>
+      ) : null}
+      {passkeyCreateOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-3 py-4 backdrop-blur-[2px]"
+          onClick={closePasskeyCreate}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") closePasskeyCreate();
+          }}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="passkey-create-title"
+            className="w-full max-w-md overflow-hidden rounded-[22px] border border-violet-100 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.36)] sm:rounded-[28px]"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreatePasskey();
+            }}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-[linear-gradient(135deg,#ffffff_0%,#faf5ff_100%)] px-4 py-4 sm:px-5 sm:py-5">
+              <div className="flex items-start gap-3">
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-700 text-white shadow-[0_10px_22px_rgba(109,40,217,0.22)]">
+                  <Sparkles size={18} strokeWidth={2.3} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-700">
+                    Přístupový klíč
+                  </p>
+                  <h3 id="passkey-create-title" className="mt-1 text-lg font-black text-slate-950">
+                    Přidat zařízení
+                  </h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Zařízení si pojmenuj, abys ho později snadno poznal v seznamu.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closePasskeyCreate}
+                disabled={passkeyBusy}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Zavřít přidání zařízení"
+              >
+                <X size={16} strokeWidth={2.2} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold text-slate-700">
+                  Název zařízení
+                </span>
+                <input
+                  type="text"
+                  className={fieldClass}
+                  placeholder={passkeyPlatformAvailable ? "Např. iPhone nebo MacBook" : "Např. pracovní notebook"}
+                  value={passkeyName}
+                  onChange={(event) => onPasskeyNameChange(event.target.value.slice(0, 80))}
+                  disabled={passkeyBusy}
+                  maxLength={80}
+                  autoFocus
+                  required
+                />
+              </label>
+
+              <div className="rounded-2xl border border-violet-100 bg-violet-50 px-3 py-3 text-xs leading-relaxed text-violet-900">
+                Po pokračování se otevře systémové ověření pomocí Face ID, Touch ID,
+                otisku prstu nebo PINu zařízení.
+              </div>
+
+              {passkeyCreateAttempted && passkeyStatus ? (
+                <div className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${statusClass(passkeyStatus)}`}>
+                  {passkeyStatus.message}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:flex-row sm:justify-end sm:px-5 sm:py-4">
+              <button
+                type="button"
+                onClick={closePasskeyCreate}
+                disabled={passkeyBusy}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Zrušit
+              </button>
+              <button
+                type="submit"
+                disabled={passkeyBusy || passkeyName.trim().length === 0}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-700 bg-violet-700 px-5 text-sm font-bold text-white shadow-[0_10px_22px_rgba(109,40,217,0.20)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Sparkles size={15} strokeWidth={2.3} aria-hidden="true" />
+                {passkeyBusy ? "Otevírám ověření…" : "Pokračovat k ověření"}
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
     </section>

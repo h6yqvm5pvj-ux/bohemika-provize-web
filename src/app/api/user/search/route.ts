@@ -184,9 +184,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const queryNormalized = normalizeSearch(queryRaw);
+    const includeSelf = req.nextUrl.searchParams.get("includeSelf") === "1";
     const rows = await loadUserDirectoryRows();
     const filtered = rows
-      .filter((row) => row.email !== ctx.email)
+      .filter((row) => includeSelf || row.email !== ctx.email)
       .map((row) => ({
         row,
         score: scoreRow(row, queryRaw, queryNormalized),
