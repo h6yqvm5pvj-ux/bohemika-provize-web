@@ -395,6 +395,11 @@ async function loadMergedUserProfiles(): Promise<
   }));
 }
 
+export async function loadAllBroadcastUserEmails(): Promise<string[]> {
+  const profiles = await loadMergedUserProfiles();
+  return profiles.map(({ email }) => email);
+}
+
 async function loadSingleBroadcastRecipient(email: string): Promise<PushRecipientLoadResult> {
   if (!adminDb) {
     return {

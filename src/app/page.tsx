@@ -729,6 +729,22 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("contacts") !== "1") return;
+
+    setContactsModalOpen(true);
+    url.searchParams.delete("contacts");
+    if (url.searchParams.get("source") === "contact-notification") {
+      url.searchParams.delete("source");
+    }
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, []);
+
+  useEffect(() => {
     if (!authReady) return;
     if (!user) {
       setAccessProfile(null);

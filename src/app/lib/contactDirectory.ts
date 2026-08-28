@@ -245,6 +245,82 @@ export const DEFAULT_DIRECTORY_CONTACTS: DirectoryContact[] = [
   },
 ];
 
+export type ContactDirectoryChangeSummary = {
+  kind: "added" | "updated" | "removed" | "multiple";
+  title: string;
+  message: string;
+  changedCount: number;
+  institutionKey: string | null;
+  contactId: string | null;
+};
+
+const contactDisplayLabel = (contact: DirectoryContact): string =>
+  contact.person ??
+  contact.description ??
+  contact.role ??
+  contact.emails?.[0]?.value ??
+  contact.phone?.display ??
+  "kontakt";
+
+const contactInstitutionLabel = (contact: DirectoryContact): string =>
+  CONTACT_INSTITUTION_BY_KEY.get(contact.institutionKey)?.label ??
+  contact.institutionKey;
+
+export function describeContactDirectoryChange(
+  previousContacts: DirectoryContact[],
+  nextContacts: DirectoryContact[],
+): ContactDirectoryChangeSummary | null {
+  const previousById = new Map(
+    previousContacts.map((contact) => [contact.id, contact]),
+  );
+  const nextById = new Map(nextContacts.map((contact) => [contact.id, contact]));
+  const added = nextContacts.filter(
+    (contact) => !previousById.has(contact.id),
+  );
+  const removed = previousContacts.filter(
+    (contact) => !nextById.has(contact.id),
+  );
+  const updated = nextContacts.filter((contact) => {
+    const previous = previousById.get(contact.id);
+    return previous != null && JSON.stringify(previous) !== JSON.stringify(contact);
+  });
+  const changedCount = added.length + removed.length + updated.length;
+  if (changedCount === 0) return null;
+
+  if (changedCount === 1) {
+    const contact = added[0] ?? updated[0] ?? removed[0];
+    const kind = added.length > 0 ? "added" : updated.length > 0 ? "updated" : "removed";
+    const action =
+      kind === "added"
+        ? "Byl přidán nový kontakt"
+        : kind === "updated"
+          ? "Kontakt byl upraven"
+          : "Kontakt byl odstraněn";
+    return {
+      kind,
+      title: "Změna v kontaktech",
+      message: `${action}: ${contactInstitutionLabel(contact)} – ${contactDisplayLabel(contact)}.`,
+      changedCount,
+      institutionKey: contact.institutionKey,
+      contactId: contact.id,
+    };
+  }
+
+  const parts = [
+    added.length > 0 ? `${added.length} přidáno` : "",
+    updated.length > 0 ? `${updated.length} upraveno` : "",
+    removed.length > 0 ? `${removed.length} odstraněno` : "",
+  ].filter(Boolean);
+  return {
+    kind: "multiple",
+    title: "Změna v kontaktech",
+    message: `Adresář kontaktů byl aktualizován (${parts.join(", ")}).`,
+    changedCount,
+    institutionKey: null,
+    contactId: null,
+  };
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
 

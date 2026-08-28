@@ -3,13 +3,20 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   DEFAULT_DIRECTORY_CONTACTS,
+  describeContactDirectoryChange,
   normalizeDirectoryContacts,
+  type ContactDirectoryChangeSummary,
 } from "@/app/lib/contactDirectory";
+import {
+  loadAllBroadcastUserEmails,
+  sendAdminBroadcastNow,
+} from "@/lib/server/adminBroadcastNotifications";
 import {
   requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { writeMailboxEntries } from "@/lib/server/mailbox";
 import { canManageToolDocuments } from "@/lib/server/toolDocuments";
 
 export const runtime = "nodejs";
@@ -19,6 +26,8 @@ const CONTACT_DIRECTORY_DOCUMENT = "contactDirectory";
 const CONTACTS_RATE_LIMIT = 120;
 const CONTACTS_WRITE_RATE_LIMIT = 30;
 const CONTACTS_WINDOW_MS = 60_000;
+const CONTACTS_DEEP_LINK = "/?contacts=1&source=contact-notification";
+const CONTACTS_MAILBOX_BATCH_SIZE = 400;
 
 const response = (
   payload: Record<string, unknown>,
@@ -47,6 +56,67 @@ async function canManageContacts(ctx: {
   decoded: Record<string, unknown>;
 }) {
   return canManageToolDocuments(ctx);
+}
+
+async function notifyContactDirectoryChange(
+  summary: ContactDirectoryChangeSummary,
+  req: NextRequest,
+  actor: { email: string; uid: string },
+) {
+  const results = await Promise.allSettled([
+    loadAllBroadcastUserEmails().then(async (recipientEmails) => {
+      let firstError: unknown = null;
+      for (
+        let index = 0;
+        index < recipientEmails.length;
+        index += CONTACTS_MAILBOX_BATCH_SIZE
+      ) {
+        try {
+          await writeMailboxEntries({
+            recipientEmails: recipientEmails.slice(
+              index,
+              index + CONTACTS_MAILBOX_BATCH_SIZE,
+            ),
+            type: "contact_directory_update",
+            title: summary.title,
+            body: summary.message,
+            deepLink: CONTACTS_DEEP_LINK,
+            metadata: {
+              changeKind: summary.kind,
+              changedCount: summary.changedCount,
+              institutionKey: summary.institutionKey,
+              contactId: summary.contactId,
+              changedByEmail: actor.email,
+            },
+          });
+        } catch (error) {
+          firstError ??= error;
+        }
+      }
+      if (firstError) throw firstError;
+    }),
+    sendAdminBroadcastNow(
+      {
+        emoji: "📇",
+        title: summary.title,
+        message: summary.message,
+        targetPath: CONTACTS_DEEP_LINK,
+        targetMode: "all",
+        recipientEmail: null,
+        recipientGroup: null,
+        scheduledAtIso: null,
+        scheduledAtMs: null,
+      },
+      { adminEmail: actor.email, adminUid: actor.uid },
+      req,
+    ),
+  ]);
+
+  results.forEach((result) => {
+    if (result.status === "rejected") {
+      console.error("Notifikace o změně kontaktů selhala:", result.reason);
+    }
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -117,6 +187,11 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
+    const previousContacts = await loadStoredContacts();
+    const changeSummary = describeContactDirectoryChange(
+      previousContacts,
+      contacts,
+    );
     await adminDb!
       .collection(CONTACT_DIRECTORY_COLLECTION)
       .doc(CONTACT_DIRECTORY_DOCUMENT)
@@ -126,7 +201,23 @@ export async function PUT(req: NextRequest) {
         updatedByEmail: guard.ctx.email,
       });
 
-    return response({ ok: true, contacts, canManage: true }, 200, guard.ctx);
+    if (changeSummary) {
+      await notifyContactDirectoryChange(changeSummary, req, {
+        email: guard.ctx.email,
+        uid: guard.ctx.uid,
+      });
+    }
+
+    return response(
+      {
+        ok: true,
+        contacts,
+        canManage: true,
+        notificationSent: Boolean(changeSummary),
+      },
+      200,
+      guard.ctx,
+    );
   } catch (error) {
     console.error("PUT /api/contacts selhalo:", error);
     return response(

@@ -471,6 +471,7 @@ const ADMIN_BROADCAST_EMOJI_OPTIONS = ["📣", "🔔", "✅", "⚠️", "🎉", 
 
 const ADMIN_BROADCAST_TARGETS = [
   { path: "/", label: "Domů" },
+  { path: "/?contacts=1&source=contact-notification", label: "Kontakty" },
   { path: "/smlouvy", label: "Smlouvy" },
   { path: "/pomucky", label: "Pomůcky" },
   { path: "/intranet", label: "Intranet" },

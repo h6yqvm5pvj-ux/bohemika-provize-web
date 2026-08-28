@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CONTACT_INSTITUTIONS,
   DEFAULT_DIRECTORY_CONTACTS,
+  describeContactDirectoryChange,
   normalizeDirectoryContacts,
 } from "./contactDirectory";
 
@@ -69,5 +70,31 @@ describe("contactDirectory", () => {
         },
       ]),
     ).toBeNull();
+  });
+
+  it("popíše přidání, úpravu i odstranění kontaktu", () => {
+    const original = {
+      id: "pillow-kam",
+      institutionKey: "pillow",
+      person: "Petr Novák",
+      emails: [{ value: "petr@pillow.cz" }],
+    };
+
+    expect(describeContactDirectoryChange([], [original])).toMatchObject({
+      kind: "added",
+      changedCount: 1,
+      institutionKey: "pillow",
+      message: expect.stringContaining("Pillow – Petr Novák"),
+    });
+    expect(
+      describeContactDirectoryChange([original], [
+        { ...original, person: "Petr Novotný" },
+      ]),
+    ).toMatchObject({ kind: "updated", changedCount: 1 });
+    expect(describeContactDirectoryChange([original], [])).toMatchObject({
+      kind: "removed",
+      changedCount: 1,
+    });
+    expect(describeContactDirectoryChange([original], [original])).toBeNull();
   });
 });
