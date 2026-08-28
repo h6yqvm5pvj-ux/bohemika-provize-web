@@ -1100,7 +1100,10 @@ export default function ToolsPage() {
         <InstitutionPortalLinksModal onClose={() => setLinksModalOpen(false)} />
       )}
       {contactsModalOpen && (
-        <ContactsModal onClose={() => setContactsModalOpen(false)} />
+        <ContactsModal
+          user={user}
+          onClose={() => setContactsModalOpen(false)}
+        />
       )}
       <style jsx global>{`
         body.simple-bg.simple-bg-white .app-content .pomucky-category-badge,

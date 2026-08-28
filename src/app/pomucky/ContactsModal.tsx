@@ -1,39 +1,33 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, useState } from "react";
+import type { User as FirebaseUser } from "firebase/auth";
 import {
   AlertTriangle,
   ArrowLeft,
   ArrowUpRight,
+  Building2,
+  Check,
   Mail,
   MapPin,
+  Pencil,
   Phone,
+  Plus,
+  Save,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 
-type ContactEmail = {
-  value: string;
-  label?: string;
-  cc?: string;
-};
-
-type InstitutionContact = {
-  key: string;
-  institution: string;
-  person?: string;
-  role?: string;
-  description?: string;
-  logoPath: string;
-  accentClass: string;
-  phone?: {
-    display: string;
-    href: string;
-  };
-  emails?: ContactEmail[];
-  notice?: string;
-};
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  CONTACT_INSTITUTION_BY_KEY,
+  CONTACT_INSTITUTIONS,
+  DEFAULT_DIRECTORY_CONTACTS,
+  type ContactEmail,
+  type DirectoryContact,
+} from "@/app/lib/contactDirectory";
 
 type CsobAlternative = {
   name: string;
@@ -45,163 +39,32 @@ type CsobAlternative = {
   email: string;
 };
 
-const CONTACTS: InstitutionContact[] = [
-  {
-    key: "bohemika-pavlina-bartkova",
-    institution: "Bohemika",
-    person: "Bc. Pavlína Bártková",
-    description:
-      "Správa sjednatelů, registrace, pohledávky a požadavky sjednatelů",
-    logoPath: "/icons/bohemika_logo.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(56,189,248,0.16),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(14,165,233,0.08),transparent_42%)]",
-    phone: { display: "+420 603 458 845", href: "+420603458845" },
-    emails: [
-      { value: "pavlina.bartkova@bohemika.eu", label: "Pavlína Bártková" },
-      { value: "pohledavky@bohemika.eu", label: "Pohledávky" },
-    ],
-  },
-  {
-    key: "bohemika-bela-kulhankova",
-    institution: "Bohemika",
-    person: "Běla Kulhánková",
-    description:
-      "Reklamace provizí vůči sjednatelům, zpracování žádostí, elektronizace smluv, bonusové akce a soutěže",
-    logoPath: "/icons/bohemika_logo.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(56,189,248,0.16),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(14,165,233,0.08),transparent_42%)]",
-    phone: { display: "+420 734 353 363", href: "+420734353363" },
-    emails: [{ value: "bela.kulhankova@bohemika.eu" }],
-  },
-  {
-    key: "cpp",
-    institution: "ČPP",
-    person: "Vojtěch Vodička",
-    role: "KAM",
-    logoPath: "/icons/cpp.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(37,99,235,0.13),transparent_44%),radial-gradient(circle_at_8%_92%,rgba(239,68,68,0.09),transparent_42%)]",
-    phone: { display: "+420 734 522 927", href: "+420734522927" },
-    emails: [{ value: "vojtech.vodicka@cpp.cz" }],
-  },
-  {
-    key: "allianz-storno",
-    institution: "Allianz",
-    description: "Storno smluv",
-    logoPath: "/icons/allianz.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(0,102,178,0.15),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(0,70,140,0.07),transparent_42%)]",
-    emails: [{ value: "BO_storno_auta@allianz.cz", label: "Storno smluv" }],
-    notice: "Nesdělovat e-mail klientům, pouze pro interní účely!",
-  },
-  {
-    key: "allianz-metodicka-podpora",
-    institution: "Allianz",
-    description: "Metodická podpora a informace o smlouvách",
-    logoPath: "/icons/allianz.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(0,102,178,0.15),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(0,70,140,0.07),transparent_42%)]",
-    phone: { display: "+420 241 170 000", href: "+420241170000" },
-    emails: [{ value: "info@allianz.cz" }],
-  },
-  {
-    key: "allianz-eliska-stastna",
-    institution: "Allianz",
-    person: "Eliška Šťastná",
-    role: "KAM",
-    logoPath: "/icons/allianz.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(0,102,178,0.15),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(0,70,140,0.07),transparent_42%)]",
-    phone: { display: "+420 731 922 909", href: "+420731922909" },
-    emails: [{ value: "eliska.stastna@allianz.cz" }],
-  },
-  {
-    key: "uniqa",
-    institution: "UNIQA",
-    person: "Luboš Meruňka",
-    role: "KAM",
-    logoPath: "/icons/uniqa.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(168,85,247,0.15),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(236,72,153,0.08),transparent_42%)]",
-    phone: { display: "+420 734 163 979", href: "+420734163979" },
-    emails: [{ value: "lubos.merunka@uniqa.cz" }],
-  },
-  {
-    key: "kooperativa",
-    institution: "Kooperativa",
-    person: "Jiří Kratochvíl",
-    logoPath: "/icons/koop-v2.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(22,163,74,0.14),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(34,197,94,0.08),transparent_42%)]",
-    emails: [
-      { value: "jkratochvil@koop.cz", label: "Jiří Kratochvíl" },
-      {
-        value: "podporasever@koop.cz",
-        label: "Podpora Sever",
-        cc: "jkratochvil@koop.cz",
-      },
-    ],
-    notice:
-      "Při e-mailu na Podporu Sever musí být v kopii také Jiří Kratochvíl. Kliknutím na adresu se kopie doplní automaticky.",
-  },
-  {
-    key: "investika",
-    institution: "iNVESTiKA",
-    person: "Tereza Bartůňková",
-    logoPath: "/icons/invstk.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(250,204,21,0.17),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(71,85,105,0.08),transparent_42%)]",
-    phone: { display: "+420 702 218 819", href: "+420702218819" },
-    emails: [
-      { value: "terezabartunkova@investika.cz", label: "Tereza Bartůňková" },
-      { value: "administrace@investika.cz", label: "Administrace" },
-    ],
-  },
-  {
-    key: "comfort-commodity",
-    institution: "Comfort Commodity",
-    person: "Tereza Mičková",
-    logoPath: "/icons/cclogo.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(159,18,57,0.14),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(202,138,4,0.1),transparent_42%)]",
-    phone: { display: "+420 734 232 022", href: "+420734232022" },
-    emails: [{ value: "info@comfort-commodity.cz" }],
-  },
-  {
-    key: "csob",
-    institution: "ČSOB Pojišťovna",
-    person: "Daniel Vlk",
-    role: "KAM",
-    logoPath: "/icons/csb.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(2,132,199,0.15),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(30,64,175,0.08),transparent_42%)]",
-    phone: { display: "+420 604 293 177", href: "+420604293177" },
-    emails: [{ value: "dvlk@csob.cz" }],
-  },
-  {
-    key: "maxima",
-    institution: "MAXIMA pojišťovna",
-    person: "Alena Zikmundová",
-    logoPath: "/icons/maxima.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(225,29,72,0.14),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(244,63,94,0.08),transparent_42%)]",
-    phone: { display: "+420 736 777 434", href: "+420736777434" },
-    emails: [{ value: "zikmundova@maxima-as.cz" }],
-  },
-  {
-    key: "slavia",
-    institution: "Slavia pojišťovna",
-    logoPath: "/icons/slavialogo.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(234,88,12,0.15),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(251,146,60,0.08),transparent_42%)]",
-    phone: { display: "+420 731 011 598", href: "+420731011598" },
-    emails: [{ value: "Katerina.Kubatova@slavia-pojistovna.cz" }],
-  },
-];
+type ContactDirectoryResponse = {
+  ok?: boolean;
+  contacts?: DirectoryContact[];
+  canManage?: boolean;
+  error?: string;
+};
 
-const INSTITUTION_FILTERS = Array.from(
-  new Set(CONTACTS.map((contact) => contact.institution)),
-);
+type ModalView =
+  | "contacts"
+  | "csob-alternatives"
+  | "institution-picker"
+  | "contact-form";
+
+type ContactDraft = {
+  institutionKey: string;
+  person: string;
+  role: string;
+  description: string;
+  phone: string;
+  email1: string;
+  email1Label: string;
+  email2: string;
+  email2Label: string;
+  email2Cc: string;
+  notice: string;
+};
 
 const CSOB_ALTERNATIVES: CsobAlternative[] = [
   {
@@ -289,16 +152,96 @@ const mailtoHref = ({ value, cc }: ContactEmail): string =>
     ? `mailto:${value}?cc=${encodeURIComponent(cc)}`
     : `mailto:${value}`;
 
-export function ContactsModal({ onClose }: { onClose: () => void }) {
-  const [showCsobAlternatives, setShowCsobAlternatives] = useState(false);
+const emptyDraft = (institutionKey: string): ContactDraft => ({
+  institutionKey,
+  person: "",
+  role: "",
+  description: "",
+  phone: "",
+  email1: "",
+  email1Label: "",
+  email2: "",
+  email2Label: "",
+  email2Cc: "",
+  notice: "",
+});
+
+const draftFromContact = (contact: DirectoryContact): ContactDraft => ({
+  institutionKey: contact.institutionKey,
+  person: contact.person ?? "",
+  role: contact.role ?? "",
+  description: contact.description ?? "",
+  phone: contact.phone?.display ?? "",
+  email1: contact.emails?.[0]?.value ?? "",
+  email1Label: contact.emails?.[0]?.label ?? "",
+  email2: contact.emails?.[1]?.value ?? "",
+  email2Label: contact.emails?.[1]?.label ?? "",
+  email2Cc: contact.emails?.[1]?.cc ?? "",
+  notice: contact.notice ?? "",
+});
+
+const phoneHref = (value: string): string => {
+  const normalized = value.replace(/[^+\d]/g, "");
+  if (/^\d{9}$/.test(normalized)) return `+420${normalized}`;
+  return normalized;
+};
+
+const newContactId = (institutionKey: string): string =>
+  `${institutionKey}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+
+type ContactsModalProps = {
+  onClose: () => void;
+  user: FirebaseUser | null;
+};
+
+export function ContactsModal({ onClose, user }: ContactsModalProps) {
+  const [contacts, setContacts] = useState<DirectoryContact[]>(
+    DEFAULT_DIRECTORY_CONTACTS,
+  );
+  const [view, setView] = useState<ModalView>("contacts");
+  const [formReturnView, setFormReturnView] = useState<ModalView>("contacts");
   const [selectedInstitution, setSelectedInstitution] = useState<string | null>(
     null,
   );
+  const [canManage, setCanManage] = useState(false);
+  const [editingMode, setEditingMode] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<ContactDraft>(() => emptyDraft("pillow"));
+  const [loading, setLoading] = useState(Boolean(user));
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<{
+    tone: "error" | "success";
+    text: string;
+  } | null>(null);
+
+  const institutionsWithContacts = useMemo(
+    () =>
+      CONTACT_INSTITUTIONS.filter((institution) =>
+        contacts.some(
+          (contact) => contact.institutionKey === institution.key,
+        ),
+      ),
+    [contacts],
+  );
+
+  const availableInstitutions = useMemo(
+    () =>
+      CONTACT_INSTITUTIONS.filter(
+        (institution) =>
+          !contacts.some(
+            (contact) => contact.institutionKey === institution.key,
+          ),
+      ),
+    [contacts],
+  );
+
   const visibleContacts = selectedInstitution
-    ? CONTACTS.filter(
-        (contact) => contact.institution === selectedInstitution,
+    ? contacts.filter(
+        (contact) => contact.institutionKey === selectedInstitution,
       )
-    : CONTACTS;
+    : contacts;
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -313,6 +256,224 @@ export function ContactsModal({ onClose }: { onClose: () => void }) {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    void fetchAuthedJsonOrThrow<ContactDirectoryResponse>(
+      user,
+      "/api/contacts",
+      { method: "GET" },
+    )
+      .then((payload) => {
+        if (cancelled) return;
+        if (Array.isArray(payload.contacts)) setContacts(payload.contacts);
+        setCanManage(payload.canManage === true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Načtení adresáře kontaktů selhalo:", error);
+        setStatus({
+          tone: "error",
+          text: "Nepodařilo se načíst aktuální změny. Zobrazují se výchozí kontakty.",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const persistContacts = async (nextContacts: DirectoryContact[]) => {
+    if (!user || !canManage || saving) return false;
+    setSaving(true);
+    setStatus(null);
+    try {
+      const payload = await fetchAuthedJsonOrThrow<ContactDirectoryResponse>(
+        user,
+        "/api/contacts",
+        {
+          method: "PUT",
+          body: JSON.stringify({ contacts: nextContacts }),
+        },
+      );
+      setContacts(
+        Array.isArray(payload.contacts) ? payload.contacts : nextContacts,
+      );
+      setStatus({ tone: "success", text: "Kontakty byly uloženy." });
+      return true;
+    } catch (error) {
+      setStatus({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Změny kontaktů se nepodařilo uložit.",
+      });
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openNewContact = (
+    institutionKey: string,
+    returnView: ModalView = "contacts",
+  ) => {
+    setEditingContactId(null);
+    setDraft(emptyDraft(institutionKey));
+    setFormReturnView(returnView);
+    setStatus(null);
+    setView("contact-form");
+  };
+
+  const openExistingContact = (contact: DirectoryContact) => {
+    setEditingContactId(contact.id);
+    setDraft(draftFromContact(contact));
+    setFormReturnView("contacts");
+    setStatus(null);
+    setView("contact-form");
+  };
+
+  const saveDraft = async () => {
+    const person = draft.person.trim();
+    const role = draft.role.trim();
+    const description = draft.description.trim();
+    const phone = draft.phone.trim();
+    const email1 = draft.email1.trim();
+    const email2 = draft.email2.trim();
+    if (!person && !role && !description) {
+      setStatus({
+        tone: "error",
+        text: "Vyplňte jméno, roli nebo popis kontaktu.",
+      });
+      return;
+    }
+    if (!phone && !email1 && !email2) {
+      setStatus({
+        tone: "error",
+        text: "Vyplňte alespoň telefon nebo e-mail.",
+      });
+      return;
+    }
+
+    const previous = editingContactId
+      ? contacts.find((contact) => contact.id === editingContactId)
+      : null;
+    const emails: ContactEmail[] = [];
+    if (email1) {
+      emails.push({
+        value: email1,
+        ...(draft.email1Label.trim()
+          ? { label: draft.email1Label.trim() }
+          : {}),
+        ...(previous?.emails?.[0]?.value === email1 &&
+        previous.emails[0].cc
+          ? { cc: previous.emails[0].cc }
+          : {}),
+      });
+    }
+    if (email2) {
+      emails.push({
+        value: email2,
+        ...(draft.email2Label.trim()
+          ? { label: draft.email2Label.trim() }
+          : {}),
+        ...(draft.email2Cc.trim() ? { cc: draft.email2Cc.trim() } : {}),
+      });
+    }
+
+    const nextContact: DirectoryContact = {
+      id: editingContactId ?? newContactId(draft.institutionKey),
+      institutionKey: draft.institutionKey,
+      ...(person ? { person } : {}),
+      ...(role ? { role } : {}),
+      ...(description ? { description } : {}),
+      ...(phone
+        ? { phone: { display: phone, href: phoneHref(phone) } }
+        : {}),
+      ...(emails.length > 0 ? { emails } : {}),
+      ...(draft.notice.trim() ? { notice: draft.notice.trim() } : {}),
+    };
+
+    const nextContacts = editingContactId
+      ? contacts.map((contact) =>
+          contact.id === editingContactId ? nextContact : contact,
+        )
+      : [...contacts, nextContact];
+    if (!(await persistContacts(nextContacts))) return;
+
+    setSelectedInstitution(draft.institutionKey);
+    setView("contacts");
+    setEditingContactId(null);
+  };
+
+  const deleteCurrentContact = async () => {
+    if (!editingContactId || saving) return;
+    const contact = contacts.find((item) => item.id === editingContactId);
+    const institution = contact
+      ? CONTACT_INSTITUTION_BY_KEY.get(contact.institutionKey)
+      : null;
+    if (
+      !window.confirm(
+        `Opravdu chcete odstranit tento kontakt${
+          institution ? ` z instituce ${institution.label}` : ""
+        }?`,
+      )
+    ) {
+      return;
+    }
+
+    const nextContacts = contacts.filter(
+      (item) => item.id !== editingContactId,
+    );
+    if (!(await persistContacts(nextContacts))) return;
+
+    const institutionStillExists = nextContacts.some(
+      (item) => item.institutionKey === contact?.institutionKey,
+    );
+    if (!institutionStillExists) setSelectedInstitution(null);
+    setEditingContactId(null);
+    setView("contacts");
+  };
+
+  const showBackButton = view !== "contacts";
+  const title =
+    view === "csob-alternatives"
+      ? "Alternativní kontakty ČSOB"
+      : view === "institution-picker"
+        ? "Přidat instituci"
+        : view === "contact-form"
+          ? editingContactId
+            ? "Upravit kontakt"
+            : "Nový kontakt"
+          : "Kontakty";
+  const subtitle =
+    view === "csob-alternatives"
+      ? "Regionální manažeři a další kontakty, na které se můžete obrátit, pokud Daniel Vlk není dostupný."
+      : view === "institution-picker"
+        ? "Vyberte spolupracující instituci, která zatím v kontaktech není. Logo i vzhled karty se doplní automaticky."
+        : view === "contact-form"
+          ? "Vyplňte obsah kontaktní karty. Povinný je alespoň telefon nebo e-mail."
+          : "Přímé kontakty na obchodní a administrativní podporu partnerských institucí.";
+
+  const returnFromCurrentView = () => {
+    if (view === "contact-form") {
+      setView(formReturnView);
+      setStatus(null);
+      return;
+    }
+    setView("contacts");
+    setStatus(null);
+  };
 
   return (
     <div
@@ -332,11 +493,11 @@ export function ContactsModal({ onClose }: { onClose: () => void }) {
         <header className="relative border-b border-slate-200/90 px-5 py-5 pr-16 sm:px-7 sm:py-6 sm:pr-20">
           <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-violet-200/45 blur-3xl" />
           <div className="relative">
-            {showCsobAlternatives ? (
+            {showBackButton ? (
               <button
                 type="button"
-                onClick={() => setShowCsobAlternatives(false)}
-                className="group inline-flex items-center gap-2 text-sm font-extrabold text-sky-700 transition hover:text-sky-900"
+                onClick={returnFromCurrentView}
+                className="group inline-flex items-center gap-2 text-sm font-extrabold text-violet-700 transition hover:text-violet-950"
               >
                 <ArrowLeft className="h-4 w-4 transition group-hover:-translate-x-0.5" />
                 Zpět na kontakty
@@ -350,14 +511,37 @@ export function ContactsModal({ onClose }: { onClose: () => void }) {
               id="contacts-modal-title"
               className="mt-1.5 text-3xl font-black tracking-[-0.035em] text-slate-950 sm:text-4xl"
             >
-              {showCsobAlternatives ? "Alternativní kontakty ČSOB" : "Kontakty"}
+              {title}
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-              {showCsobAlternatives
-                ? "Regionální manažeři a další kontakty, na které se můžete obrátit, pokud Daniel Vlk není dostupný."
-                : "Přímé kontakty na obchodní a administrativní podporu partnerských institucí."}
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
+              {subtitle}
             </p>
           </div>
+
+          {view === "contacts" && canManage ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingMode((current) => !current);
+                setStatus(null);
+              }}
+              className={`absolute right-[4.4rem] top-4 inline-flex h-11 items-center gap-2 rounded-full border px-4 text-sm font-extrabold shadow-sm transition sm:right-[5.1rem] sm:top-6 ${
+                editingMode
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                  : "border-violet-200 bg-white text-violet-700 hover:border-violet-300 hover:bg-violet-50"
+              }`}
+            >
+              {editingMode ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Pencil className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {editingMode ? "Hotovo" : "Editovat"}
+              </span>
+            </button>
+          ) : null}
+
           <button
             type="button"
             onClick={onClose}
@@ -368,67 +552,249 @@ export function ContactsModal({ onClose }: { onClose: () => void }) {
           </button>
         </header>
 
-        {!showCsobAlternatives ? (
-          <nav
-            className="border-b border-slate-200/80 bg-white/70 px-4 py-3 backdrop-blur-sm sm:px-6"
-            aria-label="Filtrovat kontakty podle instituce"
-          >
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedInstitution(null)}
-                aria-pressed={selectedInstitution === null}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-extrabold transition ${
-                  selectedInstitution === null
-                    ? "border-violet-700 bg-violet-700 text-white shadow-sm"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
-                }`}
-              >
-                Všechny
-                <span
-                  className={`text-[10px] ${
+        {view === "contacts" ? (
+          <>
+            <nav
+              className="border-b border-slate-200/80 bg-white/70 px-4 py-3 backdrop-blur-sm sm:px-6"
+              aria-label="Filtrovat kontakty podle instituce"
+            >
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedInstitution(null)}
+                  aria-pressed={selectedInstitution === null}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-extrabold transition ${
                     selectedInstitution === null
-                      ? "text-violet-100"
-                      : "text-slate-400"
+                      ? "border-violet-700 bg-violet-700 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
                   }`}
                 >
-                  {CONTACTS.length}
-                </span>
-              </button>
-              {INSTITUTION_FILTERS.map((institution) => {
-                const isActive = selectedInstitution === institution;
-                const count = CONTACTS.filter(
-                  (contact) => contact.institution === institution,
-                ).length;
-
-                return (
-                  <button
-                    key={institution}
-                    type="button"
-                    onClick={() => setSelectedInstitution(institution)}
-                    aria-pressed={isActive}
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-extrabold transition ${
-                      isActive
-                        ? "border-violet-700 bg-violet-700 text-white shadow-sm"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
+                  Všechny
+                  <span
+                    className={`text-[10px] ${
+                      selectedInstitution === null
+                        ? "text-violet-100"
+                        : "text-slate-400"
                     }`}
                   >
-                    {institution}
-                    <span
-                      className={`text-[10px] ${
-                        isActive ? "text-violet-100" : "text-slate-400"
+                    {contacts.length}
+                  </span>
+                </button>
+                {institutionsWithContacts.map((institution) => {
+                  const isActive = selectedInstitution === institution.key;
+                  const count = contacts.filter(
+                    (contact) =>
+                      contact.institutionKey === institution.key,
+                  ).length;
+
+                  return (
+                    <button
+                      key={institution.key}
+                      type="button"
+                      onClick={() => setSelectedInstitution(institution.key)}
+                      aria-pressed={isActive}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-extrabold transition ${
+                        isActive
+                          ? "border-violet-700 bg-violet-700 text-white shadow-sm"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
                       }`}
                     >
-                      {count}
-                    </span>
+                      {institution.label}
+                      <span
+                        className={`text-[10px] ${
+                          isActive ? "text-violet-100" : "text-slate-400"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {editingMode ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200/80 pt-3">
+                  <p className="mr-auto text-xs font-semibold text-slate-500">
+                    Režim úprav je aktivní. Kliknutím na tužku upravíte kartu.
+                  </p>
+                  {selectedInstitution ? (
+                    <button
+                      type="button"
+                      onClick={() => openNewContact(selectedInstitution)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-700 transition hover:border-violet-300 hover:bg-violet-50"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Přidat kontakt
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatus(null);
+                      setView("institution-picker");
+                    }}
+                    disabled={availableInstitutions.length === 0}
+                    className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Přidat instituci
                   </button>
+                </div>
+              ) : null}
+
+              {loading ? (
+                <p className="mt-2 text-xs font-semibold text-slate-400">
+                  Načítám aktuální kontakty…
+                </p>
+              ) : null}
+              {status ? (
+                <p
+                  className={`mt-2 text-xs font-bold ${
+                    status.tone === "error"
+                      ? "text-rose-700"
+                      : "text-emerald-700"
+                  }`}
+                  role="status"
+                >
+                  {status.text}
+                </p>
+              ) : null}
+            </nav>
+
+            <div className="grid min-h-0 grid-cols-1 auto-rows-max items-start gap-4 overflow-y-auto p-4 sm:grid-cols-2 sm:p-6">
+              {visibleContacts.map((contact) => {
+                const institution = CONTACT_INSTITUTION_BY_KEY.get(
+                  contact.institutionKey,
+                );
+                if (!institution) return null;
+
+                return (
+                  <article
+                    key={contact.id}
+                    className="relative isolate h-auto min-w-0 overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_18px_36px_rgba(15,23,42,0.12)] sm:p-5"
+                  >
+                    <div
+                      className={`pointer-events-none absolute inset-0 ${institution.accentClass}`}
+                    />
+                    <div className="pointer-events-none absolute -right-8 -top-8 h-48 w-72 opacity-[0.09] mix-blend-multiply sm:-right-5 sm:h-56 sm:w-80">
+                      <Image
+                        src={institution.logoPath}
+                        alt=""
+                        fill
+                        sizes="320px"
+                        className="object-contain"
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="relative">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="pr-4 text-lg font-black tracking-[-0.02em] text-slate-950">
+                          {institution.label}
+                        </h3>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {contact.role ? (
+                            <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-violet-700">
+                              {contact.role}
+                            </span>
+                          ) : null}
+                          {editingMode ? (
+                            <button
+                              type="button"
+                              onClick={() => openExistingContact(contact)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-500 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                              aria-label={`Upravit kontakt ${contact.person ?? institution.label}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      {contact.person ? (
+                        <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-600">
+                          <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
+                          {contact.person}
+                        </p>
+                      ) : null}
+                      {contact.description ? (
+                        <p className="mt-2 text-xs font-medium leading-5 text-slate-500">
+                          {contact.description}
+                        </p>
+                      ) : null}
+
+                      <div className="mt-4 space-y-1">
+                        {contact.phone ? (
+                          <a
+                            href={`tel:${contact.phone.href}`}
+                            className="group flex min-h-9 items-center gap-2.5 py-1 text-sm font-bold text-slate-700 transition hover:text-violet-800"
+                          >
+                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-slate-500 transition group-hover:text-violet-700">
+                              <Phone className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              {contact.phone.display}
+                            </span>
+                            <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-violet-500" />
+                          </a>
+                        ) : null}
+
+                        {contact.emails?.map((email) => (
+                          <a
+                            key={`${email.value}-${email.label ?? ""}`}
+                            href={mailtoHref(email)}
+                            className="group flex min-h-9 items-center gap-2.5 py-1 text-slate-700 transition hover:text-violet-800"
+                          >
+                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-slate-500 transition group-hover:text-violet-700">
+                              <Mail className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              {email.label ? (
+                                <span className="block text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                  {email.label}
+                                </span>
+                              ) : null}
+                              <span className="block break-all text-xs font-bold sm:text-[13px]">
+                                {email.value}
+                              </span>
+                            </span>
+                            <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-violet-500" />
+                          </a>
+                        ))}
+                      </div>
+
+                      {contact.id === "csob" ? (
+                        <div className="mt-3 border-t border-sky-200/80 pt-3">
+                          <p className="text-xs font-bold leading-5 text-slate-600">
+                            V případě, že se nemůžete dovolat Vlkovi
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStatus(null);
+                              setView("csob-alternatives");
+                            }}
+                            className="group mt-2 inline-flex items-center gap-2 rounded-xl bg-sky-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-sky-800 hover:shadow-md"
+                          >
+                            Zobrazit alternativy
+                            <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {contact.notice ? (
+                        <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold leading-5 text-amber-950">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                          <p>{contact.notice}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
                 );
               })}
             </div>
-          </nav>
+          </>
         ) : null}
 
-        {showCsobAlternatives ? (
+        {view === "csob-alternatives" ? (
           <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
             <div className="relative isolate overflow-hidden rounded-[24px] border border-sky-200 bg-white p-4 shadow-[0_16px_40px_rgba(3,105,161,0.1)] sm:p-5">
               <div className="pointer-events-none absolute -right-10 -top-10 h-56 w-80 opacity-[0.07] mix-blend-multiply">
@@ -475,112 +841,316 @@ export function ContactsModal({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           </div>
-        ) : (
-        <div className="grid min-h-0 grid-cols-1 auto-rows-max items-start gap-4 overflow-y-auto p-4 sm:grid-cols-2 sm:p-6">
-          {visibleContacts.map((contact) => (
-            <article
-              key={contact.key}
-              className="relative isolate h-auto min-w-0 overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_18px_36px_rgba(15,23,42,0.12)] sm:p-5"
-            >
-              <div className={`pointer-events-none absolute inset-0 ${contact.accentClass}`} />
-              <div className="pointer-events-none absolute -right-8 -top-8 h-48 w-72 opacity-[0.09] mix-blend-multiply sm:-right-5 sm:h-56 sm:w-80">
-                <Image
-                  src={contact.logoPath}
-                  alt=""
-                  fill
-                  sizes="320px"
-                  className="object-contain"
-                  aria-hidden="true"
-                />
+        ) : null}
+
+        {view === "institution-picker" ? (
+          <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
+            {availableInstitutions.length > 0 ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {availableInstitutions.map((institution) => (
+                  <button
+                    key={institution.key}
+                    type="button"
+                    onClick={() =>
+                      openNewContact(institution.key, "institution-picker")
+                    }
+                    className="group relative isolate min-h-36 overflow-hidden rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_18px_36px_rgba(15,23,42,0.13)]"
+                  >
+                    <div
+                      className={`pointer-events-none absolute inset-0 ${institution.accentClass}`}
+                    />
+                    <div className="pointer-events-none absolute -right-8 -top-8 h-44 w-64 opacity-[0.13] mix-blend-multiply transition group-hover:scale-105 group-hover:opacity-[0.18]">
+                      <Image
+                        src={institution.logoPath}
+                        alt=""
+                        fill
+                        sizes="256px"
+                        className="object-contain"
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <div className="relative flex h-full flex-col justify-between gap-8">
+                      <h3 className="max-w-[75%] text-xl font-black tracking-[-0.02em] text-slate-950">
+                        {institution.label}
+                      </h3>
+                      <span className="inline-flex w-fit items-center gap-2 rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white shadow-sm">
+                        <Plus className="h-4 w-4" />
+                        Vybrat instituci
+                      </span>
+                    </div>
+                  </button>
+                ))}
               </div>
-              <div className="relative">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="pr-4 text-lg font-black tracking-[-0.02em] text-slate-950">
-                    {contact.institution}
-                  </h3>
-                  {contact.role ? (
-                    <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-violet-700">
-                      {contact.role}
-                    </span>
-                  ) : null}
-                </div>
-                {contact.person ? (
-                  <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-600">
-                    <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
-                    {contact.person}
-                  </p>
-                ) : null}
-                {contact.description ? (
-                  <p className="mt-2 text-xs font-medium leading-5 text-slate-500">
-                    {contact.description}
-                  </p>
-                ) : null}
-
-                <div className="mt-4 space-y-1">
-                  {contact.phone ? (
-                    <a
-                      href={`tel:${contact.phone.href}`}
-                      className="group flex min-h-9 items-center gap-2.5 py-1 text-sm font-bold text-slate-700 transition hover:text-violet-800"
-                    >
-                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-slate-500 transition group-hover:text-violet-700">
-                        <Phone className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">{contact.phone.display}</span>
-                      <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-violet-500" />
-                    </a>
-                  ) : null}
-
-                  {contact.emails?.map((email) => (
-                    <a
-                      key={email.value}
-                      href={mailtoHref(email)}
-                      className="group flex min-h-9 items-center gap-2.5 py-1 text-slate-700 transition hover:text-violet-800"
-                    >
-                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-slate-500 transition group-hover:text-violet-700">
-                        <Mail className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        {email.label ? (
-                          <span className="block text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                            {email.label}
-                          </span>
-                        ) : null}
-                        <span className="block break-all text-xs font-bold sm:text-[13px]">
-                          {email.value}
-                        </span>
-                      </span>
-                      <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-violet-500" />
-                    </a>
-                  ))}
-                </div>
-
-                {contact.key === "csob" ? (
-                  <div className="mt-3 border-t border-sky-200/80 pt-3">
-                    <p className="text-xs font-bold leading-5 text-slate-600">
-                      V případě, že se nemůžete dovolat Vlkovi
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setShowCsobAlternatives(true)}
-                      className="group mt-2 inline-flex items-center gap-2 rounded-xl bg-sky-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-sky-800 hover:shadow-md"
-                    >
-                      Zobrazit alternativy
-                      <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                    </button>
-                  </div>
-                ) : null}
-
-                {contact.notice ? (
-                  <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold leading-5 text-amber-950">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                    <p>{contact.notice}</p>
-                  </div>
-                ) : null}
+            ) : (
+              <div className="rounded-[22px] border border-slate-200 bg-white p-8 text-center shadow-sm">
+                <Check className="mx-auto h-10 w-10 text-emerald-600" />
+                <h3 className="mt-3 text-lg font-black text-slate-950">
+                  Všechny instituce už jsou přidané
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  Další kartu přidáte po výběru instituce ve filtrech.
+                </p>
               </div>
-            </article>
-          ))}
-        </div>
-        )}
+            )}
+          </div>
+        ) : null}
+
+        {view === "contact-form" ? (
+          <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
+            {(() => {
+              const institution = CONTACT_INSTITUTION_BY_KEY.get(
+                draft.institutionKey,
+              );
+              if (!institution) return null;
+
+              const inputClass =
+                "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100";
+
+              return (
+                <div className="relative isolate overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.09)] sm:p-6">
+                  <div
+                    className={`pointer-events-none absolute inset-0 ${institution.accentClass}`}
+                  />
+                  <div className="pointer-events-none absolute -right-8 -top-10 h-52 w-80 opacity-[0.08] mix-blend-multiply">
+                    <Image
+                      src={institution.logoPath}
+                      alt=""
+                      fill
+                      sizes="320px"
+                      className="object-contain"
+                      aria-hidden="true"
+                    />
+                  </div>
+
+                  <form
+                    className="relative"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void saveDraft();
+                    }}
+                  >
+                    <div className="mb-5 flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">
+                          Instituce
+                        </p>
+                        <h3 className="mt-1 text-2xl font-black tracking-[-0.025em] text-slate-950">
+                          {institution.label}
+                        </h3>
+                      </div>
+                      <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-bold text-slate-500">
+                        {editingContactId ? "Úprava karty" : "Nová karta"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <label className="text-xs font-black text-slate-600">
+                        Jméno / kontaktní osoba
+                        <input
+                          value={draft.person}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              person: event.target.value,
+                            }))
+                          }
+                          maxLength={120}
+                          placeholder="např. Jana Nováková"
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="text-xs font-black text-slate-600">
+                        Role / štítek
+                        <input
+                          value={draft.role}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              role: event.target.value,
+                            }))
+                          }
+                          maxLength={80}
+                          placeholder="např. KAM"
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="text-xs font-black text-slate-600 sm:col-span-2">
+                        Agenda / popis
+                        <textarea
+                          value={draft.description}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              description: event.target.value,
+                            }))
+                          }
+                          maxLength={500}
+                          rows={2}
+                          placeholder="Co tento kontakt řeší"
+                          className={`${inputClass} resize-y`}
+                        />
+                      </label>
+                      <label className="text-xs font-black text-slate-600">
+                        Telefon
+                        <input
+                          value={draft.phone}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              phone: event.target.value,
+                            }))
+                          }
+                          maxLength={40}
+                          inputMode="tel"
+                          placeholder="+420 123 456 789"
+                          className={inputClass}
+                        />
+                      </label>
+                      <div className="hidden sm:block" />
+                      <label className="text-xs font-black text-slate-600">
+                        První e-mail
+                        <input
+                          type="email"
+                          value={draft.email1}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              email1: event.target.value,
+                            }))
+                          }
+                          maxLength={180}
+                          placeholder="kontakt@instituce.cz"
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="text-xs font-black text-slate-600">
+                        Popisek prvního e-mailu
+                        <input
+                          value={draft.email1Label}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              email1Label: event.target.value,
+                            }))
+                          }
+                          maxLength={80}
+                          placeholder="např. Administrace"
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="text-xs font-black text-slate-600">
+                        Druhý e-mail
+                        <input
+                          type="email"
+                          value={draft.email2}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              email2: event.target.value,
+                            }))
+                          }
+                          maxLength={180}
+                          placeholder="podpora@instituce.cz"
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="text-xs font-black text-slate-600">
+                        Popisek druhého e-mailu
+                        <input
+                          value={draft.email2Label}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              email2Label: event.target.value,
+                            }))
+                          }
+                          maxLength={80}
+                          placeholder="např. Podpora"
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="text-xs font-black text-slate-600 sm:col-span-2">
+                        Automaticky přidat do kopie (CC)
+                        <input
+                          type="email"
+                          value={draft.email2Cc}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              email2Cc: event.target.value,
+                            }))
+                          }
+                          maxLength={180}
+                          placeholder="volitelné — vztahuje se ke druhému e-mailu"
+                          className={inputClass}
+                        />
+                      </label>
+                      <label className="text-xs font-black text-slate-600 sm:col-span-2">
+                        Důležité upozornění
+                        <textarea
+                          value={draft.notice}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              notice: event.target.value,
+                            }))
+                          }
+                          maxLength={500}
+                          rows={2}
+                          placeholder="Volitelné upozornění zobrazené ve žlutém boxu"
+                          className={`${inputClass} resize-y`}
+                        />
+                      </label>
+                    </div>
+
+                    {status ? (
+                      <p
+                        className={`mt-4 text-sm font-bold ${
+                          status.tone === "error"
+                            ? "text-rose-700"
+                            : "text-emerald-700"
+                        }`}
+                        role="status"
+                      >
+                        {status.text}
+                      </p>
+                    ) : null}
+
+                    <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5">
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-violet-800 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <Save className="h-4 w-4" />
+                        {saving ? "Ukládám…" : "Uložit kontakt"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={returnFromCurrentView}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Zrušit
+                      </button>
+                      {editingContactId ? (
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => void deleteCurrentContact()}
+                          className="ml-auto inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Odstranit kartu
+                        </button>
+                      ) : null}
+                    </div>
+                  </form>
+                </div>
+              );
+            })()}
+          </div>
+        ) : null}
       </section>
     </div>
   );

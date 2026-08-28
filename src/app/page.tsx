@@ -13,6 +13,7 @@ import {
   Radar,
   RefreshCw,
   SlidersHorizontal,
+  Smartphone,
   Target,
   Trophy,
   WalletCards,
@@ -120,6 +121,11 @@ const InstitutionPortalLinksModal = dynamic(
     import("./pomucky/InstitutionPortalLinksModal").then(
       (mod) => mod.InstitutionPortalLinksModal
     ),
+  { ssr: false }
+);
+const ContactsModal = dynamic(
+  () =>
+    import("./pomucky/ContactsModal").then((mod) => mod.ContactsModal),
   { ssr: false }
 );
 
@@ -607,6 +613,7 @@ export default function HomePage() {
   const [subPickerOpen, setSubPickerOpen] = useState(false);
   const [subSearch, setSubSearch] = useState("");
   const [portalLinksModalOpen, setPortalLinksModalOpen] = useState(false);
+  const [contactsModalOpen, setContactsModalOpen] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [accessProfileReady, setAccessProfileReady] = useState(false);
   const [accessProfileError, setAccessProfileError] = useState<string | null>(null);
@@ -1681,6 +1688,12 @@ export default function HomePage() {
       {portalLinksModalOpen && (
         <InstitutionPortalLinksModal onClose={() => setPortalLinksModalOpen(false)} />
       )}
+      {contactsModalOpen && (
+        <ContactsModal
+          user={user}
+          onClose={() => setContactsModalOpen(false)}
+        />
+      )}
       <div className="relative isolate w-full overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_52%,#f8fafc_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <HomeBackgroundLines />
         <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
@@ -1712,6 +1725,17 @@ export default function HomePage() {
             >
               <Globe2 size={20} aria-hidden="true" />
               <span>Portály</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setContactsModalOpen(true)}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-cyan-600 bg-gradient-to-br from-cyan-500 to-sky-700 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(8,145,178,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
+              aria-label="Kontakty"
+              title="Kontakty"
+            >
+              <Smartphone size={20} aria-hidden="true" />
+              <span>Kontakty</span>
             </button>
 
             <Link
