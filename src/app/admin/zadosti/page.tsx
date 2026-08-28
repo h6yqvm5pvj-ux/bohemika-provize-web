@@ -490,6 +490,7 @@ const ADMIN_BROADCAST_TOOL_TARGETS = [
   { path: "/pomucky/zaznam", label: "Záznam z jednání" },
   { path: "/pomucky/vypoved-smlouvy", label: "Výpověď smlouvy" },
   { path: "/pomucky/jak-stiham-vypoved-smlouvy", label: "Jak stíhám výpověď smlouvy?" },
+  { path: "/pomucky/nahrada-smlouvy", label: "Náhrada smlouvy" },
   { path: "/pomucky/tvorba", label: "Tvorba PDF" },
   { path: "/pomucky/ai-asistent", label: "AI Asistent" },
   { path: "/nastaveni?tab=onlineCard", label: "Online Vizitka" },

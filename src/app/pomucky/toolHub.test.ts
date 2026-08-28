@@ -9,6 +9,7 @@ import {
 describe("tool hub usage helpers", () => {
   it("accepts only catalogued tool keys", () => {
     expect(isToolHubToolKey("radar-vyroci")).toBe(true);
+    expect(isToolHubToolKey("nahrada-smlouvy")).toBe(true);
     expect(isToolHubToolKey("../admin")).toBe(false);
     expect(isToolHubToolKey(123)).toBe(false);
   });
@@ -67,5 +68,47 @@ describe("tool hub usage helpers", () => {
         "popular"
       )
     ).toBeGreaterThan(0);
+  });
+
+  it("can pin favorites before alphabetical results", () => {
+    expect(
+      compareToolHubUsage(
+        {
+          personalOpens: 10,
+          globalOpens: 10,
+          lastOpenedAtMs: 10,
+          favorite: false,
+        },
+        {
+          personalOpens: 0,
+          globalOpens: 0,
+          lastOpenedAtMs: null,
+          favorite: true,
+        },
+        "alphabetical",
+        true
+      )
+    ).toBeGreaterThan(0);
+  });
+
+  it("can ignore favorites when sorting inside a category", () => {
+    expect(
+      compareToolHubUsage(
+        {
+          personalOpens: 10,
+          globalOpens: 10,
+          lastOpenedAtMs: 10,
+          favorite: false,
+        },
+        {
+          personalOpens: 0,
+          globalOpens: 0,
+          lastOpenedAtMs: 1,
+          favorite: true,
+        },
+        "personal",
+        false
+      )
+    ).toBeLessThan(0);
   });
 });

@@ -58,6 +58,11 @@ type GlobalSearchCommandProps = {
 
 const TOOL_RESULTS = [
   {
+    title: "Náhrada smlouvy",
+    description: "Převod pojistného, doplatek nebo přeplatek",
+    href: "/pomucky/nahrada-smlouvy",
+  },
+  {
     title: "ČPP vs. Kooperativa vs. AXA — cestovní pojištění",
     description: "Srovnání variant, limitů a výluk cestovního pojištění",
     href: "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",

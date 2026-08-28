@@ -424,6 +424,7 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "argumenty", title: "Argumenty", href: "/pomucky/argumenty", category: "Obecné" },
   { key: "dokumenty", title: "Dokumenty", href: "/pomucky/dokumenty", category: "Obecné" },
   { key: "zaznam", title: "Záznam z jednání", href: "/pomucky/zaznam", category: "Obecné" },
+  { key: "nahrada-smlouvy", title: "Náhrada smlouvy", href: "/pomucky/nahrada-smlouvy", category: "Obecné" },
   { key: "tvorba", title: "Tvorba", href: "/pomucky/tvorba", category: "Obecné" },
   { key: "ai-asistent", title: "AI Asistent", href: "/pomucky/ai-asistent", category: "Obecné" },
   { key: "hypoteka-vlastni-zdroje", title: "Hypotéka: vlastní zdroje", href: "/pomucky/hypoteka-vlastni-zdroje", category: "Investice" },

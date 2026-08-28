@@ -32,6 +32,7 @@ import {
   Plane,
   PenTool,
   PiggyBank,
+  RefreshCcw,
   Scale,
   ScrollText,
   Search,
@@ -376,79 +377,6 @@ function ToolCardContent({ tool }: { tool: Tool }) {
   );
 }
 
-function QuickAccessTool({
-  tool,
-  favorite,
-  onOpen,
-}: {
-  tool: Tool;
-  favorite: boolean;
-  onOpen: (toolKey: ToolHubToolKey) => void;
-}) {
-  const Icon = tool.icon;
-  const className =
-    "group inline-flex min-w-[220px] flex-1 items-center gap-3 rounded-2xl border border-violet-200/80 bg-white px-3 py-3 text-left shadow-[0_10px_26px_rgba(88,28,135,0.09)] transition hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-[0_16px_34px_rgba(88,28,135,0.14)]";
-  const content = (
-    <>
-      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_8px_18px_rgba(109,40,217,0.28)]">
-        <Icon className="h-4.5 w-4.5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-bold text-slate-950">
-          {tool.title}
-        </span>
-        <span className="mt-0.5 block text-[11px] font-semibold uppercase tracking-[0.1em] text-violet-700">
-          {favorite ? "Oblíbené" : "Naposledy použité"}
-        </span>
-      </span>
-      {favorite ? (
-        <Star className="h-4 w-4 shrink-0 fill-amber-300 text-amber-500" />
-      ) : (
-        <Clock3 className="h-4 w-4 shrink-0 text-slate-400" />
-      )}
-    </>
-  );
-
-  if (tool.onClick) {
-    return (
-      <button
-        type="button"
-        className={className}
-        onClick={() => {
-          onOpen(tool.key);
-          tool.onClick?.();
-        }}
-      >
-        {content}
-      </button>
-    );
-  }
-
-  if (tool.external) {
-    return (
-      <a
-        href={tool.href ?? "#"}
-        target="_blank"
-        rel="noreferrer"
-        className={className}
-        onClick={() => onOpen(tool.key)}
-      >
-        {content}
-      </a>
-    );
-  }
-
-  return (
-    <Link
-      href={tool.href ?? "#"}
-      className={className}
-      onClick={() => onOpen(tool.key)}
-    >
-      {content}
-    </Link>
-  );
-}
-
 export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
@@ -556,6 +484,14 @@ export default function ToolsPage() {
         description: "Ověření výpovědních lhůt a výpočet data ukončení smlouvy.",
         icon: Clock3,
         href: "/pomucky/jak-stiham-vypoved-smlouvy",
+      },
+      {
+        key: "nahrada-smlouvy",
+        category: "Obecné",
+        title: "Náhrada smlouvy",
+        description: "Výpočet převodu nevyčerpaného pojistného a doplatku nebo přeplatku.",
+        icon: RefreshCcw,
+        href: "/pomucky/nahrada-smlouvy",
       },
       {
         key: "radar-vyroci",
@@ -817,36 +753,6 @@ export default function ToolsPage() {
     [effectiveEmail, favoritePendingKeys, usageByKey, user]
   );
 
-  const favoriteTools = useMemo(
-    () =>
-      tools
-        .filter((tool) => usageByKey[tool.key]?.favorite === true)
-        .sort(
-          (a, b) =>
-            (usageByKey[b.key]?.lastOpenedAtMs ?? 0) -
-              (usageByKey[a.key]?.lastOpenedAtMs ?? 0) ||
-            a.title.localeCompare(b.title, "cs")
-        ),
-    [tools, usageByKey]
-  );
-
-  const recentTools = useMemo(
-    () =>
-      tools
-        .filter(
-          (tool) =>
-            !usageByKey[tool.key]?.favorite &&
-            (usageByKey[tool.key]?.lastOpenedAtMs ?? 0) > 0
-        )
-        .sort(
-          (a, b) =>
-            (usageByKey[b.key]?.lastOpenedAtMs ?? 0) -
-            (usageByKey[a.key]?.lastOpenedAtMs ?? 0)
-        )
-        .slice(0, 6),
-    [tools, usageByKey]
-  );
-
   const filterCounts = useMemo(() => {
     const normalizedQuery = normalizeSearchValue(searchQuery);
     const counts = Object.fromEntries(FILTERS.map((filter) => [filter, 0])) as Record<FilterKey, number>;
@@ -877,7 +783,8 @@ export default function ToolsPage() {
         const usageDiff = compareToolHubUsage(
           usageByKey[a.key],
           usageByKey[b.key],
-          sortMode
+          sortMode,
+          activeFilter === "Všechny"
         );
         if (usageDiff !== 0) return usageDiff;
 
@@ -971,43 +878,6 @@ export default function ToolsPage() {
             </div>
           </nav>
 
-          {favoriteTools.length > 0 || recentTools.length > 0 ? (
-            <section className="overflow-hidden rounded-[24px] border border-violet-200/80 bg-[linear-gradient(145deg,#ffffff_0%,#fbf8ff_55%,#f5f3ff_100%)] p-3.5 shadow-[0_18px_44px_rgba(88,28,135,0.1)] sm:p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-violet-700">
-                    Rychlý přístup
-                  </p>
-                  <h2 className="mt-0.5 text-lg font-bold text-slate-950">
-                    Oblíbené a naposledy použité
-                  </h2>
-                </div>
-                <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-[11px] font-semibold text-violet-800">
-                  Jen pro tento účet
-                </span>
-              </div>
-
-              <div className="flex gap-2.5 overflow-x-auto pb-1">
-                {favoriteTools.slice(0, 8).map((tool) => (
-                  <QuickAccessTool
-                    key={`favorite-${tool.key}`}
-                    tool={tool}
-                    favorite
-                    onOpen={recordToolOpen}
-                  />
-                ))}
-                {recentTools.map((tool) => (
-                  <QuickAccessTool
-                    key={`recent-${tool.key}`}
-                    tool={tool}
-                    favorite={false}
-                    onOpen={recordToolOpen}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
-
           <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200/85 bg-white/90 px-3.5 py-3 shadow-[0_10px_26px_rgba(15,23,42,0.06)] sm:px-4">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">
@@ -1015,10 +885,16 @@ export default function ToolsPage() {
               </p>
               <p className="mt-0.5 text-sm text-slate-600">
                 {sortMode === "personal"
-                  ? "Oblíbené a tvoje naposledy používané nástroje jsou první."
+                  ? activeFilter === "Všechny"
+                    ? "Oblíbené pomůcky jsou vždy první, ostatní řadíme podle tvého používání."
+                    : "Pořadí vychází z tvého používání pomůcek v této kategorii."
                   : sortMode === "popular"
-                    ? "Pořadí vychází z anonymního celkového počtu otevření."
-                    : "Pomůcky jsou seřazené podle názvu."}
+                    ? activeFilter === "Všechny"
+                      ? "Oblíbené pomůcky jsou vždy první, ostatní podle celkového počtu otevření."
+                      : "Pořadí vychází z anonymního celkového počtu otevření."
+                    : activeFilter === "Všechny"
+                      ? "Oblíbené pomůcky jsou vždy první, ostatní jsou seřazené podle názvu."
+                      : "Pomůcky jsou seřazené podle názvu."}
               </p>
             </div>
             <div className="flex max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 p-1.5">

@@ -4,6 +4,7 @@ export const TOOL_HUB_TOOL_KEYS = [
   "zaznam",
   "vypoved-smlouvy",
   "jak-stiham-vypoved-smlouvy",
+  "nahrada-smlouvy",
   "radar-vyroci",
   "tvorba",
   "ai-asistent",
@@ -64,12 +65,17 @@ export const normalizeToolHubUsageMetric = (
 export const compareToolHubUsage = (
   leftRaw: ToolHubUsageMetric | undefined,
   rightRaw: ToolHubUsageMetric | undefined,
-  mode: ToolHubSortMode
+  mode: ToolHubSortMode,
+  prioritizeFavorites = mode === "personal"
 ): number => {
-  if (mode === "alphabetical") return 0;
-
   const left = normalizeToolHubUsageMetric(leftRaw);
   const right = normalizeToolHubUsageMetric(rightRaw);
+  const favoriteDiff = prioritizeFavorites
+    ? Number(right.favorite) - Number(left.favorite)
+    : 0;
+  if (favoriteDiff !== 0) return favoriteDiff;
+
+  if (mode === "alphabetical") return 0;
 
   if (mode === "popular") {
     return (
@@ -80,7 +86,6 @@ export const compareToolHubUsage = (
   }
 
   return (
-    Number(right.favorite) - Number(left.favorite) ||
     (right.lastOpenedAtMs ?? 0) - (left.lastOpenedAtMs ?? 0) ||
     right.personalOpens - left.personalOpens ||
     right.globalOpens - left.globalOpens

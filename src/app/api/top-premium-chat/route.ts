@@ -140,6 +140,20 @@ const WEBSITE_FEATURES: WebsiteFeature[] = [
     keywords: ["pomucky", "nastroje", "tooly", "argumenty", "dokumenty"],
   },
   {
+    id: "nahrada-smlouvy",
+    title: "Náhrada smlouvy",
+    path: "/pomucky/nahrada-smlouvy",
+    summary:
+      "Kalkulačka převodu nevyčerpaného pojistného z původní smlouvy a doplatku nebo přeplatku na nové smlouvě.",
+    keywords: [
+      "nahrada smlouvy",
+      "prevod pojistneho",
+      "preplatek pojistneho",
+      "doplatek pojistneho",
+      "nevycerpane pojistne",
+    ],
+  },
+  {
     id: "ai-asistent",
     title: "AI Asistent",
     path: "/pomucky/ai-asistent",
