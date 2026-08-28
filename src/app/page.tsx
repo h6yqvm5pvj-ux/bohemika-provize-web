@@ -126,6 +126,8 @@ const InstitutionPortalLinksModal = dynamic(
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
+const TEAM_ONLY_PRODUCTION_EMAILS = new Set(["petr.rauscher@bohemika.eu"]);
+
 const resolveEffectiveAdvisorEmail = (
   user: FirebaseUser | null,
   profile: Record<string, unknown> | null
@@ -616,6 +618,9 @@ export default function HomePage() {
     () => resolveEffectiveAdvisorEmail(user, accessProfile),
     [accessProfile, user]
   );
+  const showOnlyTeamProduction =
+    effectiveAdvisorEmail != null &&
+    TEAM_ONLY_PRODUCTION_EMAILS.has(effectiveAdvisorEmail);
   const copy = HOME_COPY[language];
   const accountType = useMemo(() => resolveAccountType(accessProfile), [accessProfile]);
   const shouldLoadAdvisorHome =
@@ -1101,7 +1106,8 @@ export default function HomePage() {
   const hasTipContract = myTipContractsCount > 0;
   // Poradce bez týmu potřebuje plnou šířku až ve chvíli, kdy vedle vlastní
   // produkce zobrazujeme také samostatnou kartu tipařské produkce.
-  const shouldExpandProductionSummary = showTeamBox || hasTipContract;
+  const shouldExpandProductionSummary =
+    !showOnlyTeamProduction && (showTeamBox || hasTipContract);
 
   const baseProduction = myImmediateSum;
   const prevBaseProduction = myImmediatePrevSum;
@@ -1207,6 +1213,7 @@ export default function HomePage() {
             language={language}
             loading={summaryLoading}
             showTeamBox={showTeamBox}
+            showOnlyTeamProduction={showOnlyTeamProduction}
             myContractsCount={myContractsCount}
             myImmediateSum={myImmediateSum}
             myImmediatePrevSum={myImmediatePrevSum}

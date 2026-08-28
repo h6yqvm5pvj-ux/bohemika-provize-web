@@ -63,10 +63,34 @@ const dateFormatter = new Intl.DateTimeFormat("cs-CZ", {
   timeZone: "UTC",
 });
 
+const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "Europe/Prague",
+});
+
 const formatMoney = (value: number): string => moneyFormatter.format(value);
 
 const formatDate = (value: string): string =>
   dateFormatter.format(new Date(`${value}T12:00:00.000Z`));
+
+const getPragueTodayIso = (): string => {
+  const parts = Object.fromEntries(
+    pragueDateFormatter
+      .formatToParts(new Date())
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+const dayCountLabel = (value: number): string => {
+  const absoluteValue = Math.abs(value);
+  if (absoluteValue === 1) return "den";
+  if (absoluteValue >= 2 && absoluteValue <= 4) return "dny";
+  return "dní";
+};
 
 const parseAmount = (value: string): number | null => {
   const normalized = value.replace(/\s/g, "").replace(",", ".");
@@ -205,6 +229,7 @@ function ContractCard({
 
 export default function ContractReplacementPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [referenceDate] = useState(getPragueTodayIso);
   const originalPremium = parseAmount(form.originalPremium);
   const replacementPremium = parseAmount(form.replacementPremium);
   const hasAllInputs =
@@ -220,12 +245,14 @@ export default function ContractReplacementPage() {
     return calculateReplacement({
       originalStartDate: form.originalStartDate,
       replacementStartDate: form.replacementStartDate,
+      referenceDate,
       originalPremium,
       originalFrequency: form.originalFrequency,
       replacementPremium,
       replacementFrequency: form.replacementFrequency,
     });
-  }, [form, hasAllInputs, originalPremium, replacementPremium]);
+  }, [form, hasAllInputs, originalPremium, referenceDate, replacementPremium]);
+  const elapsedSharePercent = result?.ok ? (1 - result.unusedShare) * 100 : 0;
 
   const setField = <Key extends keyof FormState>(key: Key, value: FormState[Key]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -274,40 +301,31 @@ export default function ContractReplacementPage() {
             </div>
           </section>
 
-          <section className="relative rounded-[32px] border border-violet-100 bg-[linear-gradient(180deg,rgba(250,250,255,0.98)_0%,rgba(245,243,255,0.92)_100%)] p-3 shadow-[0_24px_70px_rgba(88,28,135,0.1)] sm:p-5">
-            <div className="mb-4 flex items-start gap-2 rounded-2xl border border-cyan-200 bg-cyan-50/80 px-4 py-3 text-sm font-semibold leading-6 text-cyan-950">
-              <Info className="mt-0.5 h-4.5 w-4.5 shrink-0" strokeWidth={2.2} />
-              <p>
-                Obě smlouvy se počítají jako roční. Frekvence určuje pouze výši a
-                délku jedné platby — měsíční, čtvrtletní, pololetní nebo roční.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
-              <ContractCard
-                kind="original"
-                date={form.originalStartDate}
-                premium={form.originalPremium}
-                frequency={form.originalFrequency}
-                onDateChange={(value) => setField("originalStartDate", value)}
-                onPremiumChange={(value) => setField("originalPremium", value)}
-                onFrequencyChange={(value) => setField("originalFrequency", value)}
-              />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
+            <ContractCard
+              kind="original"
+              date={form.originalStartDate}
+              premium={form.originalPremium}
+              frequency={form.originalFrequency}
+              onDateChange={(value) => setField("originalStartDate", value)}
+              onPremiumChange={(value) => setField("originalPremium", value)}
+              onFrequencyChange={(value) => setField("originalFrequency", value)}
+            />
 
-              <span className="mx-auto inline-flex h-11 w-11 rotate-90 items-center justify-center rounded-full bg-violet-600 text-white shadow-[0_12px_28px_rgba(124,58,237,0.3)] lg:rotate-0">
-                <ArrowRight className="h-5 w-5" strokeWidth={2.4} />
-              </span>
+            <span className="mx-auto inline-flex h-11 w-11 rotate-90 items-center justify-center rounded-full bg-violet-600 text-white shadow-[0_12px_28px_rgba(124,58,237,0.3)] lg:rotate-0">
+              <ArrowRight className="h-5 w-5" strokeWidth={2.4} />
+            </span>
 
-              <ContractCard
-                kind="replacement"
-                date={form.replacementStartDate}
-                premium={form.replacementPremium}
-                frequency={form.replacementFrequency}
-                onDateChange={(value) => setField("replacementStartDate", value)}
-                onPremiumChange={(value) => setField("replacementPremium", value)}
-                onFrequencyChange={(value) => setField("replacementFrequency", value)}
-              />
-            </div>
-          </section>
+            <ContractCard
+              kind="replacement"
+              date={form.replacementStartDate}
+              premium={form.replacementPremium}
+              frequency={form.replacementFrequency}
+              onDateChange={(value) => setField("replacementStartDate", value)}
+              onPremiumChange={(value) => setField("replacementPremium", value)}
+              onFrequencyChange={(value) => setField("replacementFrequency", value)}
+            />
+          </div>
 
           {!hasAllInputs ? (
             <section className="rounded-[28px] border border-dashed border-violet-200 bg-white/85 px-6 py-9 text-center shadow-[0_16px_44px_rgba(88,28,135,0.07)]">
@@ -427,7 +445,99 @@ export default function ContractReplacementPage() {
                     </p>
                   </div>
                 </div>
-                <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+
+                <div className="mt-5 rounded-[20px] border border-violet-200 bg-violet-50/60 p-4 sm:p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-violet-700 shadow-sm">
+                        <CalendarRange className="h-5 w-5" strokeWidth={2.2} />
+                      </span>
+                      <div>
+                        <p className="font-black text-slate-950">Nový platební cyklus</p>
+                        <p className="mt-0.5 text-sm leading-5 text-slate-600">
+                          Nejbližší termíny pravidelných plateb k dnešnímu dni{" "}
+                          {formatDate(referenceDate)}.
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-black ${
+                        result.paymentShiftDays > 0
+                          ? "bg-violet-100 text-violet-800"
+                          : result.paymentShiftDays < 0
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {result.paymentShiftDays > 0
+                        ? `o ${result.paymentShiftDays} ${dayCountLabel(result.paymentShiftDays)} později`
+                        : result.paymentShiftDays < 0
+                          ? `o ${Math.abs(result.paymentShiftDays)} ${dayCountLabel(result.paymentShiftDays)} dříve`
+                          : "ve stejný den"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                        Další platba původně
+                      </p>
+                      <p className="mt-1 text-lg font-black text-slate-900">
+                        {formatDate(result.originalNextPaymentDate)}
+                      </p>
+                      <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                        {frequencyLabel(form.originalFrequency)} platba
+                      </p>
+                    </div>
+                    <ArrowRight
+                      className="mx-auto h-5 w-5 rotate-90 text-violet-500 sm:rotate-0"
+                      aria-hidden="true"
+                    />
+                    <div className="rounded-2xl border border-violet-200 bg-white px-4 py-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-violet-600">
+                        Další platba nově
+                      </p>
+                      <p className="mt-1 text-lg font-black text-violet-950">
+                        {formatDate(result.replacementNextPaymentDate)}
+                      </p>
+                      <p className="mt-0.5 text-xs font-semibold text-violet-600">
+                        {frequencyLabel(form.replacementFrequency)} platba
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    {result.balanceType === "surcharge" ? (
+                      <>
+                        Doplatek{" "}
+                        <strong className="font-black text-slate-950">
+                          {formatMoney(Math.abs(result.balance))}
+                        </strong>{" "}
+                        spolu s převodem pokryje první{" "}
+                        {frequencyLabel(form.replacementFrequency).toLocaleLowerCase("cs-CZ")} platbu
+                        nové smlouvy.
+                      </>
+                    ) : result.balanceType === "overpayment" ? (
+                      <>
+                        Převod pokryje první{" "}
+                        {frequencyLabel(form.replacementFrequency).toLocaleLowerCase("cs-CZ")} platbu
+                        nové smlouvy a klientovi zbývá{" "}
+                        <strong className="font-black text-slate-950">
+                          {formatMoney(Math.abs(result.balance))}
+                        </strong>
+                        .
+                      </>
+                    ) : (
+                      <>
+                        Převod přesně pokryje první{" "}
+                        {frequencyLabel(form.replacementFrequency).toLocaleLowerCase("cs-CZ")} platbu
+                        nové smlouvy.
+                      </>
+                    )}
+                  </p>
+                </div>
+
+                <div className="mt-5">
                   <div className="rounded-[18px] border border-slate-200 p-4 sm:p-5">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div>
@@ -442,20 +552,79 @@ export default function ContractReplacementPage() {
                       </p>
                     </div>
 
-                    <div
-                      className="mt-4 flex h-2.5 overflow-hidden rounded-full bg-slate-100"
-                      role="img"
-                      aria-label={`${new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 }).format(
-                        (1 - result.unusedShare) * 100
-                      )} procent zúčtováno a ${new Intl.NumberFormat("cs-CZ", {
-                        maximumFractionDigits: 1,
-                      }).format(result.unusedShare * 100)} procent převedeno`}
-                    >
-                      <span
-                        className="bg-slate-300"
-                        style={{ width: `${(1 - result.unusedShare) * 100}%` }}
-                      />
-                      <span className="flex-1 bg-violet-500" />
+                    <div className="mt-4">
+                      <div
+                        className="relative flex h-2.5 rounded-full bg-slate-100"
+                        role="img"
+                        aria-label={`${new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 }).format(
+                          elapsedSharePercent
+                        )} procent zúčtováno a ${new Intl.NumberFormat("cs-CZ", {
+                          maximumFractionDigits: 1,
+                        }).format(result.unusedShare * 100)} procent převedeno`}
+                      >
+                        <span
+                          className="rounded-l-full bg-slate-300"
+                          style={{ width: `${elapsedSharePercent}%` }}
+                        />
+                        <span className="flex-1 rounded-r-full bg-violet-500" />
+                        <span
+                          className="absolute -bottom-1 -top-1 w-0.5 -translate-x-1/2 rounded-full bg-violet-800 ring-2 ring-white"
+                          style={{ left: `${elapsedSharePercent}%` }}
+                          aria-hidden="true"
+                        />
+                        <span
+                          className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-700 ring-2 ring-white"
+                          style={{ left: `${elapsedSharePercent}%` }}
+                          aria-hidden="true"
+                        />
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] font-bold leading-4 text-slate-500 sm:hidden">
+                        <p>
+                          Počátek
+                          <strong className="block text-[10px] text-slate-700">
+                            {formatDate(result.paidPeriodStartDate)}
+                          </strong>
+                        </p>
+                        <p className="text-center text-violet-600">
+                          Náhrada
+                          <strong className="block text-[10px] text-violet-800">
+                            {formatDate(form.replacementStartDate)}
+                          </strong>
+                        </p>
+                        <p className="text-right">
+                          Původní konec
+                          <strong className="block text-[10px] text-slate-700">
+                            {formatDate(result.paidPeriodEndDate)}
+                          </strong>
+                        </p>
+                      </div>
+
+                      <div className="relative mt-2 hidden h-10 text-[9px] font-bold leading-4 text-slate-500 sm:block">
+                        <p className="absolute left-0 top-0 text-left">
+                          Počátek období
+                          <strong className="block text-[10px] text-slate-700">
+                            {formatDate(result.paidPeriodStartDate)}
+                          </strong>
+                        </p>
+                        <p
+                          className="absolute top-0 -translate-x-1/2 text-center text-violet-600"
+                          style={{
+                            left: `clamp(3.5rem, ${elapsedSharePercent}%, calc(100% - 3.5rem))`,
+                          }}
+                        >
+                          Počátek náhrady
+                          <strong className="block text-[10px] text-violet-800">
+                            {formatDate(form.replacementStartDate)}
+                          </strong>
+                        </p>
+                        <p className="absolute right-0 top-0 text-right">
+                          Původní konec období
+                          <strong className="block text-[10px] text-slate-700">
+                            {formatDate(result.paidPeriodEndDate)}
+                          </strong>
+                        </p>
+                      </div>
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-3">
@@ -474,25 +643,6 @@ export default function ContractReplacementPage() {
                     </div>
                   </div>
 
-                  <dl className="overflow-hidden rounded-[18px] border border-slate-200">
-                    <div className="border-b border-slate-200 p-4">
-                      <dt className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                        <CalendarRange className="h-4 w-4" /> Konec původní smlouvy
-                      </dt>
-                      <dd className="mt-1.5 font-black text-slate-950">
-                        {formatDate(result.originalEndDate)}
-                      </dd>
-                    </div>
-                    <div className="p-4">
-                      <dt className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                        <ReceiptText className="h-4 w-4" /> Poslední placené období
-                      </dt>
-                      <dd className="mt-1.5 text-sm font-black text-slate-950">
-                        {formatDate(result.paidPeriodStartDate)} –{" "}
-                        {formatDate(result.paidPeriodEndDate)}
-                      </dd>
-                    </div>
-                  </dl>
                 </div>
 
                 <div className="mt-5 border-t border-slate-200 pt-4 text-sm leading-6 text-slate-600">

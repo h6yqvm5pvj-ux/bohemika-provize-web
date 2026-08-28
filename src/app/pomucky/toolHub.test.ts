@@ -10,6 +10,7 @@ describe("tool hub usage helpers", () => {
   it("accepts only catalogued tool keys", () => {
     expect(isToolHubToolKey("radar-vyroci")).toBe(true);
     expect(isToolHubToolKey("nahrada-smlouvy")).toBe(true);
+    expect(isToolHubToolKey("kontakty")).toBe(true);
     expect(isToolHubToolKey("../admin")).toBe(false);
     expect(isToolHubToolKey(123)).toBe(false);
   });

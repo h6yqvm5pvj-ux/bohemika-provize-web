@@ -19,6 +19,7 @@ type Props = {
   language: AppLanguage;
   loading: boolean;
   showTeamBox: boolean;
+  showOnlyTeamProduction?: boolean;
   myContractsCount: number;
   myImmediateSum: number;
   myImmediatePrevSum: number;
@@ -299,6 +300,7 @@ export function ProductionSummarySection({
   language,
   loading,
   showTeamBox,
+  showOnlyTeamProduction = false,
   myContractsCount,
   myImmediateSum,
   myImmediatePrevSum,
@@ -342,8 +344,9 @@ export function ProductionSummarySection({
     return () => window.cancelAnimationFrame(frame);
   }, [loading]);
 
-  const loadingStage =
-    clampedLoadingProgress < 35
+  const loadingStage = showOnlyTeamProduction
+    ? "Počítám týmovou produkci…"
+    : clampedLoadingProgress < 35
       ? copy.loadingStages[0]
       : clampedLoadingProgress < 72
         ? copy.loadingStages[1]
@@ -411,20 +414,24 @@ export function ProductionSummarySection({
     amountValue: totalWithTeam,
     previousAmountValue: totalPrevWithTeam,
   };
-  const desktopCards = !showTeamBox
-    ? hasTipContract
-      ? [ownCard, tipCard]
-      : [ownCard]
-    : hasTipContract
-      ? [ownCard, teamCard, tipCard, totalCard]
-      : [ownCard, teamCard, totalCard];
-  const mobileCards = !showTeamBox
-    ? hasTipContract
-      ? [ownCard, tipCard]
-      : [ownCard]
-    : hasTipContract
-      ? [ownCard, teamCard, tipCard, totalCard]
-      : [ownCard, teamCard, totalCard];
+  const desktopCards = showOnlyTeamProduction
+    ? [teamCard]
+    : !showTeamBox
+      ? hasTipContract
+        ? [ownCard, tipCard]
+        : [ownCard]
+      : hasTipContract
+        ? [ownCard, teamCard, tipCard, totalCard]
+        : [ownCard, teamCard, totalCard];
+  const mobileCards = showOnlyTeamProduction
+    ? [teamCard]
+    : !showTeamBox
+      ? hasTipContract
+        ? [ownCard, tipCard]
+        : [ownCard]
+      : hasTipContract
+        ? [ownCard, teamCard, tipCard, totalCard]
+        : [ownCard, teamCard, totalCard];
 
   useEffect(() => {
     if (mobileCarouselRef.current) {
@@ -432,7 +439,7 @@ export function ProductionSummarySection({
     }
     const resetFrame = window.requestAnimationFrame(() => setMobileCardIndex(0));
     return () => window.cancelAnimationFrame(resetFrame);
-  }, [showTeamBox, mobileCards.length]);
+  }, [showOnlyTeamProduction, showTeamBox, mobileCards.length]);
 
   const handleMobileCarouselScroll = (event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
@@ -482,25 +489,29 @@ export function ProductionSummarySection({
           </p>
         </div>
 
-        <section>
-          <h3 className="text-base font-bold text-slate-950">Vlastní produkce</h3>
-          <p className="mt-1">
-            Součet okamžitých provizí ze smluv, které má poradce sjednané v
-            aktuálním měsíci. U produktů rozdělených na provizní kódy se počítá
-            jen okamžitá část, například A101, B0301 a polovina B36/B3601.
-            Následné provize a souhrnné řádky se do této částky nezapočítávají.
-          </p>
-        </section>
+        {!showOnlyTeamProduction ? (
+          <>
+            <section>
+              <h3 className="text-base font-bold text-slate-950">Vlastní produkce</h3>
+              <p className="mt-1">
+                Součet okamžitých provizí ze smluv, které má poradce sjednané v
+                aktuálním měsíci. U produktů rozdělených na provizní kódy se počítá
+                jen okamžitá část, například A101, B0301 a polovina B36/B3601.
+                Následné provize a souhrnné řádky se do této částky nezapočítávají.
+              </p>
+            </section>
 
-        <section>
-          <h3 className="text-base font-bold text-slate-950">TIP</h3>
-          <p className="mt-1">
-            Pokud má poradce TIP výplaty, aplikace je zobrazuje samostatně.
-            Počet TIPů vychází ze zdrojových smluv v aktuálním měsíci a částka
-            sčítá kladné TIP výplaty. Když je u TIPu známé datum uzavření
-            zdrojové smlouvy, používá se ono; jinak se použije datum výplaty.
-          </p>
-        </section>
+            <section>
+              <h3 className="text-base font-bold text-slate-950">TIP</h3>
+              <p className="mt-1">
+                Pokud má poradce TIP výplaty, aplikace je zobrazuje samostatně.
+                Počet TIPů vychází ze zdrojových smluv v aktuálním měsíci a částka
+                sčítá kladné TIP výplaty. Když je u TIPu známé datum uzavření
+                zdrojové smlouvy, používá se ono; jinak se použije datum výplaty.
+              </p>
+            </section>
+          </>
+        ) : null}
 
         {showTeamBox ? (
           <>
@@ -514,14 +525,16 @@ export function ProductionSummarySection({
               </p>
             </section>
 
-            <section>
-              <h3 className="text-base font-bold text-slate-950">Celková produkce</h3>
-              <p className="mt-1">
-                Celková produkce je součet vlastní produkce, týmové produkce a
-                případných TIP výplat. Počet smluv v celkové kartě je součet
-                vlastních a týmových smluv; TIP má vlastní počet zvlášť.
-              </p>
-            </section>
+            {!showOnlyTeamProduction ? (
+              <section>
+                <h3 className="text-base font-bold text-slate-950">Celková produkce</h3>
+                <p className="mt-1">
+                  Celková produkce je součet vlastní produkce, týmové produkce a
+                  případných TIP výplat. Počet smluv v celkové kartě je součet
+                  vlastních a týmových smluv; TIP má vlastní počet zvlášť.
+                </p>
+              </section>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -613,27 +626,35 @@ export function ProductionSummarySection({
           </div>
         </div>
 
-        <div className="mt-2 flex items-center justify-center gap-1.5">
-          {mobileCards.map((card, index) => (
-            <span
-              key={card.id}
-              className={`h-1.5 rounded-full transition-all ${
-                index === mobileCardIndex ? "w-5 bg-violet-100/90" : "w-1.5 bg-violet-100/35"
-              }`}
-            />
-          ))}
-        </div>
-        <p className="mt-2 text-center text-[11px] font-medium text-violet-100/68">
-          {copy.swipeHint}
-        </p>
+        {mobileCards.length > 1 ? (
+          <>
+            <div className="mt-2 flex items-center justify-center gap-1.5">
+              {mobileCards.map((card, index) => (
+                <span
+                  key={card.id}
+                  className={`h-1.5 rounded-full transition-all ${
+                    index === mobileCardIndex ? "w-5 bg-violet-100/90" : "w-1.5 bg-violet-100/35"
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="mt-2 text-center text-[11px] font-medium text-violet-100/68">
+              {copy.swipeHint}
+            </p>
+          </>
+        ) : null}
       </div>
 
       <div
         className={`relative z-10 hidden gap-3 md:grid ${
-          hasTipContract ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"
+          showOnlyTeamProduction
+            ? "md:grid-cols-1"
+            : hasTipContract
+              ? "md:grid-cols-2 xl:grid-cols-4"
+              : "md:grid-cols-3"
         }`}
       >
-        {hasTipContract ? (
+        {showOnlyTeamProduction ? null : hasTipContract ? (
           <>
             <ShortDividerLines columns={2} visibilityClass="md:block xl:hidden" />
             <ShortDividerLines columns={4} visibilityClass="xl:block" />

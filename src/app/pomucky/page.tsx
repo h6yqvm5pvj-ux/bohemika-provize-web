@@ -23,6 +23,7 @@ import {
   CarFront,
   ChartNoAxesColumn,
   Clock3,
+  ContactRound,
   Files,
   FileSignature,
   Gauge,
@@ -47,6 +48,7 @@ import {
 
 import { AppLayout } from "@/components/AppLayout";
 import { InstitutionPortalLinksModal } from "./InstitutionPortalLinksModal";
+import { ContactsModal } from "./ContactsModal";
 import styles from "./pomuckyWallArt.module.css";
 import { systemSansFont } from "@/lib/fonts";
 import { auth } from "@/app/firebase";
@@ -382,6 +384,7 @@ export default function ToolsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [tachometerModalOpen, setTachometerModalOpen] = useState(false);
   const [linksModalOpen, setLinksModalOpen] = useState(false);
+  const [contactsModalOpen, setContactsModalOpen] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [usageByKey, setUsageByKey] = useState<
@@ -452,6 +455,14 @@ export default function ToolsPage() {
         description: "Přehled Argumentů na různé typy námitek od klienta.",
         icon: Scale,
         href: "/pomucky/argumenty",
+      },
+      {
+        key: "kontakty",
+        category: "Obecné",
+        title: "Kontakty",
+        description: "Přímé kontakty na obchodní a administrativní podporu partnerských institucí.",
+        icon: ContactRound,
+        onClick: () => setContactsModalOpen(true),
       },
       {
         key: "dokumenty",
@@ -663,7 +674,7 @@ export default function ToolsPage() {
         href: "/pomucky/neon-life-vs-metlife-oneguard",
       },
     ],
-    [setLinksModalOpen, setTachometerModalOpen]
+    [setContactsModalOpen, setLinksModalOpen, setTachometerModalOpen]
   );
 
   const recordToolOpen = useCallback(
@@ -1087,6 +1098,9 @@ export default function ToolsPage() {
 
       {linksModalOpen && (
         <InstitutionPortalLinksModal onClose={() => setLinksModalOpen(false)} />
+      )}
+      {contactsModalOpen && (
+        <ContactsModal onClose={() => setContactsModalOpen(false)} />
       )}
       <style jsx global>{`
         body.simple-bg.simple-bg-white .app-content .pomucky-category-badge,

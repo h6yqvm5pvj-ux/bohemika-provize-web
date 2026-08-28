@@ -7,6 +7,7 @@ describe("calculateReplacement", () => {
     const result = calculateReplacement({
       originalStartDate: "2025-03-25",
       replacementStartDate: "2025-08-18",
+      referenceDate: "2026-08-28",
       originalPremium: 18_158,
       originalFrequency: "annual",
       replacementPremium: 13_383,
@@ -16,6 +17,9 @@ describe("calculateReplacement", () => {
     expect(result).toMatchObject({
       ok: true,
       originalEndDate: "2025-08-17",
+      originalNextPaymentDate: "2027-03-25",
+      replacementNextPaymentDate: "2027-08-18",
+      paymentShiftDays: 146,
       paidPeriodStartDate: "2025-03-25",
       paidPeriodEndDate: "2026-03-24",
       nominalElapsedDays: 144,
@@ -30,6 +34,7 @@ describe("calculateReplacement", () => {
     const result = calculateReplacement({
       originalStartDate: "2025-01-15",
       replacementStartDate: "2025-02-15",
+      referenceDate: "2025-02-15",
       originalPremium: 3_000,
       originalFrequency: "quarterly",
       replacementPremium: 1_500,
@@ -38,6 +43,9 @@ describe("calculateReplacement", () => {
 
     expect(result).toMatchObject({
       ok: true,
+      originalNextPaymentDate: "2025-04-15",
+      replacementNextPaymentDate: "2025-03-15",
+      paymentShiftDays: -31,
       paidPeriodStartDate: "2025-01-15",
       paidPeriodEndDate: "2025-04-14",
       nominalElapsedDays: 30,
@@ -47,6 +55,33 @@ describe("calculateReplacement", () => {
       balanceType: "overpayment",
     });
   });
+
+  it.each([
+    ["monthly", "2026-09-25", "2026-09-18", -7],
+    ["quarterly", "2026-09-25", "2026-11-18", 54],
+    ["semiannual", "2026-09-25", "2027-02-18", 146],
+    ["annual", "2027-03-25", "2027-08-18", 146],
+  ] as const)(
+    "finds the next %s payments from the current date",
+    (frequency, originalNextPaymentDate, replacementNextPaymentDate, paymentShiftDays) => {
+      const result = calculateReplacement({
+        originalStartDate: "2025-03-25",
+        replacementStartDate: "2025-08-18",
+        referenceDate: "2026-08-28",
+        originalPremium: 18_158,
+        originalFrequency: frequency,
+        replacementPremium: 13_383,
+        replacementFrequency: frequency,
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        originalNextPaymentDate,
+        replacementNextPaymentDate,
+        paymentShiftDays,
+      });
+    }
+  );
 
   it.each([
     ["monthly", 0],
@@ -59,6 +94,7 @@ describe("calculateReplacement", () => {
       const result = calculateReplacement({
         originalStartDate: "2024-01-10",
         replacementStartDate: "2025-02-10",
+        referenceDate: "2025-02-10",
         originalPremium: 1_200,
         originalFrequency: frequency,
         replacementPremium: 1_300,
@@ -77,6 +113,7 @@ describe("calculateReplacement", () => {
     const result = calculateReplacement({
       originalStartDate: "2024-04-10",
       replacementStartDate: "2025-04-10",
+      referenceDate: "2025-04-10",
       originalPremium: 12_000,
       originalFrequency: "annual",
       replacementPremium: 10_000,
@@ -90,6 +127,9 @@ describe("calculateReplacement", () => {
       unusedShare: 0,
       transferredPremium: 0,
       balance: 10_000,
+      originalNextPaymentDate: "2026-04-10",
+      replacementNextPaymentDate: "2026-04-10",
+      paymentShiftDays: 0,
     });
   });
 
@@ -97,6 +137,7 @@ describe("calculateReplacement", () => {
     const result = calculateReplacement({
       originalStartDate: "2025-06-01",
       replacementStartDate: "2025-06-01",
+      referenceDate: "2025-06-01",
       originalPremium: 1_200,
       originalFrequency: "monthly",
       replacementPremium: 1_000,
@@ -117,6 +158,7 @@ describe("calculateReplacement", () => {
       calculateReplacement({
         originalStartDate: "2025-06-01",
         replacementStartDate: "2025-05-31",
+        referenceDate: "2025-06-01",
         originalPremium: 1_200,
         originalFrequency: "monthly",
         replacementPremium: 1_000,

@@ -10,6 +10,7 @@ export type PaymentFrequency = (typeof PAYMENT_FREQUENCIES)[number]["id"];
 export type ReplacementCalculationInput = {
   originalStartDate: string;
   replacementStartDate: string;
+  referenceDate: string;
   originalPremium: number;
   originalFrequency: PaymentFrequency;
   replacementPremium: number;
@@ -19,6 +20,9 @@ export type ReplacementCalculationInput = {
 export type ReplacementCalculation = {
   ok: true;
   originalEndDate: string;
+  originalNextPaymentDate: string;
+  replacementNextPaymentDate: string;
+  paymentShiftDays: number;
   paidPeriodStartDate: string;
   paidPeriodEndDate: string;
   nominalElapsedDays: number;
@@ -128,12 +132,35 @@ const completedInsuranceMonths = (
   return months;
 };
 
+const nextPaymentDate = (
+  anchor: CalendarDate,
+  periodMonths: number,
+  referenceDate: CalendarDate,
+  excludeReferenceBoundary: boolean
+): CalendarDate => {
+  const completedMonths = completedInsuranceMonths(anchor, referenceDate);
+  let paymentNumber = Math.max(1, Math.ceil(completedMonths / periodMonths));
+  let candidate = addAnchoredMonths(anchor, paymentNumber * periodMonths);
+
+  while (
+    toSerialDay(candidate) < toSerialDay(referenceDate) ||
+    (excludeReferenceBoundary &&
+      toSerialDay(candidate) === toSerialDay(referenceDate))
+  ) {
+    paymentNumber += 1;
+    candidate = addAnchoredMonths(anchor, paymentNumber * periodMonths);
+  }
+
+  return candidate;
+};
+
 export const calculateReplacement = (
   input: ReplacementCalculationInput
 ): ReplacementCalculation | ReplacementCalculationError => {
   const originalStart = parseIsoDate(input.originalStartDate);
   const replacementStart = parseIsoDate(input.replacementStartDate);
-  if (!originalStart || !replacementStart) {
+  const referenceDate = parseIsoDate(input.referenceDate);
+  if (!originalStart || !replacementStart || !referenceDate) {
     return { ok: false, error: "invalid-date" };
   }
   if (
@@ -181,10 +208,32 @@ export const calculateReplacement = (
     addAnchoredMonths(originalStart, periodStartMonth + periodMonths),
     -1
   );
+  const comparisonDate =
+    toSerialDay(referenceDate) < toSerialDay(replacementStart)
+      ? replacementStart
+      : referenceDate;
+  const comparisonBeginsWithReplacement =
+    toSerialDay(comparisonDate) === toSerialDay(replacementStart);
+  const originalNextPayment = nextPaymentDate(
+    originalStart,
+    periodMonths,
+    comparisonDate,
+    comparisonBeginsWithReplacement
+  );
+  const replacementNextPayment = nextPaymentDate(
+    replacementStart,
+    frequencyMonths(input.replacementFrequency),
+    comparisonDate,
+    false
+  );
 
   return {
     ok: true,
     originalEndDate: toIsoDate(addDays(replacementStart, -1)),
+    originalNextPaymentDate: toIsoDate(originalNextPayment),
+    replacementNextPaymentDate: toIsoDate(replacementNextPayment),
+    paymentShiftDays:
+      toSerialDay(replacementNextPayment) - toSerialDay(originalNextPayment),
     paidPeriodStartDate: toIsoDate(paidPeriodStart),
     paidPeriodEndDate: toIsoDate(paidPeriodEnd),
     nominalElapsedDays,
