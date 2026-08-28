@@ -213,6 +213,34 @@ export type ContractDoc = {
   }[] | null;
 
   userEmail?: string | null;
+  originalAdviserEmail?: string | null;
+  originalAdviserName?: string | null;
+  originalPosition?: Position | null;
+  servicingOwnerEmail?: string | null;
+  servicingOwnerName?: string | null;
+  commissionOwnerEmail?: string | null;
+  transferReason?: "manual" | "career_end" | string | null;
+  transferFromEmail?: string | null;
+  transferToEmail?: string | null;
+  transferAt?: FirestoreTimestamp | Date | string | number | null;
+  transferEffectiveDate?: string | null;
+  transferredByEmail?: string | null;
+  ownershipTransfer?: {
+    type?: "manual" | "career_end" | string | null;
+    fromEmail?: string | null;
+    toEmail?: string | null;
+    transferredAt?: FirestoreTimestamp | Date | string | number | null;
+    effectiveDate?: string | null;
+    transferredByEmail?: string | null;
+  } | null;
+  ownershipTransferHistory?: {
+    type?: "manual" | "career_end" | string | null;
+    fromEmail?: string | null;
+    toEmail?: string | null;
+    transferredAt?: FirestoreTimestamp | Date | string | number | null;
+    effectiveDate?: string | null;
+    transferredByEmail?: string | null;
+  }[] | null;
   clientName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
@@ -452,6 +480,12 @@ export type ContractResponseItem = ContractDoc & {
   lifePremiumChanges?: ContractLifePremiumChange[] | null;
 };
 
+export type ContractTransferTarget = {
+  email: string;
+  name: string | null;
+  position: Position | null;
+};
+
 export type ContractOwnerMeta = {
   position: Position | null;
   managerEmail: string | null;
@@ -466,6 +500,8 @@ export type ContractDetailResponse = {
   hasTeam: boolean;
   teamEmails: string[];
   canManageContract: boolean;
+  canTransferContracts: boolean;
+  transferTargets: ContractTransferTarget[];
   contract: ContractResponseItem;
   timeline: ContractResponseItem[];
   ownerMeta: ContractOwnerMeta;
@@ -478,6 +514,8 @@ export type ContractsResponse = {
   commissionMode: CommissionMode | null;
   hasTeam: boolean;
   teamEmails: string[];
+  canTransferContracts: boolean;
+  transferTargets: ContractTransferTarget[];
   contracts: ContractResponseItem[];
   totalCount?: number | null;
   hasMore: boolean;
@@ -577,6 +615,7 @@ export type UserNode = {
   commissionMode: CommissionMode | null;
   positionTimeline?: unknown;
   accountType: "advisor" | "tipster";
+  activeCollaboration?: boolean;
 };
 
 export type UserTreeResult = {

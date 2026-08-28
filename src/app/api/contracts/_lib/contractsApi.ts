@@ -52,6 +52,7 @@ import type {
   ContractListFilters,
   ContractListResponseShape,
   ContractResponseItem,
+  ContractTransferTarget,
   ContractsFindResponse,
   ContractsPrecheckEntry,
   ContractsPrecheckResponse,
@@ -148,6 +149,13 @@ import {
   type ExistingContractByNumber,
 } from "./contractsApi.duplicates";
 import {
+  buildTransferredContractData,
+  normalizeTransferEffectiveDate,
+  originalAdviserEmailForContract,
+  pragueIsoDay,
+  type ContractTransferReason,
+} from "./contractsApi.transfer";
+import {
   buildFindAllowedOwnerSet,
   canManageContractOwner,
   canViewStatementDerivedRecord,
@@ -174,7 +182,8 @@ export type ContractsPatchAction =
   | "syncCppStatus"
   | "syncEntryIndex"
   | "updateFields"
-  | "setPaid";
+  | "setPaid"
+  | "transfer";
 
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
@@ -187,6 +196,10 @@ const CONTRACTS_GET_RATE_LIMIT_WINDOW_MS = 60_000;
 const CONTRACTS_FIND_BULK_MAX_ITEMS = 1000;
 const CONTRACTS_FIND_BULK_WORKER_COUNT = 8;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
+const TRANSFER_MAX_SELECTIONS = 50;
+const TRANSFER_MAX_RESOLVED_ENTRIES = 65;
+const CONTRACT_TRANSFER_REQUESTS_COLLECTION = "contractTransferRequests";
+const CONTRACT_TRANSFER_REQUEST_LIST_LIMIT = 200;
 const USER_TREE_CACHE_TTL_MS = 5 * 60 * 1000;
 const SUBSCRIPTION_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -593,6 +606,38 @@ const currentYearMonth = (now: Date): string =>
 const teamOverviewMonthDocId = (ownerEmail: string, yearMonth: string): string =>
   `${normalizeEmail(ownerEmail)}___${yearMonth}`;
 
+const contractTransferResponseFields = (
+  data: ContractDoc,
+  ownerEmail: string,
+  ownerName?: string | null
+) => {
+  const normalizedOwner = normalizeEmail(ownerEmail);
+  const originalAdviserEmail = originalAdviserEmailForContract(
+    data,
+    normalizedOwner
+  );
+  const normalizedOwnerName = normalizeOptionalDisplayName(ownerName) ?? null;
+  return {
+    originalAdviserEmail,
+    originalAdviserName:
+      normalizeOptionalDisplayName(data.originalAdviserName) ??
+      (originalAdviserEmail === normalizedOwner ? normalizedOwnerName : null),
+    originalPosition:
+      normalizePositionValue(data.originalPosition) ??
+      normalizePositionValue(data.position),
+    servicingOwnerEmail:
+      normalizeEmail(data.servicingOwnerEmail) || normalizedOwner,
+    servicingOwnerName:
+      normalizeOptionalDisplayName(data.servicingOwnerName) ?? normalizedOwnerName,
+    commissionOwnerEmail:
+      normalizeEmail(data.commissionOwnerEmail) || normalizedOwner,
+    transferReason: data.transferReason ?? null,
+    transferAt: toMillis(data.transferAt),
+    transferEffectiveDate:
+      normalizeTransferEffectiveDate(data.transferEffectiveDate) ?? null,
+  };
+};
+
 const toContractResponseItem = (
   docId: string,
   ownerEmail: string,
@@ -603,8 +648,14 @@ const toContractResponseItem = (
   const normalizedOwner = normalizeEmail(ownerEmail);
   const signedDate = toDate(data.contractSignedDate);
   const signedDateIso = signedDate ? toIsoDay(signedDate) : null;
-  const timelinePosition = resolveContractTimelinePosition(ownerContext, signedDateIso);
   const storedPosition = normalizePositionValue(data.position);
+  const storedOriginalPosition =
+    normalizePositionValue(data.originalPosition) ?? storedPosition;
+  const isTransferred =
+    originalAdviserEmailForContract(data, normalizedOwner) !== normalizedOwner;
+  const timelinePosition = isTransferred
+    ? storedOriginalPosition
+    : resolveContractTimelinePosition(ownerContext, signedDateIso);
   const publicData = { ...data };
   delete publicData.clientSearchKeys;
   delete publicData.contractNumberSearchKeys;
@@ -622,6 +673,7 @@ const toContractResponseItem = (
     adviserEmail: normalizedOwner,
     adviserName: normalizeOptionalDisplayName(adviserName) ?? null,
     userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+    ...contractTransferResponseFields(data, normalizedOwner, adviserName),
     effectivePosition: timelinePosition ?? storedPosition ?? null,
     timelinePosition,
   };
@@ -638,13 +690,30 @@ const filterStatementDerivedContractDataForViewer = ({
   teamEmails: string[];
   canViewAllStatementDerivedRecords?: boolean;
 }): ContractResponseItem => {
-  const canViewRecord = (record: { writtenBy?: string | null }) =>
+  const originalAdviserEmail = normalizeEmail(contract.originalAdviserEmail);
+  const servicingOwnerEmail =
+    normalizeEmail(contract.servicingOwnerEmail) ||
+    normalizeEmail(contract.commissionOwnerEmail) ||
+    normalizeEmail(contract.userEmail) ||
+    normalizeEmail(contract.adviserEmail);
+  const transferred = Boolean(
+    originalAdviserEmail &&
+      servicingOwnerEmail &&
+      originalAdviserEmail !== servicingOwnerEmail
+  );
+  const canViewRecord = (record: {
+    writtenBy?: string | null;
+    writtenAtMs?: number | null;
+  }) =>
     canViewStatementDerivedRecord({
       viewerEmail,
       teamEmails,
       writtenBy: record.writtenBy,
       canViewAllStatementDerivedRecords,
-    });
+    }) ||
+    // Po převodu musí být staré výplaty dál viditelné jako vypořádané,
+    // jinak by cashflow mohlo tutéž provizi předpovědět novému správci podruhé.
+    (transferred && normalizeEmail(record.writtenBy) === originalAdviserEmail);
 
   return {
     ...contract,
@@ -678,8 +747,16 @@ const toContractListResponseItem = ({
   const normalizedAdviserName = normalizeOptionalDisplayName(adviserName) ?? null;
   const signedDate = toDate(data.contractSignedDate);
   const signedDateIso = signedDate ? toIsoDay(signedDate) : null;
-  const timelinePosition = resolveContractTimelinePosition(ownerContext, signedDateIso);
   const storedPosition = normalizePositionValue(data.position);
+  const storedOriginalPosition =
+    normalizePositionValue(data.originalPosition) ?? storedPosition;
+  const normalizedOwnerForPosition = normalizeEmail(ownerEmail);
+  const isTransferred =
+    originalAdviserEmailForContract(data, normalizedOwnerForPosition) !==
+    normalizedOwnerForPosition;
+  const timelinePosition = isTransferred
+    ? storedOriginalPosition
+    : resolveContractTimelinePosition(ownerContext, signedDateIso);
   if (shape === "clientNames") {
     const normalizedOwner = normalizeEmail(ownerEmail);
     return {
@@ -687,6 +764,7 @@ const toContractListResponseItem = ({
       adviserEmail: normalizedOwner,
       adviserName: normalizedAdviserName,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      ...contractTransferResponseFields(data, normalizedOwner, normalizedAdviserName),
       effectivePosition: timelinePosition ?? storedPosition ?? null,
       timelinePosition,
       clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
@@ -702,6 +780,7 @@ const toContractListResponseItem = ({
       adviserEmail: normalizedOwner,
       adviserName: normalizedAdviserName,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      ...contractTransferResponseFields(data, normalizedOwner, normalizedAdviserName),
       effectivePosition: timelinePosition ?? storedPosition ?? null,
       timelinePosition,
       clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
@@ -746,6 +825,7 @@ const toContractListResponseItem = ({
       adviserEmail: normalizedOwner,
       adviserName: normalizedAdviserName,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      ...contractTransferResponseFields(data, normalizedOwner, normalizedAdviserName),
       effectivePosition: timelinePosition ?? storedPosition ?? null,
       timelinePosition,
       ownerCurrentPosition: ownerContext?.position ?? null,
@@ -818,6 +898,7 @@ const toContractListResponseItem = ({
       adviserEmail: normalizedOwner,
       adviserName: normalizedAdviserName,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      ...contractTransferResponseFields(data, normalizedOwner, normalizedAdviserName),
       effectivePosition: timelinePosition ?? storedPosition ?? null,
       timelinePosition,
       status: data.status ?? null,
@@ -3063,6 +3144,9 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
       commissionMode: normalizeCommissionModeValue(data.commissionMode),
       positionTimeline: data.positionTimeline ?? null,
       accountType: resolveAccountType(data),
+      activeCollaboration:
+        data.activeCollaboration !== false &&
+        String(data.careerStatus ?? "").trim().toLowerCase() !== "ended",
     };
     const existing = usersByEmail.get(email);
     if (!existing) {
@@ -3102,6 +3186,7 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
       commissionMode: user.commissionMode,
       positionTimeline: user.positionTimeline ?? null,
       accountType: user.accountType,
+      activeCollaboration: user.activeCollaboration !== false,
     };
   });
 
@@ -3947,6 +4032,53 @@ export async function requireContractsEntryGuard(
   };
 }
 
+const contractTransferAccessForContext = ({
+  accountType,
+  users,
+}: {
+  accountType: "advisor" | "tipster";
+  users: UserNode[];
+}): {
+  canTransferContracts: boolean;
+  transferTargets: ContractTransferTarget[];
+  allowedTargetEmails: Set<string>;
+} => {
+  const canTransferContracts = accountType === "advisor";
+  if (!canTransferContracts) {
+    return {
+      canTransferContracts: false,
+      transferTargets: [],
+      allowedTargetEmails: new Set<string>(),
+    };
+  }
+
+  const transferTargets = users
+    .filter(
+      (user) =>
+        user.accountType === "advisor" &&
+        user.activeCollaboration !== false
+    )
+    .map((user) => ({
+      email: user.email,
+      name: normalizeOptionalDisplayName(user.name) ?? null,
+      position: user.position ?? null,
+    }))
+    .sort((left, right) => {
+      const leftLabel = left.name ?? left.email;
+      const rightLabel = right.name ?? right.email;
+      const byLabel = leftLabel.localeCompare(rightLabel, "cs", {
+        sensitivity: "base",
+      });
+      return byLabel || left.email.localeCompare(right.email, "cs");
+    });
+
+  return {
+    canTransferContracts,
+    transferTargets,
+    allowedTargetEmails: new Set(transferTargets.map((target) => target.email)),
+  };
+};
+
 export async function handleContractsGet(
   req: NextRequest,
   mode: ContractsGetMode = "auto"
@@ -3960,6 +4092,8 @@ export async function handleContractsGet(
   const { ctx, withRateLimit } = guard;
   const { email, position, teamEmails, contractAccessEmails, users } = ctx;
   const usersByEmail = new Map(users.map((item) => [item.email, item]));
+  const { canTransferContracts, transferTargets } =
+    contractTransferAccessForContext(ctx);
 
   const search = req.nextUrl.searchParams;
   const detailOwnerEmail = normalizeEmail(search.get("ownerEmail"));
@@ -4126,6 +4260,8 @@ export async function handleContractsGet(
       hasTeam: teamEmails.length > 0,
       teamEmails,
       canManageContract,
+      canTransferContracts,
+      transferTargets,
       contract,
       timeline,
       ownerMeta: {
@@ -4261,6 +4397,8 @@ export async function handleContractsGet(
     commissionMode: ctx.commissionMode,
     hasTeam: teamEmails.length > 0,
     teamEmails,
+    canTransferContracts,
+    transferTargets,
     contracts: visibleContracts,
     totalCount,
     hasMore,
@@ -5794,6 +5932,449 @@ export async function handleContractsCreate(req: NextRequest) {
   }
 }
 
+type ResolvedTransferEntry = {
+  ownerEmail: string;
+  entryId: string;
+  ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
+  data: ContractDoc;
+  familyKey: string;
+};
+
+const contractTransferError = (message: string, statusCode: number) => {
+  const error = new Error(message) as Error & { statusCode?: number };
+  error.statusCode = statusCode;
+  return error;
+};
+
+const resolveContractFamilyForTransfer = async ({
+  ownerEmail,
+  entryId,
+}: {
+  ownerEmail: string;
+  entryId: string;
+}): Promise<ResolvedTransferEntry[]> => {
+  if (!adminDb) throw contractTransferError("Server není správně nakonfigurován.", 500);
+  const db = adminDb;
+  const entriesRef = db.collection("users").doc(ownerEmail).collection("entries");
+  const selectedRef = entriesRef.doc(entryId);
+  const selectedSnap = await selectedRef.get();
+  if (!selectedSnap.exists) {
+    throw contractTransferError(
+      `Smlouva ${entryId} už u poradce ${ownerEmail} nebyla nalezena.`,
+      404
+    );
+  }
+
+  const selectedData = (selectedSnap.data() ?? {}) as ContractDoc;
+  const explicitRootId =
+    typeof selectedData.rootContractEntryId === "string"
+      ? selectedData.rootContractEntryId.trim()
+      : "";
+  const parentId =
+    typeof selectedData.parentContractEntryId === "string"
+      ? selectedData.parentContractEntryId.trim()
+      : "";
+  const rootId = explicitRootId ||
+    (normalizeContractEntryType(selectedData.entryType ?? "contract") === "endorsement"
+      ? parentId
+      : entryId);
+  const byPath = new Map<
+    string,
+    FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData> |
+      FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
+  >([[selectedRef.path, selectedSnap]]);
+
+  if (rootId) {
+    const [rootSnap, endorsementSnap] = await Promise.all([
+      rootId === entryId ? Promise.resolve(selectedSnap) : entriesRef.doc(rootId).get(),
+      entriesRef.where("rootContractEntryId", "==", rootId).get(),
+    ]);
+    if (rootSnap.exists) byPath.set(rootSnap.ref.path, rootSnap);
+    endorsementSnap.docs.forEach((snap) => byPath.set(snap.ref.path, snap));
+  }
+
+  const hasExplicitFamily =
+    Boolean(explicitRootId || parentId) || byPath.size > 1;
+  const selectedContractNumber = normalizeContractNumber(
+    selectedData.contractNumber ?? null
+  );
+  if (!hasExplicitFamily && selectedContractNumber) {
+    const sameNumberSnap = await entriesRef
+      .where("contractNumber", "==", selectedData.contractNumber)
+      .get();
+    sameNumberSnap.docs.forEach((snap) => {
+      const data = (snap.data() ?? {}) as ContractDoc;
+      if (data.productKey !== selectedData.productKey) return;
+      if (normalizeContractNumber(data.contractNumber ?? null) !== selectedContractNumber) {
+        return;
+      }
+      byPath.set(snap.ref.path, snap);
+    });
+  }
+
+  const familyKey = `${ownerEmail}___${rootId || entryId}`;
+  return [...byPath.values()].map((snap) => ({
+    ownerEmail,
+    entryId: snap.id,
+    ref: snap.ref,
+    data: (snap.data() ?? {}) as ContractDoc,
+    familyKey,
+  }));
+};
+
+type ContractTransferRequestStatus =
+  | "pending"
+  | "scheduled"
+  | "approved"
+  | "rejected";
+
+type ContractTransferSelection = {
+  ownerEmail: string;
+  entryId: string;
+};
+
+type ContractTransferRequestDoc = {
+  status?: ContractTransferRequestStatus;
+  requestedByEmail?: string;
+  requestedByActorEmail?: string;
+  toOwnerEmail?: string;
+  toOwnerName?: string | null;
+  effectiveDate?: string;
+  entries?: ContractTransferSelection[];
+  resolvedSelectionKeys?: string[];
+  contractCount?: number;
+  resolvedEntryCount?: number;
+  contractSummaries?: Array<{
+    ownerEmail?: string;
+    entryId?: string;
+    contractNumber?: string | null;
+    clientName?: string | null;
+    productKey?: string | null;
+  }>;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  decidedAt?: unknown;
+  decidedByEmail?: string | null;
+  decisionReason?: string | null;
+  failureReason?: string | null;
+  summary?: {
+    toOwnerEmail?: string;
+    transferredContracts?: number;
+    transferredEntries?: number;
+    transferredAtMs?: number;
+  } | null;
+};
+
+const parseContractTransferSelections = (
+  value: unknown
+): ContractTransferSelection[] => {
+  const byKey = new Map<string, ContractTransferSelection>();
+  (Array.isArray(value) ? value : []).forEach((item: unknown) => {
+    const record =
+      item && typeof item === "object" && !Array.isArray(item)
+        ? (item as Record<string, unknown>)
+        : {};
+    const ownerEmail = normalizeEmail(
+      typeof record.ownerEmail === "string" ? record.ownerEmail : ""
+    );
+    const entryId =
+      typeof record.entryId === "string" ? record.entryId.trim() : "";
+    byKey.set(`${ownerEmail}___${entryId}`, { ownerEmail, entryId });
+  });
+  return Array.from(byKey.values());
+};
+
+const isValidContractTransferSelection = ({
+  ownerEmail,
+  entryId,
+}: ContractTransferSelection): boolean =>
+  Boolean(
+    ownerEmail &&
+      EMAIL_RE.test(ownerEmail) &&
+      entryId &&
+      !entryId.includes("/") &&
+      !entryId.includes("..")
+  );
+
+async function executeApprovedContractTransfer({
+  requestRef,
+  expectedStatus,
+  selections,
+  toOwnerEmail,
+  toOwnerName,
+  actorEmail,
+  effectiveDate,
+  sourceNames = new Map<string, string | null>(),
+}: {
+  requestRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
+  expectedStatus: "pending" | "scheduled";
+  selections: ContractTransferSelection[];
+  toOwnerEmail: string;
+  toOwnerName?: string | null;
+  actorEmail: string;
+  effectiveDate: string;
+  sourceNames?: Map<string, string | null>;
+}): Promise<{
+  transferredContracts: number;
+  transferredEntries: number;
+  toOwnerEmail: string;
+  transferredAtMs: number;
+}> {
+  if (!adminDb) {
+    throw contractTransferError("Server není správně nakonfigurován.", 500);
+  }
+
+  const resolvedFamilies = await Promise.all(
+    selections.map(resolveContractFamilyForTransfer)
+  );
+  const resolvedEntries = Array.from(
+    new Map(
+      resolvedFamilies.flat().map((entry) => [entry.ref.path, entry] as const)
+    ).values()
+  );
+  if (resolvedEntries.length > TRANSFER_MAX_RESOLVED_ENTRIES) {
+    throw contractTransferError(
+      `Výběr obsahuje příliš mnoho záznamů včetně dodatků (maximum ${TRANSFER_MAX_RESOLVED_ENTRIES}). Rozděl převod na více částí.`,
+      400
+    );
+  }
+
+  const db = adminDb;
+  const targetProfile = await loadUserProfileByEmail(toOwnerEmail);
+  if (!targetProfile) {
+    throw contractTransferError("Profil nového správce nebyl nalezen.", 404);
+  }
+
+  const transferredAt = new Date();
+  const reason: ContractTransferReason = "manual";
+  const destinationRefs = resolvedEntries.map((entry) =>
+    db.collection("users").doc(toOwnerEmail).collection("entries").doc(entry.entryId)
+  );
+  const oldContractRefs = resolvedEntries.map((entry) =>
+    db.collection(CONTRACT_REFS_COLLECTION).doc(
+      contractRefDocId(entry.ownerEmail, entry.entryId)
+    )
+  );
+  const newContractRefs = resolvedEntries.map((entry) =>
+    db.collection(CONTRACT_REFS_COLLECTION).doc(
+      contractRefDocId(toOwnerEmail, entry.entryId)
+    )
+  );
+  const oldReviewRefs = resolvedEntries.map((entry) =>
+    db.collection("anniversaryReviews").doc(`${entry.ownerEmail}__${entry.entryId}`)
+  );
+  const newReviewRefs = resolvedEntries.map((entry) =>
+    db.collection("anniversaryReviews").doc(`${toOwnerEmail}__${entry.entryId}`)
+  );
+  const rootClaimTargets = Array.from(
+    new Map(
+      resolvedEntries
+        .filter(
+          (entry) =>
+            normalizeContractEntryType(entry.data.entryType ?? "contract") ===
+            "contract"
+        )
+        .map((entry) => {
+          const normalizedNumber = normalizeContractNumber(
+            entry.data.contractNumber ?? null
+          );
+          return normalizedNumber
+            ? [normalizedNumber, { normalizedNumber, entry }] as const
+            : null;
+        })
+        .filter(
+          (item): item is readonly [
+            string,
+            { normalizedNumber: string; entry: ResolvedTransferEntry }
+          ] => Boolean(item)
+        )
+    ).values()
+  );
+  const claimRefs = rootClaimTargets.map(({ normalizedNumber }) =>
+    db.collection(CONTRACT_NUMBER_CLAIMS_COLLECTION).doc(
+      contractNumberClaimDocId(normalizedNumber)
+    )
+  );
+
+  await db.runTransaction(async (tx) => {
+    const [
+      requestSnap,
+      currentSourceSnaps,
+      destinationSnaps,
+      oldReviewSnaps,
+      newReviewSnaps,
+      claimSnaps,
+    ] = await Promise.all([
+      tx.get(requestRef),
+      Promise.all(resolvedEntries.map((entry) => tx.get(entry.ref))),
+      Promise.all(destinationRefs.map((ref) => tx.get(ref))),
+      Promise.all(oldReviewRefs.map((ref) => tx.get(ref))),
+      Promise.all(newReviewRefs.map((ref) => tx.get(ref))),
+      Promise.all(claimRefs.map((ref) => tx.get(ref))),
+    ]);
+
+    const currentRequest = (requestSnap.data() ?? {}) as ContractTransferRequestDoc;
+    if (!requestSnap.exists || currentRequest.status !== expectedStatus) {
+      throw contractTransferError(
+        "Žádost už byla mezitím vyřízena nebo změněna.",
+        409
+      );
+    }
+    const missingSource = currentSourceSnaps.findIndex((snap) => !snap.exists);
+    if (missingSource >= 0) {
+      throw contractTransferError(
+        "Některá smlouva se během čekání na převod změnila.",
+        409
+      );
+    }
+    const occupiedDestination = destinationSnaps.findIndex((snap) => snap.exists);
+    if (occupiedDestination >= 0) {
+      throw contractTransferError(
+        `U nového správce už existuje záznam se stejným ID (${resolvedEntries[occupiedDestination]?.entryId ?? "neznámé"}).`,
+        409
+      );
+    }
+    if (newReviewSnaps.some((snap) => snap.exists)) {
+      throw contractTransferError(
+        "U nového správce už existuje výroční záznam k některé smlouvě.",
+        409
+      );
+    }
+
+    const conflictingClaimPaths = claimSnaps
+      .map((snap, index) => {
+        if (!snap.exists) return "";
+        const data = (snap.data() ?? {}) as { entryPath?: unknown };
+        const path = typeof data.entryPath === "string" ? data.entryPath.trim() : "";
+        const sourcePath = rootClaimTargets[index]?.entry.ref.path ?? "";
+        const destinationPath = destinationRefs[
+          resolvedEntries.findIndex((entry) => entry.ref.path === sourcePath)
+        ]?.path;
+        return path && path !== sourcePath && path !== destinationPath ? path : "";
+      })
+      .filter(Boolean);
+    const conflictingClaimSnaps = await Promise.all(
+      conflictingClaimPaths.map((path) => tx.get(db.doc(path)))
+    );
+    if (conflictingClaimSnaps.some((snap) => snap.exists)) {
+      throw contractTransferError(
+        "Číslo některé smlouvy je už rezervováno jiným záznamem.",
+        409
+      );
+    }
+
+    currentSourceSnaps.forEach((sourceSnap, index) => {
+      const resolved = resolvedEntries[index]!;
+      const currentData = (sourceSnap.data() ?? {}) as ContractDoc;
+      const nextData = buildTransferredContractData({
+        contract: currentData,
+        fromOwnerEmail: resolved.ownerEmail,
+        toOwnerEmail,
+        toOwnerUserId: targetProfile.userId,
+        actorEmail,
+        transferredAt,
+        effectiveDate,
+        fromOwnerName:
+          sourceNames.get(resolved.ownerEmail) ??
+          currentData.servicingOwnerName ??
+          null,
+        toOwnerName: toOwnerName ?? targetProfile.name ?? null,
+        reason,
+      });
+
+      tx.create(destinationRefs[index]!, nextData);
+      tx.delete(resolved.ref);
+      tx.delete(oldContractRefs[index]!);
+      const contractRefPayload = contractRefFromData({
+        ownerEmail: toOwnerEmail,
+        entryId: resolved.entryId,
+        contractNumber: currentData.contractNumber,
+        productKey: currentData.productKey ?? null,
+      });
+      if (contractRefPayload) {
+        tx.set(newContractRefs[index]!, contractRefPayload, { merge: true });
+      } else {
+        tx.delete(newContractRefs[index]!);
+      }
+
+      const oldReviewSnap = oldReviewSnaps[index];
+      if (oldReviewSnap?.exists) {
+        tx.set(
+          newReviewRefs[index]!,
+          {
+            ...(oldReviewSnap.data() ?? {}),
+            ownerEmail: toOwnerEmail,
+            transferredFromOwnerEmail: resolved.ownerEmail,
+            transferredAt,
+            transferEffectiveDate: effectiveDate,
+          },
+          { merge: false }
+        );
+        tx.delete(oldReviewRefs[index]!);
+      }
+    });
+
+    rootClaimTargets.forEach(({ entry }, index) => {
+      const destinationIndex = resolvedEntries.findIndex(
+        (candidate) => candidate.ref.path === entry.ref.path
+      );
+      const destinationRef = destinationRefs[destinationIndex];
+      if (!destinationRef) return;
+      tx.set(
+        claimRefs[index]!,
+        {
+          ownerEmail: toOwnerEmail,
+          entryId: entry.entryId,
+          entryPath: destinationRef.path,
+          updatedAt: transferredAt,
+        },
+        { merge: true }
+      );
+    });
+
+    tx.set(
+      requestRef,
+      {
+        status: "approved",
+        updatedAt: transferredAt,
+        completedAt: transferredAt,
+        decidedAt: currentRequest.decidedAt ?? transferredAt,
+        decidedByEmail: currentRequest.decidedByEmail ?? actorEmail,
+        failureReason: null,
+        summary: {
+          toOwnerEmail,
+          transferredContracts: new Set(
+            resolvedEntries.map((entry) => entry.familyKey)
+          ).size,
+          transferredEntries: resolvedEntries.length,
+          transferredAtMs: transferredAt.getTime(),
+        },
+      },
+      { merge: true }
+    );
+  });
+
+  try {
+    await markTeamOverviewOwnersDirty([
+      ...new Set([
+        ...resolvedEntries.map((entry) => entry.ownerEmail),
+        toOwnerEmail,
+      ]),
+    ]);
+  } catch (markErr) {
+    console.warn("Převod smluv: team-overview invalidace selhala:", markErr);
+  }
+
+  return {
+    transferredContracts: new Set(
+      resolvedEntries.map((entry) => entry.familyKey)
+    ).size,
+    transferredEntries: resolvedEntries.length,
+    toOwnerEmail,
+    transferredAtMs: transferredAt.getTime(),
+  };
+}
+
 export async function handleContractsPatch(
   req: NextRequest,
   forcedAction?: ContractsPatchAction
@@ -5827,6 +6408,602 @@ export async function handleContractsPatch(
 
   const action =
     typeof body?.action === "string" ? body.action.trim() : "";
+  if (action === "transfer") {
+    try {
+      if (!adminDb) {
+        return NextResponse.json(
+          { ok: false, error: "Server není správně nakonfigurován." },
+          { status: 500 }
+        );
+      }
+
+      const requestAction =
+        typeof body?.requestAction === "string"
+          ? body.requestAction.trim()
+          : "";
+      if (!["submit", "approve", "reject"].includes(requestAction)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Převod smlouvy musí být nejprve odeslán jako žádost administrátorovi.",
+          },
+          { status: 400 }
+        );
+      }
+
+      let approvalRequestRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData> | null =
+        null;
+      let approvalRequest: ContractTransferRequestDoc | null = null;
+      if (requestAction === "approve" || requestAction === "reject") {
+        if (!ctx.canManageContractsAsAdmin) {
+          return NextResponse.json(
+            { ok: false, error: "Žádost může vyřídit pouze administrátor." },
+            { status: 403 }
+          );
+        }
+        const requestId =
+          typeof body?.requestId === "string" ? body.requestId.trim() : "";
+        if (!requestId || requestId.includes("/") || requestId.includes("..")) {
+          return NextResponse.json(
+            { ok: false, error: "Chybí platné ID žádosti." },
+            { status: 400 }
+          );
+        }
+        approvalRequestRef = adminDb
+          .collection(CONTRACT_TRANSFER_REQUESTS_COLLECTION)
+          .doc(requestId);
+        const approvalSnap = await approvalRequestRef.get();
+        if (!approvalSnap.exists) {
+          return NextResponse.json(
+            { ok: false, error: "Žádost o převod nebyla nalezena." },
+            { status: 404 }
+          );
+        }
+        approvalRequest = (approvalSnap.data() ?? {}) as ContractTransferRequestDoc;
+
+        if (requestAction === "reject") {
+          const decisionReason =
+            typeof body?.decisionReason === "string"
+              ? body.decisionReason.trim().slice(0, 500)
+              : "";
+          await adminDb.runTransaction(async (tx) => {
+            const currentSnap = await tx.get(approvalRequestRef!);
+            const current = (currentSnap.data() ?? {}) as ContractTransferRequestDoc;
+            if (
+              !currentSnap.exists ||
+              (current.status !== "pending" && current.status !== "scheduled")
+            ) {
+              throw contractTransferError("Žádost už byla vyřízena.", 409);
+            }
+            const decidedAt = new Date();
+            tx.set(
+              approvalRequestRef!,
+              {
+                status: "rejected",
+                updatedAt: decidedAt,
+                decidedAt,
+                decidedByEmail: ctx.actorEmail,
+                decisionReason: decisionReason || null,
+              },
+              { merge: true }
+            );
+          });
+          return withRateLimit(
+            NextResponse.json({ ok: true, rejected: true, requestId })
+          );
+        }
+
+        if (approvalRequest.status !== "pending") {
+          return NextResponse.json(
+            { ok: false, error: "Žádost už byla vyřízena." },
+            { status: 409 }
+          );
+        }
+        body = {
+          ...body,
+          entries: approvalRequest.entries,
+          toOwnerEmail: approvalRequest.toOwnerEmail,
+          effectiveDate: approvalRequest.effectiveDate,
+        };
+      }
+
+      const transferAccess = contractTransferAccessForContext(ctx);
+      if (!transferAccess.canTransferContracts) {
+        return NextResponse.json(
+          { ok: false, error: "Nemáš oprávnění převádět smlouvy." },
+          { status: 403 }
+        );
+      }
+
+      const toOwnerEmail = normalizeEmail(
+        typeof body?.toOwnerEmail === "string" ? body.toOwnerEmail : ""
+      );
+      if (!toOwnerEmail || !EMAIL_RE.test(toOwnerEmail)) {
+        return NextResponse.json(
+          { ok: false, error: "Vyber platného nového správce smlouvy." },
+          { status: 400 }
+        );
+      }
+      if (!transferAccess.allowedTargetEmails.has(toOwnerEmail)) {
+        return NextResponse.json(
+          { ok: false, error: "Vybraný poradce není dostupný pro převod." },
+          { status: 403 }
+        );
+      }
+
+      const effectiveDate = normalizeTransferEffectiveDate(body?.effectiveDate);
+      if (!effectiveDate) {
+        return NextResponse.json(
+          { ok: false, error: "Vyber platné datum účinnosti převodu." },
+          { status: 400 }
+        );
+      }
+
+      const requestedEntriesRaw = Array.isArray(body?.entries) ? body.entries : [];
+      if (requestedEntriesRaw.length === 0) {
+        return NextResponse.json(
+          { ok: false, error: "Vyber alespoň jednu smlouvu k převodu." },
+          { status: 400 }
+        );
+      }
+      if (requestedEntriesRaw.length > TRANSFER_MAX_SELECTIONS) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Najednou lze převést maximálně ${TRANSFER_MAX_SELECTIONS} smluv.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const requestedEntries = parseContractTransferSelections(requestedEntriesRaw);
+      if (
+        requestedEntries.some((selection) => !isValidContractTransferSelection(selection))
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Výběr obsahuje neplatnou smlouvu." },
+          { status: 400 }
+        );
+      }
+
+      const transferableSelections = requestedEntries.filter(
+        ({ ownerEmail }) => ownerEmail !== toOwnerEmail
+      );
+      if (transferableSelections.length === 0) {
+        return NextResponse.json(
+          { ok: false, error: "Vybrané smlouvy už patří zvolenému správci." },
+          { status: 400 }
+        );
+      }
+
+      for (const selection of transferableSelections) {
+        if (
+          !canManageContractOwner({
+            viewerEmail: email,
+            teamEmails: contractAccessEmails,
+            ownerEmail: selection.ownerEmail,
+            canManageContractsAsAdmin: ctx.canManageContractsAsAdmin,
+          })
+        ) {
+          return NextResponse.json(
+            { ok: false, error: "Nemáš oprávnění převést některou z vybraných smluv." },
+            { status: 403 }
+          );
+        }
+      }
+
+      const resolvedFamilies = await Promise.all(
+        transferableSelections.map(resolveContractFamilyForTransfer)
+      );
+      const resolvedEntries = Array.from(
+        new Map(
+          resolvedFamilies
+            .flat()
+            .map((entry) => [entry.ref.path, entry] as const)
+        ).values()
+      );
+      if (resolvedEntries.length > TRANSFER_MAX_RESOLVED_ENTRIES) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Výběr obsahuje příliš mnoho záznamů včetně dodatků (maximum ${TRANSFER_MAX_RESOLVED_ENTRIES}). Rozděl převod na více částí.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const db = adminDb;
+      const targetProfile = await loadUserProfileByEmail(toOwnerEmail);
+      if (!targetProfile) {
+        return NextResponse.json(
+          { ok: false, error: "Profil nového správce nebyl nalezen." },
+          { status: 404 }
+        );
+      }
+      const targetName =
+        ctx.users.find((user) => user.email === toOwnerEmail)?.name ??
+        targetProfile.name ??
+        null;
+      const sourceNames = new Map(
+        ctx.users.map((user) => [user.email, user.name ?? null] as const)
+      );
+
+      if (requestAction === "submit") {
+        const resolvedSelectionKeys = resolvedEntries.map(
+          (entry) => `${entry.ownerEmail}___${entry.entryId}`
+        );
+        const selectedKeySet = new Set(resolvedSelectionKeys);
+        const recentRequests = await adminDb
+          .collection(CONTRACT_TRANSFER_REQUESTS_COLLECTION)
+          .orderBy("createdAt", "desc")
+          .limit(CONTRACT_TRANSFER_REQUEST_LIST_LIMIT)
+          .get();
+        const overlappingRequest = recentRequests.docs.find((docSnap) => {
+          const data = (docSnap.data() ?? {}) as ContractTransferRequestDoc;
+          if (data.status !== "pending" && data.status !== "scheduled") return false;
+          return (Array.isArray(data.resolvedSelectionKeys)
+            ? data.resolvedSelectionKeys
+            : []
+          ).some((key) => selectedKeySet.has(key));
+        });
+        if (overlappingRequest) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                "Pro některou z vybraných smluv už existuje nevyřízená nebo naplánovaná žádost.",
+            },
+            { status: 409 }
+          );
+        }
+
+        const createdAt = new Date();
+        const requestRef = adminDb
+          .collection(CONTRACT_TRANSFER_REQUESTS_COLLECTION)
+          .doc();
+        const contractSummaries = transferableSelections.map((selection) => {
+          const selected = resolvedEntries.find(
+            (entry) =>
+              entry.ownerEmail === selection.ownerEmail &&
+              entry.entryId === selection.entryId
+          );
+          return {
+            ownerEmail: selection.ownerEmail,
+            entryId: selection.entryId,
+            contractNumber:
+              typeof selected?.data.contractNumber === "string"
+                ? selected.data.contractNumber.trim() || null
+                : null,
+            clientName:
+              typeof selected?.data.clientName === "string"
+                ? selected.data.clientName.trim() || null
+                : null,
+            productKey: selected?.data.productKey ?? null,
+          };
+        });
+        const contractCount = new Set(
+          resolvedEntries.map((entry) => entry.familyKey)
+        ).size;
+        await requestRef.create({
+          status: "pending",
+          requestedByEmail: email,
+          requestedByActorEmail: ctx.actorEmail,
+          toOwnerEmail,
+          toOwnerName: targetName,
+          effectiveDate,
+          entries: transferableSelections,
+          resolvedSelectionKeys,
+          contractCount,
+          resolvedEntryCount: resolvedEntries.length,
+          contractSummaries,
+          createdAt,
+          updatedAt: createdAt,
+          decidedAt: null,
+          decidedByEmail: null,
+          decisionReason: null,
+          failureReason: null,
+          summary: null,
+        });
+
+        return withRateLimit(
+          NextResponse.json({
+            ok: true,
+            requested: true,
+            requestId: requestRef.id,
+            contractCount,
+            resolvedEntryCount: resolvedEntries.length,
+            toOwnerEmail,
+            effectiveDate,
+          })
+        );
+      }
+
+      if (requestAction === "approve") {
+        if (!approvalRequestRef || !approvalRequest) {
+          throw contractTransferError("Žádost o převod nebyla načtena.", 409);
+        }
+
+        if (effectiveDate > pragueIsoDay(new Date())) {
+          const decidedAt = new Date();
+          await adminDb.runTransaction(async (tx) => {
+            const currentSnap = await tx.get(approvalRequestRef!);
+            const current = (currentSnap.data() ?? {}) as ContractTransferRequestDoc;
+            if (!currentSnap.exists || current.status !== "pending") {
+              throw contractTransferError("Žádost už byla vyřízena.", 409);
+            }
+            tx.set(
+              approvalRequestRef!,
+              {
+                status: "scheduled",
+                updatedAt: decidedAt,
+                decidedAt,
+                decidedByEmail: ctx.actorEmail,
+                decisionReason: null,
+                failureReason: null,
+              },
+              { merge: true }
+            );
+          });
+          return withRateLimit(
+            NextResponse.json({
+              ok: true,
+              approved: true,
+              scheduled: true,
+              requestId: approvalRequestRef.id,
+              effectiveDate,
+              toOwnerEmail,
+            })
+          );
+        }
+
+        const transferResult = await executeApprovedContractTransfer({
+          requestRef: approvalRequestRef,
+          expectedStatus: "pending",
+          selections: transferableSelections,
+          toOwnerEmail,
+          toOwnerName: targetName,
+          actorEmail: ctx.actorEmail,
+          effectiveDate,
+          sourceNames,
+        });
+        return withRateLimit(
+          NextResponse.json({
+            ok: true,
+            approved: true,
+            scheduled: false,
+            requestId: approvalRequestRef.id,
+            effectiveDate,
+            ...transferResult,
+          })
+        );
+      }
+
+      const transferredAt = new Date();
+      const reason: ContractTransferReason = "manual";
+      const destinationRefs = resolvedEntries.map((entry) =>
+        db.collection("users").doc(toOwnerEmail).collection("entries").doc(entry.entryId)
+      );
+      const oldContractRefs = resolvedEntries.map((entry) =>
+        db.collection(CONTRACT_REFS_COLLECTION).doc(
+          contractRefDocId(entry.ownerEmail, entry.entryId)
+        )
+      );
+      const newContractRefs = resolvedEntries.map((entry) =>
+        db.collection(CONTRACT_REFS_COLLECTION).doc(
+          contractRefDocId(toOwnerEmail, entry.entryId)
+        )
+      );
+      const oldReviewRefs = resolvedEntries.map((entry) =>
+        db.collection("anniversaryReviews").doc(`${entry.ownerEmail}__${entry.entryId}`)
+      );
+      const newReviewRefs = resolvedEntries.map((entry) =>
+        db.collection("anniversaryReviews").doc(`${toOwnerEmail}__${entry.entryId}`)
+      );
+
+      const rootClaimTargets = Array.from(
+        new Map(
+          resolvedEntries
+            .filter(
+              (entry) =>
+                normalizeContractEntryType(entry.data.entryType ?? "contract") ===
+                "contract"
+            )
+            .map((entry) => {
+              const normalizedNumber = normalizeContractNumber(
+                entry.data.contractNumber ?? null
+              );
+              return normalizedNumber
+                ? [normalizedNumber, { normalizedNumber, entry }] as const
+                : null;
+            })
+            .filter(
+              (item): item is readonly [
+                string,
+                { normalizedNumber: string; entry: ResolvedTransferEntry }
+              ] => Boolean(item)
+            )
+        ).values()
+      );
+      const claimRefs = rootClaimTargets.map(({ normalizedNumber }) =>
+        db.collection(CONTRACT_NUMBER_CLAIMS_COLLECTION).doc(
+          contractNumberClaimDocId(normalizedNumber)
+        )
+      );
+
+      await db.runTransaction(async (tx) => {
+        const [
+          currentSourceSnaps,
+          destinationSnaps,
+          oldReviewSnaps,
+          newReviewSnaps,
+          claimSnaps,
+        ] = await Promise.all([
+          Promise.all(resolvedEntries.map((entry) => tx.get(entry.ref))),
+          Promise.all(destinationRefs.map((ref) => tx.get(ref))),
+          Promise.all(oldReviewRefs.map((ref) => tx.get(ref))),
+          Promise.all(newReviewRefs.map((ref) => tx.get(ref))),
+          Promise.all(claimRefs.map((ref) => tx.get(ref))),
+        ]);
+
+        const missingSource = currentSourceSnaps.findIndex((snap) => !snap.exists);
+        if (missingSource >= 0) {
+          throw contractTransferError(
+            "Některá smlouva se během převodu změnila. Obnov seznam a zkus to znovu.",
+            409
+          );
+        }
+        const occupiedDestination = destinationSnaps.findIndex((snap) => snap.exists);
+        if (occupiedDestination >= 0) {
+          throw contractTransferError(
+            `U nového správce už existuje záznam se stejným ID (${resolvedEntries[occupiedDestination]?.entryId ?? "neznámé"}).`,
+            409
+          );
+        }
+        if (newReviewSnaps.some((snap) => snap.exists)) {
+          throw contractTransferError(
+            "U nového správce už existuje výroční záznam k některé smlouvě.",
+            409
+          );
+        }
+
+        const conflictingClaimPaths = claimSnaps
+          .map((snap, index) => {
+            if (!snap.exists) return "";
+            const data = (snap.data() ?? {}) as { entryPath?: unknown };
+            const path =
+              typeof data.entryPath === "string" ? data.entryPath.trim() : "";
+            const sourcePath = rootClaimTargets[index]?.entry.ref.path ?? "";
+            const destinationPath = destinationRefs[
+              resolvedEntries.findIndex(
+                (entry) => entry.ref.path === sourcePath
+              )
+            ]?.path;
+            return path && path !== sourcePath && path !== destinationPath ? path : "";
+          })
+          .filter(Boolean);
+        const conflictingClaimSnaps = await Promise.all(
+          conflictingClaimPaths.map((path) => tx.get(db.doc(path)))
+        );
+        if (conflictingClaimSnaps.some((snap) => snap.exists)) {
+          throw contractTransferError(
+            "Číslo některé smlouvy je už rezervováno jiným záznamem.",
+            409
+          );
+        }
+
+        currentSourceSnaps.forEach((sourceSnap, index) => {
+          const resolved = resolvedEntries[index]!;
+          const currentData = (sourceSnap.data() ?? {}) as ContractDoc;
+          const nextData = buildTransferredContractData({
+            contract: currentData,
+            fromOwnerEmail: resolved.ownerEmail,
+            toOwnerEmail,
+            toOwnerUserId: targetProfile.userId,
+            actorEmail: ctx.actorEmail,
+            transferredAt,
+            fromOwnerName: sourceNames.get(resolved.ownerEmail) ?? null,
+            toOwnerName: targetName,
+            reason,
+          });
+
+          tx.create(destinationRefs[index]!, nextData);
+          tx.delete(resolved.ref);
+          tx.delete(oldContractRefs[index]!);
+          const contractRefPayload = contractRefFromData({
+            ownerEmail: toOwnerEmail,
+            entryId: resolved.entryId,
+            contractNumber: currentData.contractNumber,
+            productKey: currentData.productKey ?? null,
+          });
+          if (contractRefPayload) {
+            tx.set(newContractRefs[index]!, contractRefPayload, { merge: true });
+          } else {
+            tx.delete(newContractRefs[index]!);
+          }
+
+          const oldReviewSnap = oldReviewSnaps[index];
+          if (oldReviewSnap?.exists) {
+            tx.set(
+              newReviewRefs[index]!,
+              {
+                ...(oldReviewSnap.data() ?? {}),
+                ownerEmail: toOwnerEmail,
+                transferredFromOwnerEmail: resolved.ownerEmail,
+                transferredAt,
+              },
+              { merge: false }
+            );
+            tx.delete(oldReviewRefs[index]!);
+          }
+        });
+
+        rootClaimTargets.forEach(({ entry }, index) => {
+          const destinationIndex = resolvedEntries.findIndex(
+            (candidate) => candidate.ref.path === entry.ref.path
+          );
+          const destinationRef = destinationRefs[destinationIndex];
+          if (!destinationRef) return;
+          tx.set(
+            claimRefs[index]!,
+            {
+              ownerEmail: toOwnerEmail,
+              entryId: entry.entryId,
+              entryPath: destinationRef.path,
+              updatedAt: transferredAt,
+            },
+            { merge: true }
+          );
+        });
+      });
+
+      try {
+        await markTeamOverviewOwnersDirty([
+          ...new Set([
+            ...resolvedEntries.map((entry) => entry.ownerEmail),
+            toOwnerEmail,
+          ]),
+        ]);
+      } catch (markErr) {
+        console.warn(
+          "PATCH /api/contracts transfer: team-overview invalidace selhala:",
+          markErr
+        );
+      }
+
+      return withRateLimit(
+        NextResponse.json({
+          ok: true,
+          transferredContracts: new Set(
+            resolvedEntries.map((entry) => entry.familyKey)
+          ).size,
+          transferredEntries: resolvedEntries.length,
+          skippedAlreadyOwned: requestedEntries.length - transferableSelections.length,
+          toOwnerEmail,
+          transferredAtMs: transferredAt.getTime(),
+        })
+      );
+    } catch (transferErr: unknown) {
+      const message =
+        transferErr instanceof Error && transferErr.message.trim()
+          ? transferErr.message.trim()
+          : "Převod smluv se nepodařil.";
+      const statusCode = Number(
+        (transferErr as { statusCode?: unknown } | null)?.statusCode
+      );
+      if ([400, 403, 404, 409].includes(statusCode)) {
+        return NextResponse.json(
+          { ok: false, error: message },
+          { status: statusCode }
+        );
+      }
+      console.error("PATCH /api/contracts transfer selhal:", transferErr);
+      return NextResponse.json(
+        { ok: false, error: `Převod smluv selhal: ${message}` },
+        { status: 500 }
+      );
+    }
+  }
   if (action === "syncEntryIndex") {
     try {
       const ownerEmail = normalizeEmail(
@@ -6650,4 +7827,160 @@ export async function handleContractsUpdateFields(req: NextRequest) {
 
 export async function handleContractsSetPaid(req: NextRequest) {
   return handleContractsPatch(req, "setPaid");
+}
+
+export async function handleContractTransferRequestsGet(req: NextRequest) {
+  const guard = await requireContractsEntryGuard(req, {
+    namespace: "api:contracts:transfer-requests:get",
+    limit: CONTRACTS_GET_RATE_LIMIT,
+    windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const { ctx, withRateLimit } = guard;
+  if (!ctx.canManageContractsAsAdmin) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Žádosti o převod může zobrazit pouze administrátor." },
+        { status: 403 }
+      )
+    );
+  }
+  if (!adminDb) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován." },
+        { status: 500 }
+      )
+    );
+  }
+
+  const snapshot = await adminDb
+    .collection(CONTRACT_TRANSFER_REQUESTS_COLLECTION)
+    .orderBy("createdAt", "desc")
+    .limit(CONTRACT_TRANSFER_REQUEST_LIST_LIMIT)
+    .get();
+  const requests = snapshot.docs.map((docSnap) => {
+    const data = (docSnap.data() ?? {}) as ContractTransferRequestDoc & {
+      completedAt?: unknown;
+    };
+    return {
+      id: docSnap.id,
+      status: data.status ?? "pending",
+      requestedByEmail: normalizeEmail(data.requestedByEmail),
+      requestedByActorEmail: normalizeEmail(data.requestedByActorEmail),
+      toOwnerEmail: normalizeEmail(data.toOwnerEmail),
+      toOwnerName:
+        typeof data.toOwnerName === "string" ? data.toOwnerName.trim() || null : null,
+      effectiveDate: normalizeTransferEffectiveDate(data.effectiveDate),
+      entries: parseContractTransferSelections(data.entries),
+      contractCount: Math.max(0, Number(data.contractCount) || 0),
+      resolvedEntryCount: Math.max(0, Number(data.resolvedEntryCount) || 0),
+      contractSummaries: Array.isArray(data.contractSummaries)
+        ? data.contractSummaries.slice(0, TRANSFER_MAX_SELECTIONS)
+        : [],
+      createdAtMs: toMillis(data.createdAt) ?? 0,
+      updatedAtMs: toMillis(data.updatedAt) ?? 0,
+      decidedAtMs: toMillis(data.decidedAt),
+      completedAtMs: toMillis(data.completedAt),
+      decidedByEmail: normalizeEmail(data.decidedByEmail) || null,
+      decisionReason:
+        typeof data.decisionReason === "string"
+          ? data.decisionReason.trim() || null
+          : null,
+      failureReason:
+        typeof data.failureReason === "string"
+          ? data.failureReason.trim() || null
+          : null,
+      summary: data.summary ?? null,
+    };
+  });
+
+  return withRateLimit(NextResponse.json({ ok: true, requests }));
+}
+
+export async function processScheduledContractTransfers({
+  write = true,
+  now = new Date(),
+  limit = 50,
+}: {
+  write?: boolean;
+  now?: Date;
+  limit?: number;
+} = {}) {
+  if (!adminDb) throw new Error("Missing Firebase Admin configuration.");
+
+  const today = pragueIsoDay(now);
+  const snapshot = await adminDb
+    .collection(CONTRACT_TRANSFER_REQUESTS_COLLECTION)
+    .where("status", "==", "scheduled")
+    .limit(Math.max(1, Math.min(100, Math.floor(limit) || 50)))
+    .get();
+  const due = snapshot.docs
+    .map((docSnap) => ({
+      ref: docSnap.ref,
+      data: (docSnap.data() ?? {}) as ContractTransferRequestDoc,
+    }))
+    .filter(({ data }) => {
+      const effectiveDate = normalizeTransferEffectiveDate(data.effectiveDate);
+      return Boolean(effectiveDate && effectiveDate <= today);
+    });
+
+  const result = {
+    ok: true as const,
+    mode: write ? ("write" as const) : ("dry-run" as const),
+    today,
+    scheduled: snapshot.size,
+    due: due.length,
+    completed: 0,
+    failed: 0,
+    failures: [] as Array<{ requestId: string; error: string }>,
+  };
+  if (!write) return result;
+
+  for (const item of due) {
+    const selections = parseContractTransferSelections(item.data.entries).filter(
+      isValidContractTransferSelection
+    );
+    const toOwnerEmail = normalizeEmail(item.data.toOwnerEmail);
+    const effectiveDate = normalizeTransferEffectiveDate(item.data.effectiveDate);
+    try {
+      if (!selections.length || !toOwnerEmail || !effectiveDate) {
+        throw contractTransferError("Naplánovaná žádost má neplatná data.", 409);
+      }
+      await executeApprovedContractTransfer({
+        requestRef: item.ref,
+        expectedStatus: "scheduled",
+        selections,
+        toOwnerEmail,
+        toOwnerName: item.data.toOwnerName ?? null,
+        actorEmail:
+          normalizeEmail(item.data.decidedByEmail) ||
+          normalizeEmail(item.data.requestedByActorEmail) ||
+          "system@bohemika.local",
+        effectiveDate,
+      });
+      result.completed += 1;
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : "Naplánovaný převod selhal.";
+      result.failed += 1;
+      result.failures.push({ requestId: item.ref.id, error: message });
+      await item.ref.set(
+        {
+          updatedAt: new Date(),
+          lastAttemptAt: new Date(),
+          failureReason: message.slice(0, 500),
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  return result;
+}
+
+export async function handleContractsTransfer(req: NextRequest) {
+  return handleContractsPatch(req, "transfer");
 }

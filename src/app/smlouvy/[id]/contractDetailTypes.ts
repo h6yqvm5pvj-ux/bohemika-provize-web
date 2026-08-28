@@ -237,6 +237,17 @@ export type ContractDoc = {
   commissionMode?: CommissionMode | null;
 
   userEmail?: string | null;
+  adviserEmail?: string | null;
+  adviserName?: string | null;
+  originalAdviserEmail?: string | null;
+  originalAdviserName?: string | null;
+  originalPosition?: Position | null;
+  servicingOwnerEmail?: string | null;
+  servicingOwnerName?: string | null;
+  commissionOwnerEmail?: string | null;
+  transferReason?: "manual" | "career_end" | string | null;
+  transferAt?: FirestoreTimestamp | Date | string | number | null;
+  transferEffectiveDate?: string | null;
   clientName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;

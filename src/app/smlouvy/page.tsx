@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   ArrowDownUp,
+  ArrowRightLeft,
   BadgeCheck,
   Banknote,
   BriefcaseBusiness,
@@ -448,6 +449,13 @@ function cleanDisplayName(value?: string | null): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function localIsoDay(value = new Date()): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function adviserLabelForEmail(email: string, knownName?: string | null): string {
   return cleanDisplayName(knownName) || adviserNameFromEmail(email) || email;
 }
@@ -567,7 +575,20 @@ function ContractsPageContent() {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkMarking, setBulkMarking] = useState(false);
+  const [bulkTransferring, setBulkTransferring] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
+  const [canTransferContracts, setCanTransferContracts] = useState(false);
+  const [transferTargets, setTransferTargets] = useState<
+    { email: string; name: string | null; position: Position | null }[]
+  >([]);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferTargetEmail, setTransferTargetEmail] = useState("");
+  const [transferTargetQuery, setTransferTargetQuery] = useState("");
+  const [transferTargetSearchOpen, setTransferTargetSearchOpen] = useState(false);
+  const [transferEffectiveDate, setTransferEffectiveDate] = useState(() =>
+    localIsoDay()
+  );
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set());
   const [selectedInstitutions, setSelectedInstitutions] = useState<Set<Institution>>(new Set());
@@ -847,6 +868,23 @@ function ContractsPageContent() {
     [normalizedUserEmail, user]
   );
 
+  const applyTransferAccessPayload = useCallback((data: ContractsApiResponse) => {
+    if (typeof data.canTransferContracts === "boolean") {
+      setCanTransferContracts(data.canTransferContracts);
+    }
+    if (Array.isArray(data.transferTargets)) {
+      setTransferTargets(
+        data.transferTargets
+          .map((target) => ({
+            email: normalizeEmail(target.email),
+            name: cleanDisplayName(target.name) || null,
+            position: target.position ?? null,
+          }))
+          .filter((target) => Boolean(target.email))
+      );
+    }
+  }, []);
+
   const fetchMyPage = useCallback(
     async (
       startBefore: string | null,
@@ -864,6 +902,7 @@ function ContractsPageContent() {
         filters,
         signal,
       });
+      applyTransferAccessPayload(data);
       const list = (data.contracts as ContractDoc[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
@@ -881,7 +920,7 @@ function ContractsPageContent() {
 
       return { list, oldest, hasMore };
     },
-    [apiFetchContracts, normalizedUserEmail, user]
+    [apiFetchContracts, applyTransferAccessPayload, normalizedUserEmail, user]
   );
 
   const fetchTeamPage = useCallback(
@@ -909,6 +948,7 @@ function ContractsPageContent() {
         filters,
         signal,
       });
+      applyTransferAccessPayload(data);
       const list = (data.contracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
@@ -926,11 +966,12 @@ function ContractsPageContent() {
 
       return { list, oldest, hasMore };
     },
-    [apiFetchContracts]
+    [apiFetchContracts, applyTransferAccessPayload]
   );
 
   const applyContractsPayload = useCallback(
     (email: string, data: ContractsApiResponse) => {
+      applyTransferAccessPayload(data);
       const myList = (data.contracts as ContractDoc[]) ?? [];
       const teamList =
         (data.teamContracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
@@ -966,7 +1007,7 @@ function ContractsPageContent() {
         teamEmails,
       });
     },
-    []
+    [applyTransferAccessPayload]
   );
 
   const refreshContracts = useCallback(
@@ -1052,6 +1093,10 @@ function ContractsPageContent() {
         setTeamCursorDate(null);
         setLoadError(null);
         setLoading(false);
+        setCanTransferContracts(false);
+        setTransferTargets([]);
+        setTransferModalOpen(false);
+        setTransferTargetEmail("");
         return;
       }
       if (serverFilterActive) {
@@ -2090,7 +2135,33 @@ function ContractsPageContent() {
   const clearSelection = () => {
     setSelectedKeys(new Set());
     setSelectMode(false);
+    setTransferModalOpen(false);
+    setTransferTargetEmail("");
+    setTransferTargetQuery("");
+    setTransferTargetSearchOpen(false);
+    setTransferEffectiveDate(localIsoDay());
   };
+
+  const selectedOwnerEmails = new Set(
+    Array.from(selectedKeys)
+      .map((key) => normalizeEmail(key.split("___")[0] ?? ""))
+      .filter(Boolean)
+  );
+  const eligibleTransferTargets = transferTargets.filter(
+    (target) =>
+      Array.from(selectedOwnerEmails).some(
+        (ownerEmail) => ownerEmail !== target.email
+      )
+  );
+  const normalizedTransferTargetQuery = normalizeSearchValue(transferTargetQuery);
+  const matchingTransferTargets = eligibleTransferTargets
+    .filter((target) => {
+      if (!normalizedTransferTargetQuery) return true;
+      return normalizeSearchValue(
+        `${adviserLabelForEmail(target.email, target.name)} ${target.email}`
+      ).includes(normalizedTransferTargetQuery);
+    })
+    .slice(0, 8);
 
   const handleBulkDelete = async () => {
     if (selectedKeys.size === 0) return;
@@ -2102,6 +2173,7 @@ function ContractsPageContent() {
 
     setBulkDeleting(true);
     setBulkError(null);
+    setBulkSuccess(null);
 
     try {
       const entries = Array.from(selectedKeys)
@@ -2157,6 +2229,7 @@ function ContractsPageContent() {
     if (!user) return;
     setBulkMarking(true);
     setBulkError(null);
+    setBulkSuccess(null);
 
     try {
       const entries = Array.from(selectedKeys)
@@ -2205,6 +2278,78 @@ function ContractsPageContent() {
       setBulkError("Nepodařilo se označit vybrané smlouvy jako zaplacené. Zkus to prosím znovu.");
     } finally {
       setBulkMarking(false);
+    }
+  };
+
+  const handleBulkTransfer = async () => {
+    if (
+      selectedKeys.size === 0 ||
+      !transferTargetEmail ||
+      !transferEffectiveDate ||
+      !user
+    ) return;
+    setBulkTransferring(true);
+    setBulkError(null);
+    setBulkSuccess(null);
+
+    try {
+      const entries = Array.from(selectedKeys)
+        .map((key) => {
+          const [ownerEmail, entryId] = key.split("___");
+          return { ownerEmail, entryId };
+        })
+        .filter((entry) => entry.ownerEmail && entry.entryId);
+      const token = await user.getIdToken();
+      const res = await fetch("/api/contracts/transfer", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          requestAction: "submit",
+          entries,
+          toOwnerEmail: transferTargetEmail,
+          effectiveDate: transferEffectiveDate,
+        }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        requested?: boolean;
+        requestId?: string;
+        contractCount?: number;
+        effectiveDate?: string;
+      };
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload.error || "Žádost o převod smluv se nepodařilo odeslat.");
+      }
+
+      const requestedContracts = Number(payload.contractCount ?? 0);
+      const target = transferTargets.find(
+        (candidate) => candidate.email === transferTargetEmail
+      );
+      const targetLabel = adviserLabelForEmail(
+        transferTargetEmail,
+        target?.name ?? null
+      );
+      clearSelection();
+      setBulkSuccess(
+        `Žádost o převod ${requestedContracts || entries.length} ${
+          requestedContracts === 1 ? "smlouvy" : "smluv"
+        } na správce ${targetLabel} k ${new Date(
+          `${transferEffectiveDate}T12:00:00`
+        ).toLocaleDateString("cs-CZ")} byla odeslána administrátorovi.`
+      );
+    } catch (error) {
+      console.error("Chyba při odesílání žádosti o převod smluv", error);
+      setBulkError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Žádost o převod smluv se nepodařilo odeslat. Zkus to prosím znovu."
+      );
+    } finally {
+      setBulkTransferring(false);
     }
   };
 
@@ -2392,6 +2537,30 @@ function ContractsPageContent() {
               <span className="text-xs font-semibold text-slate-600">
                 Vybráno: {selectedKeys.size}
               </span>
+              {canTransferContracts ? (
+                <button
+                  type="button"
+                  disabled={
+                    selectedKeys.size === 0 ||
+                    bulkTransferring ||
+                    eligibleTransferTargets.length === 0
+                  }
+                  onClick={() => {
+                    setTransferTargetEmail("");
+                    setTransferTargetQuery("");
+                    setTransferTargetSearchOpen(false);
+                    setTransferEffectiveDate(localIsoDay());
+                    setBulkError(null);
+                    setTransferModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  <ArrowRightLeft size={13} strokeWidth={2.4} aria-hidden="true" />
+                  {selectedKeys.size === 0
+                    ? "Požádat o převod"
+                    : `Požádat o převod (${selectedKeys.size})`}
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={selectedKeys.size === 0 || bulkDeleting}
@@ -2557,6 +2726,11 @@ function ContractsPageContent() {
                   {bulkError}
                 </div>
               )}
+              {bulkSuccess && (
+                <div className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                  {bulkSuccess}
+                </div>
+              )}
               {listViewMode === "compact" && (
                 <div className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.04)] lg:grid lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center lg:gap-3">
                   <span>Smlouva</span>
@@ -2589,6 +2763,9 @@ function ContractsPageContent() {
                 const signedStr = signed
                   ? signed.toLocaleDateString("cs-CZ")
                   : "—";
+                const transferEffectiveDate = toDate(
+                  c.transferEffectiveDate ?? c.transferAt ?? null
+                );
                 const policyStart = getAnniversaryStartDate(c);
                 const anniversaryInfo = shouldTrackAnniversary(
                   c.productKey as Product | undefined
@@ -2612,6 +2789,22 @@ function ContractsPageContent() {
                   showTeam && ownerEmail
                     ? cleanDisplayName(c.adviserName) || adviserNameFromEmail(ownerEmail)
                     : "";
+                const originalAdviserEmail =
+                  normalizeEmail(c.originalAdviserEmail) || ownerEmail;
+                const originalAdviserName = originalAdviserEmail
+                  ? cleanDisplayName(c.originalAdviserName) ||
+                    adviserNameFromEmail(originalAdviserEmail)
+                  : "";
+                const servicingAdviserName = ownerEmail
+                  ? cleanDisplayName(c.servicingOwnerName) ||
+                    cleanDisplayName(c.adviserName) ||
+                    adviserNameFromEmail(ownerEmail)
+                  : "";
+                const wasTransferred = Boolean(
+                  originalAdviserEmail &&
+                    ownerEmail &&
+                    originalAdviserEmail !== ownerEmail
+                );
                 const premiumDisplay = premiumDisplayForContract(c as ContractDoc);
                 const isEndorsement = c.entryType === "endorsement";
                 const hasOriginalReplacement = isRefreshContract(c as ContractDoc);
@@ -2715,7 +2908,16 @@ function ContractsPageContent() {
                                 {c.clientName || "Klient neuveden"}
                               </span>
                               <span className="max-w-[42vw] shrink-0 truncate whitespace-nowrap lg:max-w-none">č. {c.contractNumber ?? "—"}</span>
-                              {adviserName ? <span className="hidden sm:inline">{adviserName}</span> : null}
+                              {wasTransferred ? (
+                                <span className="hidden font-semibold text-violet-700 sm:inline">
+                                  Správce: {servicingAdviserName} · sjednal: {originalAdviserName}
+                                  {transferEffectiveDate
+                                    ? ` · od ${transferEffectiveDate.toLocaleDateString("cs-CZ")}`
+                                    : ""}
+                                </span>
+                              ) : adviserName ? (
+                                <span className="hidden sm:inline">{adviserName}</span>
+                              ) : null}
                               {anniversaryInfo.soon ? (
                                 <span className="hidden font-semibold text-rose-700 sm:inline">
                                   {anniversaryInfo.daysLeft != null
@@ -2897,6 +3099,11 @@ function ContractsPageContent() {
                               {originalReplacementBadgeLabel}
                             </span>
                           )}
+                          {wasTransferred && (
+                            <span className="inline-flex items-center rounded-full border border-violet-300/45 bg-violet-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-100">
+                              Převedeno
+                            </span>
+                          )}
                           {groupedEndorsementCount > 0 && (
                             <span className="inline-flex items-center rounded-full border border-[#9a67d0]/70 bg-[#2e1c43]/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#d8bcf3]">
                               {groupedEndorsementCount}× změna
@@ -2974,14 +3181,39 @@ function ContractsPageContent() {
                             </span>
                             <span className="text-[#fbf7ff]">{signedStr}</span>
                           </p>
-                          {adviserName && (
+                          {wasTransferred ? (
+                            <>
+                              <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                                  Sjednal
+                                </span>
+                                <span className="text-[#fbf7ff]">{originalAdviserName}</span>
+                              </p>
+                              <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                                  Správce
+                                </span>
+                                <span className="text-[#fbf7ff]">{servicingAdviserName}</span>
+                              </p>
+                              {transferEffectiveDate ? (
+                                <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
+                                    Správa od
+                                  </span>
+                                  <span className="text-[#fbf7ff]">
+                                    {transferEffectiveDate.toLocaleDateString("cs-CZ")}
+                                  </span>
+                                </p>
+                              ) : null}
+                            </>
+                          ) : adviserName ? (
                             <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                               <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
                                 Sjednal
                               </span>
                               <span className="text-[#fbf7ff]">{adviserName}</span>
                             </p>
-                          )}
+                          ) : null}
                           {groupedEntryCount > 1 && (
                             <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                               <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
@@ -3848,6 +4080,154 @@ function ContractsPageContent() {
           </div>
         </div>
       )}
+      {transferModalOpen ? (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="contract-transfer-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !bulkTransferring) {
+              setTransferModalOpen(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_32px_84px_rgba(2,6,23,0.36)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 id="contract-transfer-title" className="text-lg font-black text-slate-950">
+                  Požádat o převod smluv
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Vybráno {selectedKeys.size}. Hlavní smlouva bude převedena společně se všemi dodatky.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={bulkTransferring}
+                onClick={() => setTransferModalOpen(false)}
+                className="ui-focus inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                aria-label="Zavřít převod smluv"
+              >
+                <X size={17} strokeWidth={2.4} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <div className="rounded-[20px] border border-violet-200 bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
+                Žádost nejprve schválí administrátor. Od zvoleného data bude nový správce čerpat dosud nevyplacené a budoucí provize na pozici původního sjednatele. Již vyplacené provize se nemění.
+              </div>
+
+              <div className="relative">
+                <label htmlFor="contract-transfer-target" className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                  Nový správce
+                </label>
+                <div className="relative">
+                  <Search
+                    size={17}
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    id="contract-transfer-target"
+                    type="search"
+                    role="combobox"
+                    autoComplete="off"
+                    aria-autocomplete="list"
+                    aria-expanded={transferTargetSearchOpen}
+                    aria-controls="contract-transfer-target-results"
+                    value={transferTargetQuery}
+                    disabled={bulkTransferring}
+                    placeholder="Hledat podle jména nebo e-mailu"
+                    onFocus={() => setTransferTargetSearchOpen(true)}
+                    onBlur={() => setTransferTargetSearchOpen(false)}
+                    onChange={(event) => {
+                      setTransferTargetQuery(event.target.value);
+                      setTransferTargetEmail("");
+                      setTransferTargetSearchOpen(true);
+                    }}
+                    className="ui-focus h-12 w-full rounded-[16px] border border-slate-300 bg-white pl-10 pr-3 text-sm font-bold text-slate-900 disabled:opacity-60"
+                  />
+                </div>
+                {transferTargetSearchOpen ? (
+                  <div
+                    id="contract-transfer-target-results"
+                    role="listbox"
+                    className="absolute inset-x-0 top-full z-20 mt-2 max-h-64 overflow-y-auto rounded-[18px] border border-slate-200 bg-white p-1.5 shadow-[0_18px_46px_rgba(15,23,42,0.18)]"
+                  >
+                    {matchingTransferTargets.length ? (
+                      matchingTransferTargets.map((target) => {
+                        const label = adviserLabelForEmail(target.email, target.name);
+                        return (
+                          <button
+                            key={target.email}
+                            type="button"
+                            role="option"
+                            aria-selected={target.email === transferTargetEmail}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setTransferTargetEmail(target.email);
+                              setTransferTargetQuery(`${label} · ${target.email}`);
+                              setTransferTargetSearchOpen(false);
+                            }}
+                            className="ui-focus flex w-full flex-col rounded-[13px] px-3 py-2 text-left transition hover:bg-violet-50"
+                          >
+                            <span className="text-sm font-black text-slate-900">{label}</span>
+                            <span className="text-xs text-slate-500">{target.email}</span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="px-3 py-4 text-center text-sm text-slate-500">
+                        Žádný poradce neodpovídá hledání.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              <div>
+                <label htmlFor="contract-transfer-effective-date" className="mb-2 block text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                  Datum účinnosti převodu
+                </label>
+                <input
+                  id="contract-transfer-effective-date"
+                  type="date"
+                  value={transferEffectiveDate}
+                  disabled={bulkTransferring}
+                  onChange={(event) => setTransferEffectiveDate(event.target.value)}
+                  className="ui-focus h-12 w-full rounded-[16px] border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 disabled:opacity-60"
+                />
+              </div>
+
+              <p className="text-xs leading-relaxed text-slate-500">
+                U smlouvy zůstane uložen původní sjednatel, jeho sjednatelská pozice, datum účinnosti i auditní stopa správce. Budoucí schválený převod se provede automaticky v daný den.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+              <button
+                type="button"
+                disabled={bulkTransferring}
+                onClick={() => setTransferModalOpen(false)}
+                className="ui-focus h-11 rounded-[16px] border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                disabled={!transferTargetEmail || !transferEffectiveDate || bulkTransferring}
+                onClick={() => void handleBulkTransfer()}
+                className="ui-focus inline-flex h-11 items-center gap-2 rounded-[16px] border border-violet-700 bg-violet-700 px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(109,40,217,0.24)] transition hover:bg-violet-800 disabled:opacity-50 [&_*]:!text-white"
+              >
+                <ArrowRightLeft size={16} strokeWidth={2.4} aria-hidden="true" />
+                {bulkTransferring ? "Odesílám…" : "Odeslat žádost"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {contractDetailWindow ? (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 px-3 py-4 backdrop-blur-md sm:px-5 sm:py-6"

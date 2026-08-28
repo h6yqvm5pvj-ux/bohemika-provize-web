@@ -52,6 +52,15 @@ export type ContractDoc = {
 
   userEmail?: string | null;
   adviserName?: string | null;
+  originalAdviserEmail?: string | null;
+  originalAdviserName?: string | null;
+  originalPosition?: Position | null;
+  servicingOwnerEmail?: string | null;
+  servicingOwnerName?: string | null;
+  commissionOwnerEmail?: string | null;
+  transferReason?: "manual" | "career_end" | string | null;
+  transferAt?: FirestoreTimestamp | Date | string | number | null;
+  transferEffectiveDate?: string | null;
   clientName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
@@ -145,6 +154,12 @@ export type ContractsApiResponse = {
   error?: string;
   position?: Position | null;
   teamEmails?: string[];
+  canTransferContracts?: boolean;
+  transferTargets?: {
+    email: string;
+    name: string | null;
+    position: Position | null;
+  }[];
   contracts?: (ContractDoc & { adviserEmail: string | null })[];
   hasMore?: boolean;
   nextCursorToken?: string | null;

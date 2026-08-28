@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { markExpiredPolicyEndContractsDozita } from "@/lib/server/contractLifecycleMaintenance";
+import { processScheduledContractTransfers } from "@/app/api/contracts/_lib/contractsApi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,14 +42,15 @@ export async function GET(req: NextRequest) {
   const dryRun = req.nextUrl.searchParams.get("dryRun") === "1";
 
   try {
-    const result = await markExpiredPolicyEndContractsDozita({
-      write: !dryRun,
-    });
-    return NextResponse.json(result);
+    const [lifecycle, contractTransfers] = await Promise.all([
+      markExpiredPolicyEndContractsDozita({ write: !dryRun }),
+      processScheduledContractTransfers({ write: !dryRun }),
+    ]);
+    return NextResponse.json({ ...lifecycle, contractTransfers });
   } catch (error) {
     console.error("Contract lifecycle cron failed:", error);
     return NextResponse.json(
-      { ok: false, error: "Nepodařilo se aktualizovat stavy smluv." },
+      { ok: false, error: "Nepodařilo se provést údržbu smluv." },
       { status: 500 }
     );
   }

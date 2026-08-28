@@ -44,6 +44,10 @@ export type EntryDoc = {
   }[] | null;
 
   userEmail?: string | null;
+  originalAdviserEmail?: string | null;
+  originalPosition?: Position | null;
+  servicingOwnerEmail?: string | null;
+  commissionOwnerEmail?: string | null;
   contractSignedDate?: unknown;
   position?: Position | null;
   effectivePosition?: Position | null;

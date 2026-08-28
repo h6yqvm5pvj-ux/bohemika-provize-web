@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   BellRing,
   Building2,
   BriefcaseBusiness,
@@ -132,6 +133,50 @@ type UserRequestUpdateResponse = {
   error?: string;
 };
 
+type ContractTransferRequestStatus =
+  | "pending"
+  | "scheduled"
+  | "approved"
+  | "rejected";
+
+type ContractTransferRequestPayload = {
+  id: string;
+  status: ContractTransferRequestStatus;
+  requestedByEmail: string;
+  requestedByActorEmail: string;
+  toOwnerEmail: string;
+  toOwnerName: string | null;
+  effectiveDate: string | null;
+  entries: Array<{ ownerEmail: string; entryId: string }>;
+  contractCount: number;
+  resolvedEntryCount: number;
+  contractSummaries: Array<{
+    ownerEmail?: string;
+    entryId?: string;
+    contractNumber?: string | null;
+    clientName?: string | null;
+    productKey?: string | null;
+  }>;
+  createdAtMs: number;
+  updatedAtMs: number;
+  decidedAtMs: number | null;
+  completedAtMs: number | null;
+  decidedByEmail: string | null;
+  decisionReason: string | null;
+  failureReason: string | null;
+  summary: {
+    toOwnerEmail?: string;
+    transferredContracts?: number;
+    transferredEntries?: number;
+    transferredAtMs?: number;
+  } | null;
+};
+
+type ContractTransferRequestsApiSuccess = {
+  ok?: boolean;
+  requests?: ContractTransferRequestPayload[];
+};
+
 type UnifiedRequestItem =
   | {
       kind: "endCollaboration";
@@ -150,6 +195,15 @@ type UnifiedRequestItem =
       searchable: string;
       pending: boolean;
       request: UserRequestPayload;
+    }
+  | {
+      kind: "contractTransfer";
+      id: string;
+      createdAtMs: number;
+      activityAtMs: number;
+      searchable: string;
+      pending: boolean;
+      request: ContractTransferRequestPayload;
     };
 
 const normalizeEmail = (value: string | null | undefined): string =>
@@ -363,6 +417,26 @@ const userRequestStatusLabel: Record<UserRequestStatus, string> = {
   pending: "Čeká",
   needsInfo: "Potřeba doplnit",
   accepted: "Akceptováno",
+  rejected: "Odmítnuto",
+};
+
+const contractTransferStatusPillClass: Record<
+  ContractTransferRequestStatus,
+  string
+> = {
+  pending: "border-amber-300 bg-amber-50 text-amber-800",
+  scheduled: "border-sky-300 bg-sky-50 text-sky-800",
+  approved: "border-violet-300 bg-violet-50 text-violet-800",
+  rejected: "border-slate-300 bg-slate-100 text-slate-700",
+};
+
+const contractTransferStatusLabel: Record<
+  ContractTransferRequestStatus,
+  string
+> = {
+  pending: "Čeká na schválení",
+  scheduled: "Schváleno · naplánováno",
+  approved: "Převedeno",
   rejected: "Odmítnuto",
 };
 
@@ -903,12 +977,21 @@ export default function AdminRequestsPage() {
   const [authReady, setAuthReady] = useState(false);
   const [requests, setRequests] = useState<EndCollaborationRequestPayload[]>([]);
   const [userRequests, setUserRequests] = useState<UserRequestPayload[]>([]);
+  const [contractTransferRequests, setContractTransferRequests] = useState<
+    ContractTransferRequestPayload[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [userRequestsLoading, setUserRequestsLoading] = useState(true);
+  const [contractTransferRequestsLoading, setContractTransferRequestsLoading] =
+    useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userRequestsError, setUserRequestsError] = useState<string | null>(null);
+  const [contractTransferRequestsError, setContractTransferRequestsError] =
+    useState<string | null>(null);
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
   const [busyUserRequestId, setBusyUserRequestId] = useState<string | null>(null);
+  const [busyContractTransferRequestId, setBusyContractTransferRequestId] =
+    useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [requestQueueView, setRequestQueueView] = useState<"pending" | "resolved">("pending");
   const [userRequestFeedbackDrafts, setUserRequestFeedbackDrafts] = useState<
@@ -1317,15 +1400,51 @@ export default function AdminRequestsPage() {
     }
   }, [isAllowedAdmin]);
 
+  const loadContractTransferRequests = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user || !isAllowedAdmin) {
+      setContractTransferRequests([]);
+      setContractTransferRequestsLoading(false);
+      return;
+    }
+
+    setContractTransferRequestsLoading(true);
+    setContractTransferRequestsError(null);
+    try {
+      const payload =
+        await fetchAuthedJsonOrThrow<ContractTransferRequestsApiSuccess>(
+          user,
+          "/api/contracts/transfer",
+          { method: "GET" }
+        );
+      setContractTransferRequests(
+        Array.isArray(payload.requests) ? payload.requests : []
+      );
+    } catch (err: any) {
+      setContractTransferRequestsError(
+        typeof err?.message === "string" && err.message.trim()
+          ? err.message.trim()
+          : "Nepodařilo se načíst žádosti o převod smluv."
+      );
+    } finally {
+      setContractTransferRequestsLoading(false);
+    }
+  }, [isAllowedAdmin]);
+
   const refreshAllRequests = useCallback(async () => {
-    await Promise.all([loadRequests(), loadUserRequests()]);
-  }, [loadRequests, loadUserRequests]);
+    await Promise.all([
+      loadRequests(),
+      loadUserRequests(),
+      loadContractTransferRequests(),
+    ]);
+  }, [loadContractTransferRequests, loadRequests, loadUserRequests]);
 
   useEffect(() => {
     if (!authReady) return;
     if (!isAllowedAdmin) {
       setLoading(false);
       setUserRequestsLoading(false);
+      setContractTransferRequestsLoading(false);
       return;
     }
     void refreshAllRequests();
@@ -1373,19 +1492,52 @@ export default function AdminRequestsPage() {
       request,
     }));
 
-    const merged = [...endItems, ...userItems].sort((a, b) => b.activityAtMs - a.activityAtMs);
+    const transferItems: UnifiedRequestItem[] = contractTransferRequests.map(
+      (request) => ({
+        kind: "contractTransfer",
+        id: `contract-transfer-${request.id}`,
+        createdAtMs: request.createdAtMs,
+        activityAtMs: Math.max(
+          request.updatedAtMs || 0,
+          request.createdAtMs || 0
+        ),
+        searchable: [
+          "prevod smlouvy",
+          request.requestedByEmail,
+          request.toOwnerName ?? "",
+          request.toOwnerEmail,
+          request.effectiveDate ?? "",
+          ...request.contractSummaries.flatMap((summary) => [
+            summary.clientName ?? "",
+            summary.contractNumber ?? "",
+            summary.ownerEmail ?? "",
+          ]),
+        ]
+          .join(" ")
+          .toLowerCase(),
+        pending: request.status === "pending",
+        request,
+      })
+    );
+
+    const merged = [...endItems, ...userItems, ...transferItems].sort(
+      (a, b) => b.activityAtMs - a.activityAtMs
+    );
     if (!q) return merged;
     return merged.filter((item) => item.searchable.includes(q));
-  }, [requests, search, userRequests]);
+  }, [contractTransferRequests, requests, search, userRequests]);
 
-  const totalRequestsCount = requests.length + userRequests.length;
+  const totalRequestsCount =
+    requests.length + userRequests.length + contractTransferRequests.length;
 
   const pendingUnifiedCount = useMemo(
     () =>
       requests.filter(
         (request) => request.status === "pending" || request.status === "processing"
-      ).length + userRequests.filter((request) => request.status === "pending").length,
-    [requests, userRequests]
+      ).length +
+      userRequests.filter((request) => request.status === "pending").length +
+      contractTransferRequests.filter((request) => request.status === "pending").length,
+    [contractTransferRequests, requests, userRequests]
   );
 
   const resolvedUnifiedCount = Math.max(0, totalRequestsCount - pendingUnifiedCount);
@@ -1699,6 +1851,49 @@ export default function AdminRequestsPage() {
       }
     },
     [loadRequests]
+  );
+
+  const handleContractTransferDecision = useCallback(
+    async (request: ContractTransferRequestPayload, action: "approve" | "reject") => {
+      const user = auth.currentUser;
+      if (!user || !isAllowedAdmin) return;
+
+      setBusyContractTransferRequestId(request.id);
+      setContractTransferRequestsError(null);
+      setActionMessage(null);
+      try {
+        const payload = await fetchAuthedJsonOrThrow<{
+          ok?: boolean;
+          scheduled?: boolean;
+          error?: string;
+        }>(user, "/api/contracts/transfer", {
+          method: "PATCH",
+          body: JSON.stringify({
+            requestAction: action,
+            requestId: request.id,
+          }),
+        });
+        setActionMessage(
+          action === "reject"
+            ? "Žádost o převod smluv byla odmítnuta."
+            : payload.scheduled
+              ? `Žádost byla schválena. Převod se provede automaticky k ${formatIsoDay(
+                  request.effectiveDate
+                )}.`
+              : "Žádost byla schválena a převod smluv byl proveden."
+        );
+        await loadContractTransferRequests();
+      } catch (err: any) {
+        setContractTransferRequestsError(
+          typeof err?.message === "string" && err.message.trim()
+            ? err.message.trim()
+            : "Žádost o převod se nepodařilo vyřídit."
+        );
+      } finally {
+        setBusyContractTransferRequestId(null);
+      }
+    },
+    [isAllowedAdmin, loadContractTransferRequests]
   );
 
   const handleUserRequestDecision = useCallback(
@@ -3674,7 +3869,9 @@ export default function AdminRequestsPage() {
               <button
                 type="button"
                 onClick={() => void refreshAllRequests()}
-                disabled={loading || userRequestsLoading}
+                disabled={
+                  loading || userRequestsLoading || contractTransferRequestsLoading
+                }
                 className={adminDarkSubtleButtonClass}
               >
                 <RefreshCcw size={15} strokeWidth={2.2} aria-hidden="true" />
@@ -3854,8 +4051,13 @@ export default function AdminRequestsPage() {
                       {userRequestsError}
                     </div>
                   ) : null}
+                  {contractTransferRequestsError ? (
+                    <div className="mb-3 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                      {contractTransferRequestsError}
+                    </div>
+                  ) : null}
 
-                  {loading || userRequestsLoading ? (
+                  {loading || userRequestsLoading || contractTransferRequestsLoading ? (
                     <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-4 py-8 text-center text-sm !text-violet-100/72">
                       <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-3 py-1">
                         <RefreshCcw size={14} strokeWidth={2.2} className="animate-spin" />
@@ -4015,6 +4217,158 @@ export default function AdminRequestsPage() {
                                     Odmítnout
                                   </button>
                                 </div>
+                              </div>
+                            </article>
+                          );
+                        }
+
+                        if (item.kind === "contractTransfer") {
+                          const request = item.request;
+                          const pending = request.status === "pending";
+                          const canReject =
+                            request.status === "pending" || request.status === "scheduled";
+                          const busy = busyContractTransferRequestId === request.id;
+                          const targetLabel =
+                            request.toOwnerName || nameFromEmail(request.toOwnerEmail);
+                          const toneBarClass =
+                            request.status === "approved"
+                              ? "bg-violet-500"
+                              : request.status === "scheduled"
+                                ? "bg-sky-400"
+                                : request.status === "rejected"
+                                  ? "bg-slate-300"
+                                  : "bg-violet-500";
+                          return (
+                            <article
+                              key={item.id}
+                              className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_22px_rgba(15,23,42,0.05)] transition hover:border-violet-300 hover:shadow-[0_12px_28px_rgba(76,29,149,0.08)]"
+                            >
+                              <div
+                                className={`pointer-events-none absolute inset-y-0 left-0 w-1.5 ${toneBarClass}`}
+                              />
+                              <div className="px-4 py-4">
+                                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                                  <div className="min-w-0 space-y-1 pl-1">
+                                    <div className="inline-flex max-w-full items-center gap-2 text-base font-semibold text-slate-950">
+                                      <ArrowRightLeft size={16} strokeWidth={2.2} aria-hidden="true" />
+                                      <span className="truncate">
+                                        Převod {request.contractCount || request.entries.length}{" "}
+                                        {request.contractCount === 1 ? "smlouvy" : "smluv"}
+                                      </span>
+                                    </div>
+                                    <div className="truncate text-sm text-slate-500">
+                                      na {targetLabel} · {request.toOwnerEmail}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-800">
+                                      Převod smluv
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${contractTransferStatusPillClass[request.status]}`}
+                                    >
+                                      {contractTransferStatusLabel[request.status]}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="grid gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+                                  <div>
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
+                                      Žádá
+                                    </span>
+                                    <span className="font-medium text-slate-900">
+                                      {request.requestedByEmail}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
+                                      Nový správce
+                                    </span>
+                                    <span className="font-medium text-slate-900">
+                                      {targetLabel}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
+                                      Účinnost
+                                    </span>
+                                    <span className="font-medium text-slate-900">
+                                      {formatIsoDay(request.effectiveDate)}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
+                                      Vytvořeno
+                                    </span>
+                                    <span className="font-medium text-slate-900">
+                                      {formatDateTime(request.createdAtMs)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {request.contractSummaries.length ? (
+                                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                      Smlouvy v žádosti
+                                    </span>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {request.contractSummaries.slice(0, 8).map((summary) => (
+                                        <span
+                                          key={`${summary.ownerEmail ?? ""}-${summary.entryId ?? ""}`}
+                                          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"
+                                        >
+                                          {summary.clientName || "Klient neuveden"}
+                                          {summary.contractNumber
+                                            ? ` · ${summary.contractNumber}`
+                                            : ""}
+                                        </span>
+                                      ))}
+                                      {request.contractSummaries.length > 8 ? (
+                                        <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">
+                                          +{request.contractSummaries.length - 8} dalších
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ) : null}
+
+                                {request.failureReason ? (
+                                  <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                                    Poslední pokus: {request.failureReason}
+                                  </div>
+                                ) : null}
+
+                                {canReject ? (
+                                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-violet-50 pt-3">
+                                    {pending ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          void handleContractTransferDecision(request, "approve")
+                                        }
+                                        disabled={busy}
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-violet-700 bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_20px_rgba(124,58,237,0.22)] transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        <Check size={14} strokeWidth={2.3} aria-hidden="true" />
+                                        {busy ? "Zpracovávám…" : "Schválit"}
+                                      </button>
+                                    ) : null}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void handleContractTransferDecision(request, "reject")
+                                      }
+                                      disabled={busy}
+                                      className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-800 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <X size={14} strokeWidth={2.3} aria-hidden="true" />
+                                      {request.status === "scheduled"
+                                        ? "Zrušit naplánovaný převod"
+                                        : "Odmítnout"}
+                                    </button>
+                                  </div>
+                                ) : null}
                               </div>
                             </article>
                           );

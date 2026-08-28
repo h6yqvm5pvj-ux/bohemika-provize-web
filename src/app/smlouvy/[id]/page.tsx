@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
+  ArrowRightLeft,
   AlertTriangle,
   CalendarDays,
   ChevronDown,
@@ -18,6 +19,8 @@ import {
   Package,
   PencilLine,
   RotateCcw,
+  Search,
+  Settings2,
   StickyNote,
   Tag,
   Trash2,
@@ -142,6 +145,29 @@ const KOOPERATIVA_CONTRACT_STATUS_URL =
 const SLAVIA_CONTRACT_VERIFICATION_URL =
   "https://www.slavia-pojistovna.cz/over-ps/";
 const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = true;
+
+type ContractTransferTarget = {
+  email: string;
+  name: string | null;
+  position: Position | null;
+};
+
+const localIsoDay = (value = new Date()): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const normalizeTransferSearch = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const transferTargetLabel = (target: ContractTransferTarget): string =>
+  target.name?.trim() || nameFromEmail(target.email) || target.email;
 
 function originalReplacementLabel(product?: Product | null): string {
   return product === "neon" ? "Refresh" : "Náhrada";
@@ -468,6 +494,18 @@ export default function ContractDetailPage() {
   const [stornoDateInput, setStornoDateInput] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showStornoModal, setShowStornoModal] = useState(false);
+  const [showManagementModal, setShowManagementModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [canTransferContracts, setCanTransferContracts] = useState(false);
+  const [transferTargets, setTransferTargets] = useState<ContractTransferTarget[]>([]);
+  const [transferTargetEmail, setTransferTargetEmail] = useState("");
+  const [transferTargetQuery, setTransferTargetQuery] = useState("");
+  const [transferTargetSearchOpen, setTransferTargetSearchOpen] = useState(false);
+  const [transferEffectiveDate, setTransferEffectiveDate] = useState(() =>
+    localIsoDay()
+  );
+  const [submittingTransfer, setSubmittingTransfer] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
   const [showKooperativaStatusModal, setShowKooperativaStatusModal] = useState(false);
   const [kooperativaBirthNumber, setKooperativaBirthNumber] = useState<string | null>(null);
   const [kooperativaDirectBirthDate, setKooperativaDirectBirthDate] = useState<string | null>(null);
@@ -559,6 +597,8 @@ export default function ContractDetailPage() {
       if (e.key === "Escape") {
         setShowDeleteModal(false);
         setShowStornoModal(false);
+        setShowManagementModal(false);
+        setShowTransferModal(false);
         closeKooperativaStatusModal();
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
@@ -570,6 +610,8 @@ export default function ContractDetailPage() {
     if (
       showDeleteModal ||
       showStornoModal ||
+      showManagementModal ||
+      showTransferModal ||
       showKooperativaStatusModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
@@ -584,6 +626,8 @@ export default function ContractDetailPage() {
   }, [
     showDeleteModal,
     showStornoModal,
+    showManagementModal,
+    showTransferModal,
     showKooperativaStatusModal,
     showContractPdfModal,
     showContractPdfOptions,
@@ -732,6 +776,8 @@ export default function ContractDetailPage() {
           setContract(null);
           setContractTimeline([]);
           setServerCanManageContract(false);
+          setCanTransferContracts(false);
+          setTransferTargets([]);
           setOwnerPosition(null);
           setOwnerManagerEmail(null);
           setOwnerManagerPosition(null);
@@ -742,6 +788,18 @@ export default function ContractDetailPage() {
 
         setContract(payload.contract);
         setServerCanManageContract(payload.canManageContract === true);
+        setCanTransferContracts(payload.canTransferContracts === true);
+        setTransferTargets(
+          (Array.isArray(payload.transferTargets) ? payload.transferTargets : [])
+            .map((target) => ({
+              email: normalizeEmail(target.email),
+              name: target.name?.trim() || null,
+              position: target.position ?? null,
+            }))
+            .filter(
+              (target): target is ContractTransferTarget => Boolean(target.email)
+            )
+        );
         const loadedNote = (payload.contract.note as string | undefined) ?? "";
         setNoteDraft(loadedNote);
         setNoteExpanded(loadedNote.trim().length > 0);
@@ -784,6 +842,8 @@ export default function ContractDetailPage() {
         setContract(null);
         setContractTimeline([]);
         setServerCanManageContract(false);
+        setCanTransferContracts(false);
+        setTransferTargets([]);
         setOwnerPosition(null);
         setOwnerManagerEmail(null);
         setOwnerManagerPosition(null);
@@ -1573,6 +1633,18 @@ export default function ContractDetailPage() {
 
     setContract(payload.contract);
     setServerCanManageContract(payload.canManageContract === true);
+    setCanTransferContracts(payload.canTransferContracts === true);
+    setTransferTargets(
+      (Array.isArray(payload.transferTargets) ? payload.transferTargets : [])
+        .map((target) => ({
+          email: normalizeEmail(target.email),
+          name: target.name?.trim() || null,
+          position: target.position ?? null,
+        }))
+        .filter(
+          (target): target is ContractTransferTarget => Boolean(target.email)
+        )
+    );
     const loadedNote = (payload.contract.note as string | undefined) ?? "";
     setNoteDraft(loadedNote);
     setNoteExpanded(loadedNote.trim().length > 0);
@@ -4052,6 +4124,62 @@ export default function ContractDetailPage() {
     }
   };
 
+  const handleRequestTransfer = async () => {
+    if (
+      !ownerEmail ||
+      !entryId ||
+      !transferTargetEmail ||
+      !transferEffectiveDate ||
+      !canManageContract
+    ) {
+      setTransferError("Vyber nového správce a datum účinnosti převodu.");
+      return;
+    }
+
+    setSubmittingTransfer(true);
+    setTransferError(null);
+    try {
+      const payload = await requestContractsApi<
+        ContractsApiResponseBase & { contractCount?: number }
+      >("/api/contracts/transfer", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestAction: "submit",
+          entries: [{ ownerEmail, entryId }],
+          toOwnerEmail: transferTargetEmail,
+          effectiveDate: transferEffectiveDate,
+        }),
+      });
+      const selectedTarget = transferTargets.find(
+        (target) => target.email === transferTargetEmail
+      );
+      const selectedLabel = selectedTarget
+        ? transferTargetLabel(selectedTarget)
+        : transferTargetEmail;
+      const contractCount = Math.max(1, Number(payload.contractCount) || 1);
+      setShowTransferModal(false);
+      setShowManagementModal(false);
+      setTransferTargetEmail("");
+      setTransferTargetQuery("");
+      setTransferTargetSearchOpen(false);
+      setTransferEffectiveDate(localIsoDay());
+      pushToast(
+        `Žádost o převod ${contractCount === 1 ? "smlouvy" : `${contractCount} smluv`} na ${selectedLabel} byla odeslána administrátorovi.`,
+        "success"
+      );
+    } catch (error) {
+      console.error("Chyba při odesílání žádosti o převod smlouvy:", error);
+      setTransferError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Žádost o převod se nepodařilo odeslat."
+      );
+    } finally {
+      setSubmittingTransfer(false);
+    }
+  };
+
   // vyfiltrované položky bez řádku "Celkem" a bez ročních součtů u produktů placených dle platby
   const filterPaymentBasedItems = (arr: CommissionResultItemDTO[]) => {
     if (isPerPaymentSeparatedPeriodProduct(prod)) {
@@ -4207,6 +4335,24 @@ export default function ContractDetailPage() {
 
   const canSetStorno = canManageContract || isManagerViewingSubordinate;
   const canDelete = canManageContract;
+  const eligibleTransferTargets = transferTargets.filter(
+    (target) => target.email !== normalizeEmail(ownerEmail)
+  );
+  const normalizedTransferTargetQuery = normalizeTransferSearch(transferTargetQuery);
+  const matchingTransferTargets = eligibleTransferTargets
+    .filter((target) => {
+      if (!normalizedTransferTargetQuery) return true;
+      return normalizeTransferSearch(
+        `${transferTargetLabel(target)} ${target.email}`
+      ).includes(normalizedTransferTargetQuery);
+    })
+    .slice(0, 8);
+  const canRequestTransfer =
+    canManageContract &&
+    canTransferContracts &&
+    eligibleTransferTargets.length > 0;
+  const canOpenContractManagement =
+    canSetStorno || canDelete || canRequestTransfer;
 
   const adviserSum = adviserItems.reduce(
     (sum, it) => sum + (it.excludeFromTotal ? 0 : it.amount ?? 0),
@@ -4239,6 +4385,32 @@ export default function ContractDetailPage() {
     isPaymentBasedProduct ? childManagerSum * paymentMultiplier : childOverrideTotal ?? 0;
   const contractAuthorName = nameFromEmail(
     contract?.userEmail ?? ownerEmail ?? normalizedEffectiveUserEmail
+  );
+  const contractOriginalAdviserEmail =
+    normalizeEmail(contract?.originalAdviserEmail) ||
+    normalizeEmail(contract?.userEmail) ||
+    normalizeEmail(ownerEmail);
+  const contractServicingOwnerEmail =
+    normalizeEmail(contract?.servicingOwnerEmail) ||
+    normalizeEmail(contract?.commissionOwnerEmail) ||
+    normalizeEmail(contract?.userEmail) ||
+    normalizeEmail(ownerEmail);
+  const contractWasTransferred = Boolean(
+    contractOriginalAdviserEmail &&
+      contractServicingOwnerEmail &&
+      contractOriginalAdviserEmail !== contractServicingOwnerEmail
+  );
+  const contractOriginalAdviserName =
+    contract?.originalAdviserName?.trim() ||
+    nameFromEmail(contractOriginalAdviserEmail);
+  const contractServicingOwnerName =
+    contract?.servicingOwnerName?.trim() ||
+    contract?.adviserName?.trim() ||
+    nameFromEmail(contractServicingOwnerEmail);
+  const contractOriginalPosition =
+    contract?.originalPosition ?? contract?.position ?? null;
+  const contractTransferDate = toDate(
+    contract?.transferEffectiveDate ?? contract?.transferAt ?? null
   );
   const clientCardHref = CLIENT_CARDS_ENABLED
     ? clientCardHrefForName(contract?.clientName ?? null)
@@ -4304,6 +4476,8 @@ export default function ContractDetailPage() {
       setContract(null);
       setError("Nemáš oprávnění tuto smlouvu zobrazit.");
       setShowDeleteModal(false);
+      setShowManagementModal(false);
+      setShowTransferModal(false);
       router.replace(backToContractsHref);
     }
   }, [loading, user, contract, canViewContract, unauthorized, router, backToContractsHref]);
@@ -4338,12 +4512,6 @@ export default function ContractDetailPage() {
   const statusErrorClass = "px-1 text-sm text-slate-700";
   const statusSuccessClass = "px-1 text-sm text-slate-900";
   const sectionPanelClass = "space-y-3 px-1 py-1";
-  const cautionButtonClass =
-    "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 text-sm font-semibold font-mono tracking-tight text-amber-900 shadow-[0_8px_18px_rgba(217,119,6,0.14)] transition hover:border-amber-400 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60";
-  const neutralActionButtonClass =
-    "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold font-mono tracking-tight text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60";
-  const destructiveButtonClass =
-    "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-rose-300 bg-rose-50 px-4 text-sm font-semibold font-mono tracking-tight text-rose-700 shadow-[0_8px_18px_rgba(225,29,72,0.12)] transition hover:border-rose-400 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60";
   const adviserBreakdownPosition =
     ((contract?.position as Position | null | undefined) ?? ownerPosition ?? null);
   const adviserBreakdownMode = toCommissionMode(contract?.commissionMode);
@@ -5169,24 +5337,45 @@ export default function ContractDetailPage() {
                   </section>
                 )}
 
-                {/* Info o poradci – zobraz pouze manažerovi na podřízené smlouvě */}
-                {contract && isManagerViewingSubordinate && (
+                {/* U převedené smlouvy vždy oddělujeme sjednatele a správce. */}
+                {contract && (contractWasTransferred || isManagerViewingSubordinate) && (
                   <section className={sectionPanelClass}>
                     <h3 className={`mb-2 flex items-center gap-2 text-base font-semibold ${monoHeadingClass}`}>
-                      <span className={monoChipClass}>Sjednatel</span>
+                      <span className={monoChipClass}>
+                        {contractWasTransferred ? "Správa smlouvy" : "Sjednatel"}
+                      </span>
                     </h3>
                     <dl className="grid max-w-[520px] grid-cols-[112px_minmax(0,1fr)] gap-x-5 gap-y-2 text-base text-slate-800">
                       <dt className={keyValueLabelClass}>Sjednal</dt>
                       <dd className="text-base font-semibold text-slate-900">
-                        {nameFromEmail(contract.userEmail)}
+                        {contractOriginalAdviserName}
                       </dd>
 
-                      <dt className={keyValueLabelClass}>Pozice</dt>
+                      <dt className={keyValueLabelClass}>Pozice při sjednání</dt>
                       <dd className="text-base font-semibold text-slate-900">
-                        {positionLabel(
-                          ownerPosition ?? (contract.position as Position | null)
-                        )}
+                        {positionLabel(contractOriginalPosition)}
                       </dd>
+
+                      {contractWasTransferred && (
+                        <>
+                          <dt className={keyValueLabelClass}>Správce</dt>
+                          <dd className="text-base font-semibold text-slate-900">
+                            {contractServicingOwnerName}
+                            <span className="block text-sm font-normal text-slate-600">
+                              Čerpá dosud nevyplacené a budoucí provize
+                            </span>
+                          </dd>
+
+                          {contractTransferDate && (
+                            <>
+                              <dt className={keyValueLabelClass}>Převedeno</dt>
+                              <dd className="text-base font-semibold text-slate-900">
+                                {contractTransferDate.toLocaleDateString("cs-CZ")}
+                              </dd>
+                            </>
+                          )}
+                        </>
+                      )}
 
                       {ownerManagerEmail && (
                         <>
@@ -5202,6 +5391,11 @@ export default function ContractDetailPage() {
                         </>
                       )}
                     </dl>
+                    {contractWasTransferred && (
+                      <p className="mt-3 max-w-[620px] rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm leading-relaxed text-violet-950">
+                        Již vyplacené provize zůstávají původnímu sjednateli. Správce čerpá pouze dosud nevyplacené a budoucí provize, vždy podle pozice při sjednání uvedené výše.
+                      </p>
+                    )}
                   </section>
                 )}
 
@@ -5872,77 +6066,21 @@ export default function ContractDetailPage() {
               </section>
             </div>
 
-                {/* STORNO / SMAZAT SMLOUVU */}
-                {(canSetStorno || canDelete) && (
-                  <section className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                    {deleteError && (
-                      <p className="mb-2 text-sm font-medium text-slate-700">
-                        {deleteError}
-                      </p>
-                    )}
-                    {stornoError && (
-                      <p className="mb-2 text-sm font-medium text-slate-700">
-                        {stornoError}
-                      </p>
-                    )}
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                      {canSetStorno && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStornoError(null);
-                            setShowDeleteModal(false);
-                            setShowStornoModal(true);
-                          }}
-                          disabled={updatingStorno}
-                          className={cautionButtonClass}
-                        >
-                          {updatingStorno && (
-                            <Spinner className="h-4 w-4 border-amber-300 border-t-amber-800" />
-                          )}
-                          {!updatingStorno && (
-                            <AlertTriangle size={15} strokeWidth={2.2} aria-hidden="true" />
-                          )}
-                          <span>{isStornoContract ? "Upravit storno" : "Stornovat smlouvu"}</span>
-                        </button>
-                      )}
-                      {canSetStorno && isStornoContract && (
-                        <button
-                          type="button"
-                          onClick={handleClearStorno}
-                          disabled={updatingStorno}
-                          className={neutralActionButtonClass}
-                        >
-                          <RotateCcw size={15} strokeWidth={2.2} aria-hidden="true" />
-                          <span>Zrušit storno</span>
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeleteError(null);
-                            setShowStornoModal(false);
-                            setShowDeleteModal(true);
-                          }}
-                          disabled={deleting}
-                          className={destructiveButtonClass}
-                        >
-                          {deleting && (
-                            <Spinner className="h-4 w-4 border-rose-300 border-t-rose-800" />
-                          )}
-                          {!deleting && (
-                            <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" />
-                          )}
-                          <span>{deleting ? "Mažu…" : "Smazat smlouvu"}</span>
-                        </button>
-                      )}
-                    </div>
-                    {canSetStorno && (
-                      <p className="mt-2 text-right text-xs font-medium text-slate-500">
-                        Datum storna ověř v MAXXu nebo Extranetu u dané smlouvy.
-                      </p>
-                    )}
+                {canOpenContractManagement && (
+                  <section className="flex justify-end border-t border-slate-200 pt-5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteError(null);
+                        setStornoError(null);
+                        setTransferError(null);
+                        setShowManagementModal(true);
+                      }}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-5 text-sm font-semibold font-mono tracking-tight text-white shadow-[0_12px_26px_rgba(15,23,42,0.2)] transition hover:bg-black"
+                    >
+                      <Settings2 size={17} strokeWidth={2.2} aria-hidden="true" />
+                      <span>Správa smlouvy</span>
+                    </button>
                   </section>
                 )}
               </div>
@@ -6067,6 +6205,301 @@ export default function ContractDetailPage() {
         </div>
       )}
 
+      {canOpenContractManagement && showManagementModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            aria-label="Zavřít správu smlouvy"
+            onClick={() => setShowManagementModal(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contract-management-title"
+            className="relative z-10 w-full max-w-lg rounded-[26px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/30 sm:p-7"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                  <Settings2 size={14} strokeWidth={2.2} aria-hidden="true" />
+                  Akce smlouvy
+                </div>
+                <h3
+                  id="contract-management-title"
+                  className="mt-3 text-xl font-semibold tracking-tight text-slate-950"
+                >
+                  Správa smlouvy
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Vyber, co chceš s touto smlouvou provést.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowManagementModal(false)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+                aria-label="Zavřít správu smlouvy"
+              >
+                <X size={17} strokeWidth={2.3} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-2.5">
+              {canSetStorno && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStornoError(null);
+                    setShowManagementModal(false);
+                    setShowDeleteModal(false);
+                    setShowStornoModal(true);
+                  }}
+                  disabled={updatingStorno}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-left transition hover:border-amber-300 hover:bg-amber-100 disabled:opacity-60"
+                >
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-white text-amber-700">
+                    <AlertTriangle size={19} strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-amber-950">
+                      Storno
+                    </span>
+                    <span className="mt-0.5 block text-xs text-amber-800">
+                      {isStornoContract
+                        ? "Upravit datum nebo zrušit stávající storno."
+                        : "Nastavit datum storna smlouvy."}
+                    </span>
+                  </span>
+                </button>
+              )}
+
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setShowManagementModal(false);
+                    setShowStornoModal(false);
+                    setShowDeleteModal(true);
+                  }}
+                  disabled={deleting}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-left transition hover:border-rose-300 hover:bg-rose-100 disabled:opacity-60"
+                >
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-700">
+                    <Trash2 size={19} strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-rose-950">
+                      Smazání smlouvy
+                    </span>
+                    <span className="mt-0.5 block text-xs text-rose-800">
+                      Trvale odstranit smlouvu po dalším potvrzení.
+                    </span>
+                  </span>
+                </button>
+              )}
+
+              {canRequestTransfer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransferError(null);
+                    setTransferTargetEmail("");
+                    setTransferTargetQuery("");
+                    setTransferTargetSearchOpen(false);
+                    setTransferEffectiveDate(localIsoDay());
+                    setShowManagementModal(false);
+                    setShowTransferModal(true);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3.5 text-left transition hover:border-violet-300 hover:bg-violet-100"
+                >
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-white text-violet-700">
+                    <ArrowRightLeft size={19} strokeWidth={2.2} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-violet-950">
+                      Převod smlouvy
+                    </span>
+                    <span className="mt-0.5 block text-xs text-violet-800">
+                      Odeslat administrátorovi žádost o změnu správce.
+                    </span>
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canRequestTransfer && showTransferModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            aria-label="Zavřít žádost o převod smlouvy"
+            disabled={submittingTransfer}
+            onClick={() => setShowTransferModal(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contract-transfer-detail-title"
+            className="relative z-10 w-full max-w-lg rounded-[26px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/30 sm:p-7"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3
+                  id="contract-transfer-detail-title"
+                  className="text-xl font-semibold tracking-tight text-slate-950"
+                >
+                  Převod smlouvy
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Žádost se odešle administrátorovi ke schválení.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={submittingTransfer}
+                onClick={() => setShowTransferModal(false)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 disabled:opacity-50"
+                aria-label="Zavřít žádost o převod smlouvy"
+              >
+                <X size={17} strokeWidth={2.3} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
+              Novému správci budou od data účinnosti náležet dosud nevyplacené a budoucí provize. Již vyplacené provize zůstávají beze změny.
+            </div>
+
+            <div className="relative mt-5">
+              <label
+                htmlFor="contract-detail-transfer-target"
+                className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"
+              >
+                Nový správce
+              </label>
+              <div className="relative">
+                <Search
+                  size={17}
+                  strokeWidth={2.2}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  id="contract-detail-transfer-target"
+                  type="search"
+                  role="combobox"
+                  autoComplete="off"
+                  aria-autocomplete="list"
+                  aria-expanded={transferTargetSearchOpen}
+                  aria-controls="contract-detail-transfer-results"
+                  value={transferTargetQuery}
+                  disabled={submittingTransfer}
+                  placeholder="Hledat podle jména nebo e-mailu"
+                  onFocus={() => setTransferTargetSearchOpen(true)}
+                  onBlur={() => setTransferTargetSearchOpen(false)}
+                  onChange={(event) => {
+                    setTransferTargetQuery(event.target.value);
+                    setTransferTargetEmail("");
+                    setTransferTargetSearchOpen(true);
+                  }}
+                  className="h-12 w-full rounded-2xl border border-slate-300 bg-white pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 disabled:opacity-60"
+                />
+              </div>
+              {transferTargetSearchOpen && (
+                <div
+                  id="contract-detail-transfer-results"
+                  role="listbox"
+                  className="absolute inset-x-0 top-full z-20 mt-2 max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_46px_rgba(15,23,42,0.18)]"
+                >
+                  {matchingTransferTargets.length ? (
+                    matchingTransferTargets.map((target) => {
+                      const label = transferTargetLabel(target);
+                      return (
+                        <button
+                          key={target.email}
+                          type="button"
+                          role="option"
+                          aria-selected={target.email === transferTargetEmail}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setTransferTargetEmail(target.email);
+                            setTransferTargetQuery(`${label} · ${target.email}`);
+                            setTransferTargetSearchOpen(false);
+                          }}
+                          className="flex w-full flex-col rounded-xl px-3 py-2 text-left transition hover:bg-violet-50"
+                        >
+                          <span className="text-sm font-semibold text-slate-950">{label}</span>
+                          <span className="text-xs text-slate-500">{target.email}</span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="px-3 py-4 text-center text-sm text-slate-500">
+                      Žádný poradce neodpovídá hledání.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4">
+              <label
+                htmlFor="contract-detail-transfer-date"
+                className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"
+              >
+                Datum účinnosti převodu
+              </label>
+              <input
+                id="contract-detail-transfer-date"
+                type="date"
+                value={transferEffectiveDate}
+                disabled={submittingTransfer}
+                onChange={(event) => setTransferEffectiveDate(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 disabled:opacity-60"
+              />
+            </div>
+
+            {transferError && (
+              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                {transferError}
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-3 border-t border-slate-200 pt-4">
+              <button
+                type="button"
+                disabled={submittingTransfer}
+                onClick={() => setShowTransferModal(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                disabled={
+                  submittingTransfer ||
+                  !transferTargetEmail ||
+                  !transferEffectiveDate
+                }
+                onClick={() => void handleRequestTransfer()}
+                className="inline-flex items-center gap-2 rounded-xl border border-violet-700 bg-violet-700 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(109,40,217,0.24)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submittingTransfer ? (
+                  <Spinner className="h-4 w-4 border-violet-300 border-t-white" />
+                ) : (
+                  <ArrowRightLeft size={16} strokeWidth={2.2} aria-hidden="true" />
+                )}
+                <span>{submittingTransfer ? "Odesílám…" : "Odeslat žádost"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {canSetStorno && showStornoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
           <button
@@ -6135,6 +6568,17 @@ export default function ContractDetailPage() {
             )}
 
             <div className="mt-5 flex justify-end gap-3">
+              {isStornoContract && (
+                <button
+                  type="button"
+                  onClick={() => void handleClearStorno()}
+                  disabled={updatingStorno}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  <RotateCcw size={15} strokeWidth={2.2} aria-hidden="true" />
+                  Zrušit storno
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

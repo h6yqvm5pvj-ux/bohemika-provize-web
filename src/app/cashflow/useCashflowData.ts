@@ -916,13 +916,29 @@ export function useCashflowData({
     if (!enabled || !snapshot || !snapshotMatchesCurrentUser) return [];
 
     const email = snapshot.email;
+    const entryWasTransferred = (entry: EntryDoc): boolean => {
+      const originalOwner = normalizeEmail(entry.originalAdviserEmail);
+      const currentOwner = normalizeEmail(
+        entry.servicingOwnerEmail ?? entry.commissionOwnerEmail ?? entry.userEmail
+      );
+      return Boolean(
+        originalOwner && currentOwner && originalOwner !== currentOwner
+      );
+    };
+    const transferredContractPosition = (entry: EntryDoc): Position | null =>
+      (entry.originalPosition as Position | null | undefined) ??
+      (entry.position as Position | null | undefined) ??
+      null;
     const predictionModeForEntry = (
       entry: EntryDoc,
       source: "own" | "manager"
     ): CommissionMode =>
       source === "manager" && matchesProductFilter(entry.productKey, "life")
         ? "standard"
-        : snapshot.myCommissionMode ??
+        : (entryWasTransferred(entry)
+            ? (entry.commissionMode as CommissionMode | null | undefined) ??
+              (entry.mode as CommissionMode | null | undefined)
+            : snapshot.myCommissionMode) ??
           (entry.commissionMode as CommissionMode | null | undefined) ??
           (entry.mode as CommissionMode | null | undefined) ??
           "standard";
@@ -956,7 +972,9 @@ export function useCashflowData({
         ...entry,
         source: "own" as const,
         predictionPosition:
-          snapshot.myPosition ??
+          (entryWasTransferred(entry)
+            ? transferredContractPosition(entry)
+            : snapshot.myPosition) ??
           (entry.effectivePosition as Position | null | undefined) ??
           (entry.timelinePosition as Position | null | undefined) ??
           (entry.position as Position | null | undefined) ??

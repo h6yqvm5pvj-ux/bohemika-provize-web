@@ -40,6 +40,12 @@ export type ContractDetailApiResponse = ContractsApiResponseBase & {
   hasTeam?: boolean;
   teamEmails?: string[];
   canManageContract?: boolean;
+  canTransferContracts?: boolean;
+  transferTargets?: {
+    email: string;
+    name: string | null;
+    position: Position | null;
+  }[];
   contract?: ContractDoc;
   timeline?: ContractDoc[];
   ownerMeta?: ContractOwnerMetaApi | null;

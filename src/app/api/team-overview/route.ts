@@ -26,6 +26,8 @@ import {
   buildTeamOverviewReadModelDocuments,
   TEAM_OVERVIEW_MODEL_VERSION,
 } from "@/lib/server/teamOverviewReadModel";
+import { buildTransferredContractData } from "@/app/api/contracts/_lib/contractsApi.transfer";
+import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import type {
   AccountType,
   AggregateMetrics,
@@ -1671,8 +1673,6 @@ async function transferOwnerEntriesToSuccessor({
   const db = adminDb;
   const fromRef = db.collection("users").doc(fromOwnerEmail).collection("entries");
   const toRef = db.collection("users").doc(toOwnerEmail).collection("entries");
-  const oldPrefix = `users/${fromOwnerEmail}/entries/`;
-  const newPrefix = `users/${toOwnerEmail}/entries/`;
   const now = new Date();
 
   let transferredContracts = 0;
@@ -1698,51 +1698,17 @@ async function transferOwnerEntriesToSuccessor({
     if (page.empty) break;
 
     for (const entrySnap of page.docs) {
-      const entryData = (entrySnap.data() ?? {}) as Record<string, unknown>;
+      const entryData = (entrySnap.data() ?? {}) as ContractDoc;
       const entryId = entrySnap.id;
-
-      const originalAdviserEmail =
-        normalizeEmail(
-          typeof entryData.originalAdviserEmail === "string"
-            ? entryData.originalAdviserEmail
-            : typeof entryData.userEmail === "string"
-            ? entryData.userEmail
-            : fromOwnerEmail
-        ) || fromOwnerEmail;
-
-      const nextData: Record<string, unknown> = {
-        ...entryData,
-        userEmail: toOwnerEmail,
-        originalAdviserEmail,
-        servicingOwnerEmail: toOwnerEmail,
-        commissionOwnerEmail: toOwnerEmail,
-        transferReason: "career_end",
-        transferFromEmail: fromOwnerEmail,
-        transferToEmail: toOwnerEmail,
-        transferAt: now,
-        transferredByEmail: actorEmail,
-        ownershipTransfer: {
-          type: "career_end",
-          fromEmail: fromOwnerEmail,
-          toEmail: toOwnerEmail,
-          transferredAt: now,
-          transferredByEmail: actorEmail,
-        },
-      };
-
-      if (successorUserId) {
-        nextData.userId = successorUserId;
-      } else if ("userId" in nextData) {
-        delete nextData.userId;
-      }
-
-      const parentPathRaw =
-        typeof entryData.parentContractEntryPath === "string"
-          ? entryData.parentContractEntryPath
-          : "";
-      if (parentPathRaw.startsWith(oldPrefix)) {
-        nextData.parentContractEntryPath = `${newPrefix}${parentPathRaw.slice(oldPrefix.length)}`;
-      }
+      const nextData = buildTransferredContractData({
+        contract: entryData,
+        fromOwnerEmail,
+        toOwnerEmail,
+        toOwnerUserId: successorUserId,
+        actorEmail,
+        transferredAt: now,
+        reason: "career_end",
+      });
 
       const destinationRef = toRef.doc(entryId);
       batch.set(destinationRef, nextData, { merge: false });
