@@ -32,6 +32,7 @@ import {
 import { auth } from "@/app/firebase-auth";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
+import { productLabel } from "@/app/lib/productCatalog";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import {
   consumeContractTerminationPrefill,
@@ -40,6 +41,7 @@ import {
   type ContractTerminationPrefill,
 } from "./contractTerminationPrefill";
 import {
+  buildUniversalTerminationPdfFilename,
   formatLocalDateForTerminationLetter,
   formatLocalDateInput,
   getMissingUniversalTerminationFields,
@@ -2665,12 +2667,12 @@ function UniversalTerminationLetterPreview({
         undefined,
         "FAST",
       );
-      const contractToken = fields.contractNumber
-        .trim()
-        .replace(/[^a-zA-Z0-9_-]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 60);
-      pdf.save(`vypoved-smlouvy-${contractToken || "dokument"}.pdf`);
+      pdf.save(
+        buildUniversalTerminationPdfFilename(
+          productLabel(prefill?.sourceProduct, prefill?.insurer ?? "produkt"),
+          fields.policyholderName,
+        ),
+      );
     } catch (error) {
       console.warn("PDF výpovědi se nepodařilo vytvořit", error);
       setPdfDownloadError(

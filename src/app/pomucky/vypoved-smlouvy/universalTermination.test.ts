@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildUniversalTerminationPdfFilename,
   formatLocalDateForTerminationLetter,
   formatLocalDateInput,
   getMissingUniversalTerminationFields,
@@ -59,6 +60,20 @@ describe("getMissingUniversalTerminationFields", () => {
         (item) => item.key,
       ),
     ).toEqual(["otherReason"]);
+  });
+});
+
+describe("buildUniversalTerminationPdfFilename", () => {
+  it("sestaví bezpečný název z produktu a jména pojistníka", () => {
+    expect(
+      buildUniversalTerminationPdfFilename("Allianz Auto", "Jan Novák"),
+    ).toBe("vypoved_allianz_auto_jan_novak.pdf");
+  });
+
+  it("použije obecné hodnoty, pokud produkt nebo jméno chybí", () => {
+    expect(buildUniversalTerminationPdfFilename("", " ")).toBe(
+      "vypoved_produkt_klient.pdf",
+    );
   });
 });
 

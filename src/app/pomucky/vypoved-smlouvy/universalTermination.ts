@@ -67,6 +67,24 @@ export function getMissingUniversalTerminationFields(
   return requiredFields.filter(({ key }) => !fields[key]?.trim());
 }
 
+const terminationFilenameToken = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("cs-CZ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+
+export function buildUniversalTerminationPdfFilename(
+  product: string,
+  policyholderName: string,
+): string {
+  const productToken = terminationFilenameToken(product) || "produkt";
+  const nameToken = terminationFilenameToken(policyholderName) || "klient";
+  return `vypoved_${productToken}_${nameToken}.pdf`;
+}
+
 export function formatLocalDateInput(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
