@@ -50,6 +50,7 @@ import {
   type TerminationReason,
 } from "@/app/pomucky/vypoved-smlouvy/universalTermination";
 import { parseTerminationPolicyholderPdf } from "@/app/lib/parseTerminationPolicyholderPdf";
+import { parseAllianzAutoPdf } from "@/app/lib/parseAllianzAutoPdf";
 import { parseUniqaAutoPdf } from "@/app/lib/parseUniqaAutoPdf";
 import { originalReplacementLabel } from "@/app/lib/originalContractReplacement";
 import {
@@ -136,6 +137,10 @@ import {
   PDF_REIMPORT_PARSERS,
 } from "./contractDetailPdfReimport";
 import { useContractDetails } from "./useContractDetails";
+import {
+  resolveAllianzOdometerIdentity,
+  type AllianzOdometerIdentity,
+} from "./allianzOdometerUpload";
 import { fetchAuthedBlob } from "@/app/lib/authenticatedApi";
 import {
   ADMIN_IMPERSONATION_EVENT,
@@ -535,6 +540,11 @@ export default function ContractDetailPage() {
   );
   const [submittingTransfer, setSubmittingTransfer] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [showAllianzOdometerModal, setShowAllianzOdometerModal] = useState(false);
+  const [allianzOdometerIdentity, setAllianzOdometerIdentity] =
+    useState<AllianzOdometerIdentity | null>(null);
+  const [allianzOdometerLoading, setAllianzOdometerLoading] = useState(false);
+  const [allianzOdometerError, setAllianzOdometerError] = useState<string | null>(null);
   const [showKooperativaStatusModal, setShowKooperativaStatusModal] = useState(false);
   const [kooperativaBirthNumber, setKooperativaBirthNumber] = useState<string | null>(null);
   const [kooperativaDirectBirthDate, setKooperativaDirectBirthDate] = useState<string | null>(null);
@@ -557,6 +567,7 @@ export default function ContractDetailPage() {
   const [openContractPdfExternally, setOpenContractPdfExternally] = useState(false);
   const contractPdfObjectUrlRef = useRef<string | null>(null);
   const contractPdfCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
+  const allianzOdometerRequestRef = useRef(0);
   const kooperativaStatusRedirectTimerRef = useRef<number | null>(null);
   const kooperativaBirthNumberRequestRef = useRef(0);
   const uniqaTerminationRequestRef = useRef(0);
@@ -574,6 +585,14 @@ export default function ContractDetailPage() {
       window.clearInterval(kooperativaStatusRedirectTimerRef.current);
       kooperativaStatusRedirectTimerRef.current = null;
     }
+  }, []);
+
+  const closeAllianzOdometerModal = useCallback(() => {
+    allianzOdometerRequestRef.current += 1;
+    setAllianzOdometerIdentity(null);
+    setAllianzOdometerLoading(false);
+    setAllianzOdometerError(null);
+    setShowAllianzOdometerModal(false);
   }, []);
 
   const closeKooperativaStatusModal = useCallback(() => {
@@ -638,6 +657,7 @@ export default function ContractDetailPage() {
         setShowTerminationReasonModal(false);
         closeUniqaTerminationModal();
         setSelectedTerminationReason(null);
+        closeAllianzOdometerModal();
         closeKooperativaStatusModal();
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
@@ -653,6 +673,7 @@ export default function ContractDetailPage() {
       showTransferModal ||
       showTerminationReasonModal ||
       showUniqaTerminationModal ||
+      showAllianzOdometerModal ||
       showKooperativaStatusModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
@@ -671,11 +692,13 @@ export default function ContractDetailPage() {
     showTransferModal,
     showTerminationReasonModal,
     showUniqaTerminationModal,
+    showAllianzOdometerModal,
     showKooperativaStatusModal,
     showContractPdfModal,
     showContractPdfOptions,
     isNeonImmediateBreakdownOpen,
     isStatementPreviewOpen,
+    closeAllianzOdometerModal,
     closeKooperativaStatusModal,
     closeUniqaTerminationModal,
   ]);
@@ -4770,6 +4793,58 @@ export default function ContractDetailPage() {
     [contractSignedDateIsoForBreakdown, pushToast]
   );
 
+  const handleAllianzOdometerUploadClick = useCallback(() => {
+    if (prod !== "allianzAuto") return;
+
+    const requestId = allianzOdometerRequestRef.current + 1;
+    allianzOdometerRequestRef.current = requestId;
+    setAllianzOdometerIdentity(null);
+    setAllianzOdometerError(null);
+    setAllianzOdometerLoading(true);
+    setShowAllianzOdometerModal(true);
+
+    const sourcePdf =
+      contractPdfOptions.find((option) => option.isCurrent) ??
+      contractPdfOptions[0] ??
+      null;
+    if (!sourcePdf) {
+      setAllianzOdometerLoading(false);
+      setAllianzOdometerError(
+        "Ke smlouvě není uložené PDF. Datum narození ani IČO proto nelze automaticky načíst."
+      );
+      return;
+    }
+
+    void (async () => {
+      try {
+        const pdfBlob = await downloadContractPdfBlob(sourcePdf);
+        const parsed = await parseAllianzAutoPdf(
+          new File([pdfBlob], sourcePdf.fileName, { type: "application/pdf" })
+        );
+        if (allianzOdometerRequestRef.current !== requestId) return;
+
+        const identity = resolveAllianzOdometerIdentity(parsed.personalId);
+        if (!identity) {
+          setAllianzOdometerError(
+            "Rodné číslo ani IČO pojistníka se v PDF nepodařilo najít nebo převést."
+          );
+          return;
+        }
+        setAllianzOdometerIdentity(identity);
+      } catch (error) {
+        if (allianzOdometerRequestRef.current !== requestId) return;
+        console.warn("Údaje pro nahrání tachometru Allianz se nepodařilo načíst", error);
+        setAllianzOdometerError(
+          "PDF smlouvy se nepodařilo načíst. Potřebný údaj zadejte na portálu Allianz ručně."
+        );
+      } finally {
+        if (allianzOdometerRequestRef.current === requestId) {
+          setAllianzOdometerLoading(false);
+        }
+      }
+    })();
+  }, [contractPdfOptions, downloadContractPdfBlob, prod]);
+
   const handleAllianzPaymentCheckClick = useCallback(() => {
     const contractNumber = String(contract?.contractNumber ?? "").trim();
     const openAllianzPaymentCheck = () => {
@@ -5359,15 +5434,14 @@ export default function ContractDetailPage() {
 
                 {prod === "allianzAuto" && (
                   <>
-                    <a
-                      href={ALLIANZ_AUTO_ODOMETER_UPLOAD_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={handleAllianzOdometerUploadClick}
                       className={headerActionButtonClass}
                     >
                       <Gauge size={14} strokeWidth={2} aria-hidden="true" />
                       <span>Nahrát tachometr</span>
-                    </a>
+                    </button>
                     <button
                       type="button"
                       onClick={handleAllianzPaymentCheckClick}
@@ -7163,6 +7237,151 @@ export default function ContractDetailPage() {
                 )}
                 <span>{isStornoContract ? "Uložit storno" : "Potvrdit storno"}</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAllianzOdometerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            aria-label="Zavřít nahrání tachometru Allianz"
+            onClick={closeAllianzOdometerModal}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="allianz-odometer-title"
+            className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40 sm:p-7"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">
+                  <Gauge size={14} strokeWidth={2.2} aria-hidden="true" />
+                  Allianz Auto
+                </div>
+                <h3
+                  id="allianz-odometer-title"
+                  className="mt-3 text-xl font-semibold tracking-tight text-slate-900"
+                >
+                  Nahrání tachometru
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Zkopíruj si údaje, které budeš potřebovat na portálu Allianz.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAllianzOdometerModal}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
+                aria-label="Zavřít nahrání tachometru Allianz"
+              >
+                <X size={18} strokeWidth={2.4} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                    Číslo smlouvy
+                  </p>
+                  <p className="mt-1 break-all font-mono text-base font-semibold text-slate-900">
+                    {contract?.contractNumber?.trim() || "Není uvedeno"}
+                  </p>
+                </div>
+                {contract?.contractNumber?.trim() && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyContractActionValue(contract.contractNumber, "Číslo smlouvy")
+                    }
+                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                    aria-label="Kopírovat číslo smlouvy"
+                  >
+                    <Copy size={15} strokeWidth={2.2} aria-hidden="true" />
+                    <span>Kopírovat</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                    {allianzOdometerIdentity?.label ?? "Datum narození / IČO"}
+                  </p>
+                  <p className="mt-1 font-mono text-base font-semibold text-slate-900">
+                    {allianzOdometerLoading
+                      ? "Načítám..."
+                      : allianzOdometerIdentity?.value ?? "Nepodařilo se načíst"}
+                  </p>
+                </div>
+                {allianzOdometerIdentity && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyContractActionValue(
+                        allianzOdometerIdentity.value,
+                        allianzOdometerIdentity.label
+                      )
+                    }
+                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                    aria-label={`Kopírovat ${allianzOdometerIdentity.label.toLocaleLowerCase("cs-CZ")}`}
+                  >
+                    <Copy size={15} strokeWidth={2.2} aria-hidden="true" />
+                    <span>Kopírovat</span>
+                  </button>
+                )}
+              </div>
+
+              {allianzOdometerError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900"
+                >
+                  <AlertTriangle
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                  <p>{allianzOdometerError}</p>
+                </div>
+              )}
+
+              <p className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-900">
+                U fyzické osoby zobrazujeme pouze datum narození odvozené z rodného
+                čísla. Samotné rodné číslo se v tomto okně nezobrazuje.
+              </p>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+              <p className="text-sm font-medium text-slate-700" aria-live="polite">
+                {allianzOdometerLoading
+                  ? "Načítám údaje z PDF smlouvy..."
+                  : "Údaje jsou připravené pro portál Allianz."}
+              </p>
+              {allianzOdometerLoading ? (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex h-10 cursor-wait items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-4 text-sm font-semibold text-slate-500"
+                >
+                  <Spinner className="h-4 w-4 border-2 border-slate-300 border-t-slate-700" />
+                  <span>Načítám údaje…</span>
+                </button>
+              ) : (
+                <a
+                  href={ALLIANZ_AUTO_ODOMETER_UPLOAD_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-10 items-center gap-2 rounded-full bg-blue-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800"
+                >
+                  <ExternalLink size={15} strokeWidth={2.2} aria-hidden="true" />
+                  <span>Otevřít nahrání tachometru</span>
+                </a>
+              )}
             </div>
           </div>
         </div>
