@@ -7224,8 +7224,16 @@ export default function ContractDetailPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="allianz-portal-title"
-            className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40 sm:p-7"
+            className="relative z-10 w-full max-w-xl overflow-hidden rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40 sm:p-7"
           >
+            <Image
+              src="/icons/allianz.png"
+              alt=""
+              width={1280}
+              height={318}
+              aria-hidden="true"
+              className="pointer-events-none absolute right-10 top-8 w-64 select-none opacity-[0.055]"
+            />
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">
