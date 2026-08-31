@@ -2620,12 +2620,27 @@ function UniversalTerminationLetterPreview({
           clonedPage
             .querySelectorAll<HTMLInputElement>(".uniqa-letter-input")
             .forEach((input) => {
-              input.placeholder = "";
-              input.style.border = "0";
-              input.style.background = "transparent";
-              input.style.boxShadow = "none";
-              input.style.outline = "none";
-              input.style.color = "#111827";
+              const computedStyle = clonedDocument.defaultView?.getComputedStyle(input);
+              const inputBounds = input.getBoundingClientRect();
+              const value = clonedDocument.createElement("span");
+              value.textContent = input.value;
+              value.style.display = "inline-block";
+              value.style.boxSizing = "border-box";
+              value.style.width = `${Math.max(1, inputBounds.width)}px`;
+              value.style.minHeight = `${Math.max(1, inputBounds.height)}px`;
+              value.style.padding = "0 4px";
+              value.style.border = "0";
+              value.style.background = "transparent";
+              value.style.boxShadow = "none";
+              value.style.color = "#111827";
+              value.style.fontFamily = computedStyle?.fontFamily ?? "inherit";
+              value.style.fontSize = computedStyle?.fontSize ?? "inherit";
+              value.style.fontWeight = computedStyle?.fontWeight ?? "600";
+              value.style.lineHeight = computedStyle?.lineHeight ?? "1.35";
+              value.style.verticalAlign = "baseline";
+              value.style.whiteSpace = "pre-wrap";
+              value.style.overflow = "visible";
+              input.replaceWith(value);
             });
           clonedPage
             .querySelectorAll<HTMLElement>(".uniqa-letter-signature")
