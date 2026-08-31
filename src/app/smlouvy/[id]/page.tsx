@@ -162,6 +162,22 @@ const ALLIANZ_AUTO_PAYMENT_CHECK_URL =
   "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
 const ALLIANZ_AUTO_ODOMETER_UPLOAD_URL =
   "https://www.allianz.cz/cs_CZ/apps/kilometry-nahrani.html";
+type AllianzPortalAction = "odometerUpload" | "paymentCheck";
+const ALLIANZ_PORTAL_ACTION_CONFIG: Record<
+  AllianzPortalAction,
+  { title: string; openLabel: string; url: string }
+> = {
+  odometerUpload: {
+    title: "Nahrání tachometru",
+    openLabel: "Otevřít nahrání tachometru",
+    url: ALLIANZ_AUTO_ODOMETER_UPLOAD_URL,
+  },
+  paymentCheck: {
+    title: "Ověření zaplacenosti",
+    openLabel: "Otevřít ověření zaplacenosti",
+    url: ALLIANZ_AUTO_PAYMENT_CHECK_URL,
+  },
+};
 const KOOPERATIVA_CONTRACT_STATUS_URL =
   "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
 const SLAVIA_CONTRACT_VERIFICATION_URL =
@@ -540,11 +556,12 @@ export default function ContractDetailPage() {
   );
   const [submittingTransfer, setSubmittingTransfer] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
-  const [showAllianzOdometerModal, setShowAllianzOdometerModal] = useState(false);
-  const [allianzOdometerIdentity, setAllianzOdometerIdentity] =
+  const [allianzPortalAction, setAllianzPortalAction] =
+    useState<AllianzPortalAction | null>(null);
+  const [allianzPortalIdentity, setAllianzPortalIdentity] =
     useState<AllianzOdometerIdentity | null>(null);
-  const [allianzOdometerLoading, setAllianzOdometerLoading] = useState(false);
-  const [allianzOdometerError, setAllianzOdometerError] = useState<string | null>(null);
+  const [allianzPortalLoading, setAllianzPortalLoading] = useState(false);
+  const [allianzPortalError, setAllianzPortalError] = useState<string | null>(null);
   const [showKooperativaStatusModal, setShowKooperativaStatusModal] = useState(false);
   const [kooperativaBirthNumber, setKooperativaBirthNumber] = useState<string | null>(null);
   const [kooperativaDirectBirthDate, setKooperativaDirectBirthDate] = useState<string | null>(null);
@@ -567,7 +584,7 @@ export default function ContractDetailPage() {
   const [openContractPdfExternally, setOpenContractPdfExternally] = useState(false);
   const contractPdfObjectUrlRef = useRef<string | null>(null);
   const contractPdfCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
-  const allianzOdometerRequestRef = useRef(0);
+  const allianzPortalRequestRef = useRef(0);
   const kooperativaStatusRedirectTimerRef = useRef<number | null>(null);
   const kooperativaBirthNumberRequestRef = useRef(0);
   const uniqaTerminationRequestRef = useRef(0);
@@ -579,6 +596,10 @@ export default function ContractDetailPage() {
   const [serverCanManageContract, setServerCanManageContract] = useState(false);
   const isNeonImmediateBreakdownOpen = neonImmediateBreakdown != null;
   const isStatementPreviewOpen = statementPreview != null;
+  const showAllianzPortalModal = allianzPortalAction != null;
+  const allianzPortalConfig = allianzPortalAction
+    ? ALLIANZ_PORTAL_ACTION_CONFIG[allianzPortalAction]
+    : null;
 
   const clearKooperativaStatusRedirect = useCallback(() => {
     if (kooperativaStatusRedirectTimerRef.current != null) {
@@ -587,12 +608,12 @@ export default function ContractDetailPage() {
     }
   }, []);
 
-  const closeAllianzOdometerModal = useCallback(() => {
-    allianzOdometerRequestRef.current += 1;
-    setAllianzOdometerIdentity(null);
-    setAllianzOdometerLoading(false);
-    setAllianzOdometerError(null);
-    setShowAllianzOdometerModal(false);
+  const closeAllianzPortalModal = useCallback(() => {
+    allianzPortalRequestRef.current += 1;
+    setAllianzPortalIdentity(null);
+    setAllianzPortalLoading(false);
+    setAllianzPortalError(null);
+    setAllianzPortalAction(null);
   }, []);
 
   const closeKooperativaStatusModal = useCallback(() => {
@@ -657,7 +678,7 @@ export default function ContractDetailPage() {
         setShowTerminationReasonModal(false);
         closeUniqaTerminationModal();
         setSelectedTerminationReason(null);
-        closeAllianzOdometerModal();
+        closeAllianzPortalModal();
         closeKooperativaStatusModal();
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
@@ -673,7 +694,7 @@ export default function ContractDetailPage() {
       showTransferModal ||
       showTerminationReasonModal ||
       showUniqaTerminationModal ||
-      showAllianzOdometerModal ||
+      showAllianzPortalModal ||
       showKooperativaStatusModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
@@ -692,13 +713,13 @@ export default function ContractDetailPage() {
     showTransferModal,
     showTerminationReasonModal,
     showUniqaTerminationModal,
-    showAllianzOdometerModal,
+    showAllianzPortalModal,
     showKooperativaStatusModal,
     showContractPdfModal,
     showContractPdfOptions,
     isNeonImmediateBreakdownOpen,
     isStatementPreviewOpen,
-    closeAllianzOdometerModal,
+    closeAllianzPortalModal,
     closeKooperativaStatusModal,
     closeUniqaTerminationModal,
   ]);
@@ -4793,23 +4814,23 @@ export default function ContractDetailPage() {
     [contractSignedDateIsoForBreakdown, pushToast]
   );
 
-  const handleAllianzOdometerUploadClick = useCallback(() => {
+  const handleAllianzPortalActionClick = useCallback((action: AllianzPortalAction) => {
     if (prod !== "allianzAuto") return;
 
-    const requestId = allianzOdometerRequestRef.current + 1;
-    allianzOdometerRequestRef.current = requestId;
-    setAllianzOdometerIdentity(null);
-    setAllianzOdometerError(null);
-    setAllianzOdometerLoading(true);
-    setShowAllianzOdometerModal(true);
+    const requestId = allianzPortalRequestRef.current + 1;
+    allianzPortalRequestRef.current = requestId;
+    setAllianzPortalIdentity(null);
+    setAllianzPortalError(null);
+    setAllianzPortalLoading(true);
+    setAllianzPortalAction(action);
 
     const sourcePdf =
       contractPdfOptions.find((option) => option.isCurrent) ??
       contractPdfOptions[0] ??
       null;
     if (!sourcePdf) {
-      setAllianzOdometerLoading(false);
-      setAllianzOdometerError(
+      setAllianzPortalLoading(false);
+      setAllianzPortalError(
         "Ke smlouvě není uložené PDF. Datum narození ani IČO proto nelze automaticky načíst."
       );
       return;
@@ -4821,80 +4842,29 @@ export default function ContractDetailPage() {
         const parsed = await parseAllianzAutoPdf(
           new File([pdfBlob], sourcePdf.fileName, { type: "application/pdf" })
         );
-        if (allianzOdometerRequestRef.current !== requestId) return;
+        if (allianzPortalRequestRef.current !== requestId) return;
 
         const identity = resolveAllianzOdometerIdentity(parsed.personalId);
         if (!identity) {
-          setAllianzOdometerError(
+          setAllianzPortalError(
             "Rodné číslo ani IČO pojistníka se v PDF nepodařilo najít nebo převést."
           );
           return;
         }
-        setAllianzOdometerIdentity(identity);
+        setAllianzPortalIdentity(identity);
       } catch (error) {
-        if (allianzOdometerRequestRef.current !== requestId) return;
-        console.warn("Údaje pro nahrání tachometru Allianz se nepodařilo načíst", error);
-        setAllianzOdometerError(
+        if (allianzPortalRequestRef.current !== requestId) return;
+        console.warn("Údaje pro portál Allianz se nepodařilo načíst", error);
+        setAllianzPortalError(
           "PDF smlouvy se nepodařilo načíst. Potřebný údaj zadejte na portálu Allianz ručně."
         );
       } finally {
-        if (allianzOdometerRequestRef.current === requestId) {
-          setAllianzOdometerLoading(false);
+        if (allianzPortalRequestRef.current === requestId) {
+          setAllianzPortalLoading(false);
         }
       }
     })();
   }, [contractPdfOptions, downloadContractPdfBlob, prod]);
-
-  const handleAllianzPaymentCheckClick = useCallback(() => {
-    const contractNumber = String(contract?.contractNumber ?? "").trim();
-    const openAllianzPaymentCheck = () => {
-      window.open(ALLIANZ_AUTO_PAYMENT_CHECK_URL, "_blank", "noopener,noreferrer");
-    };
-
-    if (!contractNumber) {
-      pushToast("Číslo smlouvy není vyplněné. Allianz otevřu za 3 sekundy.", "error");
-      window.setTimeout(openAllianzPaymentCheck, 3000);
-      return;
-    }
-
-    const notifyCopied = () => {
-      pushToast(
-        `Číslo smlouvy ${contractNumber} je zkopírované. Allianz otevřu za 3 sekundy.`,
-        "success"
-      );
-    };
-    const notifyCopyFailed = () => {
-      pushToast(
-        "Číslo smlouvy se nepodařilo zkopírovat. Allianz otevřu za 3 sekundy.",
-        "error"
-      );
-    };
-
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(contractNumber).then(notifyCopied, notifyCopyFailed);
-    } else {
-      const textarea = document.createElement("textarea");
-      textarea.value = contractNumber;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      try {
-        if (document.execCommand("copy")) {
-          notifyCopied();
-        } else {
-          notifyCopyFailed();
-        }
-      } catch {
-        notifyCopyFailed();
-      } finally {
-        textarea.remove();
-      }
-    }
-
-    window.setTimeout(openAllianzPaymentCheck, 3000);
-  }, [contract?.contractNumber, pushToast]);
 
   const startKooperativaStatusRedirect = useCallback(() => {
     clearKooperativaStatusRedirect();
@@ -5436,7 +5406,7 @@ export default function ContractDetailPage() {
                   <>
                     <button
                       type="button"
-                      onClick={handleAllianzOdometerUploadClick}
+                      onClick={() => handleAllianzPortalActionClick("odometerUpload")}
                       className={headerActionButtonClass}
                     >
                       <Gauge size={14} strokeWidth={2} aria-hidden="true" />
@@ -5444,7 +5414,7 @@ export default function ContractDetailPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={handleAllianzPaymentCheckClick}
+                      onClick={() => handleAllianzPortalActionClick("paymentCheck")}
                       className={headerActionButtonClass}
                     >
                       <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
@@ -7242,31 +7212,35 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      {showAllianzOdometerModal && (
+      {showAllianzPortalModal && allianzPortalConfig && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
           <button
             type="button"
             className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-            aria-label="Zavřít nahrání tachometru Allianz"
-            onClick={closeAllianzOdometerModal}
+            aria-label={`Zavřít: ${allianzPortalConfig.title}`}
+            onClick={closeAllianzPortalModal}
           />
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="allianz-odometer-title"
+            aria-labelledby="allianz-portal-title"
             className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40 sm:p-7"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">
-                  <Gauge size={14} strokeWidth={2.2} aria-hidden="true" />
+                  {allianzPortalAction === "odometerUpload" ? (
+                    <Gauge size={14} strokeWidth={2.2} aria-hidden="true" />
+                  ) : (
+                    <ExternalLink size={14} strokeWidth={2.2} aria-hidden="true" />
+                  )}
                   Allianz Auto
                 </div>
                 <h3
-                  id="allianz-odometer-title"
+                  id="allianz-portal-title"
                   className="mt-3 text-xl font-semibold tracking-tight text-slate-900"
                 >
-                  Nahrání tachometru
+                  {allianzPortalConfig.title}
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
                   Zkopíruj si údaje, které budeš potřebovat na portálu Allianz.
@@ -7274,9 +7248,9 @@ export default function ContractDetailPage() {
               </div>
               <button
                 type="button"
-                onClick={closeAllianzOdometerModal}
+                onClick={closeAllianzPortalModal}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
-                aria-label="Zavřít nahrání tachometru Allianz"
+                aria-label={`Zavřít: ${allianzPortalConfig.title}`}
               >
                 <X size={18} strokeWidth={2.4} aria-hidden="true" />
               </button>
@@ -7310,25 +7284,25 @@ export default function ContractDetailPage() {
               <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="min-w-0">
                   <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-                    {allianzOdometerIdentity?.label ?? "Datum narození / IČO"}
+                    {allianzPortalIdentity?.label ?? "Datum narození / IČO"}
                   </p>
                   <p className="mt-1 font-mono text-base font-semibold text-slate-900">
-                    {allianzOdometerLoading
+                    {allianzPortalLoading
                       ? "Načítám..."
-                      : allianzOdometerIdentity?.value ?? "Nepodařilo se načíst"}
+                      : allianzPortalIdentity?.value ?? "Nepodařilo se načíst"}
                   </p>
                 </div>
-                {allianzOdometerIdentity && (
+                {allianzPortalIdentity && (
                   <button
                     type="button"
                     onClick={() =>
                       copyContractActionValue(
-                        allianzOdometerIdentity.value,
-                        allianzOdometerIdentity.label
+                        allianzPortalIdentity.value,
+                        allianzPortalIdentity.label
                       )
                     }
                     className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
-                    aria-label={`Kopírovat ${allianzOdometerIdentity.label.toLocaleLowerCase("cs-CZ")}`}
+                    aria-label={`Kopírovat ${allianzPortalIdentity.label.toLocaleLowerCase("cs-CZ")}`}
                   >
                     <Copy size={15} strokeWidth={2.2} aria-hidden="true" />
                     <span>Kopírovat</span>
@@ -7336,7 +7310,7 @@ export default function ContractDetailPage() {
                 )}
               </div>
 
-              {allianzOdometerError && (
+              {allianzPortalError && (
                 <div
                   role="alert"
                   className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900"
@@ -7346,7 +7320,7 @@ export default function ContractDetailPage() {
                     strokeWidth={2.2}
                     aria-hidden="true"
                   />
-                  <p>{allianzOdometerError}</p>
+                  <p>{allianzPortalError}</p>
                 </div>
               )}
 
@@ -7358,11 +7332,11 @@ export default function ContractDetailPage() {
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
               <p className="text-sm font-medium text-slate-700" aria-live="polite">
-                {allianzOdometerLoading
+                {allianzPortalLoading
                   ? "Načítám údaje z PDF smlouvy..."
                   : "Údaje jsou připravené pro portál Allianz."}
               </p>
-              {allianzOdometerLoading ? (
+              {allianzPortalLoading ? (
                 <button
                   type="button"
                   disabled
@@ -7373,13 +7347,13 @@ export default function ContractDetailPage() {
                 </button>
               ) : (
                 <a
-                  href={ALLIANZ_AUTO_ODOMETER_UPLOAD_URL}
+                  href={allianzPortalConfig.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-10 items-center gap-2 rounded-full bg-blue-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800"
                 >
                   <ExternalLink size={15} strokeWidth={2.2} aria-hidden="true" />
-                  <span>Otevřít nahrání tachometru</span>
+                  <span>{allianzPortalConfig.openLabel}</span>
                 </a>
               )}
             </div>
