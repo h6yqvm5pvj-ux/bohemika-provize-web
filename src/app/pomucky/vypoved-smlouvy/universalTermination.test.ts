@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatLocalDateForTerminationLetter,
   formatLocalDateInput,
   getTerminationReasonsForSelection,
   getUniversalLetterDefinition,
@@ -15,6 +16,14 @@ describe("formatLocalDateInput", () => {
     expect(formatLocalDateInput(new Date(2026, 7, 26, 23, 45))).toBe(
       "2026-08-26"
     );
+  });
+});
+
+describe("formatLocalDateForTerminationLetter", () => {
+  it("formátuje datum podpisu jako DD . MM . RRRR", () => {
+    expect(
+      formatLocalDateForTerminationLetter(new Date(2026, 7, 26, 23, 45)),
+    ).toBe("26 . 08 . 2026");
   });
 });
 

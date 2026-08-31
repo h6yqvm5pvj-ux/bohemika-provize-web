@@ -38,6 +38,7 @@ import {
   type ContractTerminationPrefill,
 } from "./contractTerminationPrefill";
 import {
+  formatLocalDateForTerminationLetter,
   formatLocalDateInput,
   getTerminationReasonsForSelection,
   getUniversalLetterForSelection,
@@ -2479,7 +2480,7 @@ const createUniversalLetterFields = (
   policyholderName: prefill?.policyholderName ?? "",
   personalId: prefill?.personalId ?? "",
   email: prefill?.email ?? "",
-  signedDate: prefill ? formatLocalDateInput() : "",
+  signedDate: prefill ? formatLocalDateForTerminationLetter() : "",
 });
 
 function CppSusUploadNotice({ className = "" }: { className?: string }) {
