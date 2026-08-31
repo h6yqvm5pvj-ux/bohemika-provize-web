@@ -2607,6 +2607,10 @@ function UniversalTerminationLetterPreview({
           }
 
           #${config.id} .uniqa-letter-pages {
+            display: block !important;
+            width: 210mm !important;
+            height: 296mm !important;
+            overflow: hidden !important;
             gap: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -2615,14 +2619,19 @@ function UniversalTerminationLetterPreview({
 
           #${config.id} .uniqa-letter-page {
             width: 210mm !important;
-            height: 297mm !important;
+            height: 296mm !important;
             max-width: none !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
             border: 0 !important;
             border-radius: 0 !important;
             box-shadow: none !important;
           }
 
           #${config.id} .uniqa-letter-content {
+            position: relative !important;
+            height: 100% !important;
+            min-height: 0 !important;
             padding: 28mm 24mm 22mm !important;
             color: #111827 !important;
             font-size: 11.4pt !important;
@@ -2631,7 +2640,6 @@ function UniversalTerminationLetterPreview({
 
           #${config.id} .uniqa-letter-input {
             border: 0 !important;
-            border-bottom: 1px solid #111827 !important;
             background: transparent !important;
             box-shadow: none !important;
             color: #111827 !important;
@@ -2647,8 +2655,18 @@ function UniversalTerminationLetterPreview({
           }
 
           #${config.id} .uniqa-letter-signature {
-            border-color: #111827 !important;
+            border: 0 !important;
             color: #374151 !important;
+          }
+
+          #${config.id} .uniqa-letter-footer {
+            position: absolute !important;
+            right: 24mm !important;
+            bottom: 28mm !important;
+            left: 24mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            transform: none !important;
           }
         }
       `}</style>
@@ -2820,7 +2838,7 @@ function UniversalTerminationLetterPreview({
               </div>
             </div>
 
-            <div className="mt-auto pt-[13%]">
+            <div className="uniqa-letter-footer mt-auto -translate-y-16 pt-[13%]">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <label className="flex min-w-0 items-end gap-2">
                   <span className="font-semibold">V</span>
