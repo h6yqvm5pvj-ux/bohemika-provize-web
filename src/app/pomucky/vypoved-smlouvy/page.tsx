@@ -34,6 +34,7 @@ import SplitTitle from "../plan-produkce/SplitTitle";
 import {
   consumeContractTerminationPrefill,
   getContractTerminationPdfFieldDefaults,
+  getTerminationPersonalIdLabel,
   isCppSusUploadNoticeProduct,
   type ContractTerminationPrefill,
 } from "./contractTerminationPrefill";
@@ -2514,6 +2515,7 @@ function UniversalTerminationLetterPreview({
   );
   const [showTerminationCalculator, setShowTerminationCalculator] =
     useState(false);
+  const personalIdLabel = getTerminationPersonalIdLabel(fields.personalId);
   const portalRoot =
     typeof document === "undefined" ? null : document.body;
 
@@ -2828,8 +2830,8 @@ function UniversalTerminationLetterPreview({
                   {renderInput("policyholderName", "Jméno a příjmení", "w-full")}
                 </label>
                 <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
-                  <span className="font-semibold">Rodné číslo:</span>
-                  {renderInput("personalId", "Rodné číslo", "w-full")}
+                  <span className="font-semibold">{personalIdLabel}:</span>
+                  {renderInput("personalId", personalIdLabel, "w-full")}
                 </label>
                 <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
                   <span className="font-semibold">email:</span>

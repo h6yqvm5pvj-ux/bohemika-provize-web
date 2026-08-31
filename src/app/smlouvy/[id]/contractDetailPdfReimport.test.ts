@@ -98,6 +98,7 @@ describe("PDF reimport detailu smlouvy", () => {
   });
 
   it("drží parsery dostupné pro všechny podporované produkty detailu", () => {
+    expect(PDF_REIMPORT_PARSERS.allianzAuto).toBeTypeOf("function");
     expect(PDF_REIMPORT_PARSERS.cppAuto).toBeTypeOf("function");
     expect(PDF_REIMPORT_PARSERS.domex).toBeTypeOf("function");
     expect(PDF_REIMPORT_PARSERS.neon).toBeTypeOf("function");

@@ -79,6 +79,20 @@ const CPP_SUS_UPLOAD_NOTICE_PRODUCTS = new Set<Product>([
 const cleanText = (value: unknown, maxLength: number): string =>
   typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 
+const cleanPersonalId = (value: unknown): string => {
+  const normalized = cleanText(value, 30);
+  const compact = normalized.replace(/\s+/g, "");
+  return /^\d{8}$/.test(compact) ? compact : normalized;
+};
+
+export function getTerminationPersonalIdLabel(
+  value: string | null | undefined,
+): "Rodné číslo" | "IČO" {
+  return /^\d{8}$/.test((value ?? "").replace(/\s+/g, ""))
+    ? "IČO"
+    : "Rodné číslo";
+}
+
 const cleanIsoDay = (value: unknown): string => {
   const normalized = cleanText(value, 10);
   return ISO_DAY_RE.test(normalized) ? normalized : "";
@@ -151,7 +165,7 @@ export function normalizeContractTerminationPrefill(
     ...(sourceProduct ? { sourceProduct } : {}),
     contractNumber: cleanText(raw.contractNumber, 90),
     policyholderName: cleanText(raw.policyholderName, 120),
-    personalId: cleanText(raw.personalId, 30),
+    personalId: cleanPersonalId(raw.personalId),
     address: cleanText(raw.address, 220),
     phone: cleanText(raw.phone, 50),
     email: cleanText(raw.email, 160),

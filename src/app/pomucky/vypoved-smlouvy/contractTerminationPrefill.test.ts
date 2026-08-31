@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   consumeContractTerminationPrefill,
   getContractTerminationPdfFieldDefaults,
+  getTerminationPersonalIdLabel,
   isCppSusUploadNoticeProduct,
   normalizeContractTerminationPrefill,
   normalizeTerminationPrefillInsurer,
@@ -96,6 +97,23 @@ describe("contractTerminationPrefill", () => {
       policyholderBirthNumber: "900101/1234",
       identifiedBirthNumber: "900101/1234",
     });
+  });
+
+  it("předá IČO Allianz Auto do univerzální výpovědi bez mezer", () => {
+    const prefill = normalizeContractTerminationPrefill({
+      sourcePath: "/smlouvy/abc-123",
+      sourceProduct: "allianzAuto",
+      contractNumber: "2026-001",
+      policyholderName: "Testovací firma",
+      personalId: "12 34 56 78",
+      insurer: "Allianz",
+      insuranceType: "nonLife",
+      reason: "periodEnd",
+    });
+
+    expect(prefill?.personalId).toBe("12345678");
+    expect(getTerminationPersonalIdLabel(prefill?.personalId)).toBe("IČO");
+    expect(getTerminationPersonalIdLabel("900101/1234")).toBe("Rodné číslo");
   });
 
   it("zahodí neznámý důvod výpovědi", () => {
