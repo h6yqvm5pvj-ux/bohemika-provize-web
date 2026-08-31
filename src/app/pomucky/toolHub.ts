@@ -14,6 +14,7 @@ export const TOOL_HUB_TOOL_KEYS = [
   "statistika",
   "export-produkce",
   "plan-produkce",
+  "tipar",
   "zlato",
   "katastr",
   "proklepka-vozidla",

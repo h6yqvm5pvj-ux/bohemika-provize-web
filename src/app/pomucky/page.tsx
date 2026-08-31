@@ -27,6 +27,7 @@ import {
   Files,
   FileSignature,
   Gauge,
+  HandCoins,
   HeartPulse,
   Home,
   Landmark,
@@ -65,6 +66,10 @@ import {
   type ToolHubToolKey,
   type ToolHubUsageMetric,
 } from "./toolHub";
+import {
+  TOOL_CATALOG,
+  type ToolCatalogCategory,
+} from "./toolCatalog";
 
 const toolsFont = systemSansFont;
 
@@ -80,7 +85,7 @@ const FILTERS = [
 ] as const;
 
 type FilterKey = (typeof FILTERS)[number];
-type ToolCategory = Exclude<FilterKey, "Všechny">;
+type ToolCategory = ToolCatalogCategory;
 
 const FILTER_TAB_LABEL: Record<FilterKey, string> = {
   Všechny: "Všechny",
@@ -256,6 +261,38 @@ type Tool = {
   onClick?: () => void;
 };
 
+const TOOL_ICON_BY_KEY: Record<ToolHubToolKey, LucideIcon> = {
+  argumenty: Scale,
+  kontakty: ContactRound,
+  dokumenty: Files,
+  zaznam: FileSignature,
+  "vypoved-smlouvy": ScrollText,
+  "jak-stiham-vypoved-smlouvy": Clock3,
+  "nahrada-smlouvy": RefreshCcw,
+  "radar-vyroci": CalendarClock,
+  tvorba: PenTool,
+  "ai-asistent": Bot,
+  "online-vizitka": WalletCards,
+  "hypoteka-vlastni-zdroje": PiggyBank,
+  statistika: BarChart3,
+  "export-produkce": BanknoteArrowDown,
+  "plan-produkce": Trophy,
+  tipar: HandCoins,
+  zlato: Landmark,
+  katastr: Home,
+  "proklepka-vozidla": ShieldCheck,
+  "nahrat-tachometr": Gauge,
+  "odkazy-instituce": Landmark,
+  ares: Building2,
+  "projekce-vykonu": TrendingUp,
+  "cestovni-pojisteni-cpp-vs-kooperativa": Plane,
+  "nastaveni-zivotniho-pojisteni": HeartPulse,
+  "srovnavac-trvalych-nasledku": Bike,
+  "srovnavac-pracovni-neschopnosti": HeartPulse,
+  "srovnavac-zivotniho-pojisteni": ShieldCheck,
+  "neon-life-vs-metlife-oneguard": ChartNoAxesColumn,
+};
+
 type ToolHubUsageResponse = {
   ok?: boolean;
   usage?: Partial<Record<ToolHubToolKey, ToolHubUsageMetric>>;
@@ -403,6 +440,25 @@ export default function ToolsPage() {
   }, []);
 
   useEffect(() => {
+    const url = new URL(window.location.href);
+    const requestedTool = url.searchParams.get("open");
+    if (requestedTool === "nahrat-tachometr") {
+      setTachometerModalOpen(true);
+    } else if (requestedTool === "odkazy-instituce") {
+      setLinksModalOpen(true);
+    } else {
+      return;
+    }
+
+    url.searchParams.delete("open");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, []);
+
+  useEffect(() => {
     if (!user || !effectiveEmail) {
       setUsageByKey({});
       setUsageLoading(false);
@@ -447,234 +503,37 @@ export default function ToolsPage() {
   }, [effectiveEmail, user]);
 
   const tools: Tool[] = useMemo(
-    () => [
-      {
-        key: "argumenty",
-        category: "Obecné",
-        title: "Argumenty",
-        description: "Přehled Argumentů na různé typy námitek od klienta.",
-        icon: Scale,
-        href: "/pomucky/argumenty",
-      },
-      {
-        key: "kontakty",
-        category: "Obecné",
-        title: "Kontakty",
-        description: "Přímé kontakty na obchodní a administrativní podporu partnerských institucí.",
-        icon: ContactRound,
-        onClick: () => setContactsModalOpen(true),
-      },
-      {
-        key: "dokumenty",
-        category: "Obecné",
-        title: "Dokumenty",
-        description: "Centrální místo pro interní šablony, podklady a materiály.",
-        icon: Files,
-        href: "/pomucky/dokumenty",
-      },
-      {
-        key: "zaznam",
-        category: "Obecné",
-        title: "Záznam z jednání",
-        description: "Pomůcka pro správně vypsaný Záznam z jednání.",
-        icon: FileSignature,
-        href: "/pomucky/zaznam",
-      },
-      {
-        key: "vypoved-smlouvy",
-        category: "Obecné",
-        title: "Výpověď smlouvy",
-        description: "Pomůcka pro přípravu výpovědi smlouvy.",
-        icon: ScrollText,
-        href: "/pomucky/vypoved-smlouvy",
-      },
-      {
-        key: "jak-stiham-vypoved-smlouvy",
-        category: "Obecné",
-        title: "Jak stíhám výpověď smlouvy?",
-        description: "Ověření výpovědních lhůt a výpočet data ukončení smlouvy.",
-        icon: Clock3,
-        href: "/pomucky/jak-stiham-vypoved-smlouvy",
-      },
-      {
-        key: "nahrada-smlouvy",
-        category: "Obecné",
-        title: "Náhrada smlouvy",
-        description: "Výpočet převodu nevyčerpaného pojistného a doplatku nebo přeplatku.",
-        icon: RefreshCcw,
-        href: "/pomucky/nahrada-smlouvy",
-      },
-      {
-        key: "radar-vyroci",
-        category: "Obecné",
-        title: "Radar výročí",
-        description: "Přehled klientů, kterým se blíží výročí smlouvy, s kontrolním checklistem na obvolání.",
-        icon: CalendarClock,
-        href: "/pomucky/radar-vyroci",
-      },
-      {
-        key: "tvorba",
-        category: "Obecné",
-        title: "Tvorba PDF",
-        description: "Interaktivní A4 editor dokumentu s pevnou hlavičkou, patičkou a stažením do PDF.",
-        icon: PenTool,
-        href: "/pomucky/tvorba",
-      },
-      {
-        key: "ai-asistent",
-        category: "Obecné",
-        title: "AI Asistent",
-        description:
-          "Bohemka Asistent jako interní pomocník pro pojištění, investice a investiční zlato (bez přístupu ke smlouvám).",
-        icon: Bot,
-        href: "/pomucky/ai-asistent",
-      },
-      {
-        key: "online-vizitka",
-        category: "Obecné",
-        title: "Online Vizitka",
-        description: "Editor pro tvou vlastní online vizitku.",
-        icon: WalletCards,
-        href: "/nastaveni?tab=onlineCard",
-      },
-      {
-        key: "hypoteka-vlastni-zdroje",
-        category: "Investice",
-        title: "Hypotéka: vlastní zdroje",
-        description: "Spočítej, kolik je potřeba naspořit na hypotéku a za jak dlouho to vyjde při různých strategiích.",
-        icon: PiggyBank,
-        href: "/pomucky/hypoteka-vlastni-zdroje",
-      },
-      {
-        key: "statistika",
-        category: "Finance",
-        title: "Statistika",
-        description: "Denní statistika oslovení, schůzek a smluv s výpočtem provize.",
-        icon: BarChart3,
-        href: "/pomucky/statistika",
-      },
-      {
-        key: "export-produkce",
-        category: "Finance",
-        title: "Export produkce",
-        description: "Statistika s možností stažení v PDF a Odeslání mailem.",
-        icon: BanknoteArrowDown,
-        href: "/pomucky/export-produkce",
-      },
-      {
-        key: "plan-produkce",
-        category: "Finance",
-        title: "Plán produkce",
-        description: "Naplánuj si cíleně Produkci a rovnou uvidíš svou odměnu. Můžeš i stáhnout v PDF.",
-        icon: Trophy,
-        href: "/pomucky/plan-produkce",
-      },
-      {
-        key: "zlato",
-        category: "Investice",
-        title: "Zlato",
-        description: "Přehled a kalkulace pro investice do zlata.",
-        icon: Landmark,
-        href: "/pomucky/zlato",
-      },
-      {
-        key: "katastr",
-        category: "Pojištění majetku",
-        title: "Nahlížení do katastru nemovitostí",
-        description: "Vyhledej údaje z CUZK podle kódu adresního místa (RÚIAN) s autorizací přes tvůj účet.",
-        icon: Home,
-        href: "/cuzk",
-      },
-      {
-        key: "proklepka-vozidla",
-        category: "Pojištění vozidel",
-        title: "Proklepka vozidla",
-        description: "Zjisti informace o vozidle jako například nájezd, tržní cenu, cenu skel, vlastníky, STK, data z ORV a další.",
-        icon: ShieldCheck,
-        href: "/pomucky/proklepka-vozidla",
-      },
-      {
-        key: "nahrat-tachometr",
-        category: "Pojištění vozidel",
-        title: "Nahrát tachometr",
-        description: "Odkaz pro nahrání stavu tachometru pro pojišťovny Allianz a Pillow.",
-        icon: Gauge,
-        onClick: () => setTachometerModalOpen(true),
-      },
-      {
-        key: "odkazy-instituce",
-        category: "Obecné",
-        title: "Odkazy",
-        description: "Odkazy na portály institucí.",
-        icon: Landmark,
-        onClick: () => setLinksModalOpen(true),
-      },
-      {
-        key: "ares",
-        category: "Obecné",
-        title: "ARES",
-        description: "Vyhledání ekonomických subjektů v ARES podle IČO, názvu firmy a obce.",
-        icon: Building2,
-        href: "/pomucky/ares",
-      },
-      {
-        key: "projekce-vykonu",
-        category: "Finance",
-        title: "Projekce výkonu",
-        description: "Vizualizuj si výplatu do budoucna.",
-        icon: TrendingUp,
-        href: "/pomucky/projekce-vykonu",
-      },
-      {
-        key: "cestovni-pojisteni-cpp-vs-kooperativa",
-        category: "Cestovní pojištění",
-        title: "ČPP vs. Kooperativa vs. AXA — cestovní pojištění",
-        description: "Interaktivní porovnání variant, limitů, výluk a připojištění tří cestovních pojištění.",
-        icon: Plane,
-        href: "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
-      },
-      {
-        key: "nastaveni-zivotniho-pojisteni",
-        category: "Životní pojištění",
-        title: "Jak nastavit Životní pojištění",
-        description: "Stepper pro nastavení smrti, invalidity a pracovní neschopnosti podle příjmu, závazků a dluhů.",
-        icon: HeartPulse,
-        href: "/pomucky/nastaveni-zivotniho-pojisteni",
-      },
-      {
-        key: "srovnavac-trvalych-nasledku",
-        category: "Životní pojištění",
-        title: "Srovnavač Trvalých následků",
-        description: "Otevři srovnavač pro trvalé následky úrazu.",
-        icon: Bike,
-        href: "/pomucky/srovnavac-trvalych-nasledku",
-      },
-      {
-        key: "srovnavac-pracovni-neschopnosti",
-        category: "Životní pojištění",
-        title: "Srovnavač Pracovní neschopnosti",
-        description: "Výběr produktů pro srovnání pracovní neschopnosti.",
-        icon: HeartPulse,
-        href: "/pomucky/srovnavac-pracovni-neschopnosti",
-      },
-      {
-        key: "srovnavac-zivotniho-pojisteni",
-        category: "Životní pojištění",
-        title: "Srovnavač životního pojištění",
-        description: "Porovnání produktových podmínek životního pojištění podle pojišťoven a kategorií.",
-        icon: ShieldCheck,
-        href: "/pomucky/srovnavac-zivotniho-pojisteni",
-      },
-      {
-        key: "neon-life-vs-metlife-oneguard",
-        category: "Životní pojištění",
-        title: "NEON Life vs. MetLife OneGuard",
-        description: "Přehledné srovnání produktů ČPP NEON Life a MetLife OneGuard.",
-        icon: ChartNoAxesColumn,
-        href: "/pomucky/neon-life-vs-metlife-oneguard",
-      },
-    ],
-    [setContactsModalOpen, setLinksModalOpen, setTachometerModalOpen]
+    () =>
+      TOOL_CATALOG.map((entry) => {
+        const baseTool: Tool = {
+          ...entry,
+          icon: TOOL_ICON_BY_KEY[entry.key],
+        };
+
+        if (entry.key === "kontakty") {
+          return {
+            ...baseTool,
+            href: undefined,
+            onClick: () => setContactsModalOpen(true),
+          };
+        }
+        if (entry.key === "nahrat-tachometr") {
+          return {
+            ...baseTool,
+            href: undefined,
+            onClick: () => setTachometerModalOpen(true),
+          };
+        }
+        if (entry.key === "odkazy-instituce") {
+          return {
+            ...baseTool,
+            href: undefined,
+            onClick: () => setLinksModalOpen(true),
+          };
+        }
+        return baseTool;
+      }),
+    [],
   );
 
   const recordToolOpen = useCallback(

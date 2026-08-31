@@ -25,6 +25,8 @@ export type ContactInstitution = {
   accentClass: string;
 };
 
+export const OPEN_CONTACT_DIRECTORY_EVENT = "bohemika:open-contact-directory";
+
 export const CONTACT_INSTITUTIONS: ContactInstitution[] = [
   {
     key: "bohemika",

@@ -4,6 +4,7 @@ import { type PaymentFrequency } from "../types/domain";
 export type UniqaAutoPdfResult = {
   contractNumber?: string | null;
   clientName?: string | null;
+  personalId?: string | null;
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
@@ -87,6 +88,52 @@ const normalizeContractNumber = (value: string | null | undefined): string | nul
   if (!value) return null;
   const digits = value.replace(/\D+/g, "");
   return digits.length >= 6 ? digits : null;
+};
+
+const normalizePolicyholderPersonalId = (
+  value: string | null | undefined,
+): string | null => {
+  if (!value) return null;
+  const birthNumber = value.match(/\b(\d{6})\s*\/?\s*(\d{3,4})\b/);
+  if (birthNumber) return `${birthNumber[1]}/${birthNumber[2]}`;
+  return value.match(/\b\d{8}\b/)?.[0] ?? null;
+};
+
+export const extractUniqaPolicyholderPersonalId = (
+  lines: readonly string[],
+): string | null => {
+  const asciiLines = lines.map((line) =>
+    stripDiacritics(normalizeSpaces(line)).toLowerCase(),
+  );
+  const policyholderIndex = asciiLines.findIndex((line) =>
+    /\bpojistnik(?:\s*\(vy\))?\b/i.test(line),
+  );
+  if (policyholderIndex < 0) return null;
+
+  const endIndex = Math.min(lines.length, policyholderIndex + 10);
+  for (let index = policyholderIndex; index < endIndex; index += 1) {
+    if (
+      index > policyholderIndex &&
+      /^(?:pojisten[ýy]|pojistena\s+osoba|ridic|vlastnik|provozovatel)\b/i.test(
+        asciiLines[index] ?? "",
+      )
+    ) {
+      break;
+    }
+    const line = lines[index] ?? "";
+    const birthNumber = line.match(
+      /(?:R[ČC]|rodn[eé]\s+[čc][ií]slo)\s*:\s*(\d{6}\s*\/?\s*\d{3,4})/i,
+    )?.[1];
+    const normalizedBirthNumber = normalizePolicyholderPersonalId(birthNumber);
+    if (normalizedBirthNumber) return normalizedBirthNumber;
+
+    const companyId = line.match(
+      /(?:I[ČC](?:O)?|identifika[čc]n[ií]\s+[čc][ií]slo)\s*:\s*(\d{8})\b/i,
+    )?.[1];
+    const normalizedCompanyId = normalizePolicyholderPersonalId(companyId);
+    if (normalizedCompanyId) return normalizedCompanyId;
+  }
+  return null;
 };
 
 const normalizeName = (value: string | null | undefined): string | null => {
@@ -408,6 +455,9 @@ export async function parseUniqaAutoPdf(file: File): Promise<UniqaAutoPdfResult>
     const name = normalizeName(readNearestValueByLabel(lines, asciiLines, /jmeno\s+a\s+prijmeni/i, 3));
     if (name) result.clientName = name;
   }
+
+  const personalId = extractUniqaPolicyholderPersonalId(lines);
+  if (personalId) result.personalId = personalId;
 
   const policyStartRaw =
     normalized.match(

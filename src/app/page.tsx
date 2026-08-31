@@ -27,6 +27,7 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { OPEN_CONTACT_DIRECTORY_EVENT } from "@/app/lib/contactDirectory";
 import {
   readAdminImpersonationState,
   resolveUserProfilePatchRequest,
@@ -614,6 +615,7 @@ export default function HomePage() {
   const [subSearch, setSubSearch] = useState("");
   const [portalLinksModalOpen, setPortalLinksModalOpen] = useState(false);
   const [contactsModalOpen, setContactsModalOpen] = useState(false);
+  const [contactsTargetId, setContactsTargetId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [accessProfileReady, setAccessProfileReady] = useState(false);
   const [accessProfileError, setAccessProfileError] = useState<string | null>(null);
@@ -729,19 +731,34 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("contacts") !== "1") return;
+    const openContacts = (contactId: string | null = null) => {
+      setContactsTargetId(contactId);
+      setContactsModalOpen(true);
+    };
+    const handleOpenContacts = (event: Event) => {
+      const detail = (event as CustomEvent<{ contactId?: string | null }>).detail;
+      openContacts(detail?.contactId ?? null);
+    };
 
-    setContactsModalOpen(true);
-    url.searchParams.delete("contacts");
-    if (url.searchParams.get("source") === "contact-notification") {
-      url.searchParams.delete("source");
+    window.addEventListener(OPEN_CONTACT_DIRECTORY_EVENT, handleOpenContacts);
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("contacts") === "1") {
+      openContacts(url.searchParams.get("contact"));
+      url.searchParams.delete("contacts");
+      url.searchParams.delete("contact");
+      if (url.searchParams.get("source") === "contact-notification") {
+        url.searchParams.delete("source");
+      }
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
     }
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${url.pathname}${url.search}${url.hash}`,
-    );
+
+    return () => {
+      window.removeEventListener(OPEN_CONTACT_DIRECTORY_EVENT, handleOpenContacts);
+    };
   }, []);
 
   useEffect(() => {
@@ -1707,7 +1724,11 @@ export default function HomePage() {
       {contactsModalOpen && (
         <ContactsModal
           user={user}
-          onClose={() => setContactsModalOpen(false)}
+          initialContactId={contactsTargetId}
+          onClose={() => {
+            setContactsModalOpen(false);
+            setContactsTargetId(null);
+          }}
         />
       )}
       <div className="relative isolate w-full overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_52%,#f8fafc_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
@@ -1745,7 +1766,10 @@ export default function HomePage() {
 
             <button
               type="button"
-              onClick={() => setContactsModalOpen(true)}
+              onClick={() => {
+                setContactsTargetId(null);
+                setContactsModalOpen(true);
+              }}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-cyan-600 bg-gradient-to-br from-cyan-500 to-sky-700 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(8,145,178,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
               aria-label="Kontakty"
               title="Kontakty"

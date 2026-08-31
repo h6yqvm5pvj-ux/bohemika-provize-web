@@ -14,11 +14,10 @@ import {
   Plus,
   Save,
   Trash2,
-  UserRound,
   X,
 } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
@@ -194,9 +193,14 @@ const newContactId = (institutionKey: string): string =>
 type ContactsModalProps = {
   onClose: () => void;
   user: FirebaseUser | null;
+  initialContactId?: string | null;
 };
 
-export function ContactsModal({ onClose, user }: ContactsModalProps) {
+export function ContactsModal({
+  initialContactId = null,
+  onClose,
+  user,
+}: ContactsModalProps) {
   const [contacts, setContacts] = useState<DirectoryContact[]>(
     DEFAULT_DIRECTORY_CONTACTS,
   );
@@ -215,6 +219,7 @@ export function ContactsModal({ onClose, user }: ContactsModalProps) {
     tone: "error" | "success";
     text: string;
   } | null>(null);
+  const highlightedContactRef = useRef<HTMLElement | null>(null);
 
   const institutionsWithContacts = useMemo(
     () =>
@@ -242,6 +247,22 @@ export function ContactsModal({ onClose, user }: ContactsModalProps) {
         (contact) => contact.institutionKey === selectedInstitution,
       )
     : contacts;
+
+  useEffect(() => {
+    if (!initialContactId) return;
+    const contact = contacts.find((item) => item.id === initialContactId);
+    if (!contact) return;
+
+    setView("contacts");
+    setSelectedInstitution(contact.institutionKey);
+    const scrollTimer = window.setTimeout(() => {
+      highlightedContactRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
+    return () => window.clearTimeout(scrollTimer);
+  }, [contacts, initialContactId]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -667,11 +688,31 @@ export function ContactsModal({ onClose, user }: ContactsModalProps) {
                   contact.institutionKey,
                 );
                 if (!institution) return null;
+                const contactTitle =
+                  contact.person ??
+                  contact.description ??
+                  contact.role ??
+                  institution.label;
+                const institutionIsTitle = contactTitle === institution.label;
+                const showRoleBadge =
+                  Boolean(contact.role) && contactTitle !== contact.role;
+                const showDescription = Boolean(
+                  contact.person && contact.description,
+                );
 
                 return (
                   <article
                     key={contact.id}
-                    className="relative isolate h-auto min-w-0 overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_18px_36px_rgba(15,23,42,0.12)] sm:p-5"
+                    ref={
+                      contact.id === initialContactId
+                        ? highlightedContactRef
+                        : undefined
+                    }
+                    className={`relative isolate h-auto min-w-0 scroll-m-6 overflow-hidden rounded-[22px] border bg-white p-4 transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_18px_36px_rgba(15,23,42,0.12)] sm:p-5 ${
+                      contact.id === initialContactId
+                        ? "border-violet-400 shadow-[0_18px_42px_rgba(124,58,237,0.2)] ring-2 ring-violet-300/80"
+                        : "border-slate-200 shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                    }`}
                   >
                     <div
                       className={`pointer-events-none absolute inset-0 ${institution.accentClass}`}
@@ -688,11 +729,20 @@ export function ContactsModal({ onClose, user }: ContactsModalProps) {
                     </div>
                     <div className="relative">
                       <div className="flex items-start justify-between gap-3">
-                        <h3 className="pr-4 text-lg font-black tracking-[-0.02em] text-slate-950">
-                          {institution.label}
-                        </h3>
+                        <div className="min-w-0 flex-1 pr-2">
+                          {!institutionIsTitle ? (
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                              {institution.label}
+                            </p>
+                          ) : null}
+                          <h3
+                            className={`${institutionIsTitle ? "" : "mt-1"} text-lg font-black leading-6 tracking-[-0.025em] text-slate-950 sm:text-xl`}
+                          >
+                            {contactTitle}
+                          </h3>
+                        </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          {contact.role ? (
+                          {showRoleBadge ? (
                             <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-violet-700">
                               {contact.role}
                             </span>
@@ -702,20 +752,14 @@ export function ContactsModal({ onClose, user }: ContactsModalProps) {
                               type="button"
                               onClick={() => openExistingContact(contact)}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-500 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                              aria-label={`Upravit kontakt ${contact.person ?? institution.label}`}
+                              aria-label={`Upravit kontakt ${contactTitle}`}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
                           ) : null}
                         </div>
                       </div>
-                      {contact.person ? (
-                        <p className="mt-1 flex items-center gap-2 text-sm font-bold text-slate-600">
-                          <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
-                          {contact.person}
-                        </p>
-                      ) : null}
-                      {contact.description ? (
+                      {showDescription ? (
                         <p className="mt-2 text-xs font-medium leading-5 text-slate-500">
                           {contact.description}
                         </p>

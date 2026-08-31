@@ -10,10 +10,12 @@ import {
   AlertTriangle,
   CalendarDays,
   ChevronDown,
+  ChevronRight,
   Copy,
   Download,
   Eye,
   ExternalLink,
+  FileSignature,
   FileText,
   IdCard,
   Package,
@@ -37,6 +39,17 @@ import {
   isLifeProduct,
   productInstitutionLogo,
 } from "@/app/lib/productCatalog";
+import {
+  resolveContractTerminationProductDefaults,
+  storeContractTerminationPrefill,
+} from "@/app/pomucky/vypoved-smlouvy/contractTerminationPrefill";
+import {
+  getTerminationReasonsForSelection,
+  shouldShowContractTerminationAction,
+  type TerminationReason,
+} from "@/app/pomucky/vypoved-smlouvy/universalTermination";
+import { parseTerminationPolicyholderPdf } from "@/app/lib/parseTerminationPolicyholderPdf";
+import { parseUniqaAutoPdf } from "@/app/lib/parseUniqaAutoPdf";
 import {
   isAnnualSeparatedPeriodProduct,
   isPerPaymentSeparatedPeriodProduct,
@@ -144,6 +157,8 @@ const KOOPERATIVA_CONTRACT_STATUS_URL =
   "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
 const SLAVIA_CONTRACT_VERIFICATION_URL =
   "https://www.slavia-pojistovna.cz/over-ps/";
+const UNIQA_ONLINE_TERMINATION_URL =
+  "https://ivos.uniqa.cz/prod/ChangeCps?findType=Storno";
 const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = true;
 
 type ContractTransferTarget = {
@@ -496,6 +511,20 @@ export default function ContractDetailPage() {
   const [showStornoModal, setShowStornoModal] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showTerminationReasonModal, setShowTerminationReasonModal] =
+    useState(false);
+  const [showUniqaTerminationModal, setShowUniqaTerminationModal] =
+    useState(false);
+  const [uniqaTerminationPersonalId, setUniqaTerminationPersonalId] =
+    useState("");
+  const [uniqaTerminationPersonalIdLoading, setUniqaTerminationPersonalIdLoading] =
+    useState(false);
+  const [uniqaTerminationPersonalIdError, setUniqaTerminationPersonalIdError] =
+    useState<string | null>(null);
+  const [selectedTerminationReason, setSelectedTerminationReason] =
+    useState<TerminationReason | null>(null);
+  const [terminationPrefillLoading, setTerminationPrefillLoading] =
+    useState(false);
   const [canTransferContracts, setCanTransferContracts] = useState(false);
   const [transferTargets, setTransferTargets] = useState<ContractTransferTarget[]>([]);
   const [transferTargetEmail, setTransferTargetEmail] = useState("");
@@ -530,6 +559,7 @@ export default function ContractDetailPage() {
   const contractPdfCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
   const kooperativaStatusRedirectTimerRef = useRef<number | null>(null);
   const kooperativaBirthNumberRequestRef = useRef(0);
+  const uniqaTerminationRequestRef = useRef(0);
   const [neonImmediateBreakdown, setNeonImmediateBreakdown] =
     useState<NeonImmediateBreakdown | null>(null);
   const [canOpenRefreshReplacement, setCanOpenRefreshReplacement] = useState(false);
@@ -559,6 +589,12 @@ export default function ContractDetailPage() {
     setKooperativaStatusRedirectError(null);
     setShowKooperativaStatusModal(false);
   }, [clearKooperativaStatusRedirect]);
+
+  const closeUniqaTerminationModal = useCallback(() => {
+    uniqaTerminationRequestRef.current += 1;
+    setUniqaTerminationPersonalIdLoading(false);
+    setShowUniqaTerminationModal(false);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -599,6 +635,9 @@ export default function ContractDetailPage() {
         setShowStornoModal(false);
         setShowManagementModal(false);
         setShowTransferModal(false);
+        setShowTerminationReasonModal(false);
+        closeUniqaTerminationModal();
+        setSelectedTerminationReason(null);
         closeKooperativaStatusModal();
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
@@ -612,6 +651,8 @@ export default function ContractDetailPage() {
       showStornoModal ||
       showManagementModal ||
       showTransferModal ||
+      showTerminationReasonModal ||
+      showUniqaTerminationModal ||
       showKooperativaStatusModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
@@ -628,12 +669,15 @@ export default function ContractDetailPage() {
     showStornoModal,
     showManagementModal,
     showTransferModal,
+    showTerminationReasonModal,
+    showUniqaTerminationModal,
     showKooperativaStatusModal,
     showContractPdfModal,
     showContractPdfOptions,
     isNeonImmediateBreakdownOpen,
     isStatementPreviewOpen,
     closeKooperativaStatusModal,
+    closeUniqaTerminationModal,
   ]);
 
   // auth
@@ -4415,6 +4459,192 @@ export default function ContractDetailPage() {
   const clientCardHref = CLIENT_CARDS_ENABLED
     ? clientCardHrefForName(contract?.clientName ?? null)
     : null;
+  const terminationDefaults = resolveContractTerminationProductDefaults(prod);
+  const terminationInsurer = terminationDefaults.insurer;
+  const terminationInsuranceType = terminationDefaults.insuranceType;
+  const terminationReasonOptions = getTerminationReasonsForSelection(
+    terminationInsuranceType,
+    terminationInsurer,
+    prod,
+  );
+  const terminationPolicyStartDate = toDate(contract?.policyStartDate ?? null);
+  const showTerminationAction = Boolean(terminationInsurer) &&
+    shouldShowContractTerminationAction({
+      product: prod,
+      policyStartDay: terminationPolicyStartDate
+        ? localIsoDay(terminationPolicyStartDate)
+        : "",
+      today: localIsoDay(),
+    });
+  const closeTerminationReasonModal = () => {
+    setShowTerminationReasonModal(false);
+    setSelectedTerminationReason(null);
+  };
+  const handleOpenUniqaTerminationModal = async () => {
+    const requestId = uniqaTerminationRequestRef.current + 1;
+    uniqaTerminationRequestRef.current = requestId;
+    setUniqaTerminationPersonalId("");
+    setUniqaTerminationPersonalIdError(null);
+    setUniqaTerminationPersonalIdLoading(true);
+    setShowUniqaTerminationModal(true);
+
+    const sourcePdf =
+      contractPdfOptions.find((option) => option.isCurrent) ??
+      contractPdfOptions[0] ??
+      null;
+    if (!sourcePdf) {
+      if (uniqaTerminationRequestRef.current === requestId) {
+        setUniqaTerminationPersonalIdLoading(false);
+        setUniqaTerminationPersonalIdError(
+          "Ke smlouvě není uložené PDF, rodné číslo ani IČO proto nelze načíst.",
+        );
+      }
+      return;
+    }
+
+    try {
+      const pdfBlob = await downloadContractPdfBlob(sourcePdf);
+      const pdfFile = new File([pdfBlob], sourcePdf.fileName, {
+        type: "application/pdf",
+      });
+      const [uniqaPolicy, genericPolicyholder] = await Promise.all([
+        parseUniqaAutoPdf(pdfFile),
+        parseTerminationPolicyholderPdf(pdfFile),
+      ]);
+      if (uniqaTerminationRequestRef.current !== requestId) return;
+      const personalId =
+        uniqaPolicy.personalId?.trim() || genericPolicyholder.personalId.trim();
+      if (personalId) {
+        setUniqaTerminationPersonalId(personalId);
+      } else {
+        setUniqaTerminationPersonalIdError(
+          "Rodné číslo ani IČO pojistníka se v PDF nepodařilo najít.",
+        );
+      }
+    } catch (error) {
+      console.warn("Rodné číslo nebo IČO pojistníka UNIQA se nepodařilo načíst", error);
+      if (uniqaTerminationRequestRef.current === requestId) {
+        setUniqaTerminationPersonalIdError(
+          "PDF smlouvy se nepodařilo načíst. Rodné číslo nebo IČO zadejte na portálu ručně.",
+        );
+      }
+    } finally {
+      if (uniqaTerminationRequestRef.current === requestId) {
+        setUniqaTerminationPersonalIdLoading(false);
+      }
+    }
+  };
+  const handleCreateTermination = async (reason: TerminationReason) => {
+    if (!contract || !terminationInsurer || !showTerminationAction) return;
+    setTerminationPrefillLoading(true);
+    try {
+      let pdfPolicyholder = {
+        policyholderName: "",
+        personalId: "",
+        address: "",
+        phone: "",
+        email: "",
+      };
+      const sourcePdf =
+        contractPdfOptions.find((option) => option.isCurrent) ??
+        contractPdfOptions[0] ??
+        null;
+      if (sourcePdf) {
+        try {
+          const pdfBlob = await downloadContractPdfBlob(sourcePdf);
+          const pdfFile = new File([pdfBlob], sourcePdf.fileName, {
+            type: "application/pdf",
+          });
+          const productParser = prod ? PDF_REIMPORT_PARSERS[prod] : null;
+          const [genericPolicyholder, productParseResult] = await Promise.all([
+            parseTerminationPolicyholderPdf(pdfFile).catch((error) => {
+              console.warn("Doplňkový parser kontaktních údajů selhal", error);
+              return pdfPolicyholder;
+            }),
+            productParser
+              ? productParser(pdfFile).catch((error) => {
+                  console.warn("Produktový parser PDF nenačetl pojistníka", error);
+                  return null;
+                })
+              : Promise.resolve(null),
+          ]);
+          const parsedProduct =
+            productParseResult &&
+            typeof productParseResult === "object" &&
+            !Array.isArray(productParseResult)
+              ? (productParseResult as Record<string, unknown>)
+              : null;
+          const parsedProductClientName =
+            typeof parsedProduct?.clientName === "string"
+              ? parsedProduct.clientName.trim()
+              : "";
+          const parsedProductPersonalId =
+            typeof parsedProduct?.personalId === "string"
+              ? parsedProduct.personalId.trim()
+              : "";
+          const parsedProductEmail =
+            typeof parsedProduct?.clientEmail === "string"
+              ? parsedProduct.clientEmail.trim()
+              : typeof parsedProduct?.email === "string"
+                ? parsedProduct.email.trim()
+                : "";
+          pdfPolicyholder = {
+            ...genericPolicyholder,
+            policyholderName:
+              parsedProductClientName || genericPolicyholder.policyholderName,
+            personalId:
+              parsedProductPersonalId || genericPolicyholder.personalId,
+            email: parsedProductEmail || genericPolicyholder.email,
+          };
+        } catch (error) {
+          console.warn("Identifikační údaje z PDF se nepodařilo načíst", error);
+        }
+      }
+
+      const prefillKey = storeContractTerminationPrefill({
+        sourcePath: `${window.location.pathname}${window.location.search}`,
+        sourceProduct: prod ?? null,
+        contractNumber: contract.contractNumber ?? "",
+        policyholderName:
+          pdfPolicyholder.policyholderName || contract.clientName || "",
+        personalId: pdfPolicyholder.personalId,
+        address: pdfPolicyholder.address || contract.clientAddress || "",
+        phone: pdfPolicyholder.phone || contract.clientPhone || "",
+        email: pdfPolicyholder.email || contract.clientEmail || "",
+        policyStartDate: toDateInputValue(contract.policyStartDate) ?? "",
+        contractSignedDate:
+          toDateInputValue(contract.contractSignedDate ?? contract.createdAt) ?? "",
+        insurer: terminationInsurer,
+        insuranceType: terminationInsuranceType,
+        reason,
+      });
+      if (!prefillKey) {
+        pushToast(
+          "Předvyplnění se nepodařilo připravit. Otevírám prázdný formulář.",
+          "error",
+        );
+      }
+      router.push(
+        `/pomucky/vypoved-smlouvy${
+          prefillKey
+            ? `?prefill=${encodeURIComponent(prefillKey)}&embedded=1`
+            : "?embedded=1"
+        }`,
+      );
+      closeTerminationReasonModal();
+    } finally {
+      setTerminationPrefillLoading(false);
+    }
+  };
+  const uniqaTerminationContractNumber = contract?.contractNumber?.trim() ?? "";
+  const uniqaTerminationCarPlate = contract?.carPlate?.trim() ?? "";
+  const uniqaTerminationPersonalIdLabel = /^\d{8}$/.test(
+    uniqaTerminationPersonalId.replace(/\s+/g, ""),
+  )
+    ? "IČO pojistníka"
+    : uniqaTerminationPersonalId
+      ? "Rodné číslo pojistníka"
+      : "Rodné číslo / IČO pojistníka";
 
   const meziprovisionCards: MeziprovisionCard[] = [
     ...(showMeziprovision
@@ -4728,7 +4958,7 @@ export default function ContractDetailPage() {
     [kooperativaBirthNumber, kooperativaDirectBirthDate]
   );
 
-  const copyKooperativaStatusValue = useCallback(
+  const copyContractActionValue = useCallback(
     (value: string | null | undefined, label: string) => {
       const text = String(value ?? "").trim();
       if (!text) return;
@@ -5099,6 +5329,24 @@ export default function ContractDetailPage() {
                     <span>Karta klienta</span>
                   </Link>
                 )}
+
+                {showTerminationAction ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (prod === "uniqaAuto") {
+                        void handleOpenUniqaTerminationModal();
+                        return;
+                      }
+                      setSelectedTerminationReason(null);
+                      setShowTerminationReasonModal(true);
+                    }}
+                    className={headerActionButtonClass}
+                  >
+                    <FileSignature size={14} strokeWidth={2} aria-hidden="true" />
+                    <span>Vytvořit výpověď</span>
+                  </button>
+                ) : null}
 
                 <button
                   type="button"
@@ -6500,6 +6748,310 @@ export default function ContractDetailPage() {
         </div>
       )}
 
+      {showTerminationReasonModal &&
+      showTerminationAction &&
+      terminationInsurer &&
+      terminationInsuranceType ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-slate-950/70 backdrop-blur-sm"
+            aria-label="Zavřít výběr důvodu výpovědi"
+            onClick={closeTerminationReasonModal}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="termination-reason-title"
+            className="relative z-10 w-full max-w-2xl overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]"
+          >
+            <div className="relative overflow-hidden border-b border-violet-100 bg-[linear-gradient(130deg,#ffffff_0%,#faf7ff_55%,#eee7ff_100%)] px-6 py-6 sm:px-7">
+              <span className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-violet-300/25" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-4">
+                  <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-700 text-white shadow-[0_12px_28px_rgba(109,40,217,0.28)]">
+                    <FileSignature size={23} strokeWidth={2.1} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700">
+                      Vytvořit výpověď
+                    </p>
+                    <h3
+                      id="termination-reason-title"
+                      className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950"
+                    >
+                      Z jakého důvodu smlouvu ukončujete?
+                    </h3>
+                    <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+                      Podle produktu jsme automaticky rozpoznali pojišťovnu i typ
+                      pojištění.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeTerminationReasonModal}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
+                  aria-label="Zavřít"
+                >
+                  <X size={18} strokeWidth={2.2} aria-hidden="true" />
+                </button>
+              </div>
+              <div className="relative mt-4 flex flex-wrap gap-2 pl-0 sm:pl-16">
+                <span className="rounded-full border border-violet-200 bg-white/90 px-3 py-1.5 text-xs font-black text-violet-800 shadow-sm">
+                  {terminationInsurer}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm">
+                  {terminationInsuranceType === "life"
+                    ? "Životní pojištění"
+                    : "Neživotní pojištění"}
+                </span>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 sm:px-7">
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {terminationReasonOptions.map((option) => {
+                  const selected = selectedTerminationReason === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setSelectedTerminationReason(option.id)}
+                      className={`group flex min-h-[78px] items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                        selected
+                          ? "border-violet-500 bg-violet-50 shadow-[0_10px_24px_rgba(109,40,217,0.12)]"
+                          : "border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/40"
+                      }`}
+                    >
+                      <span
+                        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                          selected
+                            ? "bg-violet-700 text-white"
+                            : "bg-slate-100 text-slate-500 group-hover:bg-violet-100 group-hover:text-violet-700"
+                        }`}
+                      >
+                        <CalendarDays size={17} strokeWidth={2.1} aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1 text-sm font-bold leading-5 text-slate-800">
+                        {option.label}
+                      </span>
+                      <span
+                        className={`h-4 w-4 shrink-0 rounded-full border-[5px] ${
+                          selected
+                            ? "border-violet-700 bg-white"
+                            : "border-slate-300 bg-white"
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-5 flex flex-col-reverse gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeTerminationReasonModal}
+                  disabled={terminationPrefillLoading}
+                  className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Zrušit
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedTerminationReason || terminationPrefillLoading}
+                  onClick={() => {
+                    if (selectedTerminationReason) {
+                      void handleCreateTermination(selectedTerminationReason);
+                    }
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-700 px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(109,40,217,0.25)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {terminationPrefillLoading ? (
+                    <>
+                      <Spinner className="h-4 w-4 border-violet-200/70 border-t-white" />
+                      Načítám údaje z PDF…
+                    </>
+                  ) : (
+                    <>
+                      Pokračovat do výpovědi
+                      <ChevronRight size={16} strokeWidth={2.2} aria-hidden="true" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showUniqaTerminationModal ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-slate-950/70 backdrop-blur-sm"
+            aria-label="Zavřít informace k online výpovědi UNIQA"
+            onClick={closeUniqaTerminationModal}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="uniqa-termination-title"
+            className="relative z-10 w-full max-w-xl overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.38)]"
+          >
+            <div className="relative overflow-hidden border-b border-sky-100 bg-[linear-gradient(135deg,#ffffff_0%,#f7fbff_48%,#e8f4ff_100%)] px-6 py-6 sm:px-7">
+              <span className="pointer-events-none absolute -right-14 -top-20 h-48 w-48 rounded-full bg-sky-300/25" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-4">
+                  <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-white p-2 shadow-[0_12px_28px_rgba(2,132,199,0.16)]">
+                    <Image
+                      src="/icons/uniqa.png"
+                      alt="UNIQA"
+                      width={72}
+                      height={40}
+                      className="h-full w-full object-contain"
+                    />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700">
+                      UNIQA Auto
+                    </p>
+                    <h3
+                      id="uniqa-termination-title"
+                      className="mt-1 text-2xl font-black tracking-[-0.03em] text-slate-950"
+                    >
+                      Výpověď vyřídíte online
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeUniqaTerminationModal}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
+                  aria-label="Zavřít"
+                >
+                  <X size={18} strokeWidth={2.2} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 py-6 sm:px-7">
+              <p className="text-sm font-semibold leading-6 text-slate-700">
+                Vypovězení smlouvy proveďte online na portálu UNIQA. Pro
+                zahájení stačí zadat tyto tři údaje:
+              </p>
+
+              <div className="mt-4 space-y-2.5">
+                {[
+                  {
+                    label: "Číslo smlouvy",
+                    value: uniqaTerminationContractNumber,
+                    emptyText: "Není uvedeno v detailu smlouvy",
+                    loading: false,
+                  },
+                  {
+                    label: uniqaTerminationPersonalIdLabel,
+                    value: uniqaTerminationPersonalId,
+                    emptyText: "Nepodařilo se načíst z PDF",
+                    loading: uniqaTerminationPersonalIdLoading,
+                  },
+                  {
+                    label: "RZ vozidla",
+                    value: uniqaTerminationCarPlate,
+                    emptyText: "Není uvedena v detailu smlouvy",
+                    loading: false,
+                  },
+                ].map((item, index) => (
+                    <div
+                      key={item.label}
+                      className="flex min-h-[68px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3"
+                    >
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sky-700 text-xs font-black text-white shadow-sm">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                          {item.label}
+                        </p>
+                        <p
+                          className={`mt-0.5 break-all font-mono text-base font-black ${
+                            item.value ? "text-slate-950" : "text-slate-500"
+                          }`}
+                        >
+                          {item.loading ? (
+                            <span className="inline-flex items-center gap-2 font-sans text-sm font-bold">
+                              <Spinner className="h-4 w-4 border-sky-200 border-t-sky-700" />
+                              Načítám z PDF…
+                            </span>
+                          ) : (
+                            item.value || item.emptyText
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!item.value || item.loading}
+                        onClick={() =>
+                          copyContractActionValue(item.value, item.label)
+                        }
+                        className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label={`Kopírovat: ${item.label}`}
+                      >
+                        <Copy size={14} strokeWidth={2.2} aria-hidden="true" />
+                        <span className="hidden sm:inline">Kopírovat</span>
+                      </button>
+                    </div>
+                  ))}
+              </div>
+
+              {uniqaTerminationPersonalIdError ? (
+                <div
+                  role="alert"
+                  className="mt-3 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs font-semibold leading-5 text-amber-950"
+                >
+                  <AlertTriangle
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    strokeWidth={2.2}
+                    aria-hidden="true"
+                  />
+                  <p>{uniqaTerminationPersonalIdError}</p>
+                </div>
+              ) : null}
+
+              <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3.5">
+                <p className="text-sm font-semibold leading-6 text-violet-950">
+                  Výpověď lze podepsat potvrzením pomocí SMS bez fyzického
+                  podpisu žádosti. Kód obdrží klient prostřednictvím SMS,
+                  zároveň se zobrazí na obrazovce, takže proces můžete dokončit
+                  bez další asistence klienta.
+                </p>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeUniqaTerminationModal}
+                  className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Zavřít
+                </button>
+                <a
+                  href={UNIQA_ONLINE_TERMINATION_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-700 px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(3,105,161,0.24)] transition hover:bg-sky-800"
+                >
+                  Přejít na online výpověď
+                  <ExternalLink size={16} strokeWidth={2.2} aria-hidden="true" />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {canSetStorno && showStornoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
           <button
@@ -6656,7 +7208,7 @@ export default function ContractDetailPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      copyKooperativaStatusValue(contract.contractNumber, "Číslo smlouvy")
+                      copyContractActionValue(contract.contractNumber, "Číslo smlouvy")
                     }
                     className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
                     aria-label="Kopírovat číslo smlouvy"
@@ -6684,7 +7236,7 @@ export default function ContractDetailPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      copyKooperativaStatusValue(
+                      copyContractActionValue(
                         kooperativaLegalEntity ? kooperativaCompanyId : kooperativaBirthDate,
                         kooperativaLegalEntity ? "IČO" : "Datum narození"
                       )

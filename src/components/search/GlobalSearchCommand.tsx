@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BriefcaseBusiness,
   ChevronRight,
+  ContactRound,
   FileText,
   Loader2,
   Search,
@@ -16,6 +17,16 @@ import {
 } from "lucide-react";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  OPEN_CONTACT_DIRECTORY_EVENT,
+  type DirectoryContact,
+} from "@/app/lib/contactDirectory";
+import {
+  findContactSearchResults,
+  findToolSearchResults,
+  normalizeGlobalSearch,
+  type ContactSearchResult,
+} from "./globalSearchData";
 
 type ColleagueResult = {
   email: string;
@@ -42,12 +53,14 @@ type IntranetPostResult = {
 type UserSearchResponse = { ok: true; users: ColleagueResult[] };
 type ContractSearchResponse = { ok: true; contracts: ContractResult[] };
 type IntranetSearchResponse = { ok: true; posts: IntranetPostResult[] };
+type ContactDirectoryResponse = { ok: true; contacts: DirectoryContact[] };
 
 type CachedSearchResults = {
   expiresAtMs: number;
   colleagues: ColleagueResult[];
   contracts: ContractResult[];
   posts: IntranetPostResult[];
+  contacts: ContactSearchResult[];
 };
 
 type GlobalSearchCommandProps = {
@@ -56,44 +69,29 @@ type GlobalSearchCommandProps = {
   dialogBelowDesktopHeader?: boolean;
 };
 
-const TOOL_RESULTS = [
-  {
-    title: "Náhrada smlouvy",
-    description: "Převod pojistného, doplatek nebo přeplatek",
-    href: "/pomucky/nahrada-smlouvy",
-  },
-  {
-    title: "ČPP vs. Kooperativa vs. AXA — cestovní pojištění",
-    description: "Srovnání variant, limitů a výluk cestovního pojištění",
-    href: "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
-  },
-  {
-    title: "Radar výročí",
-    description: "Pomůcka pro výročí smluv",
-    href: "/pomucky/radar-vyroci",
-  },
-  {
-    title: "Plán produkce",
-    description: "Pomůcka pro plánování výkonu",
-    href: "/pomucky/plan-produkce",
-  },
-  {
-    title: "Invalidita",
-    description: "Výpočet invalidity",
-    href: "/pomucky/invalidita",
-  },
-];
-
 const SEARCH_DEBOUNCE_MS = 70;
 const SEARCH_CACHE_TTL_MS = 60_000;
 const searchResultsCache = new Map<string, CachedSearchResults>();
+let contactDirectoryCache:
+  | { expiresAtMs: number; contacts: DirectoryContact[] }
+  | null = null;
 
-const normalizeSearch = (value: string): string =>
-  value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("cs-CZ")
-    .trim();
+async function loadContactDirectory(user: FirebaseUser): Promise<DirectoryContact[]> {
+  if (contactDirectoryCache && contactDirectoryCache.expiresAtMs > Date.now()) {
+    return contactDirectoryCache.contacts;
+  }
+
+  const payload = await fetchAuthedJsonOrThrow<ContactDirectoryResponse>(
+    user,
+    "/api/contacts",
+  );
+  const contacts = Array.isArray(payload.contacts) ? payload.contacts : [];
+  contactDirectoryCache = {
+    expiresAtMs: Date.now() + SEARCH_CACHE_TTL_MS,
+    contacts,
+  };
+  return contacts;
+}
 
 function SearchGroup({
   label,
@@ -166,17 +164,10 @@ export function GlobalSearchCommand({
   const [colleagues, setColleagues] = useState<ColleagueResult[]>([]);
   const [contracts, setContracts] = useState<ContractResult[]>([]);
   const [posts, setPosts] = useState<IntranetPostResult[]>([]);
+  const [contacts, setContacts] = useState<ContactSearchResult[]>([]);
 
-  const normalizedQuery = normalizeSearch(query);
-  const tools = useMemo(
-    () =>
-      normalizedQuery.length >= 2
-        ? TOOL_RESULTS.filter((tool) =>
-            normalizeSearch(`${tool.title} ${tool.description}`).includes(normalizedQuery)
-          )
-        : [],
-    [normalizedQuery]
-  );
+  const normalizedQuery = normalizeGlobalSearch(query);
+  const tools = useMemo(() => findToolSearchResults(query), [query]);
   const clients = useMemo(() => {
     const unique = new Map<string, string>();
     contracts.forEach((contract) => {
@@ -185,7 +176,8 @@ export function GlobalSearchCommand({
     });
     return [...unique.values()].slice(0, 4);
   }, [contracts]);
-  const hasResults = colleagues.length + contracts.length + posts.length + tools.length > 0;
+  const hasResults =
+    colleagues.length + contracts.length + posts.length + contacts.length + tools.length > 0;
   const isSearching = loading && open && normalizedQuery.length >= 2;
 
   useEffect(
@@ -244,6 +236,7 @@ export function GlobalSearchCommand({
           setColleagues(cached.colleagues);
           setContracts(cached.contracts);
           setPosts(cached.posts);
+          setContacts(cached.contacts);
           setSearchProgress(100);
           setLoading(false);
           progressResetTimerRef.current = window.setTimeout(() => {
@@ -256,9 +249,9 @@ export function GlobalSearchCommand({
         const reportSourceProgress = () => {
           if (cancelled) return;
           completedSources += 1;
-          setSearchProgress(Math.min(92, 18 + completedSources * 24));
+          setSearchProgress(Math.min(92, 18 + completedSources * 19));
         };
-        const [usersResult, contractsResult, postsResult] = await Promise.allSettled([
+        const [usersResult, contractsResult, postsResult, contactsResult] = await Promise.allSettled([
           fetchAuthedJsonOrThrow<UserSearchResponse>(
             user,
             `/api/user/search?q=${encodedQuery}`
@@ -271,21 +264,28 @@ export function GlobalSearchCommand({
             user,
             `/api/intranet/wall?q=${encodedQuery}&limit=6`
           ).finally(reportSourceProgress),
+          loadContactDirectory(user).finally(reportSourceProgress),
         ]);
         if (cancelled) return;
         const nextColleagues = usersResult.status === "fulfilled" ? usersResult.value.users.slice(0, 5) : [];
         const nextContracts =
           contractsResult.status === "fulfilled" ? contractsResult.value.contracts.slice(0, 6) : []
         const nextPosts = postsResult.status === "fulfilled" ? postsResult.value.posts.slice(0, 5) : [];
+        const nextContacts =
+          contactsResult.status === "fulfilled"
+            ? findContactSearchResults(contactsResult.value, query)
+            : [];
         searchResultsCache.set(cacheKey, {
           expiresAtMs: Date.now() + SEARCH_CACHE_TTL_MS,
           colleagues: nextColleagues,
           contracts: nextContracts,
           posts: nextPosts,
+          contacts: nextContacts,
         });
         setColleagues(nextColleagues);
         setContracts(nextContracts);
         setPosts(nextPosts);
+        setContacts(nextContacts);
         setSearchProgress(100);
         setLoading(false);
         progressResetTimerRef.current = window.setTimeout(() => {
@@ -302,7 +302,27 @@ export function GlobalSearchCommand({
 
   const closeAndNavigate = (href: string) => {
     setOpen(false);
+    if (href.startsWith("/pomucky?open=")) {
+      window.location.assign(href);
+      return;
+    }
     router.push(href);
+  };
+
+  const closeAndOpenContacts = (contactId?: string) => {
+    setOpen(false);
+    if (window.location.pathname === "/") {
+      window.dispatchEvent(
+        new CustomEvent(OPEN_CONTACT_DIRECTORY_EVENT, {
+          detail: { contactId: contactId ?? null },
+        }),
+      );
+      return;
+    }
+
+    const search = new URLSearchParams({ contacts: "1" });
+    if (contactId) search.set("contact", contactId);
+    router.push(`/?${search.toString()}`);
   };
 
   const handleOpen = () => {
@@ -314,7 +334,7 @@ export function GlobalSearchCommand({
 
   const handleQueryChange = (value: string) => {
     setQuery(value.slice(0, 120));
-    const hasSearchQuery = normalizeSearch(value).length >= 2;
+    const hasSearchQuery = normalizeGlobalSearch(value).length >= 2;
     if (progressResetTimerRef.current !== null) {
       window.clearTimeout(progressResetTimerRef.current);
       progressResetTimerRef.current = null;
@@ -338,7 +358,7 @@ export function GlobalSearchCommand({
         <Search className="h-4 w-4 shrink-0" strokeWidth={2.1} aria-hidden="true" />
         {!compact ? (
           <>
-            <span className="min-w-0 flex-1 truncate">Hledat klienta, smlouvu, kolegu nebo pomůcku…</span>
+            <span className="min-w-0 flex-1 truncate">Hledat klienta, smlouvu, kontakt nebo pomůcku…</span>
             <span className="hidden rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 xl:inline">
               ⌘ K
             </span>
@@ -370,7 +390,7 @@ export function GlobalSearchCommand({
                 ref={inputRef}
                 value={query}
                 onChange={(event) => handleQueryChange(event.target.value)}
-                placeholder="Klient, smlouva, kolega, příspěvek nebo pomůcka…"
+                placeholder="Klient, smlouva, kontakt, kolega nebo pomůcka…"
                 className="min-w-0 flex-1 bg-transparent text-base font-medium text-slate-900 outline-none placeholder:text-slate-400"
               />
               {isSearching ? <Loader2 className="h-4 w-4 animate-spin text-violet-600" aria-label="Vyhledávám" /> : null}
@@ -407,7 +427,7 @@ export function GlobalSearchCommand({
                   </span>
                   <p className="mt-3 text-sm font-semibold text-slate-800">Najdi vše na jednom místě</p>
                   <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-500">
-                    Zadej alespoň dvě písmena. Prohledáme klienty, smlouvy, kolegy, intranet i pomůcky.
+                    Zadej alespoň dvě písmena. Prohledáme klienty, smlouvy, kontakty, kolegy, intranet i pomůcky.
                   </p>
                 </div>
               ) : null}
@@ -446,6 +466,21 @@ export function GlobalSearchCommand({
                       />
                     );
                   })}
+                </SearchGroup>
+              ) : null}
+
+              {contacts.length ? (
+                <SearchGroup label="Kontakty">
+                  {contacts.map((contact) => (
+                    <SearchResultButton
+                      key={contact.id}
+                      icon={ContactRound}
+                      title={contact.title}
+                      subtitle={contact.subtitle}
+                      tone="sky"
+                      onClick={() => closeAndOpenContacts(contact.id)}
+                    />
+                  ))}
                 </SearchGroup>
               ) : null}
 
@@ -492,7 +527,11 @@ export function GlobalSearchCommand({
                       title={tool.title}
                       subtitle={tool.description}
                       tone="violet"
-                      onClick={() => closeAndNavigate(tool.href)}
+                      onClick={() =>
+                        tool.key === "kontakty"
+                          ? closeAndOpenContacts()
+                          : closeAndNavigate(tool.href)
+                      }
                     />
                   ))}
                 </SearchGroup>

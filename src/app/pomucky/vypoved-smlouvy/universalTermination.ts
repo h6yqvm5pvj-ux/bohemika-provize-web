@@ -1,3 +1,5 @@
+import type { Product } from "@/app/types/domain";
+
 export type InsuranceType = "life" | "nonLife";
 
 export type TerminationReason =
@@ -64,6 +66,48 @@ export const UNIVERSAL_NON_LIFE_TERMINATION_REASONS: readonly TerminationReasonO
   },
 ];
 
+export const TRAVEL_TERMINATION_REASONS: readonly TerminationReasonOption[] = [
+  {
+    id: "twoMonths",
+    label: "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou",
+  },
+];
+
+const TERMINABLE_TRAVEL_PRODUCTS = new Set<Product>([
+  "cppcestovko",
+  "koopcestovko",
+  "axacestovko",
+]);
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isTravelTerminationProduct(
+  product: Product | null | undefined,
+): boolean {
+  return product ? TERMINABLE_TRAVEL_PRODUCTS.has(product) : false;
+}
+
+export function shouldShowContractTerminationAction({
+  product,
+  policyStartDay,
+  today,
+}: {
+  product: Product | null | undefined;
+  policyStartDay: string;
+  today: string;
+}): boolean {
+  if (!isTravelTerminationProduct(product)) return true;
+  if (!ISO_DAY_RE.test(policyStartDay) || !ISO_DAY_RE.test(today)) return false;
+  return today < policyStartDay;
+}
+
+export const CPP_LIFE_TERMINATION_REASONS: readonly TerminationReasonOption[] = [
+  ...UNIVERSAL_LIFE_TERMINATION_REASONS,
+  {
+    id: "agreement",
+    label: "Dohodou (pouze ČPP)",
+  },
+];
+
 export function getUniversalTerminationReasons(
   insuranceType: InsuranceType | null
 ): readonly TerminationReasonOption[] {
@@ -72,6 +116,25 @@ export function getUniversalTerminationReasons(
     return UNIVERSAL_NON_LIFE_TERMINATION_REASONS;
   }
   return [];
+}
+
+export function getTerminationReasonsForSelection(
+  insuranceType: InsuranceType | null,
+  insurer: string | null,
+  product?: Product | null,
+): readonly TerminationReasonOption[] {
+  if (!insuranceType || !insurer) return [];
+  if (isTravelTerminationProduct(product)) {
+    return insuranceType === "nonLife" ? TRAVEL_TERMINATION_REASONS : [];
+  }
+  const normalizedInsurer = insurer.trim().toLocaleLowerCase("cs-CZ");
+  if (
+    insuranceType === "life" &&
+    (normalizedInsurer === "čpp" || normalizedInsurer === "cpp")
+  ) {
+    return CPP_LIFE_TERMINATION_REASONS;
+  }
+  return getUniversalTerminationReasons(insuranceType);
 }
 
 export function getUniversalLetterDefinition(
@@ -129,7 +192,8 @@ export function getUniversalLetterForSelection({
   reason: TerminationReason | null;
 }): UniversalLetterDefinition | null {
   const normalizedInsurer = (insurer ?? "").trim().toLocaleLowerCase("cs");
-  if (!normalizedInsurer || normalizedInsurer === "čpp" || normalizedInsurer === "cpp") {
+  const isCpp = normalizedInsurer === "čpp" || normalizedInsurer === "cpp";
+  if (!normalizedInsurer || (isCpp && insuranceType === "life")) {
     return null;
   }
 

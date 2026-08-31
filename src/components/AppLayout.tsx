@@ -164,7 +164,10 @@ export function AppLayout({
     pathname === "/pomucky/projekce-vykonu" ||
     pathname === "/pomucky/srovnavac-trvalych-nasledku";
   const showToolsBackToIndex =
-    active === "tools" && pathname !== "/pomucky" && !pageHasCustomToolsBackButton;
+    !embedded &&
+    active === "tools" &&
+    pathname !== "/pomucky" &&
+    !pageHasCustomToolsBackButton;
   const toolsBackButtonRightAligned = pathname === "/pomucky/invalidita";
   const contentOverflowClass =
     active === "tools" || active === "cashflow" ? "overflow-visible" : "overflow-x-clip";

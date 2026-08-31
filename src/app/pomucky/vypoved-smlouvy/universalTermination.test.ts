@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatLocalDateInput,
+  getTerminationReasonsForSelection,
   getUniversalLetterDefinition,
   getUniversalLetterForSelection,
   getUniversalTerminationReasons,
+  isTravelTerminationProduct,
+  shouldShowContractTerminationAction,
 } from "./universalTermination";
 
 describe("formatLocalDateInput", () => {
@@ -27,6 +30,77 @@ describe("getUniversalTerminationReasons", () => {
     expect(
       getUniversalTerminationReasons("nonLife").map((item) => item.id)
     ).toEqual(["periodEnd", "twoMonths", "postClaim", "otherReason"]);
+  });
+
+  it("nabídne dohodu pouze pro životní pojištění ČPP", () => {
+    expect(
+      getTerminationReasonsForSelection("life", "ČPP").map((item) => item.id),
+    ).toEqual(["anniversary", "twoMonths", "agreement"]);
+    expect(
+      getTerminationReasonsForSelection("life", "Kooperativa").map(
+        (item) => item.id,
+      ),
+    ).toEqual(["anniversary", "twoMonths"]);
+  });
+
+  it.each(["cppcestovko", "koopcestovko", "axacestovko"] as const)(
+    "nabídne u cestovního produktu %s pouze výpověď do dvou měsíců",
+    (product) => {
+      expect(isTravelTerminationProduct(product)).toBe(true);
+      expect(
+        getTerminationReasonsForSelection("nonLife", "ČPP", product),
+      ).toEqual([
+        {
+          id: "twoMonths",
+          label: "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou",
+        },
+      ]);
+    },
+  );
+
+  it("nepovažuje zdravotní pojištění cizinců za cestovní produkt", () => {
+    expect(isTravelTerminationProduct("maxcizinkomplex")).toBe(false);
+  });
+
+  it("zobrazí výpověď cestovního pojištění pouze před jeho počátkem", () => {
+    expect(
+      shouldShowContractTerminationAction({
+        product: "cppcestovko",
+        policyStartDay: "2026-09-01",
+        today: "2026-08-31",
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowContractTerminationAction({
+        product: "cppcestovko",
+        policyStartDay: "2026-08-31",
+        today: "2026-08-31",
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowContractTerminationAction({
+        product: "cppcestovko",
+        policyStartDay: "2026-08-30",
+        today: "2026-08-31",
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowContractTerminationAction({
+        product: "cppcestovko",
+        policyStartDay: "",
+        today: "2026-08-31",
+      }),
+    ).toBe(false);
+  });
+
+  it("ponechá tlačítko u necestovních produktů beze změny", () => {
+    expect(
+      shouldShowContractTerminationAction({
+        product: "domex",
+        policyStartDay: "",
+        today: "2026-08-31",
+      }),
+    ).toBe(true);
   });
 });
 
@@ -59,6 +133,16 @@ describe("getUniversalLetterForSelection", () => {
         reason: "twoMonths",
       })
     ).toBeNull();
+  });
+
+  it("umožní univerzální výpověď pro neživotní smlouvu ČPP", () => {
+    expect(
+      getUniversalLetterForSelection({
+        insurer: "ČPP",
+        insuranceType: "nonLife",
+        reason: "periodEnd",
+      }),
+    ).not.toBeNull();
   });
 
   it("rejects a reason that does not belong to the selected insurance type", () => {

@@ -6,6 +6,8 @@ export type AllianzAutoPdfResult = {
   refreshOriginalContractNumber?: string | null;
   contractNumber?: string | null;
   clientName?: string | null;
+  personalId?: string | null;
+  clientEmail?: string | null;
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
@@ -248,6 +250,82 @@ const normalizeClientName = (value: string | null | undefined): string | null =>
   if (blockedPrefixes.some((prefix) => ascii.startsWith(prefix))) return null;
 
   return cleaned;
+};
+
+export type AllianzAutoPolicyholderData = {
+  clientName: string | null;
+  personalId: string | null;
+  clientEmail: string | null;
+};
+
+const normalizePolicyholderPersonalId = (
+  value: string | null | undefined,
+): string | null => {
+  if (!value) return null;
+  const birthNumber = value.match(/\b(\d{6})\s*\/?\s*(\d{3,4})\b/);
+  if (birthNumber) return `${birthNumber[1]}/${birthNumber[2]}`;
+  return value.match(/\b\d{8}\b/)?.[0] ?? null;
+};
+
+const normalizePolicyholderEmail = (
+  value: string | null | undefined,
+): string | null =>
+  value?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? null;
+
+export const extractAllianzAutoPolicyholderData = (
+  lines: readonly string[],
+): AllianzAutoPolicyholderData => {
+  const emptyResult: AllianzAutoPolicyholderData = {
+    clientName: null,
+    personalId: null,
+    clientEmail: null,
+  };
+  const asciiLines = lines.map((line) => stripDiacritics(line).toLowerCase());
+  const policyholderIndex = asciiLines.findIndex((line) =>
+    /\bpojistnik\s*\(vy\)/i.test(line),
+  );
+  if (policyholderIndex < 0) return emptyResult;
+
+  const maxEndIndex = Math.min(lines.length, policyholderIndex + 22);
+  const nextSectionOffset = asciiLines
+    .slice(policyholderIndex + 1, maxEndIndex)
+    .findIndex((line) =>
+      /^(?:pojistene\s+vozidlo|udaje\s+o\s+vozidle|pojisteni\s+vozidla|souhrn\s+pojisteni|zprostredkovatel|podpisy)\b/i.test(
+        line.trim(),
+      ),
+    );
+  const sectionEnd =
+    nextSectionOffset >= 0
+      ? policyholderIndex + 1 + nextSectionOffset
+      : maxEndIndex;
+  const sectionLines = lines.slice(policyholderIndex, sectionEnd);
+  const sectionText = sectionLines.join(" ");
+
+  let clientName: string | null = null;
+  for (const candidateLine of sectionLines.slice(1, 4)) {
+    const tailName =
+      candidateLine.match(
+        /(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){1,3})\s*$/u,
+      )?.[1] ?? null;
+    const normalizedName = normalizeClientName(tailName);
+    if (normalizedName) {
+      clientName = normalizedName;
+      break;
+    }
+  }
+
+  const birthNumber = sectionText.match(
+    /rodn[eé]\s+[čc][ií]slo\s*:\s*(\d{6}\s*\/?\s*\d{3,4})/i,
+  )?.[1];
+  const companyId = sectionText.match(
+    /(?:I[ČC](?:O)?|identifika[čc]n[ií]\s+[čc][ií]slo)\s*:\s*(\d{8})\b/i,
+  )?.[1];
+
+  return {
+    clientName,
+    personalId: normalizePolicyholderPersonalId(birthNumber ?? companyId),
+    clientEmail: normalizePolicyholderEmail(sectionText),
+  };
 };
 
 const normalizeVehicleMakeModel = (value: string | null | undefined): string | null => {
@@ -540,37 +618,10 @@ export async function parseAllianzAutoPdf(file: File): Promise<AllianzAutoPdfRes
     result.contractNumber = bestContract;
   }
 
-  let clientCandidate: string | null = null;
-  const clientLabelIndexes = findLabelIndexes(asciiLines, /pojistnik\s*\(vy\)/i);
-  for (const idx of clientLabelIndexes) {
-    const nearbyLines = [lines[idx], lines[idx + 1], lines[idx + 2]].filter(Boolean) as string[];
-    for (const candidateLine of nearbyLines) {
-      const tailName =
-        candidateLine.match(/(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){1,3})\s*$/u)?.[1] ??
-        null;
-      if (tailName) {
-        clientCandidate = tailName;
-        break;
-      }
-    }
-    if (clientCandidate) break;
-  }
-  if (!clientCandidate) {
-    const rawCandidate =
-      readNearestValueByLabel(lines, asciiLines, /pojistnik\s*\(vy\)/i, 6) ??
-      normalized.match(/Pojistn[íi]k\s*\(Vy\)\s*([A-Za-zÀ-ž][^0-9:]{2,})/i)?.[1] ??
-      ascii.match(/pojistnik\s*\(vy\)\s*([a-z][^0-9:]{2,})/i)?.[1] ??
-      null;
-    if (rawCandidate) {
-      clientCandidate = rawCandidate
-        .replace(/^Allianz[^,]*,\s*a\.s\.\s*/i, "")
-        .trim();
-    }
-  }
-  const clientName = normalizeClientName(clientCandidate);
-  if (clientName) {
-    result.clientName = clientName;
-  }
+  const policyholder = extractAllianzAutoPolicyholderData(lines);
+  if (policyholder.clientName) result.clientName = policyholder.clientName;
+  if (policyholder.personalId) result.personalId = policyholder.personalId;
+  if (policyholder.clientEmail) result.clientEmail = policyholder.clientEmail;
 
   let startCandidate: string | null = null;
   const startLabelIndexes = findLabelIndexes(asciiLines, /pozadovany\s+pocatek\s+pojisteni/i);

@@ -2,8 +2,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { User as FirebaseUser } from "firebase/auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CheckCircle2,
@@ -12,6 +14,7 @@ import {
   ExternalLink,
   HeartPulse,
   Loader2,
+  Mail,
   Printer,
   RotateCcw,
   Send,
@@ -29,12 +32,17 @@ import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import SplitTitle from "../plan-produkce/SplitTitle";
 import {
+  consumeContractTerminationPrefill,
+  getContractTerminationPdfFieldDefaults,
+  isCppSusUploadNoticeProduct,
+  type ContractTerminationPrefill,
+} from "./contractTerminationPrefill";
+import {
   formatLocalDateInput,
+  getTerminationReasonsForSelection,
   getUniversalLetterForSelection,
-  getUniversalTerminationReasons,
   type InsuranceType,
   type TerminationReason,
-  type TerminationReasonOption,
   type UniversalLetterCalculator,
 } from "./universalTermination";
 
@@ -138,27 +146,15 @@ const INSURANCE_TYPES: Array<{
   },
 ];
 
-const LIFE_TERMINATION_REASONS: TerminationReasonOption[] = [
-  {
-    id: "anniversary",
-    label: "K výročnímu dni s 6 týdenní výpovědní lhůtou",
-  },
-  {
-    id: "twoMonths",
-    label: "Do 2 měsíců od uzavření s 8 denní výpovědní lhůtou",
-  },
-  {
-    id: "agreement",
-    label: "Dohodou (Pouze ČPP)",
-  },
-];
-
 const INSURERS = [
   { label: "ČPP", logoPath: "/icons/cpp.png", logoClass: "p-2" },
   { label: "Kooperativa", logoPath: "/icons/koop-v2.png", logoClass: "p-2" },
   { label: "Allianz", logoPath: "/icons/allianz.png", logoClass: "p-2" },
   { label: "UNIQA", logoPath: "/icons/uniqa.png", logoClass: "p-2" },
   { label: "ČSOB", logoPath: "/icons/csob.png", logoClass: "p-2" },
+  { label: "Pillow", logoPath: "/icons/pillow.png", logoClass: "p-2" },
+  { label: "Slavia", logoPath: "/icons/slavialogo.png", logoClass: "p-2" },
+  { label: "AXA", logoPath: "/icons/axalogo.png", logoClass: "p-2" },
   { label: "Generali", logoPath: "/icons/generali.png", logoClass: "p-2" },
   { label: "MetLife", logoPath: "/icons/metlife.png", logoClass: "p-2" },
   { label: "NN", logoPath: "/icons/nn.png", logoClass: "p-2" },
@@ -167,17 +163,6 @@ const INSURERS = [
 ] as const;
 
 type InsurerLabel = (typeof INSURERS)[number]["label"];
-
-const getAvailableReasons = (
-  insuranceType: InsuranceType | null,
-  insurer: InsurerLabel | null
-): readonly TerminationReasonOption[] => {
-  if (!insuranceType || !insurer) return [];
-  if (insurer === "ČPP") {
-    return insuranceType === "life" ? LIFE_TERMINATION_REASONS : [];
-  }
-  return getUniversalTerminationReasons(insuranceType);
-};
 
 const CPP_AGREEMENT_DOCUMENT_ID: SecureDocumentId = "cpp-storno-dohodou";
 const CPP_STANDARD_TERMINATION_DOCUMENT_ID: SecureDocumentId = "cpp-vypoved-zp";
@@ -606,13 +591,20 @@ const createDefaultPdfFields = (
   fieldDefs: readonly PdfFieldDef[],
   agentName = "",
   agentNumber = "",
-  agentPhone = ""
+  agentPhone = "",
+  prefill: ContractTerminationPrefill | null = null,
 ) => {
   const fields = createEmptyPdfFields(fieldDefs);
   if ("agentName" in fields) fields.agentName = agentName;
   if ("agentNumber" in fields) fields.agentNumber = agentNumber;
   if ("agentPhone" in fields) fields.agentPhone = agentPhone;
   if ("agentCompany" in fields) fields.agentCompany = DEFAULT_AGENT_COMPANY;
+  if (prefill) {
+    const contractDefaults = getContractTerminationPdfFieldDefaults(prefill);
+    Object.entries(contractDefaults).forEach(([key, value]) => {
+      if (key in fields && value) fields[key] = value;
+    });
+  }
   return fields;
 };
 
@@ -667,6 +659,56 @@ const applyFillablePdfDefaults = (
     nextFields[field.key] = defaultValue;
   });
 
+  return nextFields;
+};
+
+const normalizePdfFieldLabel = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("cs-CZ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const contractPrefillValueForPdfField = (
+  fieldLabel: string,
+  prefill: ContractTerminationPrefill,
+): string => {
+  const label = normalizePdfFieldLabel(fieldLabel);
+  const isAdvisorField = /poradc|zprostredkovatel|agent/.test(label);
+  if (/cislo/.test(label) && /smlouv|pojist/.test(label)) {
+    return prefill.contractNumber;
+  }
+  if (!isAdvisorField && /jmeno/.test(label) && /prijmeni|pojistnik|klient/.test(label)) {
+    return prefill.policyholderName;
+  }
+  if (!isAdvisorField && /rodne cislo|(^| )r c($| )|(^| )ico($| )|identifikacni cislo/.test(label)) {
+    return prefill.personalId;
+  }
+  if (!isAdvisorField && /adresa|bydliste|trvaly pobyt/.test(label)) {
+    return prefill.address;
+  }
+  if (!isAdvisorField && /telefon|tel cislo/.test(label)) {
+    return prefill.phone;
+  }
+  if (!isAdvisorField && /e mail|email/.test(label)) {
+    return prefill.email;
+  }
+  return "";
+};
+
+const applyContractPrefillToFillablePdf = (
+  currentFields: Record<string, string>,
+  fieldDefs: readonly GeneratedPdfField[],
+  prefill: ContractTerminationPrefill | null,
+): Record<string, string> => {
+  if (!prefill) return currentFields;
+  const nextFields = { ...currentFields };
+  fieldDefs.forEach((field) => {
+    if (nextFields[field.key]?.trim()) return;
+    const value = contractPrefillValueForPdfField(field.label, prefill);
+    if (value) nextFields[field.key] = value;
+  });
   return nextFields;
 };
 
@@ -864,8 +906,14 @@ const getAnnualAnniversaryTermination = (
   };
 };
 
-function PeriodEndDeadlineBox() {
-  const [policyStartDateText, setPolicyStartDateText] = useState("");
+function PeriodEndDeadlineBox({
+  initialPolicyStartDate = "",
+}: {
+  initialPolicyStartDate?: string;
+}) {
+  const [policyStartDateText, setPolicyStartDateText] = useState(
+    initialPolicyStartDate,
+  );
   const policyStartDate = parseDateInput(policyStartDateText);
   const deadlineInfo = policyStartDate
     ? getPeriodEndDeadline(policyStartDate)
@@ -957,8 +1005,14 @@ function PeriodEndDeadlineBox() {
   );
 }
 
-function DeliveryTerminationDateBox() {
-  const [contractSignedDateText, setContractSignedDateText] = useState("");
+function DeliveryTerminationDateBox({
+  initialContractSignedDate = "",
+}: {
+  initialContractSignedDate?: string;
+}) {
+  const [contractSignedDateText, setContractSignedDateText] = useState(
+    initialContractSignedDate,
+  );
   const [deliveryDateText, setDeliveryDateText] = useState(() =>
     formatLocalDateInput()
   );
@@ -1230,12 +1284,16 @@ function MonthlyAnniversaryCalculatorModal({
   eyebrow = "ČPP životní pojištění",
   description =
     "U životního pojištění ČPP je výročí každý měsíc podle dne počátku smlouvy. Výpověď musí být doručena nejpozději 6 týdnů před daným měsíčním výročím.",
+  initialPolicyStartDate = "",
 }: {
   onClose: () => void;
   eyebrow?: string;
   description?: string;
+  initialPolicyStartDate?: string;
 }) {
-  const [policyStartDateText, setPolicyStartDateText] = useState("");
+  const [policyStartDateText, setPolicyStartDateText] = useState(
+    initialPolicyStartDate,
+  );
   const [deliveryDateText, setDeliveryDateText] = useState(() =>
     formatLocalDateInput()
   );
@@ -1383,11 +1441,15 @@ function MonthlyAnniversaryCalculatorModal({
 function UniversalAnnualAnniversaryCalculatorModal({
   onClose,
   eyebrow,
+  initialPolicyStartDate = "",
 }: {
   onClose: () => void;
   eyebrow: string;
+  initialPolicyStartDate?: string;
 }) {
-  const [policyStartDateText, setPolicyStartDateText] = useState("");
+  const [policyStartDateText, setPolicyStartDateText] = useState(
+    initialPolicyStartDate,
+  );
   const [deliveryDateText, setDeliveryDateText] = useState(() =>
     formatLocalDateInput()
   );
@@ -1535,9 +1597,11 @@ function UniversalAnnualAnniversaryCalculatorModal({
 function UniversalTwoMonthsCalculatorModal({
   onClose,
   eyebrow,
+  initialContractSignedDate = "",
 }: {
   onClose: () => void;
   eyebrow: string;
+  initialContractSignedDate?: string;
 }) {
   return (
     <div className="uniqa-no-print fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/62 px-3 py-4 backdrop-blur-[2.5px] sm:px-6 sm:py-6">
@@ -1565,7 +1629,9 @@ function UniversalTwoMonthsCalculatorModal({
           </button>
         </div>
 
-        <DeliveryTerminationDateBox />
+        <DeliveryTerminationDateBox
+          initialContractSignedDate={initialContractSignedDate}
+        />
 
         <div className="mt-5 flex justify-end">
           <button
@@ -1630,7 +1696,13 @@ function UniversalPostClaimCalculatorModal({
   );
 }
 
-function OnlineFormPanel({ config }: { config: OnlineFormConfig }) {
+function OnlineFormPanel({
+  config,
+  prefill,
+}: {
+  config: OnlineFormConfig;
+  prefill: ContractTerminationPrefill | null;
+}) {
   return (
     <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:p-5 vizitka-anim-up">
       <div className="space-y-5">
@@ -1659,10 +1731,14 @@ function OnlineFormPanel({ config }: { config: OnlineFormConfig }) {
         </div>
 
         {config.calculator === "sixWeeksBeforePeriodEnd" ? (
-          <PeriodEndDeadlineBox />
+          <PeriodEndDeadlineBox
+            initialPolicyStartDate={prefill?.policyStartDate}
+          />
         ) : null}
         {config.calculator === "eightDaysAfterDelivery" ? (
-          <DeliveryTerminationDateBox />
+          <DeliveryTerminationDateBox
+            initialContractSignedDate={prefill?.contractSignedDate}
+          />
         ) : null}
         {config.calculator === "thirtyDaysAfterClaimDelivery" ? (
           <ClaimTerminationDateBox />
@@ -1672,17 +1748,77 @@ function OnlineFormPanel({ config }: { config: OnlineFormConfig }) {
   );
 }
 
-export default function ContractTerminationPage() {
+function ContractTerminationPageContent() {
+  const searchParams = useSearchParams();
+  const embedded = searchParams.get("embedded") === "1";
   const [step, setStep] = useState(0);
   const [insuranceType, setInsuranceType] = useState<InsuranceType | null>(null);
   const [reason, setReason] = useState<TerminationReason | null>(null);
   const [insurer, setInsurer] = useState<InsurerLabel | null>(null);
+  const [contractPrefill, setContractPrefill] =
+    useState<ContractTerminationPrefill | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
   const [documentViewMode, setDocumentViewMode] =
     useState<DocumentViewMode>("official");
-  const availableReasons = getAvailableReasons(insuranceType, insurer);
+  const consumedContractPrefillRef =
+    useRef<ContractTerminationPrefill | null>(null);
+  const availableReasons = getTerminationReasonsForSelection(
+    insuranceType,
+    insurer,
+    contractPrefill?.sourceProduct,
+  );
   const requiresReasonStep = availableReasons.length > 0;
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const prefillKey = url.searchParams.get("prefill");
+    let prefill = consumedContractPrefillRef.current;
+    if (!prefill && prefillKey) {
+      prefill = consumeContractTerminationPrefill(prefillKey);
+      consumedContractPrefillRef.current = prefill;
+    }
+    if (prefillKey) {
+      url.searchParams.delete("prefill");
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    }
+    if (!prefill) return;
+
+    const reasons = getTerminationReasonsForSelection(
+      prefill.insuranceType,
+      prefill.insurer,
+      prefill.sourceProduct,
+    );
+    const prefilledReason = reasons.some((item) => item.id === prefill.reason)
+      ? prefill.reason
+      : null;
+    const applyTimer = window.setTimeout(() => {
+      setContractPrefill(prefill);
+      setInsurer(prefill.insurer);
+      setInsuranceType(prefill.insuranceType);
+      setReason(prefilledReason);
+      if (prefilledReason && prefill.insurer && prefill.insuranceType) {
+        setStep(Math.max(0, reasons.length > 0 ? 2 : 1));
+        setDocumentViewMode(prefill.insurer !== "ČPP" ? "universal" : "official");
+        setCompleted(true);
+        return;
+      }
+      setStep(
+        prefill.insurer && prefill.insuranceType
+          ? reasons.length > 0
+            ? 2
+            : 1
+          : prefill.insurer
+            ? 1
+            : 0,
+      );
+    }, 0);
+    return () => window.clearTimeout(applyTimer);
+  }, []);
 
   const formSteps = useMemo<Array<{ id: StepId; label: string }>>(
     () => [
@@ -1859,7 +1995,9 @@ export default function ContractTerminationPage() {
       return;
     }
 
-    setDocumentViewMode("official");
+    setDocumentViewMode(
+      contractPrefill && insurer !== "ČPP" ? "universal" : "official",
+    );
     setCompleted(true);
   };
 
@@ -1871,29 +2009,63 @@ export default function ContractTerminationPage() {
   };
 
   return (
-    <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6 px-2 pb-10 sm:px-3">
+    <AppLayout active="tools" embedded={embedded}>
+      <div className="mx-auto w-full max-w-5xl space-y-6 px-2 pb-10 sm:px-3">
         {activeDocument ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SplitTitle
               text="Výpověď smlouvy"
               className="!text-3xl sm:!text-4xl"
             />
-            <button
-              type="button"
-              onClick={() => {
-                setCompleted(false);
-                setFormError(null);
-              }}
-              className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 sm:self-auto"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Zpět na výběr
-            </button>
+            {!embedded ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setCompleted(false);
+                  setFormError(null);
+                }}
+                className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 sm:self-auto"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Zpět na výběr
+              </button>
+            ) : null}
           </div>
         ) : (
           <SplitTitle text="Výpověď smlouvy" />
         )}
+
+        {contractPrefill ? (
+          <section className="flex flex-col gap-3 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950 shadow-[0_10px_28px_rgba(16,185,129,0.1)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold">
+                  Údaje načtené ze smlouvy
+                  {contractPrefill.contractNumber
+                    ? ` č. ${contractPrefill.contractNumber}`
+                    : ""}
+                </p>
+                <p className="mt-0.5 text-xs leading-5 text-emerald-800">
+                  {contractPrefill.policyholderName
+                    ? `${contractPrefill.policyholderName} · `
+                    : ""}
+                  Po výběru varianty se dostupné údaje automaticky doplní do
+                  dokumentu.
+                </p>
+              </div>
+            </div>
+            {contractPrefill.sourcePath ? (
+              <Link
+                href={contractPrefill.sourcePath}
+                className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 sm:self-auto"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Zpět na smlouvu
+              </Link>
+            ) : null}
+          </section>
+        ) : null}
 
         {activeDocument ? (
           <section className="sticky top-2 z-40 flex flex-col gap-3 rounded-[22px] border border-violet-200/80 bg-white/95 p-3 shadow-[0_16px_42px_rgba(88,28,135,0.16)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-3.5">
@@ -2028,9 +2200,11 @@ export default function ContractTerminationPage() {
                           setInsuranceType(item.id);
                           if (
                             reason &&
-                            !getAvailableReasons(item.id, insurer).some(
-                              (option) => option.id === reason
-                            )
+                            !getTerminationReasonsForSelection(
+                              item.id,
+                              insurer,
+                              contractPrefill?.sourceProduct,
+                            ).some((option) => option.id === reason)
                           ) {
                             setReason(null);
                           }
@@ -2123,9 +2297,11 @@ export default function ContractTerminationPage() {
                           setInsurer(item.label);
                           if (
                             reason &&
-                            !getAvailableReasons(insuranceType, item.label).some(
-                              (option) => option.id === reason
-                            )
+                            !getTerminationReasonsForSelection(
+                              insuranceType,
+                              item.label,
+                              contractPrefill?.sourceProduct,
+                            ).some((option) => option.id === reason)
                           ) {
                             setReason(null);
                           }
@@ -2234,6 +2410,7 @@ export default function ContractTerminationPage() {
             <UniversalTerminationLetterPreview
               key={activeGeneratedLetterConfig.id}
               config={activeGeneratedLetterConfig}
+              prefill={contractPrefill}
             />
           </div>
         ) : null}
@@ -2246,6 +2423,7 @@ export default function ContractTerminationPage() {
               <LifeInsurancePdfPreview
                 key={activePdfConfig.id}
                 config={activePdfConfig}
+                prefill={contractPrefill}
                 showMonthlyAnniversaryCalculator={showCppMonthlyAnniversaryCalculator}
               />
             ) : null}
@@ -2253,12 +2431,14 @@ export default function ContractTerminationPage() {
               <FillablePdfPreview
                 key={activeFillablePdfConfig.id}
                 config={activeFillablePdfConfig}
+                prefill={contractPrefill}
               />
             ) : null}
             {activeOnlineFormConfig ? (
               <OnlineFormPanel
                 key={activeOnlineFormConfig.id}
                 config={activeOnlineFormConfig}
+                prefill={contractPrefill}
               />
             ) : null}
           </div>
@@ -2272,8 +2452,6 @@ type UniversalLetterFieldKey =
   | "contractNumber"
   | "policyholderName"
   | "personalId"
-  | "address"
-  | "phone"
   | "email"
   | "place"
   | "signedDate"
@@ -2286,8 +2464,6 @@ const createEmptyUniversalLetterFields = (): UniversalLetterFields => ({
     contractNumber: "",
     policyholderName: "",
     personalId: "",
-    address: "",
-    phone: "",
     email: "",
     place: "",
     signedDate: "",
@@ -2295,13 +2471,46 @@ const createEmptyUniversalLetterFields = (): UniversalLetterFields => ({
     otherReason: "",
   });
 
+const createUniversalLetterFields = (
+  prefill: ContractTerminationPrefill | null,
+): UniversalLetterFields => ({
+  ...createEmptyUniversalLetterFields(),
+  contractNumber: prefill?.contractNumber ?? "",
+  policyholderName: prefill?.policyholderName ?? "",
+  personalId: prefill?.personalId ?? "",
+  email: prefill?.email ?? "",
+  signedDate: prefill ? formatLocalDateInput() : "",
+});
+
+function CppSusUploadNotice({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`${className} mt-4 flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3.5 text-sky-950`}
+    >
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm ring-1 ring-sky-200">
+        <ShieldCheck className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
+      </span>
+      <div>
+        <p className="text-sm font-black">Kam odeslat podepsanou výpověď</p>
+        <p className="mt-0.5 text-sm font-semibold leading-6 text-sky-900">
+          Naskenovanou podepsanou výpověď nahraj v SUS: <strong>Sjednávám</strong>
+          {" → "}
+          <strong>Vkládání dokumentů</strong>.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function UniversalTerminationLetterPreview({
   config,
+  prefill,
 }: {
   config: GeneratedLetterPreviewConfig;
+  prefill: ContractTerminationPrefill | null;
 }) {
   const [fields, setFields] = useState<UniversalLetterFields>(() =>
-    createEmptyUniversalLetterFields()
+    createUniversalLetterFields(prefill)
   );
   const [showTerminationCalculator, setShowTerminationCalculator] =
     useState(false);
@@ -2313,7 +2522,7 @@ function UniversalTerminationLetterPreview({
     value: string
   ) => {
     const maxLength =
-      key === "address" || key === "otherReason"
+      key === "otherReason"
         ? 180
         : key === "refundAccount"
           ? 120
@@ -2498,12 +2707,35 @@ function UniversalTerminationLetterPreview({
         </div>
       </div>
 
+      {isCppSusUploadNoticeProduct(prefill?.sourceProduct) ? (
+        <CppSusUploadNotice className="uniqa-no-print" />
+      ) : null}
+
+      {prefill?.sourceProduct === "allianzAuto" ? (
+        <div className="uniqa-no-print mt-4 flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3.5 text-sky-950">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm ring-1 ring-sky-200">
+            <Mail className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
+          </span>
+          <p className="pt-1.5 text-sm font-semibold leading-6">
+            Podepsanou výpověď lze zaslat na e-mail{" "}
+            <a
+              href="mailto:BO_storno_auta@allianz.cz"
+              className="font-black text-sky-800 underline decoration-sky-300 underline-offset-4 transition hover:text-sky-950"
+            >
+              BO_storno_auta@allianz.cz
+            </a>
+            .
+          </p>
+        </div>
+      ) : null}
+
       {showTerminationCalculator && portalRoot
         ? createPortal(
             config.calculator === "twoMonths" ? (
               <UniversalTwoMonthsCalculatorModal
                 eyebrow={config.eyebrow}
                 onClose={() => setShowTerminationCalculator(false)}
+                initialContractSignedDate={prefill?.contractSignedDate}
               />
             ) : config.calculator === "postClaim" ? (
               <UniversalPostClaimCalculatorModal
@@ -2515,11 +2747,13 @@ function UniversalTerminationLetterPreview({
                 eyebrow={config.eyebrow}
                 description="U životního pojištění je výročí každý měsíc podle dne počátku smlouvy. Výpověď musí být doručena nejpozději 6 týdnů před daným měsíčním výročím."
                 onClose={() => setShowTerminationCalculator(false)}
+                initialPolicyStartDate={prefill?.policyStartDate}
               />
             ) : (
               <UniversalAnnualAnniversaryCalculatorModal
                 eyebrow={config.eyebrow}
                 onClose={() => setShowTerminationCalculator(false)}
+                initialPolicyStartDate={prefill?.policyStartDate}
               />
             ),
             portalRoot
@@ -2580,14 +2814,6 @@ function UniversalTerminationLetterPreview({
                   {renderInput("personalId", "Rodné číslo", "w-full")}
                 </label>
                 <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
-                  <span className="font-semibold">Adresa:</span>
-                  {renderInput("address", "Adresa", "w-full")}
-                </label>
-                <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
-                  <span className="font-semibold">Tel. číslo:</span>
-                  {renderInput("phone", "Tel. číslo", "w-full")}
-                </label>
-                <label className="grid gap-1 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
                   <span className="font-semibold">email:</span>
                   {renderInput("email", "email", "w-full")}
                 </label>
@@ -2619,7 +2845,13 @@ function UniversalTerminationLetterPreview({
   );
 }
 
-function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
+function FillablePdfPreview({
+  config,
+  prefill,
+}: {
+  config: FillablePdfPreviewConfig;
+  prefill: ContractTerminationPrefill | null;
+}) {
   const documentFile = useSecureDocumentBlob(config.documentId);
   const isKooperativaPdf = config.id === KOOPERATIVA_TERMINATION_PDF_CONFIG.id;
   const advisorEmail = useEffectiveUserEmail(auth.currentUser?.email);
@@ -2754,7 +2986,13 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
           setPages(nextPages);
           setGeneratedFields(nextFields);
           setGeneratedCheckboxes(nextCheckboxes);
-          setFields(createDefaultFillablePdfFields(nextFields, defaults));
+          setFields(
+            applyContractPrefillToFillablePdf(
+              createDefaultFillablePdfFields(nextFields, defaults),
+              nextFields,
+              prefill,
+            ),
+          );
           setCheckboxes(Object.fromEntries(nextCheckboxes.map((field) => [field.key, false])));
         }
 
@@ -2787,7 +3025,7 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
     return () => {
       cancelled = true;
     };
-  }, [advisorEmail, config, documentFile.blob, documentFile.error]);
+  }, [advisorEmail, config, documentFile.blob, documentFile.error, prefill]);
 
   const resetPdf = () => {
     const defaults = getKooperativaFieldDefaults(
@@ -3061,9 +3299,11 @@ function FillablePdfPreview({ config }: { config: FillablePdfPreviewConfig }) {
 
 function LifeInsurancePdfPreview({
   config,
+  prefill,
   showMonthlyAnniversaryCalculator = false,
 }: {
   config: PdfPreviewConfig;
+  prefill: ContractTerminationPrefill | null;
   showMonthlyAnniversaryCalculator?: boolean;
 }) {
   const documentFile = useSecureDocumentBlob(config.documentId);
@@ -3072,7 +3312,13 @@ function LifeInsurancePdfPreview({
   const [agentNumber, setAgentNumber] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
   const [fields, setFields] = useState<Record<string, string>>(() =>
-    createDefaultPdfFields(config.fields, nameFromEmail(effectiveEmail))
+    createDefaultPdfFields(
+      config.fields,
+      nameFromEmail(effectiveEmail),
+      "",
+      "",
+      prefill,
+    )
   );
   const [checkboxes, setCheckboxes] = useState<Record<string, boolean>>(() => createEmptyPdfCheckboxes(config.checkboxes));
   const [renderStatus, setRenderStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -3394,6 +3640,10 @@ function LifeInsurancePdfPreview({
         </div>
       </div>
 
+      {config.id === CPP_STANDARD_TERMINATION_PDF_CONFIG.id ? (
+        <CppSusUploadNotice className="agreement-no-print" />
+      ) : null}
+
       {showPrintInstructions && portalRoot
         ? createPortal(
             <div className="agreement-no-print fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/62 px-3 py-4 backdrop-blur-[2.5px] sm:px-6 sm:py-6">
@@ -3468,6 +3718,7 @@ function LifeInsurancePdfPreview({
         ? createPortal(
             <MonthlyAnniversaryCalculatorModal
               onClose={() => setShowTerminationCalculator(false)}
+              initialPolicyStartDate={prefill?.policyStartDate}
             />,
             portalRoot
           )
@@ -3545,5 +3796,13 @@ function LifeInsurancePdfPreview({
         ))}
       </div>
     </section>
+  );
+}
+
+export default function ContractTerminationPage() {
+  return (
+    <Suspense fallback={null}>
+      <ContractTerminationPageContent />
+    </Suspense>
   );
 }

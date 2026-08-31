@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parseAllianzAutoPdf } from "./parseAllianzAutoPdf";
+import {
+  extractAllianzAutoPolicyholderData,
+  parseAllianzAutoPdf,
+} from "./parseAllianzAutoPdf";
 
 const pdfState = vi.hoisted(() => ({
   pages: [] as Array<Array<{ str: string; x: number; y: number; width?: number }>>,
@@ -53,6 +56,40 @@ describe("parseAllianzAutoPdf", () => {
     await expect(parseAllianzAutoPdf(makePdfFile())).resolves.toMatchObject({
       isRefresh: true,
       refreshOriginalContractNumber: "789525166",
+    });
+  });
+
+  it("načte osobní údaje pouze ze sekce Pojistník (vy)", () => {
+    expect(
+      extractAllianzAutoPolicyholderData([
+        "Zprostředkovatel",
+        "E-mail poradce@example.cz",
+        "Pojistník (vy)",
+        "Gabriela Mikerová",
+        "Rodné číslo: 005101/1236",
+        "E-mail",
+        "mikerka.g@seznam.cz",
+        "Pojištěné vozidlo",
+        "E-mail ridic@example.cz",
+      ]),
+    ).toEqual({
+      clientName: "Gabriela Mikerová",
+      personalId: "005101/1236",
+      clientEmail: "mikerka.g@seznam.cz",
+    });
+  });
+
+  it("načte IČO, pokud je pojistníkem firma", () => {
+    expect(
+      extractAllianzAutoPolicyholderData([
+        "Pojistník (vy)",
+        "Testovací Firma",
+        "IČO: 12345678",
+        "E-mail firma@example.cz",
+      ]),
+    ).toMatchObject({
+      personalId: "12345678",
+      clientEmail: "firma@example.cz",
     });
   });
 });
