@@ -1248,15 +1248,20 @@ export const normalizeCreateEntryPayload = ({
   const supportsOriginalReplacement =
     productParsed.value === "neon" ||
     productParsed.value === "domex" ||
-    productParsed.value === "cppAuto";
+    productParsed.value === "cppAuto" ||
+    productParsed.value === "allianzAuto";
   if (isRefresh && !supportsOriginalReplacement) {
-    return { ok: false, error: "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto." };
+    return {
+      ok: false,
+      error:
+        "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto.",
+    };
   }
   if (refreshOriginalMissingInSystem && !supportsOriginalReplacement) {
     return {
       ok: false,
       error:
-        "Refresh/Náhrada bez původní smlouvy v systému je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto.",
+        "Refresh/Náhrada bez původní smlouvy v systému je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto.",
     };
   }
   if (refreshOriginalMissingInSystem && !isRefresh) {
@@ -1266,7 +1271,11 @@ export const normalizeCreateEntryPayload = ({
     return { ok: false, error: "requiresStatementRefresh je povolený jen pro Refresh bez původní smlouvy v systému." };
   }
   if (refreshOriginalParsed.value && !supportsOriginalReplacement) {
-    return { ok: false, error: "Pole refreshOriginalContractNumber je povolené jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto." };
+    return {
+      ok: false,
+      error:
+        "Pole refreshOriginalContractNumber je povolené jen pro produkty ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto.",
+    };
   }
   if (refreshOriginalParsed.value && !isRefresh) {
     return { ok: false, error: "Při vyplněném refreshOriginalContractNumber musí být isRefresh true." };

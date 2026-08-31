@@ -335,7 +335,22 @@ describe("contracts create payload parsing", () => {
     ).toEqual({
       ok: false,
       error:
-        "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX a ČPP Auto.",
+        "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto.",
+    });
+
+    const allianzReplacementPayload = normalizedPayload(
+      baseEntry({
+        productKey: "allianzAuto",
+        frequencyRaw: "annual",
+        isRefresh: true,
+        refreshOriginalContractNumber: "OLD789",
+      }),
+    );
+
+    expect(allianzReplacementPayload).toMatchObject({
+      productKey: "allianzAuto",
+      isRefresh: true,
+      refreshOriginalContractNumber: "OLD789",
     });
 
     expect(
