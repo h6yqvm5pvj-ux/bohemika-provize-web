@@ -8,10 +8,12 @@ import type { User as FirebaseUser } from "firebase/auth";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  FileDown,
   HeartPulse,
   Loader2,
   Mail,
@@ -40,10 +42,12 @@ import {
 import {
   formatLocalDateForTerminationLetter,
   formatLocalDateInput,
+  getMissingUniversalTerminationFields,
   getTerminationReasonsForSelection,
   getUniversalLetterForSelection,
   type InsuranceType,
   type TerminationReason,
+  type UniversalTerminationLetterFieldKey,
   type UniversalLetterCalculator,
 } from "./universalTermination";
 
@@ -126,6 +130,27 @@ type GeneratedPdfField = {
   height: number;
 };
 type GeneratedPdfCheckbox = GeneratedPdfField;
+
+type TerminationLetterPdfRenderer = {
+  html2canvas: typeof import("html2canvas-pro")["default"];
+  jsPDF: typeof import("jspdf")["jsPDF"];
+};
+
+let terminationLetterPdfRendererPromise: Promise<TerminationLetterPdfRenderer> | null =
+  null;
+
+async function getTerminationLetterPdfRenderer(): Promise<TerminationLetterPdfRenderer> {
+  if (!terminationLetterPdfRendererPromise) {
+    terminationLetterPdfRendererPromise = Promise.all([
+      import("html2canvas-pro"),
+      import("jspdf"),
+    ]).then(([html2canvasModule, jsPdfModule]) => ({
+      html2canvas: html2canvasModule.default,
+      jsPDF: jsPdfModule.jsPDF,
+    }));
+  }
+  return terminationLetterPdfRendererPromise;
+}
 
 const INSURANCE_TYPES: Array<{
   id: InsuranceType;
@@ -2449,17 +2474,7 @@ function ContractTerminationPageContent() {
   );
 }
 
-type UniversalLetterFieldKey =
-  | "contractNumber"
-  | "policyholderName"
-  | "personalId"
-  | "email"
-  | "place"
-  | "signedDate"
-  | "refundAccount"
-  | "otherReason";
-
-type UniversalLetterFields = Record<UniversalLetterFieldKey, string>;
+type UniversalLetterFields = Record<UniversalTerminationLetterFieldKey, string>;
 
 const createEmptyUniversalLetterFields = (): UniversalLetterFields => ({
     contractNumber: "",
@@ -2515,11 +2530,24 @@ function UniversalTerminationLetterPreview({
   );
   const [showTerminationCalculator, setShowTerminationCalculator] =
     useState(false);
+  const [outputValidationAttempted, setOutputValidationAttempted] =
+    useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [pdfDownloadError, setPdfDownloadError] = useState<string | null>(null);
+  const letterPageRef = useRef<HTMLElement | null>(null);
+  const missingRequiredFields = useMemo(
+    () =>
+      getMissingUniversalTerminationFields(
+        fields,
+        Boolean(config.requiresOtherReason),
+      ),
+    [config.requiresOtherReason, fields],
+  );
   const portalRoot =
     typeof document === "undefined" ? null : document.body;
 
   const updateField = (
-    key: UniversalLetterFieldKey,
+    key: UniversalTerminationLetterFieldKey,
     value: string
   ) => {
     const maxLength =
@@ -2532,30 +2560,137 @@ function UniversalTerminationLetterPreview({
       ...prev,
       [key]: value.slice(0, maxLength),
     }));
+    setPdfDownloadError(null);
   };
 
   const resetFields = () => {
     setFields(createEmptyUniversalLetterFields());
+    setOutputValidationAttempted(false);
+    setPdfDownloadError(null);
+  };
+
+  const validateLetterOutput = (): boolean => {
+    setOutputValidationAttempted(true);
+    setPdfDownloadError(null);
+    if (missingRequiredFields.length === 0) return true;
+
+    window.requestAnimationFrame(() => {
+      letterPageRef.current
+        ?.querySelector<HTMLInputElement>(
+          `[data-letter-field="${missingRequiredFields[0].key}"]`,
+        )
+        ?.focus();
+    });
+    return false;
   };
 
   const printLetter = () => {
+    if (!validateLetterOutput()) return;
     window.setTimeout(() => window.print(), 0);
   };
 
+  const downloadLetterPdf = async () => {
+    if (!validateLetterOutput() || !letterPageRef.current) return;
+
+    setDownloadingPdf(true);
+    setPdfDownloadError(null);
+    try {
+      await document.fonts.ready;
+      const { html2canvas, jsPDF } = await getTerminationLetterPdfRenderer();
+      const canvas = await html2canvas(letterPageRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2.4,
+        useCORS: true,
+        logging: false,
+        width: 794,
+        height: 1123,
+        windowWidth: 1200,
+        onclone: (clonedDocument) => {
+          const clonedPage = clonedDocument.getElementById(
+            `${config.id}-letter-page`,
+          );
+          if (!clonedPage) return;
+
+          clonedPage.style.border = "0";
+          clonedPage.style.borderRadius = "0";
+          clonedPage.style.boxShadow = "none";
+          clonedPage.style.width = "794px";
+          clonedPage.style.height = "1123px";
+          clonedPage.style.maxWidth = "none";
+          clonedPage
+            .querySelectorAll<HTMLInputElement>(".uniqa-letter-input")
+            .forEach((input) => {
+              input.placeholder = "";
+              input.style.border = "0";
+              input.style.background = "transparent";
+              input.style.boxShadow = "none";
+              input.style.outline = "none";
+              input.style.color = "#111827";
+            });
+          clonedPage
+            .querySelectorAll<HTMLElement>(".uniqa-letter-signature")
+            .forEach((signature) => {
+              signature.style.border = "0";
+            });
+        },
+      });
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+        compress: true,
+      });
+      pdf.addImage(
+        canvas.toDataURL("image/jpeg", 0.98),
+        "JPEG",
+        0,
+        0,
+        210,
+        297,
+        undefined,
+        "FAST",
+      );
+      const contractToken = fields.contractNumber
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60);
+      pdf.save(`vypoved-smlouvy-${contractToken || "dokument"}.pdf`);
+    } catch (error) {
+      console.warn("PDF výpovědi se nepodařilo vytvořit", error);
+      setPdfDownloadError(
+        "PDF se nepodařilo vytvořit. Zkus to znovu nebo použij tlačítko Tisk.",
+      );
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const renderInput = (
-    key: UniversalLetterFieldKey,
+    key: UniversalTerminationLetterFieldKey,
     label: string,
     className = ""
-  ) => (
-    <input
-      aria-label={label}
-      title={label}
-      value={fields[key]}
-      onChange={(event) => updateField(key, event.target.value)}
-      placeholder="doplní uživatel"
-      className={`uniqa-letter-input min-w-0 rounded-none border-0 border-b border-blue-500/50 bg-blue-50/45 px-1 py-0.5 font-semibold text-[#123c7c] outline-none transition placeholder:text-blue-900/35 focus:border-blue-600 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500/20 ${className}`}
-    />
-  );
+  ) => {
+    const isMissing =
+      outputValidationAttempted &&
+      missingRequiredFields.some((field) => field.key === key);
+    return (
+      <input
+        data-letter-field={key}
+        aria-label={label}
+        aria-invalid={isMissing || undefined}
+        title={label}
+        value={fields[key]}
+        onChange={(event) => updateField(key, event.target.value)}
+        placeholder="doplní uživatel"
+        className={`uniqa-letter-input min-w-0 rounded-none border-0 border-b border-blue-500/50 bg-blue-50/45 px-1 py-0.5 font-semibold text-[#123c7c] outline-none transition placeholder:text-blue-900/35 focus:border-blue-600 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500/20 ${
+          isMissing
+            ? "!border-rose-500 !bg-rose-50/80 ring-2 ring-rose-200"
+            : ""
+        } ${className}`}
+      />
+    );
+  };
 
   return (
     <section
@@ -2717,6 +2852,19 @@ function UniversalTerminationLetterPreview({
           </button>
           <button
             type="button"
+            onClick={() => void downloadLetterPdf()}
+            disabled={downloadingPdf}
+            className="inline-flex items-center gap-2 rounded-full border border-blue-700 bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(29,78,216,0.24)] transition hover:bg-blue-800 disabled:cursor-wait disabled:opacity-65"
+          >
+            {downloadingPdf ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="h-4 w-4" />
+            )}
+            {downloadingPdf ? "Připravuji PDF…" : "Stáhnout PDF"}
+          </button>
+          <button
+            type="button"
             onClick={printLetter}
             className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
           >
@@ -2725,6 +2873,41 @@ function UniversalTerminationLetterPreview({
           </button>
         </div>
       </div>
+
+      {outputValidationAttempted && missingRequiredFields.length > 0 ? (
+        <div
+          role="alert"
+          className="uniqa-no-print mt-4 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-amber-950"
+        >
+          <AlertTriangle
+            className="mt-0.5 h-5 w-5 shrink-0 text-amber-700"
+            strokeWidth={2.2}
+            aria-hidden="true"
+          />
+          <div>
+            <p className="text-sm font-black">Doplň důležité údaje</p>
+            <p className="mt-0.5 text-sm font-semibold leading-6 text-amber-900">
+              Před tiskem nebo stažením PDF doplň: {missingRequiredFields
+                .map((field) => field.label)
+                .join(", ")}.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {pdfDownloadError ? (
+        <div
+          role="alert"
+          className="uniqa-no-print mt-4 flex items-start gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3.5 text-rose-950"
+        >
+          <AlertTriangle
+            className="mt-0.5 h-5 w-5 shrink-0 text-rose-700"
+            strokeWidth={2.2}
+            aria-hidden="true"
+          />
+          <p className="text-sm font-semibold leading-6">{pdfDownloadError}</p>
+        </div>
+      ) : null}
 
       {isCppSusUploadNoticeProduct(prefill?.sourceProduct) ? (
         <CppSusUploadNotice className="uniqa-no-print" />
@@ -2781,6 +2964,8 @@ function UniversalTerminationLetterPreview({
 
       <div className="uniqa-letter-pages mt-5 grid gap-5 bg-slate-100/80 p-3 sm:p-4">
         <article
+          ref={letterPageRef}
+          id={`${config.id}-letter-page`}
           className="uniqa-letter-page mx-auto w-full max-w-[760px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
           aria-label={`Náhled univerzální výpovědi – ${config.eyebrow}`}
         >

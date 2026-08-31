@@ -29,6 +29,44 @@ export type UniversalLetterDefinition = {
   calculator?: UniversalLetterCalculator;
 };
 
+export type UniversalTerminationLetterFieldKey =
+  | "contractNumber"
+  | "policyholderName"
+  | "personalId"
+  | "email"
+  | "place"
+  | "signedDate"
+  | "refundAccount"
+  | "otherReason";
+
+export type MissingUniversalTerminationField = {
+  key: UniversalTerminationLetterFieldKey;
+  label: string;
+};
+
+const REQUIRED_UNIVERSAL_TERMINATION_FIELDS: readonly MissingUniversalTerminationField[] = [
+  { key: "contractNumber", label: "číslo smlouvy" },
+  { key: "policyholderName", label: "jméno pojistníka" },
+  { key: "personalId", label: "RČ / IČ" },
+  { key: "email", label: "e-mail" },
+  { key: "place", label: "místo podpisu" },
+  { key: "signedDate", label: "datum podpisu" },
+];
+
+export function getMissingUniversalTerminationFields(
+  fields: Partial<Record<UniversalTerminationLetterFieldKey, string>>,
+  requiresOtherReason = false,
+): MissingUniversalTerminationField[] {
+  const requiredFields = requiresOtherReason
+    ? [
+        ...REQUIRED_UNIVERSAL_TERMINATION_FIELDS,
+        { key: "otherReason" as const, label: "jiný důvod výpovědi" },
+      ]
+    : REQUIRED_UNIVERSAL_TERMINATION_FIELDS;
+
+  return requiredFields.filter(({ key }) => !fields[key]?.trim());
+}
+
 export function formatLocalDateInput(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");

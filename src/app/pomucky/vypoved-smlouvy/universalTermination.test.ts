@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatLocalDateForTerminationLetter,
   formatLocalDateInput,
+  getMissingUniversalTerminationFields,
   getTerminationReasonsForSelection,
   getUniversalLetterDefinition,
   getUniversalLetterForSelection,
@@ -24,6 +25,40 @@ describe("formatLocalDateForTerminationLetter", () => {
     expect(
       formatLocalDateForTerminationLetter(new Date(2026, 7, 26, 23, 45)),
     ).toBe("26 . 08 . 2026");
+  });
+});
+
+describe("getMissingUniversalTerminationFields", () => {
+  const completeFields = {
+    contractNumber: "123456789",
+    policyholderName: "Testovací klient",
+    personalId: "identifikátor",
+    email: "klient@example.cz",
+    place: "Praha",
+    signedDate: "31 . 08 . 2026",
+  };
+
+  it("nevrátí chybu pro kompletní důležité údaje", () => {
+    expect(getMissingUniversalTerminationFields(completeFields)).toEqual([]);
+  });
+
+  it("najde prázdná důležitá pole", () => {
+    expect(
+      getMissingUniversalTerminationFields({
+        ...completeFields,
+        personalId: " ",
+        place: "",
+      }).map((item) => item.key),
+    ).toEqual(["personalId", "place"]);
+  });
+
+  it("vyžaduje text pouze u varianty s jiným důvodem", () => {
+    expect(getMissingUniversalTerminationFields(completeFields)).toEqual([]);
+    expect(
+      getMissingUniversalTerminationFields(completeFields, true).map(
+        (item) => item.key,
+      ),
+    ).toEqual(["otherReason"]);
   });
 });
 
