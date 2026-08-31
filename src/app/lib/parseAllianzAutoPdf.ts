@@ -264,7 +264,8 @@ const normalizePolicyholderPersonalId = (
   if (!value) return null;
   const birthNumber = value.match(/\b(\d{6})\s*\/?\s*(\d{3,4})\b/);
   if (birthNumber) return `${birthNumber[1]}/${birthNumber[2]}`;
-  return value.match(/\b\d{8}\b/)?.[0] ?? null;
+  const digits = value.replace(/\D+/g, "");
+  return digits.length === 8 ? digits : null;
 };
 
 const normalizePolicyholderEmail = (
@@ -318,7 +319,7 @@ export const extractAllianzAutoPolicyholderData = (
     /rodn[eé]\s+[čc][ií]slo\s*:\s*(\d{6}\s*\/?\s*\d{3,4})/i,
   )?.[1];
   const companyId = sectionText.match(
-    /(?:I[ČC](?:O)?|identifika[čc]n[ií]\s+[čc][ií]slo)\s*:\s*(\d{8})\b/i,
+    /(?:I[ČC](?:O)?|identifika[čc]n[ií]\s+[čc][ií]slo)\s*:\s*((?:\d[\u00a0 \t]*){8})(?!\d)/i,
   )?.[1];
 
   return {

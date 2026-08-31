@@ -84,7 +84,7 @@ describe("parseAllianzAutoPdf", () => {
       extractAllianzAutoPolicyholderData([
         "Pojistník (vy)",
         "Testovací Firma",
-        "IČO: 12345678",
+        "IČO: 12 34 56 78",
         "E-mail firma@example.cz",
       ]),
     ).toMatchObject({
