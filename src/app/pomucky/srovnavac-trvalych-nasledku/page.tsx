@@ -1176,6 +1176,9 @@ const getInsurerLogoPath = (insurer: string): string | null => {
   }
   if (normalized.includes("maxima")) return "/icons/maxima.png";
   if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csb.png";
+  if (normalized === "kb" || normalized.includes("komerční pojišťovna")) {
+    return "/icons/kblogo.png";
+  }
   if (normalized.includes("simplea")) return "/icons/simplea.png";
   return null;
 };
@@ -1187,6 +1190,7 @@ const splitInsurerAndProduct = (value: string): { insurerName: string; productNa
     "Kooperativa",
     "MetLife",
     "ČSOB",
+    "KB",
     "Generali",
     "NN",
     "Maxima",
@@ -2717,9 +2721,28 @@ const CSOB_NAS_ZIVOT_TABLE: number[] = [
   800, // 100 %
 ];
 
+const KB_ELAN_2025_10_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 12, 13, 14, 15, 19, 22, 26, 29, 33,
+  36, 40, 43, 47, 50, 52, 55, 57, 60, 63,
+  66, 69, 73, 76, 80, 83, 87, 91, 95, 100,
+  104, 108, 113, 118, 123, 128, 133, 138, 144, 150,
+  153, 156, 160, 163, 167, 171, 175, 179, 184, 188,
+  193, 198, 203, 208, 214, 219, 225, 231, 237, 243,
+  250, 257, 263, 270, 278, 285, 293, 300, 308, 316,
+  325, 333, 341, 350, 359, 368, 377, 386, 395, 404,
+  434, 463, 493, 525, 571, 617, 662, 708, 754, 800,
+];
+
 const getCsobNasZivotPercent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return CSOB_NAS_ZIVOT_TABLE[idx] ?? 0;
+};
+
+const getKbElan202510Percent = (percent: number): number => {
+  const idx = Math.min(100, Math.max(0, Math.round(percent)));
+  return KB_ELAN_2025_10_TABLE[idx] ?? 0;
 };
 
 const getCsobForteMultiplier = (percent: number): number => {
@@ -3428,6 +3451,7 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
   "metlife-garde5": (percent) => percent * (getMetlifeGarde5Percent(percent) / 100),
   "metlife-garde6": (percent) => percent * (getMetlifeGarde6Percent(percent) / 100),
   "csob-nas-zivot": getCsobNasZivotPercent,
+  "kb-elan-2025-10": getKbElan202510Percent,
   "csob-forte": (percent) => getCsobForteMultiplier(percent) * percent,
   "generali-muj-zivot": getGeneraliMujZivotPercent,
   "generali-bel-mondo-20-2023-2024": getGeneraliBelMondo20232024Percent,
@@ -3561,6 +3585,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
       sumInsuredValue * (normalizedPercent / 100) * (metlifeGarde6Percent / 100);
     const csobNasZivotPercent = getCsobNasZivotPercent(normalizedPercent);
     const payoutCsobNasZivot = sumInsuredValue * (csobNasZivotPercent / 100);
+    const kbElan202510Percent = getKbElan202510Percent(normalizedPercent);
+    const payoutKbElan202510 = sumInsuredValue * (kbElan202510Percent / 100);
     const csobForteMultiplier = getCsobForteMultiplier(normalizedPercent);
     const payoutCsobForte =
       sumInsuredValue * csobForteMultiplier * (normalizedPercent / 100);
@@ -3891,6 +3917,18 @@ export default function SrovnavacTrvalychNasledkuPage() {
         tablePreview: buildCsobForteTablePreview(normalizedPercent),
       },
       {
+        key: "kb-elan-2025-10",
+        insurer: "KB Elán",
+        badges: ["15.10.2025", "8× progrese"],
+        payout: payoutKbElan202510,
+        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kbElan202510Percent}%.`,
+        tablePreview: buildPercentValueTablePreview(
+          "Tabulka KB Elán od 15.10.2025 – 8× progrese",
+          KB_ELAN_2025_10_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
         key: "generali-muj-zivot",
         insurer: "Generali Můj Život 2 2024",
         badges: ["10× progrese"],
@@ -4145,6 +4183,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     "Kooperativa",
     "MetLife",
     "ČSOB",
+    "KB",
     "Generali",
     "NN",
     "Maxima",

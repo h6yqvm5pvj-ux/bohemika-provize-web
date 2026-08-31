@@ -2,6 +2,7 @@ import { type ProductInstitutionId } from "@/app/lib/productCatalog";
 
 export type InstitutionLogoKey =
   | ProductInstitutionId
+  | "kb"
   | "generali"
   | "metlife"
   | "nn"
@@ -23,6 +24,7 @@ const LOGO_KEY_BY_PATH: Record<string, InstitutionLogoKey> = {
   "/icons/pillow.png": "pillow",
   "/icons/axalogo.png": "axa",
   "/icons/cclogo.png": "comfort",
+  "/icons/kblogo.png": "kb",
   "/icons/generali.png": "generali",
   "/icons/metlife.png": "metlife",
   "/icons/nn.png": "nn",
@@ -46,6 +48,9 @@ export function institutionLogoKeyFromInsurerName(
   if (normalized.includes("slavia")) return "slavia";
   if (normalized.includes("comfort") || normalized.includes("commodity")) {
     return "comfort";
+  }
+  if (normalized === "kb" || normalized.includes("komerční pojišťovna")) {
+    return "kb";
   }
   if (normalized.includes("uniqa")) return "uniqa";
   if (normalized.includes("čsob") || normalized.includes("csob")) return "csob";
