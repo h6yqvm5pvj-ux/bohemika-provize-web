@@ -6,6 +6,7 @@ export type CppAutoPdfResult = {
   refreshOriginalContractNumber?: string | null;
   contractNumber?: string | null;
   clientName?: string | null;
+  personalId?: string | null;
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
@@ -91,6 +92,39 @@ const normalizePolicyholderCompanyName = (
   if (!cleaned || cleaned.length < 3) return null;
   if (!/[A-Za-zÀ-ž]/.test(cleaned)) return null;
   return cleaned;
+};
+
+export const extractCppAutoPolicyholderPersonalId = (
+  lines: string[],
+): string | null => {
+  const asciiLines = lines.map((line) => stripDiacritics(line).toLowerCase());
+  const policyholderStart = asciiLines.findIndex((line) =>
+    /^pojistnik\b/i.test(line),
+  );
+  if (policyholderStart < 0) return null;
+
+  const sectionEndOffset = asciiLines
+    .slice(policyholderStart + 1, policyholderStart + 45)
+    .findIndex((line) =>
+      /^(pojisteny|provozovatel|vlastnik|udaje\s+o\s+vozidle|vozidlo|predmet\s+pojisteni)\b/i.test(
+        line,
+      ),
+    );
+  const sectionEnd =
+    sectionEndOffset >= 0
+      ? policyholderStart + 1 + sectionEndOffset
+      : Math.min(lines.length, policyholderStart + 45);
+  const sectionText = lines.slice(policyholderStart, sectionEnd).join(" ");
+
+  const companyId = sectionText.match(
+    /(?:^|\s)I[ČC](?:O)?\s*:?\s*((?:\d[\u00a0 \t]*){8})(?!\d)/i,
+  )?.[1];
+  if (companyId) return companyId.replace(/\D/g, "");
+
+  const birthNumber = sectionText.match(
+    /(?:rodn[eé]\s+[čc][ií]slo|R[ČC])\s*:?\s*(\d{6})\s*\/?\s*(\d{3,4})/i,
+  );
+  return birthNumber ? `${birthNumber[1]}/${birthNumber[2]}` : null;
 };
 
 const normalizePlate = (value: string | null | undefined): string | null => {
@@ -473,6 +507,10 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
       : null;
   if (policyholderCompanyName) {
     result.clientName = policyholderCompanyName;
+  }
+  const policyholderPersonalId = extractCppAutoPolicyholderPersonalId(layoutLines);
+  if (policyholderPersonalId) {
+    result.personalId = policyholderPersonalId;
   }
 
   // Jméno + příjmení

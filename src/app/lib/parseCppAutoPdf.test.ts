@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parseCppAutoPdf } from "./parseCppAutoPdf";
+import {
+  extractCppAutoPolicyholderPersonalId,
+  parseCppAutoPdf,
+} from "./parseCppAutoPdf";
 
 const pdfState = vi.hoisted(() => ({
   pages: [] as Array<Array<{ str: string; x: number; y: number; width?: number }>>,
@@ -42,6 +45,8 @@ describe("parseCppAutoPdf", () => {
         { str: "POJISTNÍK", x: 45, y: 586, width: 42 },
         { str: "Název:", x: 45, y: 571, width: 25 },
         { str: "Green Bridge Recycling s.r.o.", x: 84, y: 571, width: 95 },
+        { str: "IČ:", x: 300, y: 571, width: 15 },
+        { str: "12 34 56 78", x: 320, y: 571, width: 45 },
         { str: "Plátce DPH:", x: 435, y: 571, width: 44 },
         { str: "ANO", x: 481, y: 571, width: 16 },
         { str: "Titul před:", x: 45, y: 539, width: 35 },
@@ -55,6 +60,7 @@ describe("parseCppAutoPdf", () => {
     await expect(parseCppAutoPdf(makePdfFile())).resolves.toMatchObject({
       contractNumber: "3271032734",
       clientName: "Green Bridge Recycling s.r.o.",
+      personalId: "12345678",
     });
   });
 
@@ -69,12 +75,27 @@ describe("parseCppAutoPdf", () => {
         { str: "Martin", x: 175, y: 571, width: 28 },
         { str: "Příjmení:", x: 274, y: 571, width: 32 },
         { str: "Tamáš", x: 308, y: 571, width: 30 },
+        { str: "Rodné číslo:", x: 45, y: 555, width: 45 },
+        { str: "900101/1234", x: 95, y: 555, width: 48 },
       ],
     ];
 
     await expect(parseCppAutoPdf(makePdfFile())).resolves.toMatchObject({
       contractNumber: "3271000001",
       clientName: "Martin Tamáš",
+      personalId: "900101/1234",
     });
+  });
+
+  it("reads the identifier only from the policyholder section", () => {
+    expect(
+      extractCppAutoPolicyholderPersonalId([
+        "POJISTNÍK",
+        "Název: Testovací firma",
+        "IČ: 87 65 43 21",
+        "PROVOZOVATEL",
+        "IČ: 12 34 56 78",
+      ]),
+    ).toBe("87654321");
   });
 });
