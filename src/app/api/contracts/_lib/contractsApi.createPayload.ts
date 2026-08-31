@@ -1,5 +1,9 @@
 import { toDate } from "@/app/lib/formatters";
 import type { ProductInstitutionId } from "@/app/lib/productCatalog";
+import {
+  ORIGINAL_CONTRACT_REPLACEMENT_SUPPORT_LABEL,
+  supportsOriginalContractReplacement,
+} from "@/app/lib/originalContractReplacement";
 import { productCoefficientValidityError } from "@/app/lib/productFormulas/coefficientSets";
 import type {
   CommissionMode,
@@ -1245,23 +1249,21 @@ export const normalizeCreateEntryPayload = ({
   const refreshOriginalContractNumber = refreshOriginalMissingInSystem
     ? null
     : refreshOriginalParsed.value;
-  const supportsOriginalReplacement =
-    productParsed.value === "neon" ||
-    productParsed.value === "domex" ||
-    productParsed.value === "cppAuto" ||
-    productParsed.value === "allianzAuto";
+  const supportsOriginalReplacement = supportsOriginalContractReplacement(
+    productParsed.value,
+  );
   if (isRefresh && !supportsOriginalReplacement) {
     return {
       ok: false,
       error:
-        "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto.",
+        `Refresh/Náhrada je podporovaná jen pro produkty ${ORIGINAL_CONTRACT_REPLACEMENT_SUPPORT_LABEL}.`,
     };
   }
   if (refreshOriginalMissingInSystem && !supportsOriginalReplacement) {
     return {
       ok: false,
       error:
-        "Refresh/Náhrada bez původní smlouvy v systému je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto.",
+        `Refresh/Náhrada bez původní smlouvy v systému je podporovaná jen pro produkty ${ORIGINAL_CONTRACT_REPLACEMENT_SUPPORT_LABEL}.`,
     };
   }
   if (refreshOriginalMissingInSystem && !isRefresh) {
@@ -1274,7 +1276,7 @@ export const normalizeCreateEntryPayload = ({
     return {
       ok: false,
       error:
-        "Pole refreshOriginalContractNumber je povolené jen pro produkty ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto.",
+        `Pole refreshOriginalContractNumber je povolené jen pro produkty ${ORIGINAL_CONTRACT_REPLACEMENT_SUPPORT_LABEL}.`,
     };
   }
   if (refreshOriginalParsed.value && !isRefresh) {

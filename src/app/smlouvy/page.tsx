@@ -36,6 +36,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { originalReplacementLabel } from "@/app/lib/originalContractReplacement";
 
 import { auth } from "../firebase";
 import {
@@ -489,10 +490,6 @@ function isRefreshContract(contract: ContractDoc | null | undefined): boolean {
     return true;
   }
   return Boolean(contract.refreshCommissionBase);
-}
-
-function originalReplacementLabel(product?: Product | null): string {
-  return product === "neon" ? "Refresh" : "Náhrada";
 }
 
 function contractOwnerEmail(

@@ -100,6 +100,7 @@ import {
   supportsOriginalContractReplacement,
   supportsPolicyEndDate,
   originalReplacementLabel,
+  originalReplacementStornoDescription,
   buildContractsCreateIdempotencyKey,
   formatMoneyResult,
   paymentsPerYear,
@@ -6914,15 +6915,13 @@ export default function CalculatorPage() {
       }
 
       const linkedRefreshOriginal = Boolean(linkedRefreshOriginalEntryId);
-      const originalReplacementStornoDescription =
-        product === "cppAuto" || product === "allianzAuto"
-          ? "jeden den před počátkem nové smlouvy"
-          : "ke dni počátku";
+      const replacementStornoDescription =
+        originalReplacementStornoDescription(product);
       const savedMessage = isRefreshWithoutOriginalInSystem
         ? "Smlouva byla uložena jako REFRESH bez původní smlouvy v systému. Výpočet provize je orientační a musí se sladit podle provizního výpisu."
         : shouldReplaceOriginalContract
           ? linkedRefreshOriginal
-            ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ${originalReplacementStornoDescription}.`
+            ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ${replacementStornoDescription}.`
             : `Smlouva byla uložena jako ${originalReplacementLabel(product)}. Původní smlouva nebyla v systému nalezena, takže se automaticky nestornovala.`
           : "Smlouva byla uložena mezi sepsané.";
       setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);

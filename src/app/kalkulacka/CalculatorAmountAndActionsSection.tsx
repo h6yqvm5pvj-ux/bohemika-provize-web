@@ -4,6 +4,12 @@ import { RefreshCcw, Repeat2, Tag } from "lucide-react";
 
 import { type PaymentFrequency, type Product } from "../types/domain";
 import { formatMoney } from "@/app/lib/formatters";
+import {
+  canSaveUnlinkedOriginalReplacement,
+  originalReplacementProductLabel,
+  originalReplacementStornoDescription,
+  supportsOriginalContractReplacement,
+} from "@/app/lib/originalContractReplacement";
 import { placeholderForAmount, type EndorsementDraft } from "./calculatorHelpers";
 
 type RefreshOriginalLookupStatus = "idle" | "checking" | "found" | "notFound" | "wrongProduct" | "error";
@@ -93,15 +99,8 @@ export function CalculatorAmountAndActionsSection({
   const activeRefreshContractActionButtonClass = `${refreshContractActionButtonClass} ring-2 ring-violet-200`;
   const changeContractActionButtonClass = `${contractActionButtonBaseClass} border-violet-200 bg-white text-slate-950 shadow-[0_10px_22px_rgba(15,23,42,0.08)] hover:border-violet-300 hover:bg-violet-50`;
   const activeChangeContractActionButtonClass = `${changeContractActionButtonClass} ring-2 ring-violet-200`;
-  const canUseOriginalReplacement =
-    product === "neon" ||
-    product === "domex" ||
-    product === "cppAuto" ||
-    product === "allianzAuto";
-  const canSaveUnlinkedOriginalReplacement =
-    product === "domex" || product === "cppAuto" || product === "allianzAuto";
-  const usesPreviousDayReplacementStorno =
-    product === "cppAuto" || product === "allianzAuto";
+  const canUseOriginalReplacement = supportsOriginalContractReplacement(product);
+  const canSaveUnlinkedOriginal = canSaveUnlinkedOriginalReplacement(product);
   const originalReplacementButtonLabel =
     product === "neon"
       ? refreshOriginalOpen
@@ -110,17 +109,8 @@ export function CalculatorAmountAndActionsSection({
       : refreshOriginalOpen
         ? "Náhrada zapnutá"
         : "Náhrada";
-  const originalReplacementProductLabel =
-    product === "domex"
-      ? "DOMEX"
-      : product === "cppAuto"
-        ? "ČPP Auto"
-        : product === "allianzAuto"
-          ? "Allianz Auto"
-          : "ČPP ŽP NEON";
-  const originalReplacementStornoDescription = usesPreviousDayReplacementStorno
-    ? "jeden den před datem počátku nové smlouvy"
-    : "ke dni počátku nové smlouvy";
+  const replacementProductLabel = originalReplacementProductLabel(product);
+  const replacementStornoDescription = originalReplacementStornoDescription(product);
 
   if (!showAmountInput && !showComfortControls && !showContractActionButtons && !showManualEntryButton) {
     return null;
@@ -389,9 +379,9 @@ export function CalculatorAmountAndActionsSection({
                       }`}
                     />
                     <p className="text-[11px] text-slate-600">
-                      {canSaveUnlinkedOriginalReplacement
-                        ? `Pokud se původní smlouva najde u stejného vlastníka a produktu, při uložení se stornuje ${originalReplacementStornoDescription}.`
-                        : `Při uložení se původní smlouva stornuje ${originalReplacementStornoDescription}.`}
+                      {canSaveUnlinkedOriginal
+                        ? `Pokud se původní smlouva najde u stejného vlastníka a produktu, při uložení se stornuje ${replacementStornoDescription}.`
+                        : `Při uložení se původní smlouva stornuje ${replacementStornoDescription}.`}
                     </p>
                   </>
                 )}
@@ -427,18 +417,18 @@ export function CalculatorAmountAndActionsSection({
                 )}
                 {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "wrongProduct" && (
                   <p className="text-[11px] font-semibold text-amber-700">
-                    {canSaveUnlinkedOriginalReplacement
-                      ? `Smlouva je evidována, ale není vedena jako ${originalReplacementProductLabel}. Náhradu lze uložit bez automatického storna původní smlouvy.`
-                      : `Smlouva je evidována, ale není vedena jako ${originalReplacementProductLabel}.`}
+                    {canSaveUnlinkedOriginal
+                      ? `Smlouva je evidována, ale není vedena jako ${replacementProductLabel}. Náhradu lze uložit bez automatického storna původní smlouvy.`
+                      : `Smlouva je evidována, ale není vedena jako ${replacementProductLabel}.`}
                   </p>
                 )}
                 {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "notFound" && (
                   <p
                     className={`text-[11px] font-semibold ${
-                      canSaveUnlinkedOriginalReplacement ? "text-amber-700" : "text-rose-700"
+                      canSaveUnlinkedOriginal ? "text-amber-700" : "text-rose-700"
                     }`}
                   >
-                    {canSaveUnlinkedOriginalReplacement
+                    {canSaveUnlinkedOriginal
                       ? "Původní smlouva s tímto číslem není evidována v systému Bohemka.App. Náhradu lze uložit bez automatického storna původní smlouvy."
                       : "Smlouva s tímto číslem není evidována v systému Bohemka.App."}
                   </p>

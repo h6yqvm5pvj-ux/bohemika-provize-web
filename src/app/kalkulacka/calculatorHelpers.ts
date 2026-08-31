@@ -40,28 +40,20 @@ export const POSITION_ORDER: Position[] = [
   "manazer10",
 ];
 
-const ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>([
-  "neon",
-  "domex",
-  "cppAuto",
-  "allianzAuto",
-]);
 const POLICY_END_DATE_PRODUCTS = new Set<Product>([
   "cppcestovko",
   "axacestovko",
   "koopcestovko",
 ]);
 
-export function supportsOriginalContractReplacement(product: Product): boolean {
-  return ORIGINAL_REPLACEMENT_PRODUCTS.has(product);
-}
+export {
+  originalReplacementLabel,
+  originalReplacementStornoDescription,
+  supportsOriginalContractReplacement,
+} from "@/app/lib/originalContractReplacement";
 
 export function supportsPolicyEndDate(product: Product): boolean {
   return POLICY_END_DATE_PRODUCTS.has(product);
-}
-
-export function originalReplacementLabel(product: Product): string {
-  return product === "neon" ? "Refresh" : "Náhrada";
 }
 
 function stableSerializeForIdempotency(value: unknown): string {

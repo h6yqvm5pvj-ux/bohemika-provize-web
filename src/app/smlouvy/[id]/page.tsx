@@ -50,6 +50,7 @@ import {
 } from "@/app/pomucky/vypoved-smlouvy/universalTermination";
 import { parseTerminationPolicyholderPdf } from "@/app/lib/parseTerminationPolicyholderPdf";
 import { parseUniqaAutoPdf } from "@/app/lib/parseUniqaAutoPdf";
+import { originalReplacementLabel } from "@/app/lib/originalContractReplacement";
 import {
   isAnnualSeparatedPeriodProduct,
   isPerPaymentSeparatedPeriodProduct,
@@ -183,10 +184,6 @@ const normalizeTransferSearch = (value: string): string =>
 
 const transferTargetLabel = (target: ContractTransferTarget): string =>
   target.name?.trim() || nameFromEmail(target.email) || target.email;
-
-function originalReplacementLabel(product?: Product | null): string {
-  return product === "neon" ? "Refresh" : "Náhrada";
-}
 
 function ContractScanPaper({ className = "" }: { className?: string }) {
   return (

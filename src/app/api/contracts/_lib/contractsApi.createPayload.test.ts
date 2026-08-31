@@ -321,6 +321,31 @@ describe("contracts create payload parsing", () => {
     });
   });
 
+  it.each([
+    ["neon", "monthly"],
+    ["domex", "annual"],
+    ["cppAuto", "annual"],
+    ["allianzAuto", "annual"],
+  ] as const)(
+    "povolí uložení Refresh/Náhrady pro produkt %s",
+    (productKey, frequencyRaw) => {
+      const payload = normalizedPayload(
+        baseEntry({
+          productKey,
+          frequencyRaw,
+          isRefresh: true,
+          refreshOriginalContractNumber: "OLD789",
+        }),
+      );
+
+      expect(payload).toMatchObject({
+        productKey,
+        isRefresh: true,
+        refreshOriginalContractNumber: "OLD789",
+      });
+    },
+  );
+
   it("validates refresh and replacement contracts", () => {
     expect(
       normalizeCreateEntryPayload({

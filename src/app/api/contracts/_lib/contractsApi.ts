@@ -30,6 +30,10 @@ import {
 import { toDate } from "@/app/lib/formatters";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
+  canSaveUnlinkedOriginalReplacement,
+  usesPreviousDayReplacementStorno,
+} from "@/app/lib/originalContractReplacement";
+import {
   isImmediateCommissionItem,
   totalWithMultipliers,
 } from "@/app/lib/commissionTotals";
@@ -409,15 +413,6 @@ const NEW_CONTRACT_PUSH_RECENT_SIGNED_DAYS = 45;
 const NEW_CONTRACT_PUSH_MAX_RECIPIENTS = 40;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_USER = 30;
 const NEW_CONTRACT_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
-const UNLINKED_ORIGINAL_REPLACEMENT_PRODUCTS = new Set<Product>([
-  "domex",
-  "cppAuto",
-  "allianzAuto",
-]);
-const PREVIOUS_DAY_REPLACEMENT_STORNO_PRODUCTS = new Set<Product>([
-  "cppAuto",
-  "allianzAuto",
-]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://bohemka.app";
 
@@ -488,9 +483,6 @@ const encodeCursorToken = (ts: number, key: string) =>
 
 const contractCursorKey = (ownerEmail: string, docId: string) =>
   `${normalizeEmail(ownerEmail)}___${docId}`;
-
-const canSaveUnlinkedOriginalReplacement = (productKey: Product): boolean =>
-  UNLINKED_ORIGINAL_REPLACEMENT_PRODUCTS.has(productKey);
 
 const responseCursorKey = (item: ContractResponseItem) =>
   contractCursorKey(
@@ -1228,7 +1220,7 @@ const originalReplacementStornoDate = ({
   policyStartDate: Date;
 }): Date => {
   const startDate = new Date(policyStartDate.getTime());
-  if (!PREVIOUS_DAY_REPLACEMENT_STORNO_PRODUCTS.has(productKey)) return startDate;
+  if (!usesPreviousDayReplacementStorno(productKey)) return startDate;
 
   startDate.setUTCDate(startDate.getUTCDate() - 1);
   return startDate;
