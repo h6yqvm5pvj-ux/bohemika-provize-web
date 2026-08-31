@@ -7324,10 +7324,6 @@ export default function ContractDetailPage() {
                 </div>
               )}
 
-              <p className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-900">
-                U fyzické osoby zobrazujeme pouze datum narození odvozené z rodného
-                čísla. Samotné rodné číslo se v tomto okně nezobrazuje.
-              </p>
             </div>
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
