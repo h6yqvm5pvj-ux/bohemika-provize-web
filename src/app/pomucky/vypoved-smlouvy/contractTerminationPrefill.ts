@@ -85,14 +85,6 @@ const cleanPersonalId = (value: unknown): string => {
   return /^\d{8}$/.test(compact) ? compact : normalized;
 };
 
-export function getTerminationPersonalIdLabel(
-  value: string | null | undefined,
-): "Rodné číslo" | "IČO" {
-  return /^\d{8}$/.test((value ?? "").replace(/\s+/g, ""))
-    ? "IČO"
-    : "Rodné číslo";
-}
-
 const cleanIsoDay = (value: unknown): string => {
   const normalized = cleanText(value, 10);
   return ISO_DAY_RE.test(normalized) ? normalized : "";

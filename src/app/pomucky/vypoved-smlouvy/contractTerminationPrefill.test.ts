@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   consumeContractTerminationPrefill,
   getContractTerminationPdfFieldDefaults,
-  getTerminationPersonalIdLabel,
   isCppSusUploadNoticeProduct,
   normalizeContractTerminationPrefill,
   normalizeTerminationPrefillInsurer,
@@ -112,8 +111,6 @@ describe("contractTerminationPrefill", () => {
     });
 
     expect(prefill?.personalId).toBe("12345678");
-    expect(getTerminationPersonalIdLabel(prefill?.personalId)).toBe("IČO");
-    expect(getTerminationPersonalIdLabel("900101/1234")).toBe("Rodné číslo");
   });
 
   it("zahodí neznámý důvod výpovědi", () => {
