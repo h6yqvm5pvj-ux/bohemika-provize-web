@@ -17,6 +17,7 @@ import {
   ExternalLink,
   FileSignature,
   FileText,
+  Gauge,
   IdCard,
   Package,
   PencilLine,
@@ -154,6 +155,8 @@ const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
 const ALLIANZ_AUTO_PAYMENT_CHECK_URL =
   "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
+const ALLIANZ_AUTO_ODOMETER_UPLOAD_URL =
+  "https://www.allianz.cz/cs_CZ/apps/kilometry-nahrani.html";
 const KOOPERATIVA_CONTRACT_STATUS_URL =
   "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
 const SLAVIA_CONTRACT_VERIFICATION_URL =
@@ -5355,14 +5358,25 @@ export default function ContractDetailPage() {
                 </button>
 
                 {prod === "allianzAuto" && (
-                  <button
-                    type="button"
-                    onClick={handleAllianzPaymentCheckClick}
-                    className={headerActionButtonClass}
-                  >
-                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Ověřit zaplacení</span>
-                  </button>
+                  <>
+                    <a
+                      href={ALLIANZ_AUTO_ODOMETER_UPLOAD_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={headerActionButtonClass}
+                    >
+                      <Gauge size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Nahrát tachometr</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleAllianzPaymentCheckClick}
+                      className={headerActionButtonClass}
+                    >
+                      <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Ověřit zaplacení</span>
+                    </button>
+                  </>
                 )}
 
                 {prod === "kooperativaAuto" && (
