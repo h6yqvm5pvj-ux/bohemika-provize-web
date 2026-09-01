@@ -20,6 +20,10 @@ import {
   INTRANET_SECTION_LABEL_BY_KEY,
   type IntranetSectionKey,
 } from "@/app/intranet/sections";
+import {
+  parseIntranetWallSourcesJson,
+  sanitizeStoredIntranetWallSources,
+} from "@/app/intranet/wallSources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -122,6 +126,7 @@ type WallPost = {
   likedByMe: boolean;
   author: WallAuthor;
   attachments: WallAttachment[];
+  sources: string[];
   comments: WallComment[];
   poll: WallPoll | null;
 };
@@ -872,6 +877,7 @@ function mapPostFromDoc(
       isImage,
     })
   );
+  const sources = sanitizeStoredIntranetWallSources(raw.sources);
   const poll = parsePoll(raw.poll, raw.pollVotes, viewerEmail);
 
   return {
@@ -892,6 +898,7 @@ function mapPostFromDoc(
     likedByMe,
     author,
     attachments,
+    sources,
     comments,
     poll,
   };
@@ -963,9 +970,13 @@ export async function GET(req: NextRequest) {
         const matchesSection = !section || docSection === section;
         const matchesSearch =
           !normalizedSearchQuery ||
-          [raw.title, raw.text, raw.createdByName, raw.createdByEmail].some((value) =>
-            normalizeSearchText(value).includes(normalizedSearchQuery)
-          );
+          [
+            raw.title,
+            raw.text,
+            raw.createdByName,
+            raw.createdByEmail,
+            sanitizeStoredIntranetWallSources(raw.sources).join(" "),
+          ].some((value) => normalizeSearchText(value).includes(normalizedSearchQuery));
         if (matchesSection && matchesSearch) {
           matchingDocs.push(doc);
           if (matchingDocs.length > limit) break;
@@ -1073,6 +1084,7 @@ export async function POST(req: NextRequest) {
     .map((option) => normalizeText(option).slice(0, POLL_OPTION_MAX_LEN))
     .filter(Boolean)
     .slice(0, POLL_OPTIONS_MAX_COUNT);
+  const sourcesResult = parseIntranetWallSourcesJson(form.get("sources"));
 
   if (!title) {
     return withRateLimitHeaders(
@@ -1096,6 +1108,15 @@ export async function POST(req: NextRequest) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Termín přečtení musí být platné datum." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  if (!sourcesResult.ok) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: sourcesResult.error },
         { status: 400 }
       ),
       ctx
@@ -1230,6 +1251,7 @@ export async function POST(req: NextRequest) {
       createdByEmail: ctx.email,
       createdByName: authorName,
       attachments,
+      sources: sourcesResult.sources,
       commentCount: 0,
       likeCount: 0,
       likedByEmails: [],

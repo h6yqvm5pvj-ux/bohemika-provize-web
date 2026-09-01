@@ -59,39 +59,6 @@
   opacity: 0.14;
 }
 
-.heroPanel {
-  position: relative;
-  overflow: visible;
-}
-
-.heroPanel::after {
-  content: "";
-  position: absolute;
-  inset: -35% -15% auto;
-  height: 58%;
-  background: conic-gradient(from 180deg at 50% 50%, rgba(52, 211, 153, 0.2), rgba(56, 189, 248, 0.06), rgba(245, 158, 11, 0.16), rgba(52, 211, 153, 0.2));
-  filter: blur(20px);
-  pointer-events: none;
-}
-
-.createButton {
-  position: relative;
-  overflow: hidden;
-}
-
-.createButton::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-115%);
-  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.34) 45%, transparent 78%);
-  transition: transform 420ms ease;
-}
-
-.createButton:hover::before {
-  transform: translateX(120%);
-}
-
 .sectionChip {
   position: relative;
   overflow: hidden;
@@ -232,9 +199,6 @@
     animation: none;
   }
 
-  .createButton::before {
-    transition: none;
-  }
 }
 
 :global(:root[data-motion="off"]) .orb,

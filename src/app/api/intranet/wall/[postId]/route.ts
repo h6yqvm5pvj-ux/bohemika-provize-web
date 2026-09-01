@@ -17,6 +17,10 @@ import {
   INTRANET_SECTION_LABEL_BY_KEY,
   type IntranetSectionKey,
 } from "@/app/intranet/sections";
+import {
+  parseIntranetWallSources,
+  parseIntranetWallSourcesJson,
+} from "@/app/intranet/wallSources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -364,6 +368,8 @@ export async function PATCH(
   let section: IntranetSectionKey | null = null;
   let pinned = false;
   let readByDay: string | null = null;
+  let sources: string[] | null = null;
+  let sourcesError: string | null = null;
   let files: File[] = [];
   let removedAttachmentIds: string[] = [];
   const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
@@ -376,6 +382,11 @@ export async function PATCH(
       pinned = normalizeText(form.get("pinned")) === "1";
       const readByDayRaw = normalizeText(form.get("readByDay"));
       readByDay = readByDayRaw || null;
+      if (form.has("sources")) {
+        const result = parseIntranetWallSourcesJson(form.get("sources"));
+        if (result.ok) sources = result.sources;
+        else sourcesError = result.error;
+      }
       files = form.getAll("files").filter((entry): entry is File => entry instanceof File);
       removedAttachmentIds = Array.from(
         new Set(
@@ -396,6 +407,11 @@ export async function PATCH(
       pinned = body.pinned === true;
       const readByDayRaw = normalizeText(body.readByDay);
       readByDay = readByDayRaw || null;
+      if (Object.prototype.hasOwnProperty.call(body, "sources")) {
+        const result = parseIntranetWallSources(body.sources);
+        if (result.ok) sources = result.sources;
+        else sourcesError = result.error;
+      }
       removedAttachmentIds = Array.isArray(body.removedAttachmentIds)
         ? Array.from(
             new Set(body.removedAttachmentIds.map(normalizeAttachmentId).filter(Boolean))
@@ -443,6 +459,15 @@ export async function PATCH(
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Termín přečtení musí být platné datum." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  if (sourcesError) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: sourcesError },
         { status: 400 }
       ),
       ctx
@@ -597,6 +622,7 @@ export async function PATCH(
       section,
       sectionLabel,
       attachments,
+      ...(sources ? { sources } : {}),
       pinned,
       readByDay,
       updatedAt: FieldValue.serverTimestamp(),

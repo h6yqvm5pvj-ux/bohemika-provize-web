@@ -7,6 +7,7 @@ import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules"
 import type { Product } from "@/app/types/domain";
 import { formatMoney, nameFromEmail } from "./contractDetailHelpers";
 import { type ContractCommissionPayout } from "./contractDetailTypes";
+import { simplifyCorrectedCommissionPayouts } from "./contractCommissionHistoryRules";
 
 type ContractCommissionHistoryProps = {
   product?: Product | null;
@@ -332,7 +333,7 @@ export function ContractCommissionHistory({
   canRebuildFromStatements = false,
 }: ContractCommissionHistoryProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const rows = [...(payouts ?? [])].sort(
+  const rows = simplifyCorrectedCommissionPayouts(payouts ?? []).sort(
     (a, b) =>
       payoutSortValue(a) - payoutSortValue(b) ||
       String(a.statementNumber ?? "").localeCompare(String(b.statementNumber ?? ""), "cs") ||

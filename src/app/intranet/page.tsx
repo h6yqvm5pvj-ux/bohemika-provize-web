@@ -8,6 +8,7 @@ import type { LucideIcon } from "lucide-react";
 import { EmojiStyle, type EmojiClickData } from "emoji-picker-react";
 import {
   BarChart3,
+  BookOpen,
   CarFront,
   ChevronDown,
   ChevronUp,
@@ -15,12 +16,14 @@ import {
   Clock3,
   CalendarClock,
   Download,
+  ExternalLink,
   FileText,
   Heart,
   HeartPulse,
   Home,
   Image as ImageIcon,
   Landmark,
+  Link2,
   Loader2,
   MessageSquare,
   Paperclip,
@@ -54,6 +57,22 @@ import {
   INTRANET_SECTION_LABEL_BY_KEY,
   type IntranetSectionKey,
 } from "./sections";
+import {
+  INTRANET_WALL_MAX_SOURCES,
+  INTRANET_WALL_SOURCE_MAX_URL_LENGTH,
+  intranetWallSourceHost,
+  parseIntranetWallSources,
+  sanitizeStoredIntranetWallSources,
+} from "./wallSources";
+import {
+  WallPostRichTextEditor,
+  type WallPostRichTextEditorHandle,
+} from "./WallPostRichTextEditor";
+import { splitWallPostTextIntoBoldSegments } from "./wallPostRichText";
+import {
+  shouldCollapseWallPostText,
+  wallPostReadingMinutes,
+} from "./wallPostPreview";
 import styles from "./intranetWallArt.module.css";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
@@ -130,6 +149,7 @@ type WallPost = {
   likedByMe: boolean;
   author: WallAuthor;
   attachments: WallAttachment[];
+  sources: string[];
   comments: WallComment[];
   poll: WallPoll | null;
 };
@@ -469,8 +489,6 @@ type RichTextSegment =
   | { kind: "text"; value: string }
   | { kind: "link"; value: string; href: string };
 
-type InlineTextSegment = { value: string; bold: boolean };
-
 const trimUrlCandidate = (value: string): string => {
   let trimmed = value.trim();
   while (trimmed && !/[\p{L}\p{N}/#%=&_+~.-]/u.test(trimmed.slice(-1))) {
@@ -517,28 +535,6 @@ const splitTextIntoLinkSegments = (value: string): RichTextSegment[] => {
   return segments.length ? segments : [{ kind: "text", value }];
 };
 
-const splitTextIntoBoldSegments = (value: string): InlineTextSegment[] => {
-  const segments: InlineTextSegment[] = [];
-  const pattern = /\*\*([\s\S]+?)\*\*/g;
-  let cursor = 0;
-
-  for (const match of value.matchAll(pattern)) {
-    const start = match.index ?? 0;
-    const boldValue = match[1] ?? "";
-    if (start > cursor) {
-      segments.push({ value: value.slice(cursor, start), bold: false });
-    }
-    segments.push({ value: boldValue, bold: true });
-    cursor = start + (match[0] ?? "").length;
-  }
-
-  if (cursor < value.length) {
-    segments.push({ value: value.slice(cursor), bold: false });
-  }
-
-  return segments.length ? segments : [{ value, bold: false }];
-};
-
 function LinkedText({ text, className }: { text: string; className: string }) {
   const segments = useMemo(() => splitTextIntoLinkSegments(text), [text]);
 
@@ -556,7 +552,7 @@ function LinkedText({ text, className }: { text: string; className: string }) {
             {segment.value}
           </a>
         ) : (
-          splitTextIntoBoldSegments(segment.value).map((inlineSegment, inlineIndex) =>
+          splitWallPostTextIntoBoldSegments(segment.value).map((inlineSegment, inlineIndex) =>
             inlineSegment.bold ? (
               <strong key={`text-${index}-${inlineIndex}`} className="font-bold text-slate-900">
                 {inlineSegment.value}
@@ -605,47 +601,6 @@ const restoreTextAreaCursor = (textarea: HTMLTextAreaElement | null, cursor: num
   });
 };
 
-const toggleBoldAtTextAreaSelection = ({
-  currentValue,
-  maxLength,
-  textarea,
-}: {
-  currentValue: string;
-  maxLength: number;
-  textarea: HTMLTextAreaElement | null;
-}): { value: string; selectionStart: number; selectionEnd: number } => {
-  const startRaw = textarea?.selectionStart ?? currentValue.length;
-  const endRaw = textarea?.selectionEnd ?? currentValue.length;
-  const start = Math.min(Math.max(startRaw, 0), currentValue.length);
-  const end = Math.min(Math.max(endRaw, start), currentValue.length);
-  const selectedValue = currentValue.slice(start, end);
-  const hasBoldWrapper =
-    start >= 2 &&
-    currentValue.slice(start - 2, start) === "**" &&
-    currentValue.slice(end, end + 2) === "**";
-
-  if (hasBoldWrapper) {
-    const value = `${currentValue.slice(0, start - 2)}${selectedValue}${currentValue.slice(end + 2)}`;
-    return {
-      value,
-      selectionStart: start - 2,
-      selectionEnd: end - 2,
-    };
-  }
-
-  const wrappedValue = `**${selectedValue}**`;
-  const nextValue = `${currentValue.slice(0, start)}${wrappedValue}${currentValue.slice(end)}`;
-  if (nextValue.length > maxLength) {
-    return { value: currentValue, selectionStart: start, selectionEnd: end };
-  }
-
-  return {
-    value: nextValue,
-    selectionStart: start + 2,
-    selectionEnd: start + 2 + selectedValue.length,
-  };
-};
-
 const normalizeWallPosts = (rawPosts: WallPost[]): WallPost[] =>
   rawPosts.map((post) => ({
     ...post,
@@ -659,6 +614,7 @@ const normalizeWallPosts = (rawPosts: WallPost[]): WallPost[] =>
         ? Math.floor(post.likeCount)
         : 0,
     likedByMe: post.likedByMe === true,
+    sources: sanitizeStoredIntranetWallSources(post.sources),
     poll: post.poll
       ? {
           ...post.poll,
@@ -762,35 +718,46 @@ function AttachmentImagePreview({
       ref={previewRef}
       type="button"
       onClick={() => onOpen(attachment)}
-      className="flex w-full shrink-0 items-start justify-center overflow-hidden rounded-xl bg-transparent text-xs font-semibold text-slate-600 transition hover:opacity-90"
+      className="group flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-xs font-semibold text-slate-600 shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.1)]"
     >
-      {previewUrl ? (
-        <span className="flex w-full items-start justify-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+      <span className="flex h-44 w-full items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,#f8fafc_0%,#eef2f7_100%)]">
+        {previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={previewUrl}
             alt={`Náhled ${attachment.name}`}
             loading="lazy"
             decoding="async"
-            className="max-h-[260px] max-w-full rounded-xl object-contain"
+            className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.02]"
           />
+        ) : loading ? (
+          <span className="inline-flex items-center gap-2 text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Načítám náhled
+          </span>
+        ) : failed ? (
+          <span className="inline-flex items-center gap-2 text-slate-500">
+            <ImageIcon className="h-4 w-4" />
+            Otevřít obrázek
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-2 text-slate-500">
+            <ImageIcon className="h-4 w-4" />
+            Připravuji náhled
+          </span>
+        )}
+      </span>
+      <span className="flex w-full min-w-0 items-center gap-2.5 border-t border-slate-200 px-3 py-2.5">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700 ring-1 ring-sky-100">
+          <ImageIcon className="h-3.5 w-3.5" />
         </span>
-      ) : loading ? (
-        <span className="flex min-h-40 w-full items-center justify-center gap-2 rounded-xl bg-slate-100">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Načítám náhled
+        <span className="min-w-0">
+          <span className="block truncate font-bold text-slate-800">{attachment.name}</span>
+          <span className="mt-0.5 block text-[11px] font-medium text-slate-500">
+            Obrázek • {formatBytes(attachment.sizeBytes)}
+          </span>
         </span>
-      ) : failed ? (
-        <span className="flex min-h-40 w-full items-center justify-center gap-2 rounded-xl bg-slate-100">
-          <ImageIcon className="h-4 w-4" />
-          Otevřít obrázek
-        </span>
-      ) : (
-        <span className="flex min-h-40 w-full items-center justify-center gap-2 rounded-xl bg-slate-100">
-          <ImageIcon className="h-4 w-4" />
-          Připravuji náhled
-        </span>
-      )}
+      </span>
     </button>
   );
 }
@@ -907,7 +874,7 @@ function PdfAttachmentThumbnail({
       ref={previewRef}
       type="button"
       onClick={() => onOpen(attachment)}
-      className="group relative flex h-48 w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 transition hover:border-slate-400 hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)]"
+      className="group relative flex h-44 w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 transition hover:border-slate-400 hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)]"
       aria-label={`Otevřít náhled přílohy ${attachment.name}`}
     >
       {preview ? (
@@ -1290,7 +1257,7 @@ function AttachmentFileCard({
   const PreviewIcon = isPdf ? FileText : ImageIcon;
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/95 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-white/95 p-2.5">
       <div className="flex min-w-0 items-center gap-2.5">
         <div
           className={[
@@ -1449,6 +1416,7 @@ export default function IntranetPage() {
   const [postSection, setPostSection] = useState<IntranetSectionKey>("obecne");
   const [postPinned, setPostPinned] = useState(false);
   const [postReadByDay, setPostReadByDay] = useState("");
+  const [postSources, setPostSources] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
@@ -1461,6 +1429,8 @@ export default function IntranetPage() {
   const [editingPost, setEditingPost] = useState<WallPost | null>(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewState | null>(null);
+  const [sourcesModalPost, setSourcesModalPost] = useState<WallPost | null>(null);
+  const [readerPost, setReaderPost] = useState<WallPost | null>(null);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([]);
   const [replacementFilesByAttachmentId, setReplacementFilesByAttachmentId] = useState<
     Record<string, File>
@@ -1492,7 +1462,7 @@ export default function IntranetPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replaceAttachmentInputRef = useRef<HTMLInputElement | null>(null);
-  const postTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const postTextEditorRef = useRef<WallPostRichTextEditorHandle | null>(null);
   const commentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const replyInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const postCardRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -1507,6 +1477,7 @@ export default function IntranetPage() {
     setPostSection(selectedSection);
     setPostPinned(false);
     setPostReadByDay("");
+    setPostSources([]);
     setFiles([]);
     setRemovedAttachmentIds([]);
     setReplacementFilesByAttachmentId({});
@@ -1531,6 +1502,7 @@ export default function IntranetPage() {
     setPostSection(post.section);
     setPostPinned(post.pinned);
     setPostReadByDay(post.readByDay ?? "");
+    setPostSources(post.sources);
     setFiles([]);
     setRemovedAttachmentIds([]);
     setReplacementFilesByAttachmentId({});
@@ -1555,6 +1527,7 @@ export default function IntranetPage() {
     setPollOptions(["", ""]);
     setPostPinned(false);
     setPostReadByDay("");
+    setPostSources([]);
     setIsDraggingFiles(false);
     dragDepthRef.current = 0;
   };
@@ -1616,11 +1589,30 @@ export default function IntranetPage() {
         setPollEnabled(false);
         setPollQuestion("");
         setPollOptions(["", ""]);
+        setPostSources([]);
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [attachmentPreview, postModalOpen]);
+
+  useEffect(() => {
+    if (!sourcesModalPost) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSourcesModalPost(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [sourcesModalPost]);
+
+  useEffect(() => {
+    if (!readerPost || sourcesModalPost) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReaderPost(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [readerPost, sourcesModalPost]);
 
   useEffect(() => {
     if (!attachmentPreview) return;
@@ -1812,32 +1804,16 @@ export default function IntranetPage() {
   const PostModalIcon = isEditingPost ? Pencil : Plus;
 
   const addEmojiToPost = (emoji: string) => {
-    const textarea = postTextAreaRef.current;
-    const result = insertAtTextAreaSelection({
-      currentValue: text,
-      insertion: emoji,
-      maxLength: MAX_TEXT_LEN,
-      textarea,
-    });
-    setText(result.value);
-    restoreTextAreaCursor(textarea, result.cursor);
+    if (postTextEditorRef.current) {
+      postTextEditorRef.current.insertText(emoji);
+    } else {
+      setText((current) => `${current}${emoji}`.slice(0, MAX_TEXT_LEN));
+    }
     setPostError(null);
   };
 
   const togglePostTextBold = () => {
-    const textarea = postTextAreaRef.current;
-    const result = toggleBoldAtTextAreaSelection({
-      currentValue: text,
-      maxLength: MAX_TEXT_LEN,
-      textarea,
-    });
-    setText(result.value);
-    if (textarea && typeof window !== "undefined") {
-      window.requestAnimationFrame(() => {
-        textarea.focus();
-        textarea.setSelectionRange(result.selectionStart, result.selectionEnd);
-      });
-    }
+    postTextEditorRef.current?.toggleBold();
     setPostError(null);
   };
 
@@ -1865,6 +1841,25 @@ export default function IntranetPage() {
     setPollOptions((prev) =>
       prev.length <= MIN_POLL_OPTIONS ? prev : prev.filter((_, idx) => idx !== index)
     );
+    setPostError(null);
+  };
+
+  const addPostSource = () => {
+    setPostSources((prev) =>
+      prev.length >= INTRANET_WALL_MAX_SOURCES ? prev : [...prev, ""]
+    );
+    setPostError(null);
+  };
+
+  const updatePostSource = (index: number, value: string) => {
+    setPostSources((prev) =>
+      prev.map((source, sourceIndex) => (sourceIndex === index ? value : source))
+    );
+    setPostError(null);
+  };
+
+  const removePostSource = (index: number) => {
+    setPostSources((prev) => prev.filter((_, sourceIndex) => sourceIndex !== index));
     setPostError(null);
   };
 
@@ -2026,6 +2021,11 @@ export default function IntranetPage() {
       setPostError("Text příspěvku je povinný.");
       return;
     }
+    const sourcesResult = parseIntranetWallSources(postSources);
+    if (!sourcesResult.ok) {
+      setPostError(sourcesResult.error);
+      return;
+    }
     const trimmedPollQuestion = pollQuestion.trim();
     const trimmedPollOptions = pollOptions
       .map((option) => option.trim())
@@ -2051,6 +2051,7 @@ export default function IntranetPage() {
       form.set("text", trimmedText.slice(0, MAX_TEXT_LEN));
       form.set("section", postSection);
       form.set("pinned", postPinned ? "1" : "0");
+      form.set("sources", JSON.stringify(sourcesResult.sources));
       if (postReadByDay) form.set("readByDay", postReadByDay);
       files.forEach((file) => form.append("files", file));
       if (!isEditing && pollEnabled) {
@@ -2102,6 +2103,7 @@ export default function IntranetPage() {
       setEmojiOpen(false);
       setPostPinned(false);
       setPostReadByDay("");
+      setPostSources([]);
       setPostModalOpen(false);
       setEditingPost(null);
       if (postSection !== selectedSection) {
@@ -2475,6 +2477,10 @@ export default function IntranetPage() {
     : previewAttachmentIsPdf
       ? FileText
       : Paperclip;
+  const readerVisual = readerPost
+    ? SECTION_VISUALS[readerPost.section] ?? SECTION_VISUALS.obecne
+    : SECTION_VISUALS.obecne;
+  const ReaderSectionIcon = readerVisual.icon;
 
   return (
     <AppLayout active="intranet">
@@ -2488,23 +2494,16 @@ export default function IntranetPage() {
         </div>
 
         <div className="relative z-10 mx-auto max-w-7xl space-y-4">
-          <section className={`${styles.heroPanel} rounded-[26px] border border-white/70 bg-white/76 p-3 shadow-[0_18px_44px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-4`}>
+          <section className="px-1 py-1 sm:px-2 sm:py-2">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-center gap-3">
-                <div className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border ${currentSectionVisual.badge}`}>
+                <div
+                  className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border shadow-[0_10px_24px_rgba(15,23,42,0.1)] ${currentSectionVisual.badge}`}
+                >
                   <CurrentSectionIcon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Intranet
-                    </span>
-                    <span className="rounded-full border border-slate-300/80 bg-white/85 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                      {postsHasMore ? `${posts.length}+` : posts.length} příspěvků
-                    </span>
-                  </div>
-                  <h1 className="mt-1 truncate text-2xl font-bold tracking-[-0.02em] text-slate-950 sm:text-3xl">
+                  <h1 className="truncate text-3xl font-black tracking-[-0.035em] text-slate-950 sm:text-[2rem]">
                     {currentSectionLabel}
                   </h1>
                 </div>
@@ -2516,17 +2515,21 @@ export default function IntranetPage() {
                   onClick={() => {
                     if (user) void loadPosts(user, selectedSection);
                   }}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-300/80 bg-white/90 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.09)] transition hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white"
+                  className="group inline-flex h-11 items-center gap-2 rounded-full border border-white/90 bg-white/80 py-1.5 pl-1.5 pr-4 text-sm font-bold text-slate-700 shadow-[0_10px_26px_rgba(15,23,42,0.1)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
                 >
-                  <RefreshCw className="h-4 w-4" />
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600 ring-1 ring-slate-200">
+                    <RefreshCw className="h-4 w-4 transition-transform duration-500 group-hover:rotate-180" />
+                  </span>
                   Obnovit
                 </button>
                 <button
                   type="button"
                   onClick={openCreatePostModal}
-                  className={`${styles.createButton} inline-flex items-center gap-2 rounded-2xl border border-slate-900/80 bg-slate-950 px-4 py-2.5 text-sm font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:bg-slate-900`}
+                  className="group inline-flex h-11 items-center gap-2 rounded-full border border-slate-900/90 bg-[linear-gradient(135deg,#0f172a_0%,#020617_100%)] py-1.5 pl-1.5 pr-4 text-sm font-bold text-white shadow-[0_12px_28px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.36)]"
                 >
-                  <Plus className="h-4 w-4" />
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/12 ring-1 ring-white/15">
+                    <Plus className="h-4 w-4 transition-transform duration-300 group-hover:rotate-90" />
+                  </span>
                   Přidat příspěvek
                 </button>
               </div>
@@ -2615,7 +2618,8 @@ export default function IntranetPage() {
                   const isCommentPostingThis = commentPostingById[post.id] === true;
                   const imageAttachments = post.attachments.filter((attachment) => attachment.isImage);
                   const otherAttachments = post.attachments.filter((attachment) => !attachment.isImage);
-                  const hasAttachmentRail = post.attachments.length > 0;
+                  const hasAttachments = post.attachments.length > 0;
+                  const isLongPost = shouldCollapseWallPostText(post.text);
 
                   return (
                     <article
@@ -2637,7 +2641,15 @@ export default function IntranetPage() {
                         aria-hidden="true"
                       />
 
-                      <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 pb-4">
+                      <div
+                        className={
+                          hasAttachments
+                            ? "grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start"
+                            : ""
+                        }
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 pb-4">
                         <div className="flex min-w-0 items-start gap-3.5">
                           <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200">
                             <Image
@@ -2712,115 +2724,194 @@ export default function IntranetPage() {
                             </>
                           ) : null}
                         </div>
-                      </div>
+                          </div>
 
-                      <div
-                        className={[
-                          "mt-5 grid gap-5",
-                          hasAttachmentRail
-                            ? "lg:grid-cols-[minmax(0,1fr)_minmax(290px,360px)] lg:items-start"
-                            : "",
-                        ].join(" ")}
-                      >
-                        <div className="min-w-0">
-                          <div className="max-w-3xl">
-                            <h3 className="text-2xl font-bold leading-[1.14] tracking-[-0.025em] text-slate-950 sm:text-[1.7rem]">
-                              {post.title}
-                            </h3>
+                          <div className="mt-5">
+                          <div className="min-w-0 max-w-5xl">
+                          <h3 className="text-2xl font-bold leading-[1.14] tracking-[-0.025em] text-slate-950 sm:text-[1.7rem]">
+                            {post.title}
+                          </h3>
+                          {isLongPost ? (
+                            <div className="mt-3">
+                              <div className="relative overflow-hidden">
+                                <LinkedText
+                                  text={post.text}
+                                  className="line-clamp-[8] whitespace-pre-wrap text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-7 lg:text-[17px] lg:leading-8"
+                                />
+                                <div
+                                  className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white via-white/90 to-transparent"
+                                  aria-hidden="true"
+                                />
+                              </div>
+                              <div className="relative mt-1 flex items-center justify-center pt-2">
+                                <span
+                                  className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"
+                                  aria-hidden="true"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setReaderPost(post)}
+                                  aria-haspopup="dialog"
+                                  className="group/readmore relative inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 py-1.5 pl-2 pr-1.5 text-left text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.11)] backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_32px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+                                >
+                                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition group-hover/readmore:bg-slate-200 group-hover/readmore:text-slate-900">
+                                    <BookOpen className="h-4 w-4" />
+                                  </span>
+                                  <span className="px-0.5">
+                                    <span className="block text-sm font-bold leading-tight">
+                                      Číst celý příspěvek
+                                    </span>
+                                    <span className="hidden text-[10px] font-semibold leading-tight text-slate-500 sm:block">
+                                      {wallPostReadingMinutes(post.text)} min čtení
+                                    </span>
+                                  </span>
+                                  <span className="ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition group-hover/readmore:translate-y-0.5 group-hover/readmore:bg-slate-800">
+                                    <ChevronDown className="h-4 w-4" />
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
                             <LinkedText
                               text={post.text}
-                              className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-7"
+                              className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-7 lg:text-[17px] lg:leading-8"
                             />
+                          )}
 
-                            {post.poll ? (
-                              <PollCard
-                                postId={post.id}
-                                poll={post.poll}
-                                votingOptionId={pollVotingByPostId[post.id]}
-                                error={pollErrorByPostId[post.id]}
-                                onVote={(targetPostId, optionId) =>
-                                  void handleVoteInPoll(targetPostId, optionId)
-                                }
-                              />
-                            ) : null}
-
-                            <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-slate-200/80 pt-4">
-                              <button
-                                type="button"
-                                onClick={() => void handleToggleLike(post.id)}
-                                disabled={isLikingThis || !user}
-                                className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                                  post.likedByMe
-                                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                                    : "border-slate-300 bg-white text-slate-700 hover:border-slate-500 hover:bg-slate-100"
-                                }`}
-                              >
-                                {isLikingThis ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Heart className={`h-4 w-4 ${post.likedByMe ? "fill-current" : ""}`} />
-                                )}
-                                <span>{post.likedByMe ? "Líbí se mi" : "Like"}</span>
-                                <span className="rounded-full border border-current/25 px-1.5 py-0.5 text-xs leading-none">
-                                  {post.likeCount}
-                                </span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleToggleComments(post.id)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
-                              >
-                                <MessageSquare className="h-4 w-4" />
-                                {post.commentCount} komentářů
-                                {commentsExpanded ? (
-                                  <ChevronUp className="h-4 w-4" />
-                                ) : (
-                                  <ChevronDown className="h-4 w-4" />
-                                )}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleOpenCommentComposer(post.id)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3.5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-                              >
-                                <Plus className="h-4 w-4" />
-                                Přidat komentář
-                              </button>
-                            </div>
+                          {post.poll ? (
+                            <PollCard
+                              postId={post.id}
+                              poll={post.poll}
+                              votingOptionId={pollVotingByPostId[post.id]}
+                              error={pollErrorByPostId[post.id]}
+                              onVote={(targetPostId, optionId) =>
+                                void handleVoteInPoll(targetPostId, optionId)
+                              }
+                            />
+                          ) : null}
+                          </div>
                           </div>
                         </div>
 
-                        {hasAttachmentRail ? (
-                          <aside className="self-start space-y-3 rounded-[20px] border border-slate-200/90 bg-[linear-gradient(145deg,#f8fafc_0%,#ffffff_100%)] p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-                            <div className="inline-flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.13em] text-slate-500">
-                              <Paperclip className="h-3.5 w-3.5" />
-                              Přílohy
-                            </div>
+                          {hasAttachments ? (
+                            <aside className="rounded-[18px] border border-slate-200/90 bg-[linear-gradient(145deg,#f8fafc_0%,#ffffff_100%)] p-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                              <div className="flex items-center justify-between gap-2 px-0.5 pb-2.5">
+                                <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm ring-1 ring-slate-200">
+                                    <Paperclip className="h-3.5 w-3.5" />
+                                  </span>
+                                  Přílohy
+                                </div>
+                                <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-500 shadow-sm">
+                                  {post.attachments.length}{" "}
+                                  {post.attachments.length === 1
+                                    ? "soubor"
+                                    : post.attachments.length <= 4
+                                      ? "soubory"
+                                      : "souborů"}
+                                </span>
+                              </div>
 
-                            <div className="grid gap-2">
-                              {imageAttachments.map((attachment) => (
-                                <AttachmentImagePreview
-                                  key={attachment.id}
-                                  attachment={attachment}
-                                  user={user}
-                                  onOpen={(item) => void handleOpenAttachment(item)}
-                                />
-                              ))}
-                              {otherAttachments.map((attachment) => (
-                                <AttachmentDocumentPreviewCard
-                                  key={attachment.id}
-                                  attachment={attachment}
-                                  user={user}
-                                  onPreview={(item) => void handleOpenAttachment(item)}
-                                  onDownload={(item) => void handleDownloadAttachment(item)}
-                                />
-                              ))}
-                            </div>
-                          </aside>
-                        ) : null}
-                      </div>
+                              <div className="grid grid-cols-1 items-start gap-2.5">
+                                {imageAttachments.map((attachment) => (
+                                  <AttachmentImagePreview
+                                    key={attachment.id}
+                                    attachment={attachment}
+                                    user={user}
+                                    onOpen={(item) => void handleOpenAttachment(item)}
+                                  />
+                                ))}
+                                {otherAttachments.map((attachment) => (
+                                  <AttachmentDocumentPreviewCard
+                                    key={attachment.id}
+                                    attachment={attachment}
+                                    user={user}
+                                    onPreview={(item) => void handleOpenAttachment(item)}
+                                    onDownload={(item) => void handleDownloadAttachment(item)}
+                                  />
+                                ))}
+                              </div>
+                            </aside>
+                          ) : null}
+                        </div>
+
+                      <div className="mt-5 border-t border-slate-200/80 pt-4">
+                          <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200/90 bg-[linear-gradient(145deg,#f8fafc_0%,#ffffff_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_22px_rgba(15,23,42,0.05)]">
+                                {post.sources.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSourcesModalPost(post)}
+                                    className="group inline-flex h-10 items-center gap-2 rounded-xl border border-transparent px-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
+                                  >
+                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-100 text-sky-700 transition group-hover:bg-sky-200/70">
+                                      <Link2 className="h-3.5 w-3.5" />
+                                    </span>
+                                    Zdroje
+                                    <span className="inline-flex min-w-6 items-center justify-center rounded-lg bg-white px-1.5 py-1 text-[11px] font-bold leading-none text-sky-700 shadow-sm ring-1 ring-sky-100">
+                                      {post.sources.length}
+                                    </span>
+                                  </button>
+                                ) : null}
+
+                                <button
+                                  type="button"
+                                  onClick={() => void handleToggleLike(post.id)}
+                                  disabled={isLikingThis || !user}
+                                  className={`group inline-flex h-10 items-center gap-2 rounded-xl border px-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                    post.likedByMe
+                                      ? "border-rose-200 bg-rose-50 text-rose-700 shadow-[0_5px_14px_rgba(244,63,94,0.1)] hover:bg-rose-100"
+                                      : "border-transparent text-slate-700 hover:border-rose-100 hover:bg-rose-50/70 hover:text-rose-700"
+                                  }`}
+                                >
+                                  <span
+                                    className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition ${
+                                      post.likedByMe
+                                        ? "bg-rose-100 text-rose-600"
+                                        : "bg-slate-100 text-slate-500 group-hover:bg-rose-100 group-hover:text-rose-600"
+                                    }`}
+                                  >
+                                    {isLikingThis ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Heart
+                                        className={`h-3.5 w-3.5 ${post.likedByMe ? "fill-current" : ""}`}
+                                      />
+                                    )}
+                                  </span>
+                                  <span>{post.likedByMe ? "Líbí se mi" : "Like"}</span>
+                                  <span className="inline-flex min-w-6 items-center justify-center rounded-lg bg-white px-1.5 py-1 text-[11px] font-bold leading-none text-current shadow-sm ring-1 ring-current/10">
+                                    {post.likeCount}
+                                  </span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleComments(post.id)}
+                                  className="group inline-flex h-10 items-center gap-2 rounded-xl border border-transparent px-2.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-100 hover:bg-indigo-50/70 hover:text-indigo-800"
+                                >
+                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition group-hover:bg-indigo-100 group-hover:text-indigo-700">
+                                    <MessageSquare className="h-3.5 w-3.5" />
+                                  </span>
+                                  <span>{post.commentCount} komentářů</span>
+                                  {commentsExpanded ? (
+                                    <ChevronUp className="h-3.5 w-3.5 text-indigo-500" />
+                                  ) : (
+                                    <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition group-hover:text-indigo-500" />
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenCommentComposer(post.id)}
+                                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-700/80 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-3.5 text-sm font-bold text-white shadow-[0_8px_20px_rgba(5,150,105,0.22)] transition hover:-translate-y-0.5 hover:shadow-[0_11px_26px_rgba(5,150,105,0.3)] sm:ml-auto"
+                                >
+                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-white/15">
+                                    <Plus className="h-3.5 w-3.5" />
+                                  </span>
+                                  Přidat komentář
+                                </button>
+                          </div>
+                        </div>
 
                       {commentsExpanded ? (
                         <div className="mt-3 rounded-2xl border border-slate-200/90 bg-[linear-gradient(150deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,0.95)_100%)] p-3">
@@ -3146,6 +3237,182 @@ export default function IntranetPage() {
         </div>
       </div>
 
+      {readerPost ? (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center px-3 py-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+            onClick={() => setReaderPost(null)}
+            aria-label="Zavřít celý příspěvek"
+          />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="intranet-reader-title"
+            className="relative z-10 flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[30px] border border-white/80 bg-white shadow-[0_38px_110px_rgba(2,6,23,0.58)]"
+          >
+            <div
+              className={`h-1.5 shrink-0 bg-gradient-to-r ${readerVisual.rail}`}
+              aria-hidden="true"
+            />
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3.5 sm:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200">
+                  <Image
+                    src="/icons/klient.webp"
+                    alt="Ikona autora"
+                    fill
+                    sizes="44px"
+                    className="object-cover"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={[
+                        "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold",
+                        readerVisual.badge,
+                      ].join(" ")}
+                    >
+                      <ReaderSectionIcon className="h-3.5 w-3.5" />
+                      {readerPost.sectionLabel}
+                    </span>
+                    <span className="truncate text-xs font-semibold text-slate-600">
+                      {readerPost.author.name}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      {formatDateTime(readerPost.createdAtMs)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <BookOpen className="h-3.5 w-3.5" />
+                      {wallPostReadingMinutes(readerPost.text)} min čtení
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setReaderPost(null)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 transition hover:border-slate-500 hover:bg-slate-100"
+                aria-label="Zavřít celý příspěvek"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-6 sm:px-7 sm:py-8">
+              <article className="mx-auto max-w-3xl">
+                <h2
+                  id="intranet-reader-title"
+                  className="text-3xl font-black leading-[1.12] tracking-[-0.035em] text-slate-950 sm:text-4xl"
+                >
+                  {readerPost.title}
+                </h2>
+                <div className={`mt-5 h-1 w-20 rounded-full bg-gradient-to-r ${readerVisual.rail}`} />
+                <LinkedText
+                  text={readerPost.text}
+                  className="mt-7 whitespace-pre-wrap text-[16px] leading-8 text-slate-700 sm:text-[17px] sm:leading-8"
+                />
+
+                {readerPost.sources.length > 0 ? (
+                  <div className="mt-8 border-t border-slate-200 pt-5">
+                    <button
+                      type="button"
+                      onClick={() => setSourcesModalPost(readerPost)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm font-bold text-sky-800 transition hover:border-sky-300 hover:bg-sky-100"
+                    >
+                      <Link2 className="h-4 w-4" />
+                      Zobrazit zdroje
+                      <span className="rounded-full border border-sky-300/70 bg-white/70 px-1.5 py-0.5 text-xs leading-none">
+                        {readerPost.sources.length}
+                      </span>
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {sourcesModalPost ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-3 py-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/65 backdrop-blur-sm"
+            onClick={() => setSourcesModalPost(null)}
+            aria-label="Zavřít zdroje příspěvku"
+          />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="intranet-post-sources-title"
+            className="relative z-10 max-h-[86vh] w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_34px_90px_rgba(2,6,23,0.48)]"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-[linear-gradient(145deg,#eff6ff_0%,#ffffff_100%)] px-4 py-4 sm:px-5">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 text-sky-700">
+                  <Link2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3
+                    id="intranet-post-sources-title"
+                    className="text-xl font-bold tracking-[-0.01em] text-slate-900"
+                  >
+                    Zdroje
+                  </h3>
+                  <p className="mt-0.5 truncate text-sm font-medium text-slate-600">
+                    {sourcesModalPost.title}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSourcesModalPost(null)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 transition hover:border-slate-500 hover:bg-slate-100"
+                aria-label="Zavřít zdroje příspěvku"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[66vh] space-y-2 overflow-y-auto bg-slate-50/80 p-4 sm:p-5">
+              {sourcesModalPost.sources.map((source, index) => (
+                <a
+                  key={source}
+                  href={source}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_12px_26px_rgba(14,165,233,0.12)]"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-100 bg-sky-50 text-sm font-bold text-sky-700">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold text-slate-900">
+                        {intranetWallSourceHost(source)}
+                      </span>
+                      <span className="mt-0.5 block break-all text-xs leading-5 text-slate-500">
+                        {source}
+                      </span>
+                    </span>
+                  </div>
+                  <ExternalLink className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-sky-700" />
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {attachmentPreview ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center px-3 py-4">
           <button
@@ -3327,23 +3594,16 @@ export default function IntranetPage() {
                         Emoji
                       </button>
                     </div>
-                    <textarea
+                    <WallPostRichTextEditor
                       id="intranet-post-text"
-                      ref={postTextAreaRef}
+                      ref={postTextEditorRef}
                       value={text}
-                      onChange={(event) => {
-                        setText(event.target.value.slice(0, MAX_TEXT_LEN));
+                      maxLength={MAX_TEXT_LEN}
+                      onChange={(nextValue) => {
+                        setText(nextValue);
                         setPostError(null);
                       }}
-                      onKeyDown={(event) => {
-                        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
-                          event.preventDefault();
-                          togglePostTextBold();
-                        }
-                      }}
                       placeholder="Napiš text příspěvku..."
-                      rows={7}
-                      className="w-full resize-y rounded-2xl border border-slate-300 bg-white px-3 py-3 text-[15px] leading-6 text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
                     />
                   </div>
 
@@ -3830,6 +4090,68 @@ export default function IntranetPage() {
                     </div>
                   </>
                 )}
+
+                <div className="mt-5 border-t border-slate-200 pt-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.13em] text-slate-500">
+                        <Link2 className="h-4 w-4" />
+                        Zdroje
+                      </h4>
+                      <p className="mt-1 text-xs leading-5 text-slate-600">
+                        Přidej odkazy, ze kterých příspěvek čerpá.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500">
+                      {postSources.length}/{INTRANET_WALL_MAX_SOURCES}
+                    </span>
+                  </div>
+
+                  {postSources.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      {postSources.map((source, index) => (
+                        <div key={`post-source-${index}`} className="flex items-center gap-2">
+                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-100 bg-sky-50 text-xs font-bold text-sky-700">
+                            {index + 1}
+                          </span>
+                          <input
+                            type="url"
+                            inputMode="url"
+                            autoComplete="url"
+                            value={source}
+                            maxLength={INTRANET_WALL_SOURCE_MAX_URL_LENGTH}
+                            onChange={(event) => updatePostSource(index, event.target.value)}
+                            placeholder="https://www.example.cz/clanek"
+                            aria-label={`Zdroj ${index + 1}`}
+                            className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removePostSource(index)}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100"
+                            aria-label={`Odebrat zdroj ${index + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white/70 px-3 py-2.5 text-xs text-slate-500">
+                      Zatím bez zdrojů.
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={addPostSource}
+                    disabled={postSources.length >= INTRANET_WALL_MAX_SOURCES}
+                    className="mt-3 inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Přidat zdroj
+                  </button>
+                </div>
               </div>
             </div>
           </div>
