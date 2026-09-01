@@ -103,5 +103,6 @@ describe("PDF reimport detailu smlouvy", () => {
     expect(PDF_REIMPORT_PARSERS.domex).toBeTypeOf("function");
     expect(PDF_REIMPORT_PARSERS.neon).toBeTypeOf("function");
     expect(PDF_REIMPORT_PARSERS.maxdomov).toBeTypeOf("function");
+    expect(PDF_REIMPORT_PARSERS.koopcestovko).toBeTypeOf("function");
   });
 });

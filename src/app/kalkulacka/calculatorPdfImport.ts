@@ -208,6 +208,12 @@ export async function parseContractPdfByProduct(
       const { parseAxaCestovkoPdf } = await import("../lib/parseAxaCestovkoPdf");
       return parseAxaCestovkoPdf(file);
     }
+    case "koopcestovko": {
+      const { parseKooperativaCestovkoPdf } = await import(
+        "../lib/parseKooperativaCestovkoPdf"
+      );
+      return parseKooperativaCestovkoPdf(file);
+    }
     case "cppsimplex": {
       const { parseCppSimplexPdf } = await import("../lib/parseCppSimplexPdf");
       return parseCppSimplexPdf(file);
@@ -236,6 +242,7 @@ export const AUTOMATED_PDF_PRODUCTS: readonly Product[] = [
   "kooperativaAuto",
   "cppcestovko",
   "axacestovko",
+  "koopcestovko",
   "cppsimplex",
   "neon",
   "flexi",

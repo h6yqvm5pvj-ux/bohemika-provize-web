@@ -104,6 +104,16 @@ const DETECTION_RULES: DetectionRule[] = [
       "V PDF jsou nalezeny texty „Inter Partner Assistance“ a „travel insurance“.",
   },
   {
+    product: "koopcestovko",
+    mustContain: [
+      { page: "any", text: normalizeText("Kooperativa") },
+      { page: "any", text: normalizeText("Cestovní pojištění KOLUMBUS") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Kooperativa“ a „Cestovní pojištění KOLUMBUS“.",
+  },
+  {
     product: "cppsimplex",
     mustContain: [
       { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },

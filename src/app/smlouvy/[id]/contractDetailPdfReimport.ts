@@ -11,6 +11,7 @@ import { parseCsobAutoPdf } from "@/app/lib/parseCsobAutoPdf";
 import { parseDomexPdf } from "@/app/lib/parseDomexPdf";
 import { parseFlexiPdf } from "@/app/lib/parseFlexiPdf";
 import { parseKooperativaAutoPdf } from "@/app/lib/parseKooperativaAutoPdf";
+import { parseKooperativaCestovkoPdf } from "@/app/lib/parseKooperativaCestovkoPdf";
 import { parseKoopOdzamPdf } from "@/app/lib/parseKoopOdzamPdf";
 import { parseMaxCizinKomplexPdf } from "@/app/lib/parseMaxCizinKomplexPdf";
 import { parseMaxdomovPdf } from "@/app/lib/parseMaxdomovPdf";
@@ -36,6 +37,7 @@ export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> =
   uniqaAuto: parseUniqaAutoPdf,
   pillowAuto: parsePillowAutoPdf,
   kooperativaAuto: parseKooperativaAutoPdf,
+  koopcestovko: parseKooperativaCestovkoPdf,
   cppcestovko: parseCppCestovkoPdf,
   cppsimplex: parseCppSimplexPdf,
   neon: parseNeonPdf,

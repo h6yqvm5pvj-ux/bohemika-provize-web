@@ -90,6 +90,18 @@ describe("detectProductFromPdf", () => {
     });
   });
 
+  it("detects Kooperativa KOLUMBUS travel insurance anywhere in the PDF", async () => {
+    pdfState.pages = [
+      ["Průvodní strana", "Kooperativa pojišťovna, a.s."],
+      ["Návrh pojistné smlouvy – Cestovní pojištění KOLUMBUS"],
+    ];
+
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({
+      product: "koopcestovko",
+      confidence: "high",
+    });
+  });
+
   it("detects MAXDOMOV 3 from Maxima contract text", async () => {
     pdfState.pages = [["MAXIMA pojišťovna", "MAXDOMOV 3"]];
 

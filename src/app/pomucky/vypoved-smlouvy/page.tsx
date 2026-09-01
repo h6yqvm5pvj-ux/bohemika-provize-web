@@ -113,6 +113,7 @@ type OnlineFormConfig = {
   description: string;
   url: string;
   buttonLabel: string;
+  highlights?: readonly string[];
   calculator?:
     | "sixWeeksBeforePeriodEnd"
     | "eightDaysAfterDelivery"
@@ -179,7 +180,7 @@ const INSURERS = [
   { label: "Kooperativa", logoPath: "/icons/koop-v2.png", logoClass: "p-2" },
   { label: "Allianz", logoPath: "/icons/allianz.png", logoClass: "p-2" },
   { label: "UNIQA", logoPath: "/icons/uniqa.png", logoClass: "p-2" },
-  { label: "ČSOB", logoPath: "/icons/csob.png", logoClass: "p-2" },
+  { label: "ČSOB", logoPath: "/icons/csb.png", logoClass: "p-2" },
   { label: "Direct", logoPath: "/icons/direct.png", logoClass: "scale-125" },
   { label: "Pillow", logoPath: "/icons/pillow.png", logoClass: "p-2" },
   { label: "Slavia", logoPath: "/icons/slavialogo.png", logoClass: "p-2" },
@@ -570,6 +571,11 @@ const DIRECT_NON_LIFE_ONLINE_FORM_CONFIG: OnlineFormConfig = {
     "Výpověď je možné provést v libovolný den bez výpovědní lhůty. Není potřeba fyzicky podepsaná výpověď — vše vyřídíte přímo na portálu Direct.",
   url: "https://www.direct.cz/online/ukoncit-smlouvu",
   buttonLabel: "Ukončit smlouvu online",
+  highlights: [
+    "Libovolný den",
+    "Bez výpovědní lhůty",
+    "Bez fyzického podpisu",
+  ],
 };
 
 function createEmptyPdfFields(fieldDefs: readonly PdfFieldDef[]) {
@@ -1769,6 +1775,22 @@ function OnlineFormPanel({
           </a>
         </div>
 
+        {config.highlights?.length ? (
+          <div className="grid gap-2.5 sm:grid-cols-3" aria-label="Výhody online ukončení">
+            {config.highlights.map((highlight) => (
+              <div
+                key={highlight}
+                className="flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-[linear-gradient(145deg,#ecfdf5_0%,#f7fee7_100%)] px-3.5 py-3 text-sm font-bold text-emerald-950 shadow-[0_8px_20px_rgba(16,185,129,0.08)]"
+              >
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+                {highlight}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {config.calculator === "sixWeeksBeforePeriodEnd" ? (
           <PeriodEndDeadlineBox
             initialPolicyStartDate={prefill?.policyStartDate}
@@ -1844,6 +1866,12 @@ function ContractTerminationPageContent() {
       setInsurer(prefill.insurer);
       setInsuranceType(prefill.insuranceType);
       setReason(prefilledReason);
+      if (prefill.insurer === "Direct" && prefill.insuranceType === "nonLife") {
+        setStep(0);
+        setDocumentViewMode("official");
+        setCompleted(true);
+        return;
+      }
       if (prefilledReason && prefill.insurer && prefill.insuranceType) {
         setStep(Math.max(0, reasons.length > 0 ? 2 : 1));
         setDocumentViewMode(prefill.insurer !== "ČPP" ? "universal" : "official");
@@ -2118,7 +2146,7 @@ function ContractTerminationPageContent() {
           </section>
         ) : null}
 
-        {activeDocument ? (
+        {hasOfficialDocument && hasUniversalDocument ? (
           <section className="sticky top-2 z-40 flex flex-col gap-3 rounded-[22px] border border-violet-200/80 bg-white/95 p-3 shadow-[0_16px_42px_rgba(88,28,135,0.16)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-3.5">
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-violet-700">
@@ -2347,13 +2375,14 @@ function ContractTerminationPageContent() {
                         onClick={() => {
                           setInsurer(item.label);
                           if (item.label === "Direct") {
-                            if (insuranceType === "life") {
-                              setInsuranceType(null);
-                            }
+                            setInsuranceType("nonLife");
                             setReason(null);
+                            setDocumentViewMode("official");
+                            setCompleted(true);
+                            setFormError(null);
+                            return;
                           }
                           if (
-                            item.label !== "Direct" &&
                             reason &&
                             !getTerminationReasonsForSelection(
                               insuranceType,
@@ -2383,6 +2412,11 @@ function ContractTerminationPageContent() {
                           />
                         </span>
                         <span className={selected ? "text-[#f8fafc]" : "text-violet-100/82"}>{item.label}</span>
+                        {item.label === "Direct" ? (
+                          <span className="inline-flex items-center rounded-full border border-lime-300/45 bg-lime-300/15 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-lime-200">
+                            Online • bez podpisu
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}

@@ -17,6 +17,7 @@ const PRODUCTS_WITH_CONTRACT_PDF_PARSER: Product[] = [
   "kooperativaAuto",
   "cppcestovko",
   "axacestovko",
+  "koopcestovko",
   "cppsimplex",
   "neon",
   "flexi",
