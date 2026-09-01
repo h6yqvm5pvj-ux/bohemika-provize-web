@@ -191,6 +191,7 @@ export function getTerminationReasonsForSelection(
     return insuranceType === "nonLife" ? TRAVEL_TERMINATION_REASONS : [];
   }
   const normalizedInsurer = insurer.trim().toLocaleLowerCase("cs-CZ");
+  if (normalizedInsurer === "direct") return [];
   if (
     insuranceType === "life" &&
     (normalizedInsurer === "čpp" || normalizedInsurer === "cpp")
@@ -256,7 +257,11 @@ export function getUniversalLetterForSelection({
 }): UniversalLetterDefinition | null {
   const normalizedInsurer = (insurer ?? "").trim().toLocaleLowerCase("cs");
   const isCpp = normalizedInsurer === "čpp" || normalizedInsurer === "cpp";
-  if (!normalizedInsurer || (isCpp && insuranceType === "life")) {
+  if (
+    !normalizedInsurer ||
+    normalizedInsurer === "direct" ||
+    (isCpp && insuranceType === "life")
+  ) {
     return null;
   }
 

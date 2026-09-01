@@ -180,6 +180,7 @@ const INSURERS = [
   { label: "Allianz", logoPath: "/icons/allianz.png", logoClass: "p-2" },
   { label: "UNIQA", logoPath: "/icons/uniqa.png", logoClass: "p-2" },
   { label: "ČSOB", logoPath: "/icons/csob.png", logoClass: "p-2" },
+  { label: "Direct", logoPath: "/icons/direct.png", logoClass: "scale-125" },
   { label: "Pillow", logoPath: "/icons/pillow.png", logoClass: "p-2" },
   { label: "Slavia", logoPath: "/icons/slavialogo.png", logoClass: "p-2" },
   { label: "AXA", logoPath: "/icons/axalogo.png", logoClass: "p-2" },
@@ -559,6 +560,16 @@ const CSOB_OTHER_REASON_ONLINE_FORM_CONFIG: OnlineFormConfig = {
     "Datum ukončení pojistné smlouvy bude následně posouzeno dle informací, které uvedete ve formuláři. ČSOB ve formuláři nevyžaduje fyzicky podepsanou žádost klientem. Online žádost musí být hlášena jménem klienta!",
   url: "https://www.csobpoj.cz/jak-na-smlouvy/vypovedi/formular-vypoved-z-jineho-duvodu",
   buttonLabel: "Otevřít formulář ČSOB",
+};
+
+const DIRECT_NON_LIFE_ONLINE_FORM_CONFIG: OnlineFormConfig = {
+  id: "direct-non-life-online-form",
+  eyebrow: "Direct • neživotní pojištění",
+  title: "Smlouvu ukončíte jednoduše online.",
+  description:
+    "Výpověď je možné provést v libovolný den bez výpovědní lhůty. Není potřeba fyzicky podepsaná výpověď — vše vyřídíte přímo na portálu Direct.",
+  url: "https://www.direct.cz/online/ukoncit-smlouvu",
+  buttonLabel: "Ukončit smlouvu online",
 };
 
 function createEmptyPdfFields(fieldDefs: readonly PdfFieldDef[]) {
@@ -1796,6 +1807,10 @@ function ContractTerminationPageContent() {
     insurer,
     contractPrefill?.sourceProduct,
   );
+  const availableInsuranceTypes =
+    insurer === "Direct"
+      ? INSURANCE_TYPES.filter((item) => item.id === "nonLife")
+      : INSURANCE_TYPES;
   const requiresReasonStep = availableReasons.length > 0;
 
   useEffect(() => {
@@ -1888,6 +1903,8 @@ function ContractTerminationPageContent() {
     (reason === "anniversary" || reason === "twoMonths");
   const showMaximaNonLifeDocument =
     completed && insuranceType === "nonLife" && insurer === "Maxima";
+  const showDirectNonLifeOnlineForm =
+    completed && insuranceType === "nonLife" && insurer === "Direct";
   const showCsobPeriodEndOnlineForm =
     completed &&
     insuranceType === "nonLife" &&
@@ -1924,15 +1941,17 @@ function ContractTerminationPageContent() {
           : showMaximaNonLifeDocument
             ? MAXIMA_NON_LIFE_TERMINATION_PDF_CONFIG
       : null;
-  const activeOnlineFormConfig = showCsobPeriodEndOnlineForm
-    ? CSOB_PERIOD_END_ONLINE_FORM_CONFIG
-    : showCsobTwoMonthsOnlineForm
-      ? CSOB_TWO_MONTHS_ONLINE_FORM_CONFIG
-      : showCsobPostClaimOnlineForm
-        ? CSOB_POST_CLAIM_ONLINE_FORM_CONFIG
-        : showCsobOtherReasonOnlineForm
-          ? CSOB_OTHER_REASON_ONLINE_FORM_CONFIG
-    : null;
+  const activeOnlineFormConfig = showDirectNonLifeOnlineForm
+    ? DIRECT_NON_LIFE_ONLINE_FORM_CONFIG
+    : showCsobPeriodEndOnlineForm
+      ? CSOB_PERIOD_END_ONLINE_FORM_CONFIG
+      : showCsobTwoMonthsOnlineForm
+        ? CSOB_TWO_MONTHS_ONLINE_FORM_CONFIG
+        : showCsobPostClaimOnlineForm
+          ? CSOB_POST_CLAIM_ONLINE_FORM_CONFIG
+          : showCsobOtherReasonOnlineForm
+            ? CSOB_OTHER_REASON_ONLINE_FORM_CONFIG
+            : null;
   const universalLetterDefinition = completed
     ? getUniversalLetterForSelection({ insurer, insuranceType, reason })
     : null;
@@ -2024,7 +2043,11 @@ function ContractTerminationPageContent() {
     }
 
     setDocumentViewMode(
-      contractPrefill && insurer !== "ČPP" ? "universal" : "official",
+      insurer === "Direct"
+        ? "official"
+        : contractPrefill && insurer !== "ČPP"
+          ? "universal"
+          : "official",
     );
     setCompleted(true);
   };
@@ -2216,7 +2239,7 @@ function ContractTerminationPageContent() {
                   Co se vypovídá
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {INSURANCE_TYPES.map((item) => {
+                  {availableInsuranceTypes.map((item) => {
                     const Icon = item.icon;
                     const selected = insuranceType === item.id;
 
@@ -2323,7 +2346,14 @@ function ContractTerminationPageContent() {
                         type="button"
                         onClick={() => {
                           setInsurer(item.label);
+                          if (item.label === "Direct") {
+                            if (insuranceType === "life") {
+                              setInsuranceType(null);
+                            }
+                            setReason(null);
+                          }
                           if (
+                            item.label !== "Direct" &&
                             reason &&
                             !getTerminationReasonsForSelection(
                               insuranceType,

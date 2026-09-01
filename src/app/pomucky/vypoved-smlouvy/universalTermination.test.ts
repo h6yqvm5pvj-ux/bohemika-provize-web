@@ -238,6 +238,18 @@ describe("getUniversalLetterForSelection", () => {
     });
   });
 
+  it("vede Direct neživot přímo do online ukončení bez varianty a bez univerzálního PDF", () => {
+    expect(getTerminationReasonsForSelection("nonLife", "Direct")).toEqual([]);
+    expect(getTerminationReasonsForSelection("life", "Direct")).toEqual([]);
+    expect(
+      getUniversalLetterForSelection({
+        insurer: "Direct",
+        insuranceType: "nonLife",
+        reason: "periodEnd",
+      }),
+    ).toBeNull();
+  });
+
   it("keeps an annual period-end calculation for non-life insurance", () => {
     expect(
       getUniversalLetterForSelection({

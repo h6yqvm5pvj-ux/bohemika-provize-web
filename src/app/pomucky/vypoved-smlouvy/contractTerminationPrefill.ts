@@ -15,6 +15,7 @@ export type TerminationPrefillInsurer =
   | "Allianz"
   | "UNIQA"
   | "ČSOB"
+  | "Direct"
   | "Pillow"
   | "Slavia"
   | "AXA"
@@ -59,6 +60,7 @@ const SUPPORTED_INSURERS = new Set<TerminationPrefillInsurer>([
   "Allianz",
   "UNIQA",
   "ČSOB",
+  "Direct",
   "Pillow",
   "Slavia",
   "AXA",
@@ -102,6 +104,7 @@ export function normalizeTerminationPrefillInsurer(
     uniqa: "UNIQA",
     csob: "ČSOB",
     "čsob": "ČSOB",
+    direct: "Direct",
     pillow: "Pillow",
     slavia: "Slavia",
     axa: "AXA",
@@ -143,6 +146,8 @@ export function normalizeContractTerminationPrefill(
     raw.insuranceType === "life" || raw.insuranceType === "nonLife"
       ? raw.insuranceType
       : null;
+  const supportedInsuranceType =
+    insurer === "Direct" && insuranceType === "life" ? null : insuranceType;
   const reason = TERMINATION_REASONS.has(raw.reason as TerminationReason)
     ? (raw.reason as TerminationReason)
     : null;
@@ -164,7 +169,7 @@ export function normalizeContractTerminationPrefill(
     policyStartDate: cleanIsoDay(raw.policyStartDate),
     contractSignedDate: cleanIsoDay(raw.contractSignedDate),
     insurer: insurer && SUPPORTED_INSURERS.has(insurer) ? insurer : null,
-    insuranceType,
+    insuranceType: supportedInsuranceType,
     reason,
   };
 }

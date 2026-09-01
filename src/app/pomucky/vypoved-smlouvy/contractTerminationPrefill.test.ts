@@ -18,6 +18,7 @@ describe("contractTerminationPrefill", () => {
     expect(normalizeTerminationPrefillInsurer("csob")).toBe("ČSOB");
     expect(normalizeTerminationPrefillInsurer("MAXIMA")).toBe("Maxima");
     expect(normalizeTerminationPrefillInsurer("Slavia")).toBe("Slavia");
+    expect(normalizeTerminationPrefillInsurer("DIRECT")).toBe("Direct");
     expect(normalizeTerminationPrefillInsurer("Comfort Commodity")).toBeNull();
   });
 
@@ -64,6 +65,21 @@ describe("contractTerminationPrefill", () => {
       insurer: "ČPP",
       insuranceType: "life",
     });
+  });
+
+  it("nepovolí u Directu životní pojištění", () => {
+    expect(
+      normalizeContractTerminationPrefill({
+        insurer: "Direct",
+        insuranceType: "life",
+      })?.insuranceType,
+    ).toBeNull();
+    expect(
+      normalizeContractTerminationPrefill({
+        insurer: "Direct",
+        insuranceType: "nonLife",
+      })?.insuranceType,
+    ).toBe("nonLife");
   });
 
   it.each(["domex", "cpphafan", "zamex", "cppsimplex"] as const)(
