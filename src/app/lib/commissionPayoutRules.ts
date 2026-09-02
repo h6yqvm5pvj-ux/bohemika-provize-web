@@ -6,6 +6,14 @@ const normalizedCommissionCode = (value: unknown): string =>
     .toUpperCase()
     .replace(/\s+/g, "");
 
+const NEON_REFRESH_STATEMENT_PRODUCT_CODES = new Set([
+  "CPP_NEONRF",
+  "CPP_NRF_LF",
+]);
+
+export const isNeonRefreshStatementProductCode = (value: unknown): boolean =>
+  NEON_REFRESH_STATEMENT_PRODUCT_CODES.has(normalizedCommissionCode(value));
+
 /**
  * ČPP ŽP NEON reports A201 as the investment-life component. Its premium base
  * is intentionally different from the base of the regular A101 commission.

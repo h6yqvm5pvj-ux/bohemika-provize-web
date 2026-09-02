@@ -80,6 +80,11 @@ export type MailboxWriteInput = {
   read?: boolean;
 };
 
+export type MailboxWriteOnceInput = Omit<MailboxWriteInput, "recipientEmails"> & {
+  recipientEmail: string;
+  entryId: string;
+};
+
 export async function writeMailboxEntries({
   recipientEmails,
   type,
@@ -130,4 +135,64 @@ export async function writeMailboxEntries({
 
   await batch.commit();
   return { written: recipients.length };
+}
+
+export async function writeMailboxEntryOnce({
+  recipientEmail,
+  entryId,
+  type,
+  title,
+  body,
+  deepLink,
+  metadata,
+  createdAtMs,
+  read,
+}: MailboxWriteOnceInput): Promise<{ written: boolean }> {
+  if (!adminDb) return { written: false };
+  const db = adminDb;
+
+  const email = normalizeEmail(recipientEmail);
+  const cleanEntryId = typeof entryId === "string" ? entryId.trim() : "";
+  if (!email) return { written: false };
+  if (
+    !cleanEntryId ||
+    cleanEntryId.length > 180 ||
+    !/^[A-Za-z0-9._-]+$/.test(cleanEntryId)
+  ) {
+    throw new Error("Mailbox entryId má neplatný formát.");
+  }
+
+  const cleanType = clampText(type, 60, "generic");
+  const cleanTitle = clampText(title, TITLE_MAX_LEN, "Bohemka.App");
+  const cleanBody = clampText(body, BODY_MAX_LEN, "Máš novou notifikaci.");
+  const cleanDeepLink = normalizeDeepLink(deepLink ?? "/nastaveni");
+  const cleanMetadata = sanitizeMetadata(metadata);
+  const nowMs = Number.isFinite(createdAtMs) ? Number(createdAtMs) : Date.now();
+  const initialRead = read === true;
+  const docRef = db
+    .collection("usersPrivate")
+    .doc(email)
+    .collection("mailbox")
+    .doc(cleanEntryId);
+
+  return db.runTransaction(async (transaction) => {
+    const existing = await transaction.get(docRef);
+    if (existing.exists) return { written: false };
+
+    transaction.set(docRef, {
+      recipientEmail: email,
+      type: cleanType,
+      title: cleanTitle,
+      body: cleanBody,
+      deepLink: cleanDeepLink,
+      read: initialRead,
+      readAtMs: initialRead ? nowMs : null,
+      readAt: initialRead ? FieldValue.serverTimestamp() : null,
+      createdAtMs: nowMs,
+      createdAt: FieldValue.serverTimestamp(),
+      ...(cleanMetadata ? { metadata: cleanMetadata } : {}),
+    });
+
+    return { written: true };
+  });
 }

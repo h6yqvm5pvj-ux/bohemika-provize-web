@@ -71,6 +71,7 @@ export type SubscriptionPriceCard = {
   cadenceLabel: string;
   footerLabel: string;
   footerEmphasis: string;
+  qrImageSrc: string;
 };
 
 export const SUBSCRIPTION_PRICE_CARDS: readonly SubscriptionPriceCard[] = [
@@ -82,6 +83,7 @@ export const SUBSCRIPTION_PRICE_CARDS: readonly SubscriptionPriceCard[] = [
     cadenceLabel: "za měsíc",
     footerLabel: "Délka období",
     footerEmphasis: "1 měsíc",
+    qrImageSrc: "/payments/subscription-300.jpeg",
   },
   {
     id: "semiannual",
@@ -91,6 +93,7 @@ export const SUBSCRIPTION_PRICE_CARDS: readonly SubscriptionPriceCard[] = [
     cadenceLabel: "na 6 měsíců",
     footerLabel: "Úspora proti měsíčnímu",
     footerEmphasis: "210 Kč",
+    qrImageSrc: "/payments/subscription-1590.jpeg",
   },
   {
     id: "yearly",
@@ -100,5 +103,6 @@ export const SUBSCRIPTION_PRICE_CARDS: readonly SubscriptionPriceCard[] = [
     cadenceLabel: "na 12 měsíců",
     footerLabel: "Úspora proti měsíčnímu",
     footerEmphasis: "800 Kč",
+    qrImageSrc: "/payments/subscription-2800.jpeg",
   },
 ];

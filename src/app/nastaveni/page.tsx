@@ -716,7 +716,7 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
 
 
 export default function SettingsPage() {
-  const onlineCardQueryAppliedRef = useRef(false);
+  const settingsTabQueryAppliedRef = useRef(false);
   const metaLoadVersionRef = useRef(0);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [impersonation, setImpersonation] =
@@ -1445,15 +1445,16 @@ export default function SettingsPage() {
   }, [activeTab, visibleSettingsTabs]);
 
   useEffect(() => {
-    if (onlineCardQueryAppliedRef.current) return;
+    if (settingsTabQueryAppliedRef.current) return;
     if (timelineGateActive) return;
     if (typeof window === "undefined") return;
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
-    if (requestedTab === "onlineCard" || requestedTab === "online-vizitka") {
-      setActiveTab("onlineCard");
-      onlineCardQueryAppliedRef.current = true;
-    }
-  }, [timelineGateActive]);
+    const normalizedTab =
+      requestedTab === "online-vizitka" ? "onlineCard" : requestedTab;
+    const matchingTab = visibleSettingsTabs.find((tab) => tab.id === normalizedTab);
+    if (matchingTab) setActiveTab(matchingTab.id);
+    settingsTabQueryAppliedRef.current = true;
+  }, [timelineGateActive, visibleSettingsTabs]);
 
   useEffect(() => {
     if (loadingMeta || typeof window === "undefined") return;

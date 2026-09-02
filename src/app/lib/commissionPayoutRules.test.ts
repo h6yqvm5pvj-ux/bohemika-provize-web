@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { isNeonInvestmentLifeA201Payout } from "./commissionPayoutRules";
+import {
+  isNeonInvestmentLifeA201Payout,
+  isNeonRefreshStatementProductCode,
+} from "./commissionPayoutRules";
+
+describe("isNeonRefreshStatementProductCode", () => {
+  it("recognizes both NEON refresh product codes used in statements", () => {
+    expect(isNeonRefreshStatementProductCode("CPP_NEONRF")).toBe(true);
+    expect(isNeonRefreshStatementProductCode(" CPP_NRF_LF ")).toBe(true);
+  });
+
+  it("does not classify regular NEON as refresh", () => {
+    expect(isNeonRefreshStatementProductCode("CPP_NEON")).toBe(false);
+  });
+});
 
 describe("isNeonInvestmentLifeA201Payout", () => {
   it("recognizes the separate NEON investment-life A201 component", () => {

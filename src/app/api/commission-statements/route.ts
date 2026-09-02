@@ -15,7 +15,10 @@ import {
   requireContractsEntryGuard,
 } from "@/app/api/contracts/_lib/contractsApi";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
-import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
+import {
+  isNeonInvestmentLifeA201Payout,
+  isNeonRefreshStatementProductCode,
+} from "@/app/lib/commissionPayoutRules";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
@@ -465,9 +468,6 @@ const lifeProductKeyFromStatementCode = (value: string | null | undefined): Prod
   if (/PILLOW.*(?:UR|NM)/.test(code)) return "pillowInjury";
   return null;
 };
-
-const isNeonRefreshStatementProductCode = (value: string | null | undefined): boolean =>
-  normalizeProductCode(value) === "CPP_NRF_LF";
 
 const isLifePremiumIncreaseCommissionCode = (
   value: string | null | undefined
@@ -4428,7 +4428,11 @@ const handleManualNeonRefreshConversion = async ({
   if (!hasNrfRow) {
     return withRateLimit(
       NextResponse.json(
-        { ok: false, error: "Ve výpisu pro tuto smlouvu není produktový kód REFRESH (CPP_NRF_LF)." },
+        {
+          ok: false,
+          error:
+            "Ve výpisu pro tuto smlouvu není produktový kód REFRESH (CPP_NRF_LF nebo CPP_NEONRF).",
+        },
         { status: 400 }
       )
     );

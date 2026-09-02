@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 
 import { isAutoProduct } from "@/app/lib/productCatalog";
+import { isNeonRefreshStatementProductCode } from "@/app/lib/commissionPayoutRules";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
   type CommissionMode,
@@ -5221,7 +5222,7 @@ const collectPostProcessingNeonRefreshPromptTargets = ({
 
     const statementLabel = statementDiscrepancyLabel(statement);
     for (const contract of statement.lifeSplitContracts) {
-      if (normalizeProductCode(contract.productCode) !== "CPP_NRF_LF") continue;
+      if (!isNeonRefreshStatementProductCode(contract.productCode)) continue;
 
       const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber);
       const systemContract = matchedSystemContractForLifeSplit(contract, match);
@@ -5413,7 +5414,9 @@ function LifeSplitContractCard({
     status: StatementRefreshConversionStatus;
     message: string | null;
   }>({ status: "idle", message: null });
-  const isStatementNrfRefresh = normalizeProductCode(reviewContract.productCode) === "CPP_NRF_LF";
+  const isStatementNrfRefresh = isNeonRefreshStatementProductCode(
+    reviewContract.productCode
+  );
   const shouldShowStatementRefreshConversion = Boolean(
     isStatementNrfRefresh &&
       systemContract &&
