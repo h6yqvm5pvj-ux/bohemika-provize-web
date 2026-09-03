@@ -1,10 +1,14 @@
 import { toDate } from "@/app/lib/formatters";
-import type { ProductInstitutionId } from "@/app/lib/productCatalog";
+import {
+  isAutoProduct,
+  type ProductInstitutionId,
+} from "@/app/lib/productCatalog";
 import {
   ORIGINAL_CONTRACT_REPLACEMENT_SUPPORT_LABEL,
   supportsOriginalContractReplacement,
 } from "@/app/lib/originalContractReplacement";
 import { productCoefficientValidityError } from "@/app/lib/productFormulas/coefficientSets";
+import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import type {
   CommissionMode,
   CommissionResultItemDTO,
@@ -753,6 +757,20 @@ export type NormalizedCreateEntryPayload = {
   requiresStatementRefresh: boolean | null;
   commissionCalculationStatus: string | null;
   commissionBaseSource: string | null;
+  initialCommissionBase: {
+    paymentPremium: number;
+    annualPremium: number;
+    statementId: null;
+    statementNumber: null;
+    statementPeriod: null;
+    statementDate: null;
+    statementChronologyMs: null;
+    commissionCode: null;
+    productCode: null;
+    rowId: null;
+    resolvedAtMs: null;
+    resolvedBy: string;
+  } | null;
   refreshCommissionBase: RefreshCommissionBasePayload | null;
   rootContractEntryId: string | null;
   parentContractEntryId: string | null;
@@ -1574,6 +1592,28 @@ export const normalizeCreateEntryPayload = ({
       commissionBaseSource: refreshOriginalMissingInSystem
         ? commissionBaseSourceParsed.value || "calculator_provisional"
         : null,
+      initialCommissionBase:
+        entryTypeParsed.value === "contract" && isAutoProduct(productParsed.value)
+          ? {
+              paymentPremium: inputAmountParsed.value ?? 0,
+              annualPremium:
+                Math.round(
+                  (inputAmountParsed.value ?? 0) *
+                    periodsPerYear(freqParsed.value) *
+                    100
+                ) / 100,
+              statementId: null,
+              statementNumber: null,
+              statementPeriod: null,
+              statementDate: null,
+              statementChronologyMs: null,
+              commissionCode: null,
+              productCode: null,
+              rowId: null,
+              resolvedAtMs: null,
+              resolvedBy: ownerEmail,
+            }
+          : null,
       refreshCommissionBase: null,
       rootContractEntryId:
         entryTypeParsed.value === "endorsement" ? rootEntryIdParsed.value : null,

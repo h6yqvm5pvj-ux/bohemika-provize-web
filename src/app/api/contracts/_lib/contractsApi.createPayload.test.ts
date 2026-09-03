@@ -90,6 +90,24 @@ describe("contracts create payload parsing", () => {
     });
   });
 
+  it("stores an immutable signing-premium snapshot for a new auto contract", () => {
+    const payload = normalizedPayload(
+      baseEntry({
+        productKey: "cppAuto",
+        frequencyRaw: "quarterly",
+        inputAmount: 1_622,
+        neonDetail: null,
+      })
+    );
+
+    expect(payload.initialCommissionBase).toMatchObject({
+      paymentPremium: 1_622,
+      annualPremium: 6_488,
+      statementId: null,
+      resolvedBy: ownerEmail,
+    });
+  });
+
   it("rejects DOMEX NEURON before 1 September 2026", () => {
     const result = normalizeCreateEntryPayload({
       raw: baseEntry({

@@ -883,4 +883,82 @@ describe("premium statement history", () => {
 
     expect(merged.merged).toEqual([complete]);
   });
+
+  it("keeps the immutable signing base when a later backfill creates a conflicting initial row", () => {
+    const correctInitial: PremiumStatementHistoryEntry = {
+      key: "correct-initial",
+      premiumKind: "auto_initial",
+      statementId: "statement-74",
+      statementNumber: "74",
+      statementPeriod: "01.05.2026 - 31.05.2026",
+      statementDate: "22.06.2026",
+      statementChronologyMs: null,
+      payoutMonthKey: "2026-06",
+      anniversaryNumber: 0,
+      anniversaryDate: "2024-05-16",
+      previousPremium: null,
+      newPremium: 12_724,
+      difference: 0,
+      previousAnnualPremium: null,
+      newAnnualPremium: 12_724,
+      differenceAnnual: null,
+      basePremiumPeriod: null,
+      productCode: "ALLMOJEAUT",
+      commissionCode: null,
+      rowId: "initial:410766",
+      validFrom: "16.05.2024",
+      source: "own",
+      writtenAtMs: 1_782_733_953_339,
+      writtenBy: "system",
+    };
+    const conflictingInitial: PremiumStatementHistoryEntry = {
+      ...correctInitial,
+      key: "conflicting-initial",
+      newPremium: 14_229,
+      newAnnualPremium: 14_229,
+      basePremiumPeriod: "annual",
+      statementChronologyMs: 1_782_172_800_000,
+      writtenAtMs: 1_784_187_067_109,
+    };
+    const firstAnniversary: PremiumStatementHistoryEntry = {
+      key: "first-anniversary",
+      premiumKind: "auto_change",
+      statementId: "statement-61",
+      statementNumber: "61",
+      statementPeriod: "01.05.2025 - 31.05.2025",
+      statementDate: "20.06.2025",
+      statementChronologyMs: 1_750_377_600_000,
+      payoutMonthKey: "2025-06",
+      anniversaryNumber: 1,
+      anniversaryDate: "2025-05-16",
+      previousPremium: 12_724,
+      newPremium: 14_229,
+      difference: 1_505,
+      previousAnnualPremium: 12_724,
+      newAnnualPremium: 14_229,
+      differenceAnnual: 1_505,
+      basePremiumPeriod: "annual",
+      productCode: "ALLMOJEAUT",
+      commissionCode: "B101",
+      rowId: "410766",
+      validFrom: "16.05.2024",
+      source: "own",
+      writtenAtMs: 1_750_377_600_000,
+      writtenBy: "system",
+    };
+
+    const merged = mergePremiumHistoryRecords(
+      [correctInitial, conflictingInitial, firstAnniversary],
+      [],
+      120
+    );
+
+    expect(merged.merged.filter((entry) => entry.premiumKind === "auto_initial"))
+      .toHaveLength(1);
+    expect(merged.merged.find((entry) => entry.premiumKind === "auto_initial"))
+      .toMatchObject({
+        key: "correct-initial",
+        newAnnualPremium: 12_724,
+      });
+  });
 });

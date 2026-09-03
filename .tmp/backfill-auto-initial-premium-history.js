@@ -182,7 +182,15 @@ async function main() {
 
     const initial = buildInitialEntry(data, changes[0]);
     if (!initial) continue;
-    if (history.some((entry) => entry?.premiumKind === "auto_initial" && entry.key === initial.key)) {
+    // Initial premium is an immutable snapshot. A later backfill must never
+    // append another competing auto_initial record with a different amount.
+    if (
+      history.some(
+        (entry) =>
+          entry?.premiumKind === "auto_initial" &&
+          (entry?.source === "manager" ? "manager" : "own") === initial.source
+      )
+    ) {
       continue;
     }
 

@@ -216,6 +216,41 @@ export const initialAnnualPremiumFromStatementHistory = (
   paymentFrequency: PaymentFrequency | null | undefined,
   product?: Product | null
 ): number | null => {
+  // The first anniversary row forms an immutable chain from the premium at
+  // signing to the first renewal premium. It is therefore a stronger source
+  // for the original annual premium than a synthetic auto_initial row, which
+  // can have been backfilled from a later anniversary statement.
+  const firstAnniversaryCandidates = (history ?? [])
+    .map((entry, index) => ({
+      entry,
+      index,
+      annualPremium: previousAnnualPremiumFromStoredHistoryEntry(
+        entry,
+        paymentFrequency,
+        product
+      ),
+      chronology:
+        positivePremiumOrNull(entry.statementChronologyMs) ??
+        positivePremiumOrNull(entry.writtenAtMs) ??
+        Number.MAX_SAFE_INTEGER,
+    }))
+    .filter(
+      (candidate) =>
+        candidate.entry.premiumKind === "auto_change" &&
+        candidate.entry.source !== "manager" &&
+        candidate.entry.anniversaryNumber === 1 &&
+        candidate.annualPremium != null
+    )
+    .sort(
+      (left, right) =>
+        left.chronology - right.chronology || left.index - right.index
+    );
+  const firstAnniversaryInitialPremium =
+    firstAnniversaryCandidates[0]?.annualPremium ?? null;
+  if (firstAnniversaryInitialPremium != null) {
+    return firstAnniversaryInitialPremium;
+  }
+
   const candidates = (history ?? [])
     .map((entry, index) => ({
       entry,

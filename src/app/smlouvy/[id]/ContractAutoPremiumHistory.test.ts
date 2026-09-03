@@ -55,6 +55,39 @@ describe("auto premium history display helpers", () => {
     ).toBe(61_877);
   });
 
+  it("keeps the signing base from the first anniversary chain over a conflicting synthetic initial", () => {
+    expect(
+      initialAnnualPremiumFromStatementHistory(
+        [
+          {
+            premiumKind: "auto_initial",
+            newAnnualPremium: 12_724,
+            statementChronologyMs: null,
+            writtenAtMs: 1_782_733_953_339,
+            source: "own",
+          },
+          {
+            premiumKind: "auto_initial",
+            newAnnualPremium: 14_229,
+            statementChronologyMs: 1_782_172_800_000,
+            writtenAtMs: 1_784_187_067_109,
+            source: "own",
+          },
+          {
+            premiumKind: "auto_change",
+            anniversaryNumber: 1,
+            previousAnnualPremium: 12_724,
+            newAnnualPremium: 14_229,
+            statementChronologyMs: 1_750_032_000_000,
+            source: "own",
+          },
+        ],
+        "annual",
+        "allianzAuto"
+      )
+    ).toBe(12_724);
+  });
+
   it("annualizes legacy payment-based initial rows for non-annual frequencies", () => {
     expect(
       initialAnnualPremiumFromStatementHistory(
