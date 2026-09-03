@@ -3054,12 +3054,14 @@ function ContractsPageContent() {
                           </div>
                         ) : null}
 
-                        <div className="order-6 hidden items-center justify-start gap-2 lg:order-none lg:flex lg:justify-end">
+                        <div className="order-6 hidden items-center justify-start lg:order-none lg:flex lg:justify-end">
                           {!selectMode ? (
-                            <span className="inline-flex items-center gap-2">
-                              <ContractInstitutionGhostLogo
-                                product={c.productKey as Product | undefined}
-                              />
+                            <span className="relative inline-flex items-center">
+                              <span className="absolute right-[calc(100%+0.5rem)] top-1/2 -translate-y-1/2">
+                                <ContractInstitutionGhostLogo
+                                  product={c.productKey as Product | undefined}
+                                />
+                              </span>
                               <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition group-hover:border-slate-400 group-hover:text-slate-950">
                                 Detail ↗
                               </span>
