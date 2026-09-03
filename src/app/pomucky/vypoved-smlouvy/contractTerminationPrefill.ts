@@ -72,6 +72,7 @@ const SUPPORTED_INSURERS = new Set<TerminationPrefillInsurer>([
 ]);
 const SUPPORTED_PRODUCTS = new Set<Product>(PRODUCT_ORDER);
 const CPP_SUS_UPLOAD_NOTICE_PRODUCTS = new Set<Product>([
+  "domexneuron",
   "domex",
   "cpphafan",
   "zamex",

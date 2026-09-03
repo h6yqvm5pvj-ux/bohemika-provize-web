@@ -1,6 +1,7 @@
 import { type Product } from "@/app/types/domain";
 
 const PER_PAYMENT_SEPARATED_PERIOD_PRODUCTS = new Set<Product>([
+  "domexneuron",
   "domex",
   "cppbytex",
   "cpphafan",

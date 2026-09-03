@@ -42,6 +42,7 @@ import {
   isDomexEarlyHistoricalPeriod,
   isDomexHistoricalPeriod,
 } from "./domex";
+import { DOMEX_NEURON_COEFFICIENT_VALID_FROM } from "./domexNeuron";
 import {
   AXA_CESTOVKO_COEFFICIENT_VALID_FROM,
 } from "./axacestovko";
@@ -99,6 +100,7 @@ const PRODUCT_MINIMUM_COEFFICIENT_VALID_FROM: Partial<Record<Product, string>> =
   maximaMaxEfekt: MAXEFEKT5_VALID_FROM,
   pillowInjury: PILLOW_INJURY_COEFFICIENT_VALID_FROM,
   domex: DOMEX_EARLY_HISTORICAL_VALID_FROM,
+  domexneuron: DOMEX_NEURON_COEFFICIENT_VALID_FROM,
   pillowmajetek: PILLOW_MAJETEK_COEFFICIENT_VALID_FROM,
   kooppmop: KOOP_PMOP_COEFFICIENT_VALID_FROM,
   cppsimplex: CPP_SIMPLEX_COEFFICIENT_VALID_FROM,

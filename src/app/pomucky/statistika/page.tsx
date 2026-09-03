@@ -31,6 +31,7 @@ import {
   calculateCppPPRs,
   calculateCsobAuto,
   calculateDomex,
+  calculateDomexNeuron,
   calculatePillowMajetek,
   calculateFlexi,
   calculateSlaviaFlotila,
@@ -215,6 +216,8 @@ function calculateCommission(
       return immediateCommission(calculatePillowInjury(premium, pos, m));
     case "domex":
       return immediateCommission(calculateDomex(premium, "annual", pos));
+    case "domexneuron":
+      return immediateCommission(calculateDomexNeuron(premium, "annual", pos));
     case "cppbytex":
       return immediateCommission(calculateCppBytex(premium, "annual", pos));
     case "pillowmajetek":

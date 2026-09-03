@@ -23,6 +23,7 @@ import {
   calculateCppSimplex,
   calculateCsobAuto,
   calculateDomex,
+  calculateDomexNeuron,
   calculateFlexi,
   calculateKoopCestovko,
   calculateKoopFlotila,
@@ -119,6 +120,7 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
     case "maximaMaxEfekt":
       return ["monthly"];
     case "domex":
+    case "domexneuron":
     case "cppbytex":
     case "cpphafan":
       return ["quarterly", "semiannual", "annual"];
@@ -259,6 +261,7 @@ export function calculateCommission({
     case "pillowInjury":
       return calculatePillowInjury(safeAmount, position, commissionMode);
     case "domex":
+    case "domexneuron":
     case "cppbytex":
     case "cpphafan":
     case "koopmajetekobcan":
@@ -267,7 +270,9 @@ export function calculateCommission({
     case "kooppmop":
     case "zamex": {
       const result =
-        productKey === "domex"
+        productKey === "domexneuron"
+          ? calculateDomexNeuron(safeAmount, usedFrequency, position)
+          : productKey === "domex"
           ? calculateDomex(safeAmount, usedFrequency, position, coefficientSignedDateIso)
           : productKey === "cppbytex"
             ? calculateCppBytex(safeAmount, usedFrequency, position)

@@ -200,6 +200,7 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   pillowInjury: "Úraz / Nemoc",
   zamex: "ZAMEX",
   cppbytex: "BYTEX PLUS",
+  domexneuron: "DOMEX NEURON",
   domex: "DOMEX",
   cpphafan: "HAFAN",
   pillowmajetek: "Majetek",

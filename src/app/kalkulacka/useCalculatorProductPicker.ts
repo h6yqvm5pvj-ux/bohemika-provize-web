@@ -31,6 +31,7 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
     key: "property",
     title: "Majetek",
     products: [
+      "domexneuron",
       "domex",
       "cppbytex",
       "cpphafan",

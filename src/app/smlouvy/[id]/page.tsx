@@ -1636,7 +1636,8 @@ export default function ContractDetailPage() {
     isSeparatedPeriodCommissionProduct(prod) || isFrequencyAutoCommissionProduct;
   const hideSeparatedPeriodTotals = Boolean(
     (isAutoCommissionProduct && (freq === "annual" || !isFrequencyAutoCommissionProduct)) ||
-      ((prod === "domex" || prod === "cppbytex") && freq === "annual")
+      ((prod === "domex" || prod === "domexneuron" || prod === "cppbytex") &&
+        freq === "annual")
   );
   const paymentMultiplier =
     isPaymentBasedProduct && !isAnnualSeparatedPeriodProduct(prod)
@@ -3557,7 +3558,7 @@ export default function ContractDetailPage() {
       Object.assign(contractPatch, topLevelMerge.updates);
       appliedCount += topLevelMerge.appliedCount;
 
-      if (prod === "domex") {
+      if (prod === "domex" || prod === "domexneuron") {
         const propertyMerge = mergeEmptyPropertyDetailFields(contract.domexDetail, parsed);
         if (propertyMerge.appliedCount > 0) {
           apiUpdates.domexDetail = propertyMerge.detail;
@@ -5064,7 +5065,7 @@ export default function ContractDetailPage() {
           onChange={handleNeonFieldChange}
         />
       )}
-      {(prod === "domex" || prod === "maxdomov") && (
+      {(prod === "domex" || prod === "domexneuron" || prod === "maxdomov") && (
         <DomexDetailPanel
           prod={prod}
           editMode={editMode}

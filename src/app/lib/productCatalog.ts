@@ -68,6 +68,7 @@ export const PRODUCT_ORDER: Product[] = [
   "pillowInjury",
   "zamex",
   "cppbytex",
+  "domexneuron",
   "domex",
   "cpphafan",
   "pillowmajetek",
@@ -131,6 +132,13 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
   },
   cppbytex: {
     label: "ČPP BYTEX PLUS",
+    icon: "/icons/icon_domex.webp",
+    institutionId: "cpp",
+    category: "property",
+    extraGroups: ["liability"],
+  },
+  domexneuron: {
+    label: "ČPP DOMEX NEURON",
     icon: "/icons/icon_domex.webp",
     institutionId: "cpp",
     category: "property",

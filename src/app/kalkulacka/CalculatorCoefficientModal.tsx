@@ -342,6 +342,8 @@ export function CalculatorCoefficientModal({
         : isDomexHistorical
         ? "ČPP DOMEX – historické koeficienty – platnost 01.06.2023 až 31.08.2024"
         : "ČPP DOMEX – aktuální koeficienty – platnost od 01.09.2024"
+      : product === "domexneuron"
+      ? "ČPP DOMEX NEURON – koeficienty platné od 01.09.2026"
       : product === "cpphafan"
       ? "ČPP HAFAN – koeficienty platné od 01.01.2017"
       : product === "kooppmop"
@@ -396,6 +398,8 @@ export function CalculatorCoefficientModal({
       ? isDomexHistorical
         ? "historické podmínky"
         : "aktuální podmínky"
+      : product === "domexneuron"
+      ? "aktuální podmínky"
       : `režim ${mode}`;
   const autoTermsPreviewIsPdf = /\.pdf(?:[?#]|$)/i.test(
     autoTermsPreviewUrl ?? ""

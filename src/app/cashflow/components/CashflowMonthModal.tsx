@@ -198,6 +198,7 @@ const COMMISSION_BY_PAYMENT_FREQUENCY_PRODUCTS = new Set<Product>([
   "csobAuto",
   "kooperativaAuto",
   "koopflotila",
+  "domexneuron",
   "domex",
   "cppbytex",
   "cpphafan",

@@ -396,6 +396,7 @@ service cloud.firestore {
         "pillowInjury",
         "zamex",
         "cppbytex",
+        "domexneuron",
         "domex",
         "cpphafan",
         "pillowmajetek",

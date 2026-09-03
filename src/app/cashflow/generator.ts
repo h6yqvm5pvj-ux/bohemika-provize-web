@@ -956,6 +956,7 @@ export function generateCashflow(
       }
 
       case "domex":
+      case "domexneuron":
       case "cppbytex":
       case "cpphafan":
       case "koopmajetekobcan":
@@ -1021,7 +1022,9 @@ export function generateCashflow(
               amount,
               payout,
               `${
-                product === "domex"
+                product === "domexneuron"
+                  ? "DOMEX NEURON"
+                  : product === "domex"
                   ? "DOMEX"
                   : product === "cppbytex"
                   ? "BYTEX PLUS"

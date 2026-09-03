@@ -253,6 +253,17 @@ const DETECTION_RULES: DetectionRule[] = [
     reason: "V PDF je nalezen text „COMFORT COMMODITY“.",
   },
   {
+    product: "domexneuron",
+    page: 1,
+    allOf: [
+      normalizeText("Česká podnikatelská pojišťovna, a.s."),
+      normalizeText("DOMEX NEURON"),
+    ],
+    confidence: "high",
+    reason:
+      "Na 1. stránce jsou texty „Česká podnikatelská pojišťovna, a.s.“ a „DOMEX NEURON“.",
+  },
+  {
     product: "domex",
     page: 1,
     allOf: [normalizeText("Česká podnikatelská pojišťovna, a.s."), normalizeText("DOMEX")],

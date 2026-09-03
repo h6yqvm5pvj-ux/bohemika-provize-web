@@ -9,6 +9,7 @@ export type Product =
   | "zamex"
   | "cppbytex"
   | "domex"
+  | "domexneuron"
   | "cpphafan"
   | "pillowmajetek"
   | "koopmajetekobcan"

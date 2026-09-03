@@ -144,6 +144,7 @@ export const SUPPORTED_PRODUCTS = new Set<Product>([
   "pillowInjury",
   "zamex",
   "cppbytex",
+  "domexneuron",
   "domex",
   "cpphafan",
   "pillowmajetek",
@@ -1546,7 +1547,10 @@ export const normalizeCreateEntryPayload = ({
       carAddonPassengerInjury: carAddonPassengerInjuryParsed.value,
       carAddonKeyLossTheft: carAddonKeyLossTheftParsed.value,
       neonDetail: productParsed.value === "neon" ? neonDetailParsed.value : null,
-      domexDetail: productParsed.value === "domex" ? domexDetailParsed.value : null,
+      domexDetail:
+        productParsed.value === "domex" || productParsed.value === "domexneuron"
+          ? domexDetailParsed.value
+          : null,
       maxdomovDetail:
         productParsed.value === "maxdomov" ? maxdomovDetailParsed.value : null,
       paid: paidParsed.value === true,

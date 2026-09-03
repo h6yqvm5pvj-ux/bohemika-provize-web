@@ -68,6 +68,27 @@ describe("calculateCommission", () => {
     expect(result?.total).toBeCloseTo(immediateFromItems * 4, 2);
   });
 
+  it("calculates DOMEX NEURON by payment frequency with A101 and B101 codes", () => {
+    const result = calculateCommission(
+      baseInput({
+        productKey: "domexneuron",
+        position: "manazer9",
+        contractSignedDateIso: "2026-09-01",
+        inputAmount: 1_000,
+        frequencyRaw: "semiannual",
+        durationYears: null,
+      })
+    );
+
+    expect(result?.items).toMatchObject([
+      { code: "A101-A102" },
+      { code: "B101-B102", excludeFromTotal: true },
+    ]);
+    expect(result?.items[0]?.amount).toBeCloseTo(312.4, 6);
+    expect(result?.items[1]?.amount).toBeCloseTo(78.1, 6);
+    expect(result?.total).toBeCloseTo(624.8, 6);
+  });
+
   it("matches anonymized amounts that were actually paid in commission statements", () => {
     // Each selected item below was reconciled with a statement row whose paid
     // and expected amounts matched exactly. The cases deliberately contain no
@@ -250,6 +271,7 @@ describe("calculateCommission", () => {
       "pillowInjury",
       "zamex",
       "cppbytex",
+      "domexneuron",
       "domex",
       "cpphafan",
       "pillowmajetek",

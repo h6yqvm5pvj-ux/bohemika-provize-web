@@ -71,6 +71,44 @@ describe("contracts create payload parsing", () => {
     expect(payload.createdAt).toBeInstanceOf(Date);
   });
 
+  it("accepts DOMEX NEURON from its validity date and keeps property detail", () => {
+    const payload = normalizedPayload(
+      baseEntry({
+        productKey: "domexneuron",
+        frequencyRaw: "quarterly",
+        contractSignedDate: "2026-09-01",
+        policyStartDate: "2026-09-02",
+        neonDetail: null,
+        domexDetail: { address: " Praha 1 " },
+      })
+    );
+
+    expect(payload).toMatchObject({
+      productKey: "domexneuron",
+      frequencyRaw: "quarterly",
+      domexDetail: { address: "Praha 1" },
+    });
+  });
+
+  it("rejects DOMEX NEURON before 1 September 2026", () => {
+    const result = normalizeCreateEntryPayload({
+      raw: baseEntry({
+        productKey: "domexneuron",
+        frequencyRaw: "annual",
+        contractSignedDate: "2026-08-31",
+        policyStartDate: "2026-09-01",
+        neonDetail: null,
+      }),
+      ownerEmail,
+      ownerUid,
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    if (!result.ok) {
+      expect(result.error).toContain("01. 09. 2026");
+    }
+  });
+
   it("keeps a paid flag from an allowed create payload", () => {
     const payload = normalizedPayload(baseEntry({ paid: true }));
 

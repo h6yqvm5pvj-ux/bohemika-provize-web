@@ -52,6 +52,12 @@ import {
   isDomexHistoricalPeriod,
 } from "./productFormulas/domex";
 import {
+  calculateDomexNeuron,
+  DOMEX_NEURON_COEFFICIENT_VALID_FROM,
+  domexNeuronImmediateCoefficient,
+  domexNeuronSubsequentCoefficient,
+} from "./productFormulas/domexNeuron";
+import {
   calculateCppHafan,
   cppHafanImmediateCoefficient,
   cppHafanSubsequentCoefficient,
@@ -215,6 +221,8 @@ export {
   calculateMaxCizinKomplex,
   calculatePillowInjury,
   calculateDomex,
+  calculateDomexNeuron,
+  DOMEX_NEURON_COEFFICIENT_VALID_FROM,
   isDomexEarlyHistoricalPeriod,
   isDomexHistoricalPeriod,
   calculateCppHafan,
@@ -281,6 +289,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "maximaMaxEfekt",
   "maxcizinkomplex",
   "pillowInjury",
+  "domexneuron",
   "domex",
   "cpphafan",
   "pillowmajetek",
@@ -462,6 +471,21 @@ export function getCoefficientSummary(
             ? "Následná provize (z platby, max. 4 roky)"
             : "Následná provize (z platby)",
           value: domexSubsequentCoefficient(position, contractSignedDateIso),
+        },
+      ];
+    }
+    case "domexneuron": {
+      const validFrom = new Date(
+        `${DOMEX_NEURON_COEFFICIENT_VALID_FROM}T00:00:00`
+      ).toLocaleDateString("cs-CZ");
+      return [
+        {
+          label: `Provize A101 (z platby, platné od ${validFrom})`,
+          value: domexNeuronImmediateCoefficient(position),
+        },
+        {
+          label: `Následná provize B101 (z platby, platné od ${validFrom})`,
+          value: domexNeuronSubsequentCoefficient(position),
         },
       ];
     }

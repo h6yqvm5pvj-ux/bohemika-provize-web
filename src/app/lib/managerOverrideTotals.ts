@@ -5,6 +5,7 @@ import {
 } from "@/app/types/domain";
 
 const LEGACY_FREQUENCY_OVERRIDE_PRODUCTS = new Set<Product>([
+  "domexneuron",
   "domex",
   "cppbytex",
   "cppAuto",

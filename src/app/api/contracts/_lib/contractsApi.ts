@@ -237,6 +237,7 @@ const SUPPORTED_POSITIONS = new Set<Position>(POSITION_ORDER);
 const CPP_STATUS_SYNC_PRODUCTS = new Set<Product>([
   "neon",
   "zamex",
+  "domexneuron",
   "domex",
   "cpphafan",
   "cppsimplex",

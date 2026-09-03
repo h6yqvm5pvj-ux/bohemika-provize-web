@@ -43,6 +43,7 @@ export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> =
   neon: parseNeonPdf,
   flexi: parseFlexiPdf,
   domex: parseDomexPdf,
+  domexneuron: parseDomexPdf,
   cppbytex: parseCppBytexPdf,
   cpphafan: parseCppHafanPdf,
   koopodzam: parseKoopOdzamPdf,

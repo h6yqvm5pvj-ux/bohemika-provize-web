@@ -408,6 +408,7 @@ export const CashflowGenerator = {
 
         // ============= DOMEX / Kooperativa majetek občanů / ČPP PPR bez ÚPIS – dle frekvence, po 1. výročí následná =============
         case "domex":
+        case "domexneuron":
         case "cppbytex":
         case "cpphafan":
         case "koopmajetekobcan":

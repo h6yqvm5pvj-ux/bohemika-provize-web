@@ -375,7 +375,7 @@ export const buildContractDetailsSavePlan = ({
       };
 
       const propertyDetailUpdate =
-        product === "domex"
+        product === "domex" || product === "domexneuron"
           ? { domexDetail: propertyDetailPayload, maxdomovDetail: null }
           : product === "maxdomov"
             ? { domexDetail: null, maxdomovDetail: propertyDetailPayload }

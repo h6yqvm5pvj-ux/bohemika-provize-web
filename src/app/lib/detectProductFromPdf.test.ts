@@ -90,6 +90,20 @@ describe("detectProductFromPdf", () => {
     });
   });
 
+  it("detects DOMEX NEURON before the generic DOMEX signature", async () => {
+    pdfState.pages = [
+      [
+        "DOMEX NEURON",
+        "Česká podnikatelská pojišťovna, a.s.",
+      ],
+    ];
+
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({
+      product: "domexneuron",
+      confidence: "high",
+    });
+  });
+
   it("detects Kooperativa KOLUMBUS travel insurance anywhere in the PDF", async () => {
     pdfState.pages = [
       ["Průvodní strana", "Kooperativa pojišťovna, a.s."],

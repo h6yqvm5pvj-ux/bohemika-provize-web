@@ -174,7 +174,8 @@ export async function parseContractPdfByProduct(
       const { parseFlexiPdf } = await import("../lib/parseFlexiPdf");
       return parseFlexiPdf(file);
     }
-    case "domex": {
+    case "domex":
+    case "domexneuron": {
       const { parseDomexPdf } = await import("../lib/parseDomexPdf");
       return parseDomexPdf(file);
     }
@@ -246,6 +247,7 @@ export const AUTOMATED_PDF_PRODUCTS: readonly Product[] = [
   "cppsimplex",
   "neon",
   "flexi",
+  "domexneuron",
   "domex",
   "cppbytex",
   "cpphafan",

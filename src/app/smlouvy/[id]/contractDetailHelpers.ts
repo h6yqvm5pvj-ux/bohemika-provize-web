@@ -52,6 +52,9 @@ export function preloadFormulaModule(product?: Product | null) {
     case "domex":
       import("../../lib/productFormulas/domex");
       break;
+    case "domexneuron":
+      import("../../lib/productFormulas/domexNeuron");
+      break;
     case "cppbytex":
       import("../../lib/productFormulas/cppbytex");
       break;
@@ -473,6 +476,12 @@ export async function calculateResultForPosition(
     case "domex": {
       const { calculateDomex } = await import("../../lib/productFormulas/domex");
       return calculateDomex(amount, freq, position, contractSignedDateIso);
+    }
+    case "domexneuron": {
+      const { calculateDomexNeuron } = await import(
+        "../../lib/productFormulas/domexNeuron"
+      );
+      return calculateDomexNeuron(amount, freq, position);
     }
     case "cpphafan": {
       const { calculateCppHafan } = await import(

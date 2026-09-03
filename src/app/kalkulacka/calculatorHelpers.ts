@@ -555,6 +555,7 @@ export function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "maximaMaxEfekt":
       return ["monthly"];
     case "domex":
+    case "domexneuron":
     case "cppbytex":
     case "cpphafan":
       return ["quarterly", "semiannual", "annual"];

@@ -85,6 +85,7 @@ export const TIP_OFFER_GROUPS: readonly TipOfferGroup[] = [
     label: "Majetek a odpovědnost",
     products: [
       product("zamex"),
+      product("domexneuron"),
       product("domex"),
       product("cppbytex"),
       product("cpphafan"),

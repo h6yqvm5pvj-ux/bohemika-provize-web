@@ -21,6 +21,7 @@ const PRODUCTS_WITH_CONTRACT_PDF_PARSER: Product[] = [
   "cppsimplex",
   "neon",
   "flexi",
+  "domexneuron",
   "domex",
   "cppbytex",
   "cpphafan",

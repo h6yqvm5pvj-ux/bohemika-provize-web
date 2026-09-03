@@ -426,6 +426,7 @@ const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
   cppPPRs: "/provize/cppupis.pdf",
   cppbytex: "/provize/bytexprovize.pdf",
   domex: "/provize/domex2024.pdf",
+  domexneuron: "/provize/domexneuron.pdf",
   maxdomov: "/provize/maxdomov2025.pdf",
   maximaMaxEfekt: "/provize/maxefekt7.pdf",
   pillowInjury: "/provize/pillowuraznemoc.pdf",
@@ -1710,6 +1711,8 @@ export default function CalculatorPage() {
         return isDomexHistoricalInCoefModal
           ? `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Historická následná provize se vyplácí maximálně 4 roky.`
           : `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Aktuální následná provize se vyplácí po dobu aktivní smlouvy.`;
+      case "domexneuron":
+        return `Výpočet: platba (${payLabel}) × koeficient A101 nebo B101. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 01.09.2026.`;
       case "cppbytex":
         return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Následná provize se vyplácí maximálně 4 roky. Provizní režim nemá vliv.`;
       case "cpphafan":
@@ -2729,7 +2732,7 @@ export default function CalculatorPage() {
   }, [product]);
 
   useEffect(() => {
-    if (product !== "domex" && product !== "maxdomov") {
+    if (product !== "domex" && product !== "domexneuron" && product !== "maxdomov") {
       setDomexAddress("");
       setDomexPropertyType("");
       setDomexPropertyCoverage("");
@@ -3492,7 +3495,11 @@ export default function CalculatorPage() {
       setAutoCarAddonPassengerInjury(false);
       setAutoCarAddonKeyLossTheft(false);
     }
-    if (importProduct === "domex" || importProduct === "maxdomov") {
+    if (
+      importProduct === "domex" ||
+      importProduct === "domexneuron" ||
+      importProduct === "maxdomov"
+    ) {
       setDomexAddress("");
       setDomexPropertyType("");
       setDomexPropertyCoverage("");
@@ -4927,7 +4934,10 @@ export default function CalculatorPage() {
             }
           }
 
-          if (importProduct === "domex" && !hasParsedDomexDetail(parsed)) {
+          if (
+            (importProduct === "domex" || importProduct === "domexneuron") &&
+            !hasParsedDomexDetail(parsed)
+          ) {
             rowWarnings.push("nenašel jsem detail majetku DOMEX");
           }
 
@@ -5060,7 +5070,9 @@ export default function CalculatorPage() {
             canSaveHullText && hullSumInsuredText ? null : hullSumInsuredNumber;
           const isAutoImportProduct = isAutoProduct(importProduct);
           const propertyDetailForSave =
-            importProduct === "domex" || importProduct === "maxdomov"
+            importProduct === "domex" ||
+            importProduct === "domexneuron" ||
+            importProduct === "maxdomov"
               ? {
                   address: parsedPdfTextValue(parsed, "domexAddress") || null,
                   propertyType: parsedPdfTextValue(parsed, "domexPropertyType") || null,
@@ -5287,7 +5299,10 @@ export default function CalculatorPage() {
               ? parsedPdfBooleanValue(parsed, "carAddonKeyLossTheft")
               : null,
             neonDetail: null,
-            domexDetail: importProduct === "domex" ? propertyDetailForSave : null,
+            domexDetail:
+              importProduct === "domex" || importProduct === "domexneuron"
+                ? propertyDetailForSave
+                : null,
             maxdomovDetail:
               importProduct === "maxdomov" ? propertyDetailForSave : null,
             paid: shouldAutoMarkPaidByPolicyStartDate(policyStartDateIso),
@@ -6805,7 +6820,7 @@ export default function CalculatorPage() {
             carAddonKeyLossTheft: isAutoProduct(product) ? autoCarAddonKeyLossTheft : null,
             neonDetail: neonDetailForSave,
             domexDetail:
-              product === "domex"
+              product === "domex" || product === "domexneuron"
                 ? {
                     address: domexAddress.trim() || null,
                     propertyType: domexPropertyType.trim() || null,
@@ -7862,7 +7877,8 @@ export default function CalculatorPage() {
     return value.trim();
   };
   const domexCoverageLabel = (value: string) => value.trim().toUpperCase();
-  const isDomexPdfDetailProduct = product === "domex" || product === "maxdomov";
+  const isDomexPdfDetailProduct =
+    product === "domex" || product === "domexneuron" || product === "maxdomov";
   const domexPdfEditorFields: DomexPdfDetailEditorFields | null = isDomexPdfDetailProduct
     ? {
         address: domexAddress,
@@ -9313,7 +9329,10 @@ export default function CalculatorPage() {
             hideAnnualAutoTotals={
               (isAutoProduct(product) &&
                 (frequency === "annual" || !isFrequencyAutoPayoutProduct(product))) ||
-              ((product === "domex" || product === "cppbytex") && frequency === "annual")
+              ((product === "domex" ||
+                product === "domexneuron" ||
+                product === "cppbytex") &&
+                frequency === "annual")
             }
             paymentBasedTotalsMemo={displayedPaymentBasedTotals}
             tipContractImmediateGrossFirstYear={displayedTipContractImmediateGrossFirstYear}
