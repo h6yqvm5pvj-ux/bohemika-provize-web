@@ -2,7 +2,11 @@ import {
   CONTACT_INSTITUTION_BY_KEY,
   type DirectoryContact,
 } from "@/app/lib/contactDirectory";
-import { TOOL_CATALOG, type ToolCatalogEntry } from "@/app/pomucky/toolCatalog";
+import {
+  TOOL_CATALOG,
+  toolMatchesSearchQuery,
+  type ToolCatalogEntry,
+} from "@/app/pomucky/toolCatalog";
 
 export type ContactSearchResult = DirectoryContact & {
   institutionLabel: string;
@@ -84,9 +88,6 @@ export function findToolSearchResults(
   if (normalizedQuery.length < 2) return [];
 
   return TOOL_CATALOG.filter((tool) =>
-    matchesEveryTerm(
-      `${tool.title} ${tool.description} ${tool.category}`,
-      normalizedQuery,
-    ),
+    toolMatchesSearchQuery(tool, normalizedQuery),
   ).slice(0, limit);
 }

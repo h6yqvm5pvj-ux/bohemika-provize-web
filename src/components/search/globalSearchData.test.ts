@@ -42,4 +42,23 @@ describe("globalSearchData", () => {
       "proklepka-vozidla",
     );
   });
+
+  it("hledá pomůcky také podle témat, synonym a pojišťoven", () => {
+    const vehicleKeys = findToolSearchResults("auto").map((tool) => tool.key);
+    const disabilityKeys = findToolSearchResults("invalidita").map(
+      (tool) => tool.key,
+    );
+    const comparisonKeys = findToolSearchResults("srovnani CPP").map(
+      (tool) => tool.key,
+    );
+
+    expect(vehicleKeys).toContain("proklepka-vozidla");
+    expect(vehicleKeys).toContain("nahrat-tachometr");
+    expect(disabilityKeys).toContain("nastaveni-zivotniho-pojisteni");
+    expect(disabilityKeys).toContain("srovnavac-zivotniho-pojisteni");
+    expect(comparisonKeys).toContain(
+      "cestovni-pojisteni-cpp-vs-kooperativa",
+    );
+    expect(comparisonKeys).toContain("neon-life-vs-metlife-oneguard");
+  });
 });

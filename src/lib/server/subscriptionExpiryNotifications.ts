@@ -2,7 +2,11 @@ import { type NextRequest } from "next/server";
 
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntryOnce } from "@/lib/server/mailbox";
-import { collectPushTokens } from "@/lib/server/pushTokens";
+import {
+  collectPushTokens,
+  isPermanentInvalidPushTokenCode,
+  removeInvalidPushTokens,
+} from "@/lib/server/pushTokens";
 import {
   addDaysIso,
   evaluateSubscriptionFromProfile,
@@ -40,6 +44,7 @@ export type SubscriptionExpiryNotificationResult = {
   skippedNoToken: number;
   pushSuccessCount: number;
   pushFailureCount: number;
+  cleanedInvalidTokens: number;
   messagingAvailable: boolean;
 };
 
@@ -187,18 +192,24 @@ async function sendSubscriptionExpiryPush({
   profile: Record<string, unknown>;
   paidUntil: string;
   origin: string;
-}): Promise<{ successCount: number; failureCount: number; tokenCount: number }> {
+}): Promise<{
+  successCount: number;
+  failureCount: number;
+  tokenCount: number;
+  invalidTokens: string[];
+}> {
   if (!adminMessaging) {
-    return { successCount: 0, failureCount: 0, tokenCount: 0 };
+    return { successCount: 0, failureCount: 0, tokenCount: 0, invalidTokens: [] };
   }
 
   const tokens = collectPushTokens(profile).slice(0, MAX_TOKENS_PER_USER);
   if (tokens.length === 0) {
-    return { successCount: 0, failureCount: 0, tokenCount: 0 };
+    return { successCount: 0, failureCount: 0, tokenCount: 0, invalidTokens: [] };
   }
 
   let successCount = 0;
   let failureCount = 0;
+  const invalidTokens: string[] = [];
   for (let index = 0; index < tokens.length; index += MAX_TOKENS_PER_MULTICAST) {
     const chunk = tokens.slice(index, index + MAX_TOKENS_PER_MULTICAST);
     try {
@@ -228,13 +239,19 @@ async function sendSubscriptionExpiryPush({
       });
       successCount += result.successCount;
       failureCount += result.failureCount;
+      result.responses.forEach((response, responseIndex) => {
+        if (response.success) return;
+        if (!isPermanentInvalidPushTokenCode(response.error?.code)) return;
+        const token = chunk[responseIndex];
+        if (token) invalidTokens.push(token);
+      });
     } catch (error) {
       failureCount += chunk.length;
       console.error(`Subscription expiry push failed (${email}):`, error);
     }
   }
 
-  return { successCount, failureCount, tokenCount: tokens.length };
+  return { successCount, failureCount, tokenCount: tokens.length, invalidTokens };
 }
 
 export async function runSubscriptionExpiryNotifications(
@@ -263,6 +280,7 @@ export async function runSubscriptionExpiryNotifications(
     skippedNoToken: 0,
     pushSuccessCount: 0,
     pushFailureCount: 0,
+    cleanedInvalidTokens: 0,
     messagingAvailable: Boolean(adminMessaging),
   };
 
@@ -309,6 +327,19 @@ export async function runSubscriptionExpiryNotifications(
     stats.pushSuccessCount += push.successCount;
     stats.pushFailureCount += push.failureCount;
     if (push.tokenCount === 0) stats.skippedNoToken += 1;
+    if (push.invalidTokens.length > 0) {
+      try {
+        stats.cleanedInvalidTokens += await removeInvalidPushTokens(
+          candidate.email,
+          push.invalidTokens
+        );
+      } catch (error) {
+        console.error(
+          `Removing invalid subscription push tokens failed (${candidate.email}):`,
+          error
+        );
+      }
+    }
   }
 
   return stats;

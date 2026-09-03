@@ -68,7 +68,9 @@ import {
 } from "./toolHub";
 import {
   TOOL_CATALOG,
+  toolMatchesSearchQuery,
   type ToolCatalogCategory,
+  type ToolCatalogNews,
 } from "./toolCatalog";
 
 const toolsFont = systemSansFont;
@@ -254,6 +256,7 @@ type Tool = {
   category: ToolCategory;
   title: string;
   description: string;
+  news?: ToolCatalogNews;
   icon: LucideIcon;
   href?: string;
   external?: boolean;
@@ -305,22 +308,6 @@ const SORT_OPTIONS: Array<{ key: ToolHubSortMode; label: string }> = [
   { key: "alphabetical", label: "A–Z" },
 ];
 
-function normalizeSearchValue(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function toolMatchesSearch(tool: Tool, normalizedQuery: string): boolean {
-  if (!normalizedQuery) return true;
-
-  return [tool.title, tool.description, tool.category]
-    .map(normalizeSearchValue)
-    .some((value) => value.includes(normalizedQuery));
-}
-
 function CategoryBadge({ category }: { category: ToolCategory }) {
   const Icon = FILTER_VISUALS[category].icon;
 
@@ -361,6 +348,40 @@ function FavoriteButton({
       title={active ? "Odebrat z oblíbených" : "Přidat do oblíbených"}
     >
       <Star className={`h-4.5 w-4.5 ${active ? "fill-current" : ""}`} />
+    </button>
+  );
+}
+
+function ToolNewsButton({
+  news,
+  title,
+  onOpen,
+}: {
+  news: ToolCatalogNews;
+  title: string;
+  onOpen: () => void;
+}) {
+  const label = news.kind === "new" ? "Nové" : "Aktualizováno";
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen();
+      }}
+      className={`absolute bottom-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[0.68rem] font-extrabold uppercase tracking-[0.08em] shadow-[0_8px_18px_rgba(15,23,42,0.24)] backdrop-blur transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:px-3 sm:text-[0.7rem] ${
+        news.kind === "new"
+          ? "border-emerald-200/75 bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
+          : "border-cyan-200/75 bg-cyan-200 text-cyan-950 hover:bg-cyan-100"
+      }`}
+      aria-label={`${label}: ${title}. Zobrazit podrobnosti`}
+      aria-haspopup="dialog"
+      title="Zobrazit, co se změnilo"
+    >
+      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+      {label}
     </button>
   );
 }
@@ -422,6 +443,7 @@ export default function ToolsPage() {
   const [tachometerModalOpen, setTachometerModalOpen] = useState(false);
   const [linksModalOpen, setLinksModalOpen] = useState(false);
   const [contactsModalOpen, setContactsModalOpen] = useState(false);
+  const [newsToolKey, setNewsToolKey] = useState<ToolHubToolKey | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [usageByKey, setUsageByKey] = useState<
@@ -536,6 +558,21 @@ export default function ToolsPage() {
     [],
   );
 
+  const newsTool = useMemo(
+    () => tools.find((tool) => tool.key === newsToolKey) ?? null,
+    [newsToolKey, tools],
+  );
+
+  useEffect(() => {
+    if (!newsToolKey) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNewsToolKey(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [newsToolKey]);
+
   const recordToolOpen = useCallback(
     (toolKey: ToolHubToolKey) => {
       if (
@@ -624,11 +661,10 @@ export default function ToolsPage() {
   );
 
   const filterCounts = useMemo(() => {
-    const normalizedQuery = normalizeSearchValue(searchQuery);
     const counts = Object.fromEntries(FILTERS.map((filter) => [filter, 0])) as Record<FilterKey, number>;
 
     tools.forEach((tool) => {
-      if (!toolMatchesSearch(tool, normalizedQuery)) return;
+      if (!toolMatchesSearchQuery(tool, searchQuery)) return;
       counts.Všechny += 1;
       counts[tool.category] += 1;
     });
@@ -638,11 +674,10 @@ export default function ToolsPage() {
 
   const filteredTools = useMemo(
     () => {
-      const q = normalizeSearchValue(searchQuery);
       const filtered = tools.filter((tool) => {
         const categoryMatch = activeFilter === "Všechny" || tool.category === activeFilter;
         if (!categoryMatch) return false;
-        return toolMatchesSearch(tool, q);
+        return toolMatchesSearchQuery(tool, searchQuery);
       });
 
       return filtered.sort((a, b) => {
@@ -831,6 +866,13 @@ export default function ToolsPage() {
                     onToggle={() => void toggleFavorite(tool.key)}
                   />
                 );
+                const newsControl = tool.news ? (
+                  <ToolNewsButton
+                    news={tool.news}
+                    title={tool.title}
+                    onOpen={() => setNewsToolKey(tool.key)}
+                  />
+                ) : null;
                 const animationStyle = {
                   animationDelay: `${Math.min(index * 45, 260)}ms`,
                 };
@@ -839,6 +881,7 @@ export default function ToolsPage() {
                   return (
                     <div key={tool.key} className="relative h-full">
                       {favoriteControl}
+                      {newsControl}
                       <button
                         type="button"
                         onClick={() => {
@@ -858,6 +901,7 @@ export default function ToolsPage() {
                   return (
                     <div key={tool.key} className="relative h-full">
                       {favoriteControl}
+                      {newsControl}
                       <a
                         href={tool.href ?? "#"}
                         target="_blank"
@@ -875,6 +919,7 @@ export default function ToolsPage() {
                 return (
                   <div key={tool.key} className="relative h-full">
                     {favoriteControl}
+                    {newsControl}
                     <Link
                       href={tool.href ?? "#"}
                       onClick={() => recordToolOpen(tool.key)}
@@ -890,6 +935,77 @@ export default function ToolsPage() {
           )}
         </div>
       </div>
+
+      {newsTool?.news ? (
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center p-4 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tool-news-title"
+          aria-describedby="tool-news-description"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/58 backdrop-blur-sm"
+            onClick={() => setNewsToolKey(null)}
+            aria-label="Zavřít dialog"
+          />
+
+          <div className="pomucky-modal-panel relative z-10 w-full max-w-lg overflow-hidden rounded-[30px] border border-white/75 bg-[linear-gradient(160deg,rgba(255,255,255,0.98)_0%,rgba(245,243,255,0.98)_100%)] p-6 shadow-[0_32px_90px_rgba(2,6,23,0.38)] sm:p-8">
+            <span
+              className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-violet-300/35 blur-3xl"
+              aria-hidden="true"
+            />
+            <button
+              type="button"
+              onClick={() => setNewsToolKey(null)}
+              className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+              aria-label="Zavřít"
+            >
+              <X className="h-4.5 w-4.5" />
+            </button>
+
+            <div className="relative pr-10">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[0.7rem] font-extrabold uppercase tracking-[0.1em] ${
+                  newsTool.news.kind === "new"
+                    ? "border-emerald-200 bg-emerald-100 text-emerald-800"
+                    : "border-cyan-200 bg-cyan-100 text-cyan-800"
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                {newsTool.news.kind === "new" ? "Nové" : "Aktualizováno"}
+              </span>
+              <h2
+                id="tool-news-title"
+                className="mt-4 text-2xl font-bold tracking-[-0.02em] text-slate-950 sm:text-3xl"
+              >
+                {newsTool.title}
+              </h2>
+              <p
+                id="tool-news-description"
+                className="mt-3 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7"
+              >
+                {newsTool.news.summary}
+              </p>
+            </div>
+
+            {newsTool.href ? (
+              <Link
+                href={newsTool.href}
+                onClick={() => {
+                  recordToolOpen(newsTool.key);
+                  setNewsToolKey(null);
+                }}
+                className="relative mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#7c3aed_0%,#a855f7_100%)] px-5 py-3.5 text-sm font-bold text-white shadow-[0_14px_30px_rgba(124,58,237,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(124,58,237,0.38)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
+              >
+                Otevřít pomůcku
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {tachometerModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-label="Výběr pojišťovny pro nahrání tachometru">

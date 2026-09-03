@@ -9,13 +9,218 @@ export type ToolCatalogCategory =
   | "Investice"
   | "Obecné";
 
+export type ToolCatalogNews = {
+  kind: "new" | "updated";
+  summary: string;
+};
+
 export type ToolCatalogEntry = {
   key: ToolHubToolKey;
   category: ToolCatalogCategory;
   title: string;
   description: string;
   href: string;
+  news?: ToolCatalogNews;
 };
+
+const CATEGORY_SEARCH_KEYWORDS: Record<ToolCatalogCategory, readonly string[]> = {
+  "Životní pojištění": [
+    "život",
+    "životko",
+    "pojištění osob",
+    "rizika",
+  ],
+  "Pojištění majetku": ["majetek", "nemovitost", "dům", "byt"],
+  "Pojištění vozidel": [
+    "auto",
+    "automobil",
+    "vozidlo",
+    "povinné ručení",
+    "havarijní pojištění",
+  ],
+  "Cestovní pojištění": ["cestovní", "cestovko", "zahraničí"],
+  Finance: ["finance", "provize", "produkce", "výplata"],
+  Investice: ["investice", "spoření", "zhodnocení"],
+  Obecné: ["obecné", "administrativa", "poradenství"],
+};
+
+const TOOL_SEARCH_KEYWORDS: Record<ToolHubToolKey, readonly string[]> = {
+  argumenty: ["námitky", "odpovědi", "komunikace", "prodej", "klient"],
+  kontakty: [
+    "telefon",
+    "email",
+    "podpora",
+    "pojišťovna",
+    "allianz",
+    "čpp",
+    "kooperativa",
+    "uniqa",
+    "metlife",
+    "maxima",
+    "pillow",
+  ],
+  dokumenty: ["šablony", "formuláře", "pdf", "podklady", "pojišťovna"],
+  zaznam: ["jednání", "potřeby klienta", "povinná dokumentace"],
+  "vypoved-smlouvy": [
+    "výpověď",
+    "zrušení",
+    "ukončení",
+    "odstoupení",
+    "pojistka",
+  ],
+  "jak-stiham-vypoved-smlouvy": [
+    "výpověď",
+    "výpovědní lhůta",
+    "termín",
+    "ukončení",
+    "konec smlouvy",
+  ],
+  "nahrada-smlouvy": [
+    "převod pojistného",
+    "doplatek",
+    "přeplatek",
+    "náhradka",
+  ],
+  "radar-vyroci": ["retence", "obvolání", "konec smlouvy", "klienti", "servis"],
+  tvorba: ["editor", "dopis", "formulář", "šablona", "pdf"],
+  "ai-asistent": ["chat", "dotaz", "rada", "poradce", "umělá inteligence"],
+  "online-vizitka": ["profil", "web", "qr", "kontakt", "osobní stránka"],
+  "hypoteka-vlastni-zdroje": [
+    "hypo",
+    "ltv",
+    "akontace",
+    "spoření",
+    "nemovitost",
+    "úvěr",
+  ],
+  statistika: ["výkon", "produkce", "provize", "schůzky", "oslovení"],
+  "export-produkce": ["report", "pdf", "email", "výkon", "provize", "přehled"],
+  "plan-produkce": ["cíl", "odměna", "provize", "výkon", "plánování"],
+  tipar: ["tip", "doporučení", "spolupráce", "odměna", "provize"],
+  zlato: ["investiční zlato", "slitek", "spoření", "investice"],
+  katastr: [
+    "čúzk",
+    "cuzk",
+    "ruian",
+    "list vlastnictví",
+    "parcela",
+    "nemovitost",
+    "adresa",
+  ],
+  "proklepka-vozidla": [
+    "auto",
+    "automobil",
+    "vin",
+    "stk",
+    "kilometry",
+    "tachometr",
+    "sklo",
+    "tržní cena",
+    "orv",
+    "vlastník",
+  ],
+  "nahrat-tachometr": ["auto", "kilometry", "km", "allianz", "pillow", "vozidlo"],
+  "odkazy-instituce": [
+    "portál",
+    "pojišťovna",
+    "instituce",
+    "allianz",
+    "čpp",
+    "kooperativa",
+    "uniqa",
+    "metlife",
+    "pillow",
+  ],
+  ares: ["ičo", "firma", "podnikatel", "živnostník", "ekonomický subjekt", "registr"],
+  "projekce-vykonu": ["výplata", "příjem", "provize", "odměna", "kariéra", "budoucnost"],
+  "cestovni-pojisteni-cpp-vs-kooperativa": [
+    "cestovko",
+    "čpp",
+    "česká podnikatelská pojišťovna",
+    "kooperativa",
+    "axa",
+    "srovnání",
+    "porovnání",
+    "limity",
+    "výluky",
+  ],
+  "nastaveni-zivotniho-pojisteni": [
+    "životko",
+    "invalidita",
+    "smrt",
+    "pracovní neschopnost",
+    "neschopenka",
+    "příjem",
+    "dluhy",
+    "rizika",
+  ],
+  "srovnavac-trvalych-nasledku": [
+    "úraz",
+    "progrese",
+    "plnění",
+    "srovnání",
+    "porovnání",
+    "životko",
+  ],
+  "srovnavac-pracovni-neschopnosti": [
+    "nemocenská",
+    "neschopenka",
+    "pn",
+    "karence",
+    "srovnání",
+    "porovnání",
+    "životko",
+  ],
+  "srovnavac-zivotniho-pojisteni": [
+    "životko",
+    "srovnání",
+    "porovnání",
+    "pojišťovna",
+    "podmínky",
+    "invalidita",
+    "smrt",
+    "úraz",
+  ],
+  "neon-life-vs-metlife-oneguard": [
+    "čpp",
+    "česká podnikatelská pojišťovna",
+    "metlife",
+    "neon",
+    "oneguard",
+    "životko",
+    "srovnání",
+    "porovnání",
+  ],
+};
+
+export const normalizeToolSearch = (value: string): string =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("cs-CZ")
+    .trim();
+
+export function toolMatchesSearchQuery(
+  tool: Pick<ToolCatalogEntry, "key" | "category" | "title" | "description">,
+  query: string,
+): boolean {
+  const normalizedQuery = normalizeToolSearch(query);
+  if (!normalizedQuery) return true;
+
+  const haystack = normalizeToolSearch(
+    [
+      tool.key,
+      tool.title,
+      tool.description,
+      tool.category,
+      ...CATEGORY_SEARCH_KEYWORDS[tool.category],
+      ...TOOL_SEARCH_KEYWORDS[tool.key],
+    ].join(" "),
+  );
+  const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+
+  return terms.every((term) => haystack.includes(term));
+}
 
 export const TOOL_CATALOG: ToolCatalogEntry[] = [
   {
@@ -53,6 +258,11 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     title: "Výpověď smlouvy",
     description: "Pomůcka pro přípravu výpovědi smlouvy.",
     href: "/pomucky/vypoved-smlouvy",
+    news: {
+      kind: "updated",
+      summary:
+        "Výpověď nyní podporuje více pojišťoven, předvyplnění údajů a stažení hotového PDF.",
+    },
   },
   {
     key: "jak-stiham-vypoved-smlouvy",
@@ -196,6 +406,11 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     description:
       "Interaktivní porovnání variant, limitů, výluk a připojištění tří cestovních pojištění.",
     href: "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
+    news: {
+      kind: "updated",
+      summary:
+        "Srovnání nově zahrnuje ČPP, Kooperativu i AXA a pracuje s aktuálními podklady všech tří pojišťoven.",
+    },
   },
   {
     key: "nastaveni-zivotniho-pojisteni",
@@ -233,5 +448,10 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     title: "NEON Life vs. MetLife OneGuard",
     description: "Přehledné srovnání produktů ČPP NEON Life a MetLife OneGuard.",
     href: "/pomucky/neon-life-vs-metlife-oneguard",
+    news: {
+      kind: "new",
+      summary:
+        "Nové přehledné srovnání ČPP NEON Life a MetLife OneGuard na jednom místě.",
+    },
   },
 ];
