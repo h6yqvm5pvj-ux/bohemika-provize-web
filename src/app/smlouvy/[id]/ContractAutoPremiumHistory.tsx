@@ -152,6 +152,70 @@ const positivePremiumOrNull = (value: number | null | undefined): number | null 
   return amount != null && amount > 0 ? amount : null;
 };
 
+const annualPremiumFromStoredHistoryEntry = (
+  entry: ContractAutoPremiumStatementHistoryEntry,
+  paymentFrequency: PaymentFrequency | null | undefined
+): number | null => {
+  const annualPremium = positivePremiumOrNull(entry.newAnnualPremium);
+  if (annualPremium != null) return annualPremium;
+
+  const premium = positivePremiumOrNull(entry.newPremium);
+  if (premium == null) return null;
+  return entry.basePremiumPeriod === "payment"
+    ? Math.round(premium * paymentsPerYear(paymentFrequency) * 100) / 100
+    : premium;
+};
+
+export const initialAnnualPremiumFromStatementHistory = (
+  history: ContractAutoPremiumStatementHistoryEntry[] | null | undefined,
+  paymentFrequency: PaymentFrequency | null | undefined
+): number | null => {
+  const candidates = (history ?? [])
+    .map((entry, index) => ({
+      entry,
+      index,
+      annualPremium: annualPremiumFromStoredHistoryEntry(entry, paymentFrequency),
+      chronology:
+        positivePremiumOrNull(entry.statementChronologyMs) ??
+        positivePremiumOrNull(entry.writtenAtMs) ??
+        Number.MAX_SAFE_INTEGER,
+    }))
+    .filter(
+      (candidate) =>
+        candidate.entry.premiumKind === "auto_initial" &&
+        candidate.entry.source !== "manager" &&
+        candidate.annualPremium != null
+    )
+    .sort(
+      (left, right) =>
+        left.chronology - right.chronology || left.index - right.index
+    );
+
+  return candidates[0]?.annualPremium ?? null;
+};
+
+export const signedAnnualPremiumMatchesStatementChange = ({
+  signedAnnualPremium,
+  history,
+  paymentFrequency,
+}: {
+  signedAnnualPremium: number | null | undefined;
+  history: ContractAutoPremiumStatementHistoryEntry[] | null | undefined;
+  paymentFrequency: PaymentFrequency | null | undefined;
+}): boolean => {
+  const signedPremium = positivePremiumOrNull(signedAnnualPremium);
+  if (signedPremium == null) return false;
+
+  return (history ?? []).some((entry) => {
+    if (entry.premiumKind !== "auto_change" || entry.source === "manager") return false;
+    const changedPremium = annualPremiumFromStoredHistoryEntry(entry, paymentFrequency);
+    return (
+      changedPremium != null &&
+      Math.abs(changedPremium - signedPremium) <= ANNUAL_PREMIUM_TOLERANCE
+    );
+  });
+};
+
 export const resolveAutoSignedAnnualPremiumValue = ({
   signedAnnualPremium,
   statementInitialAnnualPremium,
@@ -649,11 +713,10 @@ export function ContractAutoPremiumHistory({
   const rows = dedupePremiumHistoryRows([...rowsByKey.values()]).sort(
     (a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime()
   );
-  const storedInitialAnnualPremium =
-    storedRows
-      .filter((row) => row.premiumKind === "auto_initial")
-      .map((row) => annualPremiumFromRow(row, paymentFrequency))
-      .find((amount) => amount != null && amount > 0) ?? null;
+  const storedInitialAnnualPremium = initialAnnualPremiumFromStatementHistory(
+    storedHistory,
+    paymentFrequency
+  );
   const resolvedStatementInitialAnnualPremium =
     storedInitialAnnualPremium ?? positivePremiumOrNull(statementInitialAnnualPremium);
   const firstKnownPreviousAnnualPremium =
@@ -665,7 +728,13 @@ export function ContractAutoPremiumHistory({
     statementInitialAnnualPremium: resolvedStatementInitialAnnualPremium,
     firstKnownPreviousAnnualPremium,
     systemAnnualPremium,
-    preferStatementInitialPremium,
+    preferStatementInitialPremium:
+      preferStatementInitialPremium ||
+      signedAnnualPremiumMatchesStatementChange({
+        signedAnnualPremium,
+        history: storedHistory,
+        paymentFrequency,
+      }),
   });
   const latestAnnualPremium =
     rows.length > 0

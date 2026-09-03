@@ -128,7 +128,12 @@ import {
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
 import { ContractCommissionHistory } from "./ContractCommissionHistory";
-import { ContractAutoPremiumHistory } from "./ContractAutoPremiumHistory";
+import {
+  ContractAutoPremiumHistory,
+  initialAnnualPremiumFromStatementHistory,
+  resolveAutoSignedAnnualPremiumValue,
+  signedAnnualPremiumMatchesStatementChange,
+} from "./ContractAutoPremiumHistory";
 import {
   mergeEmptyContractFields,
   mergeEmptyNeonDetailFields,
@@ -1615,16 +1620,44 @@ export default function ContractDetailPage() {
     Number.isFinite(signedPremiumAmount) && signedPremiumAmount > 0
       ? Math.round(signedPremiumAmount * paymentsPerYear(signedPremiumFrequency) * 100) / 100
       : null;
-  const statementInitialAnnualPremiumRaw = Number(contract?.initialCommissionBase?.annualPremium);
+  const historyInitialAnnualPremium = initialAnnualPremiumFromStatementHistory(
+    contract?.premiumStatementHistory,
+    signedPremiumFrequency
+  );
+  const statementInitialAnnualPremiumRaw = Number(
+    contract?.initialCommissionBase?.annualPremium ?? historyInitialAnnualPremium
+  );
   const statementInitialAnnualPremium =
     Number.isFinite(statementInitialAnnualPremiumRaw) && statementInitialAnnualPremiumRaw > 0
       ? Math.round(statementInitialAnnualPremiumRaw * 100) / 100
       : null;
+  const storedPremiumMatchesLaterStatementChange =
+    isAutoCommissionProduct &&
+    signedAnnualPremiumMatchesStatementChange({
+      signedAnnualPremium,
+      history: contract?.premiumStatementHistory,
+      paymentFrequency: signedPremiumFrequency,
+    });
   const preferStatementInitialPremium =
     isAutoCommissionProduct &&
     (contract?.createdFromCommissionStatement === true ||
       Boolean(String(contract?.createdFromCommissionStatementId ?? "").trim()) ||
-      contract?.commissionBaseSource === "commission_statement_auto_initial");
+      contract?.commissionBaseSource === "commission_statement_auto_initial" ||
+      storedPremiumMatchesLaterStatementChange);
+  const resolvedSignedAnnualPremium = resolveAutoSignedAnnualPremiumValue({
+    signedAnnualPremium,
+    statementInitialAnnualPremium,
+    firstKnownPreviousAnnualPremium: null,
+    systemAnnualPremium: premium * paymentsPerYear(freq),
+    preferStatementInitialPremium,
+  });
+  const displayedPremium =
+    !isEndorsement &&
+    !isShowingLatestTimelinePremium &&
+    isAutoCommissionProduct &&
+    resolvedSignedAnnualPremium != null
+      ? resolvedSignedAnnualPremium / paymentsPerYear(freq)
+      : premium;
   const contractSignedDateIso = toDateInputValue(
     contract?.contractSignedDate ?? contract?.createdAt
   );
@@ -5747,7 +5780,7 @@ export default function ContractDetailPage() {
                               : "Pojistné"}
                         </dt>
                         <dd className={keyValueValueClass}>
-                          {formatMoney(premium)}
+                          {formatMoney(displayedPremium)}
                         </dd>
                       </div>
                       {isEndorsement && (
@@ -6274,7 +6307,7 @@ export default function ContractDetailPage() {
                 signedAnnualPremium={signedAnnualPremium}
                 statementInitialAnnualPremium={statementInitialAnnualPremium}
                 preferStatementInitialPremium={preferStatementInitialPremium}
-                systemAnnualPremium={premium * paymentsPerYear(freq)}
+                systemAnnualPremium={displayedPremium * paymentsPerYear(freq)}
                 paymentFrequency={freq}
                 contractPaymentFrequency={freq}
                 statements={commissionStatements}

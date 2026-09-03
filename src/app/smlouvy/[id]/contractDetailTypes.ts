@@ -60,6 +60,7 @@ export type ContractAutoPremiumStatementHistoryEntry = {
   statementNumber?: string | null;
   statementPeriod?: string | null;
   statementDate?: string | null;
+  statementChronologyMs?: number | null;
   payoutMonthKey?: string | null;
   anniversaryNumber?: number | null;
   anniversaryDate?: string | null;
