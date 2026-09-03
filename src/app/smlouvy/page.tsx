@@ -1,7 +1,16 @@
 // src/app/smlouvy/page.tsx
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
@@ -18,6 +27,7 @@ import {
   ChevronDown,
   Clock,
   CircleDollarSign,
+  Copy,
   ExternalLink,
   HeartPulse,
   Home,
@@ -25,6 +35,7 @@ import {
   ListFilter,
   List,
   Plane,
+  PencilLine,
   RefreshCw,
   ReceiptText,
   Search,
@@ -268,6 +279,18 @@ const CONTRACT_CATEGORY_CARD_TONE_BY_ID: Record<ProductCategory, string> = {
   comfort: "border-amber-300/35 bg-amber-300/15 text-amber-200",
   business: "border-indigo-300/35 bg-indigo-300/15 text-indigo-200",
   foreigners: "border-teal-300/35 bg-teal-300/15 text-teal-200",
+};
+
+type ContractContextMenuState = {
+  contract: ContractDoc;
+  slug: string;
+  x: number;
+  y: number;
+};
+
+type ContractActionToastState = {
+  message: string;
+  tone: "success" | "error";
 };
 
 function paymentsPerYear(freq?: PaymentFrequency | null): number {
@@ -682,8 +705,13 @@ function ContractsPageContent() {
     useState(false);
   const [contractDetailWindow, setContractDetailWindow] =
     useState<ContractDetailWindowState | null>(null);
+  const [contractContextMenu, setContractContextMenu] =
+    useState<ContractContextMenuState | null>(null);
+  const [contractActionToast, setContractActionToast] =
+    useState<ContractActionToastState | null>(null);
   const contractsListRef = useRef<HTMLDivElement | null>(null);
   const searchProgressHideTimerRef = useRef<number | null>(null);
+  const contractActionToastTimerRef = useRef<number | null>(null);
   const searchResponseCacheRef = useRef(
     new Map<string, { expiresAt: number; data: ContractsApiResponse }>()
   );
@@ -2054,9 +2082,9 @@ function ContractsPageContent() {
   }, []);
 
   const openContractDetailWindow = useCallback(
-    (contract: ContractDoc, slug: string) => {
+    (contract: ContractDoc, slug: string, options?: { edit?: boolean }) => {
       persistContractsViewState();
-      const pageHref = `/smlouvy/${slug}?from=list`;
+      const pageHref = `/smlouvy/${slug}?from=list${options?.edit ? "&edit=1" : ""}`;
       const contractNumber = contract.contractNumber?.trim();
       const title = contractNumber ? `Smlouva ${contractNumber}` : "Detail smlouvy";
 
@@ -2067,6 +2095,65 @@ function ContractsPageContent() {
       });
     },
     [persistContractsViewState]
+  );
+
+  const openContractContextMenu = useCallback(
+    (
+      event: ReactMouseEvent<HTMLButtonElement>,
+      contract: ContractDoc,
+      slug: string
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const menuWidth = 240;
+      const menuHeight = 152;
+      const viewportMargin = 12;
+      const maxX = Math.max(viewportMargin, window.innerWidth - menuWidth - viewportMargin);
+      const maxY = Math.max(viewportMargin, window.innerHeight - menuHeight - viewportMargin);
+
+      setContractContextMenu({
+        contract,
+        slug,
+        x: Math.max(viewportMargin, Math.min(event.clientX, maxX)),
+        y: Math.max(viewportMargin, Math.min(event.clientY, maxY)),
+      });
+    },
+    []
+  );
+
+  const showContractActionToast = useCallback(
+    (message: string, tone: ContractActionToastState["tone"]) => {
+      if (contractActionToastTimerRef.current != null) {
+        window.clearTimeout(contractActionToastTimerRef.current);
+      }
+      setContractActionToast({ message, tone });
+      contractActionToastTimerRef.current = window.setTimeout(() => {
+        setContractActionToast(null);
+        contractActionToastTimerRef.current = null;
+      }, 2600);
+    },
+    []
+  );
+
+  const copyContractNumber = useCallback(
+    async (contractNumber?: string | null) => {
+      const value = contractNumber?.trim();
+      setContractContextMenu(null);
+
+      if (!value) {
+        showContractActionToast("Smlouva nemá uvedené číslo.", "error");
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(value);
+        showContractActionToast(`Číslo smlouvy ${value} je zkopírované.`, "success");
+      } catch {
+        showContractActionToast("Číslo smlouvy se nepodařilo zkopírovat.", "error");
+      }
+    },
+    [showContractActionToast]
   );
 
   useEffect(() => {
@@ -2084,6 +2171,34 @@ function ContractsPageContent() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [closeContractDetailWindow, contractDetailWindow]);
+
+  useEffect(() => {
+    if (!contractContextMenu) return;
+
+    const closeMenu = () => setContractContextMenu(null);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [contractContextMenu]);
+
+  useEffect(
+    () => () => {
+      if (contractActionToastTimerRef.current != null) {
+        window.clearTimeout(contractActionToastTimerRef.current);
+      }
+    },
+    []
+  );
 
   const applyCommissionAuditMode = useCallback(
     (nextMode: CommissionAuditFilterMode) => {
@@ -3388,6 +3503,9 @@ function ContractsPageContent() {
                   key={c.id}
                   type="button"
                   onClick={() => toggleSelect(selectionKey)}
+                  onContextMenu={(event) =>
+                    openContractContextMenu(event, c as ContractDoc, slug)
+                  }
                   className="block group h-full w-full text-left"
                 >
                   {renderedContract}
@@ -3398,6 +3516,9 @@ function ContractsPageContent() {
                   type="button"
                   onClick={() =>
                     openContractDetailWindow(c as ContractDoc, slug)
+                  }
+                  onContextMenu={(event) =>
+                    openContractContextMenu(event, c as ContractDoc, slug)
                   }
                   className="block group h-full w-full text-left"
                 >
@@ -4326,6 +4447,82 @@ function ContractsPageContent() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+      {contractContextMenu ? (
+        <div
+          className="fixed inset-0 z-[90]"
+          role="presentation"
+          onMouseDown={() => setContractContextMenu(null)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setContractContextMenu(null);
+          }}
+        >
+          <div
+            role="menu"
+            aria-label="Rychlé akce smlouvy"
+            className="fixed w-[min(240px,calc(100vw-24px))] overflow-hidden rounded-[18px] border border-slate-200 bg-white p-1.5 font-mono shadow-[0_22px_54px_rgba(15,23,42,0.24)]"
+            style={{ left: contractContextMenu.x, top: contractContextMenu.y }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const { contract, slug } = contractContextMenu;
+                setContractContextMenu(null);
+                openContractDetailWindow(contract, slug);
+              }}
+              className="ui-focus flex h-11 w-full items-center gap-3 rounded-[13px] px-3 text-left text-sm font-bold text-slate-800 transition hover:bg-slate-100"
+            >
+              <ExternalLink size={16} strokeWidth={2.2} className="text-slate-500" aria-hidden="true" />
+              <span>Otevřít</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const { contract, slug } = contractContextMenu;
+                setContractContextMenu(null);
+                openContractDetailWindow(contract, slug, { edit: true });
+              }}
+              className="ui-focus flex h-11 w-full items-center gap-3 rounded-[13px] px-3 text-left text-sm font-bold text-slate-800 transition hover:bg-violet-50 hover:text-violet-800"
+            >
+              <PencilLine size={16} strokeWidth={2.2} className="text-violet-600" aria-hidden="true" />
+              <span>Upravit</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!contractContextMenu.contract.contractNumber?.trim()}
+              onClick={() =>
+                void copyContractNumber(contractContextMenu.contract.contractNumber)
+              }
+              className="ui-focus flex h-11 w-full items-center gap-3 rounded-[13px] px-3 text-left text-sm font-bold text-slate-800 transition hover:bg-emerald-50 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Copy size={16} strokeWidth={2.2} className="text-emerald-600" aria-hidden="true" />
+              <span>Kopírovat číslo smlouvy</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {contractActionToast ? (
+        <div
+          role="status"
+          className={`fixed bottom-5 right-5 z-[100] flex max-w-[min(380px,calc(100vw-40px))] items-center gap-2 rounded-2xl border px-4 py-3 font-mono text-sm font-bold shadow-[0_18px_46px_rgba(15,23,42,0.2)] ${
+            contractActionToast.tone === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-rose-200 bg-rose-50 text-rose-800"
+          }`}
+        >
+          {contractActionToast.tone === "success" ? (
+            <Check size={17} strokeWidth={2.4} aria-hidden="true" />
+          ) : (
+            <AlertCircle size={17} strokeWidth={2.4} aria-hidden="true" />
+          )}
+          <span>{contractActionToast.message}</span>
         </div>
       ) : null}
       {contractDetailWindow ? (

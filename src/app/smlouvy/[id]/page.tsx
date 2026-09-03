@@ -443,6 +443,8 @@ export default function ContractDetailPage() {
   const params = useParams<{ id: string }>();
   const rawId = params?.id;
   const isEmbedded = searchParams?.get("embedded") === "1";
+  const editRequested = searchParams?.get("edit") === "1";
+  const handledEditRequestRef = useRef(false);
   const backToContractsHref =
     searchParams?.get("from") === "list" ? "/smlouvy?restore=1" : "/smlouvy";
   const fromListSuffix =
@@ -3484,6 +3486,18 @@ export default function ContractDetailPage() {
     setDetailsSaved(false);
     setDetailsError(null);
   }, [contract, resetEditFields]);
+
+  useEffect(() => {
+    if (!editRequested) {
+      handledEditRequestRef.current = false;
+      return;
+    }
+    if (handledEditRequestRef.current || !contract || !canManageContract) return;
+
+    handledEditRequestRef.current = true;
+    setDetailsSaved(false);
+    setEditMode(true);
+  }, [canManageContract, contract, editRequested]);
 
   const handleRefreshDetailsFromPdf = async () => {
     if (
