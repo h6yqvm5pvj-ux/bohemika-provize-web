@@ -1626,7 +1626,7 @@ export default function ContractDetailPage() {
     prod
   );
   const statementInitialAnnualPremiumRaw = Number(
-    contract?.initialCommissionBase?.annualPremium ?? historyInitialAnnualPremium
+    historyInitialAnnualPremium ?? contract?.initialCommissionBase?.annualPremium
   );
   const statementInitialAnnualPremium =
     Number.isFinite(statementInitialAnnualPremiumRaw) && statementInitialAnnualPremiumRaw > 0

@@ -160,12 +160,13 @@ const annualPremiumFromStoredHistoryEntry = (
   const annualPremium = positivePremiumOrNull(entry.newAnnualPremium);
   const premium = positivePremiumOrNull(entry.newPremium);
   const paymentCount = paymentsPerYear(paymentFrequency);
-  const statementBaseIsAnnual = isAnnualAutoPayoutProduct(product);
+  const statementBaseIsPayment =
+    isAutoProduct(product) && !isAnnualAutoPayoutProduct(product);
 
   if (annualPremium != null) {
     const isLegacyPaymentValueStoredAsAnnual =
       entry.basePremiumPeriod == null &&
-      !statementBaseIsAnnual &&
+      statementBaseIsPayment &&
       paymentCount > 1 &&
       premium != null &&
       Math.abs(annualPremium - premium) <= ANNUAL_PREMIUM_TOLERANCE;
@@ -176,7 +177,36 @@ const annualPremiumFromStoredHistoryEntry = (
 
   if (premium == null) return null;
   return entry.basePremiumPeriod === "payment" ||
-    (entry.basePremiumPeriod == null && !statementBaseIsAnnual)
+    (entry.basePremiumPeriod == null && statementBaseIsPayment)
+    ? Math.round(premium * paymentCount * 100) / 100
+    : premium;
+};
+
+const previousAnnualPremiumFromStoredHistoryEntry = (
+  entry: ContractAutoPremiumStatementHistoryEntry,
+  paymentFrequency: PaymentFrequency | null | undefined,
+  product: Product | null | undefined
+): number | null => {
+  const annualPremium = positivePremiumOrNull(entry.previousAnnualPremium);
+  const premium = positivePremiumOrNull(entry.previousPremium);
+  const paymentCount = paymentsPerYear(paymentFrequency);
+  const statementBaseIsPayment =
+    isAutoProduct(product) && !isAnnualAutoPayoutProduct(product);
+
+  if (annualPremium != null) {
+    const isLegacyPaymentValueStoredAsAnnual =
+      statementBaseIsPayment &&
+      paymentCount > 1 &&
+      premium != null &&
+      Math.abs(annualPremium - premium) <= ANNUAL_PREMIUM_TOLERANCE;
+    return isLegacyPaymentValueStoredAsAnnual
+      ? Math.round(annualPremium * paymentCount * 100) / 100
+      : annualPremium;
+  }
+
+  if (premium == null) return null;
+  return entry.basePremiumPeriod === "payment" ||
+    (entry.basePremiumPeriod == null && statementBaseIsPayment)
     ? Math.round(premium * paymentCount * 100) / 100
     : premium;
 };
@@ -579,35 +609,41 @@ const buildPremiumHistoryRows = ({
   });
 };
 
-const buildStoredPremiumHistoryRows = (
-  history: ContractAutoPremiumStatementHistoryEntry[] | null | undefined
+export const buildStoredPremiumHistoryRows = (
+  history: ContractAutoPremiumStatementHistoryEntry[] | null | undefined,
+  paymentFrequency: PaymentFrequency | null | undefined,
+  product: Product | null | undefined
 ): PremiumHistoryRow[] => {
   const rows = (history ?? [])
     .map((entry): PremiumHistoryRow | null => {
       const premiumKind = entry.premiumKind ?? "auto_change";
-      const annualNewPremium = validNumber(entry.newAnnualPremium);
-      const newPremium = annualNewPremium ?? validNumber(entry.newPremium);
-      if (newPremium == null) return null;
-      const basePremiumPeriod =
-        entry.basePremiumPeriod === "payment"
-          ? "payment"
-          : entry.basePremiumPeriod === "annual" || annualNewPremium != null
-            ? "annual"
-            : null;
+      const annualNewPremium = annualPremiumFromStoredHistoryEntry(
+        entry,
+        paymentFrequency,
+        product
+      );
+      if (annualNewPremium == null) return null;
+      const annualPreviousPremium = previousAnnualPremiumFromStoredHistoryEntry(
+        entry,
+        paymentFrequency,
+        product
+      );
 
       const anniversaryDate = storedHistoryDate(entry.anniversaryDate);
       const validFromDate = statementRowDate(entry.validFrom);
-      const difference = validNumber(entry.difference);
-      const differenceAnnual = validNumber(entry.differenceAnnual);
+      const differenceAnnual =
+        annualPreviousPremium != null
+          ? Math.round((annualNewPremium - annualPreviousPremium) * 100) / 100
+          : validNumber(entry.differenceAnnual) ?? validNumber(entry.difference);
       const status =
         premiumKind === "auto_initial"
           ? "initial"
-          : premiumStatusFromDifference(
-              premiumKind === "life_increase" ? differenceAnnual ?? difference : difference
-            );
+          : premiumStatusFromDifference(differenceAnnual);
 
       return {
-        key: entry.key ?? `${entry.statementId ?? "statement"}-${entry.rowId ?? newPremium}`,
+        key:
+          entry.key ??
+          `${entry.statementId ?? "statement"}-${entry.rowId ?? annualNewPremium}`,
         premiumKind,
         statementId: entry.statementId ?? null,
         rowId: entry.rowId ?? null,
@@ -622,14 +658,14 @@ const buildStoredPremiumHistoryRows = (
         statementDate: entry.statementDate ?? null,
         statementNumber: entry.statementNumber ?? null,
         productCode: entry.productCode ?? "AUTO",
-        productKey: null,
-        previousPremium: validNumber(entry.previousPremium),
-        basePremium: newPremium,
-        difference,
-        previousAnnualPremium: validNumber(entry.previousAnnualPremium),
-        newAnnualPremium: validNumber(entry.newAnnualPremium),
+        productKey: product ?? null,
+        previousPremium: annualPreviousPremium,
+        basePremium: annualNewPremium,
+        difference: differenceAnnual,
+        previousAnnualPremium: annualPreviousPremium,
+        newAnnualPremium: annualNewPremium,
         differenceAnnual,
-        basePremiumPeriod,
+        basePremiumPeriod: "annual",
         status,
         commissionCodes: entry.commissionCode ? [entry.commissionCode] : [],
         source: entry.source === "manager" ? "manager" : "own",
@@ -727,7 +763,11 @@ export function ContractAutoPremiumHistory({
         statements,
       })
     : [];
-  const storedRows = buildStoredPremiumHistoryRows(storedHistory);
+  const storedRows = buildStoredPremiumHistoryRows(
+    storedHistory,
+    paymentFrequency,
+    product
+  );
   const storedChangeRows = storedRows.filter(
     (row) => row.premiumKind !== "auto_initial" && row.status !== "same"
   );

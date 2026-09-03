@@ -56,6 +56,7 @@ import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import {
+  annualPremiumFromStoredHistoryEntry,
   autoContractWasCreatedFromCommissionStatement,
   canApplyPremiumStatementToCurrentContract as canApplyPremiumStatementToCurrentContractRecord,
   mergePremiumHistoryRecords as mergePremiumHistoryRecordsForStatement,
@@ -2764,7 +2765,7 @@ const buildAutoInitialCommissionBaseUpdate = ({
   const frequencyRaw = normalizePaymentFrequencyValue(contract.frequencyRaw);
   const paymentsPerYearValue = periodsPerYear(frequencyRaw);
   const statementAnnualPremiumBase =
-    finiteMoneyOrNull(initialEntry.newAnnualPremium) ??
+    annualPremiumFromStoredHistoryEntry(initialEntry, contract) ??
     Math.round(statementPaymentPremiumBase * paymentsPerYearValue * 100) / 100;
   if (statementAnnualPremiumBase <= 0) return null;
 

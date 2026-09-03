@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  annualPremiumFromStoredHistoryEntry,
   autoContractWasCreatedFromCommissionStatement,
   canApplyPremiumStatementToCurrentContract,
   mergePremiumHistoryRecords,
@@ -309,6 +310,112 @@ describe("premium statement history", () => {
       differenceAnnual: 664,
       basePremiumPeriod: "payment",
     });
+  });
+
+  it("converts a quarterly CPP anniversary base to one annual change", () => {
+    const legacyInitial: PremiumStatementHistoryEntry = {
+      key: "legacy-initial",
+      premiumKind: "auto_initial",
+      statementId: "statement-65",
+      statementNumber: "65",
+      statementPeriod: "01.09.2025 - 30.09.2025",
+      statementDate: "23.10.2025",
+      statementChronologyMs: Date.UTC(2025, 9, 23),
+      payoutMonthKey: "2025-10",
+      anniversaryNumber: 0,
+      anniversaryDate: "2024-08-20",
+      previousPremium: null,
+      newPremium: 1622,
+      difference: 0,
+      previousAnnualPremium: null,
+      newAnnualPremium: 1622,
+      differenceAnnual: null,
+      basePremiumPeriod: null,
+      productCode: "CPP_ACPIV",
+      commissionCode: null,
+      rowId: "initial:416477",
+      validFrom: "20.08.2024",
+      source: "own",
+      writtenAtMs: 1,
+      writtenBy: "jakub.rauscher@bohemika.eu",
+    };
+    const change = premiumHistoryEntryFromStatementRow({
+      row: {
+        premiumKind: "auto_change",
+        rowId: "416477",
+        contractNumber: "3267327121",
+        productCode: "CPP_ACPIV",
+        productKey: "cppAuto",
+        commissionCode: "B101",
+        basePremium: 1716,
+        signedAt: "18.08.2024",
+        validFrom: "20.08.2024",
+        source: "own",
+      },
+      contract: {
+        productKey: "cppAuto",
+        inputAmount: 1716,
+        frequencyRaw: "quarterly",
+        policyStartDate: "2024-08-20",
+        premiumStatementHistory: [legacyInitial],
+      },
+      statementId: "statement-65",
+      ...statementContext,
+      statementNumber: "65",
+      statementDate: "23.10.2025",
+      statementPeriod: "01.09.2025 - 30.09.2025",
+      periodEndMs: Date.UTC(2025, 8, 30),
+      statementChronologyMs: Date.UTC(2025, 9, 23),
+      allowCurrentPremiumFallback: false,
+    });
+
+    expect(change).toMatchObject({
+      premiumKind: "auto_change",
+      basePremiumPeriod: "payment",
+      previousPremium: 1622,
+      newPremium: 1716,
+      difference: 94,
+      previousAnnualPremium: 6488,
+      newAnnualPremium: 6864,
+      differenceAnnual: 376,
+    });
+  });
+
+  it("repairs a legacy quarterly initial amount that was stored as annual", () => {
+    expect(
+      annualPremiumFromStoredHistoryEntry(
+        {
+          key: "legacy-initial",
+          premiumKind: "auto_initial",
+          statementId: "statement-65",
+          statementNumber: "65",
+          statementPeriod: "01.09.2025 - 30.09.2025",
+          statementDate: "23.10.2025",
+          statementChronologyMs: Date.UTC(2025, 9, 23),
+          payoutMonthKey: "2025-10",
+          anniversaryNumber: 0,
+          anniversaryDate: "2024-08-20",
+          previousPremium: null,
+          newPremium: 1622,
+          difference: null,
+          previousAnnualPremium: null,
+          newAnnualPremium: 1622,
+          differenceAnnual: null,
+          basePremiumPeriod: null,
+          productCode: "CPP_ACPIV",
+          commissionCode: null,
+          rowId: "initial:416477",
+          validFrom: "20.08.2024",
+          source: "own",
+          writtenAtMs: 1,
+          writtenBy: "jakub.rauscher@bohemika.eu",
+        },
+        {
+          productKey: "cppAuto",
+          frequencyRaw: "quarterly",
+        }
+      )
+    ).toBe(6488);
   });
 
   it("ignores a CPP Auto semiannual B row that is only the second installment", () => {
@@ -667,5 +774,113 @@ describe("premium statement history", () => {
       basePremiumPeriod: "annual",
       newAnnualPremium: 10709,
     });
+  });
+
+  it("collapses duplicate legacy and recalculated records for one statement row", () => {
+    const legacy: PremiumStatementHistoryEntry = {
+      key: "legacy-quarterly-row",
+      premiumKind: "auto_change",
+      statementId: "statement-65",
+      statementNumber: "65",
+      statementPeriod: "01.09.2025 - 30.09.2025",
+      statementDate: "23.10.2025",
+      statementChronologyMs: Date.UTC(2025, 9, 23),
+      payoutMonthKey: "2025-10",
+      anniversaryNumber: 1,
+      anniversaryDate: "2025-08-20",
+      previousPremium: 1622,
+      newPremium: 1716,
+      difference: 94,
+      previousAnnualPremium: null,
+      newAnnualPremium: null,
+      differenceAnnual: null,
+      basePremiumPeriod: null,
+      productCode: "CPP_ACPIV",
+      commissionCode: "B101",
+      rowId: "416477",
+      validFrom: "20.08.2024",
+      source: "own",
+      writtenAtMs: 1,
+      writtenBy: "jakub.rauscher@bohemika.eu",
+    };
+    const incorrectlyRecalculated: PremiumStatementHistoryEntry = {
+      ...legacy,
+      key: "incorrect-annual-row",
+      previousAnnualPremium: 1622,
+      newPremium: 6864,
+      newAnnualPremium: 6864,
+      difference: 5242,
+      differenceAnnual: 5242,
+      basePremiumPeriod: "payment",
+      writtenAtMs: 2,
+    };
+    const corrected: PremiumStatementHistoryEntry = {
+      ...legacy,
+      key: "correct-quarterly-row",
+      previousAnnualPremium: 6488,
+      newAnnualPremium: 6864,
+      differenceAnnual: 376,
+      basePremiumPeriod: "payment",
+      writtenAtMs: 3,
+    };
+
+    const merged = mergePremiumHistoryRecords(
+      [legacy, incorrectlyRecalculated],
+      [corrected],
+      120
+    );
+
+    expect(merged.merged).toHaveLength(1);
+    expect(merged.merged[0]).toMatchObject({
+      key: "correct-quarterly-row",
+      previousPremium: 1622,
+      newPremium: 1716,
+      difference: 94,
+      previousAnnualPremium: 6488,
+      newAnnualPremium: 6864,
+      differenceAnnual: 376,
+    });
+  });
+
+  it("keeps a complete physical-row record over a newer incomplete duplicate", () => {
+    const complete: PremiumStatementHistoryEntry = {
+      key: "complete",
+      premiumKind: "auto_change",
+      statementId: "statement-65",
+      statementNumber: "65",
+      statementPeriod: "01.09.2025 - 30.09.2025",
+      statementDate: "23.10.2025",
+      statementChronologyMs: Date.UTC(2025, 9, 23),
+      payoutMonthKey: "2025-10",
+      anniversaryNumber: 1,
+      anniversaryDate: "2025-08-20",
+      previousPremium: 1622,
+      newPremium: 1716,
+      difference: 94,
+      previousAnnualPremium: 6488,
+      newAnnualPremium: 6864,
+      differenceAnnual: 376,
+      basePremiumPeriod: "payment",
+      productCode: "CPP_ACPIV",
+      commissionCode: "B101",
+      rowId: "416477",
+      validFrom: "20.08.2024",
+      source: "own",
+      writtenAtMs: 1_700_000_000_000,
+      writtenBy: "system",
+    };
+    const newerIncomplete: PremiumStatementHistoryEntry = {
+      ...complete,
+      key: "newer-incomplete",
+      previousAnnualPremium: null,
+      newAnnualPremium: null,
+      differenceAnnual: null,
+      basePremiumPeriod: null,
+      writtenAtMs: 1_800_000_000_000,
+    };
+
+    const merged = mergePremiumHistoryRecords([complete, newerIncomplete], [], 120);
+
+    expect(merged.merged).toEqual([complete]);
   });
 });

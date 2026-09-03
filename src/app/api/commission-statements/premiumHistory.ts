@@ -232,6 +232,65 @@ const contractCurrentAutoAnnualPremium = (contract: PremiumHistoryContract): num
   return Math.round(paymentPremium * contractPaymentPeriodsPerYear(contract) * 100) / 100;
 };
 
+export const annualPremiumFromStoredHistoryEntry = (
+  entry: PremiumStatementHistoryEntry,
+  contract: PremiumHistoryContract
+): number | null => {
+  const annualPremium = finiteMoneyOrNull(entry.newAnnualPremium);
+  const premium = finiteMoneyOrNull(entry.newPremium);
+  const paymentsPerYear = contractPaymentPeriodsPerYear(contract);
+  const statementBaseIsPayment =
+    isAutoProduct(contract.productKey ?? null) &&
+    !isAnnualAutoPayoutProduct(contract.productKey ?? null);
+
+  if (annualPremium != null) {
+    const isLegacyPaymentValueStoredAsAnnual =
+      entry.basePremiumPeriod == null &&
+      statementBaseIsPayment &&
+      paymentsPerYear > 1 &&
+      premium != null &&
+      Math.abs(annualPremium - premium) <= PREMIUM_CHANGE_TOLERANCE;
+    return isLegacyPaymentValueStoredAsAnnual
+      ? Math.round(annualPremium * paymentsPerYear * 100) / 100
+      : annualPremium;
+  }
+
+  if (premium == null) return null;
+  return entry.basePremiumPeriod === "payment" ||
+    (entry.basePremiumPeriod == null && statementBaseIsPayment)
+    ? Math.round(premium * paymentsPerYear * 100) / 100
+    : premium;
+};
+
+export const previousAnnualPremiumFromStoredHistoryEntry = (
+  entry: PremiumStatementHistoryEntry,
+  contract: PremiumHistoryContract
+): number | null => {
+  const annualPremium = finiteMoneyOrNull(entry.previousAnnualPremium);
+  const premium = finiteMoneyOrNull(entry.previousPremium);
+  const paymentsPerYear = contractPaymentPeriodsPerYear(contract);
+  const statementBaseIsPayment =
+    isAutoProduct(contract.productKey ?? null) &&
+    !isAnnualAutoPayoutProduct(contract.productKey ?? null);
+
+  if (annualPremium != null) {
+    const isLegacyPaymentValueStoredAsAnnual =
+      statementBaseIsPayment &&
+      paymentsPerYear > 1 &&
+      premium != null &&
+      Math.abs(annualPremium - premium) <= PREMIUM_CHANGE_TOLERANCE;
+    return isLegacyPaymentValueStoredAsAnnual
+      ? Math.round(annualPremium * paymentsPerYear * 100) / 100
+      : annualPremium;
+  }
+
+  if (premium == null) return null;
+  return entry.basePremiumPeriod === "payment" ||
+    (entry.basePremiumPeriod == null && statementBaseIsPayment)
+    ? Math.round(premium * paymentsPerYear * 100) / 100
+    : premium;
+};
+
 const autoPremiumStatementBasePeriod = (
   productKey: Product | null | undefined
 ): "annual" | "payment" =>
@@ -284,9 +343,8 @@ const autoPremiumBeforeStatement = (
     )
     .map((entry) => ({
       dateMs: premiumHistoryEntryDateMs(entry),
-      newPremium: finiteMoneyOrNull(entry.newAnnualPremium) ?? finiteMoneyOrNull(entry.newPremium),
-      previousPremium:
-        finiteMoneyOrNull(entry.previousAnnualPremium) ?? finiteMoneyOrNull(entry.previousPremium),
+      newPremium: annualPremiumFromStoredHistoryEntry(entry, contract),
+      previousPremium: previousAnnualPremiumFromStoredHistoryEntry(entry, contract),
     }))
     .sort((a, b) => (a.dateMs ?? 0) - (b.dateMs ?? 0));
 
@@ -447,6 +505,16 @@ export const premiumHistoryEntryFromStatementRow = ({
   if (annualDifference != null && Math.abs(annualDifference) <= PREMIUM_CHANGE_TOLERANCE) {
     return null;
   }
+  const paymentsPerYearValue = contractPaymentPeriodsPerYear(contract);
+  const paymentPremium = Math.round((annualPremium / paymentsPerYearValue) * 100) / 100;
+  const previousPaymentPremium =
+    previousAnnualPremium == null
+      ? null
+      : Math.round((previousAnnualPremium / paymentsPerYearValue) * 100) / 100;
+  const paymentDifference =
+    previousPaymentPremium == null
+      ? null
+      : Math.round((paymentPremium - previousPaymentPremium) * 100) / 100;
 
   return {
     key: compactHash(
@@ -471,9 +539,9 @@ export const premiumHistoryEntryFromStatementRow = ({
     payoutMonthKey,
     anniversaryNumber,
     anniversaryDate: isoDateFromMs(anniversaryDateMs),
-    previousPremium: previousAnnualPremium,
-    newPremium: annualPremium,
-    difference: annualDifference,
+    previousPremium: previousPaymentPremium,
+    newPremium: paymentPremium,
+    difference: paymentDifference,
     previousAnnualPremium,
     newAnnualPremium: annualPremium,
     differenceAnnual: annualDifference,
@@ -530,7 +598,17 @@ const premiumHistoryCompletenessScore = (
   if (entry.differenceAnnual != null) score += 10;
   if (entry.statementChronologyMs != null) score += 4;
   if (entry.payoutMonthKey) score += 2;
-  return score + (entry.writtenAtMs ?? 0) / 1_000_000_000_000;
+  return score;
+};
+
+const preferPremiumHistoryCandidate = (
+  candidate: PremiumStatementHistoryEntry,
+  current: PremiumStatementHistoryEntry
+): boolean => {
+  const candidateScore = premiumHistoryCompletenessScore(candidate);
+  const currentScore = premiumHistoryCompletenessScore(current);
+  if (candidateScore !== currentScore) return candidateScore > currentScore;
+  return (candidate.writtenAtMs ?? 0) > (current.writtenAtMs ?? 0);
 };
 
 const premiumHistorySortMs = (entry: PremiumStatementHistoryEntry): number =>
@@ -559,7 +637,9 @@ export const mergePremiumHistoryRecords = (
   for (const item of existing) {
     const semanticKey = premiumHistorySemanticKey(item) || item.key;
     const rowIdentityKey = premiumHistoryRowIdentityKey(item);
-    const current = recordsBySemanticKey.get(semanticKey);
+    const existingSemanticKey = semanticKeyByRowIdentity.get(rowIdentityKey);
+    const lookupKey = existingSemanticKey ?? semanticKey;
+    const current = recordsBySemanticKey.get(lookupKey);
     if (!current) {
       recordsBySemanticKey.set(semanticKey, item);
       order.push(semanticKey);
@@ -568,11 +648,20 @@ export const mergePremiumHistoryRecords = (
       continue;
     }
     updatedExisting += 1;
-    if (premiumHistoryCompletenessScore(item) > premiumHistoryCompletenessScore(current)) {
+    if (preferPremiumHistoryCandidate(item, current)) {
+      if (lookupKey !== semanticKey) {
+        recordsBySemanticKey.delete(lookupKey);
+        const orderIndex = order.indexOf(lookupKey);
+        if (orderIndex >= 0) order[orderIndex] = semanticKey;
+      }
       recordsBySemanticKey.set(semanticKey, item);
+      semanticKeyByRecordKey.set(current.key, semanticKey);
+      semanticKeyByRecordKey.set(item.key, semanticKey);
+      semanticKeyByRowIdentity.set(rowIdentityKey, semanticKey);
+    } else {
+      semanticKeyByRecordKey.set(item.key, lookupKey);
+      semanticKeyByRowIdentity.set(rowIdentityKey, lookupKey);
     }
-    semanticKeyByRecordKey.set(item.key, semanticKey);
-    semanticKeyByRowIdentity.set(rowIdentityKey, semanticKey);
   }
 
   let added = 0;
@@ -594,13 +683,14 @@ export const mergePremiumHistoryRecords = (
     }
 
     existingCount += 1;
-    if (premiumHistoryCompletenessScore(item) > premiumHistoryCompletenessScore(current)) {
+    if (preferPremiumHistoryCandidate(item, current)) {
       if (lookupKey !== semanticKey) {
         recordsBySemanticKey.delete(lookupKey);
         const orderIndex = order.indexOf(lookupKey);
         if (orderIndex >= 0) order[orderIndex] = semanticKey;
       }
       recordsBySemanticKey.set(semanticKey, item);
+      semanticKeyByRecordKey.set(current.key, semanticKey);
       semanticKeyByRecordKey.set(item.key, semanticKey);
       semanticKeyByRowIdentity.set(rowIdentityKey, semanticKey);
       updatedExisting += 1;
