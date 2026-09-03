@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import Image from "next/image";
-import { AlertTriangle, ChevronDown } from "lucide-react";
+import { AlertTriangle, ChevronDown, Info, X } from "lucide-react";
 
 import {
   type CommissionMode,
@@ -526,6 +527,12 @@ type PayoutDifferenceReason =
   | "commission_amount_mismatch"
   | "storno";
 
+type PayoutDifferenceExplanation = {
+  detail: string;
+  reasonLabel: string;
+  sourceLabel: string | null;
+};
+
 const payoutRecordSortValue = (record: ContractCommissionPayout): number => {
   const chronology = Number(record.statementChronologyMs);
   if (Number.isFinite(chronology)) return chronology;
@@ -632,6 +639,25 @@ export function ContractCommissionSection({
   const normalizedViewerEmail = normalizeEmail(viewerEmail);
   const normalizedOwnerEmail = normalizeEmail(contractOwnerEmail);
   const trimmedCommissionWarning = commissionWarning?.trim() || null;
+  const [payoutDifferenceExplanation, setPayoutDifferenceExplanation] =
+    useState<PayoutDifferenceExplanation | null>(null);
+
+  useEffect(() => {
+    if (!payoutDifferenceExplanation) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPayoutDifferenceExplanation(null);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [payoutDifferenceExplanation]);
 
   const payoutsForWriter = (
     writerEmail: string | null | undefined,
@@ -689,6 +715,7 @@ export function ContractCommissionSection({
     const label = payoutRecordLabel(importantRecord) ?? latestPayoutRecordLabel(records);
     const reason = importantRecord ? payoutDifferenceReasonFromRecord(importantRecord) : null;
     const detail = String(importantRecord?.detail ?? "").trim();
+    const showDifferenceExplanation = Boolean(detail && reason && reason !== "storno");
     if (!label && !reason && !detail) return null;
 
     return (
@@ -699,11 +726,43 @@ export function ContractCommissionSection({
           </span>
         )}
         {reason && (
-          <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutDifferenceReasonClass(reason)}`}>
-            {payoutDifferenceReasonLabel(reason)}
+          <span className="mt-1 inline-flex flex-wrap items-center gap-1.5">
+            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutDifferenceReasonClass(reason)}`}>
+              {payoutDifferenceReasonLabel(reason)}
+            </span>
+            {showDifferenceExplanation ? (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="Zobrazit vysvětlení rozdílu"
+                aria-haspopup="dialog"
+                title="Vysvětlení rozdílu"
+                className="ui-focus inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-amber-300 bg-white text-amber-800 shadow-sm transition hover:border-amber-400 hover:bg-amber-50"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPayoutDifferenceExplanation({
+                    detail,
+                    reasonLabel: payoutDifferenceReasonLabel(reason),
+                    sourceLabel: label,
+                  });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setPayoutDifferenceExplanation({
+                    detail,
+                    reasonLabel: payoutDifferenceReasonLabel(reason),
+                    sourceLabel: label,
+                  });
+                }}
+              >
+                <Info size={13} strokeWidth={2.5} aria-hidden="true" />
+              </span>
+            ) : null}
           </span>
         )}
-        {detail && (
+        {detail && !showDifferenceExplanation && (
           <span className="mt-1 block max-w-[46rem] text-[11px] font-medium leading-relaxed text-amber-900">
             {detail}
           </span>
@@ -1198,6 +1257,73 @@ export function ContractCommissionSection({
           )}
         </section>
       )}
+
+      {payoutDifferenceExplanation ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPayoutDifferenceExplanation(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="payout-difference-explanation-title"
+            className="w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.32)]"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-800">
+                  <Info size={18} strokeWidth={2.4} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h3
+                    id="payout-difference-explanation-title"
+                    className="text-base font-black text-slate-950"
+                  >
+                    Vysvětlení rozdílu
+                  </h3>
+                  {payoutDifferenceExplanation.sourceLabel ? (
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">
+                      Zapsáno z {payoutDifferenceExplanation.sourceLabel}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPayoutDifferenceExplanation(null)}
+                className="ui-focus inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+                aria-label="Zavřít vysvětlení rozdílu"
+              >
+                <X size={17} strokeWidth={2.4} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">
+                {payoutDifferenceExplanation.reasonLabel}
+              </span>
+              <p className="text-sm font-medium leading-7 text-slate-700">
+                {payoutDifferenceExplanation.detail}
+              </p>
+            </div>
+
+            <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setPayoutDifferenceExplanation(null)}
+                className="ui-focus inline-flex h-10 items-center justify-center rounded-full bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-black"
+              >
+                Zavřít
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
