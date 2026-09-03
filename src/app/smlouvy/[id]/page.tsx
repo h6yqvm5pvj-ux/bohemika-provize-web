@@ -132,7 +132,6 @@ import {
   ContractAutoPremiumHistory,
   initialAnnualPremiumFromStatementHistory,
   resolveAutoSignedAnnualPremiumValue,
-  signedAnnualPremiumMatchesStatementChange,
 } from "./ContractAutoPremiumHistory";
 import {
   mergeEmptyContractFields,
@@ -1632,21 +1631,9 @@ export default function ContractDetailPage() {
     Number.isFinite(statementInitialAnnualPremiumRaw) && statementInitialAnnualPremiumRaw > 0
       ? Math.round(statementInitialAnnualPremiumRaw * 100) / 100
       : null;
-  const storedPremiumMatchesLaterStatementChange =
-    isAutoCommissionProduct &&
-    signedAnnualPremiumMatchesStatementChange({
-      signedAnnualPremium,
-      statementInitialAnnualPremium,
-      history: contract?.premiumStatementHistory,
-      paymentFrequency: signedPremiumFrequency,
-      product: prod,
-    });
   const preferStatementInitialPremium =
     isAutoCommissionProduct &&
-    (contract?.createdFromCommissionStatement === true ||
-      Boolean(String(contract?.createdFromCommissionStatementId ?? "").trim()) ||
-      contract?.commissionBaseSource === "commission_statement_auto_initial" ||
-      storedPremiumMatchesLaterStatementChange);
+    statementInitialAnnualPremium != null;
   const resolvedSignedAnnualPremium = resolveAutoSignedAnnualPremiumValue({
     signedAnnualPremium,
     statementInitialAnnualPremium,

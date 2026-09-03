@@ -55,7 +55,7 @@ describe("auto premium history display helpers", () => {
     ).toBe(61_877);
   });
 
-  it("keeps the signing base from the first anniversary chain over a conflicting synthetic initial", () => {
+  it("keeps the first captured signing base over a later conflicting synthetic initial", () => {
     expect(
       initialAnnualPremiumFromStatementHistory(
         [
@@ -86,6 +86,32 @@ describe("auto premium history display helpers", () => {
         "allianzAuto"
       )
     ).toBe(12_724);
+  });
+
+  it("does not replace a single stored initial when a legacy renewal was already annualized", () => {
+    expect(
+      initialAnnualPremiumFromStatementHistory(
+        [
+          {
+            premiumKind: "auto_initial",
+            newPremium: 3_700,
+            newAnnualPremium: 7_400,
+            source: "own",
+          },
+          {
+            premiumKind: "auto_change",
+            anniversaryNumber: 1,
+            previousPremium: 7_400,
+            previousAnnualPremium: 7_400,
+            newPremium: 7_850,
+            newAnnualPremium: 7_850,
+            source: "own",
+          },
+        ],
+        "semiannual",
+        "cppAuto"
+      )
+    ).toBe(7_400);
   });
 
   it("annualizes legacy payment-based initial rows for non-annual frequencies", () => {

@@ -603,29 +603,21 @@ const premiumHistoryCompletenessScore = (
 
 const preferPremiumHistoryCandidate = (
   candidate: PremiumStatementHistoryEntry,
-  current: PremiumStatementHistoryEntry,
-  firstAnniversaryInitialPremium: number | null
+  current: PremiumStatementHistoryEntry
 ): boolean => {
   if (
-    firstAnniversaryInitialPremium != null &&
     candidate.premiumKind === "auto_initial" &&
     current.premiumKind === "auto_initial"
   ) {
-    const candidateInitial = finiteMoneyOrNull(
-      candidate.newAnnualPremium ?? candidate.newPremium
-    );
-    const currentInitial = finiteMoneyOrNull(
-      current.newAnnualPremium ?? current.newPremium
-    );
-    const candidateMatches =
+    const candidateInitial = finiteMoneyOrNull(candidate.newPremium);
+    const currentInitial = finiteMoneyOrNull(current.newPremium);
+    if (
       candidateInitial != null &&
-      Math.abs(candidateInitial - firstAnniversaryInitialPremium) <=
-        PREMIUM_CHANGE_TOLERANCE;
-    const currentMatches =
       currentInitial != null &&
-      Math.abs(currentInitial - firstAnniversaryInitialPremium) <=
-        PREMIUM_CHANGE_TOLERANCE;
-    if (candidateMatches !== currentMatches) return candidateMatches;
+      Math.abs(candidateInitial - currentInitial) > PREMIUM_CHANGE_TOLERANCE
+    ) {
+      return (candidate.writtenAtMs ?? 0) < (current.writtenAtMs ?? 0);
+    }
   }
 
   const candidateScore = premiumHistoryCompletenessScore(candidate);
@@ -651,25 +643,6 @@ export const mergePremiumHistoryRecords = (
   existingCount: number;
   updatedExisting: number;
 } => {
-  const firstAnniversaryInitialPremium = [...existing, ...incoming]
-    .filter(
-      (entry) =>
-        entry.premiumKind === "auto_change" &&
-        entry.source === "own" &&
-        entry.anniversaryNumber === 1 &&
-        finiteMoneyOrNull(entry.previousAnnualPremium ?? entry.previousPremium) != null
-    )
-    .sort(
-      (left, right) =>
-        premiumHistoryCompletenessScore(right) -
-          premiumHistoryCompletenessScore(left) ||
-        (premiumHistoryEntryChronologyMs(left) ?? Number.MAX_SAFE_INTEGER) -
-          (premiumHistoryEntryChronologyMs(right) ?? Number.MAX_SAFE_INTEGER) ||
-        (right.writtenAtMs ?? 0) - (left.writtenAtMs ?? 0)
-    )
-    .map((entry) =>
-      finiteMoneyOrNull(entry.previousAnnualPremium ?? entry.previousPremium)
-    )[0] ?? null;
   const recordsBySemanticKey = new Map<string, PremiumStatementHistoryEntry>();
   const semanticKeyByRecordKey = new Map<string, string>();
   const semanticKeyByRowIdentity = new Map<string, string>();
@@ -690,13 +663,7 @@ export const mergePremiumHistoryRecords = (
       continue;
     }
     updatedExisting += 1;
-    if (
-      preferPremiumHistoryCandidate(
-        item,
-        current,
-        firstAnniversaryInitialPremium
-      )
-    ) {
+    if (preferPremiumHistoryCandidate(item, current)) {
       if (lookupKey !== semanticKey) {
         recordsBySemanticKey.delete(lookupKey);
         const orderIndex = order.indexOf(lookupKey);
@@ -731,13 +698,7 @@ export const mergePremiumHistoryRecords = (
     }
 
     existingCount += 1;
-    if (
-      preferPremiumHistoryCandidate(
-        item,
-        current,
-        firstAnniversaryInitialPremium
-      )
-    ) {
+    if (preferPremiumHistoryCandidate(item, current)) {
       if (lookupKey !== semanticKey) {
         recordsBySemanticKey.delete(lookupKey);
         const orderIndex = order.indexOf(lookupKey);
