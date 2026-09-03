@@ -394,6 +394,35 @@ function institutionLabelForProduct(product?: Product | null): string | null {
   return productInstitutionLabel(product, null);
 }
 
+function ContractInstitutionGhostLogo({
+  product,
+}: {
+  product?: Product | null;
+}) {
+  const institution = product ? PRODUCT_CATALOG[product] : null;
+  if (!institution) return null;
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden grayscale opacity-[0.3] transition-opacity duration-200 group-hover:opacity-[0.55] ${institutionLogoFrameClass(
+        institution.institutionId,
+        "chip"
+      )}`}
+    >
+      <Image
+        src={institution.institutionLogo}
+        alt=""
+        fill
+        sizes="40px"
+        className={`${institutionLogoImageClass(
+          institution.institutionId
+        )} h-full w-full`}
+      />
+    </span>
+  );
+}
+
 function institutionMonogram(label: string): string {
   const chunks = label
     .trim()
@@ -3020,10 +3049,15 @@ function ContractsPageContent() {
                           </div>
                         ) : null}
 
-                        <div className="order-6 hidden justify-start lg:order-none lg:flex lg:justify-end">
+                        <div className="order-6 hidden items-center justify-start gap-2 lg:order-none lg:flex lg:justify-end">
                           {!selectMode ? (
-                            <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition group-hover:border-slate-400 group-hover:text-slate-950">
-                              Detail ↗
+                            <span className="inline-flex items-center gap-2">
+                              <ContractInstitutionGhostLogo
+                                product={c.productKey as Product | undefined}
+                              />
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition group-hover:border-slate-400 group-hover:text-slate-950">
+                                Detail ↗
+                              </span>
                             </span>
                           ) : null}
                         </div>
@@ -3068,13 +3102,18 @@ function ContractsPageContent() {
                   )}
                     {!selectMode && (
                       <div
-                        className="pointer-events-none absolute right-3 top-3 z-[2] inline-flex items-center gap-1 rounded-full border border-[#9a67d0]/80 bg-[#2e1c43]/92 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-[#d8bcf3] opacity-0 shadow-[0_10px_20px_rgba(20,8,34,0.3)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                        className="pointer-events-none absolute right-3 top-3 z-[2] inline-flex items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
                         aria-hidden="true"
                       >
-                        <span>Detail</span>
-                      <span className="text-[11px]">↗</span>
-                    </div>
-                  )}
+                        <ContractInstitutionGhostLogo
+                          product={c.productKey as Product | undefined}
+                        />
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#9a67d0]/80 bg-[#2e1c43]/92 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-[#d8bcf3] shadow-[0_10px_20px_rgba(20,8,34,0.3)]">
+                          <span>Detail</span>
+                          <span className="text-[11px]">↗</span>
+                        </span>
+                      </div>
+                    )}
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
                     <div className="relative z-[1] min-w-0">
