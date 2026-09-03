@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   payoutDifferenceAmountFromRecords,
+  payoutExplanationForRecords,
   payoutStatusForCodes,
   stornoPayoutAmountFromRecords,
 } from "./ContractCommissionSection";
@@ -100,6 +101,31 @@ describe("contract commission payout display helpers", () => {
         records: state.records,
       })
     ).toBe(-25.18);
+  });
+
+  it("prepares storno details for the explanation dialog", () => {
+    const detail =
+      "B101: odúčtování ve výpisu, částka -96,72 Kč. Kariérní stupeň sedí.";
+
+    expect(
+      payoutExplanationForRecords([
+        {
+          code: "B101",
+          amount: -96.72,
+          expectedAmount: 185.33,
+          difference: -282.05,
+          differenceReason: "storno",
+          status: "storno",
+          detail,
+          statementNumber: "66",
+          statementPeriod: "01.10.2025 - 31.10.2025",
+        },
+      ])
+    ).toEqual({
+      detail,
+      reasonLabel: "Odúčtování ve výpisu",
+      sourceLabel: "výpis 66 · 01.10.2025 - 31.10.2025",
+    });
   });
 
   it("does not turn a later storno payout into a missing commission difference", () => {

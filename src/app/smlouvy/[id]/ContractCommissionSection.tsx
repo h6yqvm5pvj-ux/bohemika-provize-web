@@ -628,6 +628,22 @@ const importantPayoutRecord = (
   );
 };
 
+export const payoutExplanationForRecords = (
+  records: ContractCommissionPayout[]
+): PayoutDifferenceExplanation | null => {
+  const record = importantPayoutRecord(records);
+  if (!record) return null;
+  const reason = payoutDifferenceReasonFromRecord(record);
+  const detail = String(record.detail ?? "").trim();
+  if (!reason || !detail) return null;
+
+  return {
+    detail,
+    reasonLabel: payoutDifferenceReasonLabel(reason),
+    sourceLabel: payoutRecordLabel(record) ?? latestPayoutRecordLabel(records),
+  };
+};
+
 export function ContractCommissionSection({
   product,
   isOwnContract,
@@ -731,9 +747,8 @@ export function ContractCommissionSection({
     const importantRecord = importantPayoutRecord(records);
     const label = payoutRecordLabel(importantRecord) ?? latestPayoutRecordLabel(records);
     const reason = importantRecord ? payoutDifferenceReasonFromRecord(importantRecord) : null;
-    const detail = String(importantRecord?.detail ?? "").trim();
-    const showDifferenceExplanation = Boolean(detail && reason && reason !== "storno");
-    if (!label && !reason && !detail) return null;
+    const explanation = payoutExplanationForRecords(records);
+    if (!label && !reason) return null;
 
     return (
       <span className="mt-1 block">
@@ -747,41 +762,32 @@ export function ContractCommissionSection({
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutDifferenceReasonClass(reason)}`}>
               {payoutDifferenceReasonLabel(reason)}
             </span>
-            {showDifferenceExplanation ? (
+            {explanation ? (
               <span
                 role="button"
                 tabIndex={0}
-                aria-label="Zobrazit vysvětlení rozdílu"
+                aria-label="Zobrazit vysvětlení nesrovnalosti"
                 aria-haspopup="dialog"
-                title="Vysvětlení rozdílu"
-                className="ui-focus inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-amber-300 bg-white text-amber-800 shadow-sm transition hover:border-amber-400 hover:bg-amber-50"
+                title="Vysvětlení nesrovnalosti"
+                className={`ui-focus inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border bg-white shadow-sm transition ${
+                  reason === "storno" || reason === "career_mismatch"
+                    ? "border-rose-300 text-rose-800 hover:border-rose-400 hover:bg-rose-50"
+                    : "border-amber-300 text-amber-800 hover:border-amber-400 hover:bg-amber-50"
+                }`}
                 onClick={(event) => {
                   event.stopPropagation();
-                  setPayoutDifferenceExplanation({
-                    detail,
-                    reasonLabel: payoutDifferenceReasonLabel(reason),
-                    sourceLabel: label,
-                  });
+                  setPayoutDifferenceExplanation(explanation);
                 }}
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" && event.key !== " ") return;
                   event.preventDefault();
                   event.stopPropagation();
-                  setPayoutDifferenceExplanation({
-                    detail,
-                    reasonLabel: payoutDifferenceReasonLabel(reason),
-                    sourceLabel: label,
-                  });
+                  setPayoutDifferenceExplanation(explanation);
                 }}
               >
                 <Info size={13} strokeWidth={2.5} aria-hidden="true" />
               </span>
             ) : null}
-          </span>
-        )}
-        {detail && !showDifferenceExplanation && (
-          <span className="mt-1 block max-w-[46rem] text-[11px] font-medium leading-relaxed text-amber-900">
-            {detail}
           </span>
         )}
       </span>
@@ -1301,7 +1307,7 @@ export function ContractCommissionSection({
                     id="payout-difference-explanation-title"
                     className="text-base font-black text-slate-950"
                   >
-                    Vysvětlení rozdílu
+                    Vysvětlení nesrovnalosti
                   </h3>
                   {payoutDifferenceExplanation.sourceLabel ? (
                     <p className="mt-0.5 text-xs font-medium text-slate-500">
@@ -1314,7 +1320,7 @@ export function ContractCommissionSection({
                 type="button"
                 onClick={() => setPayoutDifferenceExplanation(null)}
                 className="ui-focus inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
-                aria-label="Zavřít vysvětlení rozdílu"
+                aria-label="Zavřít vysvětlení nesrovnalosti"
               >
                 <X size={17} strokeWidth={2.4} aria-hidden="true" />
               </button>
