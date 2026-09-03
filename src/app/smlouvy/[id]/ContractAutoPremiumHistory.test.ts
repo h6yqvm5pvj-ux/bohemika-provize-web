@@ -48,9 +48,28 @@ describe("auto premium history display helpers", () => {
             source: "own",
           },
         ],
-        "annual"
+        "annual",
+        "cppAuto"
       )
     ).toBe(61_877);
+  });
+
+  it("annualizes legacy payment-based initial rows for non-annual frequencies", () => {
+    expect(
+      initialAnnualPremiumFromStatementHistory(
+        [
+          {
+            premiumKind: "auto_initial",
+            newPremium: 1_622,
+            newAnnualPremium: 1_622,
+            statementChronologyMs: 1_761_177_600_000,
+            source: "own",
+          },
+        ],
+        "quarterly",
+        "cppAuto"
+      )
+    ).toBe(6_488);
   });
 
   it("recognizes when the stored signed premium is actually a later statement change", () => {
@@ -73,15 +92,34 @@ describe("auto premium history display helpers", () => {
     expect(
       signedAnnualPremiumMatchesStatementChange({
         signedAnnualPremium: 59_322,
+        statementInitialAnnualPremium: 61_877,
         history,
         paymentFrequency: "annual",
+        product: "cppAuto",
       })
     ).toBe(true);
     expect(
       signedAnnualPremiumMatchesStatementChange({
         signedAnnualPremium: 9_466,
+        statementInitialAnnualPremium: 61_877,
         history,
         paymentFrequency: "annual",
+        product: "cppAuto",
+      })
+    ).toBe(false);
+    expect(
+      signedAnnualPremiumMatchesStatementChange({
+        signedAnnualPremium: 139_512,
+        statementInitialAnnualPremium: 139_508,
+        history: [
+          {
+            premiumKind: "auto_change",
+            newAnnualPremium: 139_512,
+            source: "own",
+          },
+        ],
+        paymentFrequency: "quarterly",
+        product: "cppAuto",
       })
     ).toBe(false);
   });

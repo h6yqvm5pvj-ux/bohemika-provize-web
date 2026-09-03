@@ -1622,7 +1622,8 @@ export default function ContractDetailPage() {
       : null;
   const historyInitialAnnualPremium = initialAnnualPremiumFromStatementHistory(
     contract?.premiumStatementHistory,
-    signedPremiumFrequency
+    signedPremiumFrequency,
+    prod
   );
   const statementInitialAnnualPremiumRaw = Number(
     contract?.initialCommissionBase?.annualPremium ?? historyInitialAnnualPremium
@@ -1635,8 +1636,10 @@ export default function ContractDetailPage() {
     isAutoCommissionProduct &&
     signedAnnualPremiumMatchesStatementChange({
       signedAnnualPremium,
+      statementInitialAnnualPremium,
       history: contract?.premiumStatementHistory,
       paymentFrequency: signedPremiumFrequency,
+      product: prod,
     });
   const preferStatementInitialPremium =
     isAutoCommissionProduct &&

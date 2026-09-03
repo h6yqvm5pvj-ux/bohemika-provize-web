@@ -154,27 +154,47 @@ const positivePremiumOrNull = (value: number | null | undefined): number | null 
 
 const annualPremiumFromStoredHistoryEntry = (
   entry: ContractAutoPremiumStatementHistoryEntry,
-  paymentFrequency: PaymentFrequency | null | undefined
+  paymentFrequency: PaymentFrequency | null | undefined,
+  product: Product | null | undefined
 ): number | null => {
   const annualPremium = positivePremiumOrNull(entry.newAnnualPremium);
-  if (annualPremium != null) return annualPremium;
-
   const premium = positivePremiumOrNull(entry.newPremium);
+  const paymentCount = paymentsPerYear(paymentFrequency);
+  const statementBaseIsAnnual = isAnnualAutoPayoutProduct(product);
+
+  if (annualPremium != null) {
+    const isLegacyPaymentValueStoredAsAnnual =
+      entry.basePremiumPeriod == null &&
+      !statementBaseIsAnnual &&
+      paymentCount > 1 &&
+      premium != null &&
+      Math.abs(annualPremium - premium) <= ANNUAL_PREMIUM_TOLERANCE;
+    return isLegacyPaymentValueStoredAsAnnual
+      ? Math.round(annualPremium * paymentCount * 100) / 100
+      : annualPremium;
+  }
+
   if (premium == null) return null;
-  return entry.basePremiumPeriod === "payment"
-    ? Math.round(premium * paymentsPerYear(paymentFrequency) * 100) / 100
+  return entry.basePremiumPeriod === "payment" ||
+    (entry.basePremiumPeriod == null && !statementBaseIsAnnual)
+    ? Math.round(premium * paymentCount * 100) / 100
     : premium;
 };
 
 export const initialAnnualPremiumFromStatementHistory = (
   history: ContractAutoPremiumStatementHistoryEntry[] | null | undefined,
-  paymentFrequency: PaymentFrequency | null | undefined
+  paymentFrequency: PaymentFrequency | null | undefined,
+  product?: Product | null
 ): number | null => {
   const candidates = (history ?? [])
     .map((entry, index) => ({
       entry,
       index,
-      annualPremium: annualPremiumFromStoredHistoryEntry(entry, paymentFrequency),
+      annualPremium: annualPremiumFromStoredHistoryEntry(
+        entry,
+        paymentFrequency,
+        product
+      ),
       chronology:
         positivePremiumOrNull(entry.statementChronologyMs) ??
         positivePremiumOrNull(entry.writtenAtMs) ??
@@ -196,19 +216,34 @@ export const initialAnnualPremiumFromStatementHistory = (
 
 export const signedAnnualPremiumMatchesStatementChange = ({
   signedAnnualPremium,
+  statementInitialAnnualPremium,
   history,
   paymentFrequency,
+  product,
 }: {
   signedAnnualPremium: number | null | undefined;
+  statementInitialAnnualPremium?: number | null;
   history: ContractAutoPremiumStatementHistoryEntry[] | null | undefined;
   paymentFrequency: PaymentFrequency | null | undefined;
+  product?: Product | null;
 }): boolean => {
   const signedPremium = positivePremiumOrNull(signedAnnualPremium);
   if (signedPremium == null) return false;
+  const initialPremium = positivePremiumOrNull(statementInitialAnnualPremium);
+  if (
+    initialPremium != null &&
+    Math.abs(initialPremium - signedPremium) <= ANNUAL_PREMIUM_TOLERANCE
+  ) {
+    return false;
+  }
 
   return (history ?? []).some((entry) => {
     if (entry.premiumKind !== "auto_change" || entry.source === "manager") return false;
-    const changedPremium = annualPremiumFromStoredHistoryEntry(entry, paymentFrequency);
+    const changedPremium = annualPremiumFromStoredHistoryEntry(
+      entry,
+      paymentFrequency,
+      product
+    );
     return (
       changedPremium != null &&
       Math.abs(changedPremium - signedPremium) <= ANNUAL_PREMIUM_TOLERANCE
@@ -715,7 +750,8 @@ export function ContractAutoPremiumHistory({
   );
   const storedInitialAnnualPremium = initialAnnualPremiumFromStatementHistory(
     storedHistory,
-    paymentFrequency
+    paymentFrequency,
+    product
   );
   const resolvedStatementInitialAnnualPremium =
     storedInitialAnnualPremium ?? positivePremiumOrNull(statementInitialAnnualPremium);
@@ -732,8 +768,10 @@ export function ContractAutoPremiumHistory({
       preferStatementInitialPremium ||
       signedAnnualPremiumMatchesStatementChange({
         signedAnnualPremium,
+        statementInitialAnnualPremium: resolvedStatementInitialAnnualPremium,
         history: storedHistory,
         paymentFrequency,
+        product,
       }),
   });
   const latestAnnualPremium =
