@@ -250,6 +250,26 @@ const CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
   foreigners: "border-teal-200 bg-teal-50 text-teal-700",
 };
 
+const CONTRACT_CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
+  life: "border-rose-200 bg-rose-50 text-rose-600",
+  auto: "border-sky-200 bg-sky-50 text-sky-600",
+  property: "border-emerald-200 bg-emerald-50 text-emerald-600",
+  travel: "border-violet-200 bg-violet-50 text-violet-600",
+  comfort: "border-amber-200 bg-amber-50 text-amber-600",
+  business: "border-indigo-200 bg-indigo-50 text-indigo-600",
+  foreigners: "border-teal-200 bg-teal-50 text-teal-600",
+};
+
+const CONTRACT_CATEGORY_CARD_TONE_BY_ID: Record<ProductCategory, string> = {
+  life: "border-rose-300/35 bg-rose-300/15 text-rose-200",
+  auto: "border-sky-300/35 bg-sky-300/15 text-sky-200",
+  property: "border-emerald-300/35 bg-emerald-300/15 text-emerald-200",
+  travel: "border-violet-300/35 bg-violet-300/15 text-violet-200",
+  comfort: "border-amber-300/35 bg-amber-300/15 text-amber-200",
+  business: "border-indigo-300/35 bg-indigo-300/15 text-indigo-200",
+  foreigners: "border-teal-300/35 bg-teal-300/15 text-teal-200",
+};
+
 function paymentsPerYear(freq?: PaymentFrequency | null): number {
   switch (freq) {
     case "monthly":
@@ -424,6 +444,35 @@ function ContractInstitutionGhostLogo({
           institution.institutionId
         )} h-full w-full`}
       />
+    </span>
+  );
+}
+
+function ContractCategoryIcon({
+  product,
+  surface = "light",
+}: {
+  product?: Product | null;
+  surface?: "light" | "dark";
+}) {
+  const category = product ? PRODUCT_CATALOG[product]?.category : null;
+  if (!category) return null;
+
+  const Icon = CATEGORY_ICON_BY_ID[category];
+  const label = CATEGORY_DEFS.find((item) => item.id === category)?.label ?? category;
+  const tone =
+    surface === "dark"
+      ? CONTRACT_CATEGORY_CARD_TONE_BY_ID[category]
+      : CONTRACT_CATEGORY_TONE_BY_ID[category];
+
+  return (
+    <span
+      role="img"
+      aria-label={`Kategorie: ${label}`}
+      title={label}
+      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${tone}`}
+    >
+      <Icon size={13} strokeWidth={2.2} aria-hidden="true" />
     </span>
   );
 }
@@ -2911,6 +2960,9 @@ function ContractsPageContent() {
                           ) : null}
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-1.5 lg:flex-wrap">
+                              <ContractCategoryIcon
+                                product={c.productKey as Product | undefined}
+                              />
                               {institutionLabel ? (
                                 <span className="inline-flex shrink-0 items-center rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-slate-700 lg:rounded-lg lg:px-2 lg:text-[10px]">
                                   {institutionLabel}
@@ -3125,6 +3177,10 @@ function ContractsPageContent() {
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
                     <div className="relative z-[1] min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
+                          <ContractCategoryIcon
+                            product={c.productKey as Product | undefined}
+                            surface="dark"
+                          />
                           {institutionLabel ? (
                             <span className="inline-flex items-center rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#fbf7ff] shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
                               {institutionLabel}
