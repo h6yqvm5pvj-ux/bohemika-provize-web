@@ -402,13 +402,18 @@ function ContractInstitutionGhostLogo({
   const institution = product ? PRODUCT_CATALOG[product] : null;
   if (!institution) return null;
 
+  const frameClass =
+    institution.institutionId === "slavia"
+      ? "h-14 w-14"
+      : institution.institutionId === "uniqa" ||
+          institution.institutionId === "csob"
+        ? "h-14 w-20"
+        : "h-14 w-18";
+
   return (
     <span
       aria-hidden="true"
-      className={`relative flex shrink-0 items-center justify-center overflow-hidden grayscale opacity-[0.3] transition-opacity duration-200 group-hover:opacity-[0.55] ${institutionLogoFrameClass(
-        institution.institutionId,
-        "chip"
-      )}`}
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden grayscale opacity-[0.3] transition-opacity duration-200 group-hover:opacity-[0.55] ${frameClass}`}
     >
       <Image
         src={institution.institutionLogo}
