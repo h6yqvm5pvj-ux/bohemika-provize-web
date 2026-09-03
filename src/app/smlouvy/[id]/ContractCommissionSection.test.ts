@@ -33,6 +33,75 @@ describe("contract commission payout display helpers", () => {
     expect(state.paidAmount).toBe(9.12);
   });
 
+  it("does not compare multiple matching installments with one installment amount", () => {
+    const payouts: ContractCommissionPayout[] = [
+      {
+        code: "A101",
+        amount: 175.18,
+        expectedAmount: 175.18,
+        difference: 0,
+        status: "paid",
+      },
+      {
+        code: "A102",
+        amount: 175.18,
+        expectedAmount: 175.18,
+        difference: 0,
+        status: "paid",
+      },
+    ];
+
+    const state = payoutStatusForCodes(
+      payouts,
+      ["A101", "A102"],
+      175.18
+    );
+
+    expect(state.status).toBe("paid");
+    expect(state.paidAmount).toBe(350.36);
+    expect(
+      payoutDifferenceAmountFromRecords({
+        expectedAmount: 175.18,
+        paidAmount: state.paidAmount,
+        records: state.records,
+      })
+    ).toBeNull();
+  });
+
+  it("keeps the total of real installment differences visible", () => {
+    const payouts: ContractCommissionPayout[] = [
+      {
+        code: "A101",
+        amount: 150,
+        expectedAmount: 175.18,
+        difference: -25.18,
+        differenceReason: "commission_amount_mismatch",
+        status: "difference",
+      },
+      {
+        code: "A102",
+        amount: 175.18,
+        expectedAmount: 175.18,
+        difference: 0,
+        status: "paid",
+      },
+    ];
+
+    const state = payoutStatusForCodes(
+      payouts,
+      ["A101", "A102"],
+      175.18
+    );
+
+    expect(
+      payoutDifferenceAmountFromRecords({
+        expectedAmount: 175.18,
+        paidAmount: state.paidAmount,
+        records: state.records,
+      })
+    ).toBe(-25.18);
+  });
+
   it("does not turn a later storno payout into a missing commission difference", () => {
     const payouts: ContractCommissionPayout[] = [
       {

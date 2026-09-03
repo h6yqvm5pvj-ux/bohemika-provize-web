@@ -468,21 +468,38 @@ export const payoutDifferenceAmountFromRecords = ({
   if (records.length === 0) return null;
 
   const activeRecords = activePayoutRecordsAfterFullStornos(records);
-  const hasNonStornoRecord = activeRecords.some((record) => !isStornoPayoutRecord(record));
-  if (!hasNonStornoRecord) return null;
+  const nonStornoRecords = activeRecords.filter(
+    (record) => !isStornoPayoutRecord(record)
+  );
+  if (nonStornoRecords.length === 0) return null;
 
-  const importantRecord = importantPayoutRecord(activeRecords);
-  if (!importantRecord || !isStornoPayoutRecord(importantRecord)) {
-    const storedDifference = Number(importantRecord?.difference);
+  // One commission card can represent several payment-frequency rows
+  // (for example A101 + A102 on a quarterly contract). Their stored
+  // differences are already calculated against the correct amount for each
+  // installment, so do not compare their aggregate with one installment.
+  const storedDifferences = nonStornoRecords.map((record) =>
+    Number(record.difference)
+  );
+  if (storedDifferences.every(Number.isFinite)) {
+    const storedDifferenceTotal = storedDifferences.reduce(
+      (sum, difference) => sum + difference,
+      0
+    );
     if (
-      Number.isFinite(storedDifference) &&
-      Math.abs(storedDifference) > COMMISSION_PAYOUT_AMOUNT_TOLERANCE
+      Math.abs(storedDifferenceTotal) <= COMMISSION_PAYOUT_AMOUNT_TOLERANCE
     ) {
-      return Math.round(storedDifference * 100) / 100;
+      return null;
     }
+    return Math.round(storedDifferenceTotal * 100) / 100;
   }
 
-  const calculatedDifference = paidAmount - expectedAmount;
+  const storedExpectedAmounts = nonStornoRecords.map((record) =>
+    Number(record.expectedAmount)
+  );
+  const comparableExpectedAmount = storedExpectedAmounts.every(Number.isFinite)
+    ? storedExpectedAmounts.reduce((sum, amount) => sum + amount, 0)
+    : expectedAmount;
+  const calculatedDifference = paidAmount - comparableExpectedAmount;
   if (Math.abs(calculatedDifference) <= COMMISSION_PAYOUT_AMOUNT_TOLERANCE) {
     return null;
   }
