@@ -1,6 +1,6 @@
 import type { AggregateMetrics, ContractStats } from "@/app/api/team-overview/teamOverview.types";
 
-export const TEAM_OVERVIEW_MODEL_VERSION = 5;
+export const TEAM_OVERVIEW_MODEL_VERSION = 6;
 
 const finiteNumber = (value: unknown): number => {
   const parsed = Number(value);
@@ -52,10 +52,16 @@ export function buildTeamOverviewReadModelDocuments({
       yearMonth,
       monthCount: finiteNumber(stat.month),
       previousMonthToDateCount: finiteNumber(stat.previousMonthToDate),
+      previousMonthToDateMetrics:
+        stat.previousMonthToDateMetrics ?? emptyAggregateMetrics(),
       monthMetrics: stat.monthMetrics ?? emptyAggregateMetrics(),
+      monthCategoryMetrics: stat.monthCategoryMetrics,
       activeMonthCount: finiteNumber(activeStat.month),
       activePreviousMonthToDateCount: finiteNumber(activeStat.previousMonthToDate),
+      activePreviousMonthToDateMetrics:
+        activeStat.previousMonthToDateMetrics ?? emptyAggregateMetrics(),
       activeMonthMetrics: activeStat.monthMetrics ?? emptyAggregateMetrics(),
+      activeMonthCategoryMetrics: activeStat.monthCategoryMetrics,
       updatedAtMs,
     },
     previousMonth: {

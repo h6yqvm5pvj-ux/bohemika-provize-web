@@ -26,6 +26,11 @@ import {
   buildTeamOverviewReadModelDocuments,
   TEAM_OVERVIEW_MODEL_VERSION,
 } from "@/lib/server/teamOverviewReadModel";
+import {
+  normalizeStoredTeamProductionGoals,
+  normalizeTeamProductionGoalsInput,
+  productionGoalsFirestorePayload,
+} from "./teamGoals";
 import { buildTransferredContractData } from "@/app/api/contracts/_lib/contractsApi.transfer";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import type {
@@ -40,6 +45,7 @@ import type {
   TeamOverviewError,
   TeamOverviewPatchSuccess,
   TeamOverviewSuccess,
+  TeamProductionGoals,
   TipStats,
 } from "./teamOverview.types";
 
@@ -50,6 +56,7 @@ const TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS = 60_000;
 const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
+const TEAM_PRODUCTION_GOALS_COLLECTION = "teamProductionGoals";
 const CONTRACT_REFS_COLLECTION = "contractRefs";
 const FIRESTORE_IN_LIMIT = 10;
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -373,6 +380,8 @@ function emptyContractStats(): ContractStats {
     previousMonthToDate: 0,
     monthMetrics: emptyAggregateMetrics(),
     previousMonthMetrics: emptyAggregateMetrics(),
+    previousMonthToDateMetrics: emptyAggregateMetrics(),
+    monthCategoryMetrics: emptyCategoryMetrics(),
     categories: emptyCategoryCounts(),
     categoryMetrics: emptyCategoryMetrics(),
     institutionMetrics: {},
@@ -402,6 +411,19 @@ function cloneContractStats(source: ContractStats): ContractStats {
     previousMonthMetrics: source.previousMonthMetrics
       ? { ...source.previousMonthMetrics }
       : emptyAggregateMetrics(),
+    previousMonthToDateMetrics: source.previousMonthToDateMetrics
+      ? { ...source.previousMonthToDateMetrics }
+      : emptyAggregateMetrics(),
+    monthCategoryMetrics: {
+      life: { ...source.monthCategoryMetrics.life },
+      auto: { ...source.monthCategoryMetrics.auto },
+      property: { ...source.monthCategoryMetrics.property },
+      business: { ...source.monthCategoryMetrics.business },
+      travel: { ...source.monthCategoryMetrics.travel },
+      foreigners: { ...source.monthCategoryMetrics.foreigners },
+      comfort: { ...source.monthCategoryMetrics.comfort },
+      other: { ...source.monthCategoryMetrics.other },
+    },
     categories: { ...source.categories },
     categoryMetrics: {
       life: { ...source.categoryMetrics.life },
@@ -566,6 +588,8 @@ function parseContractStatsFromTotalsDoc(data: Record<string, unknown>): Contrac
     previousMonthToDate: 0,
     monthMetrics: emptyAggregateMetrics(),
     previousMonthMetrics: emptyAggregateMetrics(),
+    previousMonthToDateMetrics: emptyAggregateMetrics(),
+    monthCategoryMetrics: emptyCategoryMetrics(),
     categories: parseCategoryCounts(data.categories),
     categoryMetrics: parseCategoryMetrics(data.categoryMetrics),
     institutionMetrics: parseInstitutionMetrics(data.institutionMetrics),
@@ -601,6 +625,31 @@ function previousMonthToDateEnd(now: Date): number {
 
 function monthDocId(ownerEmail: string, yearMonth: string): string {
   return `${ownerEmail}___${yearMonth}`;
+}
+
+const productionGoalsDocId = (ownerEmail: string, yearMonth: string): string =>
+  `${normalizeEmail(ownerEmail)}___${yearMonth}`;
+
+const canManageProductionGoals = (context: {
+  ownPosition: Position | null;
+  canManagePositions: boolean;
+}): boolean =>
+  context.canManagePositions || Boolean(context.ownPosition?.startsWith("manazer"));
+
+async function loadTeamProductionGoals(
+  ownerEmail: string,
+  yearMonth: string
+): Promise<TeamProductionGoals> {
+  if (!adminDb) {
+    return normalizeStoredTeamProductionGoals({ value: null, yearMonth });
+  }
+  const snap = await adminDb.collection(TEAM_PRODUCTION_GOALS_COLLECTION)
+    .doc(productionGoalsDocId(ownerEmail, yearMonth))
+    .get();
+  return normalizeStoredTeamProductionGoals({
+    value: snap.exists ? snap.data() : null,
+    yearMonth,
+  });
 }
 
 const normalizeContractNumber = (value: string | null | undefined): string =>
@@ -1105,11 +1154,21 @@ function accumulateContractEntry({
   if (ts != null && ts >= monthStart && ts <= currentMonthToDateEnd) {
     current.month += 1;
     addAggregateContract(current.monthMetrics, annualPremium, monthlyPremium);
+    addAggregateContract(
+      current.monthCategoryMetrics[category],
+      annualPremium,
+      monthlyPremium
+    );
   } else if (ts != null && ts >= previousMonthStart && ts < monthStart) {
     current.previousMonth += 1;
     addAggregateContract(current.previousMonthMetrics, annualPremium, monthlyPremium);
     if (ts <= previousMonthToDateEndMs) {
       current.previousMonthToDate += 1;
+      addAggregateContract(
+        current.previousMonthToDateMetrics,
+        annualPremium,
+        monthlyPremium
+      );
     }
   }
 
@@ -1500,12 +1559,24 @@ async function loadContractStatsFromReadModel(
       ) {
         parsed.month = finiteNumber(monthRaw.monthCount);
         parsed.previousMonthToDate = finiteNumber(monthRaw.previousMonthToDateCount);
+        parsed.previousMonthToDateMetrics = parseAggregateMetrics(
+          monthRaw.previousMonthToDateMetrics
+        );
         parsed.monthMetrics = parseAggregateMetrics(monthRaw.monthMetrics);
+        parsed.monthCategoryMetrics = parseCategoryMetrics(
+          monthRaw.monthCategoryMetrics
+        );
         parsedActive.month = finiteNumber(monthRaw.activeMonthCount);
         parsedActive.previousMonthToDate = finiteNumber(
           monthRaw.activePreviousMonthToDateCount
         );
+        parsedActive.previousMonthToDateMetrics = parseAggregateMetrics(
+          monthRaw.activePreviousMonthToDateMetrics
+        );
         parsedActive.monthMetrics = parseAggregateMetrics(monthRaw.activeMonthMetrics);
+        parsedActive.monthCategoryMetrics = parseCategoryMetrics(
+          monthRaw.activeMonthCategoryMetrics
+        );
       } else {
         ownersToRefresh.add(owner);
       }
@@ -1984,6 +2055,11 @@ type ParsedEndCollaborationRejectPayload = {
   reason: string | null;
 };
 
+type ParsedProductionGoalsPayload = {
+  action: "productionGoalsUpdate";
+  goals: Record<string, unknown>;
+};
+
 function parsePatchPayload(
   body: unknown
 ):
@@ -1992,11 +2068,21 @@ function parsePatchPayload(
   | ParsedEndCollaborationPreviewPayload
   | ParsedEndCollaborationApprovePayload
   | ParsedEndCollaborationRejectPayload
+  | ParsedProductionGoalsPayload
   | { error: string } {
   if (!isPlainObject(body)) return { error: "Neplatný payload." };
 
   const actionRaw =
     typeof body.action === "string" ? body.action.trim() : "";
+  if (actionRaw === "productionGoalsUpdate") {
+    if (!isPlainObject(body.goals)) {
+      return { error: "Cíle mají neplatný formát." };
+    }
+    return {
+      action: "productionGoalsUpdate",
+      goals: body.goals,
+    };
+  }
   if (actionRaw === "endCollaborationApprove") {
     const requestId = typeof body.requestId === "string" ? body.requestId.trim() : "";
     if (!requestId) return { error: "Chybí requestId." };
@@ -2602,6 +2688,63 @@ export async function PATCH(req: NextRequest) {
     }
 
     const context = await loadTeamContext(email);
+    if (parsed.action === "productionGoalsUpdate") {
+      if (!canManageProductionGoals(context)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Nemáš oprávnění nastavovat cíle týmu.",
+          } satisfies TeamOverviewError,
+          { status: 403 }
+        );
+      }
+
+      const yearMonth = currentYearMonth(new Date());
+      const allowedMemberEmails = context.members
+        .filter((member) => member.accountType !== "tipster")
+        .map((member) => member.email);
+      const goals = normalizeTeamProductionGoalsInput({
+        value: parsed.goals,
+        yearMonth,
+        allowedMemberEmails,
+      });
+      if (!goals) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Cíle obsahují neplatného člena týmu nebo chybná data.",
+          } satisfies TeamOverviewError,
+          { status: 400 }
+        );
+      }
+
+      const updatedAtMs = Date.now();
+      await adminDb
+        .collection(TEAM_PRODUCTION_GOALS_COLLECTION)
+        .doc(productionGoalsDocId(email, yearMonth))
+        .set(
+          productionGoalsFirestorePayload({
+            ownerEmail: email,
+            goals,
+            updatedAtMs,
+            updatedBy: authCtx.actorEmail || email,
+          }),
+          { merge: false }
+        );
+      const productionGoals: TeamProductionGoals = {
+        ...goals,
+        updatedAtMs,
+      };
+      const response = NextResponse.json({
+        ok: true,
+        targetEmail: email,
+        updated: ["productionGoals"],
+        productionGoals,
+      } satisfies TeamOverviewPatchSuccess);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
     if (parsed.action !== "update" && !context.canManagePositions) {
       return NextResponse.json(
         {
@@ -2908,6 +3051,7 @@ export async function GET(req: NextRequest) {
     const nowMs = now.getTime();
     const yearMonth = currentYearMonth(now);
     const previousMonthKey = previousYearMonth(now);
+    const productionGoalsPromise = loadTeamProductionGoals(email, yearMonth);
 
     const readModel = await loadContractStatsFromReadModel(
       advisorOwners,
@@ -2983,6 +3127,17 @@ export async function GET(req: NextRequest) {
       );
     });
 
+    const storedProductionGoals = await productionGoalsPromise;
+    const advisorOwnerSet = new Set(advisorOwners);
+    const productionGoals: TeamProductionGoals = {
+      ...storedProductionGoals,
+      members: Object.fromEntries(
+        Object.entries(storedProductionGoals.members).filter(([memberEmail]) =>
+          advisorOwnerSet.has(memberEmail)
+        )
+      ),
+    };
+
     const responseBody: TeamOverviewSuccess = {
       ok: true,
       position: context.ownPosition,
@@ -3007,6 +3162,7 @@ export async function GET(req: NextRequest) {
       contractCounts,
       activeContractCounts,
       tipCounts,
+      productionGoals,
     };
 
     const response = NextResponse.json(responseBody);

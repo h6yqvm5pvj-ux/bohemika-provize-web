@@ -46,7 +46,10 @@ import adminStyles from "./adminConsole.module.css";
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
 import { setAdminImpersonationState } from "@/app/lib/adminImpersonation";
-import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  fetchAuthedBlobOrThrow,
+  fetchAuthedJsonOrThrow,
+} from "@/app/lib/authenticatedApi";
 import type { CommissionMode, Position } from "@/app/types/domain";
 import {
   adminRoleAtLeast,
@@ -107,7 +110,7 @@ type EndCollaborationRequestsApiSuccess = {
   requests?: EndCollaborationRequestPayload[];
 };
 
-type UserRequestSubject = "userCreation" | "other";
+type UserRequestSubject = "userCreation" | "problem" | "other";
 type UserRequestPriority = "normal" | "urgent";
 type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
 
@@ -117,6 +120,18 @@ type UserCreationRequestDraft = {
   managerEmail: string | null;
   position: Position | null;
   commissionMode: CommissionMode;
+};
+
+type UserRequestScreenshotPayload = {
+  kind: "userRequestScreenshot";
+  id: string;
+  hasFile: true;
+  originalName: string;
+  contentType: "image/png" | "image/jpeg";
+  sizeBytes: number;
+  sha256: string;
+  uploadedAtMs: number;
+  uploadedBy: string;
 };
 
 type UserRequestPayload = {
@@ -135,6 +150,7 @@ type UserRequestPayload = {
   updatedAtMs: number;
   decidedAtMs: number | null;
   decidedByEmail: string | null;
+  screenshots: UserRequestScreenshotPayload[];
 };
 
 type UserRequestsApiSuccess = {
@@ -298,6 +314,7 @@ const statusLabel: Record<EndCollaborationRequestStatus, string> = {
 
 const userRequestSubjectLabel: Record<UserRequestSubject, string> = {
   userCreation: "Založení uživatele",
+  problem: "Nahlásit problém",
   other: "Jiné",
 };
 
@@ -1190,6 +1207,45 @@ export default function AdminRequestsPage() {
       }
     },
     [isAllowedAdmin, loadContractTransferRequests]
+  );
+
+  const handleOpenUserRequestScreenshot = useCallback(
+    async (
+      request: UserRequestPayload,
+      screenshot: UserRequestScreenshotPayload
+    ) => {
+      const user = auth.currentUser;
+      if (!user || !isAllowedAdmin) return;
+      const previewWindow = window.open("about:blank", "_blank");
+      if (previewWindow) previewWindow.opener = null;
+      try {
+        const blob = await fetchAuthedBlobOrThrow(
+          user,
+          `/api/user-requests/attachment?requestId=${encodeURIComponent(
+            request.id
+          )}&screenshotId=${encodeURIComponent(screenshot.id)}`
+        );
+        const objectUrl = URL.createObjectURL(blob);
+        if (previewWindow) {
+          previewWindow.location.href = objectUrl;
+        } else {
+          const link = document.createElement("a");
+          link.href = objectUrl;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.click();
+        }
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } catch (error) {
+        previewWindow?.close();
+        setUserRequestsError(
+          error instanceof Error
+            ? error.message
+            : "Screenshot se nepodařilo otevřít."
+        );
+      }
+    },
+    [isAllowedAdmin]
   );
 
   const handleUserRequestDecision = useCallback(
@@ -3379,6 +3435,36 @@ export default function AdminRequestsPage() {
                             <div className="mt-3 rounded-xl border border-white/12 bg-white/[0.055] px-3 py-2 text-sm !text-violet-100/82">
                               {request.message}
                             </div>
+
+                            {request.screenshots.length > 0 ? (
+                              <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-3">
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-700">
+                                  Přiložené screenshoty
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {request.screenshots.map((screenshot, index) => (
+                                    <button
+                                      key={screenshot.id}
+                                      type="button"
+                                      onClick={() =>
+                                        void handleOpenUserRequestScreenshot(
+                                          request,
+                                          screenshot
+                                        )
+                                      }
+                                      className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+                                    >
+                                      <ExternalLink
+                                        className="h-3.5 w-3.5"
+                                        strokeWidth={2.2}
+                                        aria-hidden="true"
+                                      />
+                                      Screenshot {index + 1}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
 
                             {pending ? (
                               <div className="mt-3 space-y-3 border-t border-white/10 pt-3">

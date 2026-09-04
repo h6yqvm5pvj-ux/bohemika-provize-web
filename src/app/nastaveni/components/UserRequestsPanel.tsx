@@ -1,14 +1,20 @@
 "use client";
 
+import { useEffect, useId, useState } from "react";
 import {
+  Bug,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
   FileText,
+  ImagePlus,
+  Images,
+  Paperclip,
   ShieldCheck,
   Snail,
   UsersRound,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -22,6 +28,7 @@ import {
   USER_REQUEST_MESSAGE_MAX_LEN,
   USER_REQUEST_MESSAGE_MIN_LEN,
   USER_REQUEST_PRIORITY_LABEL,
+  USER_REQUEST_SCREENSHOT_MAX_FILES,
   USER_REQUEST_STATUS_CLASS,
   USER_REQUEST_STATUS_LABEL,
   USER_REQUEST_STEPS,
@@ -30,6 +37,7 @@ import {
   formatDurationCompact,
   type UserRequestPayload,
   type UserRequestPriority,
+  type UserRequestScreenshotPayload,
   type UserRequestSubject,
   type UserRequestsView,
 } from "../userRequestSettings";
@@ -38,6 +46,61 @@ type InlineStatus = {
   type: "success" | "error" | "info";
   message: string;
 };
+
+const formatFileSize = (sizeBytes: number): string => {
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / (1024 * 1024)).toLocaleString("cs-CZ", {
+      maximumFractionDigits: 1,
+    })} MB`;
+  }
+  return `${Math.max(1, Math.round(sizeBytes / 1024))} kB`;
+};
+
+const screenshotCountLabel = (count: number): string =>
+  count === 1 ? "1 screenshot" : `${count} screenshoty`;
+
+function PendingScreenshot({
+  file,
+  onRemove,
+}: {
+  file: File;
+  onRemove: () => void;
+}) {
+  const [previewUrl] = useState(() => URL.createObjectURL(file));
+
+  useEffect(
+    () => () => {
+      URL.revokeObjectURL(previewUrl);
+    },
+    [previewUrl]
+  );
+
+  return (
+    <article className="flex min-w-0 items-center gap-2 rounded-xl border border-violet-100 bg-white p-2 shadow-sm">
+      <span
+        className="h-12 w-16 shrink-0 rounded-lg bg-cover bg-center ring-1 ring-slate-200"
+        style={{ backgroundImage: `url(${previewUrl})` }}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-bold text-slate-800">
+          {file.name}
+        </span>
+        <span className="mt-0.5 block text-[10px] font-semibold text-slate-400">
+          {formatFileSize(file.size)}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+        aria-label={`Odebrat ${file.name}`}
+      >
+        <X className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+      </button>
+    </article>
+  );
+}
 
 type UserRequestsPanelProps = {
   className: string;
@@ -65,6 +128,7 @@ type UserRequestsPanelProps = {
   mode: CommissionMode;
   priority: UserRequestPriority;
   message: string;
+  screenshotFiles: File[];
   requestMessageLength: number;
   userRequestsNowMs: number;
   onViewChange: (view: UserRequestsView) => void | Promise<void>;
@@ -77,6 +141,11 @@ type UserRequestsPanelProps = {
   onModeChange: (mode: CommissionMode) => void;
   onPriorityChange: (priority: UserRequestPriority) => void;
   onMessageChange: (value: string) => void;
+  onScreenshotFilesChange: (files: File[]) => void;
+  onOpenScreenshot: (
+    request: UserRequestPayload,
+    screenshot: UserRequestScreenshotPayload
+  ) => void | Promise<void>;
   onSubmit: () => void | Promise<void>;
   onPreviousStep: () => void;
   onNextStep: () => void;
@@ -111,6 +180,7 @@ export function UserRequestsPanel({
   mode,
   priority,
   message,
+  screenshotFiles,
   requestMessageLength,
   userRequestsNowMs,
   onViewChange,
@@ -123,6 +193,8 @@ export function UserRequestsPanel({
   onModeChange,
   onPriorityChange,
   onMessageChange,
+  onScreenshotFilesChange,
+  onOpenScreenshot,
   onSubmit,
   onPreviousStep,
   onNextStep,
@@ -130,6 +202,18 @@ export function UserRequestsPanel({
   onStartEditRequest,
   onDeleteRequest,
 }: UserRequestsPanelProps) {
+  const screenshotInputId = useId();
+  const editingRequest = editingRequestId
+    ? requests.find((request) => request.id === editingRequestId) ?? null
+    : null;
+  const existingScreenshotCount = editingRequest?.screenshots.length ?? 0;
+  const availableScreenshotSlots = Math.max(
+    0,
+    USER_REQUEST_SCREENSHOT_MAX_FILES -
+      existingScreenshotCount -
+      screenshotFiles.length
+  );
+
   return (
     <section className={`h-full space-y-3 sm:space-y-4 lg:col-span-2 ${className}`}>
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_52%,#c084fc_100%)]" />
@@ -159,15 +243,15 @@ export function UserRequestsPanel({
               }}
               className={`group relative overflow-hidden rounded-[18px] border px-3 py-3 text-left transition sm:rounded-[26px] sm:px-4 sm:py-4 ${
                 active
-                  ? "border-violet-300 bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_54%,#a855f7_100%)] text-white shadow-[0_22px_46px_rgba(124,58,237,0.34)]"
+                  ? "border-violet-300 bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_54%,#a855f7_100%)] !text-white shadow-[0_22px_46px_rgba(124,58,237,0.34)] [&_*]:!text-white"
                   : "border-violet-200 bg-[linear-gradient(135deg,#faf5ff_0%,#f5f3ff_100%)] text-slate-900 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_18px_34px_rgba(124,58,237,0.16)]"
               }`}
             >
               <span className="relative z-10 flex items-center gap-3">
                 <span
                   className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border sm:h-11 sm:w-11 sm:rounded-2xl ${
-                    active
-                      ? "border-white/25 bg-white/14 text-white"
+                      active
+                      ? "border-white/25 bg-white/14 !text-white"
                       : "border-violet-200 bg-white text-violet-700"
                   }`}
                 >
@@ -234,7 +318,7 @@ export function UserRequestsPanel({
             </div>
           ) : null}
 
-          <div className="rounded-[18px] border border-violet-200 bg-slate-950 px-2.5 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.16)] sm:rounded-[22px] sm:px-3 sm:shadow-[0_16px_36px_rgba(15,23,42,0.18)]">
+          <div className="rounded-[18px] border border-violet-200 bg-violet-50/80 px-2.5 py-3 sm:rounded-[22px] sm:px-3">
             <div
               className="grid gap-2"
               style={{
@@ -252,17 +336,21 @@ export function UserRequestsPanel({
                     <span
                       className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold transition sm:h-8 sm:w-8 sm:text-xs ${
                         stepDone
-                          ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-700"
                           : stepActive
-                            ? "border-violet-200/80 bg-violet-400/35 text-white"
-                            : "border-white/20 bg-white/[0.04] text-violet-200/65"
+                            ? "border-violet-600 bg-violet-600 !text-white shadow-[0_5px_14px_rgba(124,58,237,0.3)]"
+                            : "border-violet-100 bg-white text-slate-400"
                       }`}
                     >
                       {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
                     </span>
                     <span
                       className={`text-[9px] font-semibold uppercase tracking-[0.1em] sm:text-[10px] sm:tracking-[0.14em] ${
-                        stepActive || stepDone ? "text-white" : "text-violet-200/60"
+                        stepActive
+                          ? "text-violet-800"
+                          : stepDone
+                            ? "text-emerald-700"
+                            : "text-slate-400"
                       }`}
                     >
                       {stepItem.label}
@@ -271,7 +359,7 @@ export function UserRequestsPanel({
                 );
               })}
             </div>
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="mt-3 h-1 overflow-hidden rounded-full bg-violet-100">
               <div
                 className="h-full rounded-full bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] transition-[width] duration-300"
                 style={{ width: `${stepperProgress}%` }}
@@ -300,7 +388,7 @@ export function UserRequestsPanel({
                   Předmět
                 </div>
                 <div
-                  className="grid grid-cols-1 gap-2.5 sm:gap-3 md:grid-cols-2"
+                  className="grid grid-cols-1 gap-2.5 sm:gap-3 lg:grid-cols-3"
                   role="radiogroup"
                   aria-label="Předmět žádosti"
                 >
@@ -310,6 +398,12 @@ export function UserRequestsPanel({
                       label: USER_REQUEST_SUBJECT_LABEL.userCreation,
                       description: "Založení účtu pro nového poradce nebo tipaře.",
                       icon: UsersRound,
+                    },
+                    {
+                      id: "problem",
+                      label: USER_REQUEST_SUBJECT_LABEL.problem,
+                      description: "Chyba nebo nečekané chování aplikace.",
+                      icon: Bug,
                     },
                     {
                       id: "other",
@@ -327,7 +421,7 @@ export function UserRequestsPanel({
                         onClick={() => onSubjectChange(option.id)}
                         role="radio"
                         aria-checked={selected}
-                        className={`group flex min-h-[96px] items-start gap-3 rounded-[18px] border px-3 py-3 text-left transition sm:min-h-[118px] sm:rounded-[22px] sm:px-4 sm:py-4 ${
+                        className={`group flex min-h-[96px] items-start gap-3 rounded-[18px] border px-3 py-3 text-left transition sm:rounded-[22px] sm:px-4 sm:py-4 ${
                           selected
                             ? "border-violet-400 bg-[linear-gradient(135deg,#ede9fe_0%,#f5f3ff_100%)] text-slate-950 shadow-[0_16px_34px_rgba(124,58,237,0.18)]"
                             : "border-slate-200 bg-white text-slate-800 hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/50 hover:shadow-[0_12px_24px_rgba(88,28,135,0.10)]"
@@ -336,7 +430,7 @@ export function UserRequestsPanel({
                         <span
                           className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border sm:h-11 sm:w-11 sm:rounded-2xl ${
                             selected
-                              ? "border-violet-300 bg-violet-600 text-white"
+                              ? "border-violet-300 bg-violet-600 !text-white [&_svg]:!text-white"
                               : "border-slate-200 bg-slate-50 text-violet-700 group-hover:border-violet-200 group-hover:bg-white"
                           }`}
                         >
@@ -479,21 +573,101 @@ export function UserRequestsPanel({
           ) : null}
 
           {currentStepId === "details" && subject !== "userCreation" ? (
-            <div className="space-y-2 rounded-[18px] border border-violet-100 bg-white px-3 py-3 sm:rounded-2xl">
+            <div className="space-y-3 rounded-[18px] border border-violet-100 bg-white px-3 py-3 sm:rounded-2xl sm:px-4 sm:py-4">
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                Text žádosti
+                {subject === "problem" ? "Popis problému" : "Text žádosti"}
               </label>
               <textarea
                 className={`${fieldClass} min-h-[130px] resize-y sm:min-h-[160px]`}
                 value={message}
                 onChange={(e) => onMessageChange(e.target.value)}
-                placeholder="Napiš, co potřebuješ vyřešit."
+                placeholder={
+                  subject === "problem"
+                    ? "Co se stalo, na které stránce a jak lze problém zopakovat?"
+                    : "Napiš, co potřebuješ vyřešit."
+                }
                 maxLength={USER_REQUEST_MESSAGE_MAX_LEN}
               />
               <p className="text-[11px] text-slate-500">
                 {requestMessageLength}/{USER_REQUEST_MESSAGE_MAX_LEN} znaků (minimum{" "}
                 {USER_REQUEST_MESSAGE_MIN_LEN}).
               </p>
+
+              {subject === "problem" ? (
+                <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold leading-relaxed text-sky-800">
+                  Pokud se problém týká konkrétní smlouvy, napiš do popisu také její číslo.
+                </div>
+              ) : null}
+
+              {subject === "problem" ? (
+                <div className="rounded-2xl border border-dashed border-violet-300 bg-violet-50/60 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm">
+                        <ImagePlus className="h-5 w-5" strokeWidth={2.1} aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-900">
+                          Přiložit screenshoty
+                        </div>
+                        <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                          PNG, JPG nebo JPEG · max. 4 obrázky · 8 MB každý
+                        </div>
+                      </div>
+                    </div>
+                    <label
+                      htmlFor={screenshotInputId}
+                      className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-full px-3.5 py-2 text-xs font-bold transition ${
+                        availableScreenshotSlots > 0
+                          ? "cursor-pointer bg-violet-700 !text-white hover:bg-violet-800 [&_svg]:!text-white"
+                          : "cursor-not-allowed bg-slate-200 text-slate-400"
+                      }`}
+                    >
+                      <Paperclip className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                      {screenshotFiles.length + existingScreenshotCount > 0
+                        ? "Přidat další"
+                        : "Vybrat obrázky"}
+                    </label>
+                    <input
+                      id={screenshotInputId}
+                      type="file"
+                      multiple
+                      accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                      disabled={availableScreenshotSlots <= 0}
+                      className="sr-only"
+                      onChange={(event) => {
+                        const files = Array.from(event.currentTarget.files ?? []);
+                        onScreenshotFilesChange([...screenshotFiles, ...files]);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </div>
+
+                  {existingScreenshotCount > 0 ? (
+                    <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800">
+                      {existingScreenshotCount === 1
+                        ? "1 dříve přiložený screenshot zůstane u žádosti."
+                        : `${existingScreenshotCount} dříve přiložené screenshoty zůstanou u žádosti.`}
+                    </div>
+                  ) : null}
+
+                  {screenshotFiles.length > 0 ? (
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {screenshotFiles.map((file, index) => (
+                        <PendingScreenshot
+                          key={`${file.name}:${file.size}:${file.lastModified}:${index}`}
+                          file={file}
+                          onRemove={() =>
+                            onScreenshotFilesChange(
+                              screenshotFiles.filter((_, fileIndex) => fileIndex !== index)
+                            )
+                          }
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -551,6 +725,15 @@ export function UserRequestsPanel({
               <p className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-relaxed text-slate-700 sm:rounded-2xl">
                 {message.trim()}
               </p>
+              {subject === "problem" &&
+              screenshotFiles.length + existingScreenshotCount > 0 ? (
+                <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-800">
+                  <Images className="h-4 w-4" strokeWidth={2.1} aria-hidden="true" />
+                  {screenshotCountLabel(
+                    screenshotFiles.length + existingScreenshotCount
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -606,7 +789,7 @@ export function UserRequestsPanel({
                   type="button"
                   onClick={onNextStep}
                   disabled={!requestCurrentStepCanContinue}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55 sm:flex-none"
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55 sm:flex-none [&_svg]:!text-white"
                 >
                   Pokračovat
                   <ChevronRight size={15} strokeWidth={2.2} aria-hidden="true" />
@@ -704,6 +887,22 @@ export function UserRequestsPanel({
                   <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
                     {request.message}
                   </p>
+
+                  {request.screenshots.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {request.screenshots.map((screenshot, index) => (
+                        <button
+                          key={screenshot.id}
+                          type="button"
+                          onClick={() => void onOpenScreenshot(request, screenshot)}
+                          className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[11px] font-bold text-violet-800 transition hover:border-violet-300 hover:bg-violet-50"
+                        >
+                          <Images className="h-3.5 w-3.5" strokeWidth={2.1} aria-hidden="true" />
+                          Screenshot {index + 1}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
                   <dl className="mt-3 space-y-1 text-[11px] text-slate-500">
                     <div className="flex flex-wrap items-baseline gap-1">

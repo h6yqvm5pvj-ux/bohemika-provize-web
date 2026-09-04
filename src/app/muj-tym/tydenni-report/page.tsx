@@ -78,7 +78,7 @@ const CATEGORY_ROWS: Array<{
   },
   {
     key: "property",
-    title: "Majetek a odpovědnosti",
+    title: "Majetek a odpovědnost občanů",
     premiumLabel: "roční pojistné",
     icon: Home,
   },

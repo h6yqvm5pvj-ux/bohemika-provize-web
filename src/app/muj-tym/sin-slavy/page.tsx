@@ -90,7 +90,7 @@ const HALL_TABS: HallTab[] = [
   },
   {
     key: "property",
-    label: "Majetek",
+    label: "Majetek a odpovědnost občanů",
     icon: Home,
     categories: ["property", "travel", "foreigners", "other"],
   },

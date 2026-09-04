@@ -42,6 +42,19 @@ import { type Position } from "@/app/types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import introStyles from "../cashflow/cashflowIntro.module.css";
 import { TeamOverviewLoader } from "./TeamOverviewLoader";
+import { TeamSummaryDashboard } from "./TeamSummaryDashboard";
+import { ProductionGoalProgress } from "./ProductionGoalProgress";
+import { TeamGoalsDialog } from "./TeamGoalsDialog";
+import {
+  emptyProductionGoal,
+} from "@/app/api/team-overview/teamGoals";
+import type {
+  TeamProductionGoals,
+} from "@/app/api/team-overview/teamOverview.types";
+import {
+  buildTeamAttentionItems,
+  buildTeamDashboardSummary,
+} from "./teamDashboard";
 
 type AccountType = "advisor" | "tipster";
 type CopyableMemberField = "agencyNumber" | "phoneNumber" | "ico";
@@ -75,6 +88,18 @@ function nameFromEmail(email: string | null | undefined): string {
   const cap = (s: string) => (s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1).toLowerCase());
   return parts.map(cap).join(" ");
 }
+
+const currentMonthKey = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const emptyTeamProductionGoals = (): TeamProductionGoals => ({
+  yearMonth: currentMonthKey(),
+  team: emptyProductionGoal(),
+  members: {},
+  updatedAtMs: null,
+});
 
 const POSITION_OPTIONS: { id: Position; label: string }[] = [
   { id: "poradce1", label: "Poradce 1" },
@@ -252,6 +277,8 @@ type ContractStats = {
   previousMonthToDate: number;
   monthMetrics: AggregateMetrics;
   previousMonthMetrics: AggregateMetrics;
+  previousMonthToDateMetrics: AggregateMetrics;
+  monthCategoryMetrics: Record<Category, AggregateMetrics>;
   categories: Record<Category, number>;
   categoryMetrics: Record<Category, AggregateMetrics>;
   institutionMetrics: Record<string, AggregateMetrics>;
@@ -267,7 +294,7 @@ type TipStats = {
 const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
   { key: "life", label: "Životní pojištění" },
   { key: "auto", label: "Auta" },
-  { key: "property", label: "Majetek" },
+  { key: "property", label: "Majetek a odpovědnost občanů" },
   { key: "business", label: "Podnikatelé" },
   { key: "comfort", label: "Zlato" },
   { key: "foreigners", label: "Cizinci" },
@@ -407,6 +434,7 @@ type TeamCachePayload = {
   contractsError: boolean;
   userPosition: Position | null;
   canManagePositions: boolean;
+  productionGoals: TeamProductionGoals;
 };
 
 type TeamOverviewApiSuccess = {
@@ -430,6 +458,7 @@ type TeamOverviewApiSuccess = {
   contractCounts?: Record<string, ContractStats>;
   activeContractCounts?: Record<string, ContractStats>;
   tipCounts?: Record<string, TipStats>;
+  productionGoals?: TeamProductionGoals;
 };
 
 type TeamOverviewApiError = {
@@ -480,6 +509,13 @@ type TeamOverviewUpdateSuccess = {
   ok: true;
   targetEmail: string;
   updated?: Array<"agencyNumber" | "position" | "positionTimeline">;
+};
+
+type TeamProductionGoalsUpdateSuccess = {
+  ok: true;
+  targetEmail: string;
+  updated: Array<"productionGoals">;
+  productionGoals: TeamProductionGoals;
 };
 
 type WeeklyTeamReportCategoryKey =
@@ -555,10 +591,10 @@ const WEEKLY_REPORT_ROWS: Array<{
   },
   {
     key: "property",
-    title: "Majetek a odpovědnosti",
+    title: "Majetek a odpovědnost občanů",
     premiumLabel: "roční pojistné",
     iconSrc: "/icons/icon_domex.webp",
-    iconAlt: "Majetek",
+    iconAlt: "Majetek a odpovědnost občanů",
   },
   {
     key: "business",
@@ -645,6 +681,15 @@ export default function TeamPage() {
   const [contractsError, setContractsError] = useState(false);
   const [userPosition, setUserPosition] = useState<Position | null>(null);
   const [canManagePositions, setCanManagePositions] = useState(false);
+  const [productionGoals, setProductionGoals] = useState<TeamProductionGoals>(() =>
+    emptyTeamProductionGoals()
+  );
+  const [goalsDialogOpen, setGoalsDialogOpen] = useState(false);
+  const [goalsDialogMemberEmail, setGoalsDialogMemberEmail] = useState<string | null>(
+    null
+  );
+  const [goalsSaving, setGoalsSaving] = useState(false);
+  const [goalsError, setGoalsError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortKey>("activity");
   const [productionCategory, setProductionCategory] = useState<ProductionCategory>("life");
   const [productionContractScope, setProductionContractScope] = useState<"all" | "active">(
@@ -719,6 +764,7 @@ export default function TeamPage() {
     setContractsError(payload.contractsError);
     setUserPosition(payload.userPosition);
     setCanManagePositions(payload.canManagePositions);
+    setProductionGoals(payload.productionGoals ?? emptyTeamProductionGoals());
   };
 
   useEffect(() => {
@@ -764,6 +810,7 @@ export default function TeamPage() {
         setContractsError(false);
         setUserPosition(null);
         setCanManagePositions(false);
+        setProductionGoals(emptyTeamProductionGoals());
         setLoading(false);
         return;
       }
@@ -777,6 +824,7 @@ export default function TeamPage() {
       let tipStats: Record<string, TipStats> = {};
       let nextContractsLoaded = true;
       let nextContractsError = false;
+      let nextProductionGoals = emptyTeamProductionGoals();
       const fallbackPayload = cacheKey ? teamDataCache[cacheKey]?.payload ?? null : null;
 
       if (cacheKey) {
@@ -902,11 +950,13 @@ export default function TeamPage() {
         stats = responseData.contractCounts ?? {};
         activeStats = responseData.activeContractCounts ?? {};
         tipStats = responseData.tipCounts ?? {};
+        nextProductionGoals = responseData.productionGoals ?? emptyTeamProductionGoals();
         nextContractsLoaded = true;
         nextContractsError = false;
 
         setUserPosition(pos);
         setCanManagePositions(canManage);
+        setProductionGoals(nextProductionGoals);
         setMembers(all);
         setLastActive(lastActiveMap);
         setContractCounts(stats);
@@ -914,9 +964,6 @@ export default function TeamPage() {
         setTipCounts(tipStats);
         setContractsLoaded(true);
         setContractsError(false);
-        if (all.length) {
-          setSelectedEmail((prev) => prev ?? all[0]?.email ?? null);
-        }
       } catch (e) {
         console.error("Chyba při načítání týmu", e);
         if (fallbackPayload) {
@@ -928,6 +975,8 @@ export default function TeamPage() {
           stats = fallbackPayload.contractCounts;
           activeStats = fallbackPayload.activeContractCounts ?? {};
           tipStats = fallbackPayload.tipCounts ?? {};
+          nextProductionGoals =
+            fallbackPayload.productionGoals ?? emptyTeamProductionGoals();
           nextContractsLoaded = fallbackPayload.contractsLoaded;
           nextContractsError = fallbackPayload.contractsError;
         } else {
@@ -940,6 +989,7 @@ export default function TeamPage() {
           setContractsError(true);
           setUserPosition(null);
           setCanManagePositions(false);
+          setProductionGoals(emptyTeamProductionGoals());
           nextContractsLoaded = true;
           nextContractsError = true;
         }
@@ -957,6 +1007,7 @@ export default function TeamPage() {
               contractsError: nextContractsError,
               userPosition: pos,
               canManagePositions: canManage,
+              productionGoals: nextProductionGoals,
             },
           };
         }
@@ -1210,7 +1261,9 @@ export default function TeamPage() {
       setSelectedEmail(null);
       return;
     }
-    setSelectedEmail((prev) => (prev && filteredMembers.some((m) => m.email === prev) ? prev : filteredMembers[0].email));
+    setSelectedEmail((prev) =>
+      prev && filteredMembers.some((member) => member.email === prev) ? prev : null
+    );
   }, [filteredMembers]);
 
   useEffect(() => {
@@ -1393,6 +1446,65 @@ export default function TeamPage() {
       Object.keys(contractCounts).length === 0 &&
       Object.keys(activeContractCounts).length === 0 &&
       Object.keys(tipCounts).length === 0);
+  const teamDashboardSummary = useMemo(
+    () =>
+      buildTeamDashboardSummary({
+        members,
+        contractCounts:
+          productionContractScope === "active"
+            ? activeContractCounts
+            : contractCounts,
+        lastActive,
+      }),
+    [
+      members,
+      productionContractScope,
+      activeContractCounts,
+      contractCounts,
+      lastActive,
+    ]
+  );
+  const teamAttentionItems = useMemo(
+    () => {
+      if (selectedStatsUnavailable) return [];
+      return buildTeamAttentionItems({
+        members,
+        contractCounts:
+          productionContractScope === "active"
+            ? activeContractCounts
+            : contractCounts,
+        lastActive,
+        currentUserEmail: userEmail,
+      });
+    },
+    [
+      members,
+      productionContractScope,
+      activeContractCounts,
+      contractCounts,
+      lastActive,
+      userEmail,
+      selectedStatsUnavailable,
+    ]
+  );
+  const selectedDashboardSummary = useMemo(
+    () =>
+      buildTeamDashboardSummary({
+        members: selected ? [selected] : [],
+        contractCounts:
+          productionContractScope === "active"
+            ? activeContractCounts
+            : contractCounts,
+        lastActive,
+      }),
+    [
+      selected,
+      productionContractScope,
+      activeContractCounts,
+      contractCounts,
+      lastActive,
+    ]
+  );
   const isSelectedSubordinate = useMemo(
     () => !!selected?.email && !!userEmail && selected.email.toLowerCase() !== userEmail.toLowerCase(),
     [selected, userEmail]
@@ -1573,6 +1685,81 @@ export default function TeamPage() {
   const canSendTeamMessage = showManagerTeamTools && hasTeamListMembers;
   const showTeamSidebar = showManagerTeamTools || hasTeamListMembers;
   const teamListTitle = showManagerTeamTools ? "Podřízení" : "Tipaři";
+  const canEditProductionGoals = showManagerTeamTools || canManagePositions;
+  const goalMembers = useMemo(
+    () =>
+      members
+        .filter((member) => member.accountType !== "tipster")
+        .map((member) => ({ email: member.email, name: member.name })),
+    [members]
+  );
+
+  const openGoalsEditor = (memberEmail?: string | null) => {
+    setGoalsDialogMemberEmail(memberEmail?.trim().toLowerCase() || null);
+    setGoalsError(null);
+    setGoalsDialogOpen(true);
+  };
+
+  const closeGoalsEditor = () => {
+    if (goalsSaving) return;
+    setGoalsDialogOpen(false);
+    setGoalsDialogMemberEmail(null);
+    setGoalsError(null);
+  };
+
+  const saveProductionGoals = async (goals: TeamProductionGoals) => {
+    setGoalsSaving(true);
+    setGoalsError(null);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Nejsi přihlášený.");
+      const payload =
+        await fetchAuthedJsonOrThrow<TeamProductionGoalsUpdateSuccess>(
+          currentUser,
+          "/api/team-overview",
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              action: "productionGoalsUpdate",
+              goals,
+            }),
+          }
+        );
+      setProductionGoals(payload.productionGoals);
+      if (cacheKey && teamDataCache[cacheKey]) {
+        teamDataCache[cacheKey] = {
+          ...teamDataCache[cacheKey],
+          payload: {
+            ...teamDataCache[cacheKey].payload,
+            productionGoals: payload.productionGoals,
+          },
+        };
+      }
+      setGoalsDialogOpen(false);
+      setGoalsDialogMemberEmail(null);
+    } catch (error) {
+      setGoalsError(
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : "Cíle se nepodařilo uložit."
+      );
+    } finally {
+      setGoalsSaving(false);
+    }
+  };
+
+  const openMemberDetail = (email: string) => {
+    setSearch("");
+    setSelectedEmail(email);
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 767px)").matches
+    ) {
+      window.setTimeout(() => {
+        teamDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    }
+  };
 
   const saveSelectedAgencyNumber = async () => {
     if (!selected) return;
@@ -2105,6 +2292,46 @@ export default function TeamPage() {
                     ) : null}
                   </div>
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEmail(null);
+                      if (
+                        typeof window !== "undefined" &&
+                        window.matchMedia("(max-width: 767px)").matches
+                      ) {
+                        window.setTimeout(() => {
+                          teamDetailRef.current?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                        }, 0);
+                      }
+                    }}
+                    className={[
+                      "ui-focus relative flex w-full items-center gap-3 overflow-hidden rounded-xl border px-3 py-3 text-left transition",
+                      selectedEmail == null
+                        ? "border-violet-300 bg-violet-50/80 text-violet-950 shadow-[0_12px_28px_rgba(76,29,149,0.12)]"
+                        : "border-violet-100 bg-white text-slate-800 hover:border-violet-200 hover:bg-violet-50/40",
+                    ].join(" ")}
+                  >
+                    {selectedEmail == null ? (
+                      <span className="absolute inset-y-0 left-0 w-1 bg-violet-500" />
+                    ) : null}
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                      <BarChart3 className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold">Přehled celého týmu</span>
+                      <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">
+                        Výsledky a očekávaný vývoj
+                      </span>
+                    </span>
+                    <span className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                      {teamDashboardSummary.advisors}
+                    </span>
+                  </button>
+
 		                  <div className="team-member-section space-y-2 border-t border-violet-100 pt-3">
 	                    <div className="flex items-center justify-between">
 	                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{teamListTitle}</div>
@@ -2563,6 +2790,26 @@ export default function TeamPage() {
                             </div>
                           </div>
 
+	                          {!selectedIsTipster ? (
+                                <ProductionGoalProgress
+                                  title={`Měsíční cíl · ${selected.name}`}
+                                  subtitle="Individuální plnění a očekávaný výsledek podle aktuálního tempa."
+                                  goal={
+                                    productionGoals.members[selected.email] ??
+                                    emptyProductionGoal()
+                                  }
+                                  currentByCategory={
+                                    selectedDashboardSummary.currentByCategory
+                                  }
+                                  projectedByCategory={
+                                    selectedDashboardSummary.projectedByCategory
+                                  }
+                                  canEdit={canEditProductionGoals}
+                                  onEdit={() => openGoalsEditor(selected.email)}
+                                  statsUnavailable={selectedStatsUnavailable}
+                                />
+                              ) : null}
+
 	                          <div className="team-production-panel relative overflow-hidden space-y-3 rounded-2xl border border-violet-100 bg-white px-3 py-4 shadow-[0_16px_38px_rgba(76,29,149,0.07)]">
 	                            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2967,15 +3214,33 @@ export default function TeamPage() {
 	                      </div>
 	                    </section>
 	                  ) : (
-	                    <section className="rounded-[32px] border border-violet-100 bg-white px-5 py-5 text-sm text-slate-500 shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
-	                      Vyber podřízeného v levém panelu.
-	                    </section>
+                        <TeamSummaryDashboard
+                          summary={teamDashboardSummary}
+                          statsUnavailable={selectedStatsUnavailable}
+                          contractScope={productionContractScope}
+                          onContractScopeChange={setProductionContractScope}
+                          attentionItems={teamAttentionItems}
+                          teamGoal={productionGoals.team}
+                          canEditGoals={canEditProductionGoals}
+                          onEditGoals={() => openGoalsEditor(null)}
+                          onOpenMember={openMemberDetail}
+                        />
 	                  )}
                 </div>
             </div>
           </div>
         )}
       </div>
+      <TeamGoalsDialog
+        isOpen={goalsDialogOpen}
+        goals={productionGoals}
+        members={goalMembers}
+        saving={goalsSaving}
+        error={goalsError}
+        initialMemberEmail={goalsDialogMemberEmail}
+        onClose={closeGoalsEditor}
+        onSave={saveProductionGoals}
+      />
       {weeklyReportModal
         ? (() => {
             const totalContracts = WEEKLY_REPORT_ROWS.reduce(

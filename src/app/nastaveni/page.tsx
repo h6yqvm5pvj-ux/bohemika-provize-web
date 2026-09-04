@@ -43,7 +43,10 @@ import {
 
 import { auth } from "../firebase";
 import { AppLayout } from "@/components/AppLayout";
-import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import {
+  fetchAuthedBlobOrThrow,
+  fetchAuthedJsonOrThrow,
+} from "@/app/lib/authenticatedApi";
 import {
   ADMIN_IMPERSONATION_HEADER,
   ADMIN_IMPERSONATION_EVENT,
@@ -111,12 +114,15 @@ import {
   USER_REQUEST_MANAGER_EMAIL_MAX_LEN,
   USER_REQUEST_MESSAGE_MAX_LEN,
   USER_REQUEST_MESSAGE_MIN_LEN,
+  USER_REQUEST_SCREENSHOT_MAX_BYTES,
+  USER_REQUEST_SCREENSHOT_MAX_FILES,
   USER_REQUEST_STEPS,
   sortUserRequestsByActivity,
   type UserRequestCreateApiResponse,
   type UserRequestDeleteApiResponse,
   type UserRequestPayload,
   type UserRequestPriority,
+  type UserRequestScreenshotPayload,
   type UserRequestUpdateApiResponse,
   type UserRequestsApiResponse,
   type UserRequestsView,
@@ -824,6 +830,7 @@ export default function SettingsPage() {
   const [userRequestPriority, setUserRequestPriority] =
     useState<UserRequestPriority>("normal");
   const [userRequestMessage, setUserRequestMessage] = useState("");
+  const [userRequestScreenshotFiles, setUserRequestScreenshotFiles] = useState<File[]>([]);
   const [userRequestSubmitting, setUserRequestSubmitting] = useState(false);
   const [userRequestStatus, setUserRequestStatus] = useState<InlineStatus | null>(null);
   const [userRequestDeletingId, setUserRequestDeletingId] = useState<string | null>(null);
@@ -2252,6 +2259,7 @@ export default function SettingsPage() {
 
   const resetUserRequestForm = useCallback(() => {
     setUserRequestMessage("");
+    setUserRequestScreenshotFiles([]);
     setUserRequestCorporateEmail("");
     setUserRequestFullName("");
     setUserRequestAgencyNumber("");
@@ -2395,6 +2403,31 @@ export default function SettingsPage() {
     setUserRequestStatus(null);
 
     try {
+      const requestPayload = {
+        id: editingUserRequestId,
+        subject: userRequestSubject,
+        requestedCorporateEmail:
+          userRequestSubject === "userCreation" ? requestedCorporateEmail : null,
+        requestedFullName:
+          userRequestSubject === "userCreation" ? requestedFullName || null : null,
+        requestedAgencyNumber:
+          userRequestSubject === "userCreation" ? requestedAgencyNumber || null : null,
+        requestedManagerEmail:
+          userRequestSubject === "userCreation" ? requestedManagerEmail || null : null,
+        requestedPosition: null,
+        requestedCommissionMode:
+          userRequestSubject === "userCreation" ? userRequestMode : null,
+        message,
+        priority: userRequestPriority,
+      };
+      let body: BodyInit = JSON.stringify(requestPayload);
+      if (userRequestScreenshotFiles.length > 0) {
+        const form = new FormData();
+        form.set("payload", JSON.stringify(requestPayload));
+        userRequestScreenshotFiles.forEach((file) => form.append("screenshots", file));
+        body = form;
+      }
+
       const payload = await fetchAuthedJsonOrThrow<
         UserRequestCreateApiResponse | UserRequestUpdateApiResponse
       >(
@@ -2402,23 +2435,7 @@ export default function SettingsPage() {
         "/api/user-requests",
         {
           method: isEditingReturnedRequest ? "PUT" : "POST",
-          body: JSON.stringify({
-            id: editingUserRequestId,
-            subject: userRequestSubject,
-            requestedCorporateEmail:
-              userRequestSubject === "userCreation" ? requestedCorporateEmail : null,
-            requestedFullName:
-              userRequestSubject === "userCreation" ? requestedFullName || null : null,
-            requestedAgencyNumber:
-              userRequestSubject === "userCreation" ? requestedAgencyNumber || null : null,
-            requestedManagerEmail:
-              userRequestSubject === "userCreation" ? requestedManagerEmail || null : null,
-            requestedPosition: null,
-            requestedCommissionMode:
-              userRequestSubject === "userCreation" ? userRequestMode : null,
-            message,
-            priority: userRequestPriority,
-          }),
+          body,
         }
       );
 
@@ -2468,6 +2485,7 @@ export default function SettingsPage() {
     setUserRequestMode(request.requestedUserDraft?.commissionMode ?? "standard");
     setUserRequestPriority(request.priority);
     setUserRequestMessage(request.message);
+    setUserRequestScreenshotFiles([]);
     setUserRequestsView("create");
     setUserRequestStep(1);
     setUserRequestStatus({
@@ -2525,6 +2543,90 @@ export default function SettingsPage() {
       });
     } finally {
       setUserRequestDeletingId(null);
+    }
+  };
+
+  const handleUserRequestScreenshotFilesChange = (files: File[]) => {
+    const uniqueFiles = files.filter(
+      (file, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            candidate.name === file.name &&
+            candidate.size === file.size &&
+            candidate.lastModified === file.lastModified
+        ) === index
+    );
+    const existingCount = editingUserRequestId
+      ? userRequests.find((request) => request.id === editingUserRequestId)?.screenshots
+          .length ?? 0
+      : 0;
+    if (existingCount + uniqueFiles.length > USER_REQUEST_SCREENSHOT_MAX_FILES) {
+      setUserRequestStatus({
+        type: "error",
+        message: `K hlášení lze přiložit nejvýše ${USER_REQUEST_SCREENSHOT_MAX_FILES} screenshoty.`,
+      });
+      return;
+    }
+    const invalidType = uniqueFiles.find(
+      (file) =>
+        !["image/png", "image/jpeg"].includes(file.type.toLowerCase()) &&
+        !/\.(png|jpe?g)$/i.test(file.name)
+    );
+    if (invalidType) {
+      setUserRequestStatus({
+        type: "error",
+        message: `Soubor ${invalidType.name} není PNG, JPG nebo JPEG.`,
+      });
+      return;
+    }
+    const oversized = uniqueFiles.find(
+      (file) => file.size > USER_REQUEST_SCREENSHOT_MAX_BYTES
+    );
+    if (oversized) {
+      setUserRequestStatus({
+        type: "error",
+        message: `Soubor ${oversized.name} je větší než 8 MB.`,
+      });
+      return;
+    }
+    setUserRequestScreenshotFiles(uniqueFiles);
+    setUserRequestStatus(null);
+  };
+
+  const handleOpenUserRequestScreenshot = async (
+    request: UserRequestPayload,
+    screenshot: UserRequestScreenshotPayload
+  ) => {
+    if (!user) return;
+    const previewWindow = window.open("about:blank", "_blank");
+    if (previewWindow) previewWindow.opener = null;
+    try {
+      const blob = await fetchAuthedBlobOrThrow(
+        user,
+        `/api/user-requests/attachment?requestId=${encodeURIComponent(
+          request.id
+        )}&screenshotId=${encodeURIComponent(screenshot.id)}`
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      if (previewWindow) {
+        previewWindow.location.href = objectUrl;
+      } else {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      previewWindow?.close();
+      setUserRequestStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Screenshot se nepodařilo otevřít.",
+      });
     }
   };
 
@@ -3815,6 +3917,7 @@ export default function SettingsPage() {
                   mode={userRequestMode}
                   priority={userRequestPriority}
                   message={userRequestMessage}
+                  screenshotFiles={userRequestScreenshotFiles}
                   requestMessageLength={requestMessageLength}
                   userRequestsNowMs={userRequestsNowMs}
                   onViewChange={(nextView) => {
@@ -3828,6 +3931,9 @@ export default function SettingsPage() {
                   }}
                   onSubjectChange={(nextSubject) => {
                     setUserRequestSubject(nextSubject);
+                    if (nextSubject !== "problem") {
+                      setUserRequestScreenshotFiles([]);
+                    }
                     setUserRequestStatus(null);
                   }}
                   onCorporateEmailChange={(value) => {
@@ -3855,6 +3961,8 @@ export default function SettingsPage() {
                     setUserRequestMessage(value);
                     setUserRequestStatus(null);
                   }}
+                  onScreenshotFilesChange={handleUserRequestScreenshotFilesChange}
+                  onOpenScreenshot={handleOpenUserRequestScreenshot}
                   onSubmit={handleSubmitUserRequest}
                   onPreviousStep={goToPreviousUserRequestStep}
                   onNextStep={goToNextUserRequestStep}

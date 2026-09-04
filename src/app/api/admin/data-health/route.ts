@@ -410,6 +410,8 @@ function emptyContractStats(): ContractStats {
     previousMonthToDate: 0,
     monthMetrics: emptyAggregateMetrics(),
     previousMonthMetrics: emptyAggregateMetrics(),
+    previousMonthToDateMetrics: emptyAggregateMetrics(),
+    monthCategoryMetrics: emptyCategoryMetrics(),
     categories: emptyCategoryCounts(),
     categoryMetrics: emptyCategoryMetrics(),
     institutionMetrics: {},
@@ -1253,11 +1255,21 @@ function accumulateTeamOverviewEntry({
   if (signedMs != null && signedMs >= monthStart && signedMs <= currentMonthToDateEnd) {
     current.month += 1;
     addAggregateContract(current.monthMetrics, annualPremium, monthlyPremium);
+    addAggregateContract(
+      current.monthCategoryMetrics[category],
+      annualPremium,
+      monthlyPremium
+    );
   } else if (signedMs != null && signedMs >= previousMonthStart && signedMs < monthStart) {
     current.previousMonth += 1;
     addAggregateContract(current.previousMonthMetrics, annualPremium, monthlyPremium);
     if (signedMs <= previousMonthToDateEndMs) {
       current.previousMonthToDate += 1;
+      addAggregateContract(
+        current.previousMonthToDateMetrics,
+        annualPremium,
+        monthlyPremium
+      );
     }
   }
 

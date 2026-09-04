@@ -35,6 +35,18 @@ export type AggregateMetrics = {
   monthlyPremium: number;
 };
 
+export type ProductionGoal = {
+  totalAnnualPremium: number;
+  categories: Record<Category, number>;
+};
+
+export type TeamProductionGoals = {
+  yearMonth: string;
+  team: ProductionGoal;
+  members: Record<string, ProductionGoal>;
+  updatedAtMs: number | null;
+};
+
 export type ContractStats = {
   total: number;
   month: number;
@@ -42,6 +54,8 @@ export type ContractStats = {
   previousMonthToDate: number;
   monthMetrics: AggregateMetrics;
   previousMonthMetrics: AggregateMetrics;
+  previousMonthToDateMetrics: AggregateMetrics;
+  monthCategoryMetrics: Record<Category, AggregateMetrics>;
   categories: Record<Category, number>;
   categoryMetrics: Record<Category, AggregateMetrics>;
   institutionMetrics: Record<string, AggregateMetrics>;
@@ -78,6 +92,7 @@ export type TeamOverviewSuccess = {
   contractCounts: Record<string, ContractStats>;
   activeContractCounts: Record<string, ContractStats>;
   tipCounts: Record<string, TipStats>;
+  productionGoals?: TeamProductionGoals;
 };
 
 export type TeamOverviewError = {
@@ -125,6 +140,7 @@ export type TeamOverviewPatchSuccess = {
     | "collaborationEnded"
     | "collaborationPreview"
     | "positionTimelineRead"
+    | "productionGoals"
     | "collaborationRequestQueued"
     | "collaborationRequestApproved"
     | "collaborationRequestRejected"
@@ -147,6 +163,7 @@ export type TeamOverviewPatchSuccess = {
     validTo: string | null;
   }>;
   request?: EndCollaborationRequestPayload;
+  productionGoals?: TeamProductionGoals;
 };
 
 export type TeamOverviewEndCollaborationRequestsSuccess = {

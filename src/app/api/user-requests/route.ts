@@ -10,6 +10,17 @@ import {
   requireAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
+import {
+  USER_REQUEST_SCREENSHOT_MAX_FILES,
+  deleteUserRequestScreenshot,
+  normalizeStoredUserRequestScreenshots,
+  prepareUserRequestScreenshotFile,
+  toPublicUserRequestScreenshot,
+  uploadUserRequestScreenshot,
+  type PreparedUserRequestScreenshot,
+  type PublicUserRequestScreenshot,
+  type StoredUserRequestScreenshot,
+} from "@/lib/server/userRequestScreenshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +49,7 @@ const USER_REQUEST_TEMP_PASSWORD_MIN_LEN = 8;
 const USER_REQUEST_TEMP_PASSWORD_MAX_LEN = 128;
 const NEW_USER_TRIAL_DAYS = 2;
 
-type UserRequestSubject = "userCreation" | "other";
+type UserRequestSubject = "userCreation" | "problem" | "other";
 type UserRequestPriority = "normal" | "urgent";
 type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
 
@@ -66,6 +77,7 @@ type UserRequestPayload = {
   updatedAtMs: number;
   decidedAtMs: number | null;
   decidedByEmail: string | null;
+  screenshots: PublicUserRequestScreenshot[];
 };
 
 const POSITION_VALUES: Position[] = [
@@ -107,7 +119,9 @@ const isAdmin = (
   adminRoleAtLeast(resolveAdminRoleFromClaims(email, decoded), "admin");
 
 const parseSubject = (value: unknown): UserRequestSubject | null => {
-  if (value === "userCreation" || value === "other") return value;
+  if (value === "userCreation" || value === "problem" || value === "other") {
+    return value;
+  }
   return null;
 };
 
@@ -325,6 +339,9 @@ const parseRequestDoc = (
   const requestedCommissionMode = parseCommissionMode(data.requestedCommissionMode);
   const createdUserEmail = normalizeEmail(data.createdUserEmail);
   const createdUserUid = normalizeText(data.createdUserUid);
+  const screenshots = normalizeStoredUserRequestScreenshots(data.screenshots)
+    .map((item) => toPublicUserRequestScreenshot(item))
+    .filter((item): item is PublicUserRequestScreenshot => item != null);
 
   if (!requesterEmail || !subject || !priority || !status || !message) {
     return null;
@@ -360,7 +377,87 @@ const parseRequestDoc = (
     updatedAtMs,
     decidedAtMs,
     decidedByEmail,
+    screenshots,
   };
+};
+
+async function parseRequestInput(req: NextRequest): Promise<
+  | { value: unknown; screenshotFiles: File[] }
+  | { error: string }
+> {
+  const contentType = req.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.includes("multipart/form-data")) {
+    return {
+      value: await req.json().catch(() => null),
+      screenshotFiles: [],
+    };
+  }
+
+  const form = await req.formData().catch(() => null);
+  if (!form) return { error: "Neplatný formát požadavku." };
+  const payloadRaw = form.get("payload");
+  if (typeof payloadRaw !== "string") {
+    return { error: "Chybí údaje žádosti." };
+  }
+
+  let value: unknown = null;
+  try {
+    value = JSON.parse(payloadRaw);
+  } catch {
+    return { error: "Údaje žádosti nejsou platné." };
+  }
+
+  const screenshotFiles = form
+    .getAll("screenshots")
+    .filter((item): item is File => item instanceof File && item.size > 0);
+  if (screenshotFiles.length > USER_REQUEST_SCREENSHOT_MAX_FILES) {
+    return {
+      error: `K žádosti lze přiložit nejvýše ${USER_REQUEST_SCREENSHOT_MAX_FILES} screenshoty.`,
+    };
+  }
+  return { value, screenshotFiles };
+}
+
+async function prepareScreenshots(files: File[]): Promise<
+  | { ok: true; screenshots: PreparedUserRequestScreenshot[] }
+  | { ok: false; error: string }
+> {
+  const screenshots: PreparedUserRequestScreenshot[] = [];
+  for (const file of files) {
+    const prepared = await prepareUserRequestScreenshotFile(file);
+    if (!prepared.ok) return prepared;
+    screenshots.push(prepared.screenshot);
+  }
+  return { ok: true, screenshots };
+}
+
+async function uploadScreenshots({
+  screenshots,
+  requestId,
+  uploaderEmail,
+}: {
+  screenshots: PreparedUserRequestScreenshot[];
+  requestId: string;
+  uploaderEmail: string;
+}): Promise<StoredUserRequestScreenshot[]> {
+  const uploaded: StoredUserRequestScreenshot[] = [];
+  try {
+    for (const screenshot of screenshots) {
+      uploaded.push(
+        await uploadUserRequestScreenshot({ screenshot, requestId, uploaderEmail })
+      );
+    }
+    return uploaded;
+  } catch (error) {
+    await Promise.allSettled(uploaded.map((item) => deleteUserRequestScreenshot(item)));
+    throw error;
+  }
+}
+
+const cleanupScreenshots = async (screenshots: StoredUserRequestScreenshot[]) => {
+  await Promise.allSettled(
+    screenshots.map((screenshot) => deleteUserRequestScreenshot(screenshot))
+  );
 };
 
 function parseCreatePayload(raw: unknown):
@@ -616,8 +713,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json().catch(() => null);
-  const parsed = parseCreatePayload(body);
+  const input = await parseRequestInput(req);
+  if ("error" in input) {
+    return withRateLimitHeaders(
+      NextResponse.json({ ok: false, error: input.error }, { status: 400 }),
+      ctx
+    );
+  }
+  const parsed = parseCreatePayload(input.value);
   if ("error" in parsed) {
     return withRateLimitHeaders(
       NextResponse.json({ ok: false, error: parsed.error }, { status: 400 }),
@@ -625,7 +728,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (input.screenshotFiles.length > 0 && parsed.subject !== "problem") {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Screenshot lze přiložit pouze k hlášení problému." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  const prepared = await prepareScreenshots(input.screenshotFiles);
+  if (!prepared.ok) {
+    return withRateLimitHeaders(
+      NextResponse.json({ ok: false, error: prepared.error }, { status: 400 }),
+      ctx
+    );
+  }
+
   const now = new Date();
+  const docRef = adminDb.collection(USER_REQUESTS_COLLECTION).doc();
+  let screenshots: StoredUserRequestScreenshot[] = [];
+  try {
+    screenshots = await uploadScreenshots({
+      screenshots: prepared.screenshots,
+      requestId: docRef.id,
+      uploaderEmail: ctx.email,
+    });
+  } catch (error) {
+    console.error("User request screenshot upload failed:", error);
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Screenshoty se nepodařilo bezpečně uložit." },
+        { status: 500 }
+      ),
+      ctx
+    );
+  }
   const createPayload = {
     requesterEmail: ctx.email,
     subject: parsed.subject,
@@ -643,9 +781,22 @@ export async function POST(req: NextRequest) {
     updatedAt: now,
     decidedAt: null,
     decidedByEmail: null,
+    screenshots,
   };
 
-  const docRef = await adminDb.collection(USER_REQUESTS_COLLECTION).add(createPayload);
+  try {
+    await docRef.set(createPayload);
+  } catch (error) {
+    await cleanupScreenshots(screenshots);
+    console.error("User request create failed after screenshot upload:", error);
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Žádost se nepodařilo uložit." },
+        { status: 500 }
+      ),
+      ctx
+    );
+  }
   const savedSnap = await docRef.get();
   const request = parseRequestDoc(savedSnap);
 
@@ -832,8 +983,14 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  const body = await req.json().catch(() => null);
-  const parsed = parsePutPayload(body);
+  const input = await parseRequestInput(req);
+  if ("error" in input) {
+    return withRateLimitHeaders(
+      NextResponse.json({ ok: false, error: input.error }, { status: 400 }),
+      ctx
+    );
+  }
+  const parsed = parsePutPayload(input.value);
   if ("error" in parsed) {
     return withRateLimitHeaders(
       NextResponse.json({ ok: false, error: parsed.error }, { status: 400 }),
@@ -874,11 +1031,66 @@ export async function PUT(req: NextRequest) {
     );
   }
 
+  if (input.screenshotFiles.length > 0 && parsed.subject !== "problem") {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Screenshot lze přiložit pouze k hlášení problému." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+
+  const existingScreenshots = normalizeStoredUserRequestScreenshots(
+    (existingSnap.data() as Record<string, unknown> | undefined)?.screenshots
+  );
+  const keptScreenshots = parsed.subject === "problem" ? existingScreenshots : [];
+  if (
+    keptScreenshots.length + input.screenshotFiles.length >
+    USER_REQUEST_SCREENSHOT_MAX_FILES
+  ) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        {
+          ok: false,
+          error: `K žádosti lze přiložit nejvýše ${USER_REQUEST_SCREENSHOT_MAX_FILES} screenshoty.`,
+        },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  const prepared = await prepareScreenshots(input.screenshotFiles);
+  if (!prepared.ok) {
+    return withRateLimitHeaders(
+      NextResponse.json({ ok: false, error: prepared.error }, { status: 400 }),
+      ctx
+    );
+  }
+  let uploadedScreenshots: StoredUserRequestScreenshot[] = [];
+  try {
+    uploadedScreenshots = await uploadScreenshots({
+      screenshots: prepared.screenshots,
+      requestId: parsed.id,
+      uploaderEmail: ctx.email,
+    });
+  } catch (error) {
+    console.error("User request screenshot upload failed:", error);
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Screenshoty se nepodařilo bezpečně uložit." },
+        { status: 500 }
+      ),
+      ctx
+    );
+  }
+
   const now = new Date();
-  await adminDb.runTransaction(async (tx) => {
-    tx.set(
-      requestRef,
-      {
+  try {
+    await adminDb.runTransaction(async (tx) => {
+      tx.set(
+        requestRef,
+        {
         subject: parsed.subject,
         requestedCorporateEmail: parsed.requestedCorporateEmail,
         requestedFullName: parsed.requestedUserDraft?.fullName ?? null,
@@ -891,11 +1103,26 @@ export async function PUT(req: NextRequest) {
         status: "pending" as UserRequestStatus,
         updatedAt: now,
         decidedAt: null,
-        decidedByEmail: null,
-      },
-      { merge: true }
+          decidedByEmail: null,
+          screenshots: [...keptScreenshots, ...uploadedScreenshots],
+        },
+        { merge: true }
+      );
+    });
+  } catch (error) {
+    await cleanupScreenshots(uploadedScreenshots);
+    console.error("User request update failed after screenshot upload:", error);
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Žádost se nepodařilo aktualizovat." },
+        { status: 500 }
+      ),
+      ctx
     );
-  });
+  }
+  if (parsed.subject !== "problem") {
+    await cleanupScreenshots(existingScreenshots);
+  }
 
   const updatedSnap = await requestRef.get();
   const request = parseRequestDoc(updatedSnap);
@@ -956,6 +1183,7 @@ export async function DELETE(req: NextRequest) {
   }
   const row = (snap.data() ?? {}) as Record<string, unknown>;
   const requesterEmail = normalizeEmail(row.requesterEmail);
+  const screenshots = normalizeStoredUserRequestScreenshots(row.screenshots);
 
   const canDelete =
     requesterEmail === ctx.email || isAdmin(ctx.email, ctx.decoded as Record<string, unknown>);
@@ -970,6 +1198,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   await requestRef.delete();
+  await cleanupScreenshots(screenshots);
 
   return withRateLimitHeaders(
     NextResponse.json({

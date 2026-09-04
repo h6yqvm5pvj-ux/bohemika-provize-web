@@ -1,6 +1,6 @@
 import type { CommissionMode, Position } from "../types/domain";
 
-export type UserRequestSubject = "userCreation" | "other";
+export type UserRequestSubject = "userCreation" | "problem" | "other";
 export type UserRequestPriority = "normal" | "urgent";
 export type UserRequestStatus = "pending" | "needsInfo" | "accepted" | "rejected";
 export type UserRequestsView = "create" | "history";
@@ -11,6 +11,18 @@ export type UserCreationRequestDraft = {
   managerEmail: string | null;
   position: Position | null;
   commissionMode: CommissionMode;
+};
+
+export type UserRequestScreenshotPayload = {
+  kind: "userRequestScreenshot";
+  id: string;
+  hasFile: true;
+  originalName: string;
+  contentType: "image/png" | "image/jpeg";
+  sizeBytes: number;
+  sha256: string;
+  uploadedAtMs: number;
+  uploadedBy: string;
 };
 
 export type UserRequestPayload = {
@@ -29,6 +41,7 @@ export type UserRequestPayload = {
   updatedAtMs: number;
   decidedAtMs: number | null;
   decidedByEmail: string | null;
+  screenshots: UserRequestScreenshotPayload[];
 };
 
 export type UserRequestsApiResponse = {
@@ -60,9 +73,12 @@ export const USER_REQUEST_CORPORATE_EMAIL_MAX_LEN = 180;
 export const USER_REQUEST_MANAGER_EMAIL_MAX_LEN = 180;
 export const USER_REQUEST_FULL_NAME_MAX_LEN = 120;
 export const USER_REQUEST_AGENCY_NUMBER_MAX_LEN = 80;
+export const USER_REQUEST_SCREENSHOT_MAX_BYTES = 8 * 1024 * 1024;
+export const USER_REQUEST_SCREENSHOT_MAX_FILES = 4;
 
 export const USER_REQUEST_SUBJECT_LABEL: Record<UserRequestSubject, string> = {
   userCreation: "Založení uživatele",
+  problem: "Nahlásit problém",
   other: "Jiné",
 };
 
