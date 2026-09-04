@@ -135,7 +135,7 @@ export function MailboxChatThread({
                   <div
                     className={`rounded-[20px] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.07)] ${
                       sent
-                        ? "rounded-br-md bg-[linear-gradient(135deg,#312060_0%,#6d28d9_58%,#7c3aed_100%)] text-white"
+                        ? "rounded-br-md bg-[linear-gradient(135deg,#312060_0%,#6d28d9_58%,#7c3aed_100%)] text-[#fff]"
                         : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
                     }`}
                   >
