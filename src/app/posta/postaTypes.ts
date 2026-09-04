@@ -65,6 +65,17 @@ export type MailboxComposeResponse = {
   recipientMailboxId?: string;
   senderMailboxId?: string;
   tipId?: string | null;
+  conversationId?: string | null;
+  error?: string;
+};
+
+export type MailboxActivityResponse = {
+  ok?: boolean;
+  conversationId?: string;
+  email?: string;
+  lastActiveAtMs?: number | null;
+  typing?: boolean;
+  serverNowMs?: number;
   error?: string;
 };
 

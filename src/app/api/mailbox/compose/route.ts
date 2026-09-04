@@ -15,6 +15,7 @@ import {
   encryptMailboxJson,
   type MailboxEncryptionEnvelope,
 } from "@/lib/server/mailboxEncryption";
+import { mailboxConversationId } from "@/lib/server/mailboxConversation";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
   prepareSafeUserAttachmentFile,
@@ -688,6 +689,9 @@ export async function POST(req: NextRequest) {
     const messageId = randomUUID();
     uploadedMessageId = messageId;
     const isTipsterTip = clientMetadata.tipsterTip === true;
+    const conversationId = isTipsterTip
+      ? null
+      : mailboxConversationId(ctx.email, recipient.email);
     const encryptedContent = isTipsterTip
       ? null
       : encryptMailboxJson(
@@ -713,6 +717,20 @@ export async function POST(req: NextRequest) {
       .doc(ctx.email)
       .collection("mailbox")
       .doc();
+    const recipientConversationRef = conversationId
+      ? adminDb
+          .collection("usersPrivate")
+          .doc(recipient.email)
+          .collection("mailboxConversations")
+          .doc(conversationId)
+      : null;
+    const senderConversationRef = conversationId
+      ? adminDb
+          .collection("usersPrivate")
+          .doc(ctx.email)
+          .collection("mailboxConversations")
+          .doc(conversationId)
+      : null;
     const tipRef =
       clientMetadata.tipsterTip === true
         ? adminDb
@@ -728,6 +746,7 @@ export async function POST(req: NextRequest) {
     const commonMetadata = {
       ...clientMetadata,
       messageId,
+      ...(conversationId ? { conversationId } : {}),
       senderEmail: ctx.email,
       senderName,
       recipientEmail: recipient.email,
@@ -777,6 +796,34 @@ export async function POST(req: NextRequest) {
         pairedMailboxId: recipientRef.id,
       },
     });
+    if (recipientConversationRef && senderConversationRef && conversationId) {
+      batch.set(
+        recipientConversationRef,
+        {
+          conversationId,
+          counterpartEmail: ctx.email,
+          counterpartName: senderName,
+          lastMessageId: messageId,
+          lastMessageAtMs: createdAtMs,
+          lastMessageAt: FieldValue.serverTimestamp(),
+          lastSenderEmail: ctx.email,
+        },
+        { merge: true }
+      );
+      batch.set(
+        senderConversationRef,
+        {
+          conversationId,
+          counterpartEmail: recipient.email,
+          counterpartName: recipient.name,
+          lastMessageId: messageId,
+          lastMessageAtMs: createdAtMs,
+          lastMessageAt: FieldValue.serverTimestamp(),
+          lastSenderEmail: ctx.email,
+        },
+        { merge: true }
+      );
+    }
     if (tipRef) {
       batch.set(tipRef, {
         tipsterEmail: ctx.email,
@@ -825,6 +872,7 @@ export async function POST(req: NextRequest) {
         recipientMailboxId: recipientRef.id,
         senderMailboxId: senderRef.id,
         tipId: tipRef?.id ?? null,
+        conversationId,
       }),
       ctx
     );

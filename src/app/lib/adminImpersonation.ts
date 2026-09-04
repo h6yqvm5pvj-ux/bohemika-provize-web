@@ -31,6 +31,8 @@ const ALLOWED_API_PREFIXES = [
 const ALLOWED_EXACT_API_REQUESTS = new Map<string, ReadonlySet<string>>([
   ["/api/export-produkce/share", new Set(["POST"])],
   ["/api/mailbox/compose", new Set(["POST"])],
+  ["/api/mailbox/activity", new Set(["GET", "POST"])],
+  ["/api/mailbox/stream", new Set(["GET"])],
   ["/api/online-card/analytics", new Set(["GET"])],
   ["/api/online-card/office-photo", new Set(["POST"])],
   ["/api/plan-produkce/share", new Set(["POST"])],

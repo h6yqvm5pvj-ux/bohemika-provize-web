@@ -13,6 +13,7 @@ import {
   type MailboxStorageObject,
 } from "@/lib/server/mailboxAttachmentStorage";
 import { decryptMailboxJson } from "@/lib/server/mailboxEncryption";
+import { mailboxConversationId } from "@/lib/server/mailboxConversation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -169,6 +170,20 @@ const parseMailboxDoc = (
     metadata,
     metadataMessageId || docSnap.id
   );
+  if (
+    normalizeText(data.type) === "direct_message" &&
+    normalizedMetadata?.tipsterTip !== true &&
+    !normalizeText(normalizedMetadata?.conversationId)
+  ) {
+    const senderEmail = normalizeMailboxEmail(normalizedMetadata?.senderEmail);
+    const recipientEmail = normalizeMailboxEmail(normalizedMetadata?.recipientEmail);
+    if (senderEmail && recipientEmail && senderEmail !== recipientEmail) {
+      normalizedMetadata = {
+        ...normalizedMetadata,
+        conversationId: mailboxConversationId(senderEmail, recipientEmail),
+      };
+    }
+  }
   let title = normalizeText(data.title) || "Bohemka.App";
   let body = normalizeText(data.body) || "Máš novou zprávu.";
 

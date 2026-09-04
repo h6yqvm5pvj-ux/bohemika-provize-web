@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -44,6 +43,7 @@ import {
   useEffectiveUserEmail,
 } from "@/app/lib/useAdminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
+import { MailboxChatComposer } from "./MailboxChatComposer";
 import { MailboxChatThread } from "./MailboxChatThread";
 import {
   COMPOSE_FILES_MAX_COUNT,
@@ -68,7 +68,9 @@ import {
   toReplySubject,
 } from "./postaHelpers";
 import { buildMailboxPreviewHtml } from "./postaPreview";
+import { formatMailboxPresence } from "./postaPresence";
 import type {
+  MailboxActivityResponse,
   MailboxComposeResponse,
   MailboxDeleteResponse,
   MailboxItem,
@@ -209,6 +211,8 @@ const directMessageCounterpart = (
 
 const directMessageConversationKey = (item: MailboxItem): string => {
   if (!isStandardDirectMailboxItem(item)) return `item:${item.id}`;
+  const conversationId = mailboxMetadataText(item, "conversationId");
+  if (conversationId) return `conversation:${conversationId}`;
   const counterpart = directMessageCounterpart(item);
   return counterpart.email
     ? `chat:${counterpart.email}`
@@ -443,15 +447,24 @@ export default function PostaPage() {
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
   const [quickReplyText, setQuickReplyText] = useState("");
   const [quickReplyFiles, setQuickReplyFiles] = useState<File[]>([]);
-  const [quickReplyOpen, setQuickReplyOpen] = useState(false);
   const [quickReplySubmitting, setQuickReplySubmitting] = useState(false);
   const [quickReplyErrorText, setQuickReplyErrorText] = useState<string | null>(null);
   const [quickReplySuccessText, setQuickReplySuccessText] = useState<string | null>(null);
+  const [conversationUnreadStartId, setConversationUnreadStartId] = useState<string | null>(null);
+  const [chatActivity, setChatActivity] = useState<{
+    lastActiveAtMs: number | null;
+    typing: boolean;
+    checkedAtMs: number;
+  }>({ lastActiveAtMs: null, typing: false, checkedAtMs: 0 });
   const composeLookupSeq = useRef(0);
   const composeFileInputRef = useRef<HTMLInputElement | null>(null);
-  const quickReplyFileInputRef = useRef<HTMLInputElement | null>(null);
   const openedDeepLinkMessageIdRef = useRef<string>("");
   const pendingDeepLinkMessageIdRef = useRef<string>("");
+  const mailboxLoadSequenceRef = useRef(0);
+  const typingLastSentAtRef = useRef(0);
+  const typingWasActiveRef = useRef(false);
+  const typingIdleTimerRef = useRef<number | null>(null);
+  const markingReadIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     let resolved = false;
@@ -485,25 +498,32 @@ export default function PostaPage() {
     setPreviewModalOpen(false);
     setSharedExportPreviewHtml(null);
     setComposeModalOpen(false);
-    setQuickReplyOpen(false);
+    setConversationUnreadStartId(null);
+    setChatActivity({ lastActiveAtMs: null, typing: false, checkedAtMs: 0 });
     previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewAttachmentBlobUrlsRef.current = [];
     setPreviewAttachmentBlobUrls({});
   }, [effectiveEmail]);
 
-  const loadMailbox = useCallback(async () => {
+  const loadMailbox = useCallback(async (options?: { silent?: boolean }) => {
     const currentUser = auth.currentUser;
     const scopeEmail = effectiveEmail;
     if (!currentUser || !scopeEmail) return;
-    setLoading(true);
-    setError(null);
+    const sequence = ++mailboxLoadSequenceRef.current;
+    if (!options?.silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const data = await fetchAuthedJsonOrThrow<MailboxResponse>(
         currentUser,
         "/api/mailbox?limit=80",
         { method: "GET" }
       );
-      if (effectiveUserEmail(auth.currentUser?.email) !== scopeEmail) return;
+      if (
+        effectiveUserEmail(auth.currentUser?.email) !== scopeEmail ||
+        sequence !== mailboxLoadSequenceRef.current
+      ) return;
       setItems(Array.isArray(data.items) ? data.items : []);
       setUnreadCount(
         typeof data.unreadCount === "number" && Number.isFinite(data.unreadCount)
@@ -511,11 +531,11 @@ export default function PostaPage() {
           : 0
       );
     } catch (err: any) {
-      if (effectiveUserEmail(auth.currentUser?.email) === scopeEmail) {
+      if (!options?.silent && effectiveUserEmail(auth.currentUser?.email) === scopeEmail) {
         setError(err?.message || "Poštu se nepodařilo načíst.");
       }
     } finally {
-      if (effectiveUserEmail(auth.currentUser?.email) === scopeEmail) {
+      if (!options?.silent && effectiveUserEmail(auth.currentUser?.email) === scopeEmail) {
         setLoading(false);
       }
     }
@@ -536,17 +556,82 @@ export default function PostaPage() {
     void loadMailbox();
 
     const intervalId = window.setInterval(() => {
-      void loadMailbox();
-    }, 45_000);
+      void loadMailbox({ silent: true });
+    }, 120_000);
 
     const onFocus = () => {
-      void loadMailbox();
+      void loadMailbox({ silent: true });
     };
     window.addEventListener("focus", onFocus);
 
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
+    };
+  }, [authReady, effectiveEmail, loadMailbox, user]);
+
+  useEffect(() => {
+    if (!authReady || !user || !effectiveEmail) return;
+    let stopped = false;
+    let abortController: AbortController | null = null;
+    let reconnectTimer: number | null = null;
+    let refreshTimer: number | null = null;
+
+    const scheduleRefresh = () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void loadMailbox({ silent: true });
+      }, 120);
+    };
+
+    const connect = async () => {
+      if (stopped) return;
+      abortController = new AbortController();
+      try {
+        const request = async (forceRefresh: boolean) => {
+          const token = await user.getIdToken(forceRefresh);
+          return fetch("/api/mailbox/stream", {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+            signal: abortController?.signal,
+          });
+        };
+        let response = await request(false);
+        if (response.status === 401) response = await request(true);
+        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (!stopped) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
+          events.forEach((event) => {
+            if (event.split("\n").some((line) => line.trim() === "event: mailbox")) {
+              scheduleRefresh();
+            }
+          });
+        }
+      } catch (streamError) {
+        if (!stopped && !(streamError instanceof DOMException && streamError.name === "AbortError")) {
+          console.warn("Realtime pošty se znovu připojí:", streamError);
+        }
+      } finally {
+        if (!stopped) reconnectTimer = window.setTimeout(() => void connect(), 1500);
+      }
+    };
+
+    void connect();
+    return () => {
+      stopped = true;
+      abortController?.abort();
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
     };
   }, [authReady, effectiveEmail, loadMailbox, user]);
 
@@ -856,6 +941,96 @@ export default function PostaPage() {
     previewItem && isStandardDirectMailboxItem(previewItem) && quickReplyRecipient
   );
 
+  const updateTypingState = useCallback(
+    (typing: boolean) => {
+      if (!user || !quickReplyRecipient || !quickReplyEnabled) return;
+      if (typingIdleTimerRef.current !== null) {
+        window.clearTimeout(typingIdleTimerRef.current);
+        typingIdleTimerRef.current = null;
+      }
+
+      if (typing) {
+        typingWasActiveRef.current = true;
+        typingIdleTimerRef.current = window.setTimeout(() => {
+          typingWasActiveRef.current = false;
+          typingLastSentAtRef.current = 0;
+          void fetchAuthedJsonOrThrow(user, "/api/mailbox/activity", {
+            method: "POST",
+            body: JSON.stringify({ email: quickReplyRecipient.email, typing: false }),
+          }).catch(() => undefined);
+        }, 6_000);
+        const nowMs = Date.now();
+        if (nowMs - typingLastSentAtRef.current < 2_500) return;
+        typingLastSentAtRef.current = nowMs;
+      } else {
+        if (!typingWasActiveRef.current) return;
+        typingWasActiveRef.current = false;
+        typingLastSentAtRef.current = 0;
+      }
+
+      void fetchAuthedJsonOrThrow(user, "/api/mailbox/activity", {
+        method: "POST",
+        body: JSON.stringify({ email: quickReplyRecipient.email, typing }),
+      }).catch(() => undefined);
+    }, [quickReplyEnabled, quickReplyRecipient, user]
+  );
+
+  useEffect(() => {
+    if (!user || !quickReplyRecipient || !quickReplyEnabled) {
+      setChatActivity({ lastActiveAtMs: null, typing: false, checkedAtMs: 0 });
+      return;
+    }
+    let cancelled = false;
+    const loadActivity = async () => {
+      try {
+        const payload = await fetchAuthedJsonOrThrow<MailboxActivityResponse>(
+          user,
+          `/api/mailbox/activity?email=${encodeURIComponent(quickReplyRecipient.email)}`,
+          { method: "GET" }
+        );
+        if (cancelled) return;
+        setChatActivity({
+          lastActiveAtMs:
+            typeof payload.lastActiveAtMs === "number" && Number.isFinite(payload.lastActiveAtMs)
+              ? payload.lastActiveAtMs
+              : null,
+          typing: payload.typing === true,
+          checkedAtMs:
+            typeof payload.serverNowMs === "number" && Number.isFinite(payload.serverNowMs)
+              ? payload.serverNowMs
+              : Date.now(),
+        });
+      } catch {
+        if (!cancelled) {
+          setChatActivity((current) => ({ ...current, typing: false, checkedAtMs: Date.now() }));
+        }
+      }
+    };
+    void loadActivity();
+    const intervalId = window.setInterval(() => void loadActivity(), 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [quickReplyEnabled, quickReplyRecipient, user]);
+
+  useEffect(() => {
+    return () => {
+      if (typingIdleTimerRef.current !== null) window.clearTimeout(typingIdleTimerRef.current);
+      updateTypingState(false);
+    };
+  }, [updateTypingState]);
+
+  const chatPresence = useMemo(
+    () =>
+      formatMailboxPresence({
+        lastActiveAtMs: chatActivity.lastActiveAtMs,
+        nowMs: chatActivity.checkedAtMs || Date.now(),
+        typing: chatActivity.typing,
+      }),
+    [chatActivity]
+  );
+
   const closePreviewModal = () => {
     previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewAttachmentBlobUrlsRef.current = [];
@@ -866,16 +1041,16 @@ export default function PostaPage() {
     setSharedExportPreviewLoading(false);
     setQuickReplyText("");
     setQuickReplyFiles([]);
-    if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
-    setQuickReplyOpen(false);
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
     setQuickReplySubmitting(false);
   };
 
-  const markItemsRead = async (ids: string[]) => {
+  const markItemsRead = useCallback(async (ids: string[]) => {
     const currentUser = auth.currentUser;
-    if (!currentUser || ids.length === 0 || !mailboxScopeIsCurrent()) return;
+    const pendingIds = ids.filter((id) => !markingReadIdsRef.current.has(id));
+    if (!currentUser || pendingIds.length === 0 || !mailboxScopeIsCurrent()) return;
+    pendingIds.forEach((id) => markingReadIdsRef.current.add(id));
     setSaving(true);
     try {
       const payload = await fetchAuthedJsonOrThrow<MailboxPatchResponse>(
@@ -883,13 +1058,13 @@ export default function PostaPage() {
         "/api/mailbox",
         {
           method: "PATCH",
-          body: JSON.stringify({ ids }),
+          body: JSON.stringify({ ids: pendingIds }),
         }
       );
       if (!mailboxScopeIsCurrent()) return;
       setItems((prev) =>
         prev.map((item) =>
-          ids.includes(item.id)
+          pendingIds.includes(item.id)
             ? { ...item, read: true, readAtMs: item.readAtMs ?? Date.now() }
             : item
         )
@@ -900,9 +1075,20 @@ export default function PostaPage() {
     } catch (err: any) {
       setError(err?.message || "Nepodařilo se označit zprávu jako přečtenou.");
     } finally {
+      pendingIds.forEach((id) => markingReadIdsRef.current.delete(id));
       setSaving(false);
     }
-  };
+  }, [mailboxScopeIsCurrent]);
+
+  useEffect(() => {
+    if (!previewItem || !isStandardDirectMailboxItem(previewItem)) return;
+    const unreadMessages = selectedConversationMessages.filter(
+      (message) => !isSentMailboxItem(message) && !message.read
+    );
+    if (unreadMessages.length === 0) return;
+    setConversationUnreadStartId((current) => current ?? unreadMessages[0]?.id ?? null);
+    void markItemsRead(unreadMessages.map((message) => message.id));
+  }, [markItemsRead, previewItem, selectedConversationMessages]);
 
   const markAllRead = async () => {
     const currentUser = auth.currentUser;
@@ -1491,13 +1677,7 @@ export default function PostaPage() {
     setComposeFiles((prev) => prev.filter((file) => `${file.name}-${file.size}` !== targetKey));
   };
 
-  const appendQuickReplyEmoji = (emoji: string) => {
-    setQuickReplyText((prev) => `${prev}${emoji}`);
-    setQuickReplyErrorText(null);
-    setQuickReplySuccessText(null);
-  };
-
-  const handleQuickReplyFilesChange = (list: FileList | null) => {
+  const handleQuickReplyFilesChange = (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
     const current = new Map(quickReplyFiles.map((file) => [`${file.name}-${file.size}`, file]));
     Array.from(list).forEach((file) => {
@@ -1506,10 +1686,10 @@ export default function PostaPage() {
     setQuickReplyFiles([...current.values()].slice(0, COMPOSE_FILES_MAX_COUNT));
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
-    if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
   };
 
-  const removeQuickReplyFile = (targetKey: string) => {
+  const removeQuickReplyFile = (target: File | string) => {
+    const targetKey = typeof target === "string" ? target : `${target.name}-${target.size}`;
     setQuickReplyFiles((prev) => prev.filter((file) => `${file.name}-${file.size}` !== targetKey));
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
@@ -1552,31 +1732,14 @@ export default function PostaPage() {
       if (!mailboxScopeIsCurrent()) return;
       setQuickReplyText("");
       setQuickReplyFiles([]);
-      if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
-      setQuickReplyOpen(false);
-      setQuickReplySuccessText(`Odpověď byla odeslána uživateli ${quickReplyRecipient.name}.`);
-      await loadMailbox();
+      updateTypingState(false);
+      setQuickReplySuccessText("Zpráva byla odeslána.");
+      await loadMailbox({ silent: true });
     } catch (err: any) {
       setQuickReplyErrorText(err?.message || "Rychlou odpověď se nepodařilo odeslat.");
     } finally {
       setQuickReplySubmitting(false);
     }
-  };
-
-  const handleQuickReplyKeyDown = (
-    event: ReactKeyboardEvent<HTMLTextAreaElement>
-  ) => {
-    if (
-      event.key !== "Enter" ||
-      event.shiftKey ||
-      event.nativeEvent.isComposing ||
-      quickReplySubmitting ||
-      (quickReplyText.trim().length === 0 && quickReplyFiles.length === 0)
-    ) {
-      return;
-    }
-    event.preventDefault();
-    void handleQuickReplySend();
   };
 
   const handleComposeSend = async () => {
@@ -1634,19 +1797,19 @@ export default function PostaPage() {
   const openItem = async (item: MailboxItem) => {
     if (isStandardDirectMailboxItem(item)) {
       const conversationKey = directMessageConversationKey(item);
-      const conversationReceivedIds = items
+      const unreadConversationMessages = items
         .filter(
           (message) =>
             isStandardDirectMailboxItem(message) &&
             !isSentMailboxItem(message) &&
+            !message.read &&
             directMessageConversationKey(message) === conversationKey
         )
-        .map((message) => message.id);
-      if (conversationReceivedIds.length > 0) {
-        void markItemsRead(conversationReceivedIds);
-      }
-    } else if (!item.read) {
-      void markItemsRead([item.id]);
+        .sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
+      setConversationUnreadStartId(unreadConversationMessages[0]?.id ?? null);
+    } else {
+      setConversationUnreadStartId(null);
+      if (!item.read) void markItemsRead([item.id]);
     }
     if (isTipsterTipMailboxItem(item)) {
       const detailId = tipsterTipDetailId(item);
@@ -1655,10 +1818,8 @@ export default function PostaPage() {
         return;
       }
     }
-    setQuickReplyOpen(false);
     setQuickReplyText("");
     setQuickReplyFiles([]);
-    if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
     const openAsModal =
@@ -1765,19 +1926,10 @@ export default function PostaPage() {
     if (!previewItem) return;
     setQuickReplyText("");
     setQuickReplyFiles([]);
-    if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
     setQuickReplySubmitting(false);
   }, [previewItem]);
-
-  useEffect(() => {
-    if (!previewItem || !isStandardDirectMailboxItem(previewItem)) return;
-    const intervalId = window.setInterval(() => {
-      void loadMailbox();
-    }, 20_000);
-    return () => window.clearInterval(intervalId);
-  }, [loadMailbox, previewItem]);
 
   useEffect(() => {
     if (!previewItem) return;
@@ -1789,8 +1941,6 @@ export default function PostaPage() {
         setSharedExportPreviewLoading(false);
         setQuickReplyText("");
         setQuickReplyFiles([]);
-        if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
-        setQuickReplyOpen(false);
         setQuickReplyErrorText(null);
         setQuickReplySuccessText(null);
         setQuickReplySubmitting(false);
@@ -1905,6 +2055,10 @@ export default function PostaPage() {
         <MailboxChatThread
           messages={selectedConversationMessagesWithBlobAttachments}
           showHeader={showSubject}
+          firstUnreadMessageId={conversationUnreadStartId}
+          presenceLabel={chatPresence.label}
+          online={chatPresence.online}
+          typing={chatPresence.typing}
         />
       );
     }
@@ -2243,18 +2397,29 @@ export default function PostaPage() {
                   <>
                     <div className="border-b border-slate-200 bg-white px-5 py-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700">
-                            {standardDirectPreviewItem ? "Konverzace" : previewCorrespondent}
-                          </p>
-                          <h2 className="mt-1 line-clamp-2 text-lg font-bold leading-6 text-slate-950">
-                            {standardDirectCounterpart?.name || previewItem.title}
-                          </h2>
-                          {standardDirectCounterpart?.email ? (
-                            <p className="mt-1 truncate text-xs text-slate-500">{standardDirectCounterpart.email}</p>
-                          ) : !standardDirectPreviewItem ? (
-                            <p className="mt-1 text-xs text-slate-500">{formatDateTime(previewItem.createdAtMs)}</p>
+                        <div className="flex min-w-0 items-center gap-3">
+                          {standardDirectPreviewItem ? (
+                            <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
+                              <Image src="/icons/klient.webp" alt="Ikona uživatele" fill sizes="44px" className="object-cover" />
+                              <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${chatPresence.online ? "bg-emerald-500" : "bg-slate-300"}`} />
+                            </span>
                           ) : null}
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700">
+                              {standardDirectPreviewItem ? "Konverzace" : previewCorrespondent}
+                            </p>
+                            <h2 className="mt-1 line-clamp-2 text-lg font-bold leading-6 text-slate-950">
+                              {standardDirectCounterpart?.name || previewItem.title}
+                            </h2>
+                            {standardDirectCounterpart?.email ? (
+                              <p className={`mt-0.5 truncate text-xs font-semibold ${chatPresence.online ? "text-emerald-700" : "text-slate-500"}`}>
+                                {chatPresence.label}
+                                <span className="ml-1 font-normal text-slate-400">· {standardDirectCounterpart.email}</span>
+                              </p>
+                            ) : !standardDirectPreviewItem ? (
+                              <p className="mt-1 text-xs text-slate-500">{formatDateTime(previewItem.createdAtMs)}</p>
+                            ) : null}
+                          </div>
                         </div>
                         <button type="button" onClick={closePreviewModal} aria-label="Zavřít zprávu" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800">
                           <X className="h-4 w-4" />
@@ -2292,69 +2457,23 @@ export default function PostaPage() {
                       )}
                     </div>
                     {quickReplyEnabled && quickReplyRecipient ? (
-                      quickReplyOpen ? (
-                        <div className="border-t border-violet-200 bg-white px-4 py-3 shadow-[0_-10px_24px_rgba(88,28,135,0.08)]">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="truncate text-xs font-semibold text-slate-700">
-                              Odpověď pro {quickReplyRecipient.name}
-                            </p>
-                            <button type="button" onClick={() => setQuickReplyOpen(false)} disabled={quickReplySubmitting} aria-label="Skrýt odpověď" className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50">
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                          <textarea
-                            value={quickReplyText}
-                            onChange={(event) => {
-                              setQuickReplyText(event.target.value);
-                              setQuickReplyErrorText(null);
-                              setQuickReplySuccessText(null);
-                            }}
-                            onKeyDown={handleQuickReplyKeyDown}
-                            placeholder="Napiš odpověď…"
-                            maxLength={COMPOSE_MESSAGE_MAX_LEN}
-                            rows={3}
-                            className="mt-2 w-full resize-none rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition focus:border-violet-500 focus:bg-white focus:ring-2 focus:ring-violet-100"
-                          />
-                          {quickReplyFiles.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {quickReplyFiles.map((file) => {
-                                const key = `${file.name}-${file.size}`;
-                                return (
-                                  <span key={key} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
-                                    <span className="max-w-[180px] truncate">{file.name}</span>
-                                    <button type="button" onClick={() => removeQuickReplyFile(key)} disabled={quickReplySubmitting} aria-label={`Odebrat ${file.name}`} className="text-slate-400 hover:text-rose-600">
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          ) : null}
-                          {quickReplyErrorText ? <p className="mt-2 text-xs font-medium text-rose-700">{quickReplyErrorText}</p> : null}
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">
-                              <Paperclip className="h-3.5 w-3.5" />
-                              Přiložit
-                              <input ref={quickReplyFileInputRef} type="file" multiple onChange={(event) => handleQuickReplyFilesChange(event.target.files)} disabled={quickReplySubmitting} className="hidden" />
-                            </label>
-                            <button type="button" onClick={() => void handleQuickReplySend()} disabled={quickReplySubmitting || (quickReplyText.trim().length === 0 && quickReplyFiles.length === 0)} className="inline-flex items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#020617_0%,#312060_52%,#7c3aed_100%)] px-4 py-2 text-sm font-bold !text-white shadow-[0_8px_18px_rgba(88,28,135,0.18)] disabled:opacity-55">
-                              {quickReplySubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                              {quickReplySubmitting ? "Odesílám…" : "Odeslat"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-xs text-slate-500">Odpovědět: <span className="font-semibold text-slate-700">{quickReplyRecipient.name}</span></p>
-                            {quickReplySuccessText ? <p className="mt-1 truncate text-xs font-semibold text-emerald-700">{quickReplySuccessText}</p> : null}
-                          </div>
-                          <button type="button" onClick={() => { setQuickReplyOpen(true); setQuickReplySuccessText(null); }} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#020617_0%,#312060_52%,#7c3aed_100%)] px-4 py-2 text-sm font-bold !text-white shadow-[0_10px_24px_rgba(88,28,135,0.22)]">
-                            <SquarePen className="h-4 w-4" />
-                            Odpovědět
-                          </button>
-                        </div>
-                      )
+                      <MailboxChatComposer
+                        recipientName={quickReplyRecipient.name}
+                        text={quickReplyText}
+                        files={quickReplyFiles}
+                        submitting={quickReplySubmitting}
+                        error={quickReplyErrorText}
+                        success={quickReplySuccessText}
+                        onTextChange={(value) => {
+                          setQuickReplyText(value);
+                          setQuickReplyErrorText(null);
+                          setQuickReplySuccessText(null);
+                        }}
+                        onFilesAdded={handleQuickReplyFilesChange}
+                        onRemoveFile={removeQuickReplyFile}
+                        onSend={() => void handleQuickReplySend()}
+                        onTypingChange={updateTypingState}
+                      />
                     ) : null}
                   </>
                 ) : (
@@ -3118,168 +3237,25 @@ export default function PostaPage() {
                   )}
 
                   {quickReplyEnabled && quickReplyRecipient ? (
-                    quickReplyOpen ? (
-                      <div className="border-t border-violet-200 bg-white px-4 py-3 shadow-[0_-14px_30px_rgba(88,28,135,0.10)] sm:px-5">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-700">
-                              Rychlá odpověď
-                            </p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Odpověď odejde uživateli{" "}
-                              <span className="font-semibold text-slate-800">{quickReplyRecipient.name}</span>
-                              <span className="text-slate-500"> ({quickReplyRecipient.email})</span>.
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-[11px] text-slate-500">
-                              {quickReplyText.length}/{COMPOSE_MESSAGE_MAX_LEN}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => setQuickReplyOpen(false)}
-                              disabled={quickReplySubmitting}
-                              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                              Skrýt
-                            </button>
-                          </div>
-                        </div>
-
-                        <textarea
-                          value={quickReplyText}
-                          onChange={(event) => {
-                            setQuickReplyText(event.target.value);
-                            if (quickReplyErrorText) setQuickReplyErrorText(null);
-                            if (quickReplySuccessText) setQuickReplySuccessText(null);
-                          }}
-                          onKeyDown={handleQuickReplyKeyDown}
-                          placeholder="Napiš rychlou odpověď…"
-                          maxLength={COMPOSE_MESSAGE_MAX_LEN}
-                          rows={2}
-                          className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-                        />
-
-                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                          <div className="inline-flex flex-wrap items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                              <Smile className="h-3.5 w-3.5" />
-                              Emoji
-                            </span>
-                            {QUICK_EMOJIS.map((emoji) => (
-                              <button
-                                key={`quick-reply-emoji-${emoji}`}
-                                type="button"
-                                onClick={() => appendQuickReplyEmoji(emoji)}
-                                disabled={quickReplySubmitting}
-                                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-55"
-                                aria-label={`Vložit emoji ${emoji}`}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-
-                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50">
-                            <Paperclip className="h-3.5 w-3.5" />
-                            Přiložit
-                            <input
-                              ref={quickReplyFileInputRef}
-                              type="file"
-                              multiple
-                              onChange={(event) => handleQuickReplyFilesChange(event.target.files)}
-                              disabled={quickReplySubmitting}
-                              className="hidden"
-                            />
-                          </label>
-                        </div>
-
-                        {quickReplyFiles.length > 0 ? (
-                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                            {quickReplyFiles.map((file) => {
-                              const key = `${file.name}-${file.size}`;
-                              return (
-                                <div
-                                  key={key}
-                                  className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-                                >
-                                  <span className="min-w-0 truncate text-xs font-medium text-slate-700">
-                                    {file.name}
-                                  </span>
-                                  <div className="flex shrink-0 items-center gap-2">
-                                    <span className="text-[11px] text-slate-500">
-                                      {formatFileSize(file.size)}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeQuickReplyFile(key)}
-                                      disabled={quickReplySubmitting}
-                                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 transition hover:border-slate-400 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                      aria-label={`Odebrat ${file.name}`}
-                                    >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-
-                        {quickReplyErrorText ? (
-                          <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                            {quickReplyErrorText}
-                          </p>
-                        ) : null}
-                        {quickReplySuccessText ? (
-                          <p className="mt-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">
-                            {quickReplySuccessText}
-                          </p>
-                        ) : null}
-
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => void handleQuickReplySend()}
-                            disabled={
-                              quickReplySubmitting ||
-                              (quickReplyText.trim().length === 0 && quickReplyFiles.length === 0)
-                            }
-                            className="inline-flex items-center gap-2 rounded-xl border border-violet-700 bg-[linear-gradient(135deg,#020617_0%,#211442_52%,#6d28d9_100%)] px-4 py-2 text-sm font-semibold !text-white shadow-[0_12px_30px_rgba(88,28,135,0.24)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:brightness-90"
-                          >
-                            {quickReplySubmitting ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Send className="h-4 w-4" />
-                            )}
-                            {quickReplySubmitting ? "Odesílám…" : "Odeslat odpověď"}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-wrap items-end justify-between gap-3 bg-[linear-gradient(0deg,rgba(15,23,42,0.22)_0%,rgba(15,23,42,0.08)_46%,rgba(15,23,42,0)_100%)] px-4 pb-4 pt-12 sm:px-5">
-                        <div className="min-w-0">
-                          {quickReplySuccessText ? (
-                            <p className="pointer-events-auto rounded-full border border-violet-200 bg-white/95 px-3 py-1.5 text-xs font-semibold text-violet-700 shadow-[0_10px_24px_rgba(88,28,135,0.18)]">
-                              {quickReplySuccessText}
-                            </p>
-                          ) : null}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setQuickReplyOpen(true);
-                            setQuickReplySuccessText(null);
-                          }}
-                          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/40 bg-[linear-gradient(135deg,#020617_0%,#211442_52%,#7c3aed_100%)] px-4 py-2 text-sm font-semibold !text-white shadow-[0_16px_34px_rgba(88,28,135,0.26)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(88,28,135,0.32)]"
-                        >
-                          <SquarePen className="h-4 w-4" />
-                          Rychlá odpověď
-                        </button>
-                      </div>
-                    )
+                    <MailboxChatComposer
+                      recipientName={quickReplyRecipient.name}
+                      text={quickReplyText}
+                      files={quickReplyFiles}
+                      submitting={quickReplySubmitting}
+                      error={quickReplyErrorText}
+                      success={quickReplySuccessText}
+                      onTextChange={(value) => {
+                        setQuickReplyText(value);
+                        setQuickReplyErrorText(null);
+                        setQuickReplySuccessText(null);
+                      }}
+                      onFilesAdded={handleQuickReplyFilesChange}
+                      onRemoveFile={removeQuickReplyFile}
+                      onSend={() => void handleQuickReplySend()}
+                      onTypingChange={updateTypingState}
+                    />
                   ) : null}
+
                 </div>
               </section>
             </div>

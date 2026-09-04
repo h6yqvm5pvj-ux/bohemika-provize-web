@@ -9,6 +9,9 @@ import {
 describe("shouldImpersonateApiRequest", () => {
   it.each([
     ["/api/mailbox/compose", "POST"],
+    ["/api/mailbox/activity", "GET"],
+    ["/api/mailbox/activity", "POST"],
+    ["/api/mailbox/stream", "GET"],
     ["/api/export-produkce/share", "POST"],
     ["/api/plan-produkce/share", "POST"],
     ["/api/team-message", "POST"],

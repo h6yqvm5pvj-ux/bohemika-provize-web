@@ -6,10 +6,11 @@ const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 
 const apply = process.argv.includes("--apply");
-const [{ adminDb }, encryption, storageHelpers] = await Promise.all([
+const [{ adminDb }, encryption, storageHelpers, conversations] = await Promise.all([
   import("../src/lib/server/firebaseAdmin.ts"),
   import("../src/lib/server/mailboxEncryption.ts"),
   import("../src/lib/server/mailboxAttachmentStorage.ts"),
+  import("../src/lib/server/mailboxConversation.ts"),
 ]);
 
 if (!adminDb) {
@@ -25,6 +26,19 @@ const objectValue = (value) =>
 const attachmentRows = (metadata) => {
   const rows = Array.isArray(metadata?.attachments) ? metadata.attachments : [];
   return rows.filter((row) => objectValue(row));
+};
+
+const cleanupRows = (value) => {
+  const rows = Array.isArray(value) ? value : [];
+  return rows
+    .map((row) => objectValue(row))
+    .filter(Boolean)
+    .map((row) => ({
+      bucketName: normalizeText(row.bucketName).replace(/^gs:\/\//i, ""),
+      path: normalizeText(row.path),
+      messageId: normalizeText(row.messageId),
+    }))
+    .filter((row) => row.bucketName && row.path && row.messageId);
 };
 
 const bucketCandidatesFor = (attachment) => {
@@ -51,11 +65,14 @@ const downloadAttachment = async (attachment) => {
 
 const snapshot = await adminDb.collectionGroup("mailbox").get();
 const groups = new Map();
+const pendingCleanupDocs = [];
 let skippedTips = 0;
 let skippedWithoutMessageId = 0;
 
 snapshot.docs.forEach((doc) => {
   const data = doc.data() ?? {};
+  const pendingCleanup = cleanupRows(data.encryptionPlaintextCleanupPending);
+  if (pendingCleanup.length > 0) pendingCleanupDocs.push({ doc, pendingCleanup });
   const metadata = objectValue(data.metadata) ?? {};
   if (data.type !== "direct_message") return;
   if (metadata.tipsterTip === true) {
@@ -75,6 +92,7 @@ snapshot.docs.forEach((doc) => {
 const pendingGroups = [...groups.entries()].filter(([, rows]) =>
   rows.some(({ data, metadata }) =>
     data.encryptedContent == null ||
+    !normalizeText(metadata.conversationId) ||
     normalizeText(metadata.messageText) ||
     attachmentRows(metadata).some((attachment) => attachment.encryption == null)
   )
@@ -88,6 +106,11 @@ console.info(
       directMessageGroups: groups.size,
       groupsToMigrate: pendingGroups.length,
       documentsToMigrate: pendingGroups.reduce((sum, [, rows]) => sum + rows.length, 0),
+      plaintextCleanupDocumentsPending: pendingCleanupDocs.length,
+      plaintextCleanupObjectsPending: pendingCleanupDocs.reduce(
+        (sum, row) => sum + row.pendingCleanup.length,
+        0
+      ),
       skippedTips,
       skippedWithoutMessageId,
     },
@@ -96,8 +119,8 @@ console.info(
   )
 );
 
-if (!apply || pendingGroups.length === 0) {
-  if (!apply && pendingGroups.length > 0) {
+if (!apply || (pendingGroups.length === 0 && pendingCleanupDocs.length === 0)) {
+  if (!apply && (pendingGroups.length > 0 || pendingCleanupDocs.length > 0)) {
     console.info("Pro provedení spusť stejný příkaz s parametrem --apply.");
   }
   process.exit(0);
@@ -107,9 +130,50 @@ let migratedGroups = 0;
 let migratedDocuments = 0;
 let migratedAttachments = 0;
 const failures = [];
+const cleanupFailures = [];
+let recoveredCleanupObjects = 0;
+
+for (const { doc, pendingCleanup } of pendingCleanupDocs) {
+  const remaining = [];
+  for (const pending of pendingCleanup) {
+    try {
+      if (!storageHelpers.isSafeMailboxStoragePath(pending.path, pending.messageId)) {
+        throw new Error("Uložená cesta k odstranění není bezpečná.");
+      }
+      const oldFile = getStorage().bucket(pending.bucketName).file(pending.path);
+      await oldFile.delete({ ignoreNotFound: true });
+      const [stillExists] = await oldFile.exists();
+      if (stillExists) throw new Error("Původní nešifrovaný objekt stále existuje.");
+      recoveredCleanupObjects += 1;
+    } catch (error) {
+      remaining.push(pending);
+      cleanupFailures.push({
+        messageId: pending.messageId,
+        bucketName: pending.bucketName,
+        path: pending.path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  try {
+    await doc.ref.update({
+      encryptionPlaintextCleanupPending:
+        remaining.length > 0 ? remaining : FieldValue.delete(),
+      encryptionPlaintextCleanupCheckedAt: FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    failures.push({
+      messageId: doc.id,
+      error: `Nepodařilo se uložit stav opakovaného úklidu: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    });
+  }
+}
 
 for (const [messageId, rows] of pendingGroups) {
   const uploadedObjects = [];
+  let committed = false;
   try {
     const source = rows.find(({ data }) => data.encryptedContent == null) ?? rows[0];
     const sourceText =
@@ -124,6 +188,12 @@ for (const [messageId, rows] of pendingGroups) {
         { subject: sourceSubject, messageText: sourceText },
         `message:${messageId}`
       );
+    const senderEmail = normalizeText(source?.metadata.senderEmail).toLowerCase();
+    const recipientEmail = normalizeText(source?.metadata.recipientEmail).toLowerCase();
+    const conversationId = conversations.mailboxConversationId(
+      senderEmail,
+      recipientEmail
+    );
 
     const attachmentsById = new Map();
     rows.forEach(({ metadata }) => {
@@ -185,26 +255,66 @@ for (const [messageId, rows] of pendingGroups) {
         body: "Nová šifrovaná zpráva.",
         encryptedContent,
         "metadata.encryptedContentVersion": 1,
+        "metadata.conversationId": conversationId,
         "metadata.messageText": FieldValue.delete(),
         ...(attachments.length > 0 ? { "metadata.attachments": attachments } : {}),
         encryptionMigratedAt: FieldValue.serverTimestamp(),
       });
     });
     await batch.commit();
+    committed = true;
 
-    await Promise.allSettled(
-      uploadedObjects.map(({ bucketName, oldPath }) =>
-        getStorage().bucket(bucketName).file(oldPath).delete({ ignoreNotFound: true })
-      )
+    const cleanupResults = await Promise.allSettled(
+      uploadedObjects.map(async ({ bucketName, oldPath }) => {
+        const oldFile = getStorage().bucket(bucketName).file(oldPath);
+        await oldFile.delete({ ignoreNotFound: true });
+        const [stillExists] = await oldFile.exists();
+        if (stillExists) {
+          throw new Error("Původní nešifrovaný objekt po smazání stále existuje.");
+        }
+      })
     );
+    cleanupResults.forEach((result, index) => {
+      if (result.status === "fulfilled") return;
+      const object = uploadedObjects[index];
+      cleanupFailures.push({
+        messageId,
+        bucketName: object?.bucketName ?? "",
+        path: object?.oldPath ?? "",
+        error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+    });
+    const failedCleanupObjects = cleanupResults.flatMap((result, index) => {
+      if (result.status === "fulfilled") return [];
+      const object = uploadedObjects[index];
+      return object
+        ? [{ messageId, bucketName: object.bucketName, path: object.oldPath }]
+        : [];
+    });
+    if (failedCleanupObjects.length > 0) {
+      const cleanupMarkerBatch = adminDb.batch();
+      rows.forEach(({ doc }) => {
+        cleanupMarkerBatch.set(
+          doc.ref,
+          {
+            encryptionPlaintextCleanupPending: failedCleanupObjects,
+            encryptionPlaintextCleanupCheckedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      });
+      await cleanupMarkerBatch.commit();
+    }
     migratedGroups += 1;
     migratedDocuments += rows.length;
   } catch (error) {
-    await Promise.allSettled(
-      uploadedObjects.map(({ bucketName, newPath }) =>
-        getStorage().bucket(bucketName).file(newPath).delete({ ignoreNotFound: true })
-      )
-    );
+    if (!committed) {
+      await Promise.allSettled(
+        uploadedObjects.map(({ bucketName, newPath }) =>
+          getStorage().bucket(bucketName).file(newPath).delete({ ignoreNotFound: true })
+        )
+      );
+    }
     failures.push({
       messageId,
       error: error instanceof Error ? error.message : String(error),
@@ -218,12 +328,15 @@ console.info(
       migratedGroups,
       migratedDocuments,
       migratedAttachments,
+      recoveredCleanupObjects,
       failedGroups: failures.length,
       failures,
+      plaintextCleanupFailures: cleanupFailures.length,
+      cleanupFailures,
     },
     null,
     2
   )
 );
 
-if (failures.length > 0) process.exitCode = 1;
+if (failures.length > 0 || cleanupFailures.length > 0) process.exitCode = 1;

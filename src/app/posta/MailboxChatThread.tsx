@@ -53,19 +53,38 @@ const isImageAttachment = (name: string, contentType: string) =>
 export function MailboxChatThread({
   messages,
   showHeader = false,
+  firstUnreadMessageId = null,
+  presenceLabel,
+  online = false,
+  typing = false,
 }: {
   messages: MailboxItem[];
   showHeader?: boolean;
+  firstUnreadMessageId?: string | null;
+  presenceLabel?: string;
+  online?: boolean;
+  typing?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const scrolledUnreadMarkerRef = useRef<string | null>(null);
   const latest = messages[messages.length - 1] ?? null;
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       const scrollContainer = rootRef.current?.parentElement;
-      if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      const unreadMarker = rootRef.current?.querySelector<HTMLElement>("[data-unread-marker]");
+      if (
+        firstUnreadMessageId &&
+        unreadMarker &&
+        scrolledUnreadMarkerRef.current !== firstUnreadMessageId
+      ) {
+        scrolledUnreadMarkerRef.current = firstUnreadMessageId;
+        unreadMarker.scrollIntoView({ block: "center" });
+      } else if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, [messages.length]);
+  }, [firstUnreadMessageId, messages.length, typing]);
   if (!latest) return null;
   const counterpart = counterpartForMessage(latest);
 
@@ -81,19 +100,20 @@ export function MailboxChatThread({
               sizes="48px"
               className="object-cover"
             />
+            <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${online ? "bg-emerald-500" : "bg-slate-300"}`} />
           </span>
           <div className="min-w-0">
             <h2 className="truncate text-xl font-bold text-slate-950">{counterpart.name}</h2>
             <p className="truncate text-xs text-slate-500">{counterpart.email}</p>
-            <p className="mt-1 text-[11px] font-medium text-violet-700">
-              {messages.length} {messages.length === 1 ? "zpráva" : messages.length < 5 ? "zprávy" : "zpráv"}
+            <p className={`mt-1 text-[11px] font-semibold ${online ? "text-emerald-700" : "text-slate-500"}`}>
+              {presenceLabel || `${messages.length} ${messages.length === 1 ? "zpráva" : messages.length < 5 ? "zprávy" : "zpráv"}`}
             </p>
           </div>
         </div>
       ) : null}
 
       <div className="space-y-4">
-        {messages.map((message) => {
+        {messages.map((message, index) => {
           const sent = isSentMailboxItem(message);
           const text = metadataText(message, "messageText") || message.body.trim() || "Bez textu.";
           const attachments = parseMailboxAttachments(message);
@@ -102,16 +122,24 @@ export function MailboxChatThread({
             : null;
 
           return (
-            <div key={message.id} className={`flex ${sent ? "justify-end" : "justify-start"}`}>
-              <div className={`flex max-w-[86%] flex-col sm:max-w-[78%] ${sent ? "items-end" : "items-start"}`}>
-                <div
-                  className={`rounded-[20px] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.07)] ${
-                    sent
-                      ? "rounded-br-md bg-[linear-gradient(135deg,#312060_0%,#6d28d9_58%,#7c3aed_100%)] text-white"
-                      : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
-                  }`}
-                >
-                  {message.title ? (
+            <div key={message.id}>
+              {message.id === firstUnreadMessageId ? (
+                <div data-unread-marker className="my-5 flex items-center gap-3" role="separator" aria-label="Nové zprávy">
+                  <span className="h-px flex-1 bg-violet-200" />
+                  <span className="rounded-full bg-violet-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-violet-700">Nové zprávy</span>
+                  <span className="h-px flex-1 bg-violet-200" />
+                </div>
+              ) : null}
+              <div className={`flex ${sent ? "justify-end" : "justify-start"}`}>
+                <div className={`flex max-w-[86%] flex-col sm:max-w-[78%] ${sent ? "items-end" : "items-start"}`}>
+                  <div
+                    className={`rounded-[20px] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.07)] ${
+                      sent
+                        ? "rounded-br-md bg-[linear-gradient(135deg,#312060_0%,#6d28d9_58%,#7c3aed_100%)] text-white"
+                        : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
+                    }`}
+                  >
+                  {index === 0 && message.title ? (
                     <p className={`mb-1.5 text-[10px] font-bold uppercase tracking-[0.1em] ${sent ? "text-violet-100" : "text-violet-700"}`}>
                       {message.title}
                     </p>
@@ -156,9 +184,9 @@ export function MailboxChatThread({
                       })}
                     </div>
                   ) : null}
-                </div>
+                  </div>
 
-                <div className={`mt-1.5 flex items-center gap-1.5 px-1 text-[10px] font-medium ${sent ? "justify-end text-slate-500" : "text-slate-400"}`}>
+                  <div className={`mt-1.5 flex items-center gap-1.5 px-1 text-[10px] font-medium ${sent ? "justify-end text-slate-500" : "text-slate-400"}`}>
                   <span>{formatDateTime(message.createdAtMs)}</span>
                   {sent ? (
                     recipientReadAtMs ? (
@@ -173,11 +201,25 @@ export function MailboxChatThread({
                       </span>
                     )
                   ) : null}
+                  </div>
                 </div>
               </div>
             </div>
           );
         })}
+        {typing ? (
+          <div className="flex justify-start" aria-label="Uživatel píše">
+            <div className="flex items-center gap-1 rounded-[18px] rounded-bl-md border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.07)]">
+              {[0, 1, 2].map((dot) => (
+                <span
+                  key={dot}
+                  className="h-2 w-2 animate-bounce rounded-full bg-violet-500"
+                  style={{ animationDelay: `${dot * 120}ms` }}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="h-2" aria-hidden="true" />
     </div>
