@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isFirstYearAutoACommissionPayout,
   isNeonInvestmentLifeA201Payout,
   isNeonRefreshStatementProductCode,
 } from "./commissionPayoutRules";
@@ -43,6 +44,44 @@ describe("isNeonInvestmentLifeA201Payout", () => {
       isNeonInvestmentLifeA201Payout({
         product: "flexi",
         commissionCode: "A201",
+      })
+    ).toBe(false);
+  });
+});
+
+describe("isFirstYearAutoACommissionPayout", () => {
+  it("allows base comparison for initial A commissions on auto products", () => {
+    expect(
+      isFirstYearAutoACommissionPayout({
+        product: "cppAuto",
+        commissionCode: "A101",
+      })
+    ).toBe(true);
+    expect(
+      isFirstYearAutoACommissionPayout({
+        product: "allianzAuto",
+        commissionCode: " APZ101 ",
+      })
+    ).toBe(true);
+    expect(
+      isFirstYearAutoACommissionPayout({
+        product: "csobAuto",
+        commissionCode: "AC101",
+      })
+    ).toBe(true);
+  });
+
+  it("rejects anniversary commissions and non-auto products", () => {
+    expect(
+      isFirstYearAutoACommissionPayout({
+        product: "cppAuto",
+        commissionCode: "B101",
+      })
+    ).toBe(false);
+    expect(
+      isFirstYearAutoACommissionPayout({
+        product: "neon",
+        commissionCode: "A101",
       })
     ).toBe(false);
   });

@@ -188,6 +188,43 @@ describe("auto premium history display helpers", () => {
     });
   });
 
+  it("does not multiply an explicit previous annual premium by the payment frequency again", () => {
+    const rows = buildStoredPremiumHistoryRows(
+      [
+        {
+          key: "semiannual-renewal",
+          premiumKind: "auto_change",
+          statementId: "statement-76",
+          statementNumber: "76",
+          statementPeriod: "01.07.2026 - 31.07.2026",
+          anniversaryNumber: 1,
+          anniversaryDate: "2026-07-09",
+          previousPremium: 7_706,
+          newPremium: 7_736,
+          difference: 30,
+          previousAnnualPremium: 7_706,
+          newAnnualPremium: 7_736,
+          differenceAnnual: 30,
+          basePremiumPeriod: "payment",
+          productCode: "CPP_ACPIVZ",
+          commissionCode: "B101",
+          rowId: "433751",
+          source: "own",
+        },
+      ],
+      "semiannual",
+      "cppAuto"
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: "increased",
+      previousAnnualPremium: 7_706,
+      newAnnualPremium: 7_736,
+      differenceAnnual: 30,
+    });
+  });
+
   it("recognizes when the stored signed premium is actually a later statement change", () => {
     const history = [
       {

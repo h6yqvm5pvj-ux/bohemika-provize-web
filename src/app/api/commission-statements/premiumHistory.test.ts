@@ -6,6 +6,7 @@ import {
   canApplyPremiumStatementToCurrentContract,
   mergePremiumHistoryRecords,
   premiumHistoryEntryFromStatementRow,
+  previousAnnualPremiumFromStoredHistoryEntry,
   type PremiumHistoryContract,
   type PremiumStatementHistoryEntry,
   type PremiumStatementRow,
@@ -416,6 +417,43 @@ describe("premium statement history", () => {
         }
       )
     ).toBe(6488);
+  });
+
+  it("does not annualize an explicit previous annual premium for a second time", () => {
+    expect(
+      previousAnnualPremiumFromStoredHistoryEntry(
+        {
+          key: "semiannual-renewal",
+          premiumKind: "auto_change",
+          statementId: "statement-76",
+          statementNumber: "76",
+          statementPeriod: "01.07.2026 - 31.07.2026",
+          statementDate: "24.08.2026",
+          statementChronologyMs: Date.UTC(2026, 7, 24),
+          payoutMonthKey: "2026-08",
+          anniversaryNumber: 1,
+          anniversaryDate: "2026-07-09",
+          previousPremium: 7_706,
+          newPremium: 7_736,
+          difference: 30,
+          previousAnnualPremium: 7_706,
+          newAnnualPremium: 7_736,
+          differenceAnnual: 30,
+          basePremiumPeriod: "payment",
+          productCode: "CPP_ACPIVZ",
+          commissionCode: "B101",
+          rowId: "433751",
+          validFrom: "09.07.2025",
+          source: "own",
+          writtenAtMs: Date.UTC(2026, 7, 25),
+          writtenBy: "jakub.rauscher@bohemika.eu",
+        },
+        {
+          productKey: "cppAuto",
+          frequencyRaw: "semiannual",
+        }
+      )
+    ).toBe(7_706);
   });
 
   it("ignores a CPP Auto semiannual B row that is only the second installment", () => {

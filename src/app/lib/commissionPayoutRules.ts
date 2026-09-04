@@ -1,10 +1,19 @@
 import type { Product } from "@/app/types/domain";
+import { isAutoProduct } from "@/app/lib/productCatalog";
 
 const normalizedCommissionCode = (value: unknown): string =>
   String(value ?? "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "");
+
+export const baseCommissionCodeForPayoutComparison = (
+  value: unknown
+): string => {
+  const code = normalizedCommissionCode(value);
+  const closingRoleMatch = code.match(/^(?:APZ|AP|AZ)(\d+)$/);
+  return closingRoleMatch ? `A${closingRoleMatch[1]}` : code;
+};
 
 const NEON_REFRESH_STATEMENT_PRODUCT_CODES = new Set([
   "CPP_NEONRF",
@@ -13,6 +22,25 @@ const NEON_REFRESH_STATEMENT_PRODUCT_CODES = new Set([
 
 export const isNeonRefreshStatementProductCode = (value: unknown): boolean =>
   NEON_REFRESH_STATEMENT_PRODUCT_CODES.has(normalizedCommissionCode(value));
+
+/**
+ * Only the initial A commission for auto insurance can safely compare the
+ * contract base with the statement base. Anniversary B commissions may use a
+ * legitimately increased or decreased premium base.
+ */
+export const isFirstYearAutoACommissionPayout = ({
+  product,
+  commissionCode,
+}: {
+  product: Product | null | undefined;
+  commissionCode: unknown;
+}): boolean => {
+  if (!isAutoProduct(product)) return false;
+
+  const comparableCode = baseCommissionCodeForPayoutComparison(commissionCode);
+
+  return /^A\d+$/.test(comparableCode) || /^AC\d+$/.test(comparableCode);
+};
 
 /**
  * ČPP ŽP NEON reports A201 as the investment-life component. Its premium base
@@ -27,9 +55,7 @@ export const isNeonInvestmentLifeA201Payout = ({
 }): boolean => {
   if (product !== "neon") return false;
 
-  const code = normalizedCommissionCode(commissionCode);
-  const closingRoleMatch = code.match(/^(?:APZ|AP|AZ)(\d+)$/);
-  const comparableCode = closingRoleMatch ? `A${closingRoleMatch[1]}` : code;
+  const comparableCode = baseCommissionCodeForPayoutComparison(commissionCode);
 
   return comparableCode === "A201";
 };

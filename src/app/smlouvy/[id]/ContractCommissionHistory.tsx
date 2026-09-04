@@ -1,10 +1,14 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { ChevronDown, Eye, FileText, RefreshCw } from "lucide-react";
+import { ChevronDown, Eye, FileText, Info, RefreshCw } from "lucide-react";
 
-import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
+import {
+  isFirstYearAutoACommissionPayout,
+  isNeonInvestmentLifeA201Payout,
+} from "@/app/lib/commissionPayoutRules";
 import type { Product } from "@/app/types/domain";
+import { HelpDialog } from "@/components/HelpDialog";
 import { formatMoney, nameFromEmail } from "./contractDetailHelpers";
 import { type ContractCommissionPayout } from "./contractDetailTypes";
 import { partitionSettledCommissionPayouts } from "./contractCommissionHistoryRules";
@@ -119,17 +123,31 @@ const moneyFromDetail = (detail: string, pattern: RegExp): string | null => {
   return match?.[1]?.trim() ?? null;
 };
 
+const localizedMoneyNumber = (value: string | null): number | null => {
+  if (!value) return null;
+  const compact = value.replace(/[^\d,.-]/g, "");
+  const normalized = compact.includes(",")
+    ? compact.replace(/\./g, "").replace(",", ".")
+    : compact;
+  return finitePayoutNumber(normalized);
+};
+
 const payoutDifferenceLabel = (
   payout: ContractCommissionPayout,
   detail: string
 ): string | null => {
   const difference = finitePayoutNumber(payout.difference);
-  if (difference != null) return formatMoney(difference);
+  if (difference != null) {
+    return `${difference > 0 ? "+" : ""}${formatMoney(difference)}`;
+  }
 
   const amount = finitePayoutNumber(payout.amount);
   const expectedAmount = finitePayoutNumber(payout.expectedAmount);
   if (amount != null && expectedAmount != null) {
-    return formatMoney(amount - expectedAmount);
+    const calculatedDifference = amount - expectedAmount;
+    return `${calculatedDifference > 0 ? "+" : ""}${formatMoney(
+      calculatedDifference
+    )}`;
   }
 
   return moneyFromDetail(detail, /rozdíl\s+([+-]?\d[\d\s.,]*\s*Kč)/i);
@@ -160,8 +178,20 @@ const careerMismatchFromDetail = (
 type PayoutAlertMessage = {
   title: string;
   body: string;
-  meta: string[];
   tone: "warning" | "danger";
+  comparison: {
+    systemAmount: string | null;
+    statementAmount: string | null;
+    differenceAmount: string | null;
+    systemDetail: string | null;
+    statementDetail: string | null;
+  } | null;
+};
+
+type SelectedDifference = {
+  message: PayoutAlertMessage;
+  itemLabel: string;
+  statementLabel: string;
 };
 
 const isPremiumBaseMismatchPayout = (
@@ -172,7 +202,8 @@ const isPremiumBaseMismatchPayout = (
     "premium_base_mismatch" || /jinou základnu pojistného/i.test(detail);
 
 const payoutAlertMessage = (
-  payout: ContractCommissionPayout
+  payout: ContractCommissionPayout,
+  product: Product | null | undefined
 ): PayoutAlertMessage | null => {
   const status = normalizeStatus(payout.status);
   if (status === "paid") return null;
@@ -187,14 +218,14 @@ const payoutAlertMessage = (
     finitePayoutNumber(payout.expectedAmount) != null
       ? formatMoney(payout.expectedAmount)
       : moneyFromDetail(detail, /systém\s+([^,]+Kč)/i);
-  const meta = [
-    paidText ? `Vyplaceno: ${paidText}` : null,
-    expectedText ? `Systém: ${expectedText}` : null,
-  ].filter(Boolean) as string[];
-  const differenceSentence = differenceText
-    ? ` Rozdíl: ${differenceText}.`
-    : "";
   const reason = String(payout.differenceReason ?? "").toLowerCase();
+  const comparison = {
+    systemAmount: expectedText,
+    statementAmount: paidText,
+    differenceAmount: differenceText,
+    systemDetail: null,
+    statementDetail: null,
+  };
 
   if (status === "storno") {
     const stornoAmount = finitePayoutNumber(payout.amount);
@@ -205,8 +236,8 @@ const payoutAlertMessage = (
         (stornoAmount != null
           ? ` Ke stažení: ${formatMoney(Math.abs(stornoAmount))}.`
           : ""),
-      meta: [],
       tone: "danger",
+      comparison: null,
     };
   }
 
@@ -220,40 +251,68 @@ const payoutAlertMessage = (
       title: "Nesedí kariérní stupeň",
       body:
         "Provize byla vyplacena z jiné pozice, než je uložená u smlouvy." +
-        careerSentence +
-        differenceSentence,
-      meta,
+        careerSentence,
       tone: "danger",
+      comparison: {
+        ...comparison,
+        systemDetail: careerMismatch
+          ? `Kariérní stupeň: ${careerMismatch.contractCareer}`
+          : null,
+        statementDetail: careerMismatch
+          ? `Kariérní stupeň: ${careerMismatch.statementCareer}`
+          : null,
+      },
     };
   }
 
-  if (isPremiumBaseMismatchPayout(payout, detail)) {
-    const statementBase = moneyFromDetail(
+  const canCompareBase = isFirstYearAutoACommissionPayout({
+    product,
+    commissionCode: payout.code,
+  });
+  if (canCompareBase && isPremiumBaseMismatchPayout(payout, detail)) {
+    const statementBaseFromDetail = moneyFromDetail(
       detail,
       /Základna výpisu\s+(\d[\d\s.,]*\s*Kč)/i
     );
+    const statementBaseAmount =
+      finitePayoutNumber(payout.statementBaseAmount) ??
+      localizedMoneyNumber(statementBaseFromDetail);
+    const storedSystemBaseAmount = finitePayoutNumber(payout.systemBaseAmount);
+    const paidAmount = finitePayoutNumber(payout.amount);
+    const expectedAmount = finitePayoutNumber(payout.expectedAmount);
+    const inferredSystemBaseAmount =
+      statementBaseAmount != null &&
+      paidAmount != null &&
+      Math.abs(paidAmount) > 0.001 &&
+      expectedAmount != null
+        ? Math.round(
+            (statementBaseAmount * expectedAmount * 100) / Math.abs(paidAmount)
+          ) / 100
+        : null;
+    const systemBaseAmount =
+      storedSystemBaseAmount ?? inferredSystemBaseAmount;
     return {
       title: "Jiná základna ve výpisu",
       body:
-        "Výpis použil jinou základnu pojistného než původní výpočet smlouvy." +
-        (differenceText
-          ? ` Rozdíl proti původnímu výpočtu: ${differenceText}.`
-          : ""),
-      meta: [
-        ...meta,
-        statementBase ? `Základna výpisu: ${statementBase}` : null,
-      ].filter(Boolean) as string[],
+        "Výpis použil jinou základnu pojistného než původní výpočet smlouvy.",
       tone: "warning",
+      comparison: {
+        ...comparison,
+        systemDetail: systemBaseAmount != null
+          ? `Základna: ${formatMoney(systemBaseAmount)}`
+          : null,
+        statementDetail: statementBaseAmount != null
+          ? `Základna: ${formatMoney(statementBaseAmount)}`
+          : null,
+      },
     };
   }
 
   return {
     title: "Nesedí částka provize",
-    body:
-      "Vyplacená částka neodpovídá výpočtu v systému." +
-      differenceSentence,
-    meta,
+    body: "Vyplacená částka neodpovídá výpočtu v systému.",
     tone: "danger",
+    comparison,
   };
 };
 
@@ -367,6 +426,8 @@ export function ContractCommissionHistory({
 }: ContractCommissionHistoryProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showSettledCorrections, setShowSettledCorrections] = useState(false);
+  const [selectedDifference, setSelectedDifference] =
+    useState<SelectedDifference | null>(null);
   const allRows = [...(payouts ?? [])].sort(
     (a, b) =>
       payoutSortValue(a) - payoutSortValue(b) ||
@@ -530,16 +591,15 @@ export function ContractCommissionHistory({
                         const displayStatus = isExpectedInvestmentLifeA201
                           ? "paid"
                           : payout.status;
-                        const isPremiumBaseMismatch =
-                          !isExpectedInvestmentLifeA201 &&
-                          isPremiumBaseMismatchPayout(payout);
+                        const isDifference =
+                          normalizeStatus(displayStatus) === "difference";
                         const statementId = String(payout.statementId ?? "").trim();
                         const canOpenStatement = Boolean(statementId && onOpenStatement);
                         const isPreviewLoading = statementPreviewLoadingId === statementId;
                         const itemLabel = payoutItemLabel(payout);
                         const alertMessage = isExpectedInvestmentLifeA201
                           ? null
-                          : payoutAlertMessage(payout);
+                          : payoutAlertMessage(payout, product);
                         const rowKey =
                           payout.key ??
                           `${payout.statementId ?? "statement"}-${
@@ -568,16 +628,32 @@ export function ContractCommissionHistory({
                                 {formatMoney(payout.amount ?? 0)}
                               </td>
                               <td className="px-2 py-2 text-right">
-                                <span
-                                  className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                                    isPremiumBaseMismatch
-                                      ? "border-amber-200 bg-amber-50 text-amber-800"
-                                      : statusClass(displayStatus)
-                                  }`}
-                                >
-                                  {isPremiumBaseMismatch
-                                    ? "Jiná základna"
-                                    : statusLabel(displayStatus)}
+                                <span className="inline-flex items-center justify-end gap-1.5">
+                                  <span
+                                    className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(
+                                      displayStatus
+                                    )}`}
+                                  >
+                                    {statusLabel(displayStatus)}
+                                  </span>
+                                  {isDifference && alertMessage && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setSelectedDifference({
+                                          message: alertMessage,
+                                          itemLabel,
+                                          statementLabel: payoutStatementLabel(payout),
+                                        })
+                                      }
+                                      aria-label={`Zobrazit důvod rozdílu u položky ${itemLabel}`}
+                                      aria-haspopup="dialog"
+                                      title="Zobrazit důvod rozdílu"
+                                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                                    >
+                                      <Info size={12} strokeWidth={2.4} aria-hidden="true" />
+                                    </button>
+                                  )}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-right">
@@ -597,7 +673,7 @@ export function ContractCommissionHistory({
                                 )}
                               </td>
                             </tr>
-                            {alertMessage && (
+                            {alertMessage && !isDifference && (
                               <tr>
                                 <td colSpan={5} className="px-3 pb-2 pt-0">
                                   <div
@@ -629,22 +705,6 @@ export function ContractCommissionHistory({
                                         </p>
                                       </div>
                                     </div>
-                                    {alertMessage.meta.length > 0 && (
-                                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                        {alertMessage.meta.map((item) => (
-                                          <span
-                                            key={item}
-                                            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                                              alertMessage.tone === "warning"
-                                                ? "border-amber-200 bg-white/70 text-amber-900"
-                                                : "border-white/20 bg-white/12 text-white/90"
-                                            }`}
-                                          >
-                                            {item}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -782,6 +842,101 @@ export function ContractCommissionHistory({
           )}
         </div>
       )}
+
+      <HelpDialog
+        isOpen={selectedDifference != null}
+        title="Důvod rozdílu"
+        description={
+          selectedDifference
+            ? `${selectedDifference.statementLabel} · ${selectedDifference.itemLabel}`
+            : undefined
+        }
+        eyebrow="Rozdíl"
+        eyebrowIcon={<Info className="h-3.5 w-3.5" strokeWidth={2.3} aria-hidden="true" />}
+        onClose={() => setSelectedDifference(null)}
+      >
+        {selectedDifference && (
+          <div className="space-y-4">
+            {selectedDifference.message.comparison && (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                <div className="grid divide-y divide-slate-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                  <div className="bg-slate-50/70 px-4 py-4 sm:px-5">
+                    <div className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                      Systém bohemka.app
+                    </div>
+                    <div className="mt-2 text-2xl font-black tabular-nums tracking-tight text-slate-950">
+                      {selectedDifference.message.comparison.systemAmount ?? "—"}
+                    </div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">
+                      Vypočtená provize
+                    </div>
+                    {selectedDifference.message.comparison.systemDetail && (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
+                        {selectedDifference.message.comparison.systemDetail}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="px-4 py-4 sm:px-5">
+                    <div className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                      Provizní výpis
+                    </div>
+                    <div className="mt-2 text-2xl font-black tabular-nums tracking-tight text-slate-950">
+                      {selectedDifference.message.comparison.statementAmount ?? "—"}
+                    </div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">
+                      Vyplacená provize
+                    </div>
+                    {selectedDifference.message.comparison.statementDetail && (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700">
+                        {selectedDifference.message.comparison.statementDetail}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className={`flex items-center justify-between gap-4 border-t px-4 py-3 sm:px-5 ${
+                    selectedDifference.message.tone === "warning"
+                      ? "border-amber-200 bg-amber-50 text-amber-950"
+                      : "border-rose-200 bg-rose-50 text-rose-950"
+                  }`}
+                >
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.12em] opacity-65">
+                      Rozdíl
+                    </div>
+                    <div className="mt-0.5 text-xs font-semibold opacity-75">
+                      Provizní výpis − systém
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-xl font-black tabular-nums">
+                    {selectedDifference.message.comparison.differenceAmount ?? "—"}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div
+              className={`rounded-2xl border px-4 py-4 ${
+                selectedDifference.message.tone === "warning"
+                  ? "border-amber-200 bg-amber-50 text-amber-950"
+                  : "border-rose-200 bg-rose-50 text-rose-950"
+              }`}
+            >
+              <div className="text-[11px] font-black uppercase tracking-[0.12em] opacity-65">
+                Důvod
+              </div>
+              <div className="mt-1 text-sm font-bold">
+                {selectedDifference.message.title}
+              </div>
+              <p className="mt-1.5 text-sm font-medium leading-6">
+                {selectedDifference.message.body}
+              </p>
+            </div>
+          </div>
+        )}
+      </HelpDialog>
     </section>
   );
 }

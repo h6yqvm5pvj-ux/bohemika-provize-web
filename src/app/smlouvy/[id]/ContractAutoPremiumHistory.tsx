@@ -194,13 +194,24 @@ const previousAnnualPremiumFromStoredHistoryEntry = (
     isAutoProduct(product) && !isAnnualAutoPayoutProduct(product);
 
   if (annualPremium != null) {
+    const nextAnnualPremium = positivePremiumOrNull(entry.newAnnualPremium);
+    const annualizedPreviousPremium =
+      Math.round(annualPremium * paymentCount * 100) / 100;
+    const annualizedValueFitsNextPremiumBetter =
+      entry.basePremiumPeriod === "payment" &&
+      nextAnnualPremium != null &&
+      Math.abs(nextAnnualPremium - annualizedPreviousPremium) +
+        ANNUAL_PREMIUM_TOLERANCE <
+        Math.abs(nextAnnualPremium - annualPremium);
     const isLegacyPaymentValueStoredAsAnnual =
       statementBaseIsPayment &&
       paymentCount > 1 &&
       premium != null &&
-      Math.abs(annualPremium - premium) <= ANNUAL_PREMIUM_TOLERANCE;
+      Math.abs(annualPremium - premium) <= ANNUAL_PREMIUM_TOLERANCE &&
+      (entry.basePremiumPeriod == null ||
+        annualizedValueFitsNextPremiumBetter);
     return isLegacyPaymentValueStoredAsAnnual
-      ? Math.round(annualPremium * paymentCount * 100) / 100
+      ? annualizedPreviousPremium
       : annualPremium;
   }
 

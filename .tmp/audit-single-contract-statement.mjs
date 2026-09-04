@@ -27,6 +27,8 @@ const reprocessStatementId = (args.get("reprocess-statement") || "").trim();
 const baseUrl = (args.get("base-url") || "http://localhost:3000").replace(/\/+$/, "");
 const fullResponse = flags.has("--full-response");
 const contractOnly = flags.has("--contract-only");
+const apiDetail = flags.has("--api-detail");
+const apiStatementId = (args.get("api-statement") || "").trim();
 
 function loadCredentials() {
   const rawJson = process.env.FIREBASE_ADMIN_CREDENTIALS;
@@ -276,6 +278,72 @@ async function reprocessOneStatement(auth) {
   console.log(JSON.stringify({ ok: response.ok, status: response.status, body }, null, 2));
 }
 
+async function inspectApiDetail(auth, docSnap) {
+  const idToken = await createIdToken(auth);
+  const pathParts = docSnap.ref.path.split("/");
+  const ownerEmail = pathParts[1] ?? "";
+  const entryId = pathParts[3] ?? docSnap.id;
+  const params = new URLSearchParams({ ownerEmail, entryId, includeTimeline: "0" });
+  const response = await fetch(`${baseUrl}/api/contracts/detail?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  const json = await response.json().catch(() => ({}));
+  const payouts = Array.isArray(json?.contract?.commissionPayouts)
+    ? json.contract.commissionPayouts
+    : [];
+  console.log("\nAPI DETAIL");
+  console.log(
+    JSON.stringify(
+      {
+        ok: response.ok,
+        status: response.status,
+        viewerEmail: email,
+        ownerEmail,
+        entryId,
+        payoutCount: payouts.length,
+        payouts: payouts.map((payout) => ({
+          code: payout.code ?? null,
+          amount: payout.amount ?? null,
+          status: payout.status ?? null,
+          writtenBy: payout.writtenBy ?? null,
+          statementNumber: payout.statementNumber ?? null,
+        })),
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function inspectApiStatement(auth, targetEmail) {
+  if (!apiStatementId) return;
+  const idToken = await createIdToken(auth);
+  const url = `${baseUrl}/api/commission-statements?id=${encodeURIComponent(apiStatementId)}&includeHtml=1`;
+  const request = async (impersonate) => {
+    const headers = { Authorization: `Bearer ${idToken}` };
+    if (impersonate) headers["x-bohemika-impersonate-email"] = targetEmail;
+    const response = await fetch(url, { headers });
+    const json = await response.json().catch(() => ({}));
+    return {
+      impersonate,
+      status: response.status,
+      ok: response.ok,
+      error: json.error ?? null,
+      statementNumber: json.item?.statementNumber ?? null,
+      period: json.item?.period ?? null,
+      hasHtml: Boolean(json.item?.html),
+    };
+  };
+  console.log("\nAPI STATEMENT");
+  console.log(JSON.stringify({
+    actorEmail: email,
+    targetEmail,
+    statementId: apiStatementId,
+    withoutImpersonation: await request(false),
+    withImpersonation: await request(true),
+  }, null, 2));
+}
+
 async function main() {
   if (!contractNumber) throw new Error("Missing --contract.");
 
@@ -318,6 +386,14 @@ async function main() {
   console.log(`Matching saved contracts: ${matchingEntries.length}`);
   for (const docSnap of matchingEntries) {
     console.log(JSON.stringify(summarizeContract(docSnap), null, 2));
+  }
+
+  if (apiDetail && matchingEntries[0]) {
+    await inspectApiDetail(auth, matchingEntries[0]);
+  }
+  if (apiStatementId && matchingEntries[0]) {
+    const targetEmail = matchingEntries[0].ref.path.split("/")[1] ?? "";
+    await inspectApiStatement(auth, targetEmail);
   }
 
   if (contractOnly) {

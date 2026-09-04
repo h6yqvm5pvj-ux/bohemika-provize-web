@@ -19,6 +19,8 @@ export type ContractCommissionPayout = {
   amount?: number | null;
   expectedAmount?: number | null;
   difference?: number | null;
+  statementBaseAmount?: number | null;
+  systemBaseAmount?: number | null;
   differenceReason?:
     | "career_mismatch"
     | "premium_base_mismatch"

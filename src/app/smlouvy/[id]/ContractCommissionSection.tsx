@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { AlertTriangle, ChevronDown, Info, X } from "lucide-react";
 
+import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
@@ -134,7 +135,7 @@ type CommissionInstallment = {
 };
 
 const normalizePayoutCode = (value: string | null | undefined): string =>
-  String(value ?? "").trim().toUpperCase();
+  baseCommissionCodeForPayoutComparison(value);
 
 const normalizeEmail = (value: string | null | undefined): string =>
   String(value ?? "").trim().toLowerCase();

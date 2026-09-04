@@ -34,6 +34,24 @@ describe("contract commission payout display helpers", () => {
     expect(state.paidAmount).toBe(9.12);
   });
 
+  it("maps a tip-contract AP101 payout to the system A101 commission", () => {
+    const payouts: ContractCommissionPayout[] = [
+      {
+        code: "AP101",
+        amount: 659.48,
+        expectedAmount: 659.48,
+        difference: 0,
+        status: "paid",
+      },
+    ];
+
+    const state = payoutStatusForCodes(payouts, ["A101"], 659.48);
+
+    expect(state.status).toBe("paid");
+    expect(state.paidAmount).toBe(659.48);
+    expect(state.records).toEqual(payouts);
+  });
+
   it("does not compare multiple matching installments with one installment amount", () => {
     const payouts: ContractCommissionPayout[] = [
       {

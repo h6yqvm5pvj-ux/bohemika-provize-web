@@ -16,6 +16,7 @@ import {
 } from "@/app/api/contracts/_lib/contractsApi";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import {
+  isFirstYearAutoACommissionPayout,
   isNeonInvestmentLifeA201Payout,
   isNeonRefreshStatementProductCode,
 } from "@/app/lib/commissionPayoutRules";
@@ -159,6 +160,8 @@ type ContractCommissionPayoutRecord = {
   amount: number;
   expectedAmount: number | null;
   difference: number | null;
+  statementBaseAmount: number | null;
+  systemBaseAmount: number | null;
   differenceReason: ContractCommissionPayoutDifferenceReason | null;
   career: string | null;
   detail: string | null;
@@ -1871,6 +1874,8 @@ const payoutRecordNeedsRefresh = (
   existing.status !== incoming.status ||
   existing.expectedAmount !== incoming.expectedAmount ||
   existing.difference !== incoming.difference ||
+  existing.statementBaseAmount !== incoming.statementBaseAmount ||
+  existing.systemBaseAmount !== incoming.systemBaseAmount ||
   existing.amount !== incoming.amount ||
   existing.code !== incoming.code ||
   (existing.career ?? null) !== (incoming.career ?? null) ||
@@ -1927,6 +1932,8 @@ const payoutRecordCompletenessScore = (
   if (record.statementDate) score += 4;
   if (record.expectedAmount != null) score += 4;
   if (record.difference != null) score += 3;
+  if (record.statementBaseAmount != null) score += 2;
+  if (record.systemBaseAmount != null) score += 2;
   if (record.differenceReason) score += 4;
   if (record.career) score += 2;
   if (record.detail) score += 2;
@@ -3086,7 +3093,13 @@ const payoutDifferenceReasonForRow = ({
   }
 
   const productKey = contract.productKey;
-  if (productKey === "neon" || (productKey && isAutoProduct(productKey))) {
+  if (
+    productKey &&
+    isFirstYearAutoACommissionPayout({
+      product: productKey,
+      commissionCode: row.commissionCode,
+    })
+  ) {
     const statementPremium = rowCalculationPremiumForCoefficientSet(productKey, row);
     const systemPremium = contractCalculationPremiumForCoefficientSet(contract);
     if (
@@ -3335,6 +3348,20 @@ const payoutRecordFromStatementRow = ({
     status,
     viewerEmail: writtenBy,
   });
+  const canComparePremiumBase = isFirstYearAutoACommissionPayout({
+    product: contract.productKey,
+    commissionCode: row.commissionCode,
+  });
+  const statementBaseAmount = canComparePremiumBase
+    ? finiteMoneyOrNull(row.baseAmount)
+    : null;
+  const systemCalculationBase = canComparePremiumBase
+    ? contractCalculationPremiumForCoefficientSet(contract)
+    : null;
+  const systemBaseAmount =
+    systemCalculationBase == null
+      ? null
+      : systemCalculationBase;
   const detail = payoutRecordDetail({
     row,
     contract,
@@ -3354,6 +3381,8 @@ const payoutRecordFromStatementRow = ({
     amount: status === "storno" ? -absAmount : absAmount,
     expectedAmount,
     difference,
+    statementBaseAmount,
+    systemBaseAmount,
     differenceReason,
     career: row.career,
     detail,

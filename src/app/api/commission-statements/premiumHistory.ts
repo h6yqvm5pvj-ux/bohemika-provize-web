@@ -274,13 +274,24 @@ export const previousAnnualPremiumFromStoredHistoryEntry = (
     !isAnnualAutoPayoutProduct(contract.productKey ?? null);
 
   if (annualPremium != null) {
+    const nextAnnualPremium = finiteMoneyOrNull(entry.newAnnualPremium);
+    const annualizedPreviousPremium =
+      Math.round(annualPremium * paymentsPerYear * 100) / 100;
+    const annualizedValueFitsNextPremiumBetter =
+      entry.basePremiumPeriod === "payment" &&
+      nextAnnualPremium != null &&
+      Math.abs(nextAnnualPremium - annualizedPreviousPremium) +
+        PREMIUM_CHANGE_TOLERANCE <
+        Math.abs(nextAnnualPremium - annualPremium);
     const isLegacyPaymentValueStoredAsAnnual =
       statementBaseIsPayment &&
       paymentsPerYear > 1 &&
       premium != null &&
-      Math.abs(annualPremium - premium) <= PREMIUM_CHANGE_TOLERANCE;
+      Math.abs(annualPremium - premium) <= PREMIUM_CHANGE_TOLERANCE &&
+      (entry.basePremiumPeriod == null ||
+        annualizedValueFitsNextPremiumBetter);
     return isLegacyPaymentValueStoredAsAnnual
-      ? Math.round(annualPremium * paymentsPerYear * 100) / 100
+      ? annualizedPreviousPremium
       : annualPremium;
   }
 
