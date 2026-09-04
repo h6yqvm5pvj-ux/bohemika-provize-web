@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ContractCommissionPayout } from "./contractDetailTypes";
-import { simplifyCorrectedCommissionPayouts } from "./contractCommissionHistoryRules";
+import {
+  partitionSettledCommissionPayouts,
+  simplifyCorrectedCommissionPayouts,
+} from "./contractCommissionHistoryRules";
 
 const payout = (
   overrides: Partial<ContractCommissionPayout>
@@ -62,12 +65,14 @@ describe("simplifyCorrectedCommissionPayouts", () => {
     );
   });
 
-  it("keeps the audit trail when the replacement payment is missing", () => {
+  it("collapses an exact payout and reversal without a same-code replacement", () => {
     const rows = correctedContractPayouts().filter(
       (row) => row.key !== "correct-a101"
     );
 
-    expect(simplifyCorrectedCommissionPayouts(rows)).toEqual(rows);
+    expect(simplifyCorrectedCommissionPayouts(rows).map((row) => row.key)).toEqual([
+      "paid-a102",
+    ]);
   });
 
   it("keeps the audit trail when the reversal is missing", () => {
@@ -86,15 +91,18 @@ describe("simplifyCorrectedCommissionPayouts", () => {
     expect(simplifyCorrectedCommissionPayouts(rows)).toEqual(rows);
   });
 
-  it("does not use a correct amount paid under another commission code", () => {
+  it("keeps a replacement under another commission code active", () => {
     const rows = correctedContractPayouts().map((row) =>
       row.key === "correct-a101" ? { ...row, code: "B101" } : row
     );
 
-    expect(simplifyCorrectedCommissionPayouts(rows)).toEqual(rows);
+    expect(simplifyCorrectedCommissionPayouts(rows).map((row) => row.key)).toEqual([
+      "paid-a102",
+      "correct-a101",
+    ]);
   });
 
-  it("does not use a payment made before the reversal", () => {
+  it("does not consume an unrelated payment made before the reversal", () => {
     const rows = correctedContractPayouts().map((row) =>
       row.key === "correct-a101"
         ? {
@@ -105,6 +113,82 @@ describe("simplifyCorrectedCommissionPayouts", () => {
         : row
     );
 
-    expect(simplifyCorrectedCommissionPayouts(rows)).toEqual(rows);
+    expect(simplifyCorrectedCommissionPayouts(rows).map((row) => row.key)).toEqual([
+      "paid-a102",
+      "correct-a101",
+    ]);
+  });
+
+  it("reduces contract 3259608168 to its final A102 payout", () => {
+    const rows: ContractCommissionPayout[] = [
+      payout({
+        key: "first-a101",
+        amount: 106.79,
+        expectedAmount: 106.85,
+        difference: -0.06,
+        statementChronologyMs: 1,
+      }),
+      payout({
+        key: "reverse-first-a101",
+        amount: -106.79,
+        differenceReason: "storno",
+        status: "storno",
+        statementChronologyMs: 2,
+      }),
+      payout({
+        key: "replacement-a101",
+        amount: 213.58,
+        differenceReason: "premium_base_mismatch",
+        status: "difference",
+        statementChronologyMs: 2,
+      }),
+      payout({
+        key: "reverse-replacement-a101",
+        amount: -213.58,
+        differenceReason: "storno",
+        status: "storno",
+        statementChronologyMs: 3,
+      }),
+      payout({
+        key: "final-a102",
+        code: "A102",
+        amount: 74.26,
+        differenceReason: "premium_base_mismatch",
+        status: "difference",
+        statementChronologyMs: 3,
+      }),
+    ];
+
+    const result = partitionSettledCommissionPayouts(rows);
+
+    expect(result.activePayouts.map((row) => row.key)).toEqual(["final-a102"]);
+    expect(result.settledCorrections).toHaveLength(2);
+    expect(
+      result.settledCorrections.map(({ payment, reversal }) => [
+        payment.key,
+        reversal.key,
+      ])
+    ).toEqual([
+      ["first-a101", "reverse-first-a101"],
+      ["replacement-a101", "reverse-replacement-a101"],
+    ]);
+  });
+
+  it("keeps a partial reversal visible", () => {
+    const rows = [
+      payout({ key: "payment", amount: 100, statementChronologyMs: 1 }),
+      payout({
+        key: "partial-reversal",
+        amount: -40,
+        differenceReason: "storno",
+        status: "storno",
+        statementChronologyMs: 2,
+      }),
+    ];
+
+    expect(partitionSettledCommissionPayouts(rows)).toEqual({
+      activePayouts: rows,
+      settledCorrections: [],
+    });
   });
 });

@@ -15,6 +15,7 @@ describe("shouldImpersonateApiRequest", () => {
     ["/api/online-card/office-photo", "POST"],
     ["/api/online-card/analytics", "GET"],
     ["/api/intranet/wall/post-1/comments", "POST"],
+    ["/api/commission-statements", "GET"],
     ["/api/tool-usage", "GET"],
     ["/api/tool-usage", "POST"],
   ])("scopes %s %s to the represented user", (pathname, method) => {

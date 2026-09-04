@@ -151,6 +151,7 @@ import {
   ADMIN_IMPERSONATION_STORAGE_KEY,
   readAdminImpersonationState,
   type AdminImpersonationState,
+  withDefaultAdminImpersonationHeader,
 } from "@/app/lib/adminImpersonation";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
@@ -984,10 +985,14 @@ export default function ContractDetailPage() {
           contractNumber,
           limit: "240",
         });
+        const headers = adminImpersonation?.email
+          ? withDefaultAdminImpersonationHeader(
+              { Authorization: `Bearer ${token}` },
+              adminImpersonation.email
+            )
+          : { Authorization: `Bearer ${token}` };
         const response = await fetch(`/api/commission-statements?${params.toString()}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers,
           cache: "no-store",
         });
         const payload = (await response.json().catch(() => null)) as
@@ -1040,12 +1045,16 @@ export default function ContractDetailPage() {
 
       try {
         const token = await user.getIdToken();
+        const headers = adminImpersonation?.email
+          ? withDefaultAdminImpersonationHeader(
+              { Authorization: `Bearer ${token}` },
+              adminImpersonation.email
+            )
+          : { Authorization: `Bearer ${token}` };
         const response = await fetch(
           `/api/commission-statements?id=${encodeURIComponent(normalizedStatementId)}&includeHtml=1`,
           {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+            headers,
             cache: "no-store",
           }
         );
@@ -1073,7 +1082,7 @@ export default function ContractDetailPage() {
         setStatementPreviewLoadingId(null);
       }
     },
-    [pushToast, user]
+    [adminImpersonation?.email, pushToast, user]
   );
 
   const isEndorsement = contract?.entryType === "endorsement";

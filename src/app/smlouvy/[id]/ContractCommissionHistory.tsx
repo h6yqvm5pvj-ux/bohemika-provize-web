@@ -7,7 +7,7 @@ import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules"
 import type { Product } from "@/app/types/domain";
 import { formatMoney, nameFromEmail } from "./contractDetailHelpers";
 import { type ContractCommissionPayout } from "./contractDetailTypes";
-import { simplifyCorrectedCommissionPayouts } from "./contractCommissionHistoryRules";
+import { partitionSettledCommissionPayouts } from "./contractCommissionHistoryRules";
 
 type ContractCommissionHistoryProps = {
   product?: Product | null;
@@ -89,6 +89,18 @@ const payoutCountLabel = (count: number): string => {
   return `${count} záznamů`;
 };
 
+const activePayoutCountLabel = (count: number): string => {
+  if (count === 1) return "1 platná položka";
+  if (count >= 2 && count <= 4) return `${count} platné položky`;
+  return `${count} platných položek`;
+};
+
+const correctionCountLabel = (count: number): string => {
+  if (count === 1) return "1 uzavřená oprava";
+  if (count >= 2 && count <= 4) return `${count} uzavřené opravy`;
+  return `${count} uzavřených oprav`;
+};
+
 const normalizeEmail = (value: string | null | undefined): string =>
   String(value ?? "").trim().toLowerCase();
 
@@ -149,7 +161,15 @@ type PayoutAlertMessage = {
   title: string;
   body: string;
   meta: string[];
+  tone: "warning" | "danger";
 };
+
+const isPremiumBaseMismatchPayout = (
+  payout: ContractCommissionPayout,
+  detail = cleanPayoutDetail(payout.detail)
+): boolean =>
+  String(payout.differenceReason ?? "").toLowerCase() ===
+    "premium_base_mismatch" || /jinou základnu pojistného/i.test(detail);
 
 const payoutAlertMessage = (
   payout: ContractCommissionPayout
@@ -186,6 +206,7 @@ const payoutAlertMessage = (
           ? ` Ke stažení: ${formatMoney(Math.abs(stornoAmount))}.`
           : ""),
       meta: [],
+      tone: "danger",
     };
   }
 
@@ -202,16 +223,27 @@ const payoutAlertMessage = (
         careerSentence +
         differenceSentence,
       meta,
+      tone: "danger",
     };
   }
 
-  if (reason === "premium_base_mismatch" || /jinou základnu pojistného/i.test(detail)) {
+  if (isPremiumBaseMismatchPayout(payout, detail)) {
+    const statementBase = moneyFromDetail(
+      detail,
+      /Základna výpisu\s+(\d[\d\s.,]*\s*Kč)/i
+    );
     return {
-      title: "Nesedí základna pro výpočet",
+      title: "Jiná základna ve výpisu",
       body:
-        "Výpis počítal provizi z jiné základny, než je uložená ve smlouvě." +
-        differenceSentence,
-      meta,
+        "Výpis použil jinou základnu pojistného než původní výpočet smlouvy." +
+        (differenceText
+          ? ` Rozdíl proti původnímu výpočtu: ${differenceText}.`
+          : ""),
+      meta: [
+        ...meta,
+        statementBase ? `Základna výpisu: ${statementBase}` : null,
+      ].filter(Boolean) as string[],
+      tone: "warning",
     };
   }
 
@@ -221,6 +253,7 @@ const payoutAlertMessage = (
       "Vyplacená částka neodpovídá výpočtu v systému." +
       differenceSentence,
     meta,
+    tone: "danger",
   };
 };
 
@@ -333,11 +366,24 @@ export function ContractCommissionHistory({
   canRebuildFromStatements = false,
 }: ContractCommissionHistoryProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const rows = simplifyCorrectedCommissionPayouts(payouts ?? []).sort(
+  const [showSettledCorrections, setShowSettledCorrections] = useState(false);
+  const allRows = [...(payouts ?? [])].sort(
     (a, b) =>
       payoutSortValue(a) - payoutSortValue(b) ||
       String(a.statementNumber ?? "").localeCompare(String(b.statementNumber ?? ""), "cs") ||
       String(a.code ?? a.title ?? "").localeCompare(String(b.code ?? b.title ?? ""), "cs")
+  );
+  const { activePayouts, settledCorrections } =
+    partitionSettledCommissionPayouts(allRows);
+  const rows = [...activePayouts].sort(
+    (a, b) =>
+      payoutSortValue(a) - payoutSortValue(b) ||
+      String(a.statementNumber ?? "").localeCompare(String(b.statementNumber ?? ""), "cs") ||
+      String(a.code ?? a.title ?? "").localeCompare(String(b.code ?? b.title ?? ""), "cs")
+  );
+  const netTotal = allRows.reduce(
+    (sum, payout) => sum + (finitePayoutNumber(payout.amount) ?? 0),
+    0
   );
   const groups = groupPayoutsByWriter({
     rows,
@@ -345,6 +391,7 @@ export function ContractCommissionHistory({
     contractOwnerEmail: normalizeEmail(contractOwnerEmail),
   });
   const contentId = "contract-commission-history-content";
+  const settledContentId = "contract-commission-history-settled";
 
   return (
     <section className="rounded-2xl border border-slate-300/90 bg-white px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
@@ -375,7 +422,7 @@ export function ContractCommissionHistory({
             </button>
           )}
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-            {payoutCountLabel(rows.length)}
+            {payoutCountLabel(allRows.length)}
           </span>
           <button
             type="button"
@@ -402,12 +449,35 @@ export function ContractCommissionHistory({
 
       {isExpanded && (
         <div id={contentId}>
-          {rows.length === 0 ? (
+          {allRows.length === 0 ? (
             <div className="mt-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-600">
               Zatím bez zapsaných provizních výpisů. Záznamy se zde objeví až po budoucím výsledném zápisu provizí.
             </div>
           ) : (
             <div className="mt-2.5 space-y-2.5">
+              <div className="flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                    Čistý výsledek výpisů
+                  </div>
+                  <div className="mt-0.5 text-xs font-semibold text-emerald-900/75">
+                    Po započtení všech výplat a storen
+                    {settledCorrections.length > 0
+                      ? ` · ${correctionCountLabel(settledCorrections.length)}`
+                      : ""}
+                  </div>
+                </div>
+                <div className="shrink-0 text-xl font-black text-emerald-800">
+                  {formatMoney(netTotal)}
+                </div>
+              </div>
+
+              {rows.length === 0 && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-600">
+                  Všechny pohyby byly vzájemně vyrovnány. Žádná provize nyní nezůstává aktivní.
+                </div>
+              )}
+
               {groups.map((group) => {
                 const groupTotal = group.rows.reduce(
                   (sum, payout) => sum + (payout.amount ?? 0),
@@ -429,7 +499,7 @@ export function ContractCommissionHistory({
                     </div>
                   </div>
                   <div className="shrink-0 text-[13px] font-bold text-slate-950">
-                    {payoutCountLabel(group.rows.length)} · {formatMoney(groupTotal)}
+                    {activePayoutCountLabel(group.rows.length)} · {formatMoney(groupTotal)}
                   </div>
                 </div>
 
@@ -460,6 +530,9 @@ export function ContractCommissionHistory({
                         const displayStatus = isExpectedInvestmentLifeA201
                           ? "paid"
                           : payout.status;
+                        const isPremiumBaseMismatch =
+                          !isExpectedInvestmentLifeA201 &&
+                          isPremiumBaseMismatchPayout(payout);
                         const statementId = String(payout.statementId ?? "").trim();
                         const canOpenStatement = Boolean(statementId && onOpenStatement);
                         const isPreviewLoading = statementPreviewLoadingId === statementId;
@@ -496,9 +569,15 @@ export function ContractCommissionHistory({
                               </td>
                               <td className="px-2 py-2 text-right">
                                 <span
-                                  className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(displayStatus)}`}
+                                  className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                    isPremiumBaseMismatch
+                                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                                      : statusClass(displayStatus)
+                                  }`}
                                 >
-                                  {statusLabel(displayStatus)}
+                                  {isPremiumBaseMismatch
+                                    ? "Jiná základna"
+                                    : statusLabel(displayStatus)}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-right">
@@ -521,13 +600,31 @@ export function ContractCommissionHistory({
                             {alertMessage && (
                               <tr>
                                 <td colSpan={5} className="px-3 pb-2 pt-0">
-                                  <div className="rounded-xl bg-rose-700 px-3 py-2 text-white shadow-[0_8px_18px_rgba(190,18,60,0.18)]">
+                                  <div
+                                    className={
+                                      alertMessage.tone === "warning"
+                                        ? "rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950"
+                                        : "rounded-xl bg-rose-700 px-3 py-2 text-white shadow-[0_8px_18px_rgba(190,18,60,0.18)]"
+                                    }
+                                  >
                                     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
                                       <div className="min-w-0">
-                                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-white/70">
+                                        <div
+                                          className={`text-[10px] font-black uppercase tracking-[0.14em] ${
+                                            alertMessage.tone === "warning"
+                                              ? "text-amber-700"
+                                              : "text-white/70"
+                                          }`}
+                                        >
                                           {alertMessage.title}
                                         </div>
-                                        <p className="mt-0.5 text-xs font-semibold leading-normal text-white">
+                                        <p
+                                          className={`mt-0.5 text-xs font-semibold leading-normal ${
+                                            alertMessage.tone === "warning"
+                                              ? "text-amber-950"
+                                              : "text-white"
+                                          }`}
+                                        >
                                           {alertMessage.body}
                                         </p>
                                       </div>
@@ -537,7 +634,11 @@ export function ContractCommissionHistory({
                                         {alertMessage.meta.map((item) => (
                                           <span
                                             key={item}
-                                            className="rounded-full border border-white/20 bg-white/12 px-2 py-0.5 text-[11px] font-semibold text-white/90"
+                                            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                              alertMessage.tone === "warning"
+                                                ? "border-amber-200 bg-white/70 text-amber-900"
+                                                : "border-white/20 bg-white/12 text-white/90"
+                                            }`}
                                           >
                                             {item}
                                           </span>
@@ -557,6 +658,126 @@ export function ContractCommissionHistory({
                   </div>
                 );
               })}
+
+              {settledCorrections.length > 0 && (
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70">
+                  <button
+                    type="button"
+                    aria-controls={settledContentId}
+                    aria-expanded={showSettledCorrections}
+                    onClick={() => setShowSettledCorrections((value) => !value)}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-slate-100"
+                  >
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600">
+                        <RefreshCw size={15} strokeWidth={2.2} aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-bold text-slate-900">
+                          Uzavřené opravy
+                        </span>
+                        <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">
+                          {correctionCountLabel(settledCorrections.length)} · {settledCorrections.length * 2} pohyby · čistý dopad 0 Kč
+                        </span>
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs font-bold text-slate-600">
+                      {showSettledCorrections ? "Skrýt" : "Zobrazit"}
+                      <ChevronDown
+                        size={15}
+                        strokeWidth={2.2}
+                        aria-hidden="true"
+                        className={`transition-transform ${
+                          showSettledCorrections ? "rotate-180" : ""
+                        }`}
+                      />
+                    </span>
+                  </button>
+
+                  {showSettledCorrections && (
+                    <div id={settledContentId} className="divide-y divide-slate-200 border-t border-slate-200 bg-white">
+                      {settledCorrections.map(({ payment, reversal }, index) => {
+                        const paymentStatementId = String(
+                          payment.statementId ?? ""
+                        ).trim();
+                        const reversalStatementId = String(
+                          reversal.statementId ?? ""
+                        ).trim();
+                        const correctionKey =
+                          `${payment.key ?? paymentStatementId ?? "payment"}-` +
+                          `${reversal.key ?? reversalStatementId ?? index}`;
+
+                        return (
+                          <div key={correctionKey} className="px-3 py-2.5">
+                            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold text-slate-800">
+                                  {payoutItemLabel(payment)}
+                                </span>
+                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                  Vyrovnáno
+                                </span>
+                              </div>
+                              <div className="text-xs font-bold text-slate-700">
+                                {formatMoney(payment.amount ?? 0)} + {formatMoney(reversal.amount ?? 0)} = 0 Kč
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {[
+                                { label: "Původní výplata", payout: payment, statementId: paymentStatementId },
+                                { label: "Následné storno", payout: reversal, statementId: reversalStatementId },
+                              ].map((item) => {
+                                const canOpenStatement = Boolean(
+                                  item.statementId && onOpenStatement
+                                );
+                                const isPreviewLoading =
+                                  statementPreviewLoadingId === item.statementId;
+
+                                return (
+                                  <div
+                                    key={`${correctionKey}-${item.label}`}
+                                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                        {item.label}
+                                      </div>
+                                      <div className="mt-0.5 truncate text-xs font-semibold text-slate-800">
+                                        {payoutStatementLabel(item.payout)} · {formatMoney(item.payout.amount ?? 0)}
+                                      </div>
+                                    </div>
+                                    {canOpenStatement && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onOpenStatement?.(item.statementId)
+                                        }
+                                        disabled={isPreviewLoading}
+                                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                                        title={`Zobrazit výpis: ${item.label.toLowerCase()}`}
+                                      >
+                                        <Eye
+                                          size={12}
+                                          strokeWidth={2.2}
+                                          aria-hidden="true"
+                                        />
+                                        <span>
+                                          {isPreviewLoading ? "Načítám" : "Náhled"}
+                                        </span>
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -1,12 +1,6 @@
 import type { ContractCommissionPayout } from "./contractDetailTypes";
 
-const CORRECTION_AMOUNT_TOLERANCE = 1;
-
-type IndexedPayout = {
-  payout: ContractCommissionPayout;
-  index: number;
-  chronologyMs: number;
-};
+const CORRECTION_AMOUNT_TOLERANCE = 0.001;
 
 const normalizeText = (value: unknown): string =>
   String(value ?? "").trim().toLowerCase();
@@ -116,49 +110,37 @@ const payoutsBelongTogether = (
   payoutCodesOverlap(left, right) &&
   normalizeText(left.writtenBy) === normalizeText(right.writtenBy);
 
-const isDifferencePayout = (payout: ContractCommissionPayout): boolean =>
-  normalizeText(payout.status) === "difference" &&
-  (finiteMoney(payout.amount) ?? 0) > 0 &&
-  finiteMoney(payout.expectedAmount) != null;
-
 const isCorrectionStorno = (payout: ContractCommissionPayout): boolean =>
   normalizeText(payout.status) === "storno" ||
   normalizeText(payout.differenceReason) === "storno" ||
   (finiteMoney(payout.amount) ?? 0) < 0;
 
-const isCorrectPaidPayout = (
-  payout: ContractCommissionPayout,
-  expectedAmount: number
-): boolean =>
-  normalizeText(payout.status) === "paid" &&
-  !normalizeText(payout.differenceReason) &&
-  (finiteMoney(payout.amount) ?? 0) > 0 &&
-  (amountsClose(finiteMoney(payout.amount), expectedAmount) ||
-    amountsClose(finiteMoney(payout.expectedAmount), expectedAmount));
+const isPositivePayout = (payout: ContractCommissionPayout): boolean =>
+  !isCorrectionStorno(payout) && (finiteMoney(payout.amount) ?? 0) > 0;
 
-const isLaterPayout = (candidate: IndexedPayout, source: IndexedPayout): boolean =>
-  candidate.chronologyMs > source.chronologyMs;
+export type SettledCommissionCorrection = {
+  payment: ContractCommissionPayout;
+  reversal: ContractCommissionPayout;
+};
 
-const isSameStatement = (
-  left: ContractCommissionPayout,
-  right: ContractCommissionPayout
-): boolean => {
-  const leftId = String(left.statementId ?? "").trim();
-  const rightId = String(right.statementId ?? "").trim();
-  return Boolean(leftId && rightId && leftId === rightId);
+export type CommissionPayoutHistoryPartition = {
+  activePayouts: ContractCommissionPayout[];
+  settledCorrections: SettledCommissionCorrection[];
 };
 
 /**
- * Collapses a fully resolved payout correction for presentation purposes.
+ * Separates exact payout/reversal pairs from the currently effective history.
  *
- * The original mismatched payment and its matching reversal are hidden only
- * when a later correct payment also exists. The stored payout audit trail is
- * left untouched and incomplete or ambiguous correction chains stay visible.
+ * Only a later reversal with the same code, writer and absolute amount is
+ * paired. Partial and ambiguous reversals remain active and visible. Stored
+ * payout data is never modified; this only prepares a clearer presentation.
  */
-export const simplifyCorrectedCommissionPayouts = (
+export const partitionSettledCommissionPayouts = (
   payouts: ContractCommissionPayout[]
-): ContractCommissionPayout[] => {
-  if (payouts.length < 3) return [...payouts];
+): CommissionPayoutHistoryPartition => {
+  if (payouts.length < 2) {
+    return { activePayouts: [...payouts], settledCorrections: [] };
+  }
 
   const indexed = payouts
     .map((payout, index) => ({
@@ -170,46 +152,42 @@ export const simplifyCorrectedCommissionPayouts = (
       (left, right) =>
         left.chronologyMs - right.chronologyMs || left.index - right.index
     );
-  const hiddenIndexes = new Set<number>();
-  const consumedStornoIndexes = new Set<number>();
-  const consumedPaidIndexes = new Set<number>();
+  const settledIndexes = new Set<number>();
+  const settledCorrections: SettledCommissionCorrection[] = [];
 
-  for (const mismatch of indexed) {
-    if (!isDifferencePayout(mismatch.payout)) continue;
+  for (const reversal of indexed) {
+    if (!isCorrectionStorno(reversal.payout)) continue;
 
-    const expectedAmount = finiteMoney(mismatch.payout.expectedAmount);
-    if (expectedAmount == null) continue;
+    const payment = [...indexed]
+      .reverse()
+      .find(
+        (candidate) =>
+          candidate.chronologyMs < reversal.chronologyMs &&
+          !settledIndexes.has(candidate.index) &&
+          isPositivePayout(candidate.payout) &&
+          payoutsBelongTogether(candidate.payout, reversal.payout) &&
+          amountsClose(
+            finiteMoney(candidate.payout.amount),
+            finiteMoney(reversal.payout.amount)
+          )
+      );
+    if (!payment) continue;
 
-    const laterPayouts = indexed.filter((candidate) =>
-      isLaterPayout(candidate, mismatch)
-    );
-    const storno = laterPayouts.find(
-      (candidate) =>
-        !consumedStornoIndexes.has(candidate.index) &&
-        payoutsBelongTogether(candidate.payout, mismatch.payout) &&
-        isCorrectionStorno(candidate.payout) &&
-        amountsClose(
-          finiteMoney(candidate.payout.amount),
-          finiteMoney(mismatch.payout.amount)
-        )
-    );
-    if (!storno) continue;
-
-    const correctPayment = laterPayouts.find(
-      (candidate) =>
-        !consumedPaidIndexes.has(candidate.index) &&
-        payoutsBelongTogether(candidate.payout, mismatch.payout) &&
-        isCorrectPaidPayout(candidate.payout, expectedAmount) &&
-        (isSameStatement(candidate.payout, storno.payout) ||
-          isLaterPayout(candidate, storno))
-    );
-    if (!correctPayment) continue;
-
-    hiddenIndexes.add(mismatch.index);
-    hiddenIndexes.add(storno.index);
-    consumedStornoIndexes.add(storno.index);
-    consumedPaidIndexes.add(correctPayment.index);
+    settledIndexes.add(payment.index);
+    settledIndexes.add(reversal.index);
+    settledCorrections.push({
+      payment: payment.payout,
+      reversal: reversal.payout,
+    });
   }
 
-  return payouts.filter((_, index) => !hiddenIndexes.has(index));
+  return {
+    activePayouts: payouts.filter((_, index) => !settledIndexes.has(index)),
+    settledCorrections,
+  };
 };
+
+export const simplifyCorrectedCommissionPayouts = (
+  payouts: ContractCommissionPayout[]
+): ContractCommissionPayout[] =>
+  partitionSettledCommissionPayouts(payouts).activePayouts;
