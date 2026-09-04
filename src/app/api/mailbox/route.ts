@@ -12,6 +12,7 @@ import {
   type MailboxAttachmentCleanupCandidate,
   type MailboxStorageObject,
 } from "@/lib/server/mailboxAttachmentStorage";
+import { decryptMailboxJson } from "@/lib/server/mailboxEncryption";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -122,6 +123,7 @@ const normalizeAttachmentUrls = (
     };
     delete safeRow.path;
     delete safeRow.bucketName;
+    delete safeRow.encryption;
     return {
       ...safeRow,
     };
@@ -163,13 +165,49 @@ const parseMailboxDoc = (
       ? (metadataRaw as Record<string, unknown>)
       : null;
   const metadataMessageId = normalizeText(metadata?.messageId);
-  const normalizedMetadata = normalizeAttachmentUrls(metadata, metadataMessageId || docSnap.id);
+  let normalizedMetadata = normalizeAttachmentUrls(
+    metadata,
+    metadataMessageId || docSnap.id
+  );
+  let title = normalizeText(data.title) || "Bohemka.App";
+  let body = normalizeText(data.body) || "Máš novou zprávu.";
+
+  if (data.encryptedContent != null) {
+    try {
+      const decrypted = decryptMailboxJson<Record<string, unknown>>(
+        data.encryptedContent,
+        `message:${metadataMessageId || docSnap.id}`
+      );
+      const subject = normalizeText(decrypted.subject);
+      const messageText = normalizeText(decrypted.messageText);
+      title = subject || "Zpráva";
+      body = messageText || "Příloha bez textu.";
+      normalizedMetadata = {
+        ...(normalizedMetadata ?? {}),
+        messageText,
+        encrypted: true,
+      };
+    } catch (error) {
+      console.error("Mailbox message decryption failed.", {
+        mailboxDocumentId: docSnap.id,
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+      title = "Šifrovaná zpráva";
+      body = "Obsah zprávy se nepodařilo bezpečně načíst.";
+      normalizedMetadata = {
+        ...(normalizedMetadata ?? {}),
+        messageText: "",
+        encrypted: true,
+        encryptionUnavailable: true,
+      };
+    }
+  }
 
   return {
     id: docSnap.id,
     type: normalizeText(data.type) || "generic",
-    title: normalizeText(data.title) || "Bohemka.App",
-    body: normalizeText(data.body) || "Máš novou zprávu.",
+    title,
+    body,
     deepLink: normalizeText(data.deepLink) || "/nastaveni",
     read: data.read === true,
     createdAtMs,
@@ -183,6 +221,102 @@ const parseMailboxDoc = (
 
 const getMailboxCollection = (email: string) =>
   adminDb!.collection("usersPrivate").doc(email).collection("mailbox");
+
+type MailboxReadReceiptCandidate = {
+  messageId: string;
+  senderEmail: string;
+  pairedMailboxId: string;
+};
+
+const normalizeMailboxEmail = (value: unknown): string =>
+  normalizeText(value).toLowerCase();
+
+const readReceiptCandidateFromSnapshot = (
+  docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>,
+  recipientEmail: string
+): MailboxReadReceiptCandidate | null => {
+  if (!docSnap.exists) return null;
+  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  if (normalizeText(data.type) !== "direct_message") return null;
+  const metadataRaw = data.metadata;
+  if (!metadataRaw || typeof metadataRaw !== "object" || Array.isArray(metadataRaw)) {
+    return null;
+  }
+  const metadata = metadataRaw as Record<string, unknown>;
+  if (normalizeText(metadata.mailboxDirection) !== "received") return null;
+  const storedRecipientEmail = normalizeMailboxEmail(metadata.recipientEmail);
+  if (storedRecipientEmail && storedRecipientEmail !== recipientEmail) return null;
+  const senderEmail = normalizeMailboxEmail(metadata.senderEmail);
+  const messageId = normalizeText(metadata.messageId);
+  if (!senderEmail || senderEmail === recipientEmail || !messageId) return null;
+  return {
+    messageId,
+    senderEmail,
+    pairedMailboxId: normalizeText(metadata.pairedMailboxId),
+  };
+};
+
+const propagateMailboxReadReceipts = async (
+  candidatesRaw: MailboxReadReceiptCandidate[],
+  recipientEmail: string,
+  readAtMs: number
+) => {
+  if (!adminDb || candidatesRaw.length === 0) return;
+  const candidates = [
+    ...new Map(
+      candidatesRaw.map((candidate) => [
+        `${candidate.senderEmail}\n${candidate.messageId}`,
+        candidate,
+      ])
+    ).values(),
+  ];
+
+  const targetSnapshots = await Promise.all(
+    candidates.map(async (candidate) => {
+      if (candidate.pairedMailboxId) {
+        const directSnapshot = await getMailboxCollection(candidate.senderEmail)
+          .doc(candidate.pairedMailboxId)
+          .get();
+        if (directSnapshot.exists) return [directSnapshot];
+      }
+      const fallbackSnapshot = await getMailboxCollection(candidate.senderEmail)
+        .where("metadata.messageId", "==", candidate.messageId)
+        .limit(4)
+        .get();
+      return fallbackSnapshot.docs;
+    })
+  );
+
+  const targetRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+  targetSnapshots.forEach((snapshots, candidateIndex) => {
+    const candidate = candidates[candidateIndex];
+    if (!candidate) return;
+    snapshots.forEach((snapshot) => {
+      const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+      const metadataRaw = data.metadata;
+      if (!metadataRaw || typeof metadataRaw !== "object" || Array.isArray(metadataRaw)) return;
+      const metadata = metadataRaw as Record<string, unknown>;
+      if (normalizeText(metadata.messageId) !== candidate.messageId) return;
+      if (normalizeText(metadata.mailboxDirection) !== "sent") return;
+      if (normalizeMailboxEmail(metadata.recipientEmail) !== recipientEmail) return;
+      const existingReadAtMs = toMillis(metadata.recipientReadAtMs);
+      if (existingReadAtMs) return;
+      targetRefs.set(snapshot.ref.path, snapshot.ref);
+    });
+  });
+
+  const refs = [...targetRefs.values()];
+  for (let offset = 0; offset < refs.length; offset += 400) {
+    const batch = adminDb.batch();
+    refs.slice(offset, offset + 400).forEach((ref) => {
+      batch.update(ref, {
+        "metadata.recipientReadAtMs": readAtMs,
+        "metadata.recipientReadAt": FieldValue.serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
+};
 
 const cleanupDeletedMailboxAttachments = async (
   candidates: MailboxAttachmentCleanupCandidate[]
@@ -396,6 +530,7 @@ export async function PATCH(req: NextRequest) {
     const mailboxCol = getMailboxCollection(ctx.email);
     const nowMs = Date.now();
     let updated = 0;
+    const readReceiptCandidates: MailboxReadReceiptCandidate[] = [];
     const snoozeUntilMs = hasSnoozeUpdate && !clearSnooze
       ? parseSnoozeUntilMs(body?.snoozeUntilMs, nowMs)
       : null;
@@ -420,6 +555,8 @@ export async function PATCH(req: NextRequest) {
 
         const batch = adminDb.batch();
         unreadSnap.docs.forEach((docSnap) => {
+          const receiptCandidate = readReceiptCandidateFromSnapshot(docSnap, ctx.email);
+          if (receiptCandidate) readReceiptCandidates.push(receiptCandidate);
           batch.update(docSnap.ref, {
             read: true,
             readAtMs: nowMs,
@@ -496,21 +633,28 @@ export async function PATCH(req: NextRequest) {
       await batch.commit();
       updated = ids.length;
     } else {
+      const snapshots = await Promise.all(ids.map((id) => mailboxCol.doc(id).get()));
       const batch = adminDb.batch();
-      ids.forEach((id) => {
-        const ref = mailboxCol.doc(id);
-        batch.set(
-          ref,
-          {
-            read: true,
-            readAtMs: nowMs,
-            readAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+      snapshots.forEach((snapshot) => {
+        if (!snapshot.exists) return;
+        const receiptCandidate = readReceiptCandidateFromSnapshot(snapshot, ctx.email);
+        if (receiptCandidate) readReceiptCandidates.push(receiptCandidate);
+        const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+        if (data.read === true) return;
+        batch.update(snapshot.ref, {
+          read: true,
+          readAtMs: nowMs,
+          readAt: FieldValue.serverTimestamp(),
+        });
+        updated += 1;
       });
-      await batch.commit();
-      updated = ids.length;
+      if (updated > 0) await batch.commit();
+    }
+
+    try {
+      await propagateMailboxReadReceipts(readReceiptCandidates, ctx.email, nowMs);
+    } catch (receiptError) {
+      console.error("Mailbox read-receipt propagation failed:", receiptError);
     }
 
     const unreadCount = await getUnreadCount(ctx.email);

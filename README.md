@@ -31,6 +31,25 @@ RATE_LIMIT_REDIS_REST_TOKEN=...
 
 The implementation also accepts `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` and Vercel KV `KV_REST_API_URL` / `KV_REST_API_TOKEN`. If no Redis REST credentials are present, the app falls back to per-process memory limits for local development.
 
+## Mailbox encryption
+
+Direct-message subjects, message bodies, and attachment bytes are encrypted on the server before they are stored in Firestore or Firebase Storage. Configure a dedicated 32-byte Base64 master key in every environment that can send or read encrypted messages:
+
+```bash
+MAILBOX_ENCRYPTION_KEY=<output of: openssl rand -base64 32>
+MAILBOX_ENCRYPTION_KEY_ID=v1
+```
+
+The application uses envelope encryption with AES-256-GCM: every message and attachment receives a random data key and only the wrapped data key is persisted. Never expose these variables through `NEXT_PUBLIC_*` or commit their values.
+
+For a key rotation, set a new `MAILBOX_ENCRYPTION_KEY` and a new `MAILBOX_ENCRYPTION_KEY_ID`. Keep earlier keys available for decryption as a JSON object until all retained messages have been re-encrypted:
+
+```bash
+MAILBOX_ENCRYPTION_PREVIOUS_KEYS='{"v1":"<previous Base64 key>"}'
+```
+
+If the active key is absent or invalid, sending fails closed. Existing legacy messages without an encryption envelope remain readable for backwards compatibility. Audit them with `npm run mailbox:encrypt-legacy`; after reviewing the dry-run summary, migrate them with `npm run mailbox:encrypt-legacy -- --apply`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

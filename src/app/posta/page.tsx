@@ -6,9 +6,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Archive,
@@ -16,8 +18,14 @@ import {
   Bell,
   CheckCheck,
   ChevronDown,
+  Clock3,
+  Download,
+  FileText,
+  ImageIcon,
+  Inbox,
   Loader2,
   Mail,
+  MailOpen,
   MoreHorizontal,
   Paperclip,
   RefreshCw,
@@ -36,6 +44,7 @@ import {
   useEffectiveUserEmail,
 } from "@/app/lib/useAdminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
+import { MailboxChatThread } from "./MailboxChatThread";
 import {
   COMPOSE_FILES_MAX_COUNT,
   COMPOSE_MESSAGE_MAX_LEN,
@@ -87,6 +96,23 @@ type MailboxDisplayRow =
       unreadCount: number;
       latestCreatedAtMs: number | null;
       latestItem: MailboxItem;
+    };
+
+type MailboxChatListRow =
+  | {
+      kind: "item";
+      key: string;
+      item: MailboxItem;
+    }
+  | {
+      kind: "conversation";
+      key: string;
+      counterpartName: string;
+      counterpartEmail: string;
+      latestItem: MailboxItem;
+      items: MailboxItem[];
+      unreadCount: number;
+      totalMessageCount: number;
     };
 
 function MailboxActionMenu({
@@ -159,6 +185,90 @@ const pluralCount = (count: number, one: string, few: string, many: string): str
 const mailboxMetadataText = (item: MailboxItem, key: string): string => {
   const value = item.metadata?.[key];
   return typeof value === "string" ? value.trim() : "";
+};
+
+const isStandardDirectMailboxItem = (item: MailboxItem): boolean =>
+  item.type === "direct_message" && !isTipsterTipMailboxItem(item);
+
+const directMessageCounterpart = (
+  item: MailboxItem
+): { email: string; name: string } => {
+  const sent = isSentMailboxItem(item);
+  const email = normalizeEmail(
+    sent ? item.metadata?.recipientEmail : item.metadata?.senderEmail
+  );
+  const storedName = mailboxMetadataText(
+    item,
+    sent ? "recipientName" : "senderName"
+  );
+  return {
+    email,
+    name: storedName || (email ? nameFromEmail(email) : "Uživatel"),
+  };
+};
+
+const directMessageConversationKey = (item: MailboxItem): string => {
+  if (!isStandardDirectMailboxItem(item)) return `item:${item.id}`;
+  const counterpart = directMessageCounterpart(item);
+  return counterpart.email
+    ? `chat:${counterpart.email}`
+    : `chat-name:${normalizeGroupText(counterpart.name)}:${item.id}`;
+};
+
+const buildMailboxChatListRows = (
+  visibleItems: MailboxItem[],
+  allItems: MailboxItem[]
+): MailboxChatListRow[] => {
+  const allThreads = new Map<string, MailboxItem[]>();
+  allItems.forEach((item) => {
+    if (!isStandardDirectMailboxItem(item)) return;
+    const key = directMessageConversationKey(item);
+    const thread = allThreads.get(key) ?? [];
+    thread.push(item);
+    allThreads.set(key, thread);
+  });
+  allThreads.forEach((thread) => {
+    thread.sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0));
+  });
+
+  const visibleThreads = new Map<string, MailboxItem[]>();
+  const emitted = new Set<string>();
+  const rows: MailboxChatListRow[] = [];
+  visibleItems.forEach((item) => {
+    if (!isStandardDirectMailboxItem(item)) return;
+    const key = directMessageConversationKey(item);
+    const thread = visibleThreads.get(key) ?? [];
+    thread.push(item);
+    visibleThreads.set(key, thread);
+  });
+
+  visibleItems.forEach((item) => {
+    if (!isStandardDirectMailboxItem(item)) {
+      rows.push({ kind: "item", key: item.id, item });
+      return;
+    }
+    const key = directMessageConversationKey(item);
+    if (emitted.has(key)) return;
+    emitted.add(key);
+    const visibleThread = visibleThreads.get(key) ?? [item];
+    const entireThread = allThreads.get(key) ?? visibleThread;
+    const latestItem = entireThread[0] ?? item;
+    const counterpart = directMessageCounterpart(latestItem);
+    rows.push({
+      kind: "conversation",
+      key,
+      counterpartName: counterpart.name,
+      counterpartEmail: counterpart.email,
+      latestItem,
+      items: visibleThread,
+      unreadCount: visibleThread.filter(
+        (message) => !isSentMailboxItem(message) && !message.read
+      ).length,
+      totalMessageCount: entireThread.length,
+    });
+  });
+
+  return rows;
 };
 
 const mailboxGroupKey = (item: MailboxItem): string | null => {
@@ -235,6 +345,25 @@ const isMailboxArchived = (item: MailboxItem): boolean =>
 const formatSnoozedUntil = (item: MailboxItem): string =>
   item.snoozedUntilMs ? `Odloženo do ${formatDateTime(item.snoozedUntilMs)}` : "";
 
+const formatMailboxListDate = (value: number | null): string => {
+  if (!value || !Number.isFinite(value)) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (sameDay) {
+    return new Intl.DateTimeFormat("cs-CZ", { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+  return new Intl.DateTimeFormat("cs-CZ", {
+    day: "numeric",
+    month: "numeric",
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: "2-digit" as const }),
+  }).format(date);
+};
+
 const buildMailboxDisplayRows = (items: MailboxItem[], groupEnabled: boolean): MailboxDisplayRow[] => {
   if (!groupEnabled) {
     return items.map((item) => ({ kind: "item", key: item.id, item }));
@@ -287,6 +416,7 @@ export default function PostaPage() {
   const [items, setItems] = useState<MailboxItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [mailFilter, setMailFilter] = useState<MailFilterMode>("all");
+  const [mailSearch, setMailSearch] = useState("");
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<string[]>([]);
@@ -296,6 +426,7 @@ export default function PostaPage() {
   const [archivingIds, setArchivingIds] = useState<string[]>([]);
   const [snoozeNowMs, setSnoozeNowMs] = useState(() => Date.now());
   const [previewItem, setPreviewItem] = useState<MailboxItem | null>(null);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewAttachmentBlobUrls, setPreviewAttachmentBlobUrls] = useState<Record<string, string>>({});
   const previewAttachmentBlobUrlsRef = useRef<string[]>([]);
   const [sharedExportPreviewHtml, setSharedExportPreviewHtml] = useState<string | null>(null);
@@ -351,6 +482,7 @@ export default function PostaPage() {
     setSelectMode(false);
     setExpandedGroupKeys([]);
     setPreviewItem(null);
+    setPreviewModalOpen(false);
     setSharedExportPreviewHtml(null);
     setComposeModalOpen(false);
     setQuickReplyOpen(false);
@@ -422,15 +554,30 @@ export default function PostaPage() {
   const activeReceivedItems = useMemo(() => {
     return receivedItems.filter((item) => !isMailboxArchived(item) && !isMailboxSnoozed(item, snoozeNowMs));
   }, [receivedItems, snoozeNowMs]);
+  const activeChatReceivedItems = useMemo(
+    () => activeReceivedItems.filter(isStandardDirectMailboxItem),
+    [activeReceivedItems]
+  );
+  const activeSystemItems = useMemo(
+    () => activeReceivedItems.filter((item) => !isStandardDirectMailboxItem(item)),
+    [activeReceivedItems]
+  );
   const snoozedItems = useMemo(() => {
     return receivedItems.filter((item) => !isMailboxArchived(item) && isMailboxSnoozed(item, snoozeNowMs));
   }, [receivedItems, snoozeNowMs]);
   const archivedItems = useMemo(() => items.filter(isMailboxArchived), [items]);
   const sentItems = useMemo(() => items.filter((item) => isSentMailboxItem(item) && !isMailboxArchived(item)), [items]);
+  const chatSentItems = useMemo(
+    () => sentItems.filter(isStandardDirectMailboxItem),
+    [sentItems]
+  );
 
   const visibleItems = useMemo(() => {
     if (mailFilter === "sent") {
-      return sentItems;
+      return chatSentItems;
+    }
+    if (mailFilter === "system") {
+      return activeSystemItems;
     }
     if (mailFilter === "snoozed") {
       return snoozedItems;
@@ -439,14 +586,35 @@ export default function PostaPage() {
       return archivedItems;
     }
     if (mailFilter === "unread") {
-      return activeReceivedItems.filter((item) => !item.read);
+      return activeChatReceivedItems.filter((item) => !item.read);
     }
-    return activeReceivedItems;
-  }, [activeReceivedItems, archivedItems, mailFilter, sentItems, snoozedItems]);
+    return activeChatReceivedItems;
+  }, [activeChatReceivedItems, activeSystemItems, archivedItems, chatSentItems, mailFilter, snoozedItems]);
+
+  const filteredVisibleItems = useMemo(() => {
+    const query = normalizeGroupText(mailSearch);
+    if (!query) return visibleItems;
+    return visibleItems.filter((item) => {
+      const metadata = item.metadata ?? {};
+      const searchable = [
+        item.title,
+        item.body,
+        typeof metadata.senderName === "string" ? metadata.senderName : "",
+        typeof metadata.senderEmail === "string" ? metadata.senderEmail : "",
+        typeof metadata.recipientName === "string" ? metadata.recipientName : "",
+        typeof metadata.recipientEmail === "string" ? metadata.recipientEmail : "",
+      ].join(" ");
+      return normalizeGroupText(searchable).includes(query);
+    });
+  }, [mailSearch, visibleItems]);
 
   const visibleRows = useMemo(
-    () => buildMailboxDisplayRows(visibleItems, !selectMode && mailFilter !== "sent"),
-    [mailFilter, selectMode, visibleItems]
+    () => buildMailboxDisplayRows(filteredVisibleItems, false),
+    [filteredVisibleItems]
+  );
+  const chatListRows = useMemo(
+    () => buildMailboxChatListRows(filteredVisibleItems, items),
+    [filteredVisibleItems, items]
   );
 
   useEffect(() => {
@@ -529,6 +697,18 @@ export default function PostaPage() {
     setSelectedIds((prev) => prev.filter((id) => items.some((item) => item.id === id)));
   }, [items]);
 
+  const selectedConversationMessages = useMemo(() => {
+    if (!previewItem || !isStandardDirectMailboxItem(previewItem)) return [];
+    const conversationKey = directMessageConversationKey(previewItem);
+    return items
+      .filter(
+        (item) =>
+          isStandardDirectMailboxItem(item) &&
+          directMessageConversationKey(item) === conversationKey
+      )
+      .sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
+  }, [items, previewItem]);
+
   const previewItemWithBlobAttachments = useMemo<MailboxItem | null>(() => {
     if (!previewItem) return null;
     if (previewItem.type !== "direct_message") return previewItem;
@@ -555,6 +735,27 @@ export default function PostaPage() {
     };
   }, [previewAttachmentBlobUrls, previewItem]);
 
+  const selectedConversationMessagesWithBlobAttachments = useMemo(
+    () =>
+      selectedConversationMessages.map((message) => {
+        if (!Array.isArray(message.metadata?.attachments)) return message;
+        return {
+          ...message,
+          metadata: {
+            ...message.metadata,
+            attachments: message.metadata.attachments.map((entry) => {
+              if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+              const row = entry as Record<string, unknown>;
+              const id = typeof row.id === "string" ? row.id.trim() : "";
+              const blobUrl = id ? previewAttachmentBlobUrls[id] : "";
+              return blobUrl ? { ...row, url: blobUrl } : row;
+            }),
+          },
+        } satisfies MailboxItem;
+      }),
+    [previewAttachmentBlobUrls, selectedConversationMessages]
+  );
+
   const mailboxPreviewHtml = useMemo(() => {
     if (!previewItemWithBlobAttachments) return null;
     if (previewItemWithBlobAttachments.type === "production_export_share" && sharedExportPreviewHtml) {
@@ -569,9 +770,15 @@ export default function PostaPage() {
     setPreviewAttachmentBlobUrls({});
 
     if (!previewItem || previewItem.type !== "direct_message" || !user) return undefined;
-    const attachments = parseMailboxAttachments(previewItem).filter((attachment) =>
-      attachment.url.startsWith("/api/")
+    const attachmentItems =
+      selectedConversationMessages.length > 0 ? selectedConversationMessages : [previewItem];
+    const attachmentMap = new Map(
+      attachmentItems
+        .flatMap((message) => parseMailboxAttachments(message))
+        .filter((attachment) => attachment.url.startsWith("/api/"))
+        .map((attachment) => [attachment.id, attachment] as const)
     );
+    const attachments = [...attachmentMap.values()];
     if (attachments.length === 0) return undefined;
 
     let cancelled = false;
@@ -622,10 +829,16 @@ export default function PostaPage() {
         previewAttachmentBlobUrlsRef.current = [];
       }
     };
-  }, [previewItem, user]);
+  }, [previewItem, selectedConversationMessages, user]);
 
   const quickReplyRecipient = useMemo<RecipientOption | null>(() => {
-    if (!previewItem || previewItem.type !== "direct_message" || isSentMailboxItem(previewItem)) return null;
+    if (!previewItem || previewItem.type !== "direct_message") return null;
+    if (isStandardDirectMailboxItem(previewItem)) {
+      const counterpart = directMessageCounterpart(previewItem);
+      if (!counterpart.email || !EMAIL_RE.test(counterpart.email)) return null;
+      return counterpart;
+    }
+    if (isSentMailboxItem(previewItem)) return null;
     const metadata = previewItem.metadata ?? {};
     const senderEmail = normalizeEmail(metadata.senderEmail);
     if (!senderEmail || !EMAIL_RE.test(senderEmail)) return null;
@@ -640,7 +853,7 @@ export default function PostaPage() {
   }, [previewItem]);
 
   const quickReplyEnabled = Boolean(
-    previewItem && previewItem.type === "direct_message" && quickReplyRecipient
+    previewItem && isStandardDirectMailboxItem(previewItem) && quickReplyRecipient
   );
 
   const closePreviewModal = () => {
@@ -648,6 +861,7 @@ export default function PostaPage() {
     previewAttachmentBlobUrlsRef.current = [];
     setPreviewAttachmentBlobUrls({});
     setPreviewItem(null);
+    setPreviewModalOpen(false);
     setSharedExportPreviewHtml(null);
     setSharedExportPreviewLoading(false);
     setQuickReplyText("");
@@ -841,14 +1055,33 @@ export default function PostaPage() {
 
   const archivePreviewItem = async (archived: boolean) => {
     if (!previewItem) return;
-    await archiveMailboxItems([previewItem.id], archived);
+    const ids = isStandardDirectMailboxItem(previewItem)
+      ? items
+          .filter(
+            (item) =>
+              isStandardDirectMailboxItem(item) &&
+              directMessageConversationKey(item) ===
+                directMessageConversationKey(previewItem)
+          )
+          .map((item) => item.id)
+      : [previewItem.id];
+    await archiveMailboxItems(ids, archived);
     closePreviewModal();
   };
 
   const deletePreviewItem = async () => {
     if (!previewItem) return;
-    const id = previewItem.id;
-    await deleteMailboxItems([id]);
+    const ids = isStandardDirectMailboxItem(previewItem)
+      ? items
+          .filter(
+            (item) =>
+              isStandardDirectMailboxItem(item) &&
+              directMessageConversationKey(item) ===
+                directMessageConversationKey(previewItem)
+          )
+          .map((item) => item.id)
+      : [previewItem.id];
+    await deleteMailboxItems(ids);
     closePreviewModal();
   };
 
@@ -856,12 +1089,16 @@ export default function PostaPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]));
   };
 
-  const visibleItemIds = useMemo(() => visibleItems.map((item) => item.id), [visibleItems]);
+  const visibleItemIds = useMemo(
+    () => filteredVisibleItems.map((item) => item.id),
+    [filteredVisibleItems]
+  );
   const selectedVisibleCount = useMemo(
     () => selectedIds.filter((id) => visibleItemIds.includes(id)).length,
     [selectedIds, visibleItemIds]
   );
-  const allVisibleSelected = visibleItems.length > 0 && selectedVisibleCount === visibleItems.length;
+  const allVisibleSelected =
+    filteredVisibleItems.length > 0 && selectedVisibleCount === filteredVisibleItems.length;
 
   const toggleExpandedGroup = (key: string) => {
     setExpandedGroupKeys((prev) =>
@@ -869,7 +1106,7 @@ export default function PostaPage() {
     );
   };
 
-  const renderMailboxItemCard = (item: MailboxItem, index: number, compact = false) => {
+  const renderMailboxItemCard = (item: MailboxItem, index: number) => {
     const isSent = isSentMailboxItem(item);
     const isTipsterTip = isTipsterTipMailboxItem(item);
     const sentTo = isSent ? sentRecipientText(item) : "";
@@ -882,119 +1119,99 @@ export default function PostaPage() {
     const isDirectMessage = item.type === "direct_message";
     const itemTitle = isTipsterTip ? tipsterTipListTitle(item) : item.title;
     const itemBody = isTipsterTip ? tipsterTipSenderText(item) : item.body;
+    const senderName = mailboxMetadataText(item, "senderName");
+    const senderEmail = mailboxMetadataText(item, "senderEmail");
+    const correspondent = isSent
+      ? sentTo || "Odeslaná zpráva"
+      : isDirectMessage
+      ? senderName || (senderEmail ? nameFromEmail(senderEmail) : "Kolega")
+      : "Bohemka.App";
+    const selected = previewItem?.id === item.id;
 
     return (
       <div
         key={item.id}
-        className={`${styles.mailCard} ${styles.mailItemCard} group relative w-full rounded-[20px] border focus-within:z-40 ${
-          compact ? "px-3 py-2.5" : "px-4 py-3"
-        } text-left shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow] hover:shadow-[0_14px_34px_rgba(15,23,42,0.09)] ${
+        className={`${styles.mailCard} ${styles.mailItemCard} group relative w-full border-b border-slate-200/80 text-left transition focus-within:z-40 ${
           archived
-            ? "border-slate-200 bg-slate-50/90 hover:border-slate-300"
-            : isTipsterTip
-            ? "border-violet-200 bg-[linear-gradient(145deg,#faf7ff_0%,#ffffff_58%)] hover:border-violet-300"
-            : item.read
-            ? "border-slate-200 bg-white hover:border-violet-200"
-            : "border-violet-300 bg-[linear-gradient(145deg,#f7f2ff_0%,#ffffff_62%)] hover:border-violet-400"
+            ? "bg-slate-50/80 hover:bg-slate-100"
+          : isTipsterTip
+            ? "bg-violet-50/55 hover:bg-violet-50"
+          : selected
+            ? "bg-violet-100/80 shadow-[inset_4px_0_0_#6d28d9]"
+          : item.read
+            ? "bg-white hover:bg-slate-50"
+            : "bg-violet-50/70 hover:bg-violet-100/70"
         }`}
         style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
       >
-        <span
-          className={`absolute inset-y-2 left-0 w-1 rounded-r-full ${
-            archived
-              ? "bg-slate-300"
-              : isTipsterTip
-              ? "bg-[linear-gradient(180deg,#8b5cf6_0%,#c084fc_100%)]"
-              : item.read
-              ? "bg-slate-200"
-              : "bg-[linear-gradient(180deg,#020617_0%,#6d28d9_100%)]"
-          }`}
-          aria-hidden="true"
-        />
+        <button
+          type="button"
+          onClick={() => {
+            if (selectMode) {
+              toggleSelected(item.id);
+              return;
+            }
+            void openItem(item);
+          }}
+          className="flex w-full min-w-0 items-start gap-3 px-3 py-3 pr-12 text-left sm:px-4"
+        >
+          {selectMode ? (
+            <span
+              className={`mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs font-bold ${
+                selectedIds.includes(item.id)
+                  ? "border-violet-700 bg-violet-700 text-white"
+                  : "border-slate-300 bg-white text-transparent"
+              }`}
+            >
+              ✓
+            </span>
+          ) : (
+            <span
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                isDirectMessage
+                  ? "bg-sky-100 text-sky-700"
+                  : item.read
+                  ? "bg-slate-100 text-slate-500"
+                  : "bg-violet-100 text-violet-700"
+              }`}
+            >
+              {isDirectMessage ? <Mail className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+            </span>
+          )}
 
-        <div className={`${styles.mailCardInner} flex items-center justify-between gap-4 pl-2`}>
-          <button
-            type="button"
-            onClick={() => {
-              if (selectMode) {
-                toggleSelected(item.id);
-                return;
-              }
-              void openItem(item);
-            }}
-            className={`${styles.mailCardMain} min-w-0 flex-1 text-left`}
-          >
-            <div className={`${styles.mailTitleRow} flex items-center gap-2`}>
-              {selectMode ? (
-                <span
-                  className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[11px] font-bold ${
-                    selectedIds.includes(item.id)
-                      ? "border-violet-700 bg-violet-700 text-white"
-                      : "border-slate-400 bg-white text-transparent"
-                  }`}
-                >
-                  ✓
-                </span>
-              ) : null}
-              <span
-                className={`inline-block h-2.5 w-2.5 rounded-full ${
-                  isTipsterTip ? "bg-violet-500" : item.read ? "bg-slate-300" : "bg-violet-600"
-                }`}
-              />
-              <span
-                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] ${
-                  isDirectMessage
-                    ? "border-sky-200 bg-sky-50 text-sky-700"
-                    : "border-violet-200 bg-violet-50 text-violet-700"
-                }`}
-              >
-                {isDirectMessage ? (
-                  <Mail className="h-3 w-3" aria-hidden="true" />
-                ) : (
-                  <Bell className="h-3 w-3" aria-hidden="true" />
-                )}
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-2 pr-20">
+              <span className={`truncate text-sm ${item.read ? "font-semibold text-slate-700" : "font-bold text-slate-950"}`}>
+                {correspondent}
+              </span>
+              {!item.read ? <span className="h-2 w-2 shrink-0 rounded-full bg-violet-600" /> : null}
+            </span>
+            <span className={`mt-0.5 block truncate text-sm ${item.read ? "font-medium text-slate-700" : "font-bold text-slate-950"}`}>
+              {itemTitle}
+            </span>
+            <span className="mt-0.5 block truncate text-xs leading-5 text-slate-500">{itemBody}</span>
+            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] ${isDirectMessage ? "bg-sky-50 text-sky-700" : "bg-violet-50 text-violet-700"}`}>
                 {isDirectMessage ? "Zpráva" : "Notifikace"}
               </span>
-              <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-                {itemTitle}
-              </p>
-              {isSent && (
-                <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-700">
-                  Odeslané
+              {attachments.length > 0 ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                  <Paperclip className="h-3 w-3" />
+                  {attachments.length}
                 </span>
-              )}
-              {isTipsterTip && (
-                <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-700">
-                  TIP
-                </span>
-              )}
-              {archived && (
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                  Archiv
-                </span>
-              )}
-            </div>
-            <p className="mt-1 line-clamp-1 text-sm text-slate-700">{itemBody}</p>
-            {attachments.length > 0 ? (
-              <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-600">
-                <Paperclip className="h-3.5 w-3.5" />
-                {attachments.length} {attachments.length === 1 ? "příloha" : "příloh"}
-              </p>
-            ) : null}
-            {sentTo ? (
-              <p className="mt-1 text-xs text-violet-700">{sentTo}</p>
-            ) : null}
-            {archived ? (
-              <p className="mt-1 text-xs font-medium text-slate-500">
-                Archivováno {formatDateTime(item.archivedAtMs ?? null)}
-              </p>
-            ) : snoozed ? (
-              <p className="mt-1 text-xs font-medium text-violet-700">{formatSnoozedUntil(item)}</p>
-            ) : null}
-            <p className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAtMs)}</p>
-          </button>
-          {!selectMode ? (
-            <div className={`${styles.mailCardActions} flex shrink-0 items-center justify-end gap-2`}>
+              ) : null}
+              {isTipsterTip ? <span className="text-[10px] font-bold uppercase text-violet-700">Tip</span> : null}
+              {archived ? <span className="text-[10px] font-bold uppercase text-slate-500">Archiv</span> : null}
+              {snoozed ? <span className="text-[10px] font-semibold text-violet-700">{formatSnoozedUntil(item)}</span> : null}
+            </span>
+          </span>
+          <span className="shrink-0 pt-0.5 text-[11px] font-medium text-slate-500">
+            {formatMailboxListDate(item.createdAtMs)}
+          </span>
+        </button>
+
+        {!selectMode ? (
+          <div className="absolute right-3 top-9 z-10 opacity-70 transition group-hover:opacity-100">
               <MailboxActionMenu label={`Další akce: ${itemTitle}`}>
                 {archived ? (
                   <button
@@ -1058,22 +1275,153 @@ export default function PostaPage() {
                   {deleting ? "Mažu…" : "Smazat"}
                 </button>
               </MailboxActionMenu>
-              <button
-                type="button"
-                onClick={() => void openItem(item)}
-                className="rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white shadow-[0_7px_16px_rgba(109,40,217,0.2)] transition hover:border-violet-800 hover:bg-violet-800"
-              >
-                Otevřít
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderChatConversationCard = (
+    row: Extract<MailboxChatListRow, { kind: "conversation" }>,
+    index: number
+  ) => {
+    const latest = row.latestItem;
+    const conversationItems = items.filter(
+      (item) =>
+        isStandardDirectMailboxItem(item) &&
+        directMessageConversationKey(item) === row.key
+    );
+    const conversationIds = conversationItems.map((item) => item.id);
+    const selected = Boolean(
+      previewItem &&
+        isStandardDirectMailboxItem(previewItem) &&
+        directMessageConversationKey(previewItem) === row.key
+    );
+    const latestSent = isSentMailboxItem(latest);
+    const archived = conversationItems.length > 0 && conversationItems.every(isMailboxArchived);
+    const snoozed = conversationItems.length > 0 && conversationItems.every((item) => isMailboxSnoozed(item));
+    const archiving = conversationIds.some((id) => archivingIds.includes(id));
+    const deleting = conversationIds.some((id) => deletingIds.includes(id));
+    const snoozing = conversationIds.some((id) => snoozingIds.includes(id));
+
+    return (
+      <div
+        key={row.key}
+        className={`${styles.mailCard} group relative border-b border-slate-200/80 transition ${
+          selected
+            ? "bg-violet-100/80 shadow-[inset_4px_0_0_#6d28d9]"
+            : row.unreadCount > 0
+            ? "bg-violet-50/70 hover:bg-violet-100/70"
+            : "bg-white hover:bg-slate-50"
+        }`}
+        style={{ animationDelay: `${Math.min(index * 45, 260)}ms` }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (selectMode) {
+              setSelectedIds((current) => {
+                const allSelected = conversationIds.every((id) => current.includes(id));
+                return allSelected
+                  ? current.filter((id) => !conversationIds.includes(id))
+                  : [...new Set([...current, ...conversationIds])];
+              });
+              return;
+            }
+            void openItem(latest);
+          }}
+          className="flex w-full min-w-0 items-start gap-3 px-3 py-3.5 pr-12 text-left sm:px-4"
+        >
+          {selectMode ? (
+            <span
+              className={`mt-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs font-bold ${
+                conversationIds.some((id) => selectedIds.includes(id))
+                  ? "border-violet-700 bg-violet-700 text-white"
+                  : "border-slate-300 bg-white text-transparent"
+              }`}
+            >
+              ✓
+            </span>
+          ) : (
+            <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-white shadow-inner ring-1 ring-slate-200">
+              <Image
+                src="/icons/klient.webp"
+                alt="Ikona uživatele"
+                fill
+                sizes="44px"
+                className="object-cover"
+              />
+            </span>
+          )}
+
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-2 pr-16">
+              <span className={`truncate text-sm ${row.unreadCount > 0 ? "font-bold text-slate-950" : "font-semibold text-slate-700"}`}>
+                {row.counterpartName}
+              </span>
+              {row.totalMessageCount > 1 ? (
+                <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                  {row.totalMessageCount}
+                </span>
+              ) : null}
+              {row.unreadCount > 0 ? (
+                <span className="inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-violet-700 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  {row.unreadCount}
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-0.5 block truncate text-xs font-semibold text-slate-700">
+              {latestSent ? "Ty: " : ""}{latest.title}
+            </span>
+            <span className="mt-0.5 block truncate text-xs leading-5 text-slate-500">
+              {latestSent ? "Ty: " : ""}{mailboxMetadataText(latest, "messageText") || latest.body}
+            </span>
+          </span>
+          <span className="shrink-0 pt-0.5 text-[11px] font-medium text-slate-500">
+            {formatMailboxListDate(latest.createdAtMs)}
+          </span>
+        </button>
+
+        {!selectMode ? (
+          <div className="absolute right-3 top-10 z-10 opacity-70 transition group-hover:opacity-100">
+            <MailboxActionMenu label={`Další akce: konverzace s ${row.counterpartName}`}>
+              {archived ? (
+                <button type="button" onClick={() => void archiveMailboxItems(conversationIds, false)} disabled={archiving} className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50">
+                  <ArchiveRestore className="h-3.5 w-3.5" />
+                  Vrátit z archivu
+                </button>
+              ) : (
+                <button type="button" onClick={() => void archiveMailboxItems(conversationIds, true)} disabled={archiving} className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50">
+                  <Archive className="h-3.5 w-3.5" />
+                  Archivovat konverzaci
+                </button>
+              )}
+              {!archived ? (
+                snoozed ? (
+                  <button type="button" onClick={() => void snoozeMailboxItems(conversationIds, null)} disabled={snoozing} className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-violet-700 transition hover:bg-violet-50 disabled:opacity-50">
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Zrušit připomenutí
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => void snoozeMailboxItems(conversationIds, snoozeUntilAfterDays(1))} disabled={snoozing} className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-violet-50 hover:text-violet-900 disabled:opacity-50">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Připomenout zítra
+                  </button>
+                )
+              ) : null}
+              <button type="button" onClick={() => void deleteMailboxItems(conversationIds)} disabled={deleting} className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50">
+                <Trash2 className="h-3.5 w-3.5" />
+                {deleting ? "Mažu…" : "Smazat konverzaci"}
               </button>
-            </div>
-          ) : null}
-        </div>
+            </MailboxActionMenu>
+          </div>
+        ) : null}
       </div>
     );
   };
 
   const toggleSelectAllVisible = () => {
-    if (visibleItems.length === 0) return;
+    if (filteredVisibleItems.length === 0) return;
     if (allVisibleSelected) {
       setSelectedIds((prev) => prev.filter((id) => !visibleItemIds.includes(id)));
       return;
@@ -1215,6 +1563,22 @@ export default function PostaPage() {
     }
   };
 
+  const handleQuickReplyKeyDown = (
+    event: ReactKeyboardEvent<HTMLTextAreaElement>
+  ) => {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing ||
+      quickReplySubmitting ||
+      (quickReplyText.trim().length === 0 && quickReplyFiles.length === 0)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    void handleQuickReplySend();
+  };
+
   const handleComposeSend = async () => {
     if (!user || !mailboxScopeIsCurrent()) return;
 
@@ -1268,8 +1632,21 @@ export default function PostaPage() {
   };
 
   const openItem = async (item: MailboxItem) => {
-    if (!item.read) {
-      await markItemsRead([item.id]);
+    if (isStandardDirectMailboxItem(item)) {
+      const conversationKey = directMessageConversationKey(item);
+      const conversationReceivedIds = items
+        .filter(
+          (message) =>
+            isStandardDirectMailboxItem(message) &&
+            !isSentMailboxItem(message) &&
+            directMessageConversationKey(message) === conversationKey
+        )
+        .map((message) => message.id);
+      if (conversationReceivedIds.length > 0) {
+        void markItemsRead(conversationReceivedIds);
+      }
+    } else if (!item.read) {
+      void markItemsRead([item.id]);
     }
     if (isTipsterTipMailboxItem(item)) {
       const detailId = tipsterTipDetailId(item);
@@ -1284,6 +1661,8 @@ export default function PostaPage() {
     if (quickReplyFileInputRef.current) quickReplyFileInputRef.current.value = "";
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
+    const openAsModal =
+      typeof window !== "undefined" && window.matchMedia("(max-width: 1279px)").matches;
     if (item.type === "weekly_team_report") {
       const reportId =
         item.metadata && typeof item.metadata.reportId === "string"
@@ -1298,22 +1677,26 @@ export default function PostaPage() {
       setSharedExportPreviewHtml(null);
       setSharedExportPreviewLoading(false);
       setPreviewItem(item);
+      setPreviewModalOpen(openAsModal);
       return;
     }
     if (item.type === "online_card_meeting_request") {
       setSharedExportPreviewHtml(null);
       setSharedExportPreviewLoading(false);
       setPreviewItem(item);
+      setPreviewModalOpen(openAsModal);
       return;
     }
     if (item.type === "production_plan_share") {
       setSharedExportPreviewHtml(null);
       setSharedExportPreviewLoading(false);
       setPreviewItem(item);
+      setPreviewModalOpen(openAsModal);
       return;
     }
     if (item.type === "production_export_share") {
       setPreviewItem(item);
+      setPreviewModalOpen(openAsModal);
       setSharedExportPreviewHtml(null);
       const payloadId =
         item.metadata && typeof item.metadata.payloadId === "string"
@@ -1389,9 +1772,18 @@ export default function PostaPage() {
   }, [previewItem]);
 
   useEffect(() => {
+    if (!previewItem || !isStandardDirectMailboxItem(previewItem)) return;
+    const intervalId = window.setInterval(() => {
+      void loadMailbox();
+    }, 20_000);
+    return () => window.clearInterval(intervalId);
+  }, [loadMailbox, previewItem]);
+
+  useEffect(() => {
     if (!previewItem) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        setPreviewModalOpen(false);
         setPreviewItem(null);
         setSharedExportPreviewHtml(null);
         setSharedExportPreviewLoading(false);
@@ -1430,7 +1822,186 @@ export default function PostaPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [composeModalOpen, composeSubmitting]);
 
-  const previewItemArchived = previewItem ? isMailboxArchived(previewItem) : false;
+  const previewItemArchived = previewItem
+    ? isStandardDirectMailboxItem(previewItem) && selectedConversationMessages.length > 0
+      ? selectedConversationMessages.every(isMailboxArchived)
+      : isMailboxArchived(previewItem)
+    : false;
+  const activeUnreadChatItems = activeChatReceivedItems.filter((item) => !item.read);
+  const activeUnreadCount = activeUnreadChatItems.length;
+  const activeConversationCount = buildMailboxChatListRows(
+    activeChatReceivedItems,
+    items
+  ).length;
+  const unreadConversationCount = buildMailboxChatListRows(
+    activeUnreadChatItems,
+    items
+  ).length;
+  const sentConversationCount = buildMailboxChatListRows(chatSentItems, items).length;
+  const folderTitle: Record<MailFilterMode, string> = {
+    all: "Přijaté",
+    unread: "Nepřečtené",
+    sent: "Odeslané",
+    system: "Systémové",
+    snoozed: "Odložené",
+    archived: "Archiv",
+  };
+  const mailFolders = [
+    { id: "all" as const, label: "Přijaté", count: activeConversationCount, Icon: Inbox },
+    { id: "unread" as const, label: "Nepřečtené", count: unreadConversationCount, Icon: MailOpen },
+    { id: "sent" as const, label: "Odeslané", count: sentConversationCount, Icon: Send },
+    { id: "system" as const, label: "Systémové", count: activeSystemItems.length, Icon: Bell },
+    { id: "snoozed" as const, label: "Odložené", count: snoozedItems.length, Icon: Clock3 },
+    { id: "archived" as const, label: "Archiv", count: archivedItems.length, Icon: Archive },
+  ];
+  const listCountLabel =
+    mailFilter === "all" || mailFilter === "unread" || mailFilter === "sent"
+      ? pluralCount(chatListRows.length, "konverzace", "konverzace", "konverzací")
+      : mailFilter === "system"
+      ? pluralCount(chatListRows.length, "oznámení", "oznámení", "oznámení")
+      : pluralCount(chatListRows.length, "položka", "položky", "položek");
+  const previewCorrespondent = previewItem
+    ? isSentMailboxItem(previewItem)
+      ? sentRecipientText(previewItem) || "Odeslaná zpráva"
+      : mailboxMetadataText(previewItem, "senderName") ||
+        (mailboxMetadataText(previewItem, "senderEmail")
+          ? nameFromEmail(mailboxMetadataText(previewItem, "senderEmail"))
+          : previewItem.type === "direct_message"
+          ? "Kolega"
+          : "Bohemka.App")
+    : "";
+  const standardDirectPreviewItem =
+    previewItemWithBlobAttachments?.type === "direct_message" &&
+    !isTipsterTipMailboxItem(previewItemWithBlobAttachments)
+      ? previewItemWithBlobAttachments
+      : null;
+  const standardDirectMetadata = standardDirectPreviewItem?.metadata ?? {};
+  const standardDirectIsSent = standardDirectPreviewItem
+    ? isSentMailboxItem(standardDirectPreviewItem)
+    : false;
+  const standardDirectCounterpart = standardDirectPreviewItem
+    ? directMessageCounterpart(standardDirectPreviewItem)
+    : null;
+  const standardDirectSenderEmail = normalizeEmail(standardDirectMetadata.senderEmail);
+  const standardDirectRecipientEmail = normalizeEmail(standardDirectMetadata.recipientEmail);
+  const standardDirectSenderName = standardDirectPreviewItem
+    ? mailboxMetadataText(standardDirectPreviewItem, "senderName") ||
+      (standardDirectSenderEmail ? nameFromEmail(standardDirectSenderEmail) : "Uživatel")
+    : "";
+  const standardDirectRecipientName = standardDirectPreviewItem
+    ? mailboxMetadataText(standardDirectPreviewItem, "recipientName") ||
+      (standardDirectRecipientEmail ? nameFromEmail(standardDirectRecipientEmail) : "Uživatel")
+    : "";
+  const standardDirectMessageText = standardDirectPreviewItem
+    ? mailboxMetadataText(standardDirectPreviewItem, "messageText") || standardDirectPreviewItem.body.trim()
+    : "";
+  const standardDirectAttachments = standardDirectPreviewItem
+    ? parseMailboxAttachments(standardDirectPreviewItem)
+    : [];
+  const renderStandardDirectMessage = (showSubject: boolean) => {
+    if (!standardDirectPreviewItem) return null;
+    if (selectedConversationMessagesWithBlobAttachments.length > 0) {
+      return (
+        <MailboxChatThread
+          messages={selectedConversationMessagesWithBlobAttachments}
+          showHeader={showSubject}
+        />
+      );
+    }
+    return (
+      <div className={`${styles.standardMessage} mx-auto w-full max-w-3xl px-5 py-5 sm:px-7 sm:py-6`}>
+        {showSubject ? (
+          <div className="mb-6 border-b border-slate-200 pb-5">
+            <span className="inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-violet-700">
+              {standardDirectIsSent ? "Odeslaná zpráva" : "Přijatá zpráva"}
+            </span>
+            <h2 className="mt-3 text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl">
+              {standardDirectPreviewItem.title || "Zpráva"}
+            </h2>
+          </div>
+        ) : null}
+
+        <div className="flex items-start gap-3">
+          <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-white shadow-inner ring-1 ring-slate-200">
+            <Image
+              src="/icons/klient.webp"
+              alt="Ikona uživatele"
+              fill
+              sizes="44px"
+              className="object-cover"
+            />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <p className="min-w-0 truncate text-sm font-bold text-slate-950 sm:text-base">
+                {standardDirectSenderName}
+                {standardDirectSenderEmail ? (
+                  <span className="ml-1.5 font-normal text-slate-500">&lt;{standardDirectSenderEmail}&gt;</span>
+                ) : null}
+              </p>
+              <time className="shrink-0 text-xs font-medium text-slate-500">
+                {formatDateTime(standardDirectPreviewItem.createdAtMs)}
+              </time>
+            </div>
+            <p className="mt-1 truncate text-xs text-slate-500">
+              Komu: <span className="font-medium text-slate-700">{standardDirectRecipientName}</span>
+              {standardDirectRecipientEmail ? ` <${standardDirectRecipientEmail}>` : ""}
+            </p>
+          </div>
+        </div>
+
+        <article className="mt-6 min-h-[180px] whitespace-pre-wrap break-words border-t border-slate-100 pt-6 text-[15px] leading-7 text-slate-800 sm:text-base">
+          {standardDirectMessageText || "Bez textu."}
+        </article>
+
+        {standardDirectAttachments.length > 0 ? (
+          <section className="mt-8 border-t border-slate-200 pt-5">
+            <div className="flex items-center gap-2">
+              <Paperclip className="h-4 w-4 text-violet-700" />
+              <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600">
+                {pluralCount(standardDirectAttachments.length, "příloha", "přílohy", "příloh")}
+              </h3>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {standardDirectAttachments.map((file) => {
+                const isImage = file.contentType.toLowerCase().startsWith("image/") || /\.(jpe?g|png|gif|webp|avif)$/i.test(file.name);
+                const attachmentReady = !file.url.startsWith("/api/");
+                const content = (
+                  <>
+                    <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isImage ? "bg-sky-50 text-sky-700" : "bg-violet-50 text-violet-700"}`}>
+                      {isImage ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-bold text-slate-800">{file.name}</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-500">
+                        {attachmentReady ? formatFileSize(file.sizeBytes) : "Načítám přílohu…"}
+                      </span>
+                    </span>
+                    {attachmentReady ? <Download className="h-4 w-4 shrink-0 text-slate-400" /> : <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-500" />}
+                  </>
+                );
+                return attachmentReady ? (
+                  <a
+                    key={file.id}
+                    href={file.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 transition hover:border-violet-300 hover:bg-violet-50"
+                  >
+                    {content}
+                  </a>
+                ) : (
+                  <div key={file.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 opacity-75">
+                    {content}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+      </div>
+    );
+  };
 
   if (!authReady) {
     return (
@@ -1446,13 +2017,363 @@ export default function PostaPage() {
 
   return (
     <AppLayout active="home">
-      <div className={`${styles.postaPage} relative min-h-screen w-full overflow-hidden bg-white px-2 pb-10 pt-2 sm:px-3`}>
+      <div className={`${styles.postaPage} relative min-h-[100dvh] w-full overflow-x-hidden bg-white`}>
         <div className={styles.canvas} aria-hidden="true">
           <span className={styles.mesh} />
           <span className={styles.grain} />
         </div>
 
-        <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-4 pt-3 text-slate-900 sm:pt-6">
+        <div className="relative z-10 w-full min-w-0 text-slate-900">
+          <section className={`${styles.mailShell} min-h-[100dvh] w-full overflow-hidden bg-white`}>
+            <header className={`${styles.mailTopbar} flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5`}>
+              <div className="flex min-w-[190px] flex-1 items-center gap-3">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#312060_55%,#7c3aed_100%)] text-white shadow-[0_12px_26px_rgba(88,28,135,0.25)]">
+                  <Mail className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-700">Komunikace</p>
+                  <h1 className="text-2xl font-bold tracking-[-0.025em] text-slate-950">Pošta</h1>
+                </div>
+              </div>
+
+              <label className={`${styles.mailSearch} relative order-3 w-full sm:order-none sm:w-[min(34vw,430px)]`}>
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input
+                  type="search"
+                  value={mailSearch}
+                  onChange={(event) => setMailSearch(event.target.value)}
+                  placeholder="Hledat v poště…"
+                  aria-label="Hledat v poště"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100"
+                />
+                {mailSearch ? (
+                  <button
+                    type="button"
+                    onClick={() => setMailSearch("")}
+                    aria-label="Vymazat hledání"
+                    className="absolute right-2.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </label>
+
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadMailbox()}
+                  disabled={loading || saving}
+                  aria-label="Obnovit poštu"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectMode((current) => {
+                      const next = !current;
+                      if (!next) setSelectedIds([]);
+                      return next;
+                    });
+                  }}
+                  disabled={loading}
+                  className={`hidden h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold transition sm:inline-flex ${
+                    selectMode
+                      ? "border-slate-950 bg-slate-950 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50"
+                  }`}
+                >
+                  <CheckCheck className="h-4 w-4" />
+                  {selectMode ? "Hotovo" : "Označit"}
+                </button>
+              </div>
+            </header>
+
+            <div className={`${styles.mailWorkspace} grid min-w-0 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_390px_minmax(0,1fr)]`}>
+              <aside className={`${styles.mailFolderRail} border-b border-slate-200 bg-slate-50/80 p-3 lg:border-b-0 lg:border-r sm:p-4`}>
+                <button
+                  type="button"
+                  onClick={openComposeModal}
+                  disabled={loading}
+                  className={`${styles.actionButton} inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#312060_52%,#7c3aed_100%)] px-4 py-3 text-sm font-bold !text-white shadow-[0_14px_30px_rgba(88,28,135,0.22)] transition hover:-translate-y-0.5 disabled:opacity-60`}
+                >
+                  <SquarePen className="h-4 w-4" />
+                  Napsat zprávu
+                </button>
+
+                <nav className={`${styles.mailFolderNav} mt-4 flex gap-2 overflow-x-auto lg:block lg:space-y-1.5`} aria-label="Složky pošty">
+                  {mailFolders.map(({ id, label, count, Icon }) => {
+                    const active = mailFilter === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setMailFilter(id);
+                          setSelectMode(false);
+                          setSelectedIds([]);
+                        }}
+                        className={`flex min-w-[145px] items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition lg:w-full lg:min-w-0 ${
+                          active
+                            ? "bg-[linear-gradient(135deg,#020617_0%,#312060_58%,#6d28d9_100%)] text-white shadow-[0_10px_24px_rgba(88,28,135,0.22)]"
+                            : "text-slate-600 hover:bg-white hover:text-slate-950"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                        <span className={`inline-flex min-w-6 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold ${active ? "bg-white/18 text-white" : id === "unread" && count > 0 ? "bg-violet-100 text-violet-800" : "bg-slate-200/80 text-slate-600"}`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </nav>
+
+                <div className="mt-5 hidden rounded-2xl border border-violet-100 bg-white p-3 lg:block">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Stav schránky</span>
+                    <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-violet-100 px-2 text-xs font-bold text-violet-800">{activeUnreadCount}</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    {activeUnreadCount === 0 ? "Všechny zprávy máš přečtené." : `Čeká na tebe ${pluralCount(activeUnreadCount, "nová zpráva", "nové zprávy", "nových zpráv")}.`}
+                  </p>
+                  {activeUnreadCount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => void markItemsRead(activeUnreadChatItems.map((item) => item.id))}
+                      disabled={saving}
+                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-violet-700 transition hover:text-violet-900 disabled:opacity-50"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      Označit vše jako přečtené
+                    </button>
+                  ) : null}
+                </div>
+              </aside>
+
+              <section className={`${styles.mailMessageList} flex min-w-0 flex-col border-slate-200 bg-white xl:border-r`}>
+                <div className="flex min-h-[70px] items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                  <div className="min-w-0">
+                    <h2 className="truncate text-lg font-bold tracking-[-0.015em] text-slate-950">{folderTitle[mailFilter]}</h2>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {mailSearch
+                        ? `${chatListRows.length} výsledků hledání`
+                        : listCountLabel}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {mailFilter === "unread" && activeUnreadCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void markItemsRead(activeUnreadChatItems.map((item) => item.id))}
+                        disabled={saving}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50"
+                      >
+                        <CheckCheck className="h-3.5 w-3.5" />
+                        Vše přečteno
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectMode((current) => {
+                          const next = !current;
+                          if (!next) setSelectedIds([]);
+                          return next;
+                        });
+                      }}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 sm:hidden"
+                      aria-label={selectMode ? "Ukončit výběr" : "Označit zprávy"}
+                    >
+                      <CheckCheck className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {selectMode ? (
+                  <div className="flex flex-wrap items-center gap-2 border-b border-violet-200 bg-violet-50 px-3 py-2">
+                    <span className="mr-auto text-xs font-bold text-violet-900">Označeno {selectedVisibleCount}/{filteredVisibleItems.length}</span>
+                    <button type="button" onClick={toggleSelectAllVisible} disabled={filteredVisibleItems.length === 0} className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50">
+                      {allVisibleSelected ? "Odznačit vše" : "Označit vše"}
+                    </button>
+                    <button type="button" onClick={() => void archiveMailboxItems(selectedIds.filter((id) => visibleItemIds.includes(id)), mailFilter !== "archived")} disabled={selectedVisibleCount === 0 || archivingIds.length > 0} className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50">
+                      <Archive className="h-3.5 w-3.5" />
+                      {mailFilter === "archived" ? "Vrátit" : "Archivovat"}
+                    </button>
+                    <button type="button" onClick={() => void deleteSelected()} disabled={selectedVisibleCount === 0 || deletingIds.length > 0} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 disabled:opacity-50">
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Smazat
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className={`${styles.mailListScroll} min-h-0 overflow-y-auto`}>
+                  {error ? (
+                    <div className="m-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+                  ) : null}
+                  {loading ? (
+                    <div className="divide-y divide-slate-200">
+                      {[0, 1, 2, 3, 4].map((idx) => <div key={idx} className="h-[108px] animate-pulse bg-slate-100/75" />)}
+                    </div>
+                  ) : filteredVisibleItems.length === 0 ? (
+                    <div className="grid min-h-[420px] place-items-center px-6 text-center">
+                      <div>
+                        <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
+                          {mailSearch ? <Search className="h-6 w-6" /> : <MailOpen className="h-6 w-6" />}
+                        </span>
+                        <h3 className="mt-4 text-lg font-bold text-slate-900">{mailSearch ? "Nic jsme nenašli" : "Tato složka je prázdná"}</h3>
+                        <p className="mt-1 text-sm text-slate-500">{mailSearch ? "Zkus jiný výraz nebo hledání vymaž." : "Jakmile sem dorazí zpráva, uvidíš ji tady."}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {chatListRows.map((row, index) =>
+                        row.kind === "conversation"
+                          ? renderChatConversationCard(row, index)
+                          : renderMailboxItemCard(row.item, index)
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <aside className={`${styles.mailDetailPane} hidden min-w-0 flex-col bg-slate-50/65 xl:flex`}>
+                {previewItem && mailboxPreviewHtml ? (
+                  <>
+                    <div className="border-b border-slate-200 bg-white px-5 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700">
+                            {standardDirectPreviewItem ? "Konverzace" : previewCorrespondent}
+                          </p>
+                          <h2 className="mt-1 line-clamp-2 text-lg font-bold leading-6 text-slate-950">
+                            {standardDirectCounterpart?.name || previewItem.title}
+                          </h2>
+                          {standardDirectCounterpart?.email ? (
+                            <p className="mt-1 truncate text-xs text-slate-500">{standardDirectCounterpart.email}</p>
+                          ) : !standardDirectPreviewItem ? (
+                            <p className="mt-1 text-xs text-slate-500">{formatDateTime(previewItem.createdAtMs)}</p>
+                          ) : null}
+                        </div>
+                        <button type="button" onClick={closePreviewModal} aria-label="Zavřít zprávu" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => void archivePreviewItem(!previewItemArchived)} disabled={archivingIds.includes(previewItem.id)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50">
+                          {previewItemArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                          {previewItemArchived ? "Vrátit" : "Archivovat"}
+                        </button>
+                        <button type="button" onClick={() => void deletePreviewItem()} disabled={deletingIds.includes(previewItem.id)} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50">
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Smazat
+                        </button>
+                        {!standardDirectPreviewItem ? (
+                          <button type="button" onClick={() => setPreviewModalOpen(true)} className="ml-auto rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100">
+                            Otevřít celé
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+                      {standardDirectPreviewItem ? (
+                        renderStandardDirectMessage(false)
+                      ) : previewItem.type === "production_export_share" && sharedExportPreviewLoading ? (
+                        <div className="grid h-full place-items-center text-sm font-medium text-slate-600"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Načítám náhled…</div>
+                      ) : (
+                        <iframe
+                          srcDoc={mailboxPreviewHtml}
+                          sandbox={previewItem.type === "online_card_meeting_request" ? "allow-popups allow-top-navigation-by-user-activation" : "allow-popups"}
+                          referrerPolicy="no-referrer"
+                          title="Náhled vybrané zprávy"
+                          className="h-full w-full bg-white"
+                        />
+                      )}
+                    </div>
+                    {quickReplyEnabled && quickReplyRecipient ? (
+                      quickReplyOpen ? (
+                        <div className="border-t border-violet-200 bg-white px-4 py-3 shadow-[0_-10px_24px_rgba(88,28,135,0.08)]">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-xs font-semibold text-slate-700">
+                              Odpověď pro {quickReplyRecipient.name}
+                            </p>
+                            <button type="button" onClick={() => setQuickReplyOpen(false)} disabled={quickReplySubmitting} aria-label="Skrýt odpověď" className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <textarea
+                            value={quickReplyText}
+                            onChange={(event) => {
+                              setQuickReplyText(event.target.value);
+                              setQuickReplyErrorText(null);
+                              setQuickReplySuccessText(null);
+                            }}
+                            onKeyDown={handleQuickReplyKeyDown}
+                            placeholder="Napiš odpověď…"
+                            maxLength={COMPOSE_MESSAGE_MAX_LEN}
+                            rows={3}
+                            className="mt-2 w-full resize-none rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition focus:border-violet-500 focus:bg-white focus:ring-2 focus:ring-violet-100"
+                          />
+                          {quickReplyFiles.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {quickReplyFiles.map((file) => {
+                                const key = `${file.name}-${file.size}`;
+                                return (
+                                  <span key={key} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+                                    <span className="max-w-[180px] truncate">{file.name}</span>
+                                    <button type="button" onClick={() => removeQuickReplyFile(key)} disabled={quickReplySubmitting} aria-label={`Odebrat ${file.name}`} className="text-slate-400 hover:text-rose-600">
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                          {quickReplyErrorText ? <p className="mt-2 text-xs font-medium text-rose-700">{quickReplyErrorText}</p> : null}
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">
+                              <Paperclip className="h-3.5 w-3.5" />
+                              Přiložit
+                              <input ref={quickReplyFileInputRef} type="file" multiple onChange={(event) => handleQuickReplyFilesChange(event.target.files)} disabled={quickReplySubmitting} className="hidden" />
+                            </label>
+                            <button type="button" onClick={() => void handleQuickReplySend()} disabled={quickReplySubmitting || (quickReplyText.trim().length === 0 && quickReplyFiles.length === 0)} className="inline-flex items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#020617_0%,#312060_52%,#7c3aed_100%)] px-4 py-2 text-sm font-bold !text-white shadow-[0_8px_18px_rgba(88,28,135,0.18)] disabled:opacity-55">
+                              {quickReplySubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                              {quickReplySubmitting ? "Odesílám…" : "Odeslat"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs text-slate-500">Odpovědět: <span className="font-semibold text-slate-700">{quickReplyRecipient.name}</span></p>
+                            {quickReplySuccessText ? <p className="mt-1 truncate text-xs font-semibold text-emerald-700">{quickReplySuccessText}</p> : null}
+                          </div>
+                          <button type="button" onClick={() => { setQuickReplyOpen(true); setQuickReplySuccessText(null); }} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#020617_0%,#312060_52%,#7c3aed_100%)] px-4 py-2 text-sm font-bold !text-white shadow-[0_10px_24px_rgba(88,28,135,0.22)]">
+                            <SquarePen className="h-4 w-4" />
+                            Odpovědět
+                          </button>
+                        </div>
+                      )
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="grid h-full place-items-center px-8 text-center">
+                    <div>
+                      <span className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-[22px] border border-violet-100 bg-white text-violet-700 shadow-[0_12px_30px_rgba(88,28,135,0.10)]">
+                        <MailOpen className="h-7 w-7" />
+                      </span>
+                      <h3 className="mt-5 text-lg font-bold text-slate-900">Vyber zprávu</h3>
+                      <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-500">Obsah vybrané zprávy se zobrazí tady, aniž bys opustil přehled pošty.</p>
+                    </div>
+                  </div>
+                )}
+              </aside>
+            </div>
+          </section>
+        </div>
+
+        <div className="hidden">
           <section
             className={`${styles.heroPanel} ${styles.mailHero} rounded-[26px] border border-white/70 bg-white/78 p-4 shadow-[0_18px_44px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-5`}
           >
@@ -1835,7 +2756,7 @@ export default function PostaPage() {
                       {expanded ? (
                         <div className={`${styles.groupChildren} space-y-2 pl-3 sm:pl-5`}>
                           {row.items.map((item, childIndex) =>
-                            renderMailboxItemCard(item, index + childIndex + 1, true)
+                            renderMailboxItemCard(item, index + childIndex + 1)
                           )}
                         </div>
                       ) : null}
@@ -2098,7 +3019,7 @@ export default function PostaPage() {
           </div>
         )}
 
-        {previewItem && mailboxPreviewHtml && (
+        {previewModalOpen && previewItem && mailboxPreviewHtml && (
           <div className={`${styles.previewOverlay} fixed inset-0 z-[90]`}>
             <button
               type="button"
@@ -2119,7 +3040,7 @@ export default function PostaPage() {
                     <span className="h-3 w-3 rounded-full bg-white/80" />
                     <span className="h-3 w-3 rounded-full bg-slate-950 ring-1 ring-white/30" />
                     <span className="truncate text-[12px] font-medium tracking-[0.01em] text-[#f8fafc]">
-                      Bohemka.App náhled
+                      {standardDirectPreviewItem ? "Detail zprávy" : "Bohemka.App náhled"}
                     </span>
                   </div>
 
@@ -2164,7 +3085,11 @@ export default function PostaPage() {
                       : "h-[84vh] min-h-[640px]"
                   }`}
                 >
-                  {previewItem.type === "production_export_share" && sharedExportPreviewLoading ? (
+                  {standardDirectPreviewItem ? (
+                    <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+                      {renderStandardDirectMessage(true)}
+                    </div>
+                  ) : previewItem.type === "production_export_share" && sharedExportPreviewLoading ? (
                     <div className="grid h-full place-items-center text-sm font-medium text-slate-700">
                       Načítám přesný náhled exportu…
                     </div>
@@ -2229,6 +3154,7 @@ export default function PostaPage() {
                             if (quickReplyErrorText) setQuickReplyErrorText(null);
                             if (quickReplySuccessText) setQuickReplySuccessText(null);
                           }}
+                          onKeyDown={handleQuickReplyKeyDown}
                           placeholder="Napiš rychlou odpověď…"
                           maxLength={COMPOSE_MESSAGE_MAX_LEN}
                           rows={2}

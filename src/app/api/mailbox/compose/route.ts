@@ -10,6 +10,11 @@ import {
   deleteMailboxStorageObjects,
   resolveConfiguredMailboxStorageBuckets,
 } from "@/lib/server/mailboxAttachmentStorage";
+import {
+  encryptMailboxBytes,
+  encryptMailboxJson,
+  type MailboxEncryptionEnvelope,
+} from "@/lib/server/mailboxEncryption";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
   prepareSafeUserAttachmentFile,
@@ -44,9 +49,13 @@ type MailboxAttachment = {
   sizeBytes: number;
   path: string;
   bucketName?: string;
+  encryption: MailboxEncryptionEnvelope;
 };
 
-type PublicMailboxAttachment = Omit<MailboxAttachment, "path" | "bucketName">;
+type PublicMailboxAttachment = Omit<
+  MailboxAttachment,
+  "path" | "bucketName" | "encryption"
+>;
 
 type TipSnapshotField = {
   label: string;
@@ -206,17 +215,23 @@ const uploadAttachmentsToBucket = async ({
       if (!file) continue;
       const contentType = file.contentType;
       const originalName = sanitizeFileName(normalizeText(file.file.name) || "priloha");
-      const objectPath = `${uploadPrefix}/${Date.now()}-${index}-${originalName}`;
       const attachmentId = randomUUID();
       const bytes = file.bytes;
+      const encrypted = encryptMailboxBytes(
+        bytes,
+        `attachment:${messageId}:${attachmentId}`
+      );
+      const objectPath = `${uploadPrefix}/${Date.now()}-${index}-${attachmentId}.enc`;
 
-      await bucket.file(objectPath).save(bytes, {
+      await bucket.file(objectPath).save(encrypted.bytes, {
         resumable: false,
-        contentType,
+        contentType: "application/octet-stream",
         metadata: {
+          cacheControl: "private, no-store, max-age=0",
           metadata: {
-            originalName,
             uploadedBy: uploaderEmail,
+            encrypted: "true",
+            encryptionKeyId: encrypted.encryption.keyId,
           },
         },
       });
@@ -229,6 +244,7 @@ const uploadAttachmentsToBucket = async ({
         sizeBytes: bytes.length,
         path: objectPath,
         bucketName: bucket.name,
+        encryption: encrypted.encryption,
       });
     }
   } catch (error) {
@@ -391,7 +407,7 @@ const sendDirectMessagePushNotification = async ({
         messageId: recipientMessageId,
         senderEmail: normalizeEmail(senderEmail),
         senderName: actorName,
-        subject: subject.slice(0, 120),
+        subject: isTipsterTip ? subject.slice(0, 120) : "",
         createdAt: createdAtIso,
         deepLink,
       },
@@ -671,6 +687,13 @@ export async function POST(req: NextRequest) {
     const createdAtMs = Date.now();
     const messageId = randomUUID();
     uploadedMessageId = messageId;
+    const isTipsterTip = clientMetadata.tipsterTip === true;
+    const encryptedContent = isTipsterTip
+      ? null
+      : encryptMailboxJson(
+          { subject, messageText },
+          `message:${messageId}`
+        );
     const attachments = await uploadAttachmentsToStorage({
       messageId,
       files: preparedFiles,
@@ -678,7 +701,6 @@ export async function POST(req: NextRequest) {
     });
     uploadedAttachments = attachments;
     const publicAttachments = toPublicAttachments(attachments);
-
     const messagePreview = messageText || "Příloha bez textu.";
 
     const recipientRef = adminDb
@@ -711,17 +733,20 @@ export async function POST(req: NextRequest) {
       recipientEmail: recipient.email,
       recipientName: recipient.name,
       tipId: tipRef?.id ?? null,
-      messageText,
       attachmentCount: attachments.length,
       attachments,
+      ...(isTipsterTip
+        ? { messageText }
+        : { encryptedContentVersion: encryptedContent?.version ?? 1 }),
     };
 
     const batch = adminDb.batch();
     batch.set(recipientRef, {
       recipientEmail: recipient.email,
       type: "direct_message",
-      title: subject,
-      body: messagePreview,
+      title: isTipsterTip ? subject : "Šifrovaná zpráva",
+      body: isTipsterTip ? messagePreview : "Nová šifrovaná zpráva.",
+      ...(encryptedContent ? { encryptedContent } : {}),
       deepLink: recipientDeepLink,
       read: false,
       readAtMs: null,
@@ -731,13 +756,15 @@ export async function POST(req: NextRequest) {
       metadata: {
         ...commonMetadata,
         mailboxDirection: "received",
+        pairedMailboxId: senderRef.id,
       },
     });
     batch.set(senderRef, {
       recipientEmail: ctx.email,
       type: "direct_message",
-      title: subject,
-      body: messagePreview,
+      title: isTipsterTip ? subject : "Šifrovaná zpráva",
+      body: isTipsterTip ? messagePreview : "Nová šifrovaná zpráva.",
+      ...(encryptedContent ? { encryptedContent } : {}),
       deepLink: senderDeepLink,
       read: true,
       readAtMs: createdAtMs,
@@ -747,6 +774,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         ...commonMetadata,
         mailboxDirection: "sent",
+        pairedMailboxId: recipientRef.id,
       },
     });
     if (tipRef) {

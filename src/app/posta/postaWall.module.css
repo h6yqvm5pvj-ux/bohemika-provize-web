@@ -38,6 +38,84 @@
   pointer-events: none;
 }
 
+.mailShell {
+  position: relative;
+  min-height: 100dvh;
+}
+
+.mailShell::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  height: 3px;
+  background: linear-gradient(90deg, #020617 0%, #6d28d9 52%, #a855f7 100%);
+  pointer-events: none;
+}
+
+.mailWorkspace {
+  height: calc(100dvh - 68px);
+  min-height: 640px;
+}
+
+.mailFolderRail,
+.mailMessageList,
+.mailDetailPane {
+  min-height: 0;
+}
+
+.mailMessageList {
+  display: flex;
+  flex-direction: column;
+}
+
+.mailDetailPane {
+  flex-direction: column;
+}
+
+.mailListScroll {
+  flex: 1 1 auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(109, 40, 217, 0.28) transparent;
+}
+
+.mailListScroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.mailListScroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(109, 40, 217, 0.24);
+}
+
+.mailFolderNav {
+  scrollbar-width: none;
+}
+
+.mailFolderNav::-webkit-scrollbar {
+  display: none;
+}
+
+.mailWorkspace .mailItemCard {
+  padding: 0;
+  border-radius: 0;
+}
+
+@media (max-width: 1023px) {
+  .mailWorkspace {
+    height: auto;
+    min-height: 0;
+  }
+
+  .mailMessageList {
+    min-height: 620px;
+  }
+
+  .mailListScroll {
+    max-height: 680px;
+  }
+}
+
 .actionButton {
   position: relative;
   overflow: hidden;
@@ -74,7 +152,7 @@
 
 @media (max-width: 768px) {
   .postaPage {
-    padding: 0.75rem 0.5rem 2.5rem;
+    padding: 0;
   }
 
   .canvas {
@@ -89,6 +167,37 @@
   .mailHero {
     border-radius: 22px;
     padding: 0.875rem;
+  }
+
+  .mailShell {
+    border-radius: 0;
+  }
+
+  .mailTopbar {
+    padding: 0.85rem;
+  }
+
+  .mailWorkspace {
+    display: block;
+    height: auto;
+    min-height: 0;
+  }
+
+  .mailFolderRail {
+    padding: 0.75rem;
+  }
+
+  .mailFolderNav {
+    margin-top: 0.65rem;
+  }
+
+  .mailMessageList {
+    min-height: 520px;
+  }
+
+  .mailListScroll {
+    max-height: none;
+    overflow: visible;
   }
 
   .heroStats {
@@ -170,7 +279,7 @@
     padding: 0.625rem;
   }
 
-  .mailItemCard,
+  .mailListPanel .mailItemCard,
   .groupCard {
     border-radius: 18px;
     padding: 0.85rem;

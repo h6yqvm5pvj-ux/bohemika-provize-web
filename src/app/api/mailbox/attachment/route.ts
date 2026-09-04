@@ -6,6 +6,7 @@ import {
   requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
+import { decryptMailboxBytes } from "@/lib/server/mailboxEncryption";
 import { resolveSafeUserAttachmentServing } from "@/lib/server/safeUserAttachments";
 
 export const runtime = "nodejs";
@@ -21,6 +22,7 @@ type StoredAttachment = {
   contentType: string;
   path: string;
   bucketName?: string;
+  encryption?: unknown;
 };
 
 const normalizeText = (value: unknown): string =>
@@ -99,6 +101,7 @@ const parseAttachments = (metadata: unknown): StoredAttachment[] => {
         contentType,
         path,
         bucketName: bucketName || undefined,
+        encryption: attachment.encryption,
       };
     })
     .filter((item): item is StoredAttachment => item !== null);
@@ -233,8 +236,39 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  let servingBytes = bytes;
+  if (attachment.encryption != null) {
+    const metadata =
+      message.metadata &&
+      typeof message.metadata === "object" &&
+      !Array.isArray(message.metadata)
+        ? (message.metadata as Record<string, unknown>)
+        : null;
+    const sharedMessageId = normalizeText(metadata?.messageId) || messageId;
+    try {
+      servingBytes = decryptMailboxBytes(
+        bytes,
+        attachment.encryption,
+        `attachment:${sharedMessageId}:${attachment.id}`
+      );
+    } catch (error) {
+      console.error("Mailbox attachment decryption failed.", {
+        messageId: sharedMessageId,
+        attachmentId: attachment.id,
+        error: error instanceof Error ? error.message : "unknown error",
+      });
+      return withRateLimitHeaders(
+        NextResponse.json(
+          { ok: false, error: "Přílohu se nepodařilo bezpečně rozšifrovat." },
+          { status: 500 }
+        ),
+        ctx
+      );
+    }
+  }
+
   const serving = resolveSafeUserAttachmentServing({
-    bytes,
+    bytes: servingBytes,
     fileName: attachment.name,
     storedContentType: attachment.contentType,
     downloadRequested: req.nextUrl.searchParams.get("download") === "1",
@@ -242,7 +276,7 @@ export async function GET(req: NextRequest) {
 
   const responseHeaders = new Headers({
     "Content-Type": serving.contentType,
-    "Content-Length": String(bytes.length),
+    "Content-Length": String(servingBytes.length),
     "Content-Disposition": contentDisposition(attachment.name, serving.shouldDownload),
     "Cache-Control": "private, no-store, max-age=0",
     "Cross-Origin-Resource-Policy": "same-origin",
@@ -254,7 +288,7 @@ export async function GET(req: NextRequest) {
   }
 
   return withRateLimitHeaders(
-    new NextResponse(new Uint8Array(bytes), {
+    new NextResponse(new Uint8Array(servingBytes), {
       status: 200,
       headers: responseHeaders,
     }),

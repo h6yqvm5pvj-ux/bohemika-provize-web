@@ -11,6 +11,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "mailbox:encrypt-legacy": "node --experimental-strip-types scripts/migrate-mailbox-encryption.mjs",
     "assets:optimize-icons": "node scripts/optimize-public-icons.mjs",
     "generate:homepage-gif": "node scripts/generate-homepage-demo-gif.cjs",
     "generate:homepage-gif:real": "node scripts/generate-homepage-gif-from-screenshots.cjs"

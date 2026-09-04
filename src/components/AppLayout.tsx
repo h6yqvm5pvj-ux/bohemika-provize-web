@@ -178,6 +178,7 @@ export function AppLayout({
     pathname === "/kalkulacka" ||
     pathname === "/nastaveni" ||
     pathname === "/smlouvy";
+  const isMailboxPage = pathname === "/posta";
 
   const [authReady, setAuthReady] = useState(false);
   const [authInitTimedOut, setAuthInitTimedOut] = useState(false);
@@ -690,6 +691,8 @@ export function AppLayout({
               `app-content relative flex min-w-0 w-full flex-1 items-start ${contentOverflowClass} ${shellFontClass}`,
               active === "tools" ? "tools-content" : "",
               embedded
+                ? "justify-start p-0"
+                : isMailboxPage
                 ? "justify-start p-0"
                 : isFullBleedPage
                 ? "justify-start px-0 py-6 sm:py-8 lg:px-0"

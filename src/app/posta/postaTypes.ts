@@ -68,7 +68,7 @@ export type MailboxComposeResponse = {
   error?: string;
 };
 
-export type MailFilterMode = "all" | "unread" | "snoozed" | "archived" | "sent";
+export type MailFilterMode = "all" | "unread" | "snoozed" | "archived" | "sent" | "system";
 
 export type MailboxAttachment = {
   id: string;
