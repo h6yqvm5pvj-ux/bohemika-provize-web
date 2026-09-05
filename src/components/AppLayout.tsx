@@ -45,6 +45,7 @@ import { AppNavigation, type ActivePage } from "@/components/navigation/AppNavig
 import { useUserProfileAccess } from "@/components/profile/useUserProfileAccess";
 import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
 import { SubscriptionGate } from "@/components/subscription/SubscriptionGate";
+import { MobilePullToRefresh } from "@/components/MobilePullToRefresh";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -602,13 +603,14 @@ export function AppLayout({
   const backgroundStyle = { backgroundColor: "#ffffff" };
 
   return (
-    <main className="relative min-h-screen text-slate-900">
+    <main className="app-shell-root relative min-h-[100dvh] text-slate-900">
+      <MobilePullToRefresh />
       <div
         className="fixed inset-0 -z-10 transition-colors duration-200"
         style={backgroundStyle}
       />
 
-      <div className="relative flex min-h-screen">
+      <div className="relative flex min-h-[100dvh]">
         {accountSetup.showWizard && !effectiveShowPaywall && !impersonation ? (
           <AccountSetupWizard
             ariaLabel={layoutCopy.accountSettings}

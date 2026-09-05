@@ -465,6 +465,31 @@ body {
   margin: 0;
 }
 
+@media (max-width: 1023px) {
+  html.mobile-app-shell,
+  body.mobile-app-shell {
+    max-width: 100%;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: none;
+  }
+
+  html.mobile-app-shell {
+    min-height: 100%;
+    overflow-x: clip;
+  }
+
+  body.mobile-app-shell {
+    min-height: 100dvh;
+    overflow-x: clip;
+  }
+
+  .app-shell-root {
+    min-height: 100dvh;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+}
+
 .contracts-filter-scrollbar {
   scrollbar-gutter: stable;
   scrollbar-color: rgba(100, 116, 139, 0.85) rgba(226, 232, 240, 0.75);

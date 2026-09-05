@@ -116,16 +116,9 @@ type LoginAttemptResponse = {
   error?: string;
 };
 
-type InstallPlatform = "ios" | "android" | "desktop";
-
 const MFA_CODE_LENGTH = 6;
 
 const createEmptyMfaDigits = () => Array.from({ length: MFA_CODE_LENGTH }, () => "");
-
-type DeferredInstallPromptEvent = Event & {
-  prompt: () => Promise<{ outcome: "accepted" | "dismissed"; platform: string } | void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
-};
 
 function attemptWord(count: number): string {
   if (count === 1) return "pokus";
@@ -214,30 +207,10 @@ async function postLoginAttempt(
   throw new Error("Nepodařilo se ověřit bezpečnostní limit přihlášení.");
 }
 
-const detectInstallPlatform = (): InstallPlatform => {
-  if (typeof navigator === "undefined") return "desktop";
-  const ua = navigator.userAgent.toLowerCase();
-  if (/iphone|ipad|ipod/.test(ua)) return "ios";
-  if (/android/.test(ua)) return "android";
-  return "desktop";
-};
-
-const detectIosSafari = (): boolean => {
+const detectIosDevice = (): boolean => {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent.toLowerCase();
-  const isIos = /iphone|ipad|ipod/.test(ua);
-  if (!isIos) return false;
-  return /safari/.test(ua) && !/(crios|fxios|edgios|opios)/.test(ua);
-};
-
-const isStandaloneDisplay = (): boolean => {
-  if (typeof window === "undefined") return false;
-  const nav = window.navigator as Navigator & { standalone?: boolean };
-  const mediaMatch =
-    typeof window.matchMedia === "function"
-      ? window.matchMedia("(display-mode: standalone)").matches
-      : false;
-  return mediaMatch || nav.standalone === true;
+  return /iphone|ipad|ipod/.test(ua);
 };
 
 export default function LoginPage() {
@@ -254,13 +227,7 @@ export default function LoginPage() {
   const [mfaDigits, setMfaDigits] = useState<string[]>(createEmptyMfaDigits);
   const [mfaHintUid, setMfaHintUid] = useState<string | null>(null);
   const [mfaHintLabel, setMfaHintLabel] = useState<string | null>(null);
-  const [installPlatform, setInstallPlatform] = useState<InstallPlatform>("desktop");
-  const [isIosSafari, setIsIosSafari] = useState(false);
-  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
-  const [deferredInstallPrompt, setDeferredInstallPrompt] =
-    useState<DeferredInstallPromptEvent | null>(null);
-  const [installGuideOpen, setInstallGuideOpen] = useState(false);
-  const [installFeedback, setInstallFeedback] = useState<string | null>(null);
+  const [isIosDevice, setIsIosDevice] = useState(false);
   const [rememberThisDevice, setRememberThisDevice] = useState(false);
   const loginRememberThisDeviceRef = useRef(false);
   const mfaInputRefs = useRef<Array<HTMLInputElement | null>>([]);
@@ -376,36 +343,27 @@ export default function LoginPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    setInstallPlatform(detectInstallPlatform());
-    setIsIosSafari(detectIosSafari());
-    setIsStandaloneApp(isStandaloneDisplay());
+    setIsIosDevice(detectIosDevice());
+  }, []);
 
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setDeferredInstallPrompt(event as DeferredInstallPromptEvent);
-    };
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const previousRootOverflow = root.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousRootOverscrollBehavior = root.style.overscrollBehavior;
+    const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
 
-    const handleAppInstalled = () => {
-      setDeferredInstallPrompt(null);
-      setInstallGuideOpen(false);
-      setIsStandaloneApp(true);
-      setInstallFeedback("Hotovo. Aplikace je přidaná na plochu.");
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        setIsStandaloneApp(isStandaloneDisplay());
-      }
-    };
-
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    window.addEventListener("appinstalled", handleAppInstalled);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    root.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    root.style.overscrollBehavior = "none";
+    body.style.overscrollBehavior = "none";
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-      window.removeEventListener("appinstalled", handleAppInstalled);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      root.style.overflow = previousRootOverflow;
+      body.style.overflow = previousBodyOverflow;
+      root.style.overscrollBehavior = previousRootOverscrollBehavior;
+      body.style.overscrollBehavior = previousBodyOverscrollBehavior;
     };
   }, []);
 
@@ -425,25 +383,6 @@ export default function LoginPage() {
     const frame = window.requestAnimationFrame(() => mfaInputRefs.current[0]?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [mfaResolver]);
-
-  useEffect(() => {
-    if (!installGuideOpen || typeof document === "undefined") return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setInstallGuideOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [installGuideOpen]);
 
   const handleMfaSubmit = async () => {
     if (!mfaResolver || !mfaHintUid) {
@@ -672,63 +611,15 @@ export default function LoginPage() {
     if (digits && index < MFA_CODE_LENGTH - 1) focusMfaInput(index + 1);
   };
 
-  const handleInstallCta = async () => {
-    setInstallFeedback(null);
-
-    if (isStandaloneApp) {
-      setInstallFeedback("Aplikaci už máš nainstalovanou na ploše.");
-      return;
-    }
-
-    if (deferredInstallPrompt) {
-      try {
-        await deferredInstallPrompt.prompt();
-        const choice = await deferredInstallPrompt.userChoice;
-        if (choice.outcome === "accepted") {
-          setInstallGuideOpen(false);
-          setInstallFeedback("Instalace potvrzena. Ikona se zobrazí na ploše.");
-        } else {
-          setInstallFeedback("Instalaci můžeš dokončit kdykoliv později.");
-          setInstallGuideOpen(true);
-        }
-      } catch (error) {
-        console.warn("[PWA] Instalace se nepodařila spustit:", error);
-        setInstallFeedback("Instalaci se nepodařilo otevřít. Zkus to znovu.");
-        setInstallGuideOpen(true);
-      } finally {
-        setDeferredInstallPrompt(null);
-      }
-      return;
-    }
-
-    setInstallGuideOpen((prev) => !prev);
-  };
-
-  const installCtaLabel = isStandaloneApp
-    ? "Aplikace je nainstalovaná"
-    : deferredInstallPrompt
-      ? "Nainstalovat aplikaci"
-      : installPlatform === "ios"
-        ? "Jak přidat na plochu"
-        : "Jak nainstalovat";
-
-  const installLeadText = isStandaloneApp
-    ? "Spouštěj Bohemka.App přímo z plochy jako klasickou aplikaci."
-    : deferredInstallPrompt
-      ? "Aplikaci můžeš přidat na plochu jedním kliknutím."
-      : "Klepni na tlačítko a otevře se krátký návod.";
-  const shouldShowInstallAssistant = installPlatform !== "desktop";
-  const isInstallGuideForIos = installPlatform === "ios";
-
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#0b0717] text-white">
+    <main className="relative h-[100dvh] max-h-[100dvh] overflow-hidden overscroll-none bg-[#0b0717] text-white">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,#080513_0%,#130923_48%,#25134a_100%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[length:46px_46px] opacity-60" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,transparent_28%,rgba(168,85,247,0.16)_28%,rgba(168,85,247,0.16)_28.35%,transparent_28.35%,transparent_61%,rgba(99,102,241,0.12)_61%,rgba(99,102,241,0.12)_61.35%,transparent_61.35%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.09)_0%,rgba(255,255,255,0.025)_34%,rgba(0,0,0,0.22)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#160c2a_0%,#7c3aed_52%,#c084fc_100%)]" />
 
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-12 sm:py-16">
+      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-6xl items-center justify-center px-4 py-4 sm:py-16">
         <div className="w-full max-w-[30rem] space-y-7 font-mono">
           <div className="space-y-2 text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-violet-200/30 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-100 shadow-[0_8px_20px_rgba(10,5,30,0.18)]">
@@ -950,134 +841,16 @@ export default function LoginPage() {
                     <KeyRound className="h-4 w-4 text-violet-100/82" aria-hidden="true" />
                     {passkeyLoading
                       ? "Otevírám ověření…"
-                      : installPlatform === "ios"
+                      : isIosDevice
                         ? "Přihlásit přes Face ID"
                         : "Přihlásit přes přístupový klíč"}
                   </button>
                 </div>
               ) : null}
             </form>
-
-            {shouldShowInstallAssistant ? (
-              <div className="relative z-10 mt-4 rounded-2xl border border-violet-300/20 bg-white/[0.06] p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-100/70">
-                      Aplikace na plochu
-                    </div>
-                    <p className="mt-1 text-sm text-violet-100/82">{installLeadText}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleInstallCta();
-                    }}
-                    disabled={isStandaloneApp}
-                    className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition ${
-                      isStandaloneApp
-                        ? "cursor-default border-emerald-300/40 bg-emerald-400/14 text-emerald-100"
-                        : "border-violet-200/25 bg-white/12 text-white hover:bg-white/18"
-                    }`}
-                  >
-                    {installCtaLabel}
-                  </button>
-                </div>
-
-                {installFeedback ? (
-                  <p className="mt-3 rounded-xl border border-violet-300/20 bg-white/[0.06] px-3 py-2 text-xs text-violet-100/78">
-                    {installFeedback}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
           </section>
         </div>
-
       </div>
-
-      {shouldShowInstallAssistant && installGuideOpen && !isStandaloneApp ? (
-        <div
-          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/50 p-3 backdrop-blur-[2px] sm:items-center sm:p-6"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="install-guide-title"
-          onClick={() => setInstallGuideOpen(false)}
-        >
-          <div
-            className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_64%,#eff4f9_100%)] p-5 shadow-[0_30px_70px_rgba(15,23,42,0.26)]"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0f172a_0%,#2563eb_58%,#06b6d4_100%)]" />
-            <button
-              type="button"
-              onClick={() => setInstallGuideOpen(false)}
-              className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-lg leading-none text-slate-600 transition hover:text-slate-900"
-              aria-label="Zavřít návod"
-            >
-              ×
-            </button>
-
-            <div className="pr-10">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-600">
-                Rychlý návod
-              </p>
-              <h3
-                id="install-guide-title"
-                className="mt-1 text-2xl font-bold tracking-[-0.02em] text-slate-900"
-              >
-                {isInstallGuideForIos ? "Přidání na plochu (iPhone)" : "Instalace aplikace"}
-              </h3>
-              <p className="mt-2 text-sm text-slate-600">
-                {isInstallGuideForIos
-                  ? "Trvá to asi 10 sekund. Po přidání ji najdeš na ploše jako klasickou appku."
-                  : "Pokud se neukáže systémové okno, projdi rychlé kroky níže."}
-              </p>
-            </div>
-
-            <ol className="mt-4 space-y-2">
-              {isInstallGuideForIos ? (
-                <>
-                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
-                    1. Otevři stránku v <span className="font-semibold">Safari</span>
-                    {!isIosSafari ? " (teď nejsi v Safari)." : "."}
-                  </li>
-                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
-                    2. Klepni na <span className="font-semibold">Sdílet</span>{" "}
-                    <span aria-hidden="true">□↑</span>.
-                  </li>
-                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
-                    3. Zvol <span className="font-semibold">Přidat na plochu</span> a potvrď{" "}
-                    <span className="font-semibold">Přidat</span>.
-                  </li>
-                </>
-              ) : (
-                <>
-                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
-                    1. Otevři nabídku prohlížeče (⋮ nebo ⋯).
-                  </li>
-                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
-                    2. Zvol <span className="font-semibold">Nainstalovat aplikaci</span> nebo{" "}
-                    <span className="font-semibold">Přidat na plochu</span>.
-                  </li>
-                  <li className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-800">
-                    3. Potvrď instalaci.
-                  </li>
-                </>
-              )}
-            </ol>
-
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setInstallGuideOpen(false)}
-                className="inline-flex items-center justify-center rounded-xl border border-slate-900/80 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
-              >
-                Rozumím
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }
