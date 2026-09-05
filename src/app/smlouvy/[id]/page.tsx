@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   AlertTriangle,
+  BellRing,
   CalendarDays,
   CarFront,
   ChevronDown,
@@ -23,6 +24,7 @@ import {
   Menu,
   Package,
   PencilLine,
+  Plus,
   RotateCcw,
   Search,
   Settings2,
@@ -167,6 +169,7 @@ import {
   parseKooperativaAutoPdf,
 } from "@/app/lib/parseKooperativaAutoPdf";
 import { isSlaviaAutoSupportedForSignedDate } from "@/app/lib/productFormulas/slaviaAuto";
+import type { ContractNoteDto } from "@/app/api/contracts/notes/contractNotes";
 
 const CPP_EXTRANET_REDIRECT_URL =
   "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx";
@@ -204,12 +207,85 @@ type ContractTransferTarget = {
   position: Position | null;
 };
 
+type ContractNotesApiResponse = ContractsApiResponseBase & {
+  notes?: ContractNoteDto[];
+  note?: ContractNoteDto;
+  deleted?: string;
+};
+
 const localIsoDay = (value = new Date()): string => {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
+
+const localDateInputToMs = (value: string): number | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const date = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    0,
+    0,
+    0,
+    0
+  );
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== Number(match[1]) ||
+    date.getMonth() !== Number(match[2]) - 1 ||
+    date.getDate() !== Number(match[3])
+  ) {
+    return null;
+  }
+  return date.getTime();
+};
+
+const localDateInputFromMs = (value: number | null): string => {
+  if (value == null || !Number.isFinite(value)) return "";
+  return localIsoDay(new Date(value));
+};
+
+const reminderDateAfterDays = (days: number): string => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return localIsoDay(date);
+};
+
+const formatReminderDeliveryTime = (dateValue: string): string => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue.trim());
+  if (!match) return "ráno";
+  const scheduledAt = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 7, 45)
+  );
+  return new Intl.DateTimeFormat("cs-CZ", {
+    timeZone: "Europe/Prague",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(scheduledAt);
+};
+
+const formatNoteTimestamp = (value: number): string =>
+  new Intl.DateTimeFormat("cs-CZ", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+
+const formatReminderDate = (value: number): string =>
+  new Intl.DateTimeFormat("cs-CZ", {
+    weekday: "short",
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+
+const noteCountLabel = (count: number): string =>
+  count === 1 ? "1 poznámka" : count >= 2 && count <= 4 ? `${count} poznámky` : `${count} poznámek`;
 
 const normalizeTransferSearch = (value: string): string =>
   value
@@ -456,6 +532,7 @@ export default function ContractDetailPage() {
   const rawId = params?.id;
   const isEmbedded = searchParams?.get("embedded") === "1";
   const editRequested = searchParams?.get("edit") === "1";
+  const linkedNoteId = searchParams?.get("noteId")?.trim() ?? "";
   const handledEditRequestRef = useRef(false);
   const backToContractsHref =
     searchParams?.get("from") === "list" ? "/smlouvy?restore=1" : "/smlouvy";
@@ -532,11 +609,18 @@ export default function ContractDetailPage() {
   const [ownerManagerEmail, setOwnerManagerEmail] = useState<string | null>(null);
   const [ownerManagerPosition, setOwnerManagerPosition] = useState<Position | null>(null);
   const [currentChainEmails, setCurrentChainEmails] = useState<string[]>([]);
+  const [contractNotes, setContractNotes] = useState<ContractNoteDto[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
+  const [noteEditorId, setNoteEditorId] = useState<string | null>(null);
+  const [noteReminderEnabled, setNoteReminderEnabled] = useState(false);
+  const [noteReminderDate, setNoteReminderDate] = useState("");
   const [noteExpanded, setNoteExpanded] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
+  const [noteDeleteConfirmId, setNoteDeleteConfirmId] = useState<string | null>(null);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   const [updatingPaid, setUpdatingPaid] = useState(false);
   const [paidError, setPaidError] = useState<string | null>(null);
   const [updatingStorno, setUpdatingStorno] = useState(false);
@@ -817,6 +901,54 @@ export default function ContractDetailPage() {
     [user]
   );
 
+  useEffect(() => {
+    if (!user || !ownerEmail || !entryId) {
+      setContractNotes([]);
+      setNotesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadNotes = async () => {
+      setNotesLoading(true);
+      setNoteError(null);
+      try {
+        const query = new URLSearchParams({ ownerEmail, entryId });
+        const payload = await requestContractsApi<ContractNotesApiResponse>(
+          `/api/contracts/notes?${query.toString()}`
+        );
+        if (cancelled) return;
+        const notes = Array.isArray(payload.notes) ? payload.notes : [];
+        setContractNotes(notes);
+        if (notes.length > 0 || linkedNoteId) setNoteExpanded(true);
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Načtení poznámek ke smlouvě selhalo:", error);
+        setContractNotes([]);
+        setNoteError("Poznámky se nepodařilo načíst.");
+      } finally {
+        if (!cancelled) setNotesLoading(false);
+      }
+    };
+
+    void loadNotes();
+    return () => {
+      cancelled = true;
+    };
+  }, [entryId, linkedNoteId, ownerEmail, requestContractsApi, user]);
+
+  useEffect(() => {
+    if (!linkedNoteId || notesLoading) return;
+    setNoteExpanded(true);
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("contract-notes")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [contractNotes, linkedNoteId, notesLoading]);
+
   const clearContractPdfPreview = useCallback(() => {
     if (contractPdfObjectUrlRef.current) {
       URL.revokeObjectURL(contractPdfObjectUrlRef.current);
@@ -906,9 +1038,6 @@ export default function ContractDetailPage() {
               (target): target is ContractTransferTarget => Boolean(target.email)
             )
         );
-        const loadedNote = (payload.contract.note as string | undefined) ?? "";
-        setNoteDraft(loadedNote);
-        setNoteExpanded(loadedNote.trim().length > 0);
         const timeline =
           Array.isArray(payload.timeline) && payload.timeline.length > 0
             ? payload.timeline
@@ -1788,9 +1917,6 @@ export default function ContractDetailPage() {
           (target): target is ContractTransferTarget => Boolean(target.email)
         )
     );
-    const loadedNote = (payload.contract.note as string | undefined) ?? "";
-    setNoteDraft(loadedNote);
-    setNoteExpanded(loadedNote.trim().length > 0);
     const timeline =
       Array.isArray(payload.timeline) && payload.timeline.length > 0
         ? payload.timeline
@@ -3930,33 +4056,126 @@ export default function ContractDetailPage() {
     }
   };
 
+  const resetNoteEditor = () => {
+    setNoteEditorId(null);
+    setNoteDraft("");
+    setNoteReminderEnabled(false);
+    setNoteReminderDate("");
+    setNoteError(null);
+  };
+
+  const handleStartNewNote = () => {
+    setNoteEditorId("new");
+    setNoteDraft("");
+    setNoteReminderEnabled(false);
+    setNoteReminderDate(reminderDateAfterDays(7));
+    setNoteDeleteConfirmId(null);
+    setNoteError(null);
+    setNoteSaved(false);
+  };
+
+  const handleEditNote = (note: ContractNoteDto) => {
+    setNoteEditorId(note.id);
+    setNoteDraft(note.text);
+    setNoteReminderEnabled(note.reminderEnabled);
+    setNoteReminderDate(localDateInputFromMs(note.reminderAtMs));
+    setNoteDeleteConfirmId(null);
+    setNoteError(null);
+    setNoteSaved(false);
+  };
+
   const handleSaveNote = async () => {
-    if (!ownerEmail || !entryId || !canManageContract) return;
+    if (!ownerEmail || !entryId || !canManageContract || !noteEditorId) return;
+    const text = noteDraft.trim();
+    if (!text) {
+      setNoteError("Napiš text poznámky.");
+      return;
+    }
+    const reminderAtMs = noteReminderEnabled
+      ? localDateInputToMs(noteReminderDate)
+      : null;
+    if (noteReminderEnabled && reminderAtMs == null) {
+      setNoteError("Vyber platné datum připomínky.");
+      return;
+    }
+
     setSavingNote(true);
     setNoteError(null);
     setNoteSaved(false);
 
     try {
-      await requestContractsApi<ContractsApiResponseBase>("/api/contracts/update-fields", {
-        method: "PATCH",
+      const creating = noteEditorId === "new";
+      const payload = await requestContractsApi<ContractNotesApiResponse>("/api/contracts/notes", {
+        method: creating ? "POST" : "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           ownerEmail,
           entryId,
-          updates: { note: noteDraft.trim() },
+          ...(creating ? {} : { noteId: noteEditorId }),
+          text,
+          reminderEnabled: noteReminderEnabled,
+          reminderAtMs,
         }),
       });
-      setContract((prev) => (prev ? { ...prev, note: noteDraft.trim() } : prev));
+      if (!payload.note) throw new Error("Server nevrátil uloženou poznámku.");
+      setContractNotes((current) =>
+        [...current.filter((note) => note.id !== payload.note!.id), payload.note!].sort(
+          (left, right) => right.updatedAtMs - left.updatedAtMs
+        )
+      );
+      if (noteEditorId === "legacy") {
+        setContract((current) => (current ? { ...current, note: "" } : current));
+      }
+      resetNoteEditor();
       setNoteSaved(true);
-      pushToast("Poznámka byla uložena.", "success");
+      pushToast(
+        noteReminderEnabled
+          ? "Poznámka a připomínka byly uloženy."
+          : "Poznámka byla uložena.",
+        "success"
+      );
     } catch (e) {
       console.error("Chyba při ukládání poznámky:", e);
-      setNoteError("Poznámku se nepodařilo uložit. Zkus to prosím znovu.");
-      pushToast("Poznámku se nepodařilo uložit. Zkus to prosím znovu.", "error");
+      const message =
+        e instanceof Error && e.message
+          ? e.message
+          : "Poznámku se nepodařilo uložit. Zkus to prosím znovu.";
+      setNoteError(message);
+      pushToast(message, "error");
     } finally {
       setSavingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    if (!ownerEmail || !entryId || !canManageContract) return;
+    setDeletingNoteId(noteId);
+    setNoteError(null);
+    try {
+      await requestContractsApi<ContractNotesApiResponse>("/api/contracts/notes", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerEmail, entryId, noteId }),
+      });
+      setContractNotes((current) => current.filter((note) => note.id !== noteId));
+      if (noteId === "legacy") {
+        setContract((current) => (current ? { ...current, note: "" } : current));
+      }
+      if (noteEditorId === noteId) resetNoteEditor();
+      setNoteDeleteConfirmId(null);
+      pushToast("Poznámka byla odstraněna.", "success");
+    } catch (error) {
+      console.error("Chyba při mazání poznámky:", error);
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Poznámku se nepodařilo odstranit.";
+      setNoteError(message);
+      pushToast(message, "error");
+    } finally {
+      setDeletingNoteId(null);
     }
   };
 
@@ -5315,8 +5534,10 @@ export default function ContractDetailPage() {
     );
   }
 
-  const savedNoteText = contract?.note?.trim() ?? "";
-  const notePreviewText = noteDraft.trim() || savedNoteText;
+  const notePreviewText = contractNotes[0]?.text ?? "";
+  const activeNoteReminderCount = contractNotes.filter(
+    (note) => note.reminderEnabled && note.reminderAtMs != null
+  ).length;
   const noteContentId = "contract-note-content";
 
   return (
@@ -6609,8 +6830,8 @@ export default function ContractDetailPage() {
                 )}
               />
 
-              {/* POZNÁMKA */}
-              <section className={`${noteCardClass} space-y-3`}>
+              {/* POZNÁMKY A PŘIPOMÍNKY */}
+              <section id="contract-notes" className={`${noteCardClass} space-y-3`}>
                 <button
                   type="button"
                   aria-controls={noteContentId}
@@ -6623,14 +6844,24 @@ export default function ContractDetailPage() {
                       <ContractSectionHeading
                         icon={<StickyNote size={17} strokeWidth={2.2} aria-hidden="true" />}
                       >
-                        Poznámka ke smlouvě
+                        Poznámky a připomínky
                       </ContractSectionHeading>
                       <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
-                        {notePreviewText || "Bez poznámky"}
+                        {notesLoading
+                          ? "Načítám poznámky…"
+                          : contractNotes.length > 0
+                            ? `${noteCountLabel(contractNotes.length)} · ${notePreviewText}`
+                            : "Bez poznámek"}
                       </p>
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {activeNoteReminderCount > 0 && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                        <BellRing size={13} strokeWidth={2.2} aria-hidden="true" />
+                        {activeNoteReminderCount}
+                      </span>
+                    )}
                     {noteSaved && (
                       <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
                         Uloženo
@@ -6650,45 +6881,281 @@ export default function ContractDetailPage() {
                 </button>
 
                 {noteExpanded && (
-                  <div id={noteContentId} className="space-y-2.5">
+                  <div id={noteContentId} className="space-y-3 border-t border-slate-200 pt-3">
                     {noteError && (
-                      <p className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                      <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
                         {noteError}
                       </p>
                     )}
 
-                    {canManageContract ? (
-                      <>
+                    {canManageContract && noteEditorId === null && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleStartNewNote}
+                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700"
+                        >
+                          <Plus size={16} strokeWidth={2.4} aria-hidden="true" />
+                          Přidat poznámku
+                        </button>
+                      </div>
+                    )}
+
+                    {canManageContract && noteEditorId !== null && (
+                      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-3.5">
+                        <div
+                          className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-300"
+                          aria-hidden="true"
+                        />
+                        <div className="mb-2.5 flex items-center justify-between gap-3 pt-0.5">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                              <PencilLine size={14} strokeWidth={2.3} aria-hidden="true" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-slate-950">
+                                {noteEditorId === "new" ? "Nová poznámka" : "Upravit poznámku"}
+                              </p>
+                              <p className="text-[11px] font-semibold text-slate-500">
+                                Interní informace k této smlouvě
+                              </p>
+                            </div>
+                          </div>
+                          <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">
+                            {noteDraft.length}/2000
+                          </span>
+                        </div>
                         <textarea
                           value={noteDraft}
                           onChange={(e) => {
                             setNoteDraft(e.target.value);
                             setNoteSaved(false);
                           }}
-                          rows={4}
-                          className="w-full resize-none rounded-2xl border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300"
-                          placeholder="Sem si můžeš napsat poznámku jen pro sebe…"
+                          maxLength={2000}
+                          rows={2}
+                          autoFocus
+                          className="min-h-[76px] w-full resize-y rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100"
+                          placeholder="Co je potřeba u této smlouvy zařídit?"
                         />
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            onClick={handleSaveNote}
-                            disabled={savingNote}
-                            className="inline-flex items-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {savingNote && (
-                              <Spinner className="h-4 w-4 border-slate-400 border-t-slate-900" />
+
+                        <div className="mt-2.5 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              aria-pressed={noteReminderEnabled}
+                              onClick={() => {
+                                setNoteReminderEnabled((enabled) => {
+                                  const next = !enabled;
+                                  if (next && !noteReminderDate) {
+                                    setNoteReminderDate(reminderDateAfterDays(7));
+                                  }
+                                  return next;
+                                });
+                                setNoteError(null);
+                              }}
+                              className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
+                                noteReminderEnabled
+                                  ? "border-violet-200 bg-violet-50 text-violet-800"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:text-violet-700"
+                              }`}
+                            >
+                              <BellRing size={14} strokeWidth={2.2} aria-hidden="true" />
+                              Připomenout
+                              <span
+                                className={`relative inline-block h-5 w-9 shrink-0 overflow-hidden rounded-full transition ${
+                                  noteReminderEnabled ? "bg-violet-600" : "bg-slate-200"
+                                }`}
+                                aria-hidden="true"
+                              >
+                                <span
+                                  className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                                    noteReminderEnabled ? "translate-x-[18px]" : "translate-x-0.5"
+                                  }`}
+                                />
+                              </span>
+                            </button>
+
+                            {noteReminderEnabled && (
+                              <label className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-2.5 py-1.5">
+                                <CalendarDays
+                                  size={14}
+                                  strokeWidth={2.2}
+                                  aria-hidden="true"
+                                  className="text-violet-600"
+                                />
+                                <span className="sr-only">Datum připomínky</span>
+                                <input
+                                  type="date"
+                                  min={localIsoDay()}
+                                  value={noteReminderDate}
+                                  onChange={(event) => {
+                                    setNoteReminderDate(event.target.value);
+                                    setNoteError(null);
+                                  }}
+                                  className="bg-transparent text-xs font-bold text-slate-800 outline-none"
+                                />
+                              </label>
                             )}
-                            <span>{savingNote ? "Ukládám…" : "Uložit poznámku"}</span>
-                          </button>
+
+                            {noteReminderEnabled && (
+                              <span className="text-[11px] font-semibold text-slate-500">
+                                Notifikace přijde přibližně v {formatReminderDeliveryTime(noteReminderDate)} a po kliknutí otevře detail smlouvy.
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex shrink-0 justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={resetNoteEditor}
+                              disabled={savingNote}
+                              className="rounded-xl px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60"
+                            >
+                              Zrušit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveNote}
+                              disabled={savingNote || !noteDraft.trim()}
+                              className="inline-flex min-w-[88px] items-center justify-center gap-2 rounded-xl bg-slate-950 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                            >
+                              {savingNote && (
+                                <Spinner className="h-3.5 w-3.5 border-slate-500 border-t-white" />
+                              )}
+                              {savingNote ? "Ukládám…" : "Uložit"}
+                            </button>
+                          </div>
                         </div>
-                      </>
-                    ) : (
-                      <div className="rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900">
-                        {savedNoteText ||
-                          "Autor smlouvy zatím žádnou poznámku nepřidal."}
                       </div>
                     )}
+
+                    {notesLoading ? (
+                      <div className="space-y-2 py-2" aria-label="Načítání poznámek">
+                        <Skeleton className="h-4 w-1/3" />
+                        <Skeleton className="h-4 w-4/5" />
+                      </div>
+                    ) : contractNotes.length === 0 && noteEditorId === null ? (
+                      <div className="py-2 text-center">
+                        <StickyNote
+                          size={22}
+                          strokeWidth={1.8}
+                          aria-hidden="true"
+                          className="mx-auto text-slate-300"
+                        />
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          Zatím tu není žádná poznámka.
+                        </p>
+                      </div>
+                    ) : contractNotes.length > 0 ? (
+                      <div className="divide-y divide-slate-200">
+                        {contractNotes.map((note) => {
+                          const isLinkedNote = note.id === linkedNoteId;
+                          const wasEdited = note.updatedAtMs - note.createdAtMs > 60_000;
+                          const reminderWasSent =
+                            !note.reminderEnabled && note.reminderLastSentForAtMs != null;
+                          return (
+                            <article
+                              key={note.id}
+                              className={`relative py-3 first:pt-1 last:pb-1 ${
+                                isLinkedNote
+                                  ? "-mx-2 rounded-xl bg-violet-50 px-2 ring-1 ring-violet-200"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
+                                    <span>
+                                      {note.legacy
+                                        ? "Původní poznámka"
+                                        : `Přidáno ${formatNoteTimestamp(note.createdAtMs)}`}
+                                    </span>
+                                    {wasEdited && !note.legacy && (
+                                      <span>· Upraveno {formatNoteTimestamp(note.updatedAtMs)}</span>
+                                    )}
+                                    {isLinkedNote && (
+                                      <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                        Otevřeno z notifikace
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-900">
+                                    {note.text}
+                                  </p>
+
+                                  {note.reminderEnabled && note.reminderAtMs != null ? (
+                                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
+                                      <BellRing size={13} strokeWidth={2.2} aria-hidden="true" />
+                                      Připomenout {formatReminderDate(note.reminderAtMs)}
+                                    </span>
+                                  ) : reminderWasSent ? (
+                                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                      <BellRing size={13} strokeWidth={2.2} aria-hidden="true" />
+                                      Připomenuto {formatReminderDate(note.reminderLastSentForAtMs!)}
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                {canManageContract && noteDeleteConfirmId !== note.id && (
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEditNote(note)}
+                                      disabled={savingNote || deletingNoteId !== null}
+                                      aria-label="Upravit poznámku"
+                                      title="Upravit poznámku"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-violet-50 hover:text-violet-700 disabled:opacity-40"
+                                    >
+                                      <PencilLine size={15} strokeWidth={2.2} aria-hidden="true" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setNoteDeleteConfirmId(note.id);
+                                        setNoteError(null);
+                                      }}
+                                      disabled={savingNote || deletingNoteId !== null}
+                                      aria-label="Smazat poznámku"
+                                      title="Smazat poznámku"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40"
+                                    >
+                                      <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {canManageContract && noteDeleteConfirmId === note.id && (
+                                <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-xl bg-rose-50 px-3 py-2">
+                                  <span className="mr-auto text-xs font-semibold text-rose-800">
+                                    Opravdu tuto poznámku smazat?
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setNoteDeleteConfirmId(null)}
+                                    disabled={deletingNoteId === note.id}
+                                    className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white disabled:opacity-50"
+                                  >
+                                    Zrušit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteNote(note.id)}
+                                    disabled={deletingNoteId === note.id}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                                  >
+                                    {deletingNoteId === note.id && (
+                                      <Spinner className="h-3.5 w-3.5 border-rose-300 border-t-white" />
+                                    )}
+                                    Smazat
+                                  </button>
+                                </div>
+                              )}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </section>
