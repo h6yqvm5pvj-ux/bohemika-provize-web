@@ -88,13 +88,17 @@ export function parseMailboxAttachmentCleanupCandidate(
   const messageId = normalizeText(row.messageId);
   if (!MAILBOX_MESSAGE_ID_RE.test(messageId)) return null;
 
-  const participantEmails = [row.senderEmail, row.recipientEmail]
+  const rawParticipantEmails = Array.isArray(row.participantEmails)
+    ? row.participantEmails
+    : [row.senderEmail, row.recipientEmail];
+  const participantEmails = rawParticipantEmails
     .map(normalizeEmail)
     .filter((email) => email.length <= 320 && EMAIL_RE.test(email));
   const uniqueParticipantEmails = [...new Set(participantEmails)];
   const normalizedOwnerEmail = normalizeEmail(mailboxOwnerEmail);
   if (
-    uniqueParticipantEmails.length !== 2 ||
+    uniqueParticipantEmails.length < 2 ||
+    uniqueParticipantEmails.length > 12 ||
     !uniqueParticipantEmails.includes(normalizedOwnerEmail)
   ) {
     return null;

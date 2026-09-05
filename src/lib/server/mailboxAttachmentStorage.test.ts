@@ -78,6 +78,28 @@ describe("mailbox attachment storage cleanup", () => {
     ).toBe(false);
   });
 
+  it("podporuje bezpečný úklid příloh skupinové zprávy", () => {
+    const candidate = parseMailboxAttachmentCleanupCandidate(
+      {
+        messageId: MESSAGE_ID,
+        participantEmails: [
+          "sender@example.com",
+          "first@example.com",
+          "second@example.com",
+        ],
+        attachments: [{ path: OBJECT_PATH }],
+      },
+      "second@example.com"
+    );
+
+    expect(candidate?.participantEmails).toEqual([
+      "sender@example.com",
+      "first@example.com",
+      "second@example.com",
+    ]);
+    expect(candidate?.storageObjects).toHaveLength(1);
+  });
+
   it("maže pouze deduplikované objekty z povoleného bucketu", async () => {
     const deleteFile = vi.fn().mockResolvedValue(undefined);
     const file = vi.fn(() => ({ delete: deleteFile }));

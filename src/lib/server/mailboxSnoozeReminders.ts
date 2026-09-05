@@ -27,6 +27,8 @@ type ClaimedMailboxReminder = {
   body: string;
   deepLink: string;
   snoozedUntilMs: number;
+  kind: "snooze" | "reply";
+  conversationId: string;
 };
 
 type ReminderPushResult = {
@@ -155,8 +157,76 @@ const parseReminderDoc = (
     body,
     deepLink: buildMailboxReminderDeepLink(messageId, data.deepLink),
     snoozedUntilMs,
+    kind: "snooze",
+    conversationId: "",
   };
 };
+
+const parseReplyReminderDoc = (
+  ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>,
+  data: Record<string, unknown>,
+  nowMs: number
+): ClaimedMailboxReminder | null => {
+  const recipientEmail = recipientEmailFromMailboxRef(ref);
+  if (!recipientEmail) return null;
+  const metadata = isPlainObject(data.metadata) ? data.metadata : null;
+  if (normalizeText(metadata?.mailboxDirection) !== "sent") return null;
+  const replyReminderAtMs =
+    (typeof data.replyReminderAtMs === "number" && Number.isFinite(data.replyReminderAtMs)
+      ? Math.round(data.replyReminderAtMs)
+      : null) ?? toMillis(data.replyReminderAt);
+  if (!replyReminderAtMs || replyReminderAtMs > nowMs) return null;
+  const sentAtMs =
+    toMillis(data.replyReminderSentAtMs) ?? toMillis(data.replyReminderSentAt);
+  const skippedAtMs =
+    toMillis(data.replyReminderSkippedAtMs) ?? toMillis(data.replyReminderSkippedAt);
+  if (
+    (sentAtMs && sentAtMs >= replyReminderAtMs) ||
+    (skippedAtMs && skippedAtMs >= replyReminderAtMs)
+  ) return null;
+  const counterpartName = normalizeText(metadata?.groupName) ||
+    normalizeText(metadata?.recipientName) ||
+    "adresáta";
+  return {
+    ref,
+    messageId: ref.id,
+    recipientEmail,
+    type: normalizeText(data.type) || "direct_message",
+    title: clampText(`Bez odpovědi: ${counterpartName}`, 90),
+    body: clampText(
+      normalizeText(data.body) || "Na tuto zprávu zatím nikdo neodpověděl.",
+      160
+    ),
+    deepLink: `/posta?messageId=${encodeURIComponent(ref.id)}&source=reply-reminder`,
+    snoozedUntilMs: replyReminderAtMs,
+    kind: "reply",
+    conversationId: normalizeText(metadata?.conversationId),
+  };
+};
+
+async function clearPendingReplyReminder(
+  reminder: ClaimedMailboxReminder
+): Promise<void> {
+  if (!adminDb || reminder.kind !== "reply" || !reminder.conversationId) return;
+  const conversationRef = adminDb
+    .collection("usersPrivate")
+    .doc(reminder.recipientEmail)
+    .collection("mailboxConversations")
+    .doc(reminder.conversationId);
+  await adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(conversationRef);
+    const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+    if (normalizeText(data.pendingReplyReminderMessageId) !== reminder.messageId) return;
+    transaction.set(
+      conversationRef,
+      {
+        pendingReplyReminderMessageId: FieldValue.delete(),
+        pendingReplyReminderAtMs: FieldValue.delete(),
+      },
+      { merge: true }
+    );
+  });
+}
 
 async function claimReminder(
   ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>,
@@ -169,23 +239,30 @@ async function claimReminder(
     if (!snap.exists) return null;
 
     const data = (snap.data() ?? {}) as Record<string, unknown>;
-    const claimed = parseReminderDoc(ref, data, nowMs);
+    const claimed =
+      parseReplyReminderDoc(ref, data, nowMs) ?? parseReminderDoc(ref, data, nowMs);
     if (!claimed) return null;
 
-    const processingAtMs =
-      toMillis(data.snoozeReminderProcessingAtMs) ??
-      toMillis(data.snoozeReminderProcessingAt);
+    const processingAtMs = claimed.kind === "reply"
+      ? toMillis(data.replyReminderProcessingAtMs) ?? toMillis(data.replyReminderProcessingAt)
+      : toMillis(data.snoozeReminderProcessingAtMs) ?? toMillis(data.snoozeReminderProcessingAt);
     if (processingAtMs && processingAtMs > nowMs - MAILBOX_REMINDER_CLAIM_TTL_MS) {
       return null;
     }
 
     transaction.set(
       ref,
-      {
-        snoozeReminderProcessingAtMs: nowMs,
-        snoozeReminderProcessingAt: FieldValue.serverTimestamp(),
-        snoozeReminderClaimId: claimId,
-      },
+      claimed.kind === "reply"
+        ? {
+            replyReminderProcessingAtMs: nowMs,
+            replyReminderProcessingAt: FieldValue.serverTimestamp(),
+            replyReminderClaimId: claimId,
+          }
+        : {
+            snoozeReminderProcessingAtMs: nowMs,
+            snoozeReminderProcessingAt: FieldValue.serverTimestamp(),
+            snoozeReminderClaimId: claimId,
+          },
       { merge: true }
     );
 
@@ -256,7 +333,7 @@ async function sendReminderPush(
         body,
       },
       data: {
-        type: "mailbox_snooze_reminder",
+        type: reminder.kind === "reply" ? "mailbox_reply_reminder" : "mailbox_snooze_reminder",
         messageType: reminder.type,
         messageId: reminder.messageId,
         deepLink: reminder.deepLink,
@@ -270,7 +347,7 @@ async function sendReminderPush(
         notification: {
           icon: "/pwa/icon-192.png",
           badge: "/pwa/icon-192.png",
-          tag: `bohemika-mailbox-snooze-${reminder.messageId}`,
+          tag: `bohemika-mailbox-${reminder.kind}-${reminder.messageId}`,
           requireInteraction: false,
         },
       },
@@ -289,6 +366,33 @@ async function markReminderDone(
   result: ReminderPushResult
 ): Promise<void> {
   const nowMs = Date.now();
+  if (reminder.kind === "reply") {
+    await reminder.ref.update({
+      replyReminderAtMs: FieldValue.delete(),
+      replyReminderAt: FieldValue.delete(),
+      replyReminderSetAtMs: FieldValue.delete(),
+      replyReminderSetAt: FieldValue.delete(),
+      replyReminderProcessingAtMs: FieldValue.delete(),
+      replyReminderProcessingAt: FieldValue.delete(),
+      replyReminderClaimId: FieldValue.delete(),
+      replyReminderLastError: FieldValue.delete(),
+      replyReminderLastStatus: status,
+      replyReminderLastSuccessCount: result.successCount,
+      replyReminderLastFailureCount: result.failureCount,
+      replyReminderAttemptCount: FieldValue.increment(1),
+      ...(status === "sent"
+        ? {
+            replyReminderSentAtMs: nowMs,
+            replyReminderSentAt: FieldValue.serverTimestamp(),
+          }
+        : {
+            replyReminderSkippedAtMs: nowMs,
+            replyReminderSkippedAt: FieldValue.serverTimestamp(),
+          }),
+    });
+    await clearPendingReplyReminder(reminder);
+    return;
+  }
   await reminder.ref.update({
     snoozedUntilMs: FieldValue.delete(),
     snoozedUntil: FieldValue.delete(),
@@ -324,6 +428,19 @@ async function markReminderFailed(
     error instanceof Error && error.message
       ? error.message
       : "Připomínací push se nepodařilo odeslat.";
+  if (reminder.kind === "reply") {
+    await reminder.ref.update({
+      replyReminderProcessingAtMs: FieldValue.delete(),
+      replyReminderProcessingAt: FieldValue.delete(),
+      replyReminderClaimId: FieldValue.delete(),
+      replyReminderLastStatus: "failed",
+      replyReminderLastError: clampText(message, 240),
+      replyReminderAttemptCount: FieldValue.increment(1),
+      replyReminderFailedAtMs: Date.now(),
+      replyReminderFailedAt: FieldValue.serverTimestamp(),
+    });
+    return;
+  }
   await reminder.ref.update({
     snoozeReminderProcessingAtMs: FieldValue.delete(),
     snoozeReminderProcessingAt: FieldValue.delete(),
@@ -342,14 +459,25 @@ async function loadDueReminderRefs(nowMs: number): Promise<DueReminderRefs> {
   }
 
   try {
-    const dueSnap = await adminDb
-      .collectionGroup("mailbox")
-      .where("snoozedUntilMs", "<=", nowMs)
-      .limit(MAILBOX_REMINDER_QUERY_LIMIT)
-      .get();
+    const [snoozedSnap, replySnap] = await Promise.all([
+      adminDb
+        .collectionGroup("mailbox")
+        .where("snoozedUntilMs", "<=", nowMs)
+        .limit(MAILBOX_REMINDER_QUERY_LIMIT)
+        .get(),
+      adminDb
+        .collectionGroup("mailbox")
+        .where("replyReminderAtMs", "<=", nowMs)
+        .limit(MAILBOX_REMINDER_QUERY_LIMIT)
+        .get(),
+    ]);
+    const refs = new Map<string, FirebaseFirestore.DocumentReference>();
+    [...snoozedSnap.docs, ...replySnap.docs].forEach((docSnap) =>
+      refs.set(docSnap.ref.path, docSnap.ref)
+    );
     return {
-      refs: dueSnap.docs.map((docSnap) => docSnap.ref),
-      checked: dueSnap.size,
+      refs: [...refs.values()].slice(0, MAILBOX_REMINDER_QUERY_LIMIT),
+      checked: snoozedSnap.size + replySnap.size,
       fallbackScan: false,
       scannedUsers: 0,
     };
@@ -372,13 +500,25 @@ async function loadDueReminderRefs(nowMs: number): Promise<DueReminderRefs> {
 
     const remaining = MAILBOX_REMINDER_QUERY_LIMIT - refs.length;
     const perUserLimit = Math.min(remaining, MAILBOX_REMINDER_FALLBACK_PER_USER_LIMIT);
-    const dueSnap = await userSnap.ref
-      .collection("mailbox")
-      .where("snoozedUntilMs", "<=", nowMs)
-      .limit(perUserLimit)
-      .get();
-    checked += dueSnap.size;
-    dueSnap.docs.forEach((docSnap) => refs.push(docSnap.ref));
+    const [snoozedSnap, replySnap] = await Promise.all([
+      userSnap.ref
+        .collection("mailbox")
+        .where("snoozedUntilMs", "<=", nowMs)
+        .limit(perUserLimit)
+        .get(),
+      userSnap.ref
+        .collection("mailbox")
+        .where("replyReminderAtMs", "<=", nowMs)
+        .limit(perUserLimit)
+        .get(),
+    ]);
+    checked += snoozedSnap.size + replySnap.size;
+    [...snoozedSnap.docs, ...replySnap.docs].forEach((docSnap) => {
+      if (
+        refs.length < MAILBOX_REMINDER_QUERY_LIMIT &&
+        !refs.some((ref) => ref.path === docSnap.ref.path)
+      ) refs.push(docSnap.ref);
+    });
   }
 
   return {

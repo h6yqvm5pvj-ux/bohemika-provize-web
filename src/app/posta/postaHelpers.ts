@@ -1,4 +1,4 @@
-import type { MailboxAttachment, MailboxItem } from "./postaTypes";
+import type { MailboxAttachment, MailboxItem, MailboxReaction } from "./postaTypes";
 
 export const formatDateTime = (ms: number | null): string => {
   if (!ms || !Number.isFinite(ms)) return "Neznámý čas";
@@ -10,6 +10,44 @@ export const formatDateTime = (ms: number | null): string => {
   } catch {
     return "Neznámý čas";
   }
+};
+
+const calendarDayKey = (date: Date): string =>
+  `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+
+export const mailboxMessageDayKey = (ms: number | null): string => {
+  if (!ms || !Number.isFinite(ms)) return "unknown";
+  return calendarDayKey(new Date(ms));
+};
+
+export const formatMailboxMessageDay = (
+  ms: number | null,
+  nowMs = Date.now()
+): string => {
+  if (!ms || !Number.isFinite(ms)) return "Neznámé datum";
+  const date = new Date(ms);
+  const today = new Date(nowMs);
+  if (calendarDayKey(date) === calendarDayKey(today)) return "Dnes";
+
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (calendarDayKey(date) === calendarDayKey(yesterday)) return "Včera";
+
+  return new Intl.DateTimeFormat("cs-CZ", {
+    day: "numeric",
+    month: "long",
+    ...(date.getFullYear() === today.getFullYear()
+      ? {}
+      : { year: "numeric" as const }),
+  }).format(date);
+};
+
+export const formatMailboxMessageTime = (ms: number | null): string => {
+  if (!ms || !Number.isFinite(ms)) return "Neznámý čas";
+  return new Intl.DateTimeFormat("cs-CZ", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(ms));
 };
 
 export const normalizeEmail = (value: unknown): string =>
@@ -47,6 +85,28 @@ export const parseMailboxAttachments = (item: MailboxItem): MailboxAttachment[] 
       return { id, name, url, contentType, sizeBytes } satisfies MailboxAttachment;
     })
     .filter((entry): entry is MailboxAttachment => entry !== null);
+};
+
+export const parseMailboxReactions = (item: MailboxItem): MailboxReaction[] => {
+  const raw = item.metadata?.reactions;
+  if (!Array.isArray(raw)) return [];
+  const byEmoji = new Map<string, Set<string>>();
+  raw.forEach((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+    const row = entry as Record<string, unknown>;
+    const emoji = typeof row.emoji === "string" ? row.emoji.trim() : "";
+    if (!emoji || !Array.isArray(row.userEmails)) return;
+    const users = byEmoji.get(emoji) ?? new Set<string>();
+    row.userEmails.forEach((value) => {
+      const email = normalizeEmail(value);
+      if (email) users.add(email);
+    });
+    if (users.size > 0) byEmoji.set(emoji, users);
+  });
+  return [...byEmoji.entries()].map(([emoji, userEmails]) => ({
+    emoji,
+    userEmails: [...userEmails],
+  }));
 };
 
 export const formatFileSize = (bytes: number): string => {

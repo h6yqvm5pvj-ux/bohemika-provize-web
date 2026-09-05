@@ -8,6 +8,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from "react";
+import Image from "next/image";
 import { FileText, ImageIcon, Loader2, Paperclip, Send, Smile, X } from "lucide-react";
 
 import { COMPOSE_FILES_MAX_COUNT, COMPOSE_MESSAGE_MAX_LEN, QUICK_EMOJIS } from "./postaConstants";
@@ -16,6 +17,32 @@ import { formatFileSize } from "./postaHelpers";
 const fileKey = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
 const isImageFile = (file: File) =>
   file.type.startsWith("image/") || /\.(avif|gif|jpe?g|png|webp)$/i.test(file.name);
+
+function LocalAttachmentThumbnail({ file }: { file: File }) {
+  const [previewUrl] = useState(() =>
+    isImageFile(file) && typeof URL.createObjectURL === "function"
+      ? URL.createObjectURL(file)
+      : ""
+  );
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  return (
+    <span className={`relative inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg ${isImageFile(file) ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"}`}>
+      {previewUrl ? (
+        <Image src={previewUrl} alt="" fill unoptimized sizes="36px" className="object-cover" />
+      ) : isImageFile(file) ? (
+        <ImageIcon className="h-3.5 w-3.5" />
+      ) : (
+        <FileText className="h-3.5 w-3.5" />
+      )}
+    </span>
+  );
+}
 
 export function MailboxChatComposer({
   recipientName,
@@ -121,9 +148,7 @@ export function MailboxChatComposer({
         <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
           {files.map((file) => (
             <span key={fileKey(file)} className="inline-flex max-w-[240px] shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5">
-              <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${isImageFile(file) ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"}`}>
-                {isImageFile(file) ? <ImageIcon className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
-              </span>
+              <LocalAttachmentThumbnail file={file} />
               <span className="min-w-0">
                 <span className="block truncate text-[11px] font-semibold text-slate-700">{file.name}</span>
                 <span className="block text-[10px] text-slate-500">{formatFileSize(file.size)}</span>
@@ -179,7 +204,7 @@ export function MailboxChatComposer({
           className="max-h-32 min-h-[40px] min-w-0 flex-1 resize-none bg-transparent px-1 py-2.5 text-sm leading-5 text-slate-900 outline-none placeholder:text-slate-400"
         />
 
-        <button type="button" onClick={onSend} disabled={!canSend} aria-label="Odeslat zprávu" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#312060_0%,#7c3aed_100%)] text-white shadow-[0_8px_18px_rgba(109,40,217,0.26)] transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-40">
+        <button type="button" onClick={onSend} disabled={!canSend} aria-label="Odeslat zprávu" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-700 !text-white shadow-[0_8px_18px_rgba(109,40,217,0.26)] transition hover:scale-[1.03] hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-40">
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>

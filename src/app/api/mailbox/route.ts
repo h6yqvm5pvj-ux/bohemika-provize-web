@@ -1,4 +1,4 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
@@ -27,6 +27,10 @@ const MAILBOX_DELETE_RATE_LIMIT_WINDOW_MS = 60_000;
 
 const MAILBOX_LIST_DEFAULT_LIMIT = 60;
 const MAILBOX_LIST_MAX_LIMIT = 180;
+const MAILBOX_THREAD_DEFAULT_LIMIT = 30;
+const MAILBOX_THREAD_MAX_LIMIT = 60;
+const MAILBOX_THREAD_SCAN_BATCH_SIZE = 120;
+const MAILBOX_THREAD_MAX_SCAN_BATCHES = 10;
 const MAILBOX_MARK_MAX_IDS = 200;
 const MAILBOX_MARK_ALL_BATCH_SIZE = 250;
 const MAILBOX_SNOOZE_MAX_MS = 90 * 24 * 60 * 60 * 1000;
@@ -76,6 +80,29 @@ const parseLimit = (value: string | null): number => {
   if (!Number.isFinite(parsed)) return MAILBOX_LIST_DEFAULT_LIMIT;
   const safe = Math.floor(parsed);
   return Math.min(MAILBOX_LIST_MAX_LIMIT, Math.max(1, safe));
+};
+
+const parseThreadLimit = (value: string | null): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return MAILBOX_THREAD_DEFAULT_LIMIT;
+  return Math.min(MAILBOX_THREAD_MAX_LIMIT, Math.max(1, Math.floor(parsed)));
+};
+
+const parseThreadCursor = (
+  createdAtValue: string | null,
+  idValue: string | null
+): { createdAtMs: number; id: string } | null => {
+  const createdAtMs = Number(createdAtValue);
+  const id = normalizeText(idValue);
+  if (!Number.isFinite(createdAtMs) || createdAtMs <= 0 || !id || id.includes("/")) {
+    return null;
+  }
+  return { createdAtMs: Math.round(createdAtMs), id: id.slice(0, 240) };
+};
+
+const parseConversationId = (value: unknown): string => {
+  const id = normalizeText(value);
+  return /^(?:dm|group)_[A-Za-z0-9_-]{10,100}$/.test(id) ? id : "";
 };
 
 const parseIds = (value: unknown): string[] => {
@@ -159,6 +186,18 @@ const parseMailboxDoc = (
     (typeof data.archivedAtMs === "number" && Number.isFinite(data.archivedAtMs)
       ? Math.round(data.archivedAtMs)
       : null) ?? toMillis(data.archivedAt);
+  const pinnedAtMs =
+    (typeof data.pinnedAtMs === "number" && Number.isFinite(data.pinnedAtMs)
+      ? Math.round(data.pinnedAtMs)
+      : null) ?? toMillis(data.pinnedAt);
+  const replyReminderAtMs =
+    (typeof data.replyReminderAtMs === "number" && Number.isFinite(data.replyReminderAtMs)
+      ? Math.round(data.replyReminderAtMs)
+      : null) ?? toMillis(data.replyReminderAt);
+  const replyReminderSetAtMs =
+    (typeof data.replyReminderSetAtMs === "number" && Number.isFinite(data.replyReminderSetAtMs)
+      ? Math.round(data.replyReminderSetAtMs)
+      : null) ?? toMillis(data.replyReminderSetAt);
 
   const metadataRaw = data.metadata;
   const metadata =
@@ -230,7 +269,108 @@ const parseMailboxDoc = (
     snoozedUntilMs,
     snoozedAtMs,
     archivedAtMs,
+    pinnedAtMs,
+    replyReminderAtMs,
+    replyReminderSetAtMs,
     metadata: normalizedMetadata,
+  };
+};
+
+const conversationIdFromMailboxData = (data: Record<string, unknown>): string => {
+  if (normalizeText(data.type) !== "direct_message") return "";
+  const metadataRaw = data.metadata;
+  if (!metadataRaw || typeof metadataRaw !== "object" || Array.isArray(metadataRaw)) return "";
+  const metadata = metadataRaw as Record<string, unknown>;
+  const stored = parseConversationId(metadata.conversationId);
+  if (stored) return stored;
+  if (metadata.tipsterTip === true || metadata.groupConversation === true) return "";
+  const senderEmail = normalizeMailboxEmail(metadata.senderEmail);
+  const recipientEmail = normalizeMailboxEmail(metadata.recipientEmail);
+  if (!senderEmail || !recipientEmail || senderEmail === recipientEmail) return "";
+  try {
+    return mailboxConversationId(senderEmail, recipientEmail);
+  } catch {
+    return "";
+  }
+};
+
+const loadMailboxConversationPage = async ({
+  email,
+  conversationId,
+  limit,
+  cursor,
+}: {
+  email: string;
+  conversationId: string;
+  limit: number;
+  cursor: { createdAtMs: number; id: string } | null;
+}) => {
+  let scanCursor = cursor;
+  const matches: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[] = [];
+  let exhausted = false;
+
+  for (
+    let scanIndex = 0;
+    scanIndex < MAILBOX_THREAD_MAX_SCAN_BATCHES && matches.length < limit;
+    scanIndex += 1
+  ) {
+    let query = getMailboxCollection(email)
+      .orderBy("createdAtMs", "desc")
+      .orderBy(FieldPath.documentId(), "desc")
+      .limit(MAILBOX_THREAD_SCAN_BATCH_SIZE);
+    if (scanCursor) {
+      query = query.startAfter(scanCursor.createdAtMs, scanCursor.id);
+    }
+    const snapshot = await query.get();
+    if (snapshot.empty) {
+      exhausted = true;
+      break;
+    }
+
+    for (const document of snapshot.docs) {
+      const data = (document.data() ?? {}) as Record<string, unknown>;
+      scanCursor = {
+        createdAtMs:
+          typeof data.createdAtMs === "number" && Number.isFinite(data.createdAtMs)
+            ? Math.round(data.createdAtMs)
+            : 0,
+        id: document.id,
+      };
+      if (conversationIdFromMailboxData(data) === conversationId) matches.push(document);
+      if (matches.length >= limit) break;
+    }
+
+    if (matches.length >= limit) break;
+    if (snapshot.size < MAILBOX_THREAD_SCAN_BATCH_SIZE) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  if (!cursor) {
+    const pinnedSnapshot = await getMailboxCollection(email)
+      .where("pinnedAtMs", ">", 0)
+      .limit(100)
+      .get();
+    const knownIds = new Set(matches.map((document) => document.id));
+    pinnedSnapshot.docs.forEach((document) => {
+      if (
+        !knownIds.has(document.id) &&
+        conversationIdFromMailboxData(
+          (document.data() ?? {}) as Record<string, unknown>
+        ) === conversationId
+      ) {
+        matches.push(document);
+      }
+    });
+  }
+
+  return {
+    items: matches
+      .map((document) => parseMailboxDoc(document))
+      .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0)),
+    hasMore: !exhausted && Boolean(scanCursor),
+    nextCursor: !exhausted && scanCursor ? scanCursor : null,
   };
 };
 
@@ -241,6 +381,7 @@ type MailboxReadReceiptCandidate = {
   messageId: string;
   senderEmail: string;
   pairedMailboxId: string;
+  groupConversation: boolean;
 };
 
 const normalizeMailboxEmail = (value: unknown): string =>
@@ -259,8 +400,16 @@ const readReceiptCandidateFromSnapshot = (
   }
   const metadata = metadataRaw as Record<string, unknown>;
   if (normalizeText(metadata.mailboxDirection) !== "received") return null;
+  const groupConversation = metadata.groupConversation === true;
   const storedRecipientEmail = normalizeMailboxEmail(metadata.recipientEmail);
-  if (storedRecipientEmail && storedRecipientEmail !== recipientEmail) return null;
+  const participantEmails = groupConversation && Array.isArray(metadata.participantEmails)
+    ? metadata.participantEmails.map(normalizeMailboxEmail).filter(Boolean)
+    : [];
+  if (
+    groupConversation
+      ? !participantEmails.includes(recipientEmail)
+      : storedRecipientEmail && storedRecipientEmail !== recipientEmail
+  ) return null;
   const senderEmail = normalizeMailboxEmail(metadata.senderEmail);
   const messageId = normalizeText(metadata.messageId);
   if (!senderEmail || senderEmail === recipientEmail || !messageId) return null;
@@ -268,6 +417,7 @@ const readReceiptCandidateFromSnapshot = (
     messageId,
     senderEmail,
     pairedMailboxId: normalizeText(metadata.pairedMailboxId),
+    groupConversation,
   };
 };
 
@@ -288,6 +438,12 @@ const propagateMailboxReadReceipts = async (
 
   const targetSnapshots = await Promise.all(
     candidates.map(async (candidate) => {
+      if (candidate.groupConversation) {
+        const directSnapshot = await getMailboxCollection(candidate.senderEmail)
+          .doc(candidate.messageId)
+          .get();
+        return directSnapshot.exists ? [directSnapshot] : [];
+      }
       if (candidate.pairedMailboxId) {
         const directSnapshot = await getMailboxCollection(candidate.senderEmail)
           .doc(candidate.pairedMailboxId)
@@ -302,7 +458,10 @@ const propagateMailboxReadReceipts = async (
     })
   );
 
-  const targetRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+  const targetRefs = new Map<
+    string,
+    { ref: FirebaseFirestore.DocumentReference; groupConversation: boolean }
+  >();
   targetSnapshots.forEach((snapshots, candidateIndex) => {
     const candidate = candidates[candidateIndex];
     if (!candidate) return;
@@ -313,21 +472,44 @@ const propagateMailboxReadReceipts = async (
       const metadata = metadataRaw as Record<string, unknown>;
       if (normalizeText(metadata.messageId) !== candidate.messageId) return;
       if (normalizeText(metadata.mailboxDirection) !== "sent") return;
-      if (normalizeMailboxEmail(metadata.recipientEmail) !== recipientEmail) return;
-      const existingReadAtMs = toMillis(metadata.recipientReadAtMs);
-      if (existingReadAtMs) return;
-      targetRefs.set(snapshot.ref.path, snapshot.ref);
+      if (candidate.groupConversation) {
+        const participantEmails = Array.isArray(metadata.participantEmails)
+          ? metadata.participantEmails.map(normalizeMailboxEmail).filter(Boolean)
+          : [];
+        if (!participantEmails.includes(recipientEmail)) return;
+        const readByEmails = Array.isArray(metadata.readByEmails)
+          ? metadata.readByEmails.map(normalizeMailboxEmail).filter(Boolean)
+          : [];
+        if (readByEmails.includes(recipientEmail)) return;
+      } else {
+        if (normalizeMailboxEmail(metadata.recipientEmail) !== recipientEmail) return;
+        const existingReadAtMs = toMillis(metadata.recipientReadAtMs);
+        if (existingReadAtMs) return;
+      }
+      targetRefs.set(snapshot.ref.path, {
+        ref: snapshot.ref,
+        groupConversation: candidate.groupConversation,
+      });
     });
   });
 
   const refs = [...targetRefs.values()];
   for (let offset = 0; offset < refs.length; offset += 400) {
     const batch = adminDb.batch();
-    refs.slice(offset, offset + 400).forEach((ref) => {
-      batch.update(ref, {
-        "metadata.recipientReadAtMs": readAtMs,
-        "metadata.recipientReadAt": FieldValue.serverTimestamp(),
-      });
+    refs.slice(offset, offset + 400).forEach(({ ref, groupConversation }) => {
+      batch.update(
+        ref,
+        groupConversation
+          ? {
+              "metadata.readByEmails": FieldValue.arrayUnion(recipientEmail),
+              "metadata.groupReadUpdatedAtMs": readAtMs,
+              "metadata.groupReadUpdatedAt": FieldValue.serverTimestamp(),
+            }
+          : {
+              "metadata.recipientReadAtMs": readAtMs,
+              "metadata.recipientReadAt": FieldValue.serverTimestamp(),
+            }
+      );
     });
     await batch.commit();
   }
@@ -442,12 +624,41 @@ export async function GET(req: NextRequest) {
 
   try {
     const countOnly = req.nextUrl.searchParams.get("countOnly") === "1";
-    const limit = parseLimit(req.nextUrl.searchParams.get("limit"));
+    const conversationId = parseConversationId(
+      req.nextUrl.searchParams.get("conversationId")
+    );
+    const limit = conversationId
+      ? parseThreadLimit(req.nextUrl.searchParams.get("limit"))
+      : parseLimit(req.nextUrl.searchParams.get("limit"));
 
     const unreadCount = await getUnreadCount(ctx.email);
     if (countOnly) {
       return withRateLimitHeaders(
         NextResponse.json({ ok: true, unreadCount }),
+        ctx
+      );
+    }
+
+    if (req.nextUrl.searchParams.has("conversationId") && !conversationId) {
+      return withRateLimitHeaders(
+        NextResponse.json({ ok: false, error: "Neplatná konverzace." }, { status: 400 }),
+        ctx
+      );
+    }
+
+    if (conversationId) {
+      const cursor = parseThreadCursor(
+        req.nextUrl.searchParams.get("cursorMs"),
+        req.nextUrl.searchParams.get("cursorId")
+      );
+      const page = await loadMailboxConversationPage({
+        email: ctx.email,
+        conversationId,
+        limit,
+        cursor,
+      });
+      return withRateLimitHeaders(
+        NextResponse.json({ ok: true, unreadCount, ...page }),
         ctx
       );
     }

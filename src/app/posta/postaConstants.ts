@@ -16,3 +16,5 @@ export const QUICK_EMOJIS = [
   "📎",
   "💬",
 ];
+
+export const MESSAGE_REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮", "🙏"] as const;

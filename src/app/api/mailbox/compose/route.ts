@@ -28,6 +28,8 @@ export const dynamic = "force-dynamic";
 const MAILBOX_COMPOSE_RATE_LIMIT = 40;
 const MAILBOX_COMPOSE_RATE_LIMIT_WINDOW_MS = 60_000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CLIENT_REQUEST_ID_RE = /^[A-Za-z0-9_-]{16,100}$/;
+const GROUP_CONVERSATION_ID_RE = /^group_[A-Za-z0-9_-]{10,100}$/;
 
 const SUBJECT_MAX_LEN = 160;
 const MESSAGE_MAX_LEN = 4000;
@@ -41,6 +43,8 @@ const TIP_FIELD_LABEL_MAX_LEN = 90;
 const TIP_FIELD_VALUE_MAX_LEN = 1200;
 const MAILBOX_PUSH_MAX_TOKENS_PER_USER = 8;
 const MAILBOX_PUSH_MAX_TOKENS_PER_MULTICAST = 500;
+const GROUP_MAX_PARTICIPANTS = 12;
+const GROUP_NAME_MAX_LEN = 80;
 
 type MailboxAttachment = {
   id: string;
@@ -71,6 +75,24 @@ const normalizeEmail = (value: unknown): string =>
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const parseRecipientEmails = (form: FormData): string[] => {
+  const rawJson = normalizeText(form.get("recipientEmailsJson"));
+  const candidates: unknown[] = [];
+  if (rawJson) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawJson);
+    } catch {
+      throw new Error("Seznam příjemců není platný.");
+    }
+    if (!Array.isArray(parsed)) throw new Error("Seznam příjemců není platný.");
+    candidates.push(...parsed);
+  } else {
+    candidates.push(form.get("recipientEmail"));
+  }
+  return [...new Set(candidates.map(normalizeEmail).filter(Boolean))];
+};
 
 const parseClientMetadata = (value: unknown): Record<string, unknown> => {
   const raw = normalizeText(value);
@@ -465,6 +487,307 @@ const resolveSenderName = async (senderEmail: string, senderUid: string): Promis
   return nameFromEmail(senderEmail);
 };
 
+async function composeGroupMessage({
+  req,
+  senderEmail,
+  senderUid,
+  recipientEmails,
+  requestedConversationId,
+  requestedGroupName,
+  subject,
+  messageText,
+  clientRequestId,
+  files,
+}: {
+  req: NextRequest;
+  senderEmail: string;
+  senderUid: string;
+  recipientEmails: string[];
+  requestedConversationId: string;
+  requestedGroupName: string;
+  subject: string;
+  messageText: string;
+  clientRequestId: string;
+  files: PreparedSafeUserAttachmentFile[];
+}) {
+  if (!adminDb) throw new Error("Firebase Admin není nakonfigurován.");
+  if (recipientEmails.length < 2) throw new Error("Skupina vyžaduje alespoň dva příjemce.");
+
+  const loadedRecipients = await Promise.all(
+    recipientEmails.map((email) => loadUserByEmail(email))
+  );
+  if (loadedRecipients.some((recipient) => recipient === null)) {
+    throw new Error("Některý příjemce nebyl v systému nalezen.");
+  }
+  const recipients = loadedRecipients.filter(
+    (recipient): recipient is { email: string; name: string } => recipient !== null
+  );
+  const senderName = await resolveSenderName(senderEmail, senderUid);
+  const participants = [{ email: senderEmail, name: senderName }, ...recipients];
+  const participantEmails = participants.map((participant) => participant.email);
+  let conversationId = requestedConversationId;
+  let groupName = requestedGroupName || subject;
+  let groupOwnerEmail = senderEmail;
+
+  if (conversationId) {
+    if (!GROUP_CONVERSATION_ID_RE.test(conversationId)) {
+      throw new Error("Neplatná skupinová konverzace.");
+    }
+    const conversationSnapshot = await adminDb
+      .collection("usersPrivate")
+      .doc(senderEmail)
+      .collection("mailboxConversations")
+      .doc(conversationId)
+      .get();
+    const conversationData = (conversationSnapshot.data() ?? {}) as Record<string, unknown>;
+    if (conversationData.active === false) {
+      throw new Error("Už nejsi členem této skupiny.");
+    }
+    const storedParticipantEmails = Array.isArray(conversationData.participantEmails)
+      ? conversationData.participantEmails.map(normalizeEmail).filter(Boolean)
+      : [];
+    const storedParticipants = [...storedParticipantEmails].sort();
+    const requestedParticipants = [...participantEmails].sort();
+    if (
+      !conversationSnapshot.exists ||
+      storedParticipants.length !== requestedParticipants.length ||
+      storedParticipants.some((email, index) => email !== requestedParticipants[index])
+    ) {
+      throw new Error("Účastníci skupinové konverzace nesouhlasí.");
+    }
+    groupName = normalizeText(conversationData.groupName) || groupName;
+    groupOwnerEmail =
+      normalizeEmail(conversationData.groupOwnerEmail) ||
+      normalizeEmail(conversationData.createdByEmail) ||
+      storedParticipantEmails[0] ||
+      senderEmail;
+  } else {
+    conversationId = `group_${randomUUID()}`;
+  }
+  groupName = groupName.slice(0, GROUP_NAME_MAX_LEN) || "Skupinová konverzace";
+
+  const messageId = clientRequestId || randomUUID();
+  const senderMailbox = adminDb
+    .collection("usersPrivate")
+    .doc(senderEmail)
+    .collection("mailbox");
+  const existingSenderSnapshot = clientRequestId
+    ? await senderMailbox.doc(messageId).get()
+    : null;
+  if (existingSenderSnapshot?.exists) {
+    const existingData = (existingSenderSnapshot.data() ?? {}) as Record<string, unknown>;
+    const metadata = isPlainObject(existingData.metadata) ? existingData.metadata : {};
+    const storedRecipients = Array.isArray(metadata.recipientEmails)
+      ? metadata.recipientEmails.map(normalizeEmail).filter(Boolean).sort()
+      : [];
+    const requestedRecipients = [...recipientEmails].sort();
+    if (
+      storedRecipients.length !== requestedRecipients.length ||
+      storedRecipients.some((email, index) => email !== requestedRecipients[index])
+    ) {
+      throw new Error("Tento požadavek už byl použit pro jiné příjemce.");
+    }
+    const storedAttachments = Array.isArray(metadata.attachments) ? metadata.attachments : [];
+    return {
+      ok: true,
+      recipientEmail: recipients[0]?.email,
+      recipientName: recipients[0]?.name,
+      recipientEmails,
+      groupName: normalizeText(metadata.groupName) || groupName,
+      attachments: storedAttachments.length,
+      attachmentItems: toPublicAttachments(storedAttachments as MailboxAttachment[]),
+      messageId: normalizeText(metadata.messageId) || messageId,
+      recipientMailboxId: messageId,
+      senderMailboxId: existingSenderSnapshot.id,
+      conversationId: normalizeText(metadata.conversationId) || conversationId,
+      deliveredAtMs:
+        typeof metadata.deliveredAtMs === "number" && Number.isFinite(metadata.deliveredAtMs)
+          ? metadata.deliveredAtMs
+          : Date.now(),
+    };
+  }
+
+  let attachments: MailboxAttachment[] = [];
+  let committed = false;
+  try {
+    attachments = await uploadAttachmentsToStorage({
+      messageId,
+      files,
+      uploaderEmail: senderEmail,
+    });
+    const publicAttachments = toPublicAttachments(attachments);
+    const encryptedContent = encryptMailboxJson(
+      { subject, messageText },
+      `message:${messageId}`
+    );
+    const createdAtMs = Date.now();
+    const mailboxRefs = new Map(
+      participants.map((participant) => [
+        participant.email,
+        adminDb!
+          .collection("usersPrivate")
+          .doc(participant.email)
+          .collection("mailbox")
+          .doc(messageId),
+      ])
+    );
+    const recipientConversationSnapshots = await Promise.all(
+      recipients.map(async (recipient) => {
+        const ref = adminDb!
+          .collection("usersPrivate")
+          .doc(recipient.email)
+          .collection("mailboxConversations")
+          .doc(conversationId);
+        return { recipient, ref, snapshot: await ref.get() };
+      })
+    );
+    const commonMetadata = {
+      messageId,
+      ...(clientRequestId ? { clientRequestId } : {}),
+      conversationId,
+      groupConversation: true,
+      groupName,
+      groupOwnerEmail,
+      senderEmail,
+      senderName,
+      recipientEmail: recipients[0]?.email ?? "",
+      recipientName: recipients[0]?.name ?? "",
+      recipientEmails,
+      participants,
+      participantEmails,
+      attachmentCount: attachments.length,
+      attachments,
+      deliveredAtMs: createdAtMs,
+      encryptedContentVersion: encryptedContent.version,
+    };
+    const batch = adminDb.batch();
+    participants.forEach((participant) => {
+      const senderCopy = participant.email === senderEmail;
+      batch.set(mailboxRefs.get(participant.email)!, {
+        recipientEmail: participant.email,
+        type: "direct_message",
+        title: "Šifrovaná zpráva",
+        body: "Nová šifrovaná zpráva.",
+        encryptedContent,
+        deepLink: "/posta",
+        read: senderCopy,
+        readAtMs: senderCopy ? createdAtMs : null,
+        readAt: senderCopy ? FieldValue.serverTimestamp() : null,
+        createdAtMs,
+        createdAt: FieldValue.serverTimestamp(),
+        metadata: {
+          ...commonMetadata,
+          mailboxOwnerEmail: participant.email,
+          mailboxDirection: senderCopy ? "sent" : "received",
+        },
+      });
+      batch.set(
+        adminDb!
+          .collection("usersPrivate")
+          .doc(participant.email)
+          .collection("mailboxConversations")
+          .doc(conversationId),
+        {
+          conversationId,
+          groupConversation: true,
+          groupName,
+          groupOwnerEmail,
+          participants,
+          participantEmails,
+          active: true,
+          ...(requestedConversationId
+            ? {}
+            : {
+                createdByEmail: senderEmail,
+                createdAtMs,
+                createdAt: FieldValue.serverTimestamp(),
+              }),
+          lastMessageId: messageId,
+          lastMessageAtMs: createdAtMs,
+          lastMessageAt: FieldValue.serverTimestamp(),
+          lastSenderEmail: senderEmail,
+        },
+        { merge: true }
+      );
+    });
+    recipientConversationSnapshots.forEach(({ recipient, ref, snapshot }) => {
+      const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+      const pendingMessageId = normalizeText(data.pendingReplyReminderMessageId);
+      if (!pendingMessageId || pendingMessageId.includes("/")) return;
+      batch.set(
+        adminDb!
+          .collection("usersPrivate")
+          .doc(recipient.email)
+          .collection("mailbox")
+          .doc(pendingMessageId),
+        {
+          replyReminderAtMs: FieldValue.delete(),
+          replyReminderAt: FieldValue.delete(),
+          replyReminderSetAtMs: FieldValue.delete(),
+          replyReminderSetAt: FieldValue.delete(),
+          replyReminderResolvedAtMs: createdAtMs,
+          replyReminderResolvedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      batch.set(
+        ref,
+        {
+          pendingReplyReminderMessageId: FieldValue.delete(),
+          pendingReplyReminderAtMs: FieldValue.delete(),
+        },
+        { merge: true }
+      );
+    });
+    await batch.commit();
+    committed = true;
+
+    const pushResults = await Promise.allSettled(
+      recipientConversationSnapshots
+        .filter(({ snapshot }) => {
+          const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+          return data.active !== false && data.muted !== true;
+        })
+        .map(({ recipient }) =>
+          sendDirectMessagePushNotification({
+            req,
+            recipientEmail: recipient.email,
+            recipientMessageId: messageId,
+            senderEmail,
+            senderName,
+            subject,
+          })
+        )
+    );
+    pushResults.forEach((result) => {
+      if (result.status === "rejected") {
+        console.warn("Mailbox group push notification failed:", result.reason);
+      }
+    });
+    return {
+      ok: true,
+      recipientEmail: recipients[0]?.email,
+      recipientName: recipients[0]?.name,
+      recipientEmails,
+      groupName,
+      attachments: attachments.length,
+      attachmentItems: publicAttachments,
+      messageId,
+      recipientMailboxId: messageId,
+      senderMailboxId: messageId,
+      conversationId,
+      deliveredAtMs: createdAtMs,
+    };
+  } catch (error) {
+    if (!committed && attachments.length > 0) {
+      await deleteMailboxStorageObjects(
+        attachments.map(({ path, bucketName }) => ({ messageId, path, bucketName }))
+      ).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const guard = await requireAuthedRateLimited(req, {
     namespace: "api:mailbox:compose:post",
@@ -502,9 +825,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const recipientEmail = normalizeEmail(form.get("recipientEmail"));
+  let recipientEmails: string[];
+  try {
+    recipientEmails = parseRecipientEmails(form);
+  } catch (error) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: error instanceof Error ? error.message : "Neplatní příjemci." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  const recipientEmail = recipientEmails[0] ?? "";
+  const requestedConversationId = normalizeText(form.get("conversationId"));
+  const requestedGroupName = normalizeText(form.get("groupName")).slice(0, GROUP_NAME_MAX_LEN);
   const subject = normalizeText(form.get("subject")).slice(0, SUBJECT_MAX_LEN);
   const messageText = normalizeText(form.get("text")).slice(0, MESSAGE_MAX_LEN);
+  const clientRequestId = normalizeText(form.get("clientRequestId"));
+  if (clientRequestId && !CLIENT_REQUEST_ID_RE.test(clientRequestId)) {
+    return withRateLimitHeaders(
+      NextResponse.json({ ok: false, error: "Neplatný identifikátor požadavku." }, { status: 400 }),
+      ctx
+    );
+  }
   let clientMetadata: Record<string, unknown>;
   try {
     clientMetadata = parseClientMetadata(form.get("metadataJson"));
@@ -538,13 +882,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!recipientEmail || !EMAIL_RE.test(recipientEmail)) {
+  if (
+    recipientEmails.length === 0 ||
+    recipientEmails.some((email) => !EMAIL_RE.test(email)) ||
+    recipientEmails.length >= GROUP_MAX_PARTICIPANTS
+  ) {
     return withRateLimitHeaders(
-      NextResponse.json({ ok: false, error: "Vyber platného příjemce." }, { status: 400 }),
+      NextResponse.json(
+        { ok: false, error: `Vyber 1 až ${GROUP_MAX_PARTICIPANTS - 1} platných příjemců.` },
+        { status: 400 }
+      ),
       ctx
     );
   }
-  if (recipientEmail === ctx.email) {
+  if (recipientEmails.includes(ctx.email)) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Zprávu není možné poslat sobě." },
@@ -562,7 +913,11 @@ export async function POST(req: NextRequest) {
         normalizeEmail(senderSetup.profile?.managerEmail),
       ].filter(Boolean)
     );
-    if (clientMetadata.tipsterTip !== true || !allowedRecipients.has(recipientEmail)) {
+    if (
+      clientMetadata.tipsterTip !== true ||
+      recipientEmails.length !== 1 ||
+      !allowedRecipients.has(recipientEmails[0] ?? "")
+    ) {
       return withRateLimitHeaders(
         NextResponse.json(
           {
@@ -672,6 +1027,41 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const groupRequest =
+    recipientEmails.length > 1 || GROUP_CONVERSATION_ID_RE.test(requestedConversationId);
+  if (groupRequest) {
+    try {
+      const payload = await composeGroupMessage({
+        req,
+        senderEmail: ctx.email,
+        senderUid: ctx.uid,
+        recipientEmails,
+        requestedConversationId,
+        requestedGroupName,
+        subject,
+        messageText,
+        clientRequestId,
+        files: preparedFiles,
+      });
+      return withRateLimitHeaders(NextResponse.json(payload), ctx);
+    } catch (error) {
+      console.error("POST /api/mailbox/compose group failed", error);
+      return withRateLimitHeaders(
+        NextResponse.json(
+          {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Skupinovou zprávu se nepodařilo odeslat.",
+          },
+          { status: 400 }
+        ),
+        ctx
+      );
+    }
+  }
+
   try {
     const recipient = await loadUserByEmail(recipientEmail);
     if (!recipient) {
@@ -685,8 +1075,62 @@ export async function POST(req: NextRequest) {
     }
 
     const senderName = await resolveSenderName(ctx.email, ctx.uid);
+    if (clientRequestId) {
+      const existingSenderSnapshot = await adminDb
+        .collection("usersPrivate")
+        .doc(ctx.email)
+        .collection("mailbox")
+        .doc(clientRequestId)
+        .get();
+      if (existingSenderSnapshot.exists) {
+        const existingData = (existingSenderSnapshot.data() ?? {}) as Record<string, unknown>;
+        const existingMetadataRaw = existingData.metadata;
+        const existingMetadata =
+          existingMetadataRaw &&
+          typeof existingMetadataRaw === "object" &&
+          !Array.isArray(existingMetadataRaw)
+            ? (existingMetadataRaw as Record<string, unknown>)
+            : {};
+        const storedRecipientEmail = normalizeEmail(existingMetadata.recipientEmail);
+        if (storedRecipientEmail && storedRecipientEmail !== recipient.email) {
+          return withRateLimitHeaders(
+            NextResponse.json(
+              { ok: false, error: "Tento požadavek už byl použit pro jiného příjemce." },
+              { status: 409 }
+            ),
+            ctx
+          );
+        }
+        const storedAttachments = Array.isArray(existingMetadata.attachments)
+          ? existingMetadata.attachments
+          : [];
+        const storedDeliveredAtMs =
+          typeof existingMetadata.deliveredAtMs === "number" &&
+          Number.isFinite(existingMetadata.deliveredAtMs)
+            ? existingMetadata.deliveredAtMs
+            : typeof existingData.createdAtMs === "number" && Number.isFinite(existingData.createdAtMs)
+              ? existingData.createdAtMs
+              : Date.now();
+        return withRateLimitHeaders(
+          NextResponse.json({
+            ok: true,
+            recipientEmail: recipient.email,
+            recipientName: recipient.name,
+            attachments: storedAttachments.length,
+            attachmentItems: toPublicAttachments(storedAttachments as MailboxAttachment[]),
+            messageId: normalizeText(existingMetadata.messageId) || clientRequestId,
+            recipientMailboxId: normalizeText(existingMetadata.pairedMailboxId) || clientRequestId,
+            senderMailboxId: existingSenderSnapshot.id,
+            tipId: normalizeText(existingMetadata.tipId) || null,
+            conversationId: normalizeText(existingMetadata.conversationId) || null,
+            deliveredAtMs: storedDeliveredAtMs,
+          }),
+          ctx
+        );
+      }
+    }
     const createdAtMs = Date.now();
-    const messageId = randomUUID();
+    const messageId = clientRequestId || randomUUID();
     uploadedMessageId = messageId;
     const isTipsterTip = clientMetadata.tipsterTip === true;
     const conversationId = isTipsterTip
@@ -707,16 +1151,20 @@ export async function POST(req: NextRequest) {
     const publicAttachments = toPublicAttachments(attachments);
     const messagePreview = messageText || "Příloha bez textu.";
 
-    const recipientRef = adminDb
+    const recipientMailbox = adminDb
       .collection("usersPrivate")
       .doc(recipient.email)
-      .collection("mailbox")
-      .doc();
-    const senderRef = adminDb
+      .collection("mailbox");
+    const senderMailbox = adminDb
       .collection("usersPrivate")
       .doc(ctx.email)
-      .collection("mailbox")
-      .doc();
+      .collection("mailbox");
+    const recipientRef = clientRequestId
+      ? recipientMailbox.doc(clientRequestId)
+      : recipientMailbox.doc();
+    const senderRef = clientRequestId
+      ? senderMailbox.doc(clientRequestId)
+      : senderMailbox.doc();
     const recipientConversationRef = conversationId
       ? adminDb
           .collection("usersPrivate")
@@ -746,6 +1194,7 @@ export async function POST(req: NextRequest) {
     const commonMetadata = {
       ...clientMetadata,
       messageId,
+      ...(clientRequestId ? { clientRequestId } : {}),
       ...(conversationId ? { conversationId } : {}),
       senderEmail: ctx.email,
       senderName,
@@ -754,10 +1203,15 @@ export async function POST(req: NextRequest) {
       tipId: tipRef?.id ?? null,
       attachmentCount: attachments.length,
       attachments,
+      deliveredAtMs: createdAtMs,
       ...(isTipsterTip
         ? { messageText }
         : { encryptedContentVersion: encryptedContent?.version ?? 1 }),
     };
+
+    const recipientConversationSnapshot = recipientConversationRef
+      ? await recipientConversationRef.get()
+      : null;
 
     const batch = adminDb.batch();
     batch.set(recipientRef, {
@@ -823,6 +1277,33 @@ export async function POST(req: NextRequest) {
         },
         { merge: true }
       );
+      const recipientConversationData =
+        (recipientConversationSnapshot?.data() ?? {}) as Record<string, unknown>;
+      const pendingReplyReminderMessageId = normalizeText(
+        recipientConversationData.pendingReplyReminderMessageId
+      );
+      if (pendingReplyReminderMessageId && !pendingReplyReminderMessageId.includes("/")) {
+        batch.set(
+          recipientMailbox.doc(pendingReplyReminderMessageId),
+          {
+            replyReminderAtMs: FieldValue.delete(),
+            replyReminderAt: FieldValue.delete(),
+            replyReminderSetAtMs: FieldValue.delete(),
+            replyReminderSetAt: FieldValue.delete(),
+            replyReminderResolvedAtMs: createdAtMs,
+            replyReminderResolvedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        batch.set(
+          recipientConversationRef,
+          {
+            pendingReplyReminderMessageId: FieldValue.delete(),
+            pendingReplyReminderAtMs: FieldValue.delete(),
+          },
+          { merge: true }
+        );
+      }
     }
     if (tipRef) {
       batch.set(tipRef, {
@@ -873,6 +1354,7 @@ export async function POST(req: NextRequest) {
         senderMailboxId: senderRef.id,
         tipId: tipRef?.id ?? null,
         conversationId,
+        deliveredAtMs: createdAtMs,
       }),
       ctx
     );

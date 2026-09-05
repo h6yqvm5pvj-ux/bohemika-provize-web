@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent,
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -30,9 +31,13 @@ import {
   RefreshCw,
   Search,
   Send,
+  Settings2,
   Smile,
   SquarePen,
   Trash2,
+  UsersRound,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 
@@ -45,11 +50,13 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { MailboxChatComposer } from "./MailboxChatComposer";
 import { MailboxChatThread } from "./MailboxChatThread";
+import { MailboxGroupManager } from "./MailboxGroupManager";
 import {
   COMPOSE_FILES_MAX_COUNT,
   COMPOSE_MESSAGE_MAX_LEN,
   COMPOSE_SUBJECT_MAX_LEN,
   EMAIL_RE,
+  MESSAGE_REACTION_EMOJIS,
   QUICK_EMOJIS,
 } from "./postaConstants";
 import {
@@ -71,9 +78,13 @@ import { buildMailboxPreviewHtml } from "./postaPreview";
 import { formatMailboxPresence } from "./postaPresence";
 import type {
   MailboxActivityResponse,
+  MailboxAttachment,
   MailboxComposeResponse,
+  MailboxConversationResponse,
   MailboxDeleteResponse,
   MailboxItem,
+  MailboxMessageMutationResponse,
+  MailboxPageCursor,
   MailboxPatchResponse,
   MailboxResponse,
   MailboxSharedPreviewResponse,
@@ -116,6 +127,74 @@ type MailboxChatListRow =
       unreadCount: number;
       totalMessageCount: number;
     };
+
+type QuickReplyAttempt = {
+  clientId: string;
+  clientRequestId: string;
+  conversationKey: string;
+  recipient: RecipientOption;
+  recipients?: RecipientOption[];
+  groupName?: string;
+  conversationId?: string;
+  participants?: RecipientOption[];
+  subject: string;
+  text: string;
+  files: File[];
+  createdAtMs: number;
+  status: "sending" | "delivered" | "failed";
+  error?: string;
+  messageId?: string;
+  deliveredAtMs?: number;
+};
+
+type ConversationHistoryState = {
+  key: string;
+  messages: MailboxItem[];
+  nextCursor: MailboxPageCursor | null;
+  hasMore: boolean;
+  loading: boolean;
+  loadingOlder: boolean;
+  error: string | null;
+};
+
+const createClientRequestId = (): string => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (token) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = token === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
+const isLocalImageFile = (file: File): boolean =>
+  file.type.startsWith("image/") || /\.(avif|gif|jpe?g|png|webp)$/i.test(file.name);
+
+const localFileKey = (file: File): string =>
+  `${file.name}-${file.size}-${file.lastModified}`;
+
+function LocalFileThumbnail({ file }: { file: File }) {
+  const [previewUrl] = useState(() =>
+    isLocalImageFile(file) && typeof URL.createObjectURL === "function"
+      ? URL.createObjectURL(file)
+      : ""
+  );
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  return (
+    <span className="relative inline-flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-violet-100 text-violet-700">
+      {previewUrl ? (
+        <Image src={previewUrl} alt="" fill unoptimized sizes="48px" className="object-cover" />
+      ) : (
+        <FileText className="h-5 w-5" />
+      )}
+    </span>
+  );
+}
 
 function MailboxActionMenu({
   children,
@@ -189,12 +268,52 @@ const mailboxMetadataText = (item: MailboxItem, key: string): string => {
   return typeof value === "string" ? value.trim() : "";
 };
 
+const weeklyTeamReportHref = (
+  item: MailboxItem,
+  embedded = false
+): string => {
+  const params = new URLSearchParams({ source: "weekly-report" });
+  const reportId = mailboxMetadataText(item, "reportId");
+  if (reportId) params.set("reportId", reportId);
+  if (embedded) params.set("embed", "mailbox");
+  return `/muj-tym/tydenni-report?${params.toString()}`;
+};
+
 const isStandardDirectMailboxItem = (item: MailboxItem): boolean =>
   item.type === "direct_message" && !isTipsterTipMailboxItem(item);
+
+const isGroupMailboxItem = (item: MailboxItem): boolean =>
+  item.metadata?.groupConversation === true;
+
+const mailboxParticipants = (item: MailboxItem): RecipientOption[] => {
+  const raw = item.metadata?.participants;
+  if (!Array.isArray(raw)) return [];
+  const byEmail = new Map<string, RecipientOption>();
+  raw.forEach((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+    const row = entry as Record<string, unknown>;
+    const email = normalizeEmail(row.email);
+    if (!email || !EMAIL_RE.test(email)) return;
+    const name =
+      typeof row.name === "string" && row.name.trim()
+        ? row.name.trim()
+        : nameFromEmail(email);
+    byEmail.set(email, { email, name });
+  });
+  return [...byEmail.values()];
+};
 
 const directMessageCounterpart = (
   item: MailboxItem
 ): { email: string; name: string } => {
+  if (isGroupMailboxItem(item)) {
+    const participants = mailboxParticipants(item);
+    const groupName = mailboxMetadataText(item, "groupName");
+    return {
+      email: pluralCount(participants.length, "účastník", "účastníci", "účastníků"),
+      name: groupName || "Skupinová konverzace",
+    };
+  }
   const sent = isSentMailboxItem(item);
   const email = normalizeEmail(
     sent ? item.metadata?.recipientEmail : item.metadata?.senderEmail
@@ -439,18 +558,27 @@ export default function PostaPage() {
   const [composeSubmitting, setComposeSubmitting] = useState(false);
   const [composeErrorText, setComposeErrorText] = useState<string | null>(null);
   const [composeRecipientQuery, setComposeRecipientQuery] = useState("");
-  const [composeSelectedRecipient, setComposeSelectedRecipient] = useState<RecipientOption | null>(null);
+  const [composeSelectedRecipients, setComposeSelectedRecipients] = useState<RecipientOption[]>([]);
+  const [composeGroupName, setComposeGroupName] = useState("");
   const [composeSuggestions, setComposeSuggestions] = useState<RecipientOption[]>([]);
   const [composeSuggestionsLoading, setComposeSuggestionsLoading] = useState(false);
   const [composeSubject, setComposeSubject] = useState("");
   const [composeMessageText, setComposeMessageText] = useState("");
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
+  const [composeDragActive, setComposeDragActive] = useState(false);
   const [quickReplyText, setQuickReplyText] = useState("");
   const [quickReplyFiles, setQuickReplyFiles] = useState<File[]>([]);
   const [quickReplySubmitting, setQuickReplySubmitting] = useState(false);
   const [quickReplyErrorText, setQuickReplyErrorText] = useState<string | null>(null);
   const [quickReplySuccessText, setQuickReplySuccessText] = useState<string | null>(null);
+  const [quickReplyAttempts, setQuickReplyAttempts] = useState<QuickReplyAttempt[]>([]);
   const [conversationUnreadStartId, setConversationUnreadStartId] = useState<string | null>(null);
+  const [conversationHistory, setConversationHistory] = useState<ConversationHistoryState | null>(null);
+  const [groupConversation, setGroupConversation] = useState<MailboxConversationResponse | null>(null);
+  const [groupConversationLoading, setGroupConversationLoading] = useState(false);
+  const [groupConversationError, setGroupConversationError] = useState<string | null>(null);
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
+  const [groupMuteSaving, setGroupMuteSaving] = useState(false);
   const [chatActivity, setChatActivity] = useState<{
     lastActiveAtMs: number | null;
     typing: boolean;
@@ -461,6 +589,10 @@ export default function PostaPage() {
   const openedDeepLinkMessageIdRef = useRef<string>("");
   const pendingDeepLinkMessageIdRef = useRef<string>("");
   const mailboxLoadSequenceRef = useRef(0);
+  const conversationLoadSequenceRef = useRef(0);
+  const groupConversationLoadSequenceRef = useRef(0);
+  const attachmentBlobUrlCacheRef = useRef(new Map<string, string>());
+  const attachmentLoadPromiseRef = useRef(new Map<string, Promise<string>>());
   const typingLastSentAtRef = useRef(0);
   const typingWasActiveRef = useRef(false);
   const typingIdleTimerRef = useRef<number | null>(null);
@@ -498,7 +630,18 @@ export default function PostaPage() {
     setPreviewModalOpen(false);
     setSharedExportPreviewHtml(null);
     setComposeModalOpen(false);
+    setComposeDragActive(false);
+    setQuickReplyAttempts([]);
     setConversationUnreadStartId(null);
+    setConversationHistory(null);
+    setGroupConversation(null);
+    setGroupConversationLoading(false);
+    setGroupConversationError(null);
+    setGroupManagerOpen(false);
+    conversationLoadSequenceRef.current += 1;
+    groupConversationLoadSequenceRef.current += 1;
+    attachmentBlobUrlCacheRef.current.clear();
+    attachmentLoadPromiseRef.current.clear();
     setChatActivity({ lastActiveAtMs: null, typing: false, checkedAtMs: 0 });
     previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewAttachmentBlobUrlsRef.current = [];
@@ -547,6 +690,85 @@ export default function PostaPage() {
       effectiveUserEmail(auth.currentUser?.email) === effectiveEmail,
     [effectiveEmail]
   );
+
+  const loadConversationHistoryPage = useCallback(async ({
+    conversationId,
+    key,
+    cursor = null,
+    older = false,
+  }: {
+    conversationId: string;
+    key: string;
+    cursor?: MailboxPageCursor | null;
+    older?: boolean;
+  }) => {
+    const currentUser = auth.currentUser;
+    const scopeEmail = effectiveEmail;
+    if (!currentUser || !scopeEmail) return;
+    const sequence = older
+      ? conversationLoadSequenceRef.current
+      : ++conversationLoadSequenceRef.current;
+    setConversationHistory((current) => ({
+      key,
+      messages: current?.key === key ? current.messages : [],
+      nextCursor: older && current?.key === key ? current.nextCursor : null,
+      hasMore: older && current?.key === key ? current.hasMore : true,
+      loading: !older,
+      loadingOlder: older,
+      error: null,
+    }));
+
+    const params = new URLSearchParams({ conversationId, limit: "30" });
+    if (cursor) {
+      params.set("cursorMs", String(cursor.createdAtMs));
+      params.set("cursorId", cursor.id);
+    }
+
+    try {
+      const payload = await fetchAuthedJsonOrThrow<MailboxResponse>(
+        currentUser,
+        `/api/mailbox?${params.toString()}`,
+        { method: "GET" }
+      );
+      if (
+        sequence !== conversationLoadSequenceRef.current ||
+        effectiveUserEmail(auth.currentUser?.email) !== scopeEmail
+      ) return;
+      const pageItems = Array.isArray(payload.items) ? payload.items : [];
+      setConversationHistory((current) => {
+        if (!current || current.key !== key) return current;
+        const merged = new Map<string, MailboxItem>();
+        if (older) current.messages.forEach((message) => merged.set(message.id, message));
+        pageItems.forEach((message) => merged.set(message.id, message));
+        return {
+          key,
+          messages: [...merged.values()].sort(
+            (a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0)
+          ),
+          nextCursor: payload.nextCursor ?? null,
+          hasMore: payload.hasMore === true,
+          loading: false,
+          loadingOlder: false,
+          error: null,
+        };
+      });
+    } catch (historyError) {
+      if (sequence !== conversationLoadSequenceRef.current) return;
+      setConversationHistory((current) =>
+        current?.key === key
+          ? {
+              ...current,
+              loading: false,
+              loadingOlder: false,
+              error:
+                historyError instanceof Error
+                  ? historyError.message
+                  : "Historii se nepodařilo načíst.",
+            }
+          : current
+      );
+    }
+  }, [effectiveEmail]);
 
   useEffect(() => {
     if (!authReady || !user) {
@@ -782,17 +1004,136 @@ export default function PostaPage() {
     setSelectedIds((prev) => prev.filter((id) => items.some((item) => item.id === id)));
   }, [items]);
 
+  const activeConversationKey =
+    previewItem && isStandardDirectMailboxItem(previewItem)
+      ? directMessageConversationKey(previewItem)
+      : "";
+  const activeConversationId = previewItem
+    ? mailboxMetadataText(previewItem, "conversationId")
+    : "";
+  const activeConversationIsGroup = Boolean(
+    previewItem && isStandardDirectMailboxItem(previewItem) && isGroupMailboxItem(previewItem)
+  );
+
+  useEffect(() => {
+    if (!activeConversationKey || !activeConversationId) {
+      setConversationHistory(null);
+      return;
+    }
+    void loadConversationHistoryPage({
+      conversationId: activeConversationId,
+      key: activeConversationKey,
+    });
+  }, [activeConversationId, activeConversationKey, loadConversationHistoryPage]);
+
+  const syncGroupConversation = useCallback((payload: MailboxConversationResponse) => {
+    const conversationId = payload.conversationId ?? "";
+    if (!conversationId) return;
+    setGroupConversation(payload);
+    const metadataUpdate = {
+      groupName: payload.groupName ?? "Skupinová konverzace",
+      groupOwnerEmail: payload.ownerEmail ?? "",
+      participants: payload.participants ?? [],
+      participantEmails: payload.participantEmails ?? [],
+      groupMuted: payload.muted === true,
+      groupActive: payload.active !== false,
+    };
+    const updateItem = (item: MailboxItem): MailboxItem =>
+      mailboxMetadataText(item, "conversationId") === conversationId
+        ? { ...item, metadata: { ...(item.metadata ?? {}), ...metadataUpdate } }
+        : item;
+    setItems((current) => current.map(updateItem));
+    setConversationHistory((current) =>
+      current ? { ...current, messages: current.messages.map(updateItem) } : current
+    );
+    setPreviewItem((current) => (current ? updateItem(current) : current));
+  }, []);
+
+  useEffect(() => {
+    if (!user || !activeConversationId || !activeConversationIsGroup) {
+      groupConversationLoadSequenceRef.current += 1;
+      setGroupConversation(null);
+      setGroupConversationLoading(false);
+      setGroupConversationError(null);
+      setGroupManagerOpen(false);
+      return;
+    }
+    const sequence = ++groupConversationLoadSequenceRef.current;
+    setGroupConversation(null);
+    setGroupConversationLoading(true);
+    setGroupConversationError(null);
+    void fetchAuthedJsonOrThrow<MailboxConversationResponse>(
+      user,
+      `/api/mailbox/conversation?conversationId=${encodeURIComponent(activeConversationId)}`,
+      { method: "GET" }
+    )
+      .then((payload) => {
+        if (sequence !== groupConversationLoadSequenceRef.current) return;
+        syncGroupConversation(payload);
+      })
+      .catch((cause) => {
+        if (sequence !== groupConversationLoadSequenceRef.current) return;
+        setGroupConversationError(
+          cause instanceof Error ? cause.message : "Nastavení skupiny se nepodařilo načíst."
+        );
+      })
+      .finally(() => {
+        if (sequence === groupConversationLoadSequenceRef.current) {
+          setGroupConversationLoading(false);
+        }
+      });
+  }, [activeConversationId, activeConversationIsGroup, syncGroupConversation, user]);
+
   const selectedConversationMessages = useMemo(() => {
     if (!previewItem || !isStandardDirectMailboxItem(previewItem)) return [];
     const conversationKey = directMessageConversationKey(previewItem);
-    return items
-      .filter(
-        (item) =>
-          isStandardDirectMailboxItem(item) &&
-          directMessageConversationKey(item) === conversationKey
-      )
-      .sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0));
-  }, [items, previewItem]);
+    const merged = new Map<string, MailboxItem>();
+    const pagedHistoryActive = conversationHistory?.key === conversationKey;
+    const newestPagedMessageMs = pagedHistoryActive
+      ? conversationHistory.messages.reduce(
+          (latest, message) => Math.max(latest, message.createdAtMs ?? 0),
+          0
+        )
+      : 0;
+    if (pagedHistoryActive) {
+      conversationHistory.messages.forEach((message) => merged.set(message.id, message));
+    }
+    items.forEach((item) => {
+      if (
+        isStandardDirectMailboxItem(item) &&
+        directMessageConversationKey(item) === conversationKey &&
+        (!pagedHistoryActive ||
+          conversationHistory.loading ||
+          (item.createdAtMs ?? 0) >= newestPagedMessageMs)
+      ) {
+        merged.set(item.id, item);
+      }
+    });
+    return [...merged.values()].sort(
+      (a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0)
+    );
+  }, [conversationHistory, items, previewItem]);
+
+  const loadOlderConversationMessages = useCallback(async () => {
+    if (
+      !conversationHistory?.hasMore ||
+      conversationHistory.loadingOlder ||
+      !conversationHistory.nextCursor ||
+      !activeConversationId ||
+      !activeConversationKey
+    ) return;
+    await loadConversationHistoryPage({
+      conversationId: activeConversationId,
+      key: activeConversationKey,
+      cursor: conversationHistory.nextCursor,
+      older: true,
+    });
+  }, [
+    activeConversationId,
+    activeConversationKey,
+    conversationHistory,
+    loadConversationHistoryPage,
+  ]);
 
   const previewItemWithBlobAttachments = useMemo<MailboxItem | null>(() => {
     if (!previewItem) return null;
@@ -841,6 +1182,87 @@ export default function PostaPage() {
     [previewAttachmentBlobUrls, selectedConversationMessages]
   );
 
+  const chatThreadMessages = useMemo<MailboxItem[]>(() => {
+    if (!previewItem || !isStandardDirectMailboxItem(previewItem)) {
+      return selectedConversationMessagesWithBlobAttachments;
+    }
+    const conversationKey = directMessageConversationKey(previewItem);
+    const loadedMessageIds = new Set(
+      selectedConversationMessages.map((message) =>
+        mailboxMetadataText(message, "messageId")
+      )
+    );
+    const localMessages = quickReplyAttempts
+      .filter(
+        (attempt) =>
+          attempt.conversationKey === conversationKey &&
+          (!attempt.messageId || !loadedMessageIds.has(attempt.messageId))
+      )
+      .map<MailboxItem>((attempt) => ({
+        id: attempt.clientId,
+        type: "direct_message",
+        title: attempt.subject,
+        body: attempt.text || "Příloha bez textu.",
+        deepLink: "/posta",
+        read: true,
+        createdAtMs: attempt.createdAtMs,
+        readAtMs: attempt.createdAtMs,
+        metadata: {
+          mailboxDirection: "sent",
+          senderEmail: effectiveEmail,
+          senderName: user?.displayName || (effectiveEmail ? nameFromEmail(effectiveEmail) : "Ty"),
+          recipientEmail: attempt.recipient.email,
+          recipientName: attempt.recipient.name,
+          ...(attempt.recipients && attempt.recipients.length > 1
+            ? {
+                recipientEmails: attempt.recipients.map((recipient) => recipient.email),
+                participants: attempt.participants ?? attempt.recipients,
+                participantEmails: (attempt.participants ?? attempt.recipients).map(
+                  (participant) => participant.email
+                ),
+                groupConversation: true,
+                groupName: attempt.groupName || "Skupinová konverzace",
+              }
+            : {}),
+          ...(attempt.conversationId ? { conversationId: attempt.conversationId } : {}),
+          messageText: attempt.text,
+          ...(attempt.messageId ? { messageId: attempt.messageId } : {}),
+          ...(attempt.deliveredAtMs ? { deliveredAtMs: attempt.deliveredAtMs } : {}),
+        },
+        clientDeliveryStatus: attempt.status,
+        clientDeliveryError: attempt.error,
+        clientAttachments: attempt.files.map((file, index) => ({
+          id: `${attempt.clientId}-file-${index}`,
+          name: file.name,
+          contentType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        })),
+      }));
+    return [...selectedConversationMessagesWithBlobAttachments, ...localMessages].sort(
+      (a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0)
+    );
+  }, [
+    effectiveEmail,
+    previewItem,
+    quickReplyAttempts,
+    selectedConversationMessages,
+    selectedConversationMessagesWithBlobAttachments,
+    user?.displayName,
+  ]);
+
+  useEffect(() => {
+    const loadedMessageIds = new Set(
+      items.map((item) => mailboxMetadataText(item, "messageId")).filter(Boolean)
+    );
+    if (loadedMessageIds.size === 0) return;
+    setQuickReplyAttempts((current) => {
+      const next = current.filter(
+        (attempt) => !attempt.messageId || !loadedMessageIds.has(attempt.messageId)
+      );
+      return next.length === current.length ? current : next;
+    });
+  }, [items]);
+
   const mailboxPreviewHtml = useMemo(() => {
     if (!previewItemWithBlobAttachments) return null;
     if (previewItemWithBlobAttachments.type === "production_export_share" && sharedExportPreviewHtml) {
@@ -848,15 +1270,65 @@ export default function PostaPage() {
     }
     return buildMailboxPreviewHtml(previewItemWithBlobAttachments);
   }, [previewItemWithBlobAttachments, sharedExportPreviewHtml]);
+  const weeklyReportPreviewHref =
+    previewItem?.type === "weekly_team_report"
+      ? weeklyTeamReportHref(previewItem, true)
+      : null;
+
+  const loadChatAttachment = useCallback(async (
+    messageId: string,
+    attachment: MailboxAttachment
+  ): Promise<string> => {
+    if (!attachment.url.startsWith("/api/")) return attachment.url;
+    if (!user) throw new Error("Pro načtení přílohy se znovu přihlas.");
+    const cacheKey = `${messageId}:${attachment.id}`;
+    const cached = attachmentBlobUrlCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+    const pending = attachmentLoadPromiseRef.current.get(cacheKey);
+    if (pending) return pending;
+
+    const request = (async () => {
+      let token = await user.getIdToken();
+      let response = await fetch(attachment.url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401) {
+        token = await user.getIdToken(true);
+        response = await fetch(attachment.url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+      if (!response.ok) throw new Error("Přílohu se nepodařilo načíst.");
+      const objectUrl = URL.createObjectURL(await response.blob());
+      attachmentBlobUrlCacheRef.current.set(cacheKey, objectUrl);
+      previewAttachmentBlobUrlsRef.current.push(objectUrl);
+      setPreviewAttachmentBlobUrls((current) => ({
+        ...current,
+        [attachment.id]: objectUrl,
+      }));
+      return objectUrl;
+    })().finally(() => {
+      attachmentLoadPromiseRef.current.delete(cacheKey);
+    });
+    attachmentLoadPromiseRef.current.set(cacheKey, request);
+    return request;
+  }, [user]);
 
   useEffect(() => {
     previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewAttachmentBlobUrlsRef.current = [];
     setPreviewAttachmentBlobUrls({});
 
-    if (!previewItem || previewItem.type !== "direct_message" || !user) return undefined;
-    const attachmentItems =
-      selectedConversationMessages.length > 0 ? selectedConversationMessages : [previewItem];
+    attachmentBlobUrlCacheRef.current.clear();
+    attachmentLoadPromiseRef.current.clear();
+
+    if (
+      !previewItem ||
+      previewItem.type !== "direct_message" ||
+      isStandardDirectMailboxItem(previewItem) ||
+      !user
+    ) return undefined;
+    const attachmentItems = [previewItem];
     const attachmentMap = new Map(
       attachmentItems
         .flatMap((message) => parseMailboxAttachments(message))
@@ -914,28 +1386,53 @@ export default function PostaPage() {
         previewAttachmentBlobUrlsRef.current = [];
       }
     };
-  }, [previewItem, selectedConversationMessages, user]);
+  }, [previewItem, user]);
 
-  const quickReplyRecipient = useMemo<RecipientOption | null>(() => {
-    if (!previewItem || previewItem.type !== "direct_message") return null;
+  const quickReplyRecipients = useMemo<RecipientOption[]>(() => {
+    if (!previewItem || previewItem.type !== "direct_message") return [];
     if (isStandardDirectMailboxItem(previewItem)) {
+      if (isGroupMailboxItem(previewItem)) {
+        if (
+          groupConversation?.conversationId !== activeConversationId ||
+          groupConversation.active === false
+        ) return [];
+        return (groupConversation.participants ?? []).filter(
+          (participant) => participant.email !== effectiveEmail
+        );
+      }
       const counterpart = directMessageCounterpart(previewItem);
-      if (!counterpart.email || !EMAIL_RE.test(counterpart.email)) return null;
-      return counterpart;
+      if (!counterpart.email || !EMAIL_RE.test(counterpart.email)) return [];
+      return [counterpart];
     }
-    if (isSentMailboxItem(previewItem)) return null;
+    if (isSentMailboxItem(previewItem)) return [];
     const metadata = previewItem.metadata ?? {};
     const senderEmail = normalizeEmail(metadata.senderEmail);
-    if (!senderEmail || !EMAIL_RE.test(senderEmail)) return null;
+    if (!senderEmail || !EMAIL_RE.test(senderEmail)) return [];
     const senderName =
       typeof metadata.senderName === "string" && metadata.senderName.trim().length > 0
         ? metadata.senderName.trim()
         : nameFromEmail(senderEmail);
-    return {
+    return [{
       email: senderEmail,
       name: senderName,
-    };
-  }, [previewItem]);
+    }];
+  }, [activeConversationId, effectiveEmail, groupConversation, previewItem]);
+
+  const quickReplyRecipient = useMemo<RecipientOption | null>(() => {
+    if (quickReplyRecipients.length === 0 || !previewItem) return null;
+    if (isGroupMailboxItem(previewItem)) {
+      return {
+        email: quickReplyRecipients[0]!.email,
+        name:
+          groupConversation?.groupName ||
+          mailboxMetadataText(previewItem, "groupName") ||
+          `Skupina (${quickReplyRecipients.length + 1})`,
+      };
+    }
+    return quickReplyRecipients[0] ?? null;
+  }, [groupConversation?.groupName, previewItem, quickReplyRecipients]);
+
+  const quickReplyIsGroup = Boolean(previewItem && isGroupMailboxItem(previewItem));
 
   const quickReplyEnabled = Boolean(
     previewItem && isStandardDirectMailboxItem(previewItem) && quickReplyRecipient
@@ -943,7 +1440,7 @@ export default function PostaPage() {
 
   const updateTypingState = useCallback(
     (typing: boolean) => {
-      if (!user || !quickReplyRecipient || !quickReplyEnabled) return;
+      if (!user || !quickReplyRecipient || !quickReplyEnabled || quickReplyIsGroup) return;
       if (typingIdleTimerRef.current !== null) {
         window.clearTimeout(typingIdleTimerRef.current);
         typingIdleTimerRef.current = null;
@@ -972,11 +1469,11 @@ export default function PostaPage() {
         method: "POST",
         body: JSON.stringify({ email: quickReplyRecipient.email, typing }),
       }).catch(() => undefined);
-    }, [quickReplyEnabled, quickReplyRecipient, user]
+    }, [quickReplyEnabled, quickReplyIsGroup, quickReplyRecipient, user]
   );
 
   useEffect(() => {
-    if (!user || !quickReplyRecipient || !quickReplyEnabled) {
+    if (!user || !quickReplyRecipient || !quickReplyEnabled || quickReplyIsGroup) {
       setChatActivity({ lastActiveAtMs: null, typing: false, checkedAtMs: 0 });
       return;
     }
@@ -1012,7 +1509,7 @@ export default function PostaPage() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [quickReplyEnabled, quickReplyRecipient, user]);
+  }, [quickReplyEnabled, quickReplyIsGroup, quickReplyRecipient, user]);
 
   useEffect(() => {
     return () => {
@@ -1022,18 +1519,30 @@ export default function PostaPage() {
   }, [updateTypingState]);
 
   const chatPresence = useMemo(
-    () =>
-      formatMailboxPresence({
+    () => {
+      if (quickReplyIsGroup && previewItem) {
+        const count = groupConversation?.participants?.length ?? mailboxParticipants(previewItem).length;
+        return {
+          label: pluralCount(count, "účastník", "účastníci", "účastníků"),
+          online: false,
+          typing: false,
+        };
+      }
+      return formatMailboxPresence({
         lastActiveAtMs: chatActivity.lastActiveAtMs,
         nowMs: chatActivity.checkedAtMs || Date.now(),
         typing: chatActivity.typing,
-      }),
-    [chatActivity]
+      });
+    },
+    [chatActivity, groupConversation?.participants?.length, previewItem, quickReplyIsGroup]
   );
 
   const closePreviewModal = () => {
+    setGroupManagerOpen(false);
     previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     previewAttachmentBlobUrlsRef.current = [];
+    attachmentBlobUrlCacheRef.current.clear();
+    attachmentLoadPromiseRef.current.clear();
     setPreviewAttachmentBlobUrls({});
     setPreviewItem(null);
     setPreviewModalOpen(false);
@@ -1484,6 +1993,7 @@ export default function PostaPage() {
         directMessageConversationKey(previewItem) === row.key
     );
     const latestSent = isSentMailboxItem(latest);
+    const groupConversation = isGroupMailboxItem(latest);
     const archived = conversationItems.length > 0 && conversationItems.every(isMailboxArchived);
     const snoozed = conversationItems.length > 0 && conversationItems.every((item) => isMailboxSnoozed(item));
     const archiving = conversationIds.some((id) => archivingIds.includes(id));
@@ -1529,14 +2039,18 @@ export default function PostaPage() {
               ✓
             </span>
           ) : (
-            <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-white shadow-inner ring-1 ring-slate-200">
-              <Image
-                src="/icons/klient.webp"
-                alt="Ikona uživatele"
-                fill
-                sizes="44px"
-                className="object-cover"
-              />
+            <span className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200 ${groupConversation ? "bg-violet-100 text-violet-700" : "bg-white"}`}>
+              {groupConversation ? (
+                <UsersRound className="h-5 w-5" />
+              ) : (
+                <Image
+                  src="/icons/klient.webp"
+                  alt="Ikona uživatele"
+                  fill
+                  sizes="44px"
+                  className="object-cover"
+                />
+              )}
             </span>
           )}
 
@@ -1627,12 +2141,14 @@ export default function PostaPage() {
     setComposeModalOpen(true);
     setComposeErrorText(null);
     setComposeRecipientQuery("");
-    setComposeSelectedRecipient(null);
+    setComposeSelectedRecipients([]);
+    setComposeGroupName("");
     setComposeSuggestions([]);
     setComposeSuggestionsLoading(false);
     setComposeSubject("");
     setComposeMessageText("");
     setComposeFiles([]);
+    setComposeDragActive(false);
     if (composeFileInputRef.current) composeFileInputRef.current.value = "";
   };
 
@@ -1643,18 +2159,31 @@ export default function PostaPage() {
     setComposeErrorText(null);
     setComposeSuggestions([]);
     setComposeSuggestionsLoading(false);
-    setComposeSelectedRecipient(null);
+    setComposeSelectedRecipients([]);
+    setComposeGroupName("");
     setComposeRecipientQuery("");
     setComposeSubject("");
     setComposeMessageText("");
     setComposeFiles([]);
+    setComposeDragActive(false);
     if (composeFileInputRef.current) composeFileInputRef.current.value = "";
   };
 
   const handleSelectComposeSuggestion = (recipient: RecipientOption) => {
-    setComposeSelectedRecipient(recipient);
-    setComposeRecipientQuery(`${recipient.name} <${recipient.email}>`);
+    setComposeSelectedRecipients((current) =>
+      current.some((item) => item.email === recipient.email)
+        ? current
+        : [...current, recipient].slice(0, 11)
+    );
+    setComposeRecipientQuery("");
     setComposeSuggestions([]);
+    setComposeErrorText(null);
+  };
+
+  const removeComposeRecipient = (email: string) => {
+    setComposeSelectedRecipients((current) =>
+      current.filter((recipient) => recipient.email !== email)
+    );
     setComposeErrorText(null);
   };
 
@@ -1662,26 +2191,33 @@ export default function PostaPage() {
     setComposeMessageText((prev) => `${prev}${emoji}`);
   };
 
-  const handleComposeFilesChange = (list: FileList | null) => {
+  const handleComposeFilesChange = (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
-    const current = new Map(composeFiles.map((file) => [`${file.name}-${file.size}`, file]));
+    const current = new Map(composeFiles.map((file) => [localFileKey(file), file]));
     Array.from(list).forEach((file) => {
-      current.set(`${file.name}-${file.size}`, file);
+      current.set(localFileKey(file), file);
     });
     const merged = [...current.values()].slice(0, COMPOSE_FILES_MAX_COUNT);
     setComposeFiles(merged);
     if (composeFileInputRef.current) composeFileInputRef.current.value = "";
   };
 
+  const handleComposeDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setComposeDragActive(false);
+    if (composeSubmitting) return;
+    handleComposeFilesChange(Array.from(event.dataTransfer.files));
+  };
+
   const removeComposeFile = (targetKey: string) => {
-    setComposeFiles((prev) => prev.filter((file) => `${file.name}-${file.size}` !== targetKey));
+    setComposeFiles((prev) => prev.filter((file) => localFileKey(file) !== targetKey));
   };
 
   const handleQuickReplyFilesChange = (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
-    const current = new Map(quickReplyFiles.map((file) => [`${file.name}-${file.size}`, file]));
+    const current = new Map(quickReplyFiles.map((file) => [localFileKey(file), file]));
     Array.from(list).forEach((file) => {
-      current.set(`${file.name}-${file.size}`, file);
+      current.set(localFileKey(file), file);
     });
     setQuickReplyFiles([...current.values()].slice(0, COMPOSE_FILES_MAX_COUNT));
     setQuickReplyErrorText(null);
@@ -1689,13 +2225,87 @@ export default function PostaPage() {
   };
 
   const removeQuickReplyFile = (target: File | string) => {
-    const targetKey = typeof target === "string" ? target : `${target.name}-${target.size}`;
-    setQuickReplyFiles((prev) => prev.filter((file) => `${file.name}-${file.size}` !== targetKey));
+    const targetKey = typeof target === "string" ? target : localFileKey(target);
+    setQuickReplyFiles((prev) => prev.filter((file) => localFileKey(file) !== targetKey));
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
   };
 
-  const handleQuickReplySend = async () => {
+  const submitQuickReplyAttempt = async (attempt: QuickReplyAttempt) => {
+    if (!user || !mailboxScopeIsCurrent() || quickReplySubmitting) return;
+    const formData = new FormData();
+    formData.set("clientRequestId", attempt.clientRequestId);
+    const attemptRecipients = attempt.recipients ?? [attempt.recipient];
+    formData.set("recipientEmail", attempt.recipient.email);
+    if (attemptRecipients.length > 1) {
+      formData.set(
+        "recipientEmailsJson",
+        JSON.stringify(attemptRecipients.map((recipient) => recipient.email))
+      );
+      if (attempt.groupName) formData.set("groupName", attempt.groupName);
+      if (attempt.conversationId) formData.set("conversationId", attempt.conversationId);
+    }
+    formData.set("subject", attempt.subject);
+    formData.set("text", attempt.text);
+    attempt.files.forEach((file) => {
+      formData.append("files", file);
+    });
+
+    setQuickReplySubmitting(true);
+    setQuickReplyErrorText(null);
+    setQuickReplySuccessText(null);
+    setQuickReplyAttempts((current) =>
+      current.map((item) =>
+        item.clientId === attempt.clientId
+          ? { ...item, status: "sending", error: undefined }
+          : item
+      )
+    );
+    try {
+      const payload = await fetchAuthedJsonOrThrow<MailboxComposeResponse>(
+        user,
+        "/api/mailbox/compose",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+      if (!mailboxScopeIsCurrent()) return;
+      const deliveredAtMs =
+        typeof payload.deliveredAtMs === "number" && Number.isFinite(payload.deliveredAtMs)
+          ? payload.deliveredAtMs
+          : Date.now();
+      setQuickReplyAttempts((current) =>
+        current.map((item) =>
+          item.clientId === attempt.clientId
+            ? {
+                ...item,
+                status: "delivered",
+                error: undefined,
+                messageId: payload.messageId,
+                deliveredAtMs,
+              }
+            : item
+        )
+      );
+      setQuickReplySuccessText("Zpráva byla doručena.");
+      await loadMailbox({ silent: true });
+    } catch (err: any) {
+      const errorText = err?.message || "Zprávu se nepodařilo odeslat.";
+      setQuickReplyAttempts((current) =>
+        current.map((item) =>
+          item.clientId === attempt.clientId
+            ? { ...item, status: "failed", error: errorText }
+            : item
+        )
+      );
+      setQuickReplyErrorText("Zprávu se nepodařilo odeslat. Můžeš to zkusit znovu u bubliny.");
+    } finally {
+      setQuickReplySubmitting(false);
+    }
+  };
+
+  const handleQuickReplySend = () => {
     if (
       !user ||
       !previewItem ||
@@ -1713,47 +2323,286 @@ export default function PostaPage() {
       return;
     }
 
-    const formData = new FormData();
-    formData.set("recipientEmail", quickReplyRecipient.email);
-    formData.set("subject", toReplySubject(previewItem.title).slice(0, COMPOSE_SUBJECT_MAX_LEN));
-    formData.set("text", messageText.slice(0, COMPOSE_MESSAGE_MAX_LEN));
-    quickReplyFiles.forEach((file) => {
-      formData.append("files", file);
-    });
-
-    setQuickReplySubmitting(true);
+    const attempt: QuickReplyAttempt = {
+      clientId: `pending-${createClientRequestId()}`,
+      clientRequestId: createClientRequestId(),
+      conversationKey: directMessageConversationKey(previewItem),
+      recipient: quickReplyRecipient,
+      recipients: quickReplyRecipients,
+      groupName: quickReplyIsGroup
+        ? groupConversation?.groupName || mailboxMetadataText(previewItem, "groupName") || quickReplyRecipient.name
+        : undefined,
+      conversationId: mailboxMetadataText(previewItem, "conversationId") || undefined,
+      participants: quickReplyIsGroup
+        ? groupConversation?.participants ?? mailboxParticipants(previewItem)
+        : undefined,
+      subject: toReplySubject(previewItem.title).slice(0, COMPOSE_SUBJECT_MAX_LEN),
+      text: messageText.slice(0, COMPOSE_MESSAGE_MAX_LEN),
+      files: [...quickReplyFiles],
+      createdAtMs: Date.now(),
+      status: "sending",
+    };
+    setQuickReplyAttempts((current) => [...current, attempt]);
+    setQuickReplyText("");
+    setQuickReplyFiles([]);
     setQuickReplyErrorText(null);
     setQuickReplySuccessText(null);
+    updateTypingState(false);
+    void submitQuickReplyAttempt(attempt);
+  };
+
+  const retryQuickReply = (clientId: string) => {
+    const attempt = quickReplyAttempts.find((item) => item.clientId === clientId);
+    if (!attempt || attempt.status !== "failed") return;
+    void submitQuickReplyAttempt(attempt);
+  };
+
+  const handleToggleGroupMute = useCallback(async () => {
+    if (
+      !user ||
+      !activeConversationId ||
+      groupConversation?.conversationId !== activeConversationId ||
+      groupConversation.active === false ||
+      groupMuteSaving
+    ) return;
+    setGroupMuteSaving(true);
+    setGroupConversationError(null);
     try {
-      await fetchAuthedJsonOrThrow<MailboxComposeResponse>(user, "/api/mailbox/compose", {
-        method: "POST",
-        body: formData,
-      });
-      if (!mailboxScopeIsCurrent()) return;
-      setQuickReplyText("");
-      setQuickReplyFiles([]);
-      updateTypingState(false);
-      setQuickReplySuccessText("Zpráva byla odeslána.");
-      await loadMailbox({ silent: true });
-    } catch (err: any) {
-      setQuickReplyErrorText(err?.message || "Rychlou odpověď se nepodařilo odeslat.");
+      const payload = await fetchAuthedJsonOrThrow<MailboxConversationResponse>(
+        user,
+        "/api/mailbox/conversation",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: activeConversationId,
+            action: "mute",
+            muted: groupConversation.muted !== true,
+          }),
+        }
+      );
+      syncGroupConversation(payload);
+    } catch (cause) {
+      setGroupConversationError(
+        cause instanceof Error ? cause.message : "Ztlumení skupiny se nepodařilo změnit."
+      );
     } finally {
-      setQuickReplySubmitting(false);
+      setGroupMuteSaving(false);
     }
+  }, [
+    activeConversationId,
+    groupConversation,
+    groupMuteSaving,
+    syncGroupConversation,
+    user,
+  ]);
+
+  const handleMessageReaction = async (messageId: string, emoji: string) => {
+    if (!user || !mailboxScopeIsCurrent()) return;
+    const payload = await fetchAuthedJsonOrThrow<MailboxMessageMutationResponse>(
+      user,
+      "/api/mailbox/message",
+      {
+        method: "POST",
+        body: JSON.stringify({ id: messageId, emoji }),
+      }
+    );
+    const reactions = Array.isArray(payload.reactions) ? payload.reactions : [];
+    setItems((current) =>
+      current.map((item) =>
+        item.id === messageId
+          ? {
+              ...item,
+              metadata: { ...(item.metadata ?? {}), reactions },
+            }
+          : item
+      )
+    );
+    setConversationHistory((current) =>
+      current
+        ? {
+            ...current,
+            messages: current.messages.map((item) =>
+              item.id === messageId
+                ? { ...item, metadata: { ...(item.metadata ?? {}), reactions } }
+                : item
+            ),
+          }
+        : current
+    );
+    setPreviewItem((current) =>
+      current?.id === messageId
+        ? { ...current, metadata: { ...(current.metadata ?? {}), reactions } }
+        : current
+    );
+  };
+
+  const handleEditOwnMessage = async (messageId: string, nextText: string) => {
+    if (!user || !mailboxScopeIsCurrent()) return;
+    const payload = await fetchAuthedJsonOrThrow<MailboxMessageMutationResponse>(
+      user,
+      "/api/mailbox/message",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ id: messageId, text: nextText }),
+      }
+    );
+    const text = typeof payload.text === "string" ? payload.text : nextText.trim();
+    const editedAtMs =
+      typeof payload.editedAtMs === "number" && Number.isFinite(payload.editedAtMs)
+        ? payload.editedAtMs
+        : Date.now();
+    const updateItem = (item: MailboxItem): MailboxItem => ({
+      ...item,
+      body: text || "Příloha bez textu.",
+      metadata: {
+        ...(item.metadata ?? {}),
+        messageText: text,
+        editedAtMs,
+      },
+    });
+    setItems((current) =>
+      current.map((item) => item.id === messageId ? updateItem(item) : item)
+    );
+    setConversationHistory((current) =>
+      current
+        ? {
+            ...current,
+            messages: current.messages.map((item) =>
+              item.id === messageId ? updateItem(item) : item
+            ),
+          }
+        : current
+    );
+    setPreviewItem((current) =>
+      current?.id === messageId ? updateItem(current) : current
+    );
+  };
+
+  const handleDeleteOwnMessage = async (messageId: string) => {
+    if (!user || !mailboxScopeIsCurrent()) return;
+    const deletedMessage = items.find((item) => item.id === messageId) ?? null;
+    await fetchAuthedJsonOrThrow<MailboxMessageMutationResponse>(
+      user,
+      "/api/mailbox/message",
+      {
+        method: "DELETE",
+        body: JSON.stringify({ id: messageId }),
+      }
+    );
+    const remainingItems = items.filter((item) => item.id !== messageId);
+    setItems((current) => current.filter((item) => item.id !== messageId));
+    setConversationHistory((current) =>
+      current
+        ? {
+            ...current,
+            messages: current.messages.filter((item) => item.id !== messageId),
+          }
+        : current
+    );
+    setPreviewItem((current) => {
+      if (current?.id !== messageId || !deletedMessage) return current;
+      if (!isStandardDirectMailboxItem(deletedMessage)) return null;
+      const conversationKey = directMessageConversationKey(deletedMessage);
+      return remainingItems
+        .filter(
+          (item) =>
+            isStandardDirectMailboxItem(item) &&
+            directMessageConversationKey(item) === conversationKey
+        )
+        .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0))[0] ?? null;
+    });
+  };
+
+  const handleToggleMessagePin = async (messageId: string, pinned: boolean) => {
+    if (!user || !mailboxScopeIsCurrent()) return;
+    const payload = await fetchAuthedJsonOrThrow<MailboxMessageMutationResponse>(
+      user,
+      "/api/mailbox/message",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ id: messageId, action: "pin", pinned }),
+      }
+    );
+    const pinnedAtMs = pinned
+      ? typeof payload.pinnedAtMs === "number" && Number.isFinite(payload.pinnedAtMs)
+        ? payload.pinnedAtMs
+        : Date.now()
+      : null;
+    const update = (item: MailboxItem): MailboxItem => ({ ...item, pinnedAtMs });
+    setItems((current) =>
+      current.map((item) => item.id === messageId ? update(item) : item)
+    );
+    setConversationHistory((current) =>
+      current
+        ? {
+            ...current,
+            messages: current.messages.map((item) =>
+              item.id === messageId ? update(item) : item
+            ),
+          }
+        : current
+    );
+    setPreviewItem((current) => current?.id === messageId ? update(current) : current);
+  };
+
+  const handleSetMessageReminder = async (
+    messageId: string,
+    remindAtMs: number | null
+  ) => {
+    if (!user || !mailboxScopeIsCurrent()) return;
+    const payload = await fetchAuthedJsonOrThrow<MailboxMessageMutationResponse>(
+      user,
+      "/api/mailbox/message",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ id: messageId, action: "reminder", remindAtMs }),
+      }
+    );
+    const nextReminderAtMs =
+      typeof payload.replyReminderAtMs === "number" &&
+      Number.isFinite(payload.replyReminderAtMs)
+        ? payload.replyReminderAtMs
+        : null;
+    const nextSetAtMs =
+      typeof payload.replyReminderSetAtMs === "number" &&
+      Number.isFinite(payload.replyReminderSetAtMs)
+        ? payload.replyReminderSetAtMs
+        : null;
+    const update = (item: MailboxItem): MailboxItem => ({
+      ...item,
+      replyReminderAtMs: nextReminderAtMs,
+      replyReminderSetAtMs: nextSetAtMs,
+    });
+    setItems((current) =>
+      current.map((item) => item.id === messageId ? update(item) : item)
+    );
+    setConversationHistory((current) =>
+      current
+        ? {
+            ...current,
+            messages: current.messages.map((item) =>
+              item.id === messageId ? update(item) : item
+            ),
+          }
+        : current
+    );
+    setPreviewItem((current) => current?.id === messageId ? update(current) : current);
   };
 
   const handleComposeSend = async () => {
     if (!user || !mailboxScopeIsCurrent()) return;
 
-    let recipient = composeSelectedRecipient;
-    if (!recipient) {
+    let recipients = [...composeSelectedRecipients];
+    if (recipients.length === 0) {
       const exactEmail = normalizeEmail(composeRecipientQuery);
       if (exactEmail && EMAIL_RE.test(exactEmail)) {
-        recipient = composeSuggestions.find((option) => option.email === exactEmail) ?? null;
+        const exact = composeSuggestions.find((option) => option.email === exactEmail);
+        if (exact) recipients = [exact];
       }
     }
-    if (!recipient) {
-      setComposeErrorText("Vyber příjemce z našeptávače.");
+    if (recipients.length === 0) {
+      setComposeErrorText("Vyber alespoň jednoho příjemce z našeptávače.");
       return;
     }
 
@@ -1770,7 +2619,18 @@ export default function PostaPage() {
     }
 
     const formData = new FormData();
-    formData.set("recipientEmail", recipient.email);
+    formData.set("clientRequestId", createClientRequestId());
+    formData.set("recipientEmail", recipients[0]!.email);
+    if (recipients.length > 1) {
+      formData.set(
+        "recipientEmailsJson",
+        JSON.stringify(recipients.map((recipient) => recipient.email))
+      );
+      formData.set(
+        "groupName",
+        (composeGroupName.trim() || subject).slice(0, 80)
+      );
+    }
     formData.set("subject", subject.slice(0, COMPOSE_SUBJECT_MAX_LEN));
     formData.set("text", messageText.slice(0, COMPOSE_MESSAGE_MAX_LEN));
     composeFiles.forEach((file) => {
@@ -1825,13 +2685,14 @@ export default function PostaPage() {
     const openAsModal =
       typeof window !== "undefined" && window.matchMedia("(max-width: 1279px)").matches;
     if (item.type === "weekly_team_report") {
-      const reportId =
-        item.metadata && typeof item.metadata.reportId === "string"
-          ? item.metadata.reportId.trim()
-          : "";
-      const params = new URLSearchParams({ source: "weekly-report" });
-      if (reportId) params.set("reportId", reportId);
-      router.push(`/muj-tym/tydenni-report?${params.toString()}`);
+      if (openAsModal) {
+        router.push(weeklyTeamReportHref(item));
+        return;
+      }
+      setSharedExportPreviewHtml(null);
+      setSharedExportPreviewLoading(false);
+      setPreviewItem(item);
+      setPreviewModalOpen(false);
       return;
     }
     if (item.type === "direct_message") {
@@ -1944,6 +2805,11 @@ export default function PostaPage() {
         setQuickReplyErrorText(null);
         setQuickReplySuccessText(null);
         setQuickReplySubmitting(false);
+        previewAttachmentBlobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+        previewAttachmentBlobUrlsRef.current = [];
+        attachmentBlobUrlCacheRef.current.clear();
+        attachmentLoadPromiseRef.current.clear();
+        setPreviewAttachmentBlobUrls({});
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1960,7 +2826,8 @@ export default function PostaPage() {
         setComposeErrorText(null);
         setComposeSuggestions([]);
         setComposeSuggestionsLoading(false);
-        setComposeSelectedRecipient(null);
+        setComposeSelectedRecipients([]);
+        setComposeGroupName("");
         setComposeRecipientQuery("");
         setComposeSubject("");
         setComposeMessageText("");
@@ -2050,15 +2917,33 @@ export default function PostaPage() {
     : [];
   const renderStandardDirectMessage = (showSubject: boolean) => {
     if (!standardDirectPreviewItem) return null;
-    if (selectedConversationMessagesWithBlobAttachments.length > 0) {
+    if (chatThreadMessages.length > 0) {
       return (
         <MailboxChatThread
-          messages={selectedConversationMessagesWithBlobAttachments}
+          messages={chatThreadMessages}
           showHeader={showSubject}
           firstUnreadMessageId={conversationUnreadStartId}
           presenceLabel={chatPresence.label}
           online={chatPresence.online}
           typing={chatPresence.typing}
+          onRetryMessage={retryQuickReply}
+          currentUserEmail={effectiveEmail}
+          reactionEmojis={MESSAGE_REACTION_EMOJIS}
+          onToggleReaction={handleMessageReaction}
+          onEditMessage={handleEditOwnMessage}
+          onDeleteMessage={handleDeleteOwnMessage}
+          hasOlderMessages={
+            conversationHistory?.key === activeConversationKey &&
+            conversationHistory.hasMore
+          }
+          loadingOlderMessages={
+            conversationHistory?.key === activeConversationKey &&
+            (conversationHistory.loadingOlder || conversationHistory.loading)
+          }
+          onLoadOlderMessages={loadOlderConversationMessages}
+          onLoadAttachment={loadChatAttachment}
+          onTogglePin={handleToggleMessagePin}
+          onSetReminder={handleSetMessageReminder}
         />
       );
     }
@@ -2244,13 +3129,13 @@ export default function PostaPage() {
               </div>
             </header>
 
-            <div className={`${styles.mailWorkspace} grid min-w-0 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_390px_minmax(0,1fr)]`}>
+            <div className={`${styles.mailWorkspace} grid min-w-0 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_330px_minmax(0,1fr)]`}>
               <aside className={`${styles.mailFolderRail} border-b border-slate-200 bg-slate-50/80 p-3 lg:border-b-0 lg:border-r sm:p-4`}>
                 <button
                   type="button"
                   onClick={openComposeModal}
                   disabled={loading}
-                  className={`${styles.actionButton} inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#312060_52%,#7c3aed_100%)] px-4 py-3 text-sm font-bold !text-white shadow-[0_14px_30px_rgba(88,28,135,0.22)] transition hover:-translate-y-0.5 disabled:opacity-60`}
+                  className={`${styles.actionButton} inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-700 px-4 py-3 text-sm font-bold !text-white shadow-[0_10px_24px_rgba(109,40,217,0.24)] transition hover:-translate-y-0.5 hover:bg-violet-800 disabled:opacity-60`}
                 >
                   <SquarePen className="h-4 w-4" />
                   Napsat zprávu
@@ -2270,7 +3155,7 @@ export default function PostaPage() {
                         }}
                         className={`flex min-w-[145px] items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition lg:w-full lg:min-w-0 ${
                           active
-                            ? "bg-[linear-gradient(135deg,#020617_0%,#312060_58%,#6d28d9_100%)] text-white shadow-[0_10px_24px_rgba(88,28,135,0.22)]"
+                            ? "bg-violet-700 !text-white shadow-[0_6px_14px_rgba(109,40,217,0.24)] hover:bg-violet-800"
                             : "text-slate-600 hover:bg-white hover:text-slate-950"
                         }`}
                       >
@@ -2393,15 +3278,21 @@ export default function PostaPage() {
               </section>
 
               <aside className={`${styles.mailDetailPane} hidden min-w-0 flex-col bg-slate-50/65 xl:flex`}>
-                {previewItem && mailboxPreviewHtml ? (
+                {previewItem && (mailboxPreviewHtml || weeklyReportPreviewHref) ? (
                   <>
                     <div className="border-b border-slate-200 bg-white px-5 py-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                           {standardDirectPreviewItem ? (
-                            <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
-                              <Image src="/icons/klient.webp" alt="Ikona uživatele" fill sizes="44px" className="object-cover" />
-                              <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${chatPresence.online ? "bg-emerald-500" : "bg-slate-300"}`} />
+                            <span className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl ring-1 ring-slate-200 ${isGroupMailboxItem(standardDirectPreviewItem) ? "bg-violet-100 text-violet-700" : "bg-white"}`}>
+                              {isGroupMailboxItem(standardDirectPreviewItem) ? (
+                                <UsersRound className="h-5 w-5" />
+                              ) : (
+                                <>
+                                  <Image src="/icons/klient.webp" alt="Ikona uživatele" fill sizes="44px" className="object-cover" />
+                                  <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${chatPresence.online ? "bg-emerald-500" : "bg-slate-300"}`} />
+                                </>
+                              )}
                             </span>
                           ) : null}
                           <div className="min-w-0">
@@ -2430,12 +3321,56 @@ export default function PostaPage() {
                           {previewItemArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
                           {previewItemArchived ? "Vrátit" : "Archivovat"}
                         </button>
-                        <button type="button" onClick={() => void deletePreviewItem()} disabled={deletingIds.includes(previewItem.id)} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50">
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Smazat
-                        </button>
+                        {activeConversationIsGroup && groupConversation?.active !== false ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleGroupMute()}
+                            disabled={groupConversationLoading || groupMuteSaving || !groupConversation}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50"
+                          >
+                            {groupMuteSaving ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : groupConversation?.muted ? (
+                              <Volume2 className="h-3.5 w-3.5" />
+                            ) : (
+                              <VolumeX className="h-3.5 w-3.5" />
+                            )}
+                            {groupConversation?.muted ? "Zapnout upozornění" : "Ztlumit"}
+                          </button>
+                        ) : null}
+                        {activeConversationIsGroup && groupConversation?.canManage ? (
+                          <button
+                            type="button"
+                            onClick={() => setGroupManagerOpen(true)}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100"
+                          >
+                            <Settings2 className="h-3.5 w-3.5" />
+                            Správa skupiny
+                          </button>
+                        ) : null}
+                        <MailboxActionMenu label="Další akce s otevřenou konverzací">
+                          <button
+                            type="button"
+                            onClick={() => void deletePreviewItem()}
+                            disabled={deletingIds.includes(previewItem.id)}
+                            className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {standardDirectPreviewItem ? "Smazat konverzaci" : "Smazat zprávu"}
+                          </button>
+                        </MailboxActionMenu>
                         {!standardDirectPreviewItem ? (
-                          <button type="button" onClick={() => setPreviewModalOpen(true)} className="ml-auto rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (previewItem.type === "weekly_team_report") {
+                                router.push(weeklyTeamReportHref(previewItem));
+                                return;
+                              }
+                              setPreviewModalOpen(true);
+                            }}
+                            className="ml-auto rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100"
+                          >
                             Otevřít celé
                           </button>
                         ) : null}
@@ -2444,11 +3379,18 @@ export default function PostaPage() {
                     <div className="min-h-0 flex-1 overflow-y-auto bg-white">
                       {standardDirectPreviewItem ? (
                         renderStandardDirectMessage(false)
+                      ) : weeklyReportPreviewHref ? (
+                        <iframe
+                          src={weeklyReportPreviewHref ?? undefined}
+                          referrerPolicy="same-origin"
+                          title="Týdenní report týmu"
+                          className="h-full w-full bg-[#07010a]"
+                        />
                       ) : previewItem.type === "production_export_share" && sharedExportPreviewLoading ? (
                         <div className="grid h-full place-items-center text-sm font-medium text-slate-600"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Načítám náhled…</div>
                       ) : (
                         <iframe
-                          srcDoc={mailboxPreviewHtml}
+                          srcDoc={mailboxPreviewHtml ?? undefined}
                           sandbox={previewItem.type === "online_card_meeting_request" ? "allow-popups allow-top-navigation-by-user-activation" : "allow-popups"}
                           referrerPolicy="no-referrer"
                           title="Náhled vybrané zprávy"
@@ -2474,6 +3416,14 @@ export default function PostaPage() {
                         onSend={() => void handleQuickReplySend()}
                         onTypingChange={updateTypingState}
                       />
+                    ) : activeConversationIsGroup && groupConversation?.active === false ? (
+                      <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-center text-xs font-semibold text-amber-800">
+                        Ze skupiny jsi byl odebrán. Dosavadní historii můžeš dál zobrazit.
+                      </div>
+                    ) : activeConversationIsGroup && groupConversationError ? (
+                      <div className="border-t border-rose-200 bg-rose-50 px-4 py-3 text-center text-xs font-semibold text-rose-700">
+                        {groupConversationError}
+                      </div>
                     ) : null}
                   </>
                 ) : (
@@ -2898,7 +3848,29 @@ export default function PostaPage() {
             />
 
             <div className="relative z-[96] flex min-h-full items-center justify-center p-4">
-              <section className="w-full max-w-2xl overflow-hidden rounded-[30px] border border-violet-200 bg-white p-5 shadow-[0_28px_78px_rgba(88,28,135,0.22)] sm:p-6">
+              <section
+                className="relative w-full max-w-2xl overflow-hidden rounded-[30px] border border-violet-200 bg-white p-5 shadow-[0_28px_78px_rgba(88,28,135,0.22)] sm:p-6"
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  if (!composeSubmitting) setComposeDragActive(true);
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setComposeDragActive(false);
+                  }
+                }}
+                onDrop={handleComposeDrop}
+              >
+                {composeDragActive ? (
+                  <div className="pointer-events-none absolute inset-3 z-30 grid place-items-center rounded-[24px] border-2 border-dashed border-violet-500 bg-violet-50/95 text-center shadow-inner">
+                    <span>
+                      <Paperclip className="mx-auto h-7 w-7 text-violet-700" />
+                      <span className="mt-2 block text-sm font-bold text-violet-900">Pusť přílohy sem</span>
+                      <span className="mt-1 block text-xs text-violet-700">Maximálně {COMPOSE_FILES_MAX_COUNT} souborů</span>
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-800">
@@ -2909,7 +3881,7 @@ export default function PostaPage() {
                       Nová zpráva
                     </h3>
                     <p className="mt-1 text-sm text-slate-600">
-                      Vyber příjemce dle jména nebo e-mailu a pošli interní zprávu.
+                      Vyber jednoho nebo více příjemců a pošli interní zprávu.
                     </p>
                   </div>
 
@@ -2939,7 +3911,6 @@ export default function PostaPage() {
                         value={composeRecipientQuery}
                         onChange={(event) => {
                           setComposeRecipientQuery(event.target.value);
-                          setComposeSelectedRecipient(null);
                           setComposeErrorText(null);
                         }}
                         placeholder="Jméno nebo e-mail"
@@ -2958,6 +3929,7 @@ export default function PostaPage() {
                             key={option.email}
                             type="button"
                             onClick={() => handleSelectComposeSuggestion(option)}
+                            disabled={composeSelectedRecipients.some((recipient) => recipient.email === option.email)}
                             className="flex w-full items-start justify-between rounded-xl px-3 py-2 text-left transition hover:bg-slate-50"
                           >
                             <span className="min-w-0">
@@ -2969,21 +3941,53 @@ export default function PostaPage() {
                               </span>
                             </span>
                             <span className="ml-2 shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
-                              Vybrat
+                              {composeSelectedRecipients.some((recipient) => recipient.email === option.email) ? "Přidáno" : "Přidat"}
                             </span>
                           </button>
                         ))}
                       </div>
                     )}
 
-                    {composeSelectedRecipient ? (
-                      <div className="rounded-2xl border border-violet-200 bg-violet-50/80 px-3 py-2 text-sm">
-                        <span className="font-semibold text-violet-950">Vybraný příjemce:</span>{" "}
-                        <span className="text-violet-950">{composeSelectedRecipient.name}</span>
-                        <span className="text-violet-700"> ({composeSelectedRecipient.email})</span>
+                    {composeSelectedRecipients.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 rounded-2xl border border-violet-200 bg-violet-50/80 p-2.5">
+                        {composeSelectedRecipients.map((recipient) => (
+                          <span
+                            key={recipient.email}
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-950 ring-1 ring-violet-200"
+                          >
+                            <span className="truncate">{recipient.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeComposeRecipient(recipient.email)}
+                              className="rounded-full p-0.5 text-violet-500 transition hover:bg-violet-100 hover:text-violet-900"
+                              aria-label={`Odebrat příjemce ${recipient.name}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
                       </div>
                     ) : null}
                   </div>
+
+                  {composeSelectedRecipients.length > 1 ? (
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="compose-group-name"
+                        className="block text-xs font-semibold uppercase tracking-[0.14em] text-slate-600"
+                      >
+                        Název skupiny
+                      </label>
+                      <input
+                        id="compose-group-name"
+                        type="text"
+                        value={composeGroupName}
+                        onChange={(event) => setComposeGroupName(event.target.value.slice(0, 80))}
+                        placeholder="Např. Tým hypotéky"
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                      />
+                    </div>
+                  ) : null}
 
                   <div className="space-y-2">
                     <label
@@ -3062,31 +4066,36 @@ export default function PostaPage() {
                           ref={composeFileInputRef}
                           type="file"
                           multiple
+                          accept=".pdf,image/png,image/jpeg,image/gif,image/webp,image/avif"
+                          disabled={composeSubmitting || composeFiles.length >= COMPOSE_FILES_MAX_COUNT}
                           onChange={(event) => handleComposeFilesChange(event.target.files)}
                           className="hidden"
                         />
                       </label>
                       <span className="text-xs text-slate-500">
-                        Max {COMPOSE_FILES_MAX_COUNT} souborů
+                        nebo je přetáhni kamkoliv do okna · max {COMPOSE_FILES_MAX_COUNT}
                       </span>
                     </div>
 
                     {composeFiles.length > 0 ? (
                       <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                         {composeFiles.map((file) => {
-                          const key = `${file.name}-${file.size}`;
+                          const key = localFileKey(file);
                           return (
                             <div
                               key={key}
-                              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-2"
                             >
-                              <span className="min-w-0 truncate text-sm text-slate-700">
-                                {file.name}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-slate-500">
+                              <LocalFileThumbnail file={file} />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-semibold text-slate-700">
+                                  {file.name}
+                                </span>
+                                <span className="mt-0.5 block text-xs text-slate-500">
                                   {formatFileSize(file.size)}
                                 </span>
+                              </span>
+                              <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => removeComposeFile(key)}
@@ -3164,6 +4173,35 @@ export default function PostaPage() {
                   </div>
 
                   <div className={`${styles.previewHeaderActions} flex shrink-0 items-center gap-2`}>
+                    {activeConversationIsGroup && groupConversation?.active !== false ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleGroupMute()}
+                        disabled={groupConversationLoading || groupMuteSaving || !groupConversation}
+                        className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25 disabled:opacity-55"
+                      >
+                        {groupMuteSaving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : groupConversation?.muted ? (
+                          <Volume2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <VolumeX className="h-3.5 w-3.5" />
+                        )}
+                        <span className="hidden sm:inline">
+                          {groupConversation?.muted ? "Zapnout" : "Ztlumit"}
+                        </span>
+                      </button>
+                    ) : null}
+                    {activeConversationIsGroup && groupConversation?.canManage ? (
+                      <button
+                        type="button"
+                        onClick={() => setGroupManagerOpen(true)}
+                        className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25"
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Správa</span>
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => void archivePreviewItem(!previewItemArchived)}
@@ -3177,15 +4215,17 @@ export default function PostaPage() {
                       )}
                       {previewItemArchived ? "Vrátit" : "Archivovat"}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void deletePreviewItem()}
-                      disabled={deletingIds.includes(previewItem.id)}
-                      className="inline-flex items-center gap-1 rounded-full border border-rose-200/70 bg-rose-500/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-55"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Smazat
-                    </button>
+                    <MailboxActionMenu label="Další akce s otevřenou konverzací">
+                      <button
+                        type="button"
+                        onClick={() => void deletePreviewItem()}
+                        disabled={deletingIds.includes(previewItem.id)}
+                        className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {standardDirectPreviewItem ? "Smazat konverzaci" : "Smazat zprávu"}
+                      </button>
+                    </MailboxActionMenu>
                     <button
                       type="button"
                       onClick={closePreviewModal}
@@ -3254,6 +4294,14 @@ export default function PostaPage() {
                       onSend={() => void handleQuickReplySend()}
                       onTypingChange={updateTypingState}
                     />
+                  ) : activeConversationIsGroup && groupConversation?.active === false ? (
+                    <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-center text-xs font-semibold text-amber-800">
+                      Ze skupiny jsi byl odebrán. Dosavadní historii můžeš dál zobrazit.
+                    </div>
+                  ) : activeConversationIsGroup && groupConversationError ? (
+                    <div className="border-t border-rose-200 bg-rose-50 px-4 py-3 text-center text-xs font-semibold text-rose-700">
+                      {groupConversationError}
+                    </div>
                   ) : null}
 
                 </div>
@@ -3261,6 +4309,16 @@ export default function PostaPage() {
             </div>
           </div>
         )}
+
+        {groupManagerOpen && user && groupConversation?.canManage ? (
+          <MailboxGroupManager
+            user={user}
+            conversation={groupConversation}
+            currentUserEmail={effectiveEmail}
+            onClose={() => setGroupManagerOpen(false)}
+            onChanged={syncGroupConversation}
+          />
+        ) : null}
       </div>
     </AppLayout>
   );
