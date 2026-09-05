@@ -88,7 +88,7 @@ export function MailboxChatComposer({
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "0px";
-    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 42), 128)}px`;
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 38), 112)}px`;
   }, [text]);
 
   const addFiles = (nextFiles: File[]) => {
@@ -124,10 +124,11 @@ export function MailboxChatComposer({
   };
 
   const canSend = !submitting && (text.trim().length > 0 || files.length > 0);
+  const feedbackText = error || success;
 
   return (
     <div
-      className="relative border-t border-slate-200 bg-white px-3 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.06)] sm:px-4"
+      className="relative shrink-0 border-t border-slate-200 bg-white px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(15,23,42,0.06)] sm:px-4 sm:py-3 sm:pb-3"
       onDragEnter={(event) => {
         event.preventDefault();
         setDragActive(true);
@@ -161,15 +162,15 @@ export function MailboxChatComposer({
         </div>
       ) : null}
 
-      <div className="flex items-end gap-2 rounded-[22px] border border-slate-200 bg-slate-50 p-1.5 transition focus-within:border-violet-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-violet-50">
-        <label className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-500 transition hover:bg-violet-100 hover:text-violet-800" title="Přidat přílohu">
-          <Paperclip className="h-5 w-5" />
+      <div className="flex items-end gap-1 rounded-[18px] border border-slate-200 bg-slate-50 p-1 transition focus-within:border-violet-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-violet-50 sm:gap-2 sm:rounded-[22px] sm:p-1.5">
+        <label className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-500 transition hover:bg-violet-100 hover:text-violet-800 sm:h-10 sm:w-10" title="Přidat přílohu">
+          <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
           <input ref={fileInputRef} type="file" multiple accept=".pdf,image/png,image/jpeg,image/gif,image/webp,image/avif" onChange={(event) => addFiles(Array.from(event.target.files ?? []))} disabled={submitting || files.length >= COMPOSE_FILES_MAX_COUNT} className="hidden" />
         </label>
 
         <div ref={emojiRef} className="relative shrink-0">
-          <button type="button" onClick={() => setEmojiOpen((current) => !current)} disabled={submitting} aria-label="Vybrat emoji" aria-expanded={emojiOpen} className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-violet-100 hover:text-violet-800 disabled:opacity-50">
-            <Smile className="h-5 w-5" />
+          <button type="button" onClick={() => setEmojiOpen((current) => !current)} disabled={submitting} aria-label="Vybrat emoji" aria-expanded={emojiOpen} className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-violet-100 hover:text-violet-800 disabled:opacity-50 sm:h-10 sm:w-10">
+            <Smile className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
           {emojiOpen ? (
             <div className="absolute bottom-full left-0 z-30 mb-2 grid w-52 grid-cols-6 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.2)]">
@@ -201,15 +202,15 @@ export function MailboxChatComposer({
           placeholder={`Napsat ${recipientName}…`}
           maxLength={COMPOSE_MESSAGE_MAX_LEN}
           rows={1}
-          className="max-h-32 min-h-[40px] min-w-0 flex-1 resize-none bg-transparent px-1 py-2.5 text-sm leading-5 text-slate-900 outline-none placeholder:text-slate-400"
+          className="max-h-28 min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-base leading-5 text-slate-900 outline-none placeholder:text-slate-400 sm:max-h-32 sm:min-h-10 sm:py-2.5 sm:text-sm"
         />
 
-        <button type="button" onClick={onSend} disabled={!canSend} aria-label="Odeslat zprávu" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-700 !text-white shadow-[0_8px_18px_rgba(109,40,217,0.26)] transition hover:scale-[1.03] hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-40">
+        <button type="button" onClick={onSend} disabled={!canSend} aria-label="Odeslat zprávu" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-700 !text-white shadow-[0_8px_18px_rgba(109,40,217,0.26)] transition hover:scale-[1.03] hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:w-10">
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>
 
-      <div className="mt-1.5 flex min-h-4 items-center justify-between gap-3 px-2 text-[10px]">
+      <div className={`${feedbackText ? "flex" : "hidden sm:flex"} mt-1 min-h-4 items-center justify-between gap-3 px-2 text-[10px] sm:mt-1.5`}>
         <span className={error ? "font-semibold text-rose-700" : success ? "font-semibold text-emerald-700" : "text-slate-400"}>
           {error || success || "Enter odešle · Shift + Enter přidá řádek · obrázek můžeš i vložit ze schránky"}
         </span>

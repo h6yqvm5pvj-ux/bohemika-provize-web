@@ -498,6 +498,7 @@ async function composeGroupMessage({
   messageText,
   clientRequestId,
   files,
+  createGroupOnly,
 }: {
   req: NextRequest;
   senderEmail: string;
@@ -509,6 +510,7 @@ async function composeGroupMessage({
   messageText: string;
   clientRequestId: string;
   files: PreparedSafeUserAttachmentFile[];
+  createGroupOnly: boolean;
 }) {
   if (!adminDb) throw new Error("Firebase Admin není nakonfigurován.");
   if (recipientEmails.length < 2) throw new Error("Skupina vyžaduje alespoň dva příjemce.");
@@ -616,8 +618,9 @@ async function composeGroupMessage({
       uploaderEmail: senderEmail,
     });
     const publicAttachments = toPublicAttachments(attachments);
+    const storedMessageText = createGroupOnly ? "Skupina byla vytvořena." : messageText;
     const encryptedContent = encryptMailboxJson(
-      { subject, messageText },
+      { subject, messageText: storedMessageText },
       `message:${messageId}`
     );
     const createdAtMs = Date.now();
@@ -646,6 +649,7 @@ async function composeGroupMessage({
       ...(clientRequestId ? { clientRequestId } : {}),
       conversationId,
       groupConversation: true,
+      ...(createGroupOnly ? { groupCreatedEvent: true } : {}),
       groupName,
       groupOwnerEmail,
       senderEmail,
@@ -742,28 +746,30 @@ async function composeGroupMessage({
     await batch.commit();
     committed = true;
 
-    const pushResults = await Promise.allSettled(
-      recipientConversationSnapshots
-        .filter(({ snapshot }) => {
-          const data = (snapshot.data() ?? {}) as Record<string, unknown>;
-          return data.active !== false && data.muted !== true;
-        })
-        .map(({ recipient }) =>
-          sendDirectMessagePushNotification({
-            req,
-            recipientEmail: recipient.email,
-            recipientMessageId: messageId,
-            senderEmail,
-            senderName,
-            subject,
+    if (!createGroupOnly) {
+      const pushResults = await Promise.allSettled(
+        recipientConversationSnapshots
+          .filter(({ snapshot }) => {
+            const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+            return data.active !== false && data.muted !== true;
           })
-        )
-    );
-    pushResults.forEach((result) => {
-      if (result.status === "rejected") {
-        console.warn("Mailbox group push notification failed:", result.reason);
-      }
-    });
+          .map(({ recipient }) =>
+            sendDirectMessagePushNotification({
+              req,
+              recipientEmail: recipient.email,
+              recipientMessageId: messageId,
+              senderEmail,
+              senderName,
+              subject,
+            })
+          )
+      );
+      pushResults.forEach((result) => {
+        if (result.status === "rejected") {
+          console.warn("Mailbox group push notification failed:", result.reason);
+        }
+      });
+    }
     return {
       ok: true,
       recipientEmail: recipients[0]?.email,
@@ -842,6 +848,7 @@ export async function POST(req: NextRequest) {
   const requestedGroupName = normalizeText(form.get("groupName")).slice(0, GROUP_NAME_MAX_LEN);
   const subject = normalizeText(form.get("subject")).slice(0, SUBJECT_MAX_LEN);
   const messageText = normalizeText(form.get("text")).slice(0, MESSAGE_MAX_LEN);
+  const createGroupOnly = normalizeText(form.get("createGroupOnly")) === "true";
   const clientRequestId = normalizeText(form.get("clientRequestId"));
   if (clientRequestId && !CLIENT_REQUEST_ID_RE.test(clientRequestId)) {
     return withRateLimitHeaders(
@@ -1017,7 +1024,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!messageText && files.length === 0) {
+  const groupRequest =
+    recipientEmails.length > 1 || GROUP_CONVERSATION_ID_RE.test(requestedConversationId);
+  if (createGroupOnly && (recipientEmails.length < 2 || requestedConversationId || files.length > 0)) {
+    return withRateLimitHeaders(
+      NextResponse.json(
+        { ok: false, error: "Skupinu se nepodařilo vytvořit z vybraných členů." },
+        { status: 400 }
+      ),
+      ctx
+    );
+  }
+  if (!createGroupOnly && !messageText && files.length === 0) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Doplň text zprávy nebo přilož soubor." },
@@ -1027,8 +1045,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const groupRequest =
-    recipientEmails.length > 1 || GROUP_CONVERSATION_ID_RE.test(requestedConversationId);
   if (groupRequest) {
     try {
       const payload = await composeGroupMessage({
@@ -1042,6 +1058,7 @@ export async function POST(req: NextRequest) {
         messageText,
         clientRequestId,
         files: preparedFiles,
+        createGroupOnly,
       });
       return withRateLimitHeaders(NextResponse.json(payload), ctx);
     } catch (error) {

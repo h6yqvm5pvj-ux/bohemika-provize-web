@@ -10,7 +10,7 @@ const USER_SEARCH_RATE_LIMIT = 180;
 const USER_SEARCH_RATE_LIMIT_WINDOW_MS = 60_000;
 const USER_SEARCH_MAX_RESULTS = 8;
 const USER_SEARCH_MIN_QUERY_LEN = 2;
-const USER_DIRECTORY_CACHE_TTL_MS = 45_000;
+const USER_DIRECTORY_CACHE_TTL_MS = 5 * 60_000;
 
 type UserAccountType = "advisor" | "tipster";
 
@@ -44,6 +44,7 @@ type UserDirectoryCache = {
 };
 
 let userDirectoryCache: UserDirectoryCache | null = null;
+let userDirectoryLoadPromise: Promise<UserDirectoryRow[]> | null = null;
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -111,35 +112,50 @@ async function loadUserDirectoryRows(): Promise<UserDirectoryRow[]> {
   if (userDirectoryCache && userDirectoryCache.expiresAtMs > nowMs) {
     return userDirectoryCache.rows;
   }
+  if (userDirectoryLoadPromise) return userDirectoryLoadPromise;
 
-  const usersSnap = await adminDb.collection("users").get();
-  const rowsByEmail = new Map<string, UserDirectoryRow>();
+  const db = adminDb;
+  const loadPromise = (async () => {
+    const usersSnap = await db
+      .collection("users")
+      .select("email", "fullName", "name", "managerEmail", "accountType", "userRole")
+      .get();
+    const rowsByEmail = new Map<string, UserDirectoryRow>();
 
-  for (const docSnap of usersSnap.docs) {
-    const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
-    const email = normalizeEmail(data.email) || normalizeEmail(docSnap.id);
-    if (!email) continue;
-    const name = pickBestName(data, email);
-    const managerEmail = normalizeEmail(data.managerEmail) || null;
-    const row: UserDirectoryRow = {
-      email,
-      name,
-      managerEmail,
-      accountType: resolveAccountType(data),
-      searchEmail: normalizeSearch(email),
-      searchName: normalizeSearch(name),
+    for (const docSnap of usersSnap.docs) {
+      const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
+      const email = normalizeEmail(data.email) || normalizeEmail(docSnap.id);
+      if (!email) continue;
+      const name = pickBestName(data, email);
+      const managerEmail = normalizeEmail(data.managerEmail) || null;
+      const row: UserDirectoryRow = {
+        email,
+        name,
+        managerEmail,
+        accountType: resolveAccountType(data),
+        searchEmail: normalizeSearch(email),
+        searchName: normalizeSearch(name),
+      };
+
+      const existing = rowsByEmail.get(email);
+      rowsByEmail.set(email, existing ? chooseBetterRow(existing, row) : row);
+    }
+
+    const rows = [...rowsByEmail.values()];
+    userDirectoryCache = {
+      rows,
+      expiresAtMs: Date.now() + USER_DIRECTORY_CACHE_TTL_MS,
     };
-
-    const existing = rowsByEmail.get(email);
-    rowsByEmail.set(email, existing ? chooseBetterRow(existing, row) : row);
+    return rows;
+  })();
+  userDirectoryLoadPromise = loadPromise;
+  try {
+    return await loadPromise;
+  } finally {
+    if (userDirectoryLoadPromise === loadPromise) {
+      userDirectoryLoadPromise = null;
+    }
   }
-
-  const rows = [...rowsByEmail.values()];
-  userDirectoryCache = {
-    rows,
-    expiresAtMs: nowMs + USER_DIRECTORY_CACHE_TTL_MS,
-  };
-  return rows;
 }
 
 const scoreRow = (row: UserDirectoryRow, queryRaw: string, queryNormalized: string): number => {

@@ -118,7 +118,7 @@ export type MailboxConversationResponse = {
   error?: string;
 };
 
-export type MailFilterMode = "all" | "unread" | "snoozed" | "archived" | "sent" | "system";
+export type MailFilterMode = "all" | "unread" | "snoozed" | "archived" | "system";
 
 export type MailboxAttachment = {
   id: string;

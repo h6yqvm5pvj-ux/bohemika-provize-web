@@ -468,7 +468,7 @@ export function MailboxChatThread({
 
   return (
     <>
-    <div ref={rootRef} className="mx-auto w-full max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
+    <div ref={rootRef} className="mx-auto w-full max-w-4xl px-3 py-3 sm:px-6 sm:py-6">
       {showHeader ? (
         <div className="mb-6 flex items-center gap-3 border-b border-slate-200 pb-5">
           <span className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200 ${latest.metadata?.groupConversation === true ? "bg-violet-100 text-violet-700" : "bg-white"}`}>
@@ -518,7 +518,7 @@ export function MailboxChatThread({
         </div>
       ) : null}
 
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         {hasOlderMessages || loadingOlderMessages ? (
           <div className="flex justify-center py-1">
             <button
@@ -535,6 +535,7 @@ export function MailboxChatThread({
         {messages.map((message, index) => {
           const sent = isSentMailboxItem(message);
           const groupConversation = message.metadata?.groupConversation === true;
+          const groupCreatedEvent = message.metadata?.groupCreatedEvent === true;
           const messageSenderName =
             metadataText(message, "senderName") ||
             nameFromEmail(normalizeEmail(message.metadata?.senderEmail));
@@ -578,10 +579,36 @@ export function MailboxChatThread({
             mailboxMessageDayKey(previousMessage.createdAtMs) !==
               mailboxMessageDayKey(message.createdAtMs);
 
+          if (groupCreatedEvent) {
+            return (
+              <div key={message.id} id={`mailbox-message-${message.id}`}>
+                {showDaySeparator ? (
+                  <div className="my-3 flex items-center gap-3 sm:my-5" role="separator" aria-label={formatMailboxMessageDay(message.createdAtMs)}>
+                    <span className="h-px flex-1 bg-slate-200" />
+                    <time
+                      dateTime={message.createdAtMs ? new Date(message.createdAtMs).toISOString() : undefined}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm"
+                    >
+                      {formatMailboxMessageDay(message.createdAtMs)}
+                    </time>
+                    <span className="h-px flex-1 bg-slate-200" />
+                  </div>
+                ) : null}
+                {message.id === firstUnreadMessageId ? <span data-unread-marker /> : null}
+                <div className="flex justify-center py-1">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-500">
+                    <UsersRound className="h-3.5 w-3.5" />
+                    Skupina byla vytvořena · {formatMailboxMessageTime(message.createdAtMs)}
+                  </span>
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div key={message.id} id={`mailbox-message-${message.id}`}>
               {showDaySeparator ? (
-                <div className="my-5 flex items-center gap-3" role="separator" aria-label={formatMailboxMessageDay(message.createdAtMs)}>
+                <div className="my-3 flex items-center gap-3 sm:my-5" role="separator" aria-label={formatMailboxMessageDay(message.createdAtMs)}>
                   <span className="h-px flex-1 bg-slate-200" />
                   <time
                     dateTime={message.createdAtMs ? new Date(message.createdAtMs).toISOString() : undefined}
@@ -593,16 +620,16 @@ export function MailboxChatThread({
                 </div>
               ) : null}
               {message.id === firstUnreadMessageId ? (
-                <div data-unread-marker className="my-5 flex items-center gap-3" role="separator" aria-label="Nové zprávy">
+                <div data-unread-marker className="my-3 flex items-center gap-3 sm:my-5" role="separator" aria-label="Nové zprávy">
                   <span className="h-px flex-1 bg-violet-200" />
                   <span className="rounded-full bg-violet-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-violet-700">Nové zprávy</span>
                   <span className="h-px flex-1 bg-violet-200" />
                 </div>
               ) : null}
               <div className={`flex ${sent ? "justify-end" : "justify-start"}`}>
-                <div className={`flex max-w-[86%] flex-col sm:max-w-[78%] ${sent ? "items-end" : "items-start"}`}>
+                <div className={`flex max-w-[92%] flex-col sm:max-w-[78%] ${sent ? "items-end" : "items-start"}`}>
                   <div
-                    className={`rounded-[20px] px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.07)] ${
+                    className={`rounded-[18px] px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.07)] sm:rounded-[20px] sm:px-4 sm:py-3 ${
                       sent
                         ? "rounded-br-md bg-violet-700 text-[#fff]"
                         : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
