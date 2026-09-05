@@ -20,6 +20,7 @@ import {
   FileText,
   Gauge,
   IdCard,
+  Menu,
   Package,
   PencilLine,
   RotateCcw,
@@ -588,6 +589,7 @@ export default function ContractDetailPage() {
   const [kooperativaStatusRedirectError, setKooperativaStatusRedirectError] = useState<string | null>(null);
   const [showContractPdfModal, setShowContractPdfModal] = useState(false);
   const [showContractPdfOptions, setShowContractPdfOptions] = useState(false);
+  const [showContractActionsMenu, setShowContractActionsMenu] = useState(false);
   const [selectedContractPdf, setSelectedContractPdf] =
     useState<ContractPdfOption | null>(null);
   const [contractPdfBlobUrl, setContractPdfBlobUrl] = useState<string | null>(null);
@@ -695,6 +697,7 @@ export default function ContractDetailPage() {
         closeKooperativaStatusModal();
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
+        setShowContractActionsMenu(false);
         setSelectedContractPdf(null);
         setNeonImmediateBreakdown(null);
         setStatementPreview(null);
@@ -711,6 +714,7 @@ export default function ContractDetailPage() {
       showKooperativaStatusModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
+      showContractActionsMenu ||
       isNeonImmediateBreakdownOpen ||
       isStatementPreviewOpen
     ) {
@@ -730,6 +734,7 @@ export default function ContractDetailPage() {
     showKooperativaStatusModal,
     showContractPdfModal,
     showContractPdfOptions,
+    showContractActionsMenu,
     isNeonImmediateBreakdownOpen,
     isStatementPreviewOpen,
     closeAllianzPortalModal,
@@ -1112,6 +1117,10 @@ export default function ContractDetailPage() {
   const stornoDateLabel = contract?.stornoDate
     ? formatDate(contract.stornoDate)
     : "—";
+  const policyEndDateForDisplay =
+    isStornoContract && contract?.stornoDate
+      ? contract.stornoDate
+      : contract?.policyEndDate;
   const stornoMinimumDate =
     toDate(contract?.policyStartDate ?? null) ??
     toDate(contract?.contractSignedDate ?? null) ??
@@ -1599,6 +1608,7 @@ export default function ContractDetailPage() {
     setShowContractPdfModal(true);
   }, [openContractPdfExternally, openContractPdfOptionInNewTab]);
   const handleContractPdfButtonClick = useCallback(() => {
+    setShowContractActionsMenu(false);
     if (contractPdfOptions.length === 1 && contractPdfOptions[0]) {
       openContractPdfOption(contractPdfOptions[0]);
       return;
@@ -4834,8 +4844,10 @@ export default function ContractDetailPage() {
     "rounded-[20px] border border-slate-300 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_100%)] px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
   const ghostButtonClass =
     "rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm sm:text-base font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
-  const headerActionButtonClass =
-    "inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold font-mono tracking-tight text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60";
+  const contractActionMenuItemClass =
+    "group flex min-w-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-md";
+  const contractActionMenuIconClass =
+    "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-white shadow-sm transition group-hover:scale-105";
   const saveButtonClass =
     "inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm sm:text-base font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
   const inputClass =
@@ -5319,7 +5331,7 @@ export default function ContractDetailPage() {
           <div className="min-w-0">
             <div className={shellCardClass}>
             {/* HEADER */}
-            <header className="relative isolate px-1 py-1">
+            <header className="relative isolate z-30 px-1 py-1">
               {institutionLogo ? (
                 <div
                   className="pointer-events-none absolute right-0 top-[-0.8rem] z-0 h-[120px] w-[230px] select-none overflow-hidden opacity-[0.075] mix-blend-multiply [mask-image:linear-gradient(to_left,black_58%,transparent_100%)] sm:right-1 sm:top-[-1.4rem] sm:h-[170px] sm:w-[420px]"
@@ -5368,16 +5380,16 @@ export default function ContractDetailPage() {
                     <span>{contractLifecycleBadgeText}</span>
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <h1 className="text-4xl font-black leading-none tracking-tight text-slate-950 sm:text-5xl">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[2rem] font-black leading-none tracking-tight text-slate-950 sm:text-[2.5rem]">
+                  <h1 className="text-[2rem] font-black leading-none tracking-tight text-slate-950 sm:text-[2.5rem]">
                     {contract?.contractNumber?.trim()
                       ? contract.contractNumber.trim()
                       : "Číslo smlouvy není uvedené"}
                   </h1>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-lg font-bold text-slate-800 sm:text-xl">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <span className="inline-flex items-center gap-2">
                       <UserRound
-                        size={19}
+                        size={26}
                         strokeWidth={2.1}
                         className="text-violet-700"
                         aria-hidden="true"
@@ -5387,7 +5399,7 @@ export default function ContractDetailPage() {
                     <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:inline-block" />
                     <span className="inline-flex items-center gap-2">
                       <Package
-                        size={19}
+                        size={26}
                         strokeWidth={2.1}
                         className="text-violet-700"
                         aria-hidden="true"
@@ -5398,7 +5410,7 @@ export default function ContractDetailPage() {
                         alt="Produkt"
                         width={40}
                         height={40}
-                        className="h-9 w-auto flex-shrink-0"
+                        className="h-9 w-auto flex-shrink-0 sm:h-10"
                       />
                     </span>
                   </div>
@@ -5422,117 +5434,6 @@ export default function ContractDetailPage() {
                   </button>
                 )}
 
-                {canManageContract && !editMode && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetailsSaved(false);
-                      setEditMode(true);
-                    }}
-                    className={headerActionButtonClass}
-                  >
-                    <PencilLine size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Upravit údaje</span>
-                  </button>
-                )}
-
-                {canOpenContractManagement && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDeleteError(null);
-                      setStornoError(null);
-                      setTransferError(null);
-                      setShowManagementModal(true);
-                    }}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-slate-950 bg-slate-950 px-3 text-xs font-semibold font-mono tracking-tight text-white shadow-sm transition hover:bg-black"
-                  >
-                    <Settings2 size={14} strokeWidth={2.1} aria-hidden="true" />
-                    <span>Správa smlouvy</span>
-                  </button>
-                )}
-
-                {clientCardHref && (
-                  <Link
-                    href={clientCardHref}
-                    className={headerActionButtonClass}
-                  >
-                    <IdCard size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Karta klienta</span>
-                  </Link>
-                )}
-
-                {showTerminationAction ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (prod === "uniqaAuto") {
-                        void handleOpenUniqaTerminationModal();
-                        return;
-                      }
-                      setSelectedTerminationReason(null);
-                      setShowTerminationReasonModal(true);
-                    }}
-                    className={headerActionButtonClass}
-                  >
-                    <FileSignature size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Vytvořit výpověď</span>
-                  </button>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={() => setShowProductPanel((v) => !v)}
-                  className={headerActionButtonClass}
-                >
-                  <Package size={14} strokeWidth={2} aria-hidden="true" />
-                  <span>{showProductPanel ? "Skrýt detail" : "Detail produktu"}</span>
-                </button>
-
-                {prod === "allianzAuto" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleAllianzPortalActionClick("odometerUpload")}
-                      className={headerActionButtonClass}
-                    >
-                      <Gauge size={14} strokeWidth={2} aria-hidden="true" />
-                      <span>Nahrát tachometr</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAllianzPortalActionClick("paymentCheck")}
-                      className={headerActionButtonClass}
-                    >
-                      <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-                      <span>Ověřit zaplacení</span>
-                    </button>
-                  </>
-                )}
-
-                {prod === "kooperativaAuto" && (
-                  <button
-                    type="button"
-                    onClick={handleKooperativaStatusCheckClick}
-                    className={headerActionButtonClass}
-                  >
-                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Ověření stavu smlouvy</span>
-                  </button>
-                )}
-
-                {prod === "slaviaauto" && (
-                  <a
-                    href={SLAVIA_CONTRACT_VERIFICATION_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={headerActionButtonClass}
-                  >
-                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Ověřit smlouvu</span>
-                  </a>
-                )}
-
                 {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
                   <div className="relative">
                     <button
@@ -5542,7 +5443,7 @@ export default function ContractDetailPage() {
                       aria-expanded={
                         contractPdfOptions.length > 1 ? showContractPdfOptions : undefined
                       }
-                      className={`${headerActionButtonClass} ${contractPdfLoading ? "opacity-60" : ""}`}
+                      className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-violet-700 bg-violet-700 px-3 text-xs font-semibold font-mono tracking-tight text-white shadow-[0_8px_18px_rgba(109,40,217,0.22)] transition hover:border-violet-800 hover:bg-violet-800 disabled:opacity-60 ${contractPdfLoading ? "opacity-60" : ""}`}
                     >
                       <Eye size={14} strokeWidth={2} aria-hidden="true" />
                       <span>
@@ -5588,41 +5489,357 @@ export default function ContractDetailPage() {
                   </div>
                 )}
 
-                {isAutoProduct(prod) && (
-                  <Link
-                    href={vehicleCheckHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={headerActionButtonClass}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowContractPdfOptions(false);
+                      setShowContractActionsMenu((current) => !current);
+                    }}
+                    aria-controls="contract-actions-menu"
+                    aria-expanded={showContractActionsMenu}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-slate-950 bg-[linear-gradient(135deg,#020617_0%,#312e81_100%)] px-3 text-xs font-semibold font-mono tracking-tight text-white shadow-[0_8px_18px_rgba(15,23,42,0.22)] transition hover:border-violet-800 hover:from-slate-900 hover:to-violet-900"
                   >
-                    <CarFront size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Proklepka vozidla</span>
-                  </Link>
-                )}
+                    <Menu size={14} strokeWidth={2.2} aria-hidden="true" />
+                    <span>Menu</span>
+                    <ChevronDown
+                      size={14}
+                      strokeWidth={2.2}
+                      className={`transition-transform ${
+                        showContractActionsMenu ? "rotate-180" : ""
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </button>
 
-                {maxxContractDetailUrl && (
-                  <a
-                    href={maxxContractDetailUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={headerActionButtonClass}
-                  >
-                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Otevřít smlouvu v MAXX</span>
-                  </a>
-                )}
+                  {showContractActionsMenu && (
+                    <>
+                      <button
+                        type="button"
+                        className="fixed inset-0 z-30 bg-slate-950/10 backdrop-blur-[1px]"
+                        aria-label="Zavřít nabídku akcí"
+                        onClick={() => setShowContractActionsMenu(false)}
+                      />
+                      <div
+                        id="contract-actions-menu"
+                        role="dialog"
+                        aria-label="Nabídka akcí smlouvy"
+                        className="fixed inset-x-4 top-24 z-40 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-2 text-left shadow-[0_28px_80px_rgba(15,23,42,0.3)] sm:absolute sm:inset-x-auto sm:left-0 sm:right-auto sm:top-full sm:mt-2 sm:w-[min(32rem,calc(100vw-3rem))]"
+                      >
+                        <div className="relative overflow-hidden rounded-[18px] bg-[linear-gradient(135deg,#020617_0%,#312e81_58%,#6d28d9_100%)] px-4 py-3.5 text-white">
+                          <div
+                            className="pointer-events-none absolute -right-8 -top-12 h-28 w-28 rounded-full bg-fuchsia-400/25 blur-2xl"
+                            aria-hidden="true"
+                          />
+                          <div className="relative flex items-start justify-between gap-4">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 shadow-inner">
+                                <Menu size={19} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <div className="min-w-0">
+                                <div className="font-mono text-base font-black tracking-tight">
+                                  Akce smlouvy
+                                </div>
+                                <div className="mt-0.5 truncate text-xs font-medium text-violet-100">
+                                  {contract?.contractNumber || "Vyber požadovanou akci"}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowContractActionsMenu(false)}
+                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                              aria-label="Zavřít nabídku akcí"
+                            >
+                              <X size={15} strokeWidth={2.3} aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
 
-                {cppExtranetDetailUrl && (
-                  <a
-                    href={cppExtranetDetailUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={headerActionButtonClass}
-                  >
-                    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Otevřít extranet</span>
-                  </a>
-                )}
+                        <div className="grid gap-2 p-2 sm:grid-cols-2">
+                          {canManageContract && !editMode && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowContractActionsMenu(false);
+                                setDetailsSaved(false);
+                                setEditMode(true);
+                              }}
+                              className={`${contractActionMenuItemClass} border-violet-100 bg-violet-50/70 hover:border-violet-200 hover:bg-violet-50`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-violet-200 text-violet-700`}>
+                                <PencilLine size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Upravit údaje
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Klient, data a parametry smlouvy
+                                </span>
+                              </span>
+                            </button>
+                          )}
+
+                          {canOpenContractManagement && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowContractActionsMenu(false);
+                                setDeleteError(null);
+                                setStornoError(null);
+                                setTransferError(null);
+                                setShowManagementModal(true);
+                              }}
+                              className={`${contractActionMenuItemClass} border-slate-200 bg-slate-100/80 hover:border-slate-300 hover:bg-slate-100`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-slate-300 text-slate-950`}>
+                                <Settings2 size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Správa smlouvy
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Storno, převod a další správa
+                                </span>
+                              </span>
+                            </button>
+                          )}
+
+                          {clientCardHref && (
+                            <Link
+                              href={clientCardHref}
+                              onClick={() => setShowContractActionsMenu(false)}
+                              className={`${contractActionMenuItemClass} border-sky-100 bg-sky-50/80 hover:border-sky-200 hover:bg-sky-50`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-sky-200 text-sky-700`}>
+                                <IdCard size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Karta klienta
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Profil a historie klienta
+                                </span>
+                              </span>
+                            </Link>
+                          )}
+
+                          {showTerminationAction && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowContractActionsMenu(false);
+                                if (prod === "uniqaAuto") {
+                                  void handleOpenUniqaTerminationModal();
+                                  return;
+                                }
+                                setSelectedTerminationReason(null);
+                                setShowTerminationReasonModal(true);
+                              }}
+                              className={`${contractActionMenuItemClass} border-amber-100 bg-amber-50/80 hover:border-amber-200 hover:bg-amber-50`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-amber-200 text-amber-700`}>
+                                <FileSignature size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Vytvořit výpověď
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Připravit ukončení smlouvy
+                                </span>
+                              </span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowContractActionsMenu(false);
+                              setShowProductPanel((value) => !value);
+                            }}
+                            className={`${contractActionMenuItemClass} border-fuchsia-100 bg-fuchsia-50/70 hover:border-fuchsia-200 hover:bg-fuchsia-50`}
+                          >
+                            <span className={`${contractActionMenuIconClass} border-fuchsia-200 text-fuchsia-700`}>
+                              <Package size={18} strokeWidth={2.2} aria-hidden="true" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-black text-slate-950">
+                                {showProductPanel ? "Skrýt detail produktu" : "Detail produktu"}
+                              </span>
+                              <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                Uložené parametry pojištění
+                              </span>
+                            </span>
+                          </button>
+
+                          {prod === "allianzAuto" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowContractActionsMenu(false);
+                                  handleAllianzPortalActionClick("odometerUpload");
+                                }}
+                                className={`${contractActionMenuItemClass} border-cyan-100 bg-cyan-50/80 hover:border-cyan-200 hover:bg-cyan-50`}
+                              >
+                                <span className={`${contractActionMenuIconClass} border-cyan-200 text-cyan-700`}>
+                                  <Gauge size={18} strokeWidth={2.2} aria-hidden="true" />
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-black text-slate-950">
+                                    Nahrát tachometr
+                                  </span>
+                                  <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                    Otevřít službu Allianz
+                                  </span>
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowContractActionsMenu(false);
+                                  handleAllianzPortalActionClick("paymentCheck");
+                                }}
+                                className={`${contractActionMenuItemClass} border-emerald-100 bg-emerald-50/80 hover:border-emerald-200 hover:bg-emerald-50`}
+                              >
+                                <span className={`${contractActionMenuIconClass} border-emerald-200 text-emerald-700`}>
+                                  <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-black text-slate-950">
+                                    Ověřit zaplacení
+                                  </span>
+                                  <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                    Kontrola platby u Allianz
+                                  </span>
+                                </span>
+                              </button>
+                            </>
+                          )}
+
+                          {prod === "kooperativaAuto" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowContractActionsMenu(false);
+                                handleKooperativaStatusCheckClick();
+                              }}
+                              className={`${contractActionMenuItemClass} border-emerald-100 bg-emerald-50/80 hover:border-emerald-200 hover:bg-emerald-50`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-emerald-200 text-emerald-700`}>
+                                <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Ověření stavu smlouvy
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Kontrola smlouvy u Kooperativy
+                                </span>
+                              </span>
+                            </button>
+                          )}
+
+                          {prod === "slaviaauto" && (
+                            <a
+                              href={SLAVIA_CONTRACT_VERIFICATION_URL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setShowContractActionsMenu(false)}
+                              className={`${contractActionMenuItemClass} border-indigo-100 bg-indigo-50/80 hover:border-indigo-200 hover:bg-indigo-50`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-indigo-200 text-indigo-700`}>
+                                <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Ověřit smlouvu
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Kontrola smlouvy u Slavie
+                                </span>
+                              </span>
+                            </a>
+                          )}
+
+                          {isAutoProduct(prod) && (
+                            <Link
+                              href={vehicleCheckHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setShowContractActionsMenu(false)}
+                              className={`${contractActionMenuItemClass} border-orange-100 bg-orange-50/80 hover:border-orange-200 hover:bg-orange-50`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-orange-200 text-orange-700`}>
+                                <CarFront size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Proklepka vozidla
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Historie a údaje vozidla
+                                </span>
+                              </span>
+                            </Link>
+                          )}
+
+                          {maxxContractDetailUrl && (
+                            <a
+                              href={maxxContractDetailUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setShowContractActionsMenu(false)}
+                              className={`${contractActionMenuItemClass} border-rose-100 bg-rose-50/70 hover:border-rose-200 hover:bg-rose-50`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-rose-200 text-rose-700`}>
+                                <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Otevřít v MAXX
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Detail v systému pojišťovny
+                                </span>
+                              </span>
+                            </a>
+                          )}
+
+                          {cppExtranetDetailUrl && (
+                            <a
+                              href={cppExtranetDetailUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setShowContractActionsMenu(false)}
+                              className={`${contractActionMenuItemClass} border-teal-100 bg-teal-50/80 hover:border-teal-200 hover:bg-teal-50`}
+                            >
+                              <span className={`${contractActionMenuIconClass} border-teal-200 text-teal-700`}>
+                                <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-black text-slate-950">
+                                  Otevřít extranet
+                                </span>
+                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
+                                  Přímý vstup do pojišťovny
+                                </span>
+                              </span>
+                            </a>
+                          )}
+                        </div>
+
+                        <div className="px-3 pb-2 text-[10px] font-semibold text-slate-400">
+                          Dostupné akce se řídí produktem a tvým oprávněním.
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 {canManageContract && editMode && (
                   <>
@@ -6165,7 +6382,7 @@ export default function ContractDetailPage() {
                       <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>Pojištění do</dt>
                         <dd className={contractOverviewValueClass}>
-                          {editMode ? (
+                          {editMode && !isStornoContract ? (
                             <input
                               type="date"
                               value={editPolicyEnd}
@@ -6173,7 +6390,7 @@ export default function ContractDetailPage() {
                               className={inputCompactClass}
                             />
                           ) : (
-                            formatDate(contract.policyEndDate)
+                            formatDate(policyEndDateForDisplay)
                           )}
                         </dd>
                       </div>
