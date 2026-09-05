@@ -3,18 +3,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   APP_SESSION_COOKIE_NAME,
   createAppSessionCookieValue,
-  getAppSessionMaxAgeSeconds,
-  type VerifiedAppSession,
-  verifyAppSessionCookieValue,
 } from "@/lib/appSession";
 import {
   listAppSessions,
   recordAppSession,
+  revokeAppSession,
   revokeOtherAppSessions,
   touchAppSession,
 } from "@/lib/server/appSessionRegistry";
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { verifyActiveAppSession } from "@/lib/server/activeAppSession";
+import { consumeSessionReauthentication, prepareSessionReauthentication, SessionReauthenticationError } from "@/lib/server/sessionReauthentication";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,16 +24,6 @@ const SESSIONS_MUTATE_RATE_LIMIT = 10;
 const SESSIONS_RATE_LIMIT_WINDOW_MS = 60_000;
 
 type ApiError = { ok: false; error: string };
-type ResolvedCurrentSession =
-  | {
-      ok: true;
-      session: VerifiedAppSession;
-      cookie?: {
-        value: string;
-        maxAgeSeconds: number;
-      };
-    }
-  | { ok: false; error: string };
 
 function setNoStoreHeaders(response: NextResponse): NextResponse {
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
@@ -60,71 +50,23 @@ function setAppSessionCookie(
 }
 
 async function verifyMatchingAppSession(req: NextRequest, ctx: { uid: string; email: string }) {
-  const verification = await verifyAppSessionCookieValue(
+  const verification = await verifyActiveAppSession(
     req.cookies.get(APP_SESSION_COOKIE_NAME)?.value
   );
   if (!verification.ok) {
-    if (
-      verification.reason === "missing" ||
-      verification.reason === "expired" ||
-      verification.reason === "malformed" ||
-      verification.reason === "invalid-signature"
-    ) {
-      return createCurrentAppSession(req, ctx);
-    }
-
     return {
       ok: false as const,
-      error: "Serverová session není správně nakonfigurována.",
+      status: verification.reason === "unavailable" ? 503 : 401,
+      error: "Přihlášení není platné nebo ho nelze ověřit. Přihlas se prosím znovu.",
     };
   }
 
   const session = verification.session;
   if (session.uid !== ctx.uid || session.email !== ctx.email || !session.sessionId) {
-    return createCurrentAppSession(req, ctx);
+    return { ok: false as const, status: 401, error: "Relace neodpovídá přihlášenému účtu." };
   }
 
   return { ok: true as const, session };
-}
-
-async function createCurrentAppSession(
-  req: NextRequest,
-  ctx: { uid: string; email: string }
-): Promise<ResolvedCurrentSession> {
-  try {
-    const session = await createAppSessionCookieValue({
-      uid: ctx.uid,
-      email: ctx.email,
-      maxAgeSeconds: getAppSessionMaxAgeSeconds(),
-    });
-    await recordAppSession({
-      email: ctx.email,
-      uid: ctx.uid,
-      sessionId: session.sessionId,
-      expiresAtMs: session.expiresAt * 1000,
-      req,
-    });
-    return {
-      ok: true,
-      session: {
-        uid: ctx.uid,
-        email: ctx.email,
-        sessionId: session.sessionId,
-        issuedAt: session.expiresAt - session.maxAgeSeconds,
-        expiresAt: session.expiresAt,
-      },
-      cookie: {
-        value: session.value,
-        maxAgeSeconds: session.maxAgeSeconds,
-      },
-    };
-  } catch (error) {
-    console.error("Vytvoření aktuální aplikační session selhalo:", error);
-    return {
-      ok: false as const,
-      error: "Serverovou session se nepodařilo obnovit.",
-    };
-  }
 }
 
 export async function GET(req: NextRequest) {
@@ -154,7 +96,7 @@ export async function GET(req: NextRequest) {
     return setNoStoreHeaders(
       withRateLimitHeaders(
         NextResponse.json({ ok: false, error: current.error } satisfies ApiError, {
-          status: 401,
+          status: current.status,
         }),
         ctx
       )
@@ -179,9 +121,6 @@ export async function GET(req: NextRequest) {
     sessions,
     currentSessionId: current.session.sessionId,
   });
-  if (current.cookie) {
-    setAppSessionCookie(response, current.cookie.value, current.cookie.maxAgeSeconds);
-  }
   return setNoStoreHeaders(withRateLimitHeaders(response, ctx));
 }
 
@@ -212,7 +151,7 @@ export async function POST(req: NextRequest) {
     return setNoStoreHeaders(
       withRateLimitHeaders(
         NextResponse.json({ ok: false, error: current.error } satisfies ApiError, {
-          status: 401,
+          status: current.status,
         }),
         ctx
       )
@@ -220,7 +159,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (body?.action !== "revokeOthers") {
+  if (body?.action !== "revokeOthers" && body?.action !== "prepareRevokeOthers") {
     return setNoStoreHeaders(
       withRateLimitHeaders(
         NextResponse.json(
@@ -233,39 +172,45 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (body.action === "prepareRevokeOthers") {
+      const challenge = await prepareSessionReauthentication(current.session);
+      return setNoStoreHeaders(withRateLimitHeaders(NextResponse.json({ ok: true, ...challenge }), ctx));
+    }
+    await consumeSessionReauthentication(current.session, ctx.decoded, body.challengeId);
     const currentSessionId = current.session.sessionId;
     if (!currentSessionId) {
       throw new Error("Aktuální serverová session nemá ID.");
     }
-    const customToken = await adminAuth.createCustomToken(ctx.uid);
     await adminAuth.revokeRefreshTokens(ctx.uid);
-
-    await touchAppSession({
-      email: ctx.email,
-      sessionId: currentSessionId,
-      req,
-    }).catch((error) => {
-      console.warn("POST /api/auth/sessions: aktualizace aktuální relace selhala", error);
-    });
     const revokedSessions = await revokeOtherAppSessions({
       email: ctx.email,
       keepSessionId: currentSessionId,
       reason: "user_revoke_others",
     });
+    await revokeAppSession(current.session);
+    const replacement = await createAppSessionCookieValue({
+      uid: ctx.uid,
+      email: ctx.email,
+      maxAgeSeconds: current.session.expiresAt - Math.floor(Date.now() / 1000),
+    });
+    await recordAppSession({
+      email: ctx.email, uid: ctx.uid, sessionId: replacement.sessionId,
+      expiresAtMs: replacement.expiresAt * 1000, req,
+    });
+    const customToken = await adminAuth.createCustomToken(ctx.uid);
 
     const response = NextResponse.json({
       ok: true,
       customToken,
       revokedSessions,
-      sessionId: currentSessionId,
-      expiresAt: current.session.expiresAt,
-      maxAgeSeconds: current.session.expiresAt - current.session.issuedAt,
+      sessionId: replacement.sessionId,
     });
-    if (current.cookie) {
-      setAppSessionCookie(response, current.cookie.value, current.cookie.maxAgeSeconds);
-    }
+    setAppSessionCookie(response, replacement.value, replacement.maxAgeSeconds);
     return setNoStoreHeaders(withRateLimitHeaders(response, ctx));
   } catch (error) {
+    if (error instanceof SessionReauthenticationError) {
+      return setNoStoreHeaders(withRateLimitHeaders(NextResponse.json({ ok: false, error: error.message }, { status: 403 }), ctx));
+    }
     console.error("POST /api/auth/sessions revokeOthers selhalo:", error);
     return setNoStoreHeaders(
       withRateLimitHeaders(

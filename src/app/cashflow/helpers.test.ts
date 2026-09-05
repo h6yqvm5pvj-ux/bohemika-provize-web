@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyIntelligentCashflowPrediction,
   applyStatementMissingPayoutShifts,
   calculateStornoFund,
   dedupeCashflowCommissionStatements,
+  filterPastItems,
+  filterPastStatementMonths,
   INTELLIGENT_PREDICTION_CONFIG,
   matchesProductFilter,
   productLabel,
@@ -34,6 +36,35 @@ const commissionStatement = (
   createdAtMs: 1,
   updatedAtMs: 1,
   ...overrides,
+});
+
+describe("cashflow calendar period", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 5));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("retains past months of the current year while hiding older years", () => {
+    const items: CashflowItem[] = [
+      new Date(2025, 11, 31, 23, 59), new Date(2026, 0, 1),
+      new Date(2026, 7, 25), new Date(2026, 8, 25), new Date(2027, 0, 1),
+    ].map((date, index) => ({ id: String(index), date, amount: index * 100, productKey: "neon", ownerEmail: null, entryId: null }));
+    expect(filterPastItems(items, false)).toEqual(items.slice(1));
+    expect(filterPastItems(items, true)).toBe(items);
+    vi.setSystemTime(new Date(2027, 0, 1));
+    expect(filterPastItems(items, false)).toEqual([items[4]]);
+  });
+
+  it("retains January and previous monthly statements so their actual payouts remain available", () => {
+    const statements = Object.fromEntries(["2025-12", "2026-1", "2026-8", "2026-9", "2027-1"].map((key) => [
+      key, [commissionStatement({ id: key, payoutMonthKey: key })],
+    ]));
+    expect(Object.keys(filterPastStatementMonths(statements, false))).toEqual(["2026-1", "2026-8", "2026-9", "2027-1"]);
+    expect(filterPastStatementMonths(statements, true)).toBe(statements);
+    vi.setSystemTime(new Date(2027, 0, 1));
+    expect(Object.keys(filterPastStatementMonths(statements, false))).toEqual(["2027-1"]);
+  });
 });
 
 describe("cashflow commission statements", () => {

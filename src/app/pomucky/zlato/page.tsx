@@ -4,17 +4,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
-  ChartCandlestick,
+  ChartNoAxesCombined,
   ChevronLeft,
   ChevronRight,
   Coins,
   Gem,
   HandCoins,
-  Minus,
   Package,
-  Plus,
   RefreshCw,
-  RotateCcw,
   TrendingUp,
 } from "lucide-react";
 
@@ -22,7 +19,10 @@ import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJson } from "@/app/lib/authenticatedApi";
 
-const OUNCE_G = 31.1034768; // trojská unce
+import { GoldPriceChart } from "./GoldPriceChart";
+import { GoldConverter } from "./GoldConverter";
+import { OUNCE_G } from "./goldModel";
+import styles from "./gold.module.css";
 
 type Point = { t: number; v: number }; // v = CZK / oz
 
@@ -43,6 +43,7 @@ type GoldApiResponse = {
 
   changes?: {
     d1?: number;
+    m1?: number;
     m3?: number;
     y1?: number;
     y2?: number;
@@ -52,6 +53,7 @@ type GoldApiResponse = {
   };
   changesPct?: {
     "1d"?: number;
+    "1m"?: number;
     "3m"?: number;
     "1y"?: number;
     "2y"?: number;
@@ -77,6 +79,7 @@ const UNITS = {
 
 const RANGES = {
   w1: { label: "1 týden", days: 7 },
+  m1: { label: "1 měsíc", days: 31 },
   m3: { label: "3 měsíce", days: 92 },
   y1: { label: "1 rok", days: 366 },
   y3: { label: "3 roky", days: 3 * 366 },
@@ -223,16 +226,6 @@ function getDefaultComfortIndex(brand: ComfortBrand): number {
   const products = COMFORT_BRAND_REFERENCES[brand].products;
   const oneOzIndex = products.findIndex((product) => Math.abs(product.grams - OUNCE_G) < 0.001);
   return oneOzIndex >= 0 ? oneOzIndex : 0;
-}
-
-function downsamplePoints(pts: Point[], maxPoints = 1400): Point[] {
-  if (!pts || pts.length <= maxPoints) return pts;
-  const step = Math.ceil(pts.length / maxPoints);
-  const out: Point[] = [];
-  for (let i = 0; i < pts.length; i += step) out.push(pts[i]);
-  const last = pts[pts.length - 1];
-  if (out[out.length - 1]?.t !== last.t) out.push(last);
-  return out;
 }
 
 function formatCzk(v: number | null | undefined): string {
@@ -384,6 +377,7 @@ async function fetchGold(input?: { days?: number; range?: RangeKey }): Promise<{
     (fromPct
       ? {
           d1: toFinite(fromPct["1d"]),
+          m1: toFinite(fromPct["1m"]),
           m3: toFinite(fromPct["3m"]),
           y1: toFinite(fromPct["1y"]),
           y2: toFinite(fromPct["2y"]),
@@ -436,523 +430,6 @@ async function fetchComfortPrices(): Promise<{
     message: typeof payload.message === "string" ? payload.message : null,
     prices: payload.prices ?? {},
   };
-}
-
-function GoldChart({ points }: { points: Point[] }) {
-  const w = 760;
-  const h = 320;
-  const pad = { l: 56, r: 14, t: 14, b: 34 };
-  const MIN_VISIBLE_CANDLES = 20;
-
-  const [hover, setHover] = useState<null | { idx: number; x: number; y: number }>(null);
-  const [viewRange, setViewRange] = useState<{ start: number; end: number } | null>(null);
-  const [isPanning, setIsPanning] = useState(false);
-  const panRef = useRef<null | { startX: number; start: number; end: number }>(null);
-
-  const baseCandles = useMemo(() => {
-    if (!points || points.length < 2) return null;
-
-    const sorted = [...points].sort((a, b) => a.t - b.t);
-    if (sorted.length < 2) return null;
-
-    const rawCandles = sorted.slice(1).map((curr, idx) => {
-      const prev = sorted[idx];
-      const next = sorted[idx + 2] ?? curr;
-      const open = prev.v;
-      const close = curr.v;
-      const high = Math.max(open, close, next.v);
-      const low = Math.min(open, close, next.v);
-      return { t: curr.t, open, close, high, low };
-    });
-
-    return rawCandles.length ? rawCandles : null;
-  }, [points]);
-
-  const normalizedViewRange = useMemo(() => {
-    if (!baseCandles || !baseCandles.length) return null;
-    const total = baseCandles.length;
-    if (!viewRange) return { start: 0, end: total - 1 };
-    const count = Math.max(1, Math.min(total, viewRange.end - viewRange.start + 1));
-    const start = Math.min(Math.max(0, viewRange.start), Math.max(0, total - count));
-    return { start, end: start + count - 1 };
-  }, [baseCandles, viewRange]);
-
-  const prepared = useMemo(() => {
-    if (!baseCandles || !baseCandles.length) return null;
-
-    const totalCandles = baseCandles.length;
-    const clampedStart = Math.min(
-      Math.max(0, normalizedViewRange?.start ?? 0),
-      totalCandles - 1
-    );
-    const clampedEnd = Math.min(
-      Math.max(clampedStart, normalizedViewRange?.end ?? totalCandles - 1),
-      totalCandles - 1
-    );
-    const visible = baseCandles.slice(clampedStart, clampedEnd + 1);
-    if (!visible.length) return null;
-
-    const xs = visible.map((c) => c.t);
-    const minT = Math.min(...xs);
-    const maxT = Math.max(...xs);
-
-    let minV = Math.min(...visible.map((c) => c.low));
-    let maxV = Math.max(...visible.map((c) => c.high));
-
-    const rawSpan = maxV - minV;
-    if (rawSpan < Math.max(1e-9, Math.abs(maxV) * 0.0005)) {
-      const p = Math.max(1, Math.abs(maxV) * 0.01);
-      minV = maxV - p;
-      maxV = maxV + p;
-    } else {
-      const p = rawSpan * 0.08;
-      minV -= p;
-      maxV += p;
-    }
-
-    const spanT = Math.max(1, maxT - minT);
-    const spanV = Math.max(1e-9, maxV - minV);
-    const innerW = w - pad.l - pad.r;
-    const innerH = h - pad.t - pad.b;
-
-    const xOfT = (t: number) => pad.l + ((t - minT) / spanT) * innerW;
-    const yOfV = (v: number) => pad.t + (1 - (v - minV) / spanV) * innerH;
-
-    const candles = visible.map((c) => ({
-      ...c,
-      x: xOfT(c.t),
-      yOpen: yOfV(c.open),
-      yClose: yOfV(c.close),
-      yHigh: yOfV(c.high),
-      yLow: yOfV(c.low),
-      up: c.close >= c.open,
-    }));
-
-    const pts = candles.map((c) => ({
-      t: c.t,
-      v: c.close,
-      x: c.x,
-      y: c.yClose,
-    }));
-
-    const minGap =
-      candles.length > 1
-        ? candles.slice(1).reduce((best, c, i) => Math.min(best, c.x - candles[i].x), Number.POSITIVE_INFINITY)
-        : innerW;
-    const candleWidth = Math.max(3, Math.min(14, Number.isFinite(minGap) ? minGap * 0.6 : 10));
-
-    const fmtDate = (ms: number) =>
-      new Date(ms).toLocaleDateString("cs-CZ", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
-
-    const spanDays = spanT / (1000 * 60 * 60 * 24);
-    const fmtTickDate = (ms: number) =>
-      new Date(ms).toLocaleDateString("cs-CZ", {
-        day: spanDays <= 120 ? "2-digit" : undefined,
-        month: spanDays <= 730 ? "2-digit" : "short",
-        year: spanDays > 365 ? "numeric" : undefined,
-      });
-
-    const buildTicks = (min: number, max: number, count: number) => {
-      if (count <= 1) return [min];
-      return Array.from({ length: count }, (_, i) => min + ((max - min) * i) / (count - 1));
-    };
-
-    const yTicks = buildTicks(minV, maxV, 5).map((v) => ({ y: yOfV(v), v }));
-    const xTickCount = spanDays > 3650 ? 8 : spanDays > 1825 ? 7 : spanDays > 730 ? 6 : spanDays > 120 ? 5 : 4;
-    const xTicks = buildTicks(minT, maxT, xTickCount).map((t) => ({ x: xOfT(t), t }));
-
-    const minPoint = pts.reduce((best, p) => (p.v < best.v ? p : best), pts[0]);
-    const maxPoint = pts.reduce((best, p) => (p.v > best.v ? p : best), pts[0]);
-    const startPoint = pts[0];
-    const endPoint = pts[pts.length - 1];
-    const totalChangePct = startPoint.v > 0 ? ((endPoint.v / startPoint.v) - 1) * 100 : null;
-
-    return {
-      pts,
-      candles,
-      candleWidth,
-      yTicks,
-      xTicks,
-      fmtDate,
-      fmtTickDate,
-      minPoint,
-      maxPoint,
-      totalChangePct,
-      windowStart: clampedStart,
-      windowEnd: clampedEnd,
-      totalCandles,
-    };
-  }, [baseCandles, normalizedViewRange, pad.b, pad.l, pad.r, pad.t, w, h]);
-
-  const minVisibleCandles = prepared ? Math.min(MIN_VISIBLE_CANDLES, prepared.totalCandles) : MIN_VISIBLE_CANDLES;
-  const visibleCount = prepared ? prepared.windowEnd - prepared.windowStart + 1 : 0;
-
-  const getMousePoint = (e: React.MouseEvent<SVGSVGElement> | React.WheelEvent<SVGSVGElement>) => {
-    const svg = e.currentTarget;
-    const ctm = svg.getScreenCTM();
-    let xRaw: number;
-    let yRaw: number;
-
-    if (ctm) {
-      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
-      xRaw = point.x;
-      yRaw = point.y;
-    } else {
-      const rect = svg.getBoundingClientRect();
-      xRaw = ((e.clientX - rect.left) / rect.width) * w;
-      yRaw = ((e.clientY - rect.top) / rect.height) * h;
-    }
-
-    const x = Math.min(w - pad.r, Math.max(pad.l, xRaw));
-    const y = Math.min(h - pad.b, Math.max(pad.t, yRaw));
-    return { x, y };
-  };
-
-  const nearestIdxByX = (x: number) => {
-    if (!prepared) return 0;
-    let best = 0;
-    let bestD = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < prepared.pts.length; i++) {
-      const d = Math.abs(prepared.pts[i].x - x);
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    }
-    return best;
-  };
-
-  const zoomTo = (factor: number, pivotAbsIndex?: number) => {
-    if (!prepared) return;
-    const total = prepared.totalCandles;
-    const currentCount = prepared.windowEnd - prepared.windowStart + 1;
-    const targetCount = Math.min(
-      total,
-      Math.max(minVisibleCandles, Math.round(currentCount * factor))
-    );
-    if (targetCount === currentCount) return;
-
-    const pivot = Math.min(
-      prepared.windowEnd,
-      Math.max(
-        prepared.windowStart,
-        pivotAbsIndex ?? Math.round((prepared.windowStart + prepared.windowEnd) / 2)
-      )
-    );
-    const ratio =
-      currentCount > 1
-        ? (pivot - prepared.windowStart) / (currentCount - 1)
-        : 0.5;
-
-    let newStart = Math.round(pivot - ratio * (targetCount - 1));
-    newStart = Math.min(Math.max(0, newStart), Math.max(0, total - targetCount));
-    const newEnd = newStart + targetCount - 1;
-    setViewRange({ start: newStart, end: newEnd });
-  };
-
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!prepared) return;
-    const { x, y } = getMousePoint(e);
-
-    if (panRef.current) {
-      const base = panRef.current;
-      const width = Math.max(1, w - pad.l - pad.r);
-      const count = base.end - base.start + 1;
-      const shift = Math.round((-(x - base.startX) / width) * count);
-      const maxStart = Math.max(0, prepared.totalCandles - count);
-      const nextStart = Math.min(Math.max(0, base.start + shift), maxStart);
-      setViewRange({ start: nextStart, end: nextStart + count - 1 });
-    }
-
-    const idx = nearestIdxByX(x);
-    setHover({ idx, x, y });
-  };
-
-  const stopPan = () => {
-    panRef.current = null;
-    setIsPanning(false);
-  };
-
-  const onDown = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!prepared || e.button !== 0) return;
-    if (visibleCount >= prepared.totalCandles) return;
-    const { x } = getMousePoint(e);
-    panRef.current = {
-      startX: x,
-      start: prepared.windowStart,
-      end: prepared.windowEnd,
-    };
-    setIsPanning(true);
-  };
-
-  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
-    if (!prepared) return;
-    e.preventDefault();
-    const { x } = getMousePoint(e);
-    const nearest = nearestIdxByX(x);
-    const absPivot = prepared.windowStart + nearest;
-    zoomTo(e.deltaY > 0 ? 1.2 : 0.8, absPivot);
-  };
-
-  const onLeave = () => {
-    stopPan();
-    setHover(null);
-  };
-
-  if (!prepared) {
-    return (
-      <div className="rounded-3xl border border-slate-700 bg-slate-950 px-4 py-6 text-sm text-slate-100">
-        Nemám historická data pro graf (API nevrátilo dost bodů). Zkus přepnout rozsah.
-      </div>
-    );
-  }
-
-  const safeHover =
-    hover && hover.idx >= 0 && hover.idx < prepared.pts.length ? hover : null;
-  const hp = safeHover ? prepared.pts[safeHover.idx] : null;
-  const hoveredCandle = safeHover ? prepared.candles[safeHover.idx] : null;
-  const candleDelta = hoveredCandle ? hoveredCandle.close - hoveredCandle.open : null;
-  const candleDeltaPct =
-    hoveredCandle && hoveredCandle.open > 0
-      ? ((hoveredCandle.close - hoveredCandle.open) / hoveredCandle.open) * 100
-      : null;
-  const candleBadgeClass =
-    candleDelta == null
-      ? "border border-slate-300 bg-slate-100 text-slate-700"
-      : candleDelta > 0
-        ? "border border-emerald-300/80 bg-emerald-50/80 text-emerald-800 shadow-[0_8px_20px_rgba(16,185,129,0.12)] backdrop-blur"
-        : candleDelta < 0
-          ? "border border-rose-300/80 bg-rose-50/80 text-rose-800 shadow-[0_8px_20px_rgba(244,63,94,0.12)] backdrop-blur"
-          : "border border-slate-300 bg-slate-100 text-slate-700";
-  const candleTrendSign = candleDelta != null && candleDelta > 0 ? "+" : "";
-  const canZoomOut = visibleCount < prepared.totalCandles;
-  const canZoomIn = visibleCount > minVisibleCandles;
-  const totalChangeText =
-    prepared.totalChangePct == null
-      ? "—"
-      : `${prepared.totalChangePct >= 0 ? "+" : ""}${formatNum(prepared.totalChangePct, 2)} %`;
-  const totalChangeClass =
-    prepared.totalChangePct == null
-      ? "border-slate-200 bg-slate-50 text-slate-700"
-      : prepared.totalChangePct >= 0
-        ? "border-emerald-300/80 bg-emerald-50/80 text-emerald-800 shadow-[0_10px_24px_rgba(16,185,129,0.12)] backdrop-blur"
-        : "border-rose-300/80 bg-rose-50/80 text-rose-800 shadow-[0_10px_24px_rgba(244,63,94,0.12)] backdrop-blur";
-  const zoomButtonClass =
-    "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35";
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_58%,#f4efff_100%)] p-3 shadow-[0_22px_54px_rgba(88,28,135,0.13),inset_0_1px_0_rgba(255,255,255,0.80)]">
-      <div className="absolute left-0 top-0 h-1 w-full bg-[linear-gradient(90deg,#020617_0%,#6d28d9_54%,#c084fc_100%)]" />
-
-      <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="grid gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              <ChartCandlestick className="h-3.5 w-3.5 text-violet-600" aria-hidden="true" />
-              Minimum
-            </div>
-            <div className="mt-0.5 text-sm font-semibold text-slate-950">{formatCzk(prepared.minPoint.v)}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              <ChartCandlestick className="h-3.5 w-3.5 text-violet-600" aria-hidden="true" />
-              Maximum
-            </div>
-            <div className="mt-0.5 text-sm font-semibold text-slate-950">{formatCzk(prepared.maxPoint.v)}</div>
-          </div>
-          <div className={["rounded-xl border px-3 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.05)]", totalChangeClass].join(" ")}>
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-75">
-              <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
-              Změna
-            </div>
-            <div className="mt-0.5 text-sm font-semibold">{totalChangeText}</div>
-          </div>
-        </div>
-
-        <div className="flex w-fit items-center gap-1.5 rounded-xl border border-violet-200 bg-white p-1 shadow-[0_10px_24px_rgba(88,28,135,0.08)]">
-          <button
-            type="button"
-            onClick={() => zoomTo(0.8)}
-            disabled={!canZoomIn}
-            className={zoomButtonClass}
-            aria-label="Přiblížit graf"
-            title="Přiblížit"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={() => zoomTo(1.2)}
-            disabled={!canZoomOut}
-            className={zoomButtonClass}
-            aria-label="Oddálit graf"
-            title="Oddálit"
-          >
-            <Minus className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setViewRange({ start: 0, end: prepared.totalCandles - 1 });
-              setHover(null);
-            }}
-            disabled={!canZoomOut}
-            className={zoomButtonClass}
-            aria-label="Resetovat zoom grafu"
-            title="Reset"
-          >
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-3 overflow-hidden rounded-2xl border border-violet-100 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
-        <svg
-          viewBox={`0 0 ${w} ${h}`}
-          className={`h-[330px] w-full select-none ${isPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
-          role="img"
-          aria-label="Graf ceny zlata"
-          onMouseMove={onMove}
-          onMouseDown={onDown}
-          onMouseUp={stopPan}
-          onMouseLeave={onLeave}
-          onWheel={onWheel}
-        >
-          <rect x={pad.l} y={pad.t} width={w - pad.l - pad.r} height={h - pad.t - pad.b} fill="#faf7ff" rx="8" />
-
-          <g stroke="rgba(109,40,217,0.15)" strokeWidth="1">
-            {prepared.yTicks.map((t, i) => (
-              <line key={`gy-${i}`} x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} strokeDasharray="3 3" />
-            ))}
-          </g>
-
-          <g className="fill-slate-500" fontSize="11">
-            {prepared.yTicks.map((t, i) => (
-              <text key={`yl-${i}`} x={8} y={t.y + 4} opacity={0.9}>
-                {formatCzk(t.v)}
-              </text>
-            ))}
-          </g>
-
-          <g className="fill-slate-500" fontSize="11">
-            {prepared.xTicks.map((t, i) => (
-              <text
-                key={`xl-${i}`}
-                x={t.x}
-                y={h - 10}
-                textAnchor={i === 0 ? "start" : i === prepared.xTicks.length - 1 ? "end" : "middle"}
-                opacity={0.9}
-              >
-                {prepared.fmtTickDate(t.t)}
-              </text>
-            ))}
-          </g>
-
-          <g stroke="rgba(15,23,42,0.18)" strokeDasharray="4 4" strokeWidth="1">
-            <line x1={pad.l} y1={prepared.minPoint.y} x2={w - pad.r} y2={prepared.minPoint.y} />
-            <line x1={pad.l} y1={prepared.maxPoint.y} x2={w - pad.r} y2={prepared.maxPoint.y} />
-          </g>
-
-          <g>
-            {prepared.candles.map((c, i) => {
-              const bodyTop = Math.min(c.yOpen, c.yClose);
-              const bodyHeight = Math.max(1.5, Math.abs(c.yClose - c.yOpen));
-              const color = c.up ? "rgba(16,185,129,0.72)" : "rgba(244,63,94,0.72)";
-              const stroke = c.up ? "#059669" : "#e11d48";
-              return (
-                <g key={`c-${i}-${c.t}`}>
-                  <line x1={c.x} y1={c.yHigh} x2={c.x} y2={c.yLow} stroke={stroke} strokeWidth={1.2} />
-                  <rect
-                    x={c.x - prepared.candleWidth / 2}
-                    y={bodyTop}
-                    width={prepared.candleWidth}
-                    height={bodyHeight}
-                    fill={color}
-                    stroke={stroke}
-                    strokeWidth={1}
-                    rx={1}
-                  />
-                </g>
-              );
-            })}
-          </g>
-
-          {safeHover ? (
-            <g>
-              <line x1={safeHover.x} y1={pad.t} x2={safeHover.x} y2={h - pad.b} stroke="rgba(109,40,217,0.38)" strokeWidth="1" />
-              <line x1={pad.l} y1={safeHover.y} x2={w - pad.r} y2={safeHover.y} stroke="rgba(109,40,217,0.22)" strokeWidth="1" />
-              {hp ? (
-                <circle cx={hp.x} cy={hp.y} r={4} fill="#6d28d9" stroke="rgba(255,255,255,0.95)" />
-              ) : null}
-              {hoveredCandle ? (
-                <rect
-                  x={hoveredCandle.x - prepared.candleWidth / 2 - 1}
-                  y={Math.min(hoveredCandle.yOpen, hoveredCandle.yClose) - 1}
-                  width={prepared.candleWidth + 2}
-                  height={Math.max(2, Math.abs(hoveredCandle.yClose - hoveredCandle.yOpen) + 2)}
-                  fill="none"
-                  stroke="rgba(109,40,217,0.82)"
-                  strokeWidth="1"
-                  rx={1}
-                />
-              ) : null}
-            </g>
-          ) : null}
-        </svg>
-      </div>
-
-      <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-        {hoveredCandle && hp ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2 tabular-nums">
-              <span className="inline-flex rounded-full border border-slate-900 bg-slate-900 px-2.5 py-1 font-semibold text-white">
-                {prepared.fmtDate(hp.t)}
-              </span>
-              <span className={["inline-flex rounded-full px-2.5 py-1 font-semibold", candleBadgeClass].join(" ")}>
-                Změna svíčky:{" "}
-                {candleDelta == null
-                  ? "—"
-                  : `${candleTrendSign}${formatCzk(candleDelta)} (${candleTrendSign}${formatNum(candleDeltaPct ?? 0, 2)} %)`}
-              </span>
-            </div>
-          </>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2 tabular-nums">
-            <span className="inline-flex rounded-full border border-slate-900 bg-slate-900 px-2.5 py-1 font-semibold text-white">
-              Detail svíčky
-            </span>
-            <span className="text-slate-500">Bez vybrané svíčky</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ChangeChip({ label, value }: { label: string; value: number | null | undefined }) {
-  const dir = value == null ? "flat" : value > 0 ? "up" : value < 0 ? "down" : "flat";
-
-  const badgeCls =
-    dir === "up"
-      ? "border border-emerald-300/80 bg-emerald-50/80 text-emerald-800 shadow-[0_8px_18px_rgba(16,185,129,0.12)] backdrop-blur"
-      : dir === "down"
-        ? "border border-rose-300/80 bg-rose-50/80 text-rose-800 shadow-[0_8px_18px_rgba(244,63,94,0.12)] backdrop-blur"
-        : "border border-slate-300 bg-slate-100 text-slate-700";
-  const sign = dir === "up" ? "▲" : dir === "down" ? "▼" : "•";
-
-  return (
-    <div className="group flex items-center justify-between gap-3 rounded-2xl border border-transparent px-2.5 py-2.5 transition duration-300 hover:border-violet-200 hover:bg-white/90 hover:shadow-[0_10px_26px_rgba(88,28,135,0.10)]">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">{label}</span>
-      <span className={["inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold leading-none", badgeCls].join(" ")}>
-        <span>{sign}</span>
-        <span>{value == null ? "—" : `${formatNum(Math.abs(value), 1)} %`}</span>
-      </span>
-    </div>
-  );
 }
 
 export default function GoldToolPage() {
@@ -1111,75 +588,6 @@ export default function GoldToolPage() {
       : "Model: kalibrační cena × aktuální spot / kalibrační spot. Comfort může ceny fixovat dávkově.";
 
   // animovaný „counter“ pro hlavní cenu
-  const [displayPrice, setDisplayPrice] = useState<number | null>(null);
-  const animRef = useRef<number | null>(null);
-  const displayedRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const target = czkForSelectedUnit;
-
-    if (loading || target == null || !Number.isFinite(target)) {
-      setDisplayPrice(null);
-      displayedRef.current = null;
-      if (animRef.current) {
-        window.cancelAnimationFrame(animRef.current);
-        animRef.current = null;
-      }
-      return;
-    }
-
-    const from = displayedRef.current;
-
-    // první render / po chybě: nastav rovnou bez animace
-    if (from == null || !Number.isFinite(from)) {
-      setDisplayPrice(target);
-      displayedRef.current = target;
-      return;
-    }
-
-    const diff = target - from;
-
-    // drobná změna: bez animace
-    if (Math.abs(diff) < 0.5) {
-      setDisplayPrice(target);
-      displayedRef.current = target;
-      return;
-    }
-
-    if (animRef.current) {
-      window.cancelAnimationFrame(animRef.current);
-      animRef.current = null;
-    }
-
-    const start = performance.now();
-    const duration = 650; // ms
-    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-
-    const step = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const v = from + diff * easeOutCubic(t);
-      setDisplayPrice(v);
-      displayedRef.current = v;
-
-      if (t < 1) {
-        animRef.current = window.requestAnimationFrame(step);
-      } else {
-        animRef.current = null;
-        displayedRef.current = target;
-        setDisplayPrice(target);
-      }
-    };
-
-    animRef.current = window.requestAnimationFrame(step);
-
-    return () => {
-      if (animRef.current) {
-        window.cancelAnimationFrame(animRef.current);
-        animRef.current = null;
-      }
-    };
-  }, [czkForSelectedUnit, loading, unit]);
-
   // graf kopíruje vybranou jednotku
   const chartPoints: Point[] = useMemo(() => {
     const base = history.length >= 2 ? history : series;
@@ -1187,7 +595,7 @@ export default function GoldToolPage() {
 
     const factor = selected.grams / OUNCE_G;
     const scaled = base.map((p) => ({ t: p.t, v: p.v * factor }));
-    return downsamplePoints(scaled, 1400);
+    return scaled;
   }, [history, series, selected.grams]);
 
   const loadComfortTick = useCallback(async (isCancelled?: () => boolean) => {
@@ -1231,6 +639,8 @@ export default function GoldToolPage() {
         setLoading(true);
         setErr(null);
         setLoadingRange(true);
+        setHistory([]);
+        setSeries([]);
         const snap = await fetchGold({ days: RANGES[range].days, range });
         if (cancelled) return;
 
@@ -1250,6 +660,7 @@ export default function GoldToolPage() {
         if (cancelled) return;
       } catch (e: any) {
         if (cancelled) return;
+        setIsStale(true);
         setErr(String(e?.message || "Nepodařilo se načíst data o zlatě."));
       } finally {
         if (cancelled) return;
@@ -1298,6 +709,7 @@ export default function GoldToolPage() {
       setErr(null);
       await loadTick();
     } catch (e: any) {
+      setIsStale(true);
       setErr(String(e?.message || "Nepodařilo se obnovit data."));
     } finally {
       setRefreshingNow(false);
@@ -1306,6 +718,7 @@ export default function GoldToolPage() {
 
   const changeRows: { label: string; value: number | null | undefined }[] = [
     { label: "1 den", value: changes?.d1 },
+    { label: "1 měsíc", value: changes?.m1 },
     { label: "3 měsíce", value: changes?.m3 },
     { label: "1 rok", value: changes?.y1 },
     { label: "2 roky", value: changes?.y2 },
@@ -1313,22 +726,6 @@ export default function GoldToolPage() {
     { label: "5 let", value: changes?.y5 },
     { label: "10 let", value: changes?.y10 },
   ];
-  const positiveChanges = changeRows.filter((row) => row.value != null && row.value > 0).length;
-  const negativeChanges = changeRows.filter((row) => row.value != null && row.value < 0).length;
-  const dataBadge = isWeekendPause
-    ? {
-        label: "Market closed (víkend)",
-        className: "border-slate-950 bg-slate-950 text-white",
-      }
-    : isStale
-      ? {
-          label: "Stale snapshot",
-          className: "border-slate-300 bg-white text-slate-600",
-        }
-      : {
-          label: "Live data",
-          className: "border-violet-700 bg-violet-700 !text-white",
-        };
   const comfortSyncBadge =
     comfortSyncState === "live"
       ? {
@@ -1352,195 +749,62 @@ export default function GoldToolPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full bg-white px-3 py-4 sm:px-4 sm:py-6 lg:px-8">
-        <div className="mx-auto w-full max-w-5xl space-y-4 text-slate-900">
-          <section className="space-y-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-violet-200 bg-white p-1 shadow-[0_14px_32px_rgba(88,28,135,0.12)]">
-                {[
-                  { key: "movement", label: "POHYB CENY", icon: ChartCandlestick },
-                  { key: "comfort", label: "COMFORT COMMODITY", icon: Package },
-                ].map((item) => {
-                  const active = view === item.key;
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => setView(item.key as GoldView)}
-                      className={[
-                        "inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition sm:text-sm",
-                        active
-                          ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.34)] [&_*]:!text-white"
-                          : "text-slate-600 hover:bg-violet-50 hover:text-violet-800",
-                      ].join(" ")}
-                    >
-                      <Icon className="h-4 w-4" aria-hidden="true" />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {view === "movement" ? (
-                <div className="lg:justify-end">
-                  <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-violet-200 bg-white p-1 shadow-[0_14px_32px_rgba(88,28,135,0.12)]">
-                    {(Object.keys(UNITS) as UnitKey[]).map((k) => {
-                      const active = unit === k;
-                      return (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setUnit(k)}
-                          className={[
-                            "whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition",
-                            active
-                              ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.34)] [&_*]:!text-white"
-                              : "text-slate-600 hover:bg-violet-50 hover:text-violet-800",
-                          ].join(" ")}
-                        >
-                          {UNITS[k].label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
+      <div className={styles.page}>
+        <div className={styles.content}>
+          <header className={styles.header}>
+            <div className={styles.heading}>
+              <span className={styles.headingIcon}><Coins size={23} aria-hidden="true" /></span>
+              <div><h1>Zlato</h1><p>Tržní cena, vývoj a přepočet hodnoty.</p></div>
             </div>
-
-            {err ? (
-              <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-                {err}
-              </div>
-            ) : null}
-
+            <div className={styles.segmented} role="group" aria-label="Přehled zlata">
+              <button type="button" aria-pressed={view === "movement"} onClick={() => setView("movement")}><ChartNoAxesCombined size={16} aria-hidden="true" />Vývoj ceny</button>
+              <button type="button" aria-pressed={view === "comfort"} onClick={() => setView("comfort")}><Package size={16} aria-hidden="true" />Comfort Commodity</button>
+            </div>
+          </header>
+          <section>
+            {err && <div className={styles.error} role="alert">{err}</div>}
             {view === "movement" ? (
-              <div className="relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#faf7ff_52%,#f3edff_100%)] px-4 py-4 shadow-[0_22px_58px_rgba(88,28,135,0.12)]">
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-                  <section className="gold-prism-card group relative overflow-hidden rounded-[30px] border border-violet-200/80 shadow-[0_28px_78px_rgba(88,28,135,0.16),inset_0_1px_0_rgba(255,255,255,0.96)] hover:border-violet-300">
-                    <div className="gold-prism-accent h-1 bg-[linear-gradient(90deg,#020617_0%,#6d28d9_38%,#ffffff_50%,#8b5cf6_62%,#020617_100%)]" />
-                    <div className="gold-prism-lines" aria-hidden="true" />
-                    <div className="relative flex min-h-[236px] items-center justify-center overflow-hidden px-5 py-6">
-                      <div className="absolute inset-y-0 right-0 w-48 bg-[linear-gradient(130deg,rgba(248,250,252,0)_0%,rgba(221,214,254,0.56)_100%)]" />
-                      <div className="absolute inset-x-10 bottom-0 h-px bg-[linear-gradient(90deg,transparent_0%,rgba(109,40,217,0.34)_50%,transparent_100%)]" aria-hidden="true" />
-                      <div className="relative flex w-full max-w-[720px] flex-col items-center text-center">
-                        <div className="inline-flex items-center gap-3 rounded-full border border-slate-950 bg-slate-950 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.28em] !text-white shadow-[0_14px_34px_rgba(15,23,42,0.20)] backdrop-blur [&_*]:!text-white">
-                          <span className="gold-orbit-icon inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-700 text-white shadow-[0_10px_24px_rgba(109,40,217,0.28)]">
-                            <Coins className="h-4 w-4" aria-hidden="true" />
-                          </span>
-                          <span>Cena ({selected.label})</span>
-                        </div>
-                        <div className="gold-value-pop mt-4 text-5xl font-semibold leading-none tracking-tight text-slate-950 sm:text-6xl lg:text-[4.35rem]">
-                          {loading ? "Načítám…" : formatCzk(displayPrice ?? czkForSelectedUnit)}
-                        </div>
-                        <div className="mt-4 text-xs text-slate-500">
-                          {lastUpdated ? `Aktualizováno: ${lastUpdated.toLocaleString("cs-CZ")}` : ""}
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                          <span
-                            className={[
-                              "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                              dataBadge.className,
-                            ].join(" ")}
-                          >
-                            {dataBadge.label}
-                          </span>
-                          <span className="inline-flex items-center rounded-full border border-violet-200 bg-white/70 px-2.5 py-1 text-[11px] text-slate-600 shadow-[0_8px_20px_rgba(88,28,135,0.08)] backdrop-blur">
-                            {isWeekendPause ? "Auto-refresh pozastaven (víkend)" : `Další auto-refresh za ${secondsToRefresh}s`}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="gold-prism-card group relative overflow-hidden rounded-[30px] border border-violet-200/80 shadow-[0_28px_78px_rgba(88,28,135,0.16),inset_0_1px_0_rgba(255,255,255,0.96)] hover:border-violet-300">
-                    <div className="gold-prism-accent h-1 bg-[linear-gradient(90deg,#020617_0%,#6d28d9_38%,#ffffff_50%,#8b5cf6_62%,#020617_100%)]" />
-                    <div className="gold-prism-lines" aria-hidden="true" />
-                    <div className="px-4 py-4">
-                      <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
-                        <div>
-                          <div className="inline-flex items-center gap-3 rounded-full border border-slate-950 bg-slate-950 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] !text-white shadow-[0_14px_34px_rgba(15,23,42,0.20)] backdrop-blur [&_*]:!text-white">
-                            <span className="gold-orbit-icon inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-700 text-white shadow-[0_10px_24px_rgba(109,40,217,0.28)]">
-                              <TrendingUp className="h-4 w-4" aria-hidden="true" />
-                            </span>
-                            <span>Nárůst / pokles</span>
-                          </div>
-                          <div className="mt-1 text-sm font-semibold text-slate-950">CZK / unce</div>
-                        </div>
-                        <div className="inline-flex items-center gap-1.5 text-[10px]">
-                          <span className="rounded-full border border-emerald-300/80 bg-emerald-50/80 px-2 py-0.5 font-semibold text-emerald-800 shadow-[0_8px_18px_rgba(16,185,129,0.12)] backdrop-blur">
-                            ▲ {positiveChanges}
-                          </span>
-                          <span className="rounded-full border border-rose-300/80 bg-rose-50/80 px-2 py-0.5 font-semibold text-rose-800 shadow-[0_8px_18px_rgba(244,63,94,0.12)] backdrop-blur">
-                            ▼ {negativeChanges}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                        {changeRows.map((row) => (
-                          <ChangeChip key={row.label} label={row.label} value={row.value} />
-                        ))}
-                      </div>
-                    </div>
-                  </section>
-                </div>
-
-                <section className="mt-4 rounded-2xl border border-violet-200 bg-white px-4 py-4 shadow-[0_18px_46px_rgba(88,28,135,0.10)]">
-                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        <ChartCandlestick className="h-4 w-4 text-violet-700" aria-hidden="true" />
-                        Graf ({RANGES[range].label})
-                        {loadingRange ? <span className="ml-2 text-slate-500">• načítám…</span> : null}
-                      </div>
-                      <div className="mt-1 text-sm font-semibold text-slate-950">Historie zvolené gramáže</div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {(Object.keys(RANGES) as RangeKey[]).map((k) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setRange(k)}
-                          className={[
-                            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                            range === k
-                              ? "border-violet-700 bg-violet-700 !text-white shadow-[0_8px_18px_rgba(109,40,217,0.24)] [&_*]:!text-white"
-                              : "border-slate-300 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800",
-                          ].join(" ")}
-                        >
-                          {RANGES[k].label}
-                        </button>
-                      ))}
-                    </div>
+              <>
+                <div className={styles.unitToolbar}>
+                  <div className={styles.unitChoices} role="group" aria-label="Gramáž zlata">
+                    <span>Gramáž</span>
+                    {(Object.keys(UNITS) as UnitKey[]).map(k => <button key={k} type="button" data-unit={k} aria-pressed={unit === k} onClick={() => setUnit(k)}>{UNITS[k].label}</button>)}
                   </div>
-
-                  <div className="mt-3">
-                    <GoldChart points={chartPoints} />
-                  </div>
-                </section>
-
-                <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-[11px] text-slate-600">
-                  <span className="text-slate-600">Data jsou orientační.</span>
-
-                  <span className="relative group">
-                    <span
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-[12px] font-bold text-white"
-                      aria-label="Info"
-                      title=""
-                    >
-                      i
-                    </span>
-
-                    <span className="pointer-events-none absolute right-0 top-0 z-10 hidden w-[320px] -translate-y-[calc(100%+10px)] rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.15)] group-hover:block">
-                      Zdroj: /api/gold (server-side). Spot XAU (USD/oz) + USD/CZK + historie (CZK/oz). Výstup je pouze
-                      informativní.
-                    </span>
-                  </span>
+                  <button type="button" className={styles.secondaryButton} onClick={manualRefresh} disabled={loading || refreshingNow}>
+                    <RefreshCw size={14} className={refreshingNow ? styles.refreshing : undefined} aria-hidden="true" />{refreshingNow ? "Obnovuji…" : "Obnovit cenu"}
+                  </button>
                 </div>
-              </div>
+                <div className={styles.movement}>
+                  <div className={styles.summary}>
+                    <section className={styles.priceCard} aria-label="Spotová cena zlata">
+                      <div className={styles.priceLabel}><Coins size={17} aria-hidden="true" />Spotová cena · {selected.label}</div>
+                      <div className={styles.price} data-gold-price>{czkForSelectedUnit == null ? loading ? "Načítám…" : "—" : formatCzk(czkForSelectedUnit)}</div>
+                      <p className={styles.priceNote}>{czkPerOz == null ? "Čekám na cenu zlata" : `${formatCzk(czkPerOz / OUNCE_G)} / g`} · 1 oz = {formatNum(OUNCE_G, 4)} g</p>
+                      <div className={styles.priceStatus}>
+                        <span className={styles.status} data-stale={isStale}>{isStale ? "Poslední dostupná cena" : isWeekendPause ? "Víkend · automatická obnova pozastavena" : `Obnovení za ${secondsToRefresh} s`}</span>
+                        {lastUpdated && <time dateTime={lastUpdated.toISOString()}>Aktualizováno {lastUpdated.toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}</time>}
+                      </div>
+                    </section>
+                    <section className={styles.returns} aria-labelledby="gold-returns-title">
+                      <div className={styles.sectionHeading}><div><h2 id="gold-returns-title" className="tool-card-title"><TrendingUp size={17} aria-hidden="true" />Změna ceny</h2><p>Porovnání za jednotlivá období v Kč</p></div></div>
+                      <dl className={styles.returnGrid}>
+                        {changeRows.map(row => <div key={row.label}><dt>{row.label}</dt><dd className={row.value == null || row.value === 0 ? styles.neutral : row.value < 0 ? styles.negative : styles.positive}>{row.value == null ? "—" : `${row.value > 0 ? "+" : ""}${formatNum(row.value, 1)} %`}</dd></div>)}
+                      </dl>
+                    </section>
+                  </div>
+                  <section className={styles.chartPanel} aria-labelledby="gold-history-title" aria-busy={loadingRange}>
+                    <div className={styles.sectionHeading}>
+                      <div><h2 id="gold-history-title" className="tool-card-title"><ChartNoAxesCombined size={18} aria-hidden="true" />Vývoj ceny</h2><p>Cena v Kč za {selected.label} · {RANGES[range].label}</p></div>
+                      <div className={styles.ranges} role="group" aria-label="Období grafu">
+                        {(Object.keys(RANGES) as RangeKey[]).map(k => <button key={k} type="button" data-range={k} aria-pressed={range === k} onClick={() => setRange(k)}>{RANGES[k].label}</button>)}
+                      </div>
+                    </div>
+                    {loadingRange ? <div className={styles.emptyChart} role="status">Načítám historii ceny…</div> : <GoldPriceChart key={range} points={chartPoints} unitLabel={selected.label} />}
+                  </section>
+                  <GoldConverter pricePerOz={czkPerOz} onShowProducts={() => setView("comfort")} />
+                  <p className={styles.note}>Graf vychází z dostupných historických cen přepočtených do Kč. Spotová cena je orientační; ceny konkrétních slitků najdeš v záložce Comfort Commodity.</p>
+                </div>
+              </>
             ) : (
               <div className="relative overflow-hidden rounded-2xl border border-violet-200 bg-[linear-gradient(180deg,#ffffff_0%,#faf7ff_52%,#f3edff_100%)] px-4 py-4 shadow-[0_22px_58px_rgba(88,28,135,0.12)]">
                 <div className="flex flex-col gap-4 border-b border-violet-200 pb-4 sm:flex-row sm:items-start sm:justify-between">

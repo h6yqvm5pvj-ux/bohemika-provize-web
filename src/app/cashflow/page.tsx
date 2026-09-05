@@ -46,6 +46,7 @@ import { CashflowInitialLoader } from "./components/CashflowInitialLoader";
 import { CashflowMonthModal } from "./components/CashflowMonthModal";
 import { IntelligentPredictionModal } from "./components/IntelligentPredictionModal";
 import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
+import { includeCurrentYear } from "./yearChart";
 import introStyles from "./cashflowIntro.module.css";
 import { systemSansFont } from "@/lib/fonts";
 
@@ -527,7 +528,7 @@ export default function CashflowPage() {
     [predictedMonthGroups, periodStatementsByMonthKey, useStatementPayoutTotals]
   );
 
-  const yearGroups = useMemo(() => groupMonthsByYear(monthGroups), [monthGroups]);
+  const yearGroups = useMemo(() => includeCurrentYear(groupMonthsByYear(monthGroups)), [monthGroups]);
 
   const selectedMonthForDisplay = useMemo(() => {
     if (!selectedMonth) return null;
@@ -543,14 +544,16 @@ export default function CashflowPage() {
   );
 
   const displayedExpandedYears = useMemo(() => {
-    if (!contractNumberSearchActive) return expandedYears;
-
     const next = { ...expandedYears };
-    yearGroups.forEach((yearGroup) => {
-      if (next[yearGroup.year] !== false) {
-        next[yearGroup.year] = true;
-      }
-    });
+    if (contractNumberSearchActive) {
+      yearGroups.forEach((yearGroup) => {
+        if (next[yearGroup.year] !== false) next[yearGroup.year] = true;
+      });
+    } else {
+      const defaultYear = yearGroups.find((group) => group.year >= new Date().getFullYear())?.year
+        ?? yearGroups[0]?.year;
+      if (defaultYear !== undefined && next[defaultYear] === undefined) next[defaultYear] = true;
+    }
     return next;
   }, [contractNumberSearchActive, expandedYears, yearGroups]);
 
@@ -566,9 +569,7 @@ export default function CashflowPage() {
   const toggleYear = (year: number) => {
     setExpandedYears((previous) => {
       const isCurrentlyOpen =
-        contractNumberSearchActive && previous[year] !== false
-          ? true
-          : Boolean(previous[year]);
+        previous[year] ?? displayedExpandedYears[year] ?? false;
 
       return {
         ...previous,
@@ -614,7 +615,7 @@ export default function CashflowPage() {
   return (
     <AppLayout active="cashflow">
       <div className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-1 pb-8 pt-1 sm:px-3 sm:pb-10 sm:pt-2`}>
-        <div className="relative z-10 mx-auto w-full max-w-7xl space-y-3 px-2 sm:space-y-5 sm:px-4 lg:px-6">
+        <div className="relative z-10 mx-auto w-full max-w-7xl space-y-3 px-2 sm:space-y-4 sm:px-4 lg:px-6">
           {showInitialLoader ? (
             <CashflowInitialLoader
               completing={initialLoaderCompleting}
@@ -669,22 +670,25 @@ export default function CashflowPage() {
                   <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
                     Nejdřív dokonči nastavení účtu. Cashflow se načte po založení interního profilu.
                   </p>
-                ) : yearGroups.length === 0 ? (
-                  <p className="rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
-                    {contractNumberSearchActive
-                      ? "Smlouva s tímto číslem není v aktuálním cashflow výběru."
-                      : isTipsterMode
-                      ? "Zatím nemáš žádné sjednané tipy, ze kterých by šlo cashflow zobrazit."
-                      : "Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat."}
-                  </p>
                 ) : (
-                  <CashflowAccordion
-                    yearGroups={yearGroups}
-                    expandedYears={displayedExpandedYears}
-                    onToggleYear={toggleYear}
-                    onSelectMonth={setSelectedMonth}
-                    tipsterMode={isTipsterMode}
-                  />
+                  <>
+                    {monthGroups.length === 0 && (
+                      <p className="mb-4 rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
+                        {contractNumberSearchActive
+                          ? "Smlouva s tímto číslem není v aktuálním cashflow výběru."
+                          : isTipsterMode
+                          ? "Zatím nemáš žádné sjednané tipy, ze kterých by šlo cashflow zobrazit."
+                          : "Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat."}
+                      </p>
+                    )}
+                    <CashflowAccordion
+                      yearGroups={yearGroups}
+                      expandedYears={displayedExpandedYears}
+                      onToggleYear={toggleYear}
+                      onSelectMonth={setSelectedMonth}
+                      tipsterMode={isTipsterMode}
+                    />
+                  </>
                 )}
               </div>
 
@@ -780,7 +784,7 @@ export default function CashflowPage() {
               <p className="mt-1">
                 Filtrem můžeš přepnout vlastní, týmové nebo kombinované cashflow
                 a omezit výběr podle typu produktu. Klikni na rok, potom na měsíc
-                a uvidíš konkrétní položky, ze kterých se částka skládá.
+                a uvidíš konkrétní provize, ze kterých se částka skládá.
               </p>
             </section>
 

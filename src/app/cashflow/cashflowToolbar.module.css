@@ -1,0 +1,79 @@
+.header { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "identity total" "actions total"; align-items: center; gap: 10px 24px; padding: 8px 4px; color: #253149; }
+.identity { grid-area: identity; min-width: 0; }
+.identity h1 { margin: 0; color: #182234; font-size: clamp(26px, 2.4vw, 32px); font-weight: 700; line-height: 1.2; letter-spacing: -1px; }
+.identity p { margin-top: 5px; color: #7b8494; font-size: 12px; line-height: 1.5; }
+.total { grid-area: total; display: flex; max-width: 390px; min-width: 0; flex-direction: column; align-items: flex-end; gap: 3px; padding-left: 24px; border-left: 1px solid #eee9f4; text-align: right; font-variant-numeric: tabular-nums; }
+.totalLabel { color: #9373b2; font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; }
+.totalAmount { max-width: 100%; color: #263247; font-size: 32px; font-weight: 650; line-height: 1.2; letter-spacing: -0.9px; overflow-wrap: anywhere; }
+.totalPeriod { color: #858e9c; font-size: 11px; line-height: 1.5; }
+.predictionNote { color: #9876b3; font-size: 10px; }
+.actions { grid-area: actions; display: flex; flex-wrap: wrap; gap: 6px; }
+.action { display: inline-flex; min-height: 32px; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; border: 1px solid #e7e8ef; border-radius: 8px; background: #fff; color: #778296; font-size: 11px; font-weight: 500; line-height: 1.35; cursor: pointer; transition: background 160ms, border-color 160ms; }
+.action svg { flex-shrink: 0; }
+.action:hover { border-color: #d3c2e4; background: #fcf9ff; color: #8761a7; }
+.actionActive { border-color: #dfd0ee; background: #f8f3fd; color: #8056a4; }
+.help { width: 32px; padding: 6px; }
+.action:focus-visible, .scopeButton:focus-visible, .productButton:focus-visible, .clearSearch:focus-visible { outline: 2px solid #a580cf; outline-offset: 2px; }
+
+.filters { min-width: 0; padding: 12px 14px; border: 1px solid #e5e7ef; border-radius: 14px; background: #fff; color: #526074; }
+.filterTop { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 10px; border-bottom: 1px solid #eef0f5; }
+.filterLabel { flex-shrink: 0; color: #8a93a2; font-size: 10px; font-weight: 500; }
+.scopeControl { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.scopeOptions { display: inline-flex; min-width: 0; gap: 3px; padding: 3px; border: 1px solid #eceef3; border-radius: 9px; background: #f5f6f9; }
+.scopeButton { display: inline-flex; min-height: 30px; align-items: center; justify-content: center; gap: 5px; padding: 5px 10px; border: 1px solid transparent; border-radius: 6px; color: #7b8697; font-size: 11px; font-weight: 500; line-height: 1.3; white-space: nowrap; cursor: pointer; }
+.scopeButton:hover { color: #73518f; background: #faf9fc; }
+.scopeButton[aria-pressed="true"] { border-color: #e3d9ee; background: #fff; color: #79519b; box-shadow: 0 1px 4px #3523470a; }
+.teamScope[aria-pressed="true"] { border-color: #cee0f1; color: #46759f; }
+.search { position: relative; display: flex; width: 290px; max-width: 100%; min-width: 180px; height: 36px; align-items: center; margin-left: auto; }
+.searchIcon { position: absolute; left: 11px; color: #99a3b2; pointer-events: none; }
+.search input { width: 100%; height: 100%; padding: 7px 36px 7px 34px; border: 1px solid #e4e7ef; border-radius: 8px; background: #fafbfc; color: #425168; font-size: 12px; font-variant-numeric: tabular-nums; transition: border-color 160ms, box-shadow 160ms; }
+.search input::placeholder { color: #98a2b1; }
+.search input:hover { border-color: #cfc4dd; }
+.search input:focus { outline: 0; border-color: #ad8bcf; background: #fff; box-shadow: 0 0 0 3px #f0e7f9; }
+.search input::-webkit-search-cancel-button { appearance: none; }
+.clearSearch { position: absolute; right: 5px; display: grid; width: 26px; height: 26px; place-items: center; border-radius: 6px; color: #8691a2; cursor: pointer; }
+.clearSearch:hover { background: #eef0f5; color: #4f5d72; }
+.productsRow { display: flex; align-items: flex-start; gap: 12px; padding-top: 10px; }
+.productsRow > .filterLabel { padding-top: 9px; }
+.products { display: flex; min-width: 0; flex-wrap: wrap; gap: 5px; }
+.productButton { display: inline-flex; min-height: 32px; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border: 1px solid transparent; border-radius: 7px; background: #fff; color: #7c8798; font-size: 11px; font-weight: 500; line-height: 1.3; white-space: nowrap; cursor: pointer; }
+.productButton svg, .scopeButton svg { flex-shrink: 0; }
+.productButton:hover { background: #f7f5fa; color: #7b5d94; }
+.productButton[aria-pressed="true"] { border-color: #e0ceef; background: #f7f0fd; color: #8053a7; }
+.searchResult { margin-top: 10px; padding: 10px 12px; border: 1px solid #dcebe4; border-radius: 8px; background: #f5faf7; color: #668775; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.noResults { border-color: #efe2c5; background: #fcf9f1; color: #96804d; }
+.searchSummary { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.searchSummary strong { color: #426b56; font-weight: 600; }
+.contractStatus { font-weight: 600; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (max-width: 767px) {
+  .header { grid-template-columns: minmax(0, 1fr); grid-template-areas: "identity" "total" "actions"; gap: 12px; padding: 4px 0; }
+  .identity h1 { font-size: 27px; }
+  .total { max-width: none; align-items: flex-start; padding: 10px 0 0; border-top: 1px solid #eee9f4; border-left: 0; text-align: left; }
+  .totalAmount { font-size: 29px; }
+  .filters { padding: 10px 12px; }
+  .filterTop { flex-wrap: wrap; gap: 10px; }
+  .scopeControl { width: 100%; justify-content: space-between; }
+  .search { width: 100%; }
+  .productsRow { flex-direction: column; gap: 5px; }
+  .productsRow > .filterLabel { padding-top: 0; }
+  .productButton { min-height: 34px; }
+}
+
+@media (max-width: 479px) {
+  .identity h1 { font-size: 25px; }
+  .actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .action { padding: 6px; }
+  .tipsterActions { display: flex; }
+  .scopeControl { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .scopeOptions { display: grid; width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .scopeButton { padding: 5px; }
+  .filterLabel { font-size: 10px; }
+  .products { gap: 4px; }
+  .productButton { padding: 5px 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action, .search input { transition: none; }
+}

@@ -78,7 +78,7 @@ describe("legacy client card cleanup", () => {
       return Promise.reject(new Error("Offline"));
     });
     vi.stubGlobal("fetch", fetchMock);
-    await expect(clearServerSession()).resolves.toBeUndefined();
+    await expect(clearServerSession()).rejects.toThrow("Offline");
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/session", expect.objectContaining({ method: "DELETE" }));
   });
 

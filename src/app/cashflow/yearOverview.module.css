@@ -1,0 +1,218 @@
+.years {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  color: #182234;
+  font-variant-numeric: tabular-nums;
+}
+
+.year {
+  container-type: inline-size;
+  min-width: 0;
+  align-self: start;
+  border: 1px solid #e3d9ee;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 5px 20px -14px #72419740;
+  transition: border-color 180ms, box-shadow 180ms;
+}
+
+.year:hover { border-color: #c8afdf; box-shadow: 0 7px 24px -14px #72419755; }
+.yearOpen { grid-column: 1 / -1; border-color: #dcd3ee; box-shadow: 0 8px 32px -20px #66508d30; }
+
+.yearToggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  width: 100%;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 21px;
+  background: linear-gradient(110deg, #fff, #fbf8ff);
+  text-align: left;
+  cursor: pointer;
+}
+
+.yearIdentity { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 16px 18px; }
+.yearIdentity > span:last-child { min-width: 0; }
+.yearIcon { display: grid; flex-shrink: 0; height: 40px; width: 40px; place-items: center; border: 1px solid #e9e0fa; border-radius: 12px; background: #f7f3ff; color: #8b5bca; }
+.yearEyebrow { display: flex; align-items: center; gap: 5px; color: #737c8b; font-size: 11px; font-weight: 600; }
+.yearCompactChevron { display: none; flex-shrink: 0; color: #9874b9; transition: transform 180ms; }
+.yearNumber { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; margin-top: 2px; font-size: 32px; font-weight: 650; line-height: 1.2; letter-spacing: -1.3px; }
+.currentYear { border-radius: 5px; background: #f3edfd; padding: 3px 6px; color: #7c4eb4; font-size: 10px; font-weight: 600; letter-spacing: 0; }
+.yearMonths { display: block; margin-top: 3px; color: #7b8493; font-size: 11px; }
+.yearPayout { position: relative; isolation: isolate; display: flex; min-width: 0; align-items: center; gap: 12px; padding: 16px 18px 16px 36px; }
+.yearPayout::before { position: absolute; z-index: -1; inset: 0; clip-path: polygon(26px 0, 100% 0, 100% 100%, 0 100%); background: linear-gradient(120deg, #8850c1, #69369f); content: ""; pointer-events: none; }
+.yearFigures { display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
+.yearTotalLabel { color: #f0e7fa; font-size: 10px; font-weight: 500; }
+.yearTotal { max-width: 100%; color: #fff; font-size: clamp(21px, 2vw, 29px); font-weight: 650; line-height: 1.3; letter-spacing: -0.9px; overflow-wrap: anywhere; }
+.yearAverage { color: #f0e7fa; font-size: 10px; }
+.yearAverage strong { color: #fff; font-weight: 550; }
+.yearChevron { display: grid; flex-shrink: 0; height: 32px; width: 32px; place-items: center; border: 1px solid #ffffff40; border-radius: 50%; background: #ffffff12; color: #fff; transition: background 180ms; }
+.yearChevron svg { transition: transform 180ms; }
+.yearToggle:hover .yearChevron { background: #ffffff26; }
+.yearOpen .yearToggle { border-radius: 21px 21px 0 0; }
+.yearOpen .yearChevron { background: #ffffff26; }
+.yearOpen .yearChevron svg, .yearOpen .yearCompactChevron { transform: rotate(180deg); }
+.yearOpen .yearTotal { font-size: 32px; }
+.yearContent { padding: 12px 16px 16px; }
+.yearToggle:focus-visible, .monthCard:focus-visible { outline: 3px solid #9c73d5; outline-offset: 3px; }
+
+.chart { padding: 16px 18px 12px; border: 1px solid #eeebf4; border-radius: 15px; background: linear-gradient(180deg, #fdfcfe, #fff 75%); }
+.chartHeading { display: flex; min-height: 44px; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.chartTitle { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 600; letter-spacing: -0.25px; }
+.chartTitle svg { color: #9c7abe; }
+.chartSubtitle { margin-top: 3px; color: #8a8497; font-size: 12px; }
+.chartHighlight { text-align: right; }
+.chartHighlight p { color: #7d748b; font-size: 11px; }
+.chartHighlight strong { display: block; margin-top: 4px; color: #6e41a4; font-size: 23px; font-weight: 600; line-height: 1.3; letter-spacing: -0.6px; }
+.capitalize { text-transform: capitalize; }
+.chartScroller { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-color: #ded3ec transparent; scrollbar-width: thin; }
+.chartCanvas { --plot-height: 150px; --axis-width: 56px; position: relative; min-width: 0; padding-top: 20px; padding-left: var(--axis-width); padding-bottom: 4px; }
+.plotGrid { position: absolute; top: 20px; right: 0; left: var(--axis-width); height: var(--plot-height); pointer-events: none; }
+.gridLine, .zeroLine { position: absolute; right: 0; left: 0; border-top: 1px dashed #eae6f0; }
+.zeroLine { border-top: 1px solid #dbd6e5; }
+.gridLine > span, .zeroLine > span { position: absolute; right: calc(100% + 8px); width: 44px; transform: translateY(-50%); color: #82798e; font-size: 10px; text-align: right; white-space: nowrap; }
+.columns { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; }
+.column { position: relative; min-width: 0; padding: 0; border-radius: 8px; cursor: pointer; outline-offset: 1px; }
+.column::before { position: absolute; inset: -8px 0 0; border-radius: 10px; background: #955dd708; content: ""; opacity: 0; transition: opacity 160ms; }
+.column:not(:disabled):hover::before, .column:focus-visible::before, .currentColumn::before { opacity: 1; }
+.column:focus-visible { outline: 2px solid #9565cb; }
+.column:disabled { cursor: default; }
+.barTrack { position: relative; display: block; height: var(--plot-height); margin-inline: auto; width: 62%; max-width: 46px; }
+.bar { position: absolute; top: var(--bar-top); left: 0; width: 100%; height: var(--bar-height); border: 1px solid #b58cdf; border-bottom: 0; border-radius: 7px 7px 0 0; background: linear-gradient(180deg, #c3a0e7 0%, #d9c3ee 100%); box-shadow: inset 0 1px 0 #ffffff70; transform-origin: bottom; animation: barReveal 520ms cubic-bezier(0.22, 0.8, 0.3, 1) both; animation-delay: var(--bar-delay); transition: filter 160ms; }
+.paidColumn .bar { border-color: #8050b8; background: linear-gradient(180deg, #9e70d3 0%, #8150b8 100%); }
+.pastColumn::before { content: none; }
+.pastColumn .bar { border-color: #b8c0cc; background: linear-gradient(180deg, #b9c2ce, #dce1e8); }
+.pastColumn .monthLabel, .pastColumn .zeroMarker { color: #8590a0; }
+.column:not(:disabled):hover .bar, .column:focus-visible .bar { filter: saturate(1.25) brightness(0.96); }
+.negativeColumn .bar { border: 1px solid #d8869c; border-top: 0; border-radius: 0 0 7px 7px; background: linear-gradient(180deg, #f0c2cd, #dd96aa); transform-origin: top; }
+.missingMarker, .zeroMarker { position: absolute; left: 50%; padding: 0 3px; background: #fff; transform: translate(-50%, -50%); color: #b3acbd; font-size: 14px; line-height: 1; }
+.zeroMarker { color: #8c65b3; font-size: 11px; }
+.monthLabel { position: relative; display: flex; height: 30px; align-items: center; justify-content: center; color: #797386; font-size: 11px; font-weight: 500; }
+.compactMonthLabel { display: none; }
+.column:disabled .monthLabel { color: #aaa4b2; }
+.currentColumn .monthLabel { color: #7744b3; font-weight: 700; }
+.currentDot { position: absolute; bottom: 1px; width: 4px; height: 4px; border-radius: 50%; background: #9d71cd; }
+.chartFooter { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; color: #82798d; font-size: 10px; }
+.legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; height: 9px; width: 9px; border-radius: 3px; }
+.legendPaid { background: #8b5bc1; }
+.legendPredicted { border: 1px solid #c5a4e5; background: #decbf1; }
+.legendPast { border: 1px solid #b8c0cc; background: #cdd4de; }
+.legend .legendMissing { height: auto; font-style: normal; line-height: 9px; }
+.legendNegative { background: #de9aad; }
+.chartHint { display: flex; flex-shrink: 0; align-items: center; gap: 4px; color: #92889f; font-size: 10px; }
+.monthsDisclosure { margin-top: 12px; border: 1px solid #e9e5f0; border-radius: 12px; background: #fff; }
+.monthsHeading { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border-radius: 11px; list-style: none; cursor: pointer; }
+.monthsHeading::-webkit-details-marker { display: none; }
+.monthsHeading::marker { content: ""; }
+.monthsHeading:hover { background: #faf8fd; }
+.monthsHeading:focus-visible { outline: 3px solid #9c73d5; outline-offset: 2px; }
+.monthsTitle { display: inline-flex; align-items: center; gap: 7px; color: #525c6e; font-size: 12px; font-weight: 600; }
+.monthsTitle svg { flex-shrink: 0; color: #9b77bd; }
+.monthsHint { color: #9199a7; font-size: 11px; }
+.monthsChevron { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid #e9e2f2; border-radius: 50%; color: #9a79bb; }
+.monthsChevron svg { transition: transform 180ms; }
+.monthsDisclosure[open] > .monthsHeading { border-bottom: 1px solid #eee9f4; border-radius: 11px 11px 0 0; background: #faf8fd; }
+.monthsDisclosure[open] > .monthsHeading .monthsChevron svg { transform: rotate(180deg); }
+.months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 10px; }
+.monthCard { display: flex; min-width: 0; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid #e7e9f0; border-radius: 13px; background: #fff; text-align: left; cursor: pointer; transition: border-color 170ms, box-shadow 170ms, background 170ms; }
+.monthCard:not(:disabled):hover { border-color: #c4abdf; background: #fefcff; box-shadow: 0 4px 14px -8px #7845b330; }
+.monthCard:disabled { cursor: default; }
+.pastMonthCard { border-color: #e2e6ec; background: #f4f6f8; }
+.pastMonthCard .monthName, .pastMonthCard .monthAmount:not(.negativeAmount) { color: #7d8797; }
+.pastMonthCard .paidBadge, .pastMonthCard .predictedBadge, .pastBadge { color: #788495; background: #e9edf2; }
+.pastMonthCard .predictedDot { background: #9ca7b6; }
+.currentMonthCard { border-color: #d7c3ec; background: #fcf9ff; }
+.monthCardTop { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.monthName { color: #546074; font-size: 13px; font-weight: 600; text-transform: capitalize; }
+.paidBadge, .predictedBadge, .pastBadge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; border-radius: 5px; padding: 3px 5px; font-size: 9px; font-weight: 500; white-space: nowrap; }
+.paidBadge { color: #4e856e; background: #f0f7f3; }
+.predictedBadge { color: #9279ac; background: #f6f1fb; }
+.predictedDot { width: 4px; height: 4px; border-radius: 50%; background: #b193cf; }
+.monthAmount { font-size: clamp(20px, 2vw, 23px); font-weight: 600; line-height: 1.2; letter-spacing: -0.7px; overflow-wrap: anywhere; }
+.negativeAmount { color: #b25874; }
+.monthCardBottom { display: flex; justify-content: space-between; align-items: center; gap: 4px; color: #939aa7; font-size: 10px; }
+.monthCardBottom > svg { color: #a59bac; transition: color 150ms, transform 150ms; }
+.monthCard:hover .monthCardBottom > svg { color: #8957be; transform: translate(1px, -1px); }
+.currentMonthText { color: #9a79bb; }
+
+@keyframes barReveal { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+
+@media (max-width: 1199px) {
+  .years { grid-template-columns: 1fr; }
+  .months { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .yearIdentity { padding: 14px 16px; }
+  .yearIcon { display: none; }
+  .yearContent { padding: 12px; }
+  .yearTotal, .yearOpen .yearTotal { font-size: 25px; }
+  .chart { padding: 14px 14px 12px; }
+  .chartCanvas { --plot-height: 130px; --axis-width: 52px; }
+  .chartTitle { font-size: 14px; }
+  .chartHighlight strong { font-size: 20px; }
+  .chartFooter { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .months { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .monthAmount { font-size: 22px; }
+}
+
+@media (max-width: 479px) {
+  .years { gap: 12px; }
+  .year { border-radius: 18px; }
+  .yearToggle { border-radius: 17px; }
+  .yearOpen .yearToggle { border-radius: 17px 17px 0 0; }
+  .yearNumber { font-size: 28px; gap: 6px; }
+  .yearChevron { width: 26px; height: 26px; }
+  .yearTotal, .yearOpen .yearTotal { font-size: 21px; letter-spacing: -0.7px; }
+  .yearTotalLabel { max-width: 125px; font-size: 9px; }
+  .yearMonths, .yearAverage { font-size: 9px; }
+  .yearContent { padding: 10px 8px; }
+  .chart { padding: 12px 10px; border-radius: 12px; }
+  .chartHeading { gap: 8px; }
+  .chartTitle { gap: 5px; font-size: 13px; }
+  .chartTitle svg { width: 15px; }
+  .chartSubtitle { max-width: 130px; font-size: 10px; line-height: 1.5; }
+  .chartCanvas { --axis-width: 38px; }
+  .gridLine > span, .zeroLine > span { right: calc(100% + 6px); width: 32px; font-size: 8px; }
+  .columns { gap: 2px; }
+  .barTrack { width: 70%; }
+  .bar { border-radius: 4px 4px 0 0; }
+  .negativeColumn .bar { border-radius: 0 0 4px 4px; }
+  .monthLabel { font-size: 9px; }
+  .fullMonthLabel { display: none; }
+  .compactMonthLabel { display: inline; }
+  .chartHighlight p { max-width: 125px; font-size: 9px; }
+  .chartHighlight strong { font-size: 19px; }
+  .legend { gap: 8px 12px; font-size: 9px; }
+  .monthsHeading { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 10px; }
+  .monthsHint { display: none; }
+  .months { gap: 8px; padding: 8px; }
+  .monthCard { padding: 10px 8px; }
+  .monthCardTop { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .monthAmount { font-size: 21px; }
+  .monthCardBottom { font-size: 9px; }
+  .currentMonthText { display: none; }
+}
+
+@container (max-width: 460px) {
+  .yearToggle { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+  .yearIdentity { padding: 14px 12px; }
+  .yearIcon { display: none; }
+  .yearNumber { gap: 5px; font-size: 26px; }
+  .yearEyebrow, .yearMonths { font-size: 9px; }
+  .yearCompactChevron { display: block; }
+  .yearPayout { padding: 14px 12px 14px 24px; }
+  .yearPayout::before { clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%); }
+  .yearTotal, .yearOpen .yearTotal { font-size: 22px; }
+  .yearTotalLabel, .yearAverage { font-size: 9px; }
+  .yearChevron { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar { animation: none; }
+  .year, .yearChevron, .yearChevron svg, .yearCompactChevron, .column::before, .bar, .monthCard, .monthCardBottom > svg, .monthsChevron svg { transition: none; }
+}

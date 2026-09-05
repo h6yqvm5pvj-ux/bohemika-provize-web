@@ -176,7 +176,7 @@ function buildDeviceLabel(userAgent: string): {
 
 function appSessionsCollection(email: string) {
   const normalized = normalizeEmail(email);
-  if (!adminDb || !normalized) return null;
+  if (!adminDb || !normalized || normalized.includes("/")) return null;
   return adminDb.collection("usersPrivate").doc(normalized).collection("appSessions");
 }
 
@@ -194,11 +194,13 @@ export async function recordAppSession({
   req: NextRequest;
 }): Promise<void> {
   const collection = appSessionsCollection(email);
-  if (!collection || !sessionId) return;
+  if (!collection || !sessionId || sessionId.includes("/")) {
+    throw new Error("Úložiště relací není dostupné.");
+  }
 
   const nowMs = Date.now();
   const metadata = resolveSessionRequestMetadata(req);
-  await collection.doc(sessionId).set(
+  await collection.doc(sessionId).create(
     {
       uid,
       email: normalizeEmail(email),
@@ -211,8 +213,7 @@ export async function recordAppSession({
       expiresAtMs,
       revokedAtMs: null,
       revokedReason: null,
-    },
-    { merge: true }
+    }
   );
 }
 
@@ -228,13 +229,12 @@ export async function touchAppSession({
   const collection = appSessionsCollection(email);
   if (!collection || !sessionId) return;
   const metadata = req ? compactSessionRequestMetadata(resolveSessionRequestMetadata(req)) : {};
-  await collection.doc(sessionId).set(
+  await collection.doc(sessionId).update(
     {
       ...metadata,
       lastSeenAt: FieldValue.serverTimestamp(),
       lastSeenAtMs: Date.now(),
-    },
-    { merge: true }
+    }
   );
 }
 
@@ -313,12 +313,11 @@ export async function revokeOtherAppSessions({
   reason: string;
 }): Promise<number> {
   const collection = appSessionsCollection(email);
-  if (!collection || !keepSessionId) return 0;
+  if (!collection || !keepSessionId) throw new Error("Úložiště relací není dostupné.");
 
   const nowMs = Date.now();
   const snap = await collection
-    .orderBy("createdAtMs", "desc")
-    .limit(MAX_SESSIONS_TO_SCAN)
+    .where("expiresAtMs", ">", nowMs)
     .get();
 
   const targets = snap.docs.filter((docSnap) => {
@@ -337,18 +336,36 @@ export async function revokeOtherAppSessions({
 
   if (targets.length === 0) return 0;
 
-  const batch = collection.firestore.batch();
-  targets.forEach((docSnap) => {
-    batch.set(
-      docSnap.ref,
-      {
+  for (let offset = 0; offset < targets.length; offset += 450) {
+    const batch = collection.firestore.batch();
+    targets.slice(offset, offset + 450).forEach((docSnap) => {
+      batch.update(docSnap.ref, {
         revokedAt: FieldValue.serverTimestamp(),
         revokedAtMs: nowMs,
         revokedReason: reason,
-      },
-      { merge: true }
-    );
-  });
-  await batch.commit();
+      });
+    });
+    await batch.commit();
+  }
   return targets.length;
+}
+
+export async function revokeAppSession({ email, uid, sessionId }: {
+  email: string;
+  uid: string;
+  sessionId: string | null;
+}): Promise<void> {
+  if (!sessionId || sessionId.includes("/")) return;
+  const collection = appSessionsCollection(email);
+  if (!collection) throw new Error("Úložiště relací není dostupné.");
+  const ref = collection.doc(sessionId);
+  await collection.firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.data()?.uid !== uid || snap.data()?.revokedAtMs != null) return;
+    tx.update(ref, {
+      revokedAt: FieldValue.serverTimestamp(),
+      revokedAtMs: Date.now(),
+      revokedReason: "user_logout",
+    });
+  });
 }

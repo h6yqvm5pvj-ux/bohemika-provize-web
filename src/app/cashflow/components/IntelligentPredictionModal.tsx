@@ -64,7 +64,7 @@ export function IntelligentPredictionModal({
               Realističtější cashflow na 10 let
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-              Model upraví pouze budoucí predikované položky. Vyplacené provize z
+              Model upraví pouze budoucí predikované provize. Vyplacené provize z
               výpisů, storna, TIPy a předplatné zůstávají v reálných částkách.
             </p>
           </div>
@@ -193,7 +193,7 @@ export function IntelligentPredictionModal({
           <p className="text-sm text-slate-500">
             {enabled
               ? "Predikce je zapnutá a součty už pracují s navýšenými scénáři."
-              : "Po zapnutí se přepočítá horní součet, roky, měsíce i detail položek."}
+              : "Po zapnutí se přepočítá horní součet, roky, měsíce i detail provizí."}
           </p>
           <div className="flex flex-wrap gap-2">
             <button

@@ -242,8 +242,11 @@ export default function LoginPage() {
   const safeSignOut = useCallback(async () => {
     try {
       loginRememberThisDeviceRef.current = false;
-      await clearServerSession();
-      await withTimeout(signOut(auth), 6000, "Odhlášení trvá příliš dlouho.");
+      try {
+        await clearServerSession();
+      } finally {
+        await withTimeout(signOut(auth), 6000, "Odhlášení trvá příliš dlouho.");
+      }
     } catch (err) {
       logAuthIssue("safeSignOut", err);
     }

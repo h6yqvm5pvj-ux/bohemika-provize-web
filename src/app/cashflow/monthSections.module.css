@@ -1,0 +1,83 @@
+.sections { display: grid; gap: 8px; }
+
+.section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e1e5ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 3px 12px -8px #323f591a;
+  transition: border-color 180ms, box-shadow 180ms;
+}
+
+.section:hover { border-color: #d2c4e6; }
+.section[open] { border-color: #d7c4eb; box-shadow: 0 5px 20px -12px #74529228; }
+
+.summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 16px;
+  border-radius: 15px;
+  list-style: none;
+  cursor: pointer;
+  transition: background 180ms;
+}
+
+.summary::-webkit-details-marker { display: none; }
+.summary::marker { content: ""; }
+.summary:hover { background: #fcfaff; }
+.summary:focus-visible { outline: 3px solid #a57acf; outline-offset: -3px; }
+.section[open] > .summary { border-radius: 15px 15px 0 0; background: #fdfbff; }
+.icon { display: grid; width: 38px; height: 38px; flex-shrink: 0; place-items: center; border: 1px solid #ece4f5; border-radius: 11px; background: #f8f3fd; color: #9265b8; }
+.icon svg { width: 20px; height: 20px; }
+.life { border-color: #f6e0e9; background: #fdf2f6; color: #bb6488; }
+.property { border-color: #dfedf2; background: #eff7fa; color: #56889c; }
+.entrepreneurs { border-color: #eae1f5; background: #f6f1fc; color: #9370b7; }
+.travel { border-color: #dfebf9; background: #f0f6fd; color: #688fb6; }
+.gold { border-color: #f2e7c9; background: #fdf8eb; color: #b08b39; }
+.foreigners { border-color: #dceee9; background: #eff8f5; color: #568f7d; }
+.auto { border-color: #e3e5f8; background: #f2f3fd; color: #787bb8; }
+.tip { border-color: #f0ddf3; background: #fbf2fd; color: #a76db0; }
+.subscription { border-color: #dcf0e5; background: #f0faf5; color: #60977a; }
+.other { border-color: #e7e9ed; background: #f5f6f9; color: #7d8594; }
+.identity { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.title { color: #334056; font-size: 16px; font-weight: 600; line-height: 1.35; letter-spacing: -0.15px; }
+.count { color: #7c8799; font-size: 12px; line-height: 1.4; }
+.total { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 2px; padding-inline: 8px; text-align: right; }
+.totalLabel { color: #8b8499; font-size: 10px; line-height: 1.4; }
+.amount { color: #64438a; font-size: 23px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.25; letter-spacing: -0.6px; }
+.negative { color: #b25874; }
+.chevron { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid #e7e4ed; border-radius: 50%; color: #9690a3; transition: background 180ms, border-color 180ms; }
+.chevron svg { transition: transform 180ms; }
+.section[open] > .summary .chevron { background: #f2eafa; border-color: #e3d5f1; color: #956ac0; }
+.section[open] > .summary .chevron svg { transform: rotate(180deg); }
+.content { display: grid; gap: 6px; padding: 8px; border-top: 1px solid #ece5f4; background: #f8f7fb; }
+
+@media (max-width: 639px) {
+  .sections { gap: 8px; }
+  .section { border-radius: 13px; }
+  .summary { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; min-height: 62px; padding: 10px 12px; border-radius: 12px; }
+  .title { font-size: 13px; }
+  .count { font-size: 10px; }
+  .total { gap: 2px; padding: 0; }
+  .totalLabel { font-size: 8px; }
+  .amount { font-size: 19px; }
+  .chevron { display: none; }
+  .title::after { display: inline-block; width: 5px; height: 5px; margin: 0 0 3px 7px; border-right: 1.5px solid #9989ad; border-bottom: 1.5px solid #9989ad; transform: rotate(45deg); content: ""; }
+  .section[open] > .summary .title::after { transform: rotate(225deg); margin-bottom: 0; }
+  .content { gap: 6px; padding: 6px; }
+}
+
+@media (max-width: 359px) {
+  .summary { gap: 8px; padding: 10px; }
+  .icon { width: 32px; height: 32px; }
+  .title { font-size: 12px; }
+  .amount { font-size: 17px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section, .summary, .chevron, .chevron svg { transition: none; }
+}

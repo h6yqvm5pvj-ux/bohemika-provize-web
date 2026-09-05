@@ -46,9 +46,10 @@ export async function createServerSessionFromToken(
 
 export async function clearServerSession(): Promise<void> {
   clearLegacyClientCards();
-  await fetch("/api/auth/session", {
+  const response = await fetch("/api/auth/session", {
     method: "DELETE",
     credentials: "same-origin",
     cache: "no-store",
-  }).catch(() => undefined);
+  });
+  if (!response.ok) throw new Error("Odhlášení se nepodařilo dokončit. Zkontroluj připojení a zkus to znovu.");
 }

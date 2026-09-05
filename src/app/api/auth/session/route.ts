@@ -4,6 +4,7 @@ import {
   APP_SESSION_COOKIE_NAME,
   createAppSessionCookieValue,
   getAppSessionMaxAgeSeconds,
+  verifyAppSessionCookieValue,
 } from "@/lib/appSession";
 import { adminAuth } from "@/lib/server/firebaseAdmin";
 import {
@@ -15,7 +16,7 @@ import {
   consumeRateLimit,
   getRequestIp,
 } from "@/lib/server/rateLimit";
-import { recordAppSession } from "@/lib/server/appSessionRegistry";
+import { recordAppSession, revokeAppSession } from "@/lib/server/appSessionRegistry";
 import { loadUserProfileForAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
 
@@ -183,8 +184,6 @@ export async function POST(req: NextRequest) {
       sessionId: session.sessionId,
       expiresAtMs: session.expiresAt * 1000,
       req,
-    }).catch((error) => {
-      console.warn("POST /api/auth/session: záznam aplikační relace selhal", error);
     });
     const response = NextResponse.json({
       ok: true,
@@ -204,8 +203,14 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function DELETE() {
-  const response = NextResponse.json({ ok: true });
-  clearAppSessionCookie(response);
-  return setNoStoreHeaders(response);
+export async function DELETE(req: NextRequest) {
+  try {
+    const verification = await verifyAppSessionCookieValue(req.cookies.get(APP_SESSION_COOKIE_NAME)?.value);
+    if (verification.ok) await revokeAppSession(verification.session);
+    else if (verification.reason === "not-configured") throw new Error("Session verification unavailable");
+    return setNoStoreHeaders(clearAppSessionCookie(NextResponse.json({ ok: true })));
+  } catch {
+    // Keep the cookie so the client can retry instead of reporting a false logout.
+    return setNoStoreHeaders(NextResponse.json({ ok: false, error: "Odhlášení se nepodařilo dokončit. Zkus to znovu." }, { status: 503 }));
+  }
 }

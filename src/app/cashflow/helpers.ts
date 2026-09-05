@@ -221,8 +221,8 @@ export function filterPastItems(
 ): CashflowItem[] {
   if (showPastYears) return cashflowItems;
   const now = new Date();
-  const startCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  return cashflowItems.filter((item) => item.date >= startCurrentMonth);
+  const startCurrentYear = new Date(now.getFullYear(), 0, 1);
+  return cashflowItems.filter((item) => item.date >= startCurrentYear);
 }
 
 export function filterPastStatementMonths(
@@ -233,7 +233,6 @@ export function filterPastStatementMonths(
 
   const now = new Date();
   const startYear = now.getFullYear();
-  const startMonthIndex = now.getMonth();
   const filtered: Record<string, CashflowCommissionStatementSummary[]> = {};
 
   for (const [key, statements] of Object.entries(statementsByMonthKey)) {
@@ -244,7 +243,7 @@ export function filterPastStatementMonths(
     const monthIndex = Number(match[2]) - 1;
     if (!Number.isInteger(year) || !Number.isInteger(monthIndex)) continue;
     if (monthIndex < 0 || monthIndex > 11) continue;
-    if (year < startYear || (year === startYear && monthIndex < startMonthIndex)) continue;
+    if (year < startYear) continue;
 
     filtered[key] = statements;
   }

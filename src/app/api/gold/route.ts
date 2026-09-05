@@ -410,6 +410,7 @@ function rangeToDays(range: string | null): number | null {
   if (!range) return null;
   const r = range.toLowerCase();
   if (r === "w1" || r === "1w" || r === "7d" || r === "week") return 7;
+  if (r === "m1" || r === "1m" || r === "31d" || r === "1mo") return 31;
   if (r === "m3" || r === "3m" || r === "90d" || r === "3mo") return 92;
   if (r === "y1" || r === "1y" || r === "1r" || r === "rok") return 365;
   if (r === "y2" || r === "2y") return 730;

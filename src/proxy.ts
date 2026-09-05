@@ -2,8 +2,8 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
   APP_SESSION_COOKIE_NAME,
-  verifyAppSessionCookieValue,
 } from "@/lib/appSession";
+import { verifyActiveAppSession } from "@/lib/server/activeAppSession";
 
 const CONNECT_SRC = [
   "'self'",
@@ -208,10 +208,13 @@ async function buildAuthRedirectResponse(
 ): Promise<NextResponse | null> {
   if (!isServerProtectedPagePath(pathname)) return null;
 
-  const verification = await verifyAppSessionCookieValue(
+  const verification = await verifyActiveAppSession(
     req.cookies.get(APP_SESSION_COOKIE_NAME)?.value
   );
   if (verification.ok) return null;
+  if (verification.reason === "unavailable") {
+    return new NextResponse("Přihlášení momentálně nelze ověřit. Zkus stránku za chvíli obnovit.", { status: 503 });
+  }
 
   const loginUrl = req.nextUrl.clone();
   loginUrl.pathname = "/login";
@@ -223,13 +226,13 @@ async function buildAuthRedirectResponse(
   }
 
   const response = NextResponse.redirect(loginUrl);
-  if (verification.reason !== "missing") {
+  if (req.cookies.has(APP_SESSION_COOKIE_NAME)) {
     clearAppSessionCookie(response);
   }
   return response;
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const nonce = createNonce();
   const pathname = req.nextUrl.pathname.toLowerCase();
   if (isClientCardsPath(pathname) && !isClientCardsEnabled()) {

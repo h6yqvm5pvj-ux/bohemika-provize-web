@@ -291,7 +291,7 @@ export function AppLayout({
       setUser(u);
       if (!u) {
         clearAdminImpersonationState();
-        void clearServerSession();
+        void clearServerSession().catch((error) => console.error("Zrušení serverové relace selhalo:", error));
         setAdminRole(null);
         setCanCreateUsers(false);
       }
@@ -474,6 +474,7 @@ export function AppLayout({
       window.location.href = "/login";
     } catch (e) {
       console.error(e);
+      window.alert("Odhlášení se nepodařilo dokončit. Zkontroluj připojení a zkus to znovu.");
     }
   };
 
@@ -495,10 +496,11 @@ export function AppLayout({
       timeoutId = window.setTimeout(() => {
         clearAdminImpersonationState();
         void clearServerSession()
-          .then(() => signOut(auth))
           .catch((error) => {
             console.error("Automatické odhlášení se nepodařilo dokončit:", error);
           })
+          .then(() => signOut(auth))
+          .catch((error) => console.error("Lokální odhlášení selhalo:", error))
           .finally(() => {
             window.location.href = "/login";
           });

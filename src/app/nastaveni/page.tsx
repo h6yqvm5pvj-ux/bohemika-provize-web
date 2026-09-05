@@ -93,6 +93,7 @@ import { useAresIcoLookup } from "@/components/profile/useAresIcoLookup";
 import { SubscriptionSettingsPanel } from "./components/SubscriptionSettingsPanel";
 import { UserRequestsPanel } from "./components/UserRequestsPanel";
 import { SETTINGS_TABS, SettingsNavigation, type SettingsTab } from "./components/SettingsNavigation";
+import { RevokeSessionsDialog } from "./components/RevokeSessionsDialog";
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   INTRANET_NOTIFICATION_SECTIONS,
@@ -803,6 +804,7 @@ export default function SettingsPage() {
   const [accountSessionsLoading, setAccountSessionsLoading] = useState(false);
   const [accountSessionsBusy, setAccountSessionsBusy] = useState(false);
   const [accountSessionsStatus, setAccountSessionsStatus] = useState<InlineStatus | null>(null);
+  const [revokeSessionsOpen, setRevokeSessionsOpen] = useState(false);
   const [fcmActive, setFcmActive] = useState<boolean | null>(null);
   const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">(
     "unsupported"
@@ -3045,26 +3047,35 @@ export default function SettingsPage() {
     }
   };
 
-  const handleRevokeOtherSessions = async () => {
-    if (!user) return;
-    const otherSessionsCount = accountSessions.filter((session) => !session.current).length;
-    const confirmed = window.confirm(
-      otherSessionsCount > 0
-        ? `Odhlásit ${otherSessionsCount} další zařízení? Na tomto zařízení zůstaneš přihlášený.`
-        : "Odhlásit ostatní zařízení? Na tomto zařízení zůstaneš přihlášený."
-    );
-    if (!confirmed) return;
-
+  const handleRevokeOtherSessions = async (password: string, code: string): Promise<boolean> => {
+    if (!user?.email || accountSessionsBusy) return false;
     setAccountSessionsBusy(true);
     setAccountSessionsStatus(null);
 
     try {
+      const challenge = await fetchAuthedJsonOrThrow<{ challengeId: string; waitMs: number }>(user, "/api/auth/sessions", {
+        method: "POST", body: JSON.stringify({ action: "prepareRevokeOthers" }),
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, challenge.waitMs));
+      try {
+        await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password));
+      } catch (error) {
+        if ((error as { code?: string }).code !== "auth/multi-factor-auth-required") throw error;
+        setMfaEnabled(true);
+        const resolver = getMultiFactorResolver(auth, error as MultiFactorError);
+        const factor = resolver.hints.find((hint) => hint.factorId === FactorId.TOTP);
+        if (!factor || !code.trim()) throw new Error("Zadej také aktuální kód z ověřovací aplikace.");
+        await resolver.resolveSignIn(TotpMultiFactorGenerator.assertionForSignIn(factor.uid, code.trim()));
+      }
+      const verifiedUser = auth.currentUser;
+      if (!verifiedUser || verifiedUser.uid !== user.uid) throw new Error("Přihlášený účet se změnil. Zkus to znovu.");
+      await verifiedUser.getIdToken(true);
       const payload = await fetchAuthedJsonOrThrow<RevokeOtherSessionsApiResponse>(
-        user,
+        verifiedUser,
         "/api/auth/sessions",
         {
           method: "POST",
-          body: JSON.stringify({ action: "revokeOthers" }),
+          body: JSON.stringify({ action: "revokeOthers", challengeId: challenge.challengeId }),
         }
       );
 
@@ -3084,14 +3095,13 @@ export default function SettingsPage() {
             ? `Ostatní zařízení byla odhlášena. Počet evidovaných relací: ${payload.revokedSessions}.`
             : "Ostatní zařízení byla odhlášena.",
       });
+      return true;
     } catch (error) {
       setAccountSessionsStatus({
         type: "error",
-        message:
-          error instanceof Error && error.message.trim()
-            ? error.message.trim()
-            : "Ostatní zařízení se nepodařilo odhlásit.",
+        message: resolveMfaErrorMessage(error, "Ostatní zařízení se nepodařilo odhlásit."),
       });
+      return false;
     } finally {
       setAccountSessionsBusy(false);
     }
@@ -4170,7 +4180,7 @@ export default function SettingsPage() {
                 onConfirmPasswordChange={setConfirmPassword}
                 onChangePassword={handleChangePassword}
                 onRefreshAccountSessions={() => loadAccountSessions(user)}
-                onRevokeOtherSessions={handleRevokeOtherSessions}
+                onRevokeOtherSessions={() => { setAccountSessionsStatus(null); setRevokeSessionsOpen(true); }}
                 onPasskeyNameChange={setPasskeyName}
                 onCreatePasskey={handleCreatePasskey}
                 onDeletePasskey={handleDeletePasskey}
@@ -4205,6 +4215,13 @@ export default function SettingsPage() {
         )}
         </div>
       </div>
+      {revokeSessionsOpen && user && <RevokeSessionsDialog
+        mfaEnabled={mfaEnabled}
+        busy={accountSessionsBusy}
+        error={accountSessionsStatus?.type === "error" ? accountSessionsStatus.message : null}
+        onClose={() => setRevokeSessionsOpen(false)}
+        onConfirm={handleRevokeOtherSessions}
+      />}
     </AppLayout>
   );
 }
