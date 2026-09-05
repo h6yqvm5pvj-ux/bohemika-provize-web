@@ -1,0 +1,205 @@
+.card {
+  --category-color: #7c3aed;
+  --category-surface: #f3efff;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 236px;
+  padding: 18px 22px 10px;
+  border: 1px solid #e5e7ee;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 2px 4px rgb(31 24 55 / 2%), 0 8px 24px rgb(31 24 55 / 3%);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.card[data-category="Pojištění vozidel"] { --category-color: #2563eb; --category-surface: #edf4ff; }
+.card[data-category="Životní pojištění"] { --category-color: #be3d70; --category-surface: #fff0f5; }
+.card[data-category="Pojištění majetku"] { --category-color: #087c83; --category-surface: #eaf8f7; }
+.card[data-category="Cestovní pojištění"] { --category-color: #087eaf; --category-surface: #edf8fd; }
+.card[data-category="Finance"] { --category-color: #168362; --category-surface: #ecf8f2; }
+.card[data-category="Investice"] { --category-color: #a66b11; --category-surface: #fff7e8; }
+.card[data-favorite="true"] { border-color: #ddd5f1; }
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--category-color) 9%, transparent);
+  border-radius: 14px;
+  color: var(--category-color);
+  background: var(--category-surface);
+}
+
+.category {
+  flex: 1;
+  min-width: 0;
+  color: #697386;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.5;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.favorite {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-right: -8px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  color: #8a94a5;
+  background: transparent;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.favorite[aria-pressed="true"] { color: #8b5cf6; background: #f5f1ff; }
+.favorite:disabled { cursor: not-allowed; opacity: 0.4; }
+
+.body {
+  flex: 1;
+  padding: 13px 0 14px;
+}
+
+.title {
+  margin: 0;
+  color: #202538;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+
+.description {
+  margin: 9px 0 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 12px;
+  min-height: 49px;
+  padding-top: 4px;
+  border-top: 1px solid #f0f1f5;
+}
+
+.open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  color: #525b70;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* The primary action covers the card; the two secondary buttons sit above it. */
+.open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 22px;
+}
+
+.actionArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  color: #81899b;
+  background: #f6f7fa;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.news {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.newsBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  color: #137557;
+  background: #eef9f3;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.news[data-kind="updated"] .newsBadge { color: #48699f; background: #f0f5fc; }
+.newsDot { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+
+.open:focus-visible { outline: none; }
+.open:focus-visible::after { outline: 2px solid #8b5cf6; outline-offset: 3px; }
+.favorite:focus-visible, .news:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover { transform: translateY(-3px); border-color: #d1c6eb; box-shadow: 0 4px 10px rgb(43 30 79 / 3%), 0 16px 36px rgb(43 30 79 / 7%); }
+  .card:hover .open { color: #7c3aed; }
+  .card:hover .actionArrow { color: #7c3aed; background: #f0eafd; }
+  .favorite:hover:not(:disabled) { color: #7c3aed; background: #f3efff; }
+  .news:hover .newsBadge { filter: brightness(0.97); }
+}
+
+@media (max-width: 639px) {
+  .card { min-height: 212px; padding: 16px 18px 8px; border-radius: 19px; }
+  .body { padding: 11px 0 13px; }
+  .title { font-size: 18px; }
+  .description { font-size: 13px; line-height: 1.65; }
+  .open::after { border-radius: 19px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card, .favorite, .actionArrow { transition: none; }
+  .card:hover { transform: none; }
+}
+
+:global(:root[data-motion="off"]) .card:hover { transform: none; }

@@ -40,7 +40,6 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
-  Star,
   TrendingUp,
   Trophy,
   WalletCards,
@@ -50,7 +49,8 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { InstitutionPortalLinksModal } from "./InstitutionPortalLinksModal";
 import { ContactsModal } from "./ContactsModal";
-import styles from "./pomuckyWallArt.module.css";
+import { ToolFilterNavigation } from "./ToolFilterNavigation";
+import { ToolCard } from "./ToolCard";
 import { systemSansFont } from "@/lib/fonts";
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
@@ -193,45 +193,6 @@ const FILTER_VISUALS: Record<FilterKey, FilterVisual> = {
   },
 };
 
-const CATEGORY_VISUALS: Record<
-  ToolCategory,
-  {
-    icon: string;
-  }
-> = {
-  "Pojištění majetku": {
-    icon: "text-cyan-100 group-hover:text-cyan-50",
-  },
-  "Pojištění vozidel": {
-    icon: "text-blue-100 group-hover:text-blue-50",
-  },
-  "Životní pojištění": {
-    icon: "text-rose-100 group-hover:text-rose-50",
-  },
-  "Cestovní pojištění": {
-    icon: "text-sky-100 group-hover:text-sky-50",
-  },
-  Finance: {
-    icon: "text-emerald-100 group-hover:text-emerald-50",
-  },
-  Investice: {
-    icon: "text-amber-100 group-hover:text-amber-50",
-  },
-  Obecné: {
-    icon: "text-indigo-100 group-hover:text-indigo-50",
-  },
-};
-
-const CATEGORY_BADGE_LABEL: Record<ToolCategory, string> = {
-  "Pojištění majetku": "MAJETEK",
-  "Pojištění vozidel": "AUTO",
-  "Životní pojištění": "ŽIVOT",
-  "Cestovní pojištění": "CESTOVNÍ",
-  Finance: "FINANCE",
-  Investice: "INVESTICE",
-  Obecné: "OBECNÉ",
-};
-
 const TACHOMETER_UPLOAD_TARGETS = [
   {
     key: "allianz",
@@ -308,135 +269,6 @@ const SORT_OPTIONS: Array<{ key: ToolHubSortMode; label: string }> = [
   { key: "alphabetical", label: "A–Z" },
 ];
 
-function CategoryBadge({ category }: { category: ToolCategory }) {
-  const Icon = FILTER_VISUALS[category].icon;
-
-  return (
-    <span className="pomucky-category-badge inline-flex items-center gap-1.5 rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.14em] !text-white shadow-[0_8px_18px_rgba(168,85,247,0.34)] sm:px-3.5 sm:text-[0.7rem] sm:tracking-[0.16em] sm:shadow-[0_10px_22px_rgba(168,85,247,0.42)] [&_*]:!text-white">
-      <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.35} aria-hidden="true" />
-      <span>{CATEGORY_BADGE_LABEL[category]}</span>
-    </span>
-  );
-}
-
-function FavoriteButton({
-  active,
-  disabled,
-  title,
-  onToggle,
-}: {
-  active: boolean;
-  disabled: boolean;
-  title: string;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onToggle();
-      }}
-      className={`absolute right-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-[0_10px_22px_rgba(15,23,42,0.24)] backdrop-blur transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-45 ${
-        active
-          ? "border-amber-300 bg-amber-300 text-amber-950"
-          : "border-white/35 bg-slate-950/55 text-white hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700"
-      }`}
-      aria-label={active ? `Odebrat ${title} z oblíbených` : `Přidat ${title} do oblíbených`}
-      title={active ? "Odebrat z oblíbených" : "Přidat do oblíbených"}
-    >
-      <Star className={`h-4.5 w-4.5 ${active ? "fill-current" : ""}`} />
-    </button>
-  );
-}
-
-function ToolNewsButton({
-  news,
-  title,
-  onOpen,
-}: {
-  news: ToolCatalogNews;
-  title: string;
-  onOpen: () => void;
-}) {
-  const label = news.kind === "new" ? "Nové" : "Aktualizováno";
-
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onOpen();
-      }}
-      className={`absolute bottom-3 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[0.68rem] font-extrabold uppercase tracking-[0.08em] shadow-[0_8px_18px_rgba(15,23,42,0.24)] backdrop-blur transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:px-3 sm:text-[0.7rem] ${
-        news.kind === "new"
-          ? "border-emerald-200/75 bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
-          : "border-cyan-200/75 bg-cyan-200 text-cyan-950 hover:bg-cyan-100"
-      }`}
-      aria-label={`${label}: ${title}. Zobrazit podrobnosti`}
-      aria-haspopup="dialog"
-      title="Zobrazit, co se změnilo"
-    >
-      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-      {label}
-    </button>
-  );
-}
-
-function ToolCardContent({ tool }: { tool: Tool }) {
-  const ToolIcon = tool.icon;
-  const style = CATEGORY_VISUALS[tool.category];
-
-  return (
-    <>
-      <span
-        className="pointer-events-none absolute -left-12 -top-16 hidden h-44 w-44 rounded-full bg-violet-300/24 blur-3xl sm:block"
-        aria-hidden="true"
-      />
-      <span
-        className="pointer-events-none absolute -right-16 bottom-4 hidden h-40 w-40 rounded-full bg-fuchsia-400/18 blur-3xl sm:block"
-        aria-hidden="true"
-      />
-      <span
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(124deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0)_34%)]"
-        aria-hidden="true"
-      />
-      <ToolIcon
-        className={`pointer-events-none absolute right-4 top-5 z-[1] h-[4.5rem] w-[4.5rem] opacity-[0.22] transition duration-250 group-hover:scale-105 group-hover:opacity-[0.3] sm:right-5 sm:top-5 sm:h-[5.25rem] sm:w-[5.25rem] ${style.icon}`}
-        strokeWidth={1.35}
-        aria-hidden="true"
-      />
-
-      <div className="relative z-10 flex w-full flex-col gap-2.5">
-        <div className="flex items-start">
-          <CategoryBadge category={tool.category} />
-        </div>
-
-        <div className="min-w-0 pr-8">
-          <h2 className="text-[1.18rem] font-bold leading-[1.1] text-[#f8fafc] sm:text-[1.34rem]">
-            {tool.title}
-          </h2>
-          <p className="mt-1.5 text-[0.82rem] leading-5 text-violet-100/75 sm:text-[0.9rem] sm:leading-6">
-            {tool.description}
-          </p>
-        </div>
-
-        <div className="mt-auto">
-          <span className="inline-flex items-center justify-between rounded-xl border border-violet-300/55 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_56%,#8b5cf6_100%)] px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_16px_rgba(82,25,147,0.26)] sm:px-3 sm:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_18px_rgba(82,25,147,0.28)]">
-            <span className="text-[0.8rem] font-bold tracking-normal text-[#1b1036] sm:text-[0.84rem]">
-              Otevřít pomůcku
-            </span>
-            <ArrowUpRight className="h-3.5 w-3.5 text-[#1b1036]" />
-          </span>
-        </div>
-      </div>
-    </>
-  );
-}
-
 export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
@@ -449,7 +281,7 @@ export default function ToolsPage() {
   const [usageByKey, setUsageByKey] = useState<
     Partial<Record<ToolHubToolKey, ToolHubUsageMetric>>
   >({});
-  const [sortMode, setSortMode] = useState<ToolHubSortMode>("personal");
+  const [sortMode, setSortMode] = useState<ToolHubSortMode>("popular");
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [favoritePendingKeys, setFavoritePendingKeys] = useState<
@@ -689,7 +521,7 @@ export default function ToolsPage() {
           usageByKey[a.key],
           usageByKey[b.key],
           sortMode,
-          activeFilter === "Všechny"
+          sortMode === "personal" && activeFilter === "Všechny"
         );
         if (usageDiff !== 0) return usageDiff;
 
@@ -709,18 +541,9 @@ export default function ToolsPage() {
         <div className="relative z-10 mx-auto max-w-7xl space-y-4 px-0 sm:space-y-5 sm:px-2 lg:px-3">
           <section className="py-0 sm:py-2">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <div className="space-y-2 sm:space-y-4">
-                <span className="pomucky-hub-badge inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-800 sm:gap-2 sm:px-3 sm:text-xs sm:tracking-[0.18em]">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Nástrojový Hub
-                </span>
-
-                <div>
-                  <h1 className="text-3xl font-bold tracking-[-0.015em] text-slate-900 sm:text-5xl">
-                    Pomůcky
-                  </h1>
-                </div>
-              </div>
+              <h1 className="text-3xl font-bold tracking-[-0.015em] text-slate-900 sm:text-5xl">
+                Pomůcky
+              </h1>
 
               <div className="w-full max-w-xl xl:w-[32rem]">
                 <label htmlFor="tools-search" className="sr-only">
@@ -741,47 +564,16 @@ export default function ToolsPage() {
             </div>
           </section>
 
-          <nav
-            className="sticky top-1 z-30 rounded-[18px] border border-white/75 bg-white/90 p-1.5 shadow-[0_12px_30px_rgba(88,28,135,0.12)] backdrop-blur-xl sm:top-2 sm:rounded-[24px] sm:p-2 sm:shadow-[0_18px_44px_rgba(88,28,135,0.14)]"
-            aria-label="Sekce pomůcek"
-          >
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {FILTERS.map((filter) => {
-                const visual = FILTER_VISUALS[filter];
-                const Icon = visual.icon;
-                const active = filter === activeFilter;
-                const count = filterCounts[filter];
-
-                return (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => setActiveFilter(filter)}
-                    className={[
-                      styles.filterChip,
-                      "pomucky-filter-chip inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold transition sm:px-4",
-                      active
-                        ? "border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_52%,#4c1d95_100%)] !text-white shadow-[0_16px_34px_rgba(109,40,217,0.32)] ring-2 ring-violet-100 [&_*]:!text-white"
-                        : "border-violet-100 bg-white/88 text-slate-700 hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50/80",
-                    ].join(" ")}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {FILTER_TAB_LABEL[filter]}
-                    <span
-                      className={[
-                        "ml-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold leading-none",
-                        active
-                          ? "border border-white/35 bg-white/20 text-white"
-                          : "border border-violet-100 bg-violet-50 text-violet-700",
-                      ].join(" ")}
-                    >
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
+          <ToolFilterNavigation
+            activeFilter={activeFilter}
+            onFilterChange={setActiveFilter}
+            options={FILTERS.map((filter) => ({
+              id: filter,
+              label: FILTER_TAB_LABEL[filter],
+              icon: FILTER_VISUALS[filter].icon,
+              count: filterCounts[filter],
+            }))}
+          />
 
           <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200/85 bg-white/90 px-3.5 py-3 shadow-[0_10px_26px_rgba(15,23,42,0.06)] sm:px-4">
             <div>
@@ -794,12 +586,8 @@ export default function ToolsPage() {
                     ? "Oblíbené pomůcky jsou vždy první, ostatní řadíme podle tvého používání."
                     : "Pořadí vychází z tvého používání pomůcek v této kategorii."
                   : sortMode === "popular"
-                    ? activeFilter === "Všechny"
-                      ? "Oblíbené pomůcky jsou vždy první, ostatní podle celkového počtu otevření."
-                      : "Pořadí vychází z anonymního celkového počtu otevření."
-                    : activeFilter === "Všechny"
-                      ? "Oblíbené pomůcky jsou vždy první, ostatní jsou seřazené podle názvu."
-                      : "Pomůcky jsou seřazené podle názvu."}
+                    ? "Pomůcky se automaticky řadí od nejpoužívanějších podle celkového počtu otevření."
+                    : "Pomůcky jsou seřazené podle názvu."}
               </p>
             </div>
             <div className="flex max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
@@ -824,7 +612,7 @@ export default function ToolsPage() {
             </div>
             {usageLoading ? (
               <p className="w-full text-xs font-medium text-slate-500">
-                Načítám osobní pořadí…
+                Načítám používání pomůcek…
               </p>
             ) : usageError ? (
               <p className="w-full text-xs font-semibold text-rose-700">
@@ -846,91 +634,20 @@ export default function ToolsPage() {
               </p>
             </div>
           ) : (
-            <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {filteredTools.map((tool, index) => {
-                if (tool.render) {
-                  return <div key={tool.key}>{tool.render()}</div>;
-                }
-
-                const favorite = usageByKey[tool.key]?.favorite === true;
-                const favoriteDisabled =
-                  !user ||
-                  !effectiveEmail ||
-                  favoritePendingKeys.has(tool.key);
-                const cardClassName = `${styles.toolCard} pomucky-tool-card group relative isolate flex h-full min-h-[162px] w-full overflow-hidden rounded-[22px] border border-violet-400/45 bg-[linear-gradient(155deg,#2f165e_0%,#1a0f3a_58%,#100726_100%)] p-3.5 text-left shadow-[0_18px_42px_rgba(11,6,30,0.42)] ring-1 ring-violet-300/25 transition-[transform,border-color,box-shadow] duration-250 hover:-translate-y-1.5 hover:border-violet-300/70 hover:shadow-[0_30px_72px_rgba(10,5,30,0.54)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/80 sm:min-h-[188px] sm:rounded-[26px] sm:p-4 sm:shadow-[0_24px_58px_rgba(11,6,30,0.46)]`;
-                const favoriteControl = (
-                  <FavoriteButton
-                    active={favorite}
-                    disabled={favoriteDisabled}
-                    title={tool.title}
-                    onToggle={() => void toggleFavorite(tool.key)}
-                  />
-                );
-                const newsControl = tool.news ? (
-                  <ToolNewsButton
-                    news={tool.news}
-                    title={tool.title}
-                    onOpen={() => setNewsToolKey(tool.key)}
-                  />
-                ) : null;
-                const animationStyle = {
-                  animationDelay: `${Math.min(index * 45, 260)}ms`,
-                };
-
-                if (tool.onClick) {
-                  return (
-                    <div key={tool.key} className="relative h-full">
-                      {favoriteControl}
-                      {newsControl}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          recordToolOpen(tool.key);
-                          tool.onClick?.();
-                        }}
-                        className={cardClassName}
-                        style={animationStyle}
-                      >
-                        <ToolCardContent tool={tool} />
-                      </button>
-                    </div>
-                  );
-                }
-
-                if (tool.external) {
-                  return (
-                    <div key={tool.key} className="relative h-full">
-                      {favoriteControl}
-                      {newsControl}
-                      <a
-                        href={tool.href ?? "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={() => recordToolOpen(tool.key)}
-                        className={cardClassName}
-                        style={animationStyle}
-                      >
-                        <ToolCardContent tool={tool} />
-                      </a>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div key={tool.key} className="relative h-full">
-                    {favoriteControl}
-                    {newsControl}
-                    <Link
-                      href={tool.href ?? "#"}
-                      onClick={() => recordToolOpen(tool.key)}
-                      className={cardClassName}
-                      style={animationStyle}
-                    >
-                      <ToolCardContent tool={tool} />
-                    </Link>
-                  </div>
-                );
-              })}
+            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Katalog pomůcek">
+              {filteredTools.map((tool) => tool.render ? (
+                <div key={tool.key}>{tool.render()}</div>
+              ) : (
+                <ToolCard
+                  key={tool.key}
+                  tool={tool}
+                  favorite={usageByKey[tool.key]?.favorite === true}
+                  favoriteDisabled={!user || !effectiveEmail || favoritePendingKeys.has(tool.key)}
+                  onToggleFavorite={() => void toggleFavorite(tool.key)}
+                  onOpenNews={() => setNewsToolKey(tool.key)}
+                  onOpen={() => recordToolOpen(tool.key)}
+                />
+              ))}
             </section>
           )}
         </div>
@@ -1080,14 +797,6 @@ export default function ToolsPage() {
           onClose={() => setContactsModalOpen(false)}
         />
       )}
-      <style jsx global>{`
-        body.simple-bg.simple-bg-white .app-content .pomucky-category-badge,
-        body.simple-bg.simple-bg-white .app-content .pomucky-category-badge * {
-          color: #ffffff !important;
-          -webkit-text-fill-color: #ffffff !important;
-          stroke: currentColor !important;
-        }
-      `}</style>
     </AppLayout>
   );
 }

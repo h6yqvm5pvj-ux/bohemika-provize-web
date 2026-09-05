@@ -92,6 +92,7 @@ import { ProfileSettingsPanel } from "./components/ProfileSettingsPanel";
 import { useAresIcoLookup } from "@/components/profile/useAresIcoLookup";
 import { SubscriptionSettingsPanel } from "./components/SubscriptionSettingsPanel";
 import { UserRequestsPanel } from "./components/UserRequestsPanel";
+import { SETTINGS_TABS, SettingsNavigation, type SettingsTab } from "./components/SettingsNavigation";
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   INTRANET_NOTIFICATION_SECTIONS,
@@ -233,25 +234,6 @@ const SETTINGS_KEYS = {
   monthlyGoal: "settings.monthlyGoal",
   reduceMotion: "settings.reduceMotion",
 };
-
-type SettingsTab =
-  | "profile"
-  | "account"
-  | "subscription"
-  | "career"
-  | "notifications"
-  | "onlineCard"
-  | "requests";
-
-const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
-  { id: "profile", label: "Profil" },
-  { id: "account", label: "Zabezpečení" },
-  { id: "subscription", label: "Předplatné" },
-  { id: "career", label: "Kariéra" },
-  { id: "notifications", label: "Notifikace" },
-  { id: "onlineCard", label: "Online Vizitka" },
-  { id: "requests", label: "Žádosti" },
-];
 
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
@@ -3904,34 +3886,14 @@ export default function SettingsPage() {
               </div>
             ) : null}
 
-            <div className="settings-tabs -mx-1 flex max-w-full gap-1 overflow-x-auto rounded-[18px] border border-slate-900 bg-slate-950 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.14)] sm:mx-0 sm:w-fit sm:flex-wrap sm:rounded-full sm:shadow-[0_16px_34px_rgba(15,23,42,0.16)]">
-              {visibleSettingsTabs.map((tab) => {
-                const active = activeTab === tab.id;
-                const tabDisabled = timelineGateActive && tab.id !== "career";
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => {
-                      if (tabDisabled) return;
-                      setActiveTab(tab.id);
-                    }}
-                    disabled={tabDisabled}
-                    className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm ${
-                      active
-                        ? "bg-white text-slate-950"
-                        : tabDisabled
-                          ? "cursor-not-allowed text-white/45"
-                          : "text-white hover:bg-white/10"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
+            <SettingsNavigation
+              tabs={visibleSettingsTabs}
+              activeTab={activeTab}
+              timelineGateActive={timelineGateActive}
+              onTabChange={setActiveTab}
+            />
 
-            <fieldset className="contents">
+            <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${activeTab}`} className="contents">
             <div className="grid gap-3 sm:gap-4 lg:grid-cols-2 lg:items-stretch">
               {activeTab === "profile" && !timelineGateActive && (
                 <ProfileSettingsPanel
@@ -4237,7 +4199,7 @@ export default function SettingsPage() {
                 onDisableMfa={handleDisableMfa}
               />
             )}
-            </fieldset>
+            </div>
 
           </>
         )}

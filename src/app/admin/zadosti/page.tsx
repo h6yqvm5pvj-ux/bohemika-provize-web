@@ -16,10 +16,7 @@ import {
   KeyRound,
   Loader2,
   Inbox,
-  Landmark,
-  Link2,
   Mail,
-  Megaphone,
   Pencil,
   PhoneCall,
   QrCode,
@@ -39,7 +36,6 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import Image from "next/image";
-import Link from "next/link";
 
 import adminStyles from "./adminConsole.module.css";
 
@@ -58,6 +54,7 @@ import {
   type AdminRole,
 } from "@/lib/adminAccess";
 import { AdminSecuritySection } from "./components/AdminSecuritySection";
+import { AdminNavigation, type AdminSection } from "./components/AdminNavigation";
 import { AdminBroadcastSection } from "./components/AdminBroadcastSection";
 import { AdminSubscriptionsSection } from "./components/AdminSubscriptionsSection";
 import {
@@ -433,13 +430,7 @@ type UserDirectorySearchResponse = {
   users: UserDirectorySuggestion[];
 };
 
-type AdminSection =
-  | "requests"
-  | "createUser"
-  | "users"
-  | "broadcasts"
-  | "subscriptions"
-  | "security";
+
 
 type AdminUserSecurityAction =
   | "sendPasswordReset"
@@ -2633,117 +2624,9 @@ export default function AdminRequestsPage() {
               <span className={adminDarkBadgeClass}>
                 Řídicí panel
               </span>
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
-                  Admin
-                </h1>
-                {canAccessAdminPanel ? (
-                  <div className={`${adminStyles.nav} flex w-fit max-w-full flex-wrap gap-1 overflow-x-auto rounded-full border border-slate-900 bg-slate-950 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.16)]`}>
-                    {isAllowedAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveAdminSection("requests")}
-                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          activeAdminSection === "requests"
-                            ? "bg-white !text-slate-950 shadow-sm"
-                            : "!text-white/75 hover:bg-white/10 hover:!text-white"
-                        }`}
-                      >
-                        <Inbox size={14} strokeWidth={2.2} aria-hidden="true" />
-                        Žádosti
-                      </button>
-                    ) : null}
-                    {canCreateUsers ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveAdminSection("createUser")}
-                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          activeAdminSection === "createUser"
-                            ? "bg-white !text-slate-950 shadow-sm"
-                            : "!text-white/75 hover:bg-white/10 hover:!text-white"
-                        }`}
-                      >
-                        <UserPlus size={14} strokeWidth={2.2} aria-hidden="true" />
-                        Přidat uživatele
-                      </button>
-                    ) : null}
-                    {isAllowedAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveAdminSection("users")}
-                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          activeAdminSection === "users"
-                            ? "bg-white !text-slate-950 shadow-sm"
-                            : "!text-white/75 hover:bg-white/10 hover:!text-white"
-                        }`}
-                      >
-                        <UserRound size={14} strokeWidth={2.2} aria-hidden="true" />
-                        Uživatelé
-                      </button>
-                    ) : null}
-                    {isAllowedAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveAdminSection("broadcasts")}
-                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          activeAdminSection === "broadcasts"
-                            ? "bg-white !text-slate-950 shadow-sm"
-                            : "!text-white/75 hover:bg-white/10 hover:!text-white"
-                        }`}
-                      >
-                        <Megaphone size={14} strokeWidth={2.2} aria-hidden="true" />
-                        Notifikace
-                      </button>
-                    ) : null}
-                    {isOwnerAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveAdminSection("subscriptions")}
-                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          activeAdminSection === "subscriptions"
-                            ? "bg-white !text-slate-950 shadow-sm"
-                            : "!text-white/75 hover:bg-white/10 hover:!text-white"
-                        }`}
-                      >
-                        <Landmark size={14} strokeWidth={2.2} aria-hidden="true" />
-                        Předplatné
-                      </button>
-                    ) : null}
-                    {isAllowedAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveAdminSection("security")}
-                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          activeAdminSection === "security"
-                            ? "bg-white !text-slate-950 shadow-sm"
-                            : "!text-white/75 hover:bg-white/10 hover:!text-white"
-                        }`}
-                      >
-                        <ShieldCheck size={14} strokeWidth={2.2} aria-hidden="true" />
-                        Zabezpečení
-                      </button>
-                    ) : null}
-                    {isAllowedAdmin ? (
-                      <Link
-                        href="/admin/provizni-vypisy/produktova-mapa"
-                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold !text-white/75 transition hover:bg-white/10 hover:!text-white"
-                      >
-                        <Link2 size={14} strokeWidth={2.2} aria-hidden="true" />
-                        Mapa výpisů
-                      </Link>
-                    ) : null}
-                    {isAllowedAdmin ? (
-                      <Link
-                        href="/admin/data-health"
-                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold !text-white/75 transition hover:bg-white/10 hover:!text-white"
-                      >
-                        <AlertTriangle size={14} strokeWidth={2.2} aria-hidden="true" />
-                        Data Health
-                      </Link>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                Admin
+              </h1>
             </div>
             {isAllowedAdmin && activeAdminSection === "requests" ? (
               <button
@@ -2759,6 +2642,16 @@ export default function AdminRequestsPage() {
               </button>
             ) : null}
           </div>
+
+          {canAccessAdminPanel ? (
+            <AdminNavigation
+              activeSection={activeAdminSection}
+              onSectionChange={setActiveAdminSection}
+              isAllowedAdmin={isAllowedAdmin}
+              canCreateUsers={canCreateUsers}
+              isOwnerAdmin={isOwnerAdmin}
+            />
+          ) : null}
 
           {!canAccessAdminPanel ? (
             <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">

@@ -2007,7 +2007,7 @@ body {
       overflow-wrap: anywhere;
     }
 
-    .tools-content h2 {
+    .tools-content h2:not(.tool-card-title) {
       max-width: 100%;
       font-size: clamp(1.35rem, 7vw, 2rem) !important;
       line-height: 1.08 !important;
