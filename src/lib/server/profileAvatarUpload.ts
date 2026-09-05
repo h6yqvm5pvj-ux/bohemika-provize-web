@@ -9,7 +9,6 @@ const ALLOWED_INPUT_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
-  "image/avif",
 ]);
 
 export type PreparedProfileAvatar = {
@@ -45,12 +44,12 @@ export async function prepareProfileAvatarFile(
   if (!detected || !ALLOWED_INPUT_TYPES.has(detected.contentType)) {
     return {
       ok: false,
-      error: "Podporované formáty jsou JPG, PNG, WEBP a AVIF.",
+      error: "Podporované formáty jsou JPG, PNG a WEBP.",
     };
   }
 
   try {
-    const bytes = await sharp(input, { failOn: "warning" })
+    const bytes = await sharp(input, { failOn: "warning", limitInputPixels: 40_000_000 })
       .rotate()
       .resize(PROFILE_AVATAR_OUTPUT_SIZE, PROFILE_AVATAR_OUTPUT_SIZE, {
         fit: "cover",

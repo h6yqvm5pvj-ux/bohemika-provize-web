@@ -31,7 +31,7 @@ type CropDraft = {
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const OUTPUT_SIZE = 512;
-const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function drawCrop(
   canvas: HTMLCanvasElement,
@@ -150,7 +150,7 @@ export function ProfileAvatarPicker({
     if (!file || disabled || uploading) return;
     setError("");
     if (!ACCEPTED_TYPES.has(file.type)) {
-      setError("Vyber fotografii ve formátu JPG, PNG, WEBP nebo AVIF.");
+      setError("Vyber fotografii ve formátu JPG, PNG nebo WEBP.");
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
@@ -248,7 +248,7 @@ export function ProfileAvatarPicker({
               Zobrazí se v týmu, poště, na intranetu a u tvého účtu.
             </p>
             <p className="mt-1 text-[10px] font-semibold text-slate-400">
-              JPG, PNG, WEBP nebo AVIF · vlastní výřez
+              JPG, PNG nebo WEBP · vlastní výřez
             </p>
           </div>
         </div>
@@ -288,7 +288,7 @@ export function ProfileAvatarPicker({
           ref={inputRef}
           type="file"
           className="sr-only"
-          accept="image/jpeg,image/png,image/webp,image/avif"
+          accept="image/jpeg,image/png,image/webp"
           onChange={(event) => openEditor(event.target.files?.[0] ?? null)}
           disabled={disabled || uploading}
         />

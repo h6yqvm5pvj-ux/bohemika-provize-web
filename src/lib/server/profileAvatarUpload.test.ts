@@ -47,7 +47,7 @@ describe("profile avatar upload preparation", () => {
       )
     ).resolves.toMatchObject({
       ok: false,
-      error: "Podporované formáty jsou JPG, PNG, WEBP a AVIF.",
+      error: "Podporované formáty jsou JPG, PNG a WEBP.",
     });
   });
 });

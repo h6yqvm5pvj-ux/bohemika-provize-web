@@ -19,11 +19,13 @@ service cloud.firestore {
       return isSignedIn() ? normEmail(request.auth.token.email) : null;
     }
 
-    // Admin s custom claimem `admin: true`.
+    // `admin` also marks support accounts; only admin/owner may use full access.
+    // Keep legacy admin tokens without adminRole working, reject unknown roles.
     // Vojtech ma samostatne opravneni pro zakladani uctu, ne admin pristup.
     function isAdmin() {
       return request.auth != null
-        && request.auth.token.admin == true
+        && request.auth.token.get("admin", false) == true
+        && request.auth.token.get("adminRole", "admin") in ["admin", "owner"]
         && authEmail() != "vojtech.mahr@bohemika.eu";
     }
 
@@ -148,65 +150,6 @@ service cloud.firestore {
         : true;
     }
 
-    function authUserHasAdminFunction() {
-      let me = authEmail();
-      let clean = (me is string) ? me : "";
-      let safe = clean == "" ? "__missing__" : clean;
-      let privateRef = /databases/$(database)/documents/usersPrivate/$(safe);
-      let publicRef = /databases/$(database)/documents/users/$(safe);
-      return clean != ""
-        && (
-          (
-            exists(privateRef)
-            && get(privateRef).data is map
-            && (
-              get(privateRef).data.adminFunction == true
-              || get(privateRef).data.adminfunction == true
-            )
-          )
-          || (
-            exists(publicRef)
-            && get(publicRef).data is map
-            && (
-              get(publicRef).data.adminFunction == true
-              || get(publicRef).data.adminfunction == true
-            )
-          )
-        );
-    }
-
-    function isManagerInHierarchyOfResource() {
-      let me = authEmail();
-      let m1 = resource != null && resource.data is map ? normEmail(resource.data.managerEmail) : "";
-      let m2 = managerEmailOf(m1);
-      let m3 = managerEmailOf(m2);
-      let m4 = managerEmailOf(m3);
-      let m5 = managerEmailOf(m4);
-      let m6 = managerEmailOf(m5);
-      let m7 = managerEmailOf(m6);
-      let m8 = managerEmailOf(m7);
-      return me != null
-        && me != ""
-        && (
-          m1 == me ||
-          m2 == me ||
-          m3 == me ||
-          m4 == me ||
-          m5 == me ||
-          m6 == me ||
-          m7 == me ||
-          m8 == me
-        );
-    }
-
-    function isPrivilegedSubordinatePositionUpdate() {
-      return resource != null
-        && authUserHasAdminFunction()
-        && isManagerInHierarchyOfResource()
-        && resource.data.canChangePosition != false
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly(["position"]);
-    }
-
     function isAuthEmail(email) {
       return authEmail() != "" && normEmail(email) == authEmail();
     }
@@ -292,75 +235,16 @@ service cloud.firestore {
       );
     }
 
-    function isChangingCareerCalculationFields() {
-      return resource == null
-        ? request.resource.data.keys().hasAny([
-            "position",
-            "commissionMode",
-            "positionTimeline"
-          ])
-        : request.resource.data.diff(resource.data).changedKeys().hasAny([
-            "position",
-            "commissionMode",
-            "positionTimeline"
-          ]);
-    }
-
-    function isSettingCanChangeToTrue() {
-      return request.resource.data.canChangePosition == true &&
-             (resource == null || resource.data.canChangePosition != true);
-    }
-
-    function isChangingSensitivePublicUserFields() {
-      return resource == null
-        ? request.resource.data.keys().hasAny([
-            "subscriptionStatus",
-            "adminFunction",
-            "adminfunction",
-            "fcmTokens",
-            "pushTokens",
-            "notificationTokens",
-            "fcmTokensByDevice",
-            "pushTokensByDevice"
-          ])
-        : request.resource.data.diff(resource.data).changedKeys().hasAny([
-            "subscriptionStatus",
-            "adminFunction",
-            "adminfunction",
-            "fcmTokens",
-            "pushTokens",
-            "notificationTokens",
-            "fcmTokensByDevice",
-            "pushTokensByDevice"
-          ]);
-    }
-
-    function isChangingIdentityPublicUserFields() {
-      return resource == null
-        ? request.resource.data.keys().hasAny([
-            "email",
-            "managerEmail",
-            "userId"
-          ])
-        : request.resource.data.diff(resource.data).changedKeys().hasAny([
-            "email",
-            "managerEmail",
-            "userId"
-          ]);
-    }
-
-    function isChangingRestrictedPrivateUserFields() {
-      return resource == null
-        ? request.resource.data.keys().hasAny([
-            "subscriptionStatus",
-            "adminFunction",
-            "adminfunction"
-          ])
-        : request.resource.data.diff(resource.data).changedKeys().hasAny([
-            "subscriptionStatus",
-            "adminFunction",
-            "adminfunction"
-          ]);
+    function isOwnerPublicUpdateAllowed() {
+      // Everything not explicitly listed is server/admin controlled, including
+      // roles, identity, hierarchy, position, subscription and setup/MFA state.
+      // Current app profile edits use the validated server API (Admin SDK).
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "fullName", "name", "phoneNumber", "profileAvatar",
+        "monthlyGoal", "notifyMinutes", "backgroundColor", "fontTheme",
+        "reduceMotion", "notificationSettings", "homeLayout", "homeWidgets",
+        "homePerformanceMode", "homeQuickActions"
+      ]);
     }
 
     function isOwnerPrivateWriteAllowed() {
@@ -371,12 +255,9 @@ service cloud.firestore {
         "fcmTokensByDevice",
         "pushTokensByDevice"
       ];
-      return !isChangingRestrictedPrivateUserFields()
-        && (
-          resource == null
+      return resource == null
             ? request.resource.data.keys().hasOnly(ownerWritablePrivateFields)
-            : request.resource.data.diff(resource.data).changedKeys().hasOnly(ownerWritablePrivateFields)
-        );
+            : request.resource.data.diff(resource.data).affectedKeys().hasOnly(ownerWritablePrivateFields);
     }
 
     function isNonEmptyText(value) {
@@ -449,7 +330,7 @@ service cloud.firestore {
     }
 
     function contractCoreFieldsChanged() {
-      return request.resource.data.diff(resource.data).changedKeys().hasAny([
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
         "entryType",
         "productKey",
         "clientName",
@@ -460,7 +341,7 @@ service cloud.firestore {
     }
 
     function changedKey(key) {
-      return request.resource.data.diff(resource.data).changedKeys().hasAny([key]);
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([key]);
     }
 
     function hasValidContractCoreUpdate() {
@@ -480,40 +361,30 @@ service cloud.firestore {
 
     // ---------- entries (collectionGroup fallback) ----------
     match /{path=**}/entries/{entryId} {
-      allow read: if canReadEntryDoc(resource.data) || isAdmin();
+      allow read: if isAdmin() || canReadEntryDoc(resource.data);
       allow create, update, delete: if isAdmin();
     }
 
     // ---------- users ----------
     match /users/{userEmail} {
       // čtení profilu: já / moji nadřízení / moji podřízení
-      allow read: if isOwner(userEmail)
+      allow read: if isAdmin()
+                  || isOwner(userEmail)
                   || isAuthUsersLegacyProfileDoc()
-                  || isAdmin()
                   || isDirectManagerOfUserResource()
                   || isManagerOfUserResource(userEmail)
                   || isSubordinateOfUserResource(userEmail);
-      // zapisuje majitel nebo admin
-      allow create: if ((isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields()) || isOwnerAdmin())
-        && !isSettingCanChangeToTrue()
-        && (!isChangingCareerCalculationFields() || authUserHasAdminFunction() || isOwnerAdmin());
-      allow update: if (
-          (
-            (isOwner(userEmail) && !isChangingSensitivePublicUserFields() && !isChangingIdentityPublicUserFields())
-            || isOwnerAdmin()
-          )
-          && !isSettingCanChangeToTrue()
-          && (!isChangingCareerCalculationFields() || authUserHasAdminFunction() || isOwnerAdmin())
-        )
-        || isPrivilegedSubordinatePositionUpdate();
-      allow delete: if isOwner(userEmail) || isOwnerAdmin();
+      // Account lifecycle, roles and hierarchy are managed through server APIs.
+      // Disallow self-delete/recreate so protected fields cannot be stripped.
+      allow create, delete: if isOwnerAdmin();
+      allow update: if (isOwner(userEmail) && isOwnerPublicUpdateAllowed()) || isOwnerAdmin();
 
       // ---------- entries ----------
       match /entries/{entryId} {
         // čtení povoleno autorovi, jeho nadřízeným (podle snapshotu v dokumentu) a adminu
-        allow read: if isOwner(userEmail)
-                    || canReadEntryDoc(resource.data)
-                    || isAdmin();
+        allow read: if isAdmin()
+                    || isOwner(userEmail)
+                    || canReadEntryDoc(resource.data);
         // zápis smluv jen přes backend API (Admin SDK), ne přímo z klienta
         allow create, update, delete: if isAdmin();
       }
@@ -552,7 +423,7 @@ service cloud.firestore {
 
     // ---------- contracts ----------
     match /contracts/{contractId} {
-      allow read: if canReadContractDoc(resource.data) || isAdmin();
+      allow read: if isAdmin() || canReadContractDoc(resource.data);
       allow create, update, delete: if isAdmin();
     }
 

@@ -30,6 +30,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 firebase-debug.log*
+firestore-debug.log*
+.tmp/firestore-rules-release*/
 .tmp/*-backup-*.json
 
 # env files (can opt-in for committing if needed)

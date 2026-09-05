@@ -1,7 +1,8 @@
 // src/app/klienti/[slug]/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams } from "next/navigation";
@@ -43,8 +44,17 @@ import type { Product } from "@/app/types/domain";
 import {
   TEST_CLIENT_NAME,
   TEST_CLIENT_SLUG,
+  canAccessClientCards,
   isTestClientName,
 } from "../clientAccess";
+import {
+  createEmptyClientCard,
+  MAX_CLIENT_IDENTITY_DOCUMENTS,
+  type ClientCardDraft,
+  type ClientCardResponse,
+  type ClientIdentityDocument,
+  type IdentityDocumentType,
+} from "../clientCardData";
 import {
   bestClientAddress,
   bestClientEmail,
@@ -65,22 +75,6 @@ type CuzkSuggestion = {
   adresa?: string | null;
   text?: string | null;
   label?: string | null;
-};
-
-type IdentityDocumentType =
-  | "identity-card"
-  | "passport"
-  | "permanent-residence"
-  | "long-term-residence"
-  | "temporary-residence-confirmation";
-
-type ClientIdentityDocument = {
-  id: string;
-  type: IdentityDocumentType;
-  validFrom: string;
-  validTo: string;
-  number: string;
-  issuedBy: string;
 };
 
 type ClientIdentityDocumentField = Exclude<keyof ClientIdentityDocument, "id">;
@@ -128,93 +122,6 @@ function createIdentityDocument(): ClientIdentityDocument {
     number: "",
     issuedBy: "",
   };
-}
-
-type ClientCardDraft = {
-  clientName: string;
-  birthNumber: string;
-  birthDate: string;
-  phone: string;
-  email: string;
-  permanentAddress: string;
-  correspondenceAddress: string;
-  occupation: string;
-  employerName: string;
-  partnerName: string;
-  identityDocuments: ClientIdentityDocument[];
-};
-
-const CLIENT_CARD_STORAGE_VERSION = 1;
-
-function clientCardStorageKey(slug: string): string {
-  return `bohemika.client-card.${slug}.v${CLIENT_CARD_STORAGE_VERSION}`;
-}
-
-function readStoredString(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function isIdentityDocumentType(value: unknown): value is IdentityDocumentType {
-  return IDENTITY_DOCUMENT_TYPES.some((type) => type.value === value);
-}
-
-function readStoredIdentityDocuments(value: unknown): ClientIdentityDocument[] {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const record = item as Record<string, unknown>;
-      const type = isIdentityDocumentType(record.type)
-        ? record.type
-        : DEFAULT_IDENTITY_DOCUMENT_TYPE.value;
-
-      return {
-        id: readStoredString(record.id) || createIdentityDocument().id,
-        type,
-        validFrom: readStoredString(record.validFrom),
-        validTo: readStoredString(record.validTo),
-        number: readStoredString(record.number),
-        issuedBy: readStoredString(record.issuedBy),
-      };
-    })
-    .filter((item): item is ClientIdentityDocument => item !== null);
-}
-
-function readStoredClientCard(slug: string): ClientCardDraft | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = window.localStorage.getItem(clientCardStorageKey(slug));
-    if (!raw) return null;
-
-    const record = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      clientName: readStoredString(record.clientName),
-      birthNumber: readStoredString(record.birthNumber),
-      birthDate: readStoredString(record.birthDate),
-      phone: readStoredString(record.phone),
-      email: readStoredString(record.email),
-      permanentAddress: readStoredString(record.permanentAddress),
-      correspondenceAddress: readStoredString(record.correspondenceAddress),
-      occupation: readStoredString(record.occupation),
-      employerName: readStoredString(record.employerName),
-      partnerName: readStoredString(record.partnerName),
-      identityDocuments: readStoredIdentityDocuments(record.identityDocuments),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function saveStoredClientCard(slug: string, draft: ClientCardDraft) {
-  window.localStorage.setItem(
-    clientCardStorageKey(slug),
-    JSON.stringify({
-      ...draft,
-      savedAt: new Date().toISOString(),
-    })
-  );
 }
 
 function identityDocumentTypeMeta(type: IdentityDocumentType) {
@@ -345,6 +252,7 @@ function Field({
       </span>
       <input
         type={type}
+        autoComplete="off"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -433,6 +341,7 @@ function AddressField({
         <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-500" />
         <input
           type="text"
+          autoComplete="off"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onFocus={() => {
@@ -533,16 +442,16 @@ function IdentityDocumentsSection({
           <div>
             <h2 className="text-lg font-bold tracking-tight text-slate-950">Doklady</h2>
             <p className="text-xs font-medium text-slate-500 sm:text-sm">
-              Eviduj jeden nebo více identifikačních dokladů klienta.
+              Eviduj nejvýše {MAX_CLIENT_IDENTITY_DOCUMENTS} identifikačních dokladů klienta.
             </p>
           </div>
         </div>
         <button
           type="button"
           onClick={onAdd}
-          disabled={!editable}
+          disabled={!editable || documents.length >= MAX_CLIENT_IDENTITY_DOCUMENTS}
           className={`inline-flex items-center justify-center gap-2 rounded-full px-3.5 py-2 text-sm font-bold transition ${
-            editable
+            editable && documents.length < MAX_CLIENT_IDENTITY_DOCUMENTS
               ? "bg-violet-600 text-white shadow-[0_10px_22px_rgba(124,58,237,0.2)] hover:bg-violet-700"
               : "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
           }`}
@@ -1010,8 +919,46 @@ export default function ClientCardPage() {
   const params = useParams<{ slug: string }>();
   const slug = typeof params?.slug === "string" ? params.slug : "";
   const [user, setUser] = useState<FirebaseUser | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    // Clear the editor before a browser history snapshot is frozen. A restored
+    // page must initialize authentication again instead of showing old data.
+    const onPageHide = () => flushSync(() => setUser(null));
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) window.location.reload();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, []);
+
+  if (!user || !canAccessClientCards(user.email)) {
+    return (
+      <AppLayout active="clients">
+        <p className="px-4 py-8 text-sm text-slate-600">
+          {user ? "Klientská karta není pro tento účet dostupná." : "Ověřuji přihlášení…"}
+        </p>
+      </AppLayout>
+    );
+  }
+
+  // Remount on account changes so neither loaded data nor unsaved fields from
+  // the previous account can survive in the next user's editor.
+  return <ClientCardEditor key={`${user.uid}:${slug}`} user={user} slug={slug} />;
+}
+
+function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) {
   const [contracts, setContracts] = useState<ClientContractItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cardLoaded, setCardLoaded] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const [clientName, setClientName] = useState(TEST_CLIENT_NAME);
@@ -1030,75 +977,75 @@ export default function ClientCardPage() {
   const [saveStatus, setSaveStatus] = useState<{
     tone: "success" | "error";
     message: string;
+    conflict?: boolean;
   } | null>(null);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (nextUser) => setUser(nextUser));
-    return () => unsub();
+  const applyCard = useCallback((card: ClientCardDraft) => {
+    setClientName(card.clientName);
+    setBirthNumber(card.birthNumber);
+    setBirthDate(card.birthDate);
+    setPhone(card.phone);
+    setEmail(card.email);
+    setPermanentAddress(card.permanentAddress);
+    setCorrespondenceAddress(card.correspondenceAddress);
+    setOccupation(card.occupation);
+    setEmployerName(card.employerName);
+    setPartnerName(card.partnerName);
+    setIdentityDocuments(card.identityDocuments);
   }, []);
 
   useEffect(() => {
     if (slug !== TEST_CLIENT_SLUG) return;
-
-    const stored = readStoredClientCard(slug);
-    if (!stored) return;
-
-    setClientName(stored.clientName || TEST_CLIENT_NAME);
-    setBirthNumber(stored.birthNumber);
-    setBirthDate(stored.birthDate);
-    setPhone(stored.phone);
-    setEmail(stored.email);
-    setPermanentAddress(stored.permanentAddress);
-    setCorrespondenceAddress(stored.correspondenceAddress);
-    setOccupation(stored.occupation);
-    setEmployerName(stored.employerName);
-    setPartnerName(stored.partnerName);
-    setIdentityDocuments(stored.identityDocuments);
-  }, [slug]);
-
-  useEffect(() => {
-    if (!user || slug !== TEST_CLIENT_SLUG) return;
     let cancelled = false;
 
     const load = async () => {
       setLoading(true);
+      setCardLoaded(false);
       setError(null);
-      try {
-        const items = await loadMartinContracts(user);
-        if (cancelled) return;
-        setContracts(items);
-        setPermanentAddress((current) => current || bestClientAddress(items));
-        setPhone((current) => current || bestClientPhone(items));
-        setEmail((current) => current || bestClientEmail(items));
-      } catch (err) {
-        console.error("Karta klienta: načtení smluv selhalo", err);
-        if (!cancelled) {
-          setContracts([]);
-          setError("Smlouvy klienta se nepodařilo načíst.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      const [cardResult, contractsResult] = await Promise.allSettled([
+        fetchAuthedJsonOrThrow<ClientCardResponse>(user, `/api/client-cards/${encodeURIComponent(slug)}`),
+        loadMartinContracts(user),
+      ]);
+      if (cancelled) return;
+      const items = contractsResult.status === "fulfilled" ? contractsResult.value : [];
+      setContracts(items);
+      if (cardResult.status === "fulfilled") {
+        const payload = cardResult.value;
+        const initialCard = payload.card ?? {
+          ...createEmptyClientCard(TEST_CLIENT_NAME),
+          permanentAddress: bestClientAddress(items),
+          phone: bestClientPhone(items),
+          email: bestClientEmail(items),
+        };
+        applyCard(initialCard);
+        setRevision(payload.revision);
+        setCardLoaded(true);
+        if (contractsResult.status === "rejected") setError("Smlouvy klienta se nepodařilo načíst.");
+      } else {
+        setError("Klientskou kartu se nepodařilo načíst. Úpravy budou dostupné po úspěšném načtení.");
       }
+      setLoading(false);
     };
 
     void load();
     return () => {
       cancelled = true;
     };
-  }, [slug, user]);
+  }, [slug, user, applyCard, reloadVersion]);
 
   const addressSuggestions = useMemo(() => collectAddressSuggestions(contracts), [contracts]);
   const splitContracts = useMemo(() => splitClientContracts(contracts), [contracts]);
+  const canEditFields = isEditingClient && !saving;
 
   const handleBirthNumberChange = (value: string) => {
-    if (!isEditingClient) return;
+    if (!canEditFields) return;
     setBirthNumber(value);
     const parsed = parseBirthNumberDate(value);
     if (parsed) setBirthDate(parsed);
   };
 
   const handleAddIdentityDocument = () => {
-    if (!isEditingClient) return;
+    if (!canEditFields || identityDocuments.length >= MAX_CLIENT_IDENTITY_DOCUMENTS) return;
     setIdentityDocuments((current) => [...current, createIdentityDocument()]);
   };
 
@@ -1107,7 +1054,7 @@ export default function ClientCardPage() {
     field: ClientIdentityDocumentField,
     value: string
   ) => {
-    if (!isEditingClient) return;
+    if (!canEditFields) return;
     setIdentityDocuments((current) =>
       current.map((document) =>
         document.id === id ? { ...document, [field]: value } : document
@@ -1116,21 +1063,24 @@ export default function ClientCardPage() {
   };
 
   const handleRemoveIdentityDocument = (id: string) => {
-    if (!isEditingClient) return;
+    if (!canEditFields) return;
     setIdentityDocuments((current) =>
       current.filter((document) => document.id !== id)
     );
   };
 
-  const handleEditToggle = () => {
+  const handleEditToggle = async () => {
+    if (!cardLoaded || saving) return;
     if (!isEditingClient) {
       setSaveStatus(null);
       setIsEditingClient(true);
       return;
     }
 
+    setSaving(true);
+    setSaveStatus(null);
     try {
-      saveStoredClientCard(slug, {
+      const card: ClientCardDraft = {
         clientName,
         birthNumber,
         birthDate,
@@ -1142,16 +1092,24 @@ export default function ClientCardPage() {
         employerName,
         partnerName,
         identityDocuments,
-      });
+      };
+      const saved = await fetchAuthedJsonOrThrow<ClientCardResponse>(
+        user,
+        `/api/client-cards/${encodeURIComponent(slug)}`,
+        { method: "PUT", body: JSON.stringify({ card, expectedRevision: revision }) },
+      );
+      if (saved.card) applyCard(saved.card);
+      setRevision(saved.revision);
       setIsEditingClient(false);
       setSaveStatus({ tone: "success", message: "Změny uloženy." });
-      window.setTimeout(() => setSaveStatus(null), 2600);
     } catch (err) {
-      console.error("Karta klienta: uložení změn selhalo", err);
       setSaveStatus({
         tone: "error",
-        message: "Změny se nepodařilo uložit.",
+        message: err instanceof Error ? err.message : "Změny se nepodařilo uložit.",
+        conflict: err instanceof Error && "status" in err && err.status === 409,
       });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1207,7 +1165,8 @@ export default function ClientCardPage() {
                   <button
                     type="button"
                     onClick={handleEditToggle}
-                    className={`inline-flex w-fit items-center justify-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] transition ${
+                    disabled={!cardLoaded || saving}
+                    className={`inline-flex w-fit items-center justify-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-50 ${
                       isEditingClient
                         ? "border-white bg-white text-violet-800 shadow-[0_12px_28px_rgba(15,23,42,0.18)] hover:bg-violet-50"
                         : "border-white/25 bg-white/10 text-white hover:bg-white/20"
@@ -1218,7 +1177,7 @@ export default function ClientCardPage() {
                     ) : (
                       <Pencil className="h-3.5 w-3.5" />
                     )}
-                    {isEditingClient ? "Uložit změny" : "Upravit"}
+                    {saving ? "Ukládám…" : isEditingClient ? "Uložit změny" : "Upravit"}
                   </button>
                 </div>
                 <h1 className="mt-4 text-3xl font-bold tracking-tight !text-white sm:text-4xl">
@@ -1226,6 +1185,7 @@ export default function ClientCardPage() {
                 </h1>
                 {saveStatus ? (
                   <p
+                    role="status"
                     className={`mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-bold ${
                       saveStatus.tone === "success"
                         ? "border-emerald-200/60 bg-emerald-400/15 text-emerald-50"
@@ -1235,19 +1195,38 @@ export default function ClientCardPage() {
                     {saveStatus.message}
                   </p>
                 ) : null}
+                {saveStatus?.conflict ? (
+                  <button
+                    type="button"
+                    className="mt-3 block text-sm font-semibold underline"
+                    onClick={() => {
+                      if (!window.confirm("Zahodit neuložené změny v tomto okně a načíst aktuální uloženou kartu?")) return;
+                      setIsEditingClient(false);
+                      setSaveStatus(null);
+                      setReloadVersion((current) => current + 1);
+                    }}
+                  >
+                    Načíst uloženou verzi
+                  </button>
+                ) : null}
               </div>
             </section>
           </header>
 
           {error ? (
-            <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+            <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
               {error}
-            </p>
+              {!loading && !isEditingClient ? (
+                <button type="button" onClick={() => setReloadVersion((current) => current + 1)} className="ml-3 underline">
+                  Zkusit znovu
+                </button>
+              ) : null}
+            </div>
           ) : null}
 
           {loading ? (
             <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-              Načítám smlouvy klienta...
+              Načítám klientskou kartu a smlouvy...
             </p>
           ) : null}
 
@@ -1270,21 +1249,21 @@ export default function ClientCardPage() {
                 value={clientName}
                 onChange={setClientName}
                 placeholder="Martin Březina"
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
               <Field
                 label="Rodné číslo"
                 value={birthNumber}
                 onChange={handleBirthNumberChange}
                 placeholder="Např. 850101/1234"
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
               <Field
                 label="Datum narození"
                 type="date"
                 value={birthDate}
                 onChange={setBirthDate}
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
               <Field
                 label="Telefon"
@@ -1292,7 +1271,7 @@ export default function ClientCardPage() {
                 value={phone}
                 onChange={setPhone}
                 placeholder="+420 ..."
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
               <Field
                 label="E-mail"
@@ -1300,35 +1279,35 @@ export default function ClientCardPage() {
                 value={email}
                 onChange={setEmail}
                 placeholder="email@domena.cz"
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
               <Field
                 label="Povolání"
                 value={occupation}
                 onChange={setOccupation}
                 placeholder="Např. projektový manažer"
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
               <Field
                 label="Název firmy kde pracuje"
                 value={employerName}
                 onChange={setEmployerName}
                 placeholder="Firma / zaměstnavatel"
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
               <Field
                 label="Partner/ka"
                 value={partnerName}
                 onChange={setPartnerName}
                 placeholder="Jméno partnera nebo partnerky"
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
             </div>
           </section>
 
           <IdentityDocumentsSection
             documents={identityDocuments}
-            editable={isEditingClient}
+            editable={canEditFields}
             onAdd={handleAddIdentityDocument}
             onRemove={handleRemoveIdentityDocument}
             onUpdate={handleUpdateIdentityDocument}
@@ -1353,7 +1332,7 @@ export default function ClientCardPage() {
                 onChange={setPermanentAddress}
                 localSuggestions={addressSuggestions}
                 user={user}
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
               <AddressField
                 label="Korespondenční adresa"
@@ -1361,7 +1340,7 @@ export default function ClientCardPage() {
                 onChange={setCorrespondenceAddress}
                 localSuggestions={addressSuggestions}
                 user={user}
-                disabled={!isEditingClient}
+                disabled={!canEditFields}
               />
             </div>
           </section>

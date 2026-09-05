@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PwaBootstrap } from "@/components/PwaBootstrap";
+import { ClientCardPrivacyCleanup } from "@/components/ClientCardPrivacyCleanup";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://bohemka.app"),
@@ -43,6 +44,7 @@ export default function RootLayout({
   return (
     <html lang="cs">
       <body className="antialiased">
+        <ClientCardPrivacyCleanup />
         <PwaBootstrap />
         {children}
       </body>

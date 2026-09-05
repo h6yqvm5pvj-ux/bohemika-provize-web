@@ -15,7 +15,7 @@ import {
   KOOP_TERMS_DOCUMENTS,
   KOOP_VARIANTS,
   buildRows,
-} from "./page";
+} from "./TravelInsuranceComparison";
 
 const EXPECTED_ROW_IDS = [
   "territorial-scope",

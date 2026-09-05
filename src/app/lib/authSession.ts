@@ -1,3 +1,5 @@
+import { clearLegacyClientCards } from "./clientCardPrivacy";
+
 export function resolveSafeLoginNextPath(defaultPath = "/"): string {
   if (typeof window === "undefined") return defaultPath;
   try {
@@ -43,6 +45,7 @@ export async function createServerSessionFromToken(
 }
 
 export async function clearServerSession(): Promise<void> {
+  clearLegacyClientCards();
   await fetch("/api/auth/session", {
     method: "DELETE",
     credentials: "same-origin",

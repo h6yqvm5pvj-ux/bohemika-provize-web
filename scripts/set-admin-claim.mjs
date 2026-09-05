@@ -77,6 +77,8 @@ async function main() {
     delete nextClaims.admin;
     delete nextClaims.adminRole;
   } else {
+    // `admin` marks access to administration, including support. Authorization
+    // must additionally check adminRole before granting full database access.
     nextClaims.admin = true;
     nextClaims.adminRole = role;
   }

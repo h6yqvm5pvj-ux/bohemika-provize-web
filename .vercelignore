@@ -1,0 +1,20 @@
+# Local credentials, caches, audit evidence and browser test artifacts.
+.env*
+**/.env*
+*.pem
+*.key
+.git
+.agents
+.codex
+.claude
+.tmp
+.npm-cache
+.next
+node_modules
+coverage
+evidence
+docs
+*.log
+**/*.log
+*.tsbuildinfo
+.DS_Store

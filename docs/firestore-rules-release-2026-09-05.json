@@ -1,0 +1,18 @@
+{
+  "projectId": "bohemikasmlouvy",
+  "releaseName": "projects/bohemikasmlouvy/releases/cloud.firestore",
+  "previousRuleset": "projects/bohemikasmlouvy/rulesets/b2a16314-aa2a-4a8e-be39-4770c1689533",
+  "previousSha256": "3066c1add31b5af048bbfef6828d64d47ab8cbab7929a6d1bacc3fa86aa1eee8",
+  "activeRuleset": "projects/bohemikasmlouvy/rulesets/084793b7-5428-4b8d-82e1-2833798b9b23",
+  "sha256": "b5731166f822c1c10c78a987a9e387df2948ce87fb479e6f48cfdf3236b8862b",
+  "deployedAt": "2026-09-05T16:39:12.690Z",
+  "verifiedByReadingActiveSource": true,
+  "emulatorProject": "demo-bohemika-rules",
+  "emulatorVersion": "1.19.8",
+  "regressionsReproducedAgainstPreviousRules": 6,
+  "rulesTestsPassed": 213,
+  "applicationTestsPassed": 658,
+  "applicationDocumentsModified": false,
+  "storageRulesModified": false,
+  "websiteDeployed": false
+}

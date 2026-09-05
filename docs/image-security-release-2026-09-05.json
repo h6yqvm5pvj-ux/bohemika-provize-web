@@ -1,0 +1,186 @@
+{
+  "verifiedAt": "2026-09-05T16:54:16.169367+00:00",
+  "project": "bohemika-provize-web",
+  "domain": "https://bohemka.app",
+  "deploymentId": "dpl_3JXbsTmt8uz6MxbWoBSwNefacBus",
+  "deploymentUrl": "https://bohemika-provize-djh60mwn7-jacobrausch989s-projects-909dd478.vercel.app",
+  "previousProductionDeploymentId": "dpl_DHyi65JUd3KSwVRHsrz3fV5QEgDm",
+  "productionDomainResolvedToDeployment": true,
+  "runtimeVerification": {
+    "method": "native versions loaded by application and Next.js during the Linux production build",
+    "imageRuntimeSecurity": "verified",
+    "platform": "linux",
+    "arch": "x64",
+    "next": "16.3.4",
+    "sharp": "0.35.4",
+    "libheif": "1.23.2",
+    "libvips": "8.18.6",
+    "nextSharp": "0.35.4",
+    "nextLibheif": "1.23.2"
+  },
+  "validation": {
+    "applicationTestsPassed": 672,
+    "applicationTestFilesPassed": 108,
+    "firestoreEmulatorTestsPreviouslyPassed": 213,
+    "lintErrors": 0,
+    "lintWarnings": 5,
+    "localWebpackBuildPassed": true,
+    "productionTurbopackBuildPassed": true,
+    "localBuildNote": "Sitemap used its existing fallback because the sandbox could not reach Firestore; production prerendering completed successfully."
+  },
+  "stageSmoke": {
+    "deployment": "https://bohemika-provize-djh60mwn7-jacobrausch989s-projects-909dd478.vercel.app",
+    "checks": [
+      {
+        "check": "login",
+        "status": 200,
+        "expectedStatus": 200,
+        "headers": {
+          "cache-control": "public, max-age=0, must-revalidate",
+          "content-type": "text/html; charset=utf-8",
+          "x-vercel-cache": "PRERENDER"
+        },
+        "passed": true
+      },
+      {
+        "check": "image",
+        "status": 200,
+        "expectedStatus": 200,
+        "headers": {
+          "cache-control": "public, max-age=604800, s-maxage=2592000, stale-while-revalidate=2592000",
+          "content-type": "image/png",
+          "x-vercel-cache": "MISS"
+        },
+        "passed": true,
+        "image": {
+          "width": 64,
+          "height": 64,
+          "format": "png"
+        }
+      },
+      {
+        "check": "foreign-image",
+        "status": 400,
+        "expectedStatus": 400,
+        "headers": {
+          "cache-control": "public, max-age=0, must-revalidate",
+          "content-type": "text/plain; charset=utf-8",
+          "x-vercel-error": "INVALID_IMAGE_OPTIMIZE_REQUEST"
+        },
+        "passed": true
+      },
+      {
+        "check": "client-card-unauthenticated",
+        "status": 401,
+        "expectedStatus": 401,
+        "headers": {
+          "cache-control": "private, no-store, max-age=0, must-revalidate",
+          "content-type": "application/json",
+          "x-vercel-cache": "MISS"
+        },
+        "passed": true
+      },
+      {
+        "check": "avatar-unauthenticated",
+        "status": 401,
+        "expectedStatus": 401,
+        "headers": {
+          "cache-control": "public, max-age=0, must-revalidate",
+          "content-type": "application/json",
+          "x-vercel-cache": "MISS"
+        },
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "productionSmoke": {
+    "deployment": "https://bohemka.app",
+    "checks": [
+      {
+        "check": "login",
+        "status": 200,
+        "expectedStatus": 200,
+        "host": "bohemka.app",
+        "headers": {
+          "cache-control": "public, max-age=0, must-revalidate",
+          "content-type": "text/html; charset=utf-8",
+          "x-vercel-cache": "HIT"
+        },
+        "passed": true
+      },
+      {
+        "check": "image",
+        "status": 200,
+        "expectedStatus": 200,
+        "host": "bohemka.app",
+        "headers": {
+          "cache-control": "public, max-age=604800, s-maxage=2592000, stale-while-revalidate=2592000",
+          "content-type": "image/png",
+          "x-vercel-cache": "HIT"
+        },
+        "passed": true,
+        "image": {
+          "width": 64,
+          "height": 64,
+          "format": "png"
+        }
+      },
+      {
+        "check": "foreign-image",
+        "status": 400,
+        "expectedStatus": 400,
+        "host": "bohemka.app",
+        "headers": {
+          "cache-control": "public, max-age=0, must-revalidate",
+          "content-type": "text/plain; charset=utf-8",
+          "x-vercel-error": "INVALID_IMAGE_OPTIMIZE_REQUEST"
+        },
+        "passed": true
+      },
+      {
+        "check": "client-card-unauthenticated",
+        "status": 401,
+        "expectedStatus": 401,
+        "host": "bohemka.app",
+        "headers": {
+          "cache-control": "private, no-store, max-age=0, must-revalidate",
+          "content-type": "application/json",
+          "x-vercel-cache": "MISS"
+        },
+        "passed": true
+      },
+      {
+        "check": "avatar-unauthenticated",
+        "status": 401,
+        "expectedStatus": 401,
+        "host": "bohemka.app",
+        "headers": {
+          "cache-control": "public, max-age=0, must-revalidate",
+          "content-type": "application/json",
+          "x-vercel-cache": "MISS"
+        },
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "verificationAccess": "Vercel CLI authenticated deployment-protection bypass, without application sign-in. Ordinary automated domain requests returned HTTP 429, as during the earlier audit. No attack payload was executed and no production user data was changed by these checks.",
+  "sourceSha256": {
+    "package.json": "ed3cea18bc8c386a9de88054e7b97c7d11ce3c3d0ba0e7b905a062f751144810",
+    "package-lock.json": "b19f5a990a02aff27234328b090ad900bb1be8ac6c68e8764e6dc063a2ecbbf2",
+    "next.config.ts": "9144e3297a652c9857b16b63ced808fb3fa56cce82f37d65971ad15c583e7e96",
+    "scripts/check-image-runtime.mjs": "bde7cb586478533688a9a49fbd95a9bcf5c8bc155094c7fc881d02a1003531e5",
+    "src/lib/firebaseImageSources.ts": "2571914c227b1978e39f8916f21a4b56233177f92647345abbcf69ce3d1983e9",
+    "src/lib/server/profileAvatarUpload.ts": "8b42f647d18665bdd2190d345be7ea9b8726c45c976ed7d7db6c718ca658667d",
+    "src/app/nastaveni/components/ProfileAvatarPicker.tsx": "a2f6dc720e29f4dff180f579dedb314efd58da35eafa452921f1335a018a3bef",
+    "src/app/api/client-cards/[slug]/route.ts": "b62c8e5513fcdc6051f56fbe3a5ddfbe648c75f1af99706185c89c051e1cf0d8",
+    "src/app/_klienti/[slug]/page.tsx": "15a5d185e461b88d21a210b84c3dbe28f0e99334c8684567eb3cd4ce580cc226",
+    "src/lib/adminAccess.ts": "1424645dcff432f3da73936e099cab8b41b7d0e77059ecdb944c455301067b57",
+    ".vercelignore": "36dd4c93d93b5d1e48f3a5915b3b35da5b0d36e353ba21d3c666446b0e398087"
+  },
+  "sources": [
+    "https://nextjs.org/blog/august-2026-security-release",
+    "https://github.com/strukturag/libheif/security/advisories/GHSA-g89c-p67h-r497"
+  ]
+}

@@ -58,7 +58,11 @@ export const resolveAdminRoleFromClaims = (
   const normalizedEmail = normalizeEmail(email);
   if (ADMIN_ROLE_DENYLIST.has(normalizedEmail)) return null;
   if (claims?.admin === true) {
-    return normalizeAdminRole(claims.adminRole) ?? "admin";
+    // Missing roles are legacy admin claims. An explicit unknown role must not
+    // silently gain full administrator access; Firestore enforces the same rule.
+    return Object.prototype.hasOwnProperty.call(claims, "adminRole")
+      ? normalizeAdminRole(claims.adminRole)
+      : "admin";
   }
   return getFallbackAdminRole(normalizedEmail);
 };
