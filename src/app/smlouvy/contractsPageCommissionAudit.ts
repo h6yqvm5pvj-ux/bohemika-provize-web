@@ -1,8 +1,5 @@
 import { toDate } from "@/app/lib/formatters";
-import type {
-  CommissionAuditItem,
-  CommissionAuditSummary,
-} from "@/app/lib/commissionAudit";
+import type { CommissionAuditItem } from "@/app/lib/commissionAudit";
 
 export function formatCommissionAuditDate(ms: number | null): string {
   if (ms == null) return "termín nezjištěn";
@@ -53,12 +50,6 @@ export function commissionAuditTimingLabel(item: CommissionAuditItem): string {
   return item.status === "upcoming"
     ? `za ${formatted}`
     : `po termínu ${formatted}`;
-}
-
-export function commissionAuditStatusLabel(item: CommissionAuditItem): string {
-  if (item.status === "career_mismatch") return "Jiný kariérní stupeň";
-  const label = commissionAuditTimingLabel(item);
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 export function normalizedAuditCode(code: string | null | undefined): string {
@@ -114,42 +105,25 @@ export function commissionAuditCompactLabel(item: CommissionAuditItem): string {
   return code ? `${code} ${kind}` : kind;
 }
 
-export function commissionAuditSummaryLabel(
-  summary: CommissionAuditSummary
-): string {
-  const parts = [
-    summary.overdueCount > 0 ? `${summary.overdueCount} nevypl.` : null,
-    summary.upcomingCount > 0 ? `${summary.upcomingCount} brzy` : null,
-    summary.careerMismatchCount > 0 ? `${summary.careerMismatchCount} stupeň` : null,
-    summary.differenceCount > 0 ? `${summary.differenceCount} rozdíl` : null,
-  ].filter(Boolean);
-  return parts.join(" · ");
-}
-
 export function commissionAuditToneClasses(item: CommissionAuditItem): {
   compact: string;
-  card: string;
 } {
   if (item.status === "career_mismatch") {
     return {
       compact: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800",
-      card: "border-fuchsia-300/45 bg-fuchsia-300/12 text-fuchsia-100",
     };
   }
   if (item.status === "difference") {
     return {
       compact: "border-amber-200 bg-amber-50 text-amber-800",
-      card: "border-amber-300/45 bg-amber-300/12 text-amber-100",
     };
   }
   if (item.status === "upcoming") {
     return {
       compact: "border-sky-200 bg-sky-50 text-sky-800",
-      card: "border-sky-300/45 bg-sky-300/12 text-sky-100",
     };
   }
   return {
     compact: "border-rose-200 bg-rose-50 text-rose-800",
-    card: "border-rose-300/45 bg-rose-300/12 text-rose-100",
   };
 }

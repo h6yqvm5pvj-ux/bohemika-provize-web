@@ -13,9 +13,7 @@ import {
 } from "@/app/lib/productCatalog";
 import type { Institution, ProductCategory } from "./contractsPageTypes";
 
-export const CONTRACT_PROPERTY_PRODUCTS: Product[] = PROPERTY_PRODUCTS.filter(
-  (product) => product !== "zamex"
-);
+export const CONTRACT_PROPERTY_PRODUCTS: Product[] = PROPERTY_PRODUCTS;
 
 const uniqueProducts = (products: Product[]): Product[] =>
   Array.from(new Set(products));
@@ -38,7 +36,6 @@ export const CONTRACT_PROPERTY_LIABILITY_PRODUCTS: Product[] = uniqueProducts([
   ...LIABILITY_PRODUCTS,
 ]).filter(
   (product) =>
-    product !== "zamex" &&
     !CONTRACT_BUSINESS_PRODUCTS.includes(product) &&
     !CONTRACT_FOREIGNER_PRODUCTS.includes(product)
 );

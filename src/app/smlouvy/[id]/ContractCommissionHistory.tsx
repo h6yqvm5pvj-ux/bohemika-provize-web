@@ -12,6 +12,7 @@ import { HelpDialog } from "@/components/HelpDialog";
 import { formatMoney, nameFromEmail } from "./contractDetailHelpers";
 import { type ContractCommissionPayout } from "./contractDetailTypes";
 import { partitionSettledCommissionPayouts } from "./contractCommissionHistoryRules";
+import { ContractSectionHeading } from "./ContractDetailUi";
 
 type ContractCommissionHistoryProps = {
   product?: Product | null;
@@ -457,13 +458,11 @@ export function ContractCommissionHistory({
   return (
     <section className="rounded-2xl border border-slate-300/90 bg-white px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="flex items-center gap-2 font-mono text-base font-semibold tracking-tight text-slate-900">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-2.5 py-1 text-xs font-mono tracking-tight text-white">
-            <FileText size={13} strokeWidth={2} aria-hidden="true" />
-            Historie
-          </span>
+        <ContractSectionHeading
+          icon={<FileText size={17} strokeWidth={2.2} aria-hidden="true" />}
+        >
           Provizní výpisy u smlouvy
-        </h3>
+        </ContractSectionHeading>
         <div className="flex shrink-0 items-center gap-2">
           {canRebuildFromStatements && onRebuildFromStatements && (
             <button

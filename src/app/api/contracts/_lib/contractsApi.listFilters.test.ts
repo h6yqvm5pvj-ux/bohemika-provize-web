@@ -79,6 +79,7 @@ describe("contracts API list filters", () => {
         mode: "anniversary",
         unpaidOnly: "true",
         refreshOnly: "1",
+        activeOnly: "true",
         stornoOnly: "true",
         maturedOnly: "1",
         commissionAudit: "difference",
@@ -93,6 +94,7 @@ describe("contracts API list filters", () => {
     expect(filters.mode).toBe("anniversary");
     expect(filters.unpaidOnly).toBe(true);
     expect(filters.refreshOnly).toBe(true);
+    expect(filters.activeOnly).toBe(true);
     expect(filters.stornoOnly).toBe(true);
     expect(filters.maturedOnly).toBe(true);
     expect(filters.commissionAuditMode).toBe("difference");
@@ -123,7 +125,7 @@ describe("contracts API list filters", () => {
     expect(contractMatchesListSearch(item, "neexistuje")).toBe(false);
   });
 
-  it("keeps zamex out of the property category used by list filters", () => {
+  it("assigns zamex to the property and liability category used by list filters", () => {
     expect(productMatchesListCategory("domex", new Set(["property"]))).toBe(
       true
     );
@@ -131,7 +133,7 @@ describe("contracts API list filters", () => {
       true
     );
     expect(productMatchesListCategory("zamex", new Set(["property"]))).toBe(
-      false
+      true
     );
     expect(productMatchesListCategory("kooppmop", new Set(["property"]))).toBe(
       false
@@ -155,7 +157,7 @@ describe("contracts API list filters", () => {
 
   it("derives stored index fields from the same category rules as list filters", () => {
     expect(contractListProductCategoryForProduct("cppsimplex")).toBe("business");
-    expect(contractListProductCategoryForProduct("zamex")).toBeNull();
+    expect(contractListProductCategoryForProduct("zamex")).toBe("property");
     expect(productMatchesListInstitution("neon", new Set(["cpp"]))).toBe(true);
 
     expect(
@@ -213,6 +215,13 @@ describe("contracts API list filters", () => {
       { field: "productCategory", op: "==", value: "auto" },
       { field: "institutionId", op: "==", value: "allianz" },
     ]);
+
+    const activeFilters = parseContractListFilters(
+      new URLSearchParams({ activeOnly: "1" })
+    );
+    expect(
+      buildContractListIndexedQueryClauses(activeFilters, { allowIn: false })
+    ).toEqual([{ field: "lifecycleStatus", op: "==", value: "active" }]);
   });
 
   it("matches full list filters for unpaid, refresh and product category", () => {
@@ -293,6 +302,22 @@ describe("contracts API list filters", () => {
     expect(
       contractMatchesListFilters(contract({ status: "dozita" }), bothFilters)
     ).toBe(true);
+  });
+
+  it("matches only contracts outside storno and matured states for active filter", () => {
+    const activeFilters = parseContractListFilters(
+      new URLSearchParams({ activeOnly: "1" })
+    );
+
+    expect(
+      contractMatchesListFilters(contract({ status: "active" }), activeFilters)
+    ).toBe(true);
+    expect(
+      contractMatchesListFilters(contract({ status: "storno" }), activeFilters)
+    ).toBe(false);
+    expect(
+      contractMatchesListFilters(contract({ status: "dozita" }), activeFilters)
+    ).toBe(false);
   });
 
   it("uses signed date before createdAt for list sorting", () => {

@@ -1,10 +1,8 @@
 import React from "react";
-import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import {
   Car,
   CarFront,
-  ExternalLink,
   LifeBuoy,
   Shield,
   Wrench,
@@ -290,16 +288,6 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
   if (!prod) return null;
   const showAnnualMileageBox = prod === "allianzAuto" || prod === "pillowAuto";
   const showAllianzScopeBox = prod === "allianzAuto";
-  const resolvedVin = (editMode
-    ? fields.carVin
-    : contract?.carVin || fields.carVin || ""
-  )
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
-  const vehicleDataHref = resolvedVin
-    ? `/pomucky/proklepka-vozidla?vin=${encodeURIComponent(resolvedVin)}`
-    : "/pomucky/proklepka-vozidla";
   const hasTextValue = (value: string | undefined | null) => {
     const normalized = value?.trim();
     return Boolean(normalized && normalized !== "—" && normalized !== "-");
@@ -376,17 +364,6 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
 
   return (
     <>
-      <div className="mb-2 flex flex-wrap gap-2">
-        <Link
-          href={vehicleDataHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-        >
-          <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-          Proklepka vozidla
-        </Link>
-      </div>
       <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-1 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
         <SectionTitle icon={CarFront} label="Parametry vozidla" />
         <div className="text-sm text-slate-900">

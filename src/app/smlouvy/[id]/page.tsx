@@ -9,6 +9,7 @@ import {
   ArrowRightLeft,
   AlertTriangle,
   CalendarDays,
+  CarFront,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -78,7 +79,12 @@ import {
   FlexiDetailPanel,
   NeonDetailPanel,
 } from "./ContractDetailPanels";
-import { Spinner, Skeleton, Toasts } from "./ContractDetailUi";
+import {
+  ContractSectionHeading,
+  Spinner,
+  Skeleton,
+  Toasts,
+} from "./ContractDetailUi";
 import {
   type ContractCommissionStatementDetail,
   type ContractCommissionStatementSummary,
@@ -1657,6 +1663,10 @@ export default function ContractDetailPage() {
     resolvedSignedAnnualPremium != null
       ? resolvedSignedAnnualPremium / paymentsPerYear(freq)
       : premium;
+  const displayedAnnualPremium =
+    freq && Number.isFinite(displayedPremium)
+      ? Math.round(displayedPremium * paymentsPerYear(freq) * 100) / 100
+      : null;
   const contractSignedDateIso = toDateInputValue(
     contract?.contractSignedDate ?? contract?.createdAt
   );
@@ -2293,6 +2303,16 @@ export default function ContractDetailPage() {
     carAddonPassengerInjury: editCarAddonPassengerInjury,
     carAddonKeyLossTheft: editCarAddonKeyLossTheft,
   };
+  const vehicleCheckVin = (editMode
+    ? autoFields.carVin
+    : contract?.carVin || autoFields.carVin || ""
+  )
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  const vehicleCheckHref = vehicleCheckVin
+    ? `/pomucky/proklepka-vozidla?vin=${encodeURIComponent(vehicleCheckVin)}`
+    : "/pomucky/proklepka-vozidla";
 
   const neonFields: NeonFields = {
     version: editNeonVersion,
@@ -4812,11 +4832,6 @@ export default function ContractDetailPage() {
     "rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)]";
   const noteCardClass =
     "rounded-[20px] border border-slate-300 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_100%)] px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
-  const monoHeadingClass = "font-mono tracking-tight text-slate-900";
-  const monoChipClass =
-    "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-mono tracking-tight text-slate-900";
-  const monoChipDarkClass =
-    "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-mono tracking-tight text-white";
   const ghostButtonClass =
     "rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm sm:text-base font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
   const headerActionButtonClass =
@@ -4830,6 +4845,10 @@ export default function ContractDetailPage() {
   const metaLabelClass = "text-xs uppercase tracking-[0.18em] text-slate-600";
   const keyValueLabelClass = "text-base text-slate-600";
   const keyValueValueClass = "text-base font-semibold text-right text-slate-900";
+  const contractOverviewRowClass =
+    "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 py-1.5 sm:grid-cols-[12rem_minmax(0,1fr)]";
+  const contractOverviewValueClass =
+    "text-base font-semibold text-right text-slate-950 sm:text-left";
   const statusErrorClass = "px-1 text-sm text-slate-700";
   const statusSuccessClass = "px-1 text-sm text-slate-900";
   const sectionPanelClass = "space-y-3 px-1 py-1";
@@ -5069,13 +5088,11 @@ export default function ContractDetailPage() {
   const renderProductPanelContent = () => (
     <>
       <div className="flex items-center justify-between gap-3">
-        <h3 className={`flex items-center gap-2 text-base font-semibold ${monoHeadingClass}`}>
-          <span className={monoChipDarkClass}>
-            <Package size={13} strokeWidth={2} aria-hidden="true" />
-            Produkt
-          </span>
+        <ContractSectionHeading
+          icon={<Package size={17} strokeWidth={2.2} aria-hidden="true" />}
+        >
           Detail produktu
-        </h3>
+        </ContractSectionHeading>
         <span className="text-sm font-semibold text-slate-600">{productLabel(prod)}</span>
       </div>
       {canManageContract && !editMode && hasContractPdfAttachment && (
@@ -5330,9 +5347,6 @@ export default function ContractDetailPage() {
                   </Link>
                 )}
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                    Detail smlouvy
-                  </span>
                   {isEndorsement && (
                     <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
                       Dodatek
@@ -5362,12 +5376,22 @@ export default function ContractDetailPage() {
                   </h1>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-lg font-bold text-slate-800 sm:text-xl">
                     <span className="inline-flex items-center gap-2">
-                      <UserRound size={19} strokeWidth={2.1} aria-hidden="true" />
+                      <UserRound
+                        size={19}
+                        strokeWidth={2.1}
+                        className="text-violet-700"
+                        aria-hidden="true"
+                      />
                       {contract?.clientName ?? "—"}
                     </span>
                     <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:inline-block" />
                     <span className="inline-flex items-center gap-2">
-                      <Package size={19} strokeWidth={2.1} aria-hidden="true" />
+                      <Package
+                        size={19}
+                        strokeWidth={2.1}
+                        className="text-violet-700"
+                        aria-hidden="true"
+                      />
                       {productLabel(prod)}
                       <Image
                         src={productIcon(prod)}
@@ -5409,6 +5433,22 @@ export default function ContractDetailPage() {
                   >
                     <PencilLine size={14} strokeWidth={2} aria-hidden="true" />
                     <span>Upravit údaje</span>
+                  </button>
+                )}
+
+                {canOpenContractManagement && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setStornoError(null);
+                      setTransferError(null);
+                      setShowManagementModal(true);
+                    }}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-slate-950 bg-slate-950 px-3 text-xs font-semibold font-mono tracking-tight text-white shadow-sm transition hover:bg-black"
+                  >
+                    <Settings2 size={14} strokeWidth={2.1} aria-hidden="true" />
+                    <span>Správa smlouvy</span>
                   </button>
                 )}
 
@@ -5546,6 +5586,18 @@ export default function ContractDetailPage() {
                       </div>
                     )}
                   </div>
+                )}
+
+                {isAutoProduct(prod) && (
+                  <Link
+                    href={vehicleCheckHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={headerActionButtonClass}
+                  >
+                    <CarFront size={14} strokeWidth={2} aria-hidden="true" />
+                    <span>Proklepka vozidla</span>
+                  </Link>
                 )}
 
                 {maxxContractDetailUrl && (
@@ -5690,11 +5742,12 @@ export default function ContractDetailPage() {
                 {/* U převedené smlouvy vždy oddělujeme sjednatele a správce. */}
                 {contract && (contractWasTransferred || isManagerViewingSubordinate) && (
                   <section className={sectionPanelClass}>
-                    <h3 className={`mb-2 flex items-center gap-2 text-base font-semibold ${monoHeadingClass}`}>
-                      <span className={monoChipClass}>
-                        {contractWasTransferred ? "Správa smlouvy" : "Sjednatel"}
-                      </span>
-                    </h3>
+                    <ContractSectionHeading
+                      icon={<UserRound size={17} strokeWidth={2.2} aria-hidden="true" />}
+                      className="mb-2"
+                    >
+                      {contractWasTransferred ? "Správa smlouvy" : "Sjednatel"}
+                    </ContractSectionHeading>
                     <dl className="grid max-w-[520px] grid-cols-[112px_minmax(0,1fr)] gap-x-5 gap-y-2 text-base text-slate-800">
                       <dt className={keyValueLabelClass}>Sjednal</dt>
                       <dd className="text-base font-semibold text-slate-900">
@@ -5755,22 +5808,23 @@ export default function ContractDetailPage() {
                   </div>
                 )}
                 <div className="space-y-5">
-                <section className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                  <div className={sectionPanelClass}>
-                    <h3 className={`mb-2.5 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
-                      <span className={monoChipDarkClass}>
-                        <FileText size={14} strokeWidth={2} aria-hidden="true" />
-                        <span>Základní údaje</span>
-                      </span>
-                    </h3>
-                    <dl className="space-y-2.5 text-base text-slate-800">
-                      <div className="flex justify-between gap-2">
+                <section className="border-t border-slate-200 pt-5 sm:pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2">
+                  <div className="min-w-0 md:pr-10">
+                    <ContractSectionHeading
+                      icon={<FileText size={17} strokeWidth={2.2} aria-hidden="true" />}
+                      className="mb-2"
+                    >
+                      Základní údaje
+                    </ContractSectionHeading>
+                    <dl className="space-y-1 text-base text-slate-800">
+                      <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>Sjednána jako</dt>
-                        <dd className={keyValueValueClass}>
+                        <dd className={contractOverviewValueClass}>
                           {positionLabel(contract.position)}
                         </dd>
                       </div>
-                      <div className="flex justify-between gap-2">
+                      <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>
                           {isEndorsement
                             ? "Nové pojistné"
@@ -5778,23 +5832,23 @@ export default function ContractDetailPage() {
                               ? "Aktuální pojistné"
                               : "Pojistné"}
                         </dt>
-                        <dd className={keyValueValueClass}>
+                        <dd className={contractOverviewValueClass}>
                           {formatMoney(displayedPremium)}
                         </dd>
                       </div>
                       {isEndorsement && (
-                        <div className="flex justify-between gap-2">
+                        <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Základ pro provizi dodatku</dt>
-                          <dd className={keyValueValueClass}>
+                          <dd className={contractOverviewValueClass}>
                             {formatMoney(contract.inputAmount ?? 0)}
                           </dd>
                         </div>
                       )}
                       {isEndorsement && endorsementDelta != null && (
-                        <div className="flex justify-between gap-2">
+                        <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Rozdíl pojistného</dt>
                           <dd
-                            className={`${keyValueValueClass} ${
+                            className={`${contractOverviewValueClass} ${
                               endorsementDelta >= 0 ? "text-emerald-700" : "text-rose-700"
                             }`}
                           >
@@ -5803,18 +5857,26 @@ export default function ContractDetailPage() {
                           </dd>
                         </div>
                       )}
-                      <div className="flex justify-between gap-2">
+                      <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>
                           Frekvence platby
                         </dt>
-                        <dd className={keyValueValueClass}>
+                        <dd className={contractOverviewValueClass}>
                           {frequencyText(freq)}
                         </dd>
                       </div>
-                      <div className="flex justify-between gap-2">
+                      <div className={contractOverviewRowClass}>
+                        <dt className={keyValueLabelClass}>Roční pojistné</dt>
+                        <dd className={contractOverviewValueClass}>
+                          {displayedAnnualPremium != null
+                            ? formatMoney(displayedAnnualPremium)
+                            : "—"}
+                        </dd>
+                      </div>
+                      <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>Stav smlouvy</dt>
                         <dd
-                          className={`${keyValueValueClass} ${
+                          className={`${contractOverviewValueClass} ${
                             isStornoContract
                               ? "text-amber-700"
                               : isDozitaContract
@@ -6030,7 +6092,7 @@ export default function ContractDetailPage() {
                         </div>
                       )}
                       {(contract?.refreshReplacedBySignedDate || hasRefreshReplacement) && (
-                        <div className="flex justify-between gap-2">
+                        <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Navazující smlouva</dt>
                           <dd className={`${keyValueValueClass} max-w-[70%] text-right text-sm leading-snug`}>
                             <span className="block">
@@ -6060,17 +6122,17 @@ export default function ContractDetailPage() {
                   </div>
 
                   {/* DATA SMLOUVY */}
-                  <div className={sectionPanelClass}>
-                    <h3 className={`mb-2.5 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
-                      <span className={monoChipDarkClass}>
-                        <CalendarDays size={14} strokeWidth={2} aria-hidden="true" />
-                        <span>Data smlouvy</span>
-                      </span>
-                    </h3>
-                    <dl className="space-y-2.5 text-base text-slate-800">
-                      <div className="flex justify-between gap-2">
+                  <div className="mt-6 min-w-0 border-t border-slate-200 pt-6 md:mt-0 md:border-l md:border-t-0 md:pl-10 md:pt-0">
+                    <ContractSectionHeading
+                      icon={<CalendarDays size={17} strokeWidth={2.2} aria-hidden="true" />}
+                      className="mb-2"
+                    >
+                      Data smlouvy
+                    </ContractSectionHeading>
+                    <dl className="space-y-1 text-base text-slate-800">
+                      <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>Datum sjednání</dt>
-                        <dd className={keyValueValueClass}>
+                        <dd className={contractOverviewValueClass}>
                           {editMode ? (
                             <input
                               type="date"
@@ -6083,11 +6145,11 @@ export default function ContractDetailPage() {
                           )}
                         </dd>
                       </div>
-                      <div className="flex justify-between gap-2">
+                      <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>
                           Počátek smlouvy
                         </dt>
-                        <dd className={keyValueValueClass}>
+                        <dd className={contractOverviewValueClass}>
                           {editMode ? (
                             <input
                               type="date"
@@ -6100,9 +6162,9 @@ export default function ContractDetailPage() {
                           )}
                         </dd>
                       </div>
-                      <div className="flex justify-between gap-2">
+                      <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>Pojištění do</dt>
-                        <dd className={keyValueValueClass}>
+                        <dd className={contractOverviewValueClass}>
                           {editMode ? (
                             <input
                               type="date"
@@ -6116,9 +6178,9 @@ export default function ContractDetailPage() {
                         </dd>
                       </div>
                       {showDurationForProduct && (
-                        <div className="flex justify-between gap-2">
+                        <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Doba trvání (provize)</dt>
-                          <dd className={keyValueValueClass}>
+                          <dd className={contractOverviewValueClass}>
                             {editMode ? (
                               <input
                                 type="number"
@@ -6139,9 +6201,9 @@ export default function ContractDetailPage() {
                         </div>
                       )}
                       {editMode && (
-                        <div className="flex justify-between gap-2">
+                        <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Číslo smlouvy</dt>
-                          <dd className={`${keyValueValueClass} w-40`}>
+                          <dd className={`${contractOverviewValueClass} w-40`}>
                             <input
                               type="text"
                               value={editContractNumber}
@@ -6154,16 +6216,17 @@ export default function ContractDetailPage() {
                       )}
                 </dl>
               </div>
+              </div>
             </section>
 
             {showTimelineSection && (
               <section className={sectionPanelClass}>
-                <h3 className={`mb-2.5 flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
-                  <span className={monoChipDarkClass}>
-                    <CalendarDays size={14} strokeWidth={2} aria-hidden="true" />
-                    <span>Timeline smlouvy</span>
-                  </span>
-                </h3>
+                <ContractSectionHeading
+                  icon={<CalendarDays size={17} strokeWidth={2.2} aria-hidden="true" />}
+                  className="mb-2.5"
+                >
+                  Timeline smlouvy
+                </ContractSectionHeading>
 
                 {timelineLoading && (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -6339,14 +6402,12 @@ export default function ContractDetailPage() {
                   className="flex w-full items-center justify-between gap-3 text-left"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className={monoChipDarkClass}>
-                      <StickyNote size={14} strokeWidth={2} aria-hidden="true" />
-                      <span>Poznámka</span>
-                    </span>
                     <div className="min-w-0">
-                      <h3 className={`text-base font-semibold ${monoHeadingClass}`}>
+                      <ContractSectionHeading
+                        icon={<StickyNote size={17} strokeWidth={2.2} aria-hidden="true" />}
+                      >
                         Poznámka ke smlouvě
-                      </h3>
+                      </ContractSectionHeading>
                       <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
                         {notePreviewText || "Bez poznámky"}
                       </p>
@@ -6416,23 +6477,6 @@ export default function ContractDetailPage() {
               </section>
             </div>
 
-                {canOpenContractManagement && (
-                  <section className="flex justify-end border-t border-slate-200 pt-5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeleteError(null);
-                        setStornoError(null);
-                        setTransferError(null);
-                        setShowManagementModal(true);
-                      }}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-slate-900 bg-slate-900 px-5 text-sm font-semibold font-mono tracking-tight text-white shadow-[0_12px_26px_rgba(15,23,42,0.2)] transition hover:bg-black"
-                    >
-                      <Settings2 size={17} strokeWidth={2.2} aria-hidden="true" />
-                      <span>Správa smlouvy</span>
-                    </button>
-                  </section>
-                )}
               </div>
               </>
             ) : null}

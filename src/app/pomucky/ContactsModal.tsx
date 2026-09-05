@@ -190,6 +190,55 @@ const newContactId = (institutionKey: string): string =>
     .toString(36)
     .slice(2, 8)}`;
 
+const contactCardTone = (institutionKey: string) => {
+  if (institutionKey === "bohemika") {
+    return {
+      border: "border-sky-200/90",
+      bar: "bg-[linear-gradient(90deg,#0ea5e9_0%,#7c3aed_100%)]",
+      badge: "border-sky-200 bg-sky-50 text-sky-800",
+      icon: "bg-sky-100 text-sky-700",
+    };
+  }
+  if (["allianz", "csob", "cpp", "axa", "conseq"].includes(institutionKey)) {
+    return {
+      border: "border-blue-200/90",
+      bar: "bg-[linear-gradient(90deg,#2563eb_0%,#38bdf8_100%)]",
+      badge: "border-blue-200 bg-blue-50 text-blue-800",
+      icon: "bg-blue-100 text-blue-700",
+    };
+  }
+  if (["kooperativa", "pillow"].includes(institutionKey)) {
+    return {
+      border: "border-emerald-200/90",
+      bar: "bg-[linear-gradient(90deg,#059669_0%,#4ade80_100%)]",
+      badge: "border-emerald-200 bg-emerald-50 text-emerald-800",
+      icon: "bg-emerald-100 text-emerald-700",
+    };
+  }
+  if (["investika", "slavia"].includes(institutionKey)) {
+    return {
+      border: "border-amber-200/90",
+      bar: "bg-[linear-gradient(90deg,#d97706_0%,#fbbf24_100%)]",
+      badge: "border-amber-200 bg-amber-50 text-amber-800",
+      icon: "bg-amber-100 text-amber-700",
+    };
+  }
+  if (["comfort-commodity", "maxima"].includes(institutionKey)) {
+    return {
+      border: "border-rose-200/90",
+      bar: "bg-[linear-gradient(90deg,#e11d48_0%,#fb7185_100%)]",
+      badge: "border-rose-200 bg-rose-50 text-rose-800",
+      icon: "bg-rose-100 text-rose-700",
+    };
+  }
+  return {
+    border: "border-violet-200/90",
+    bar: "bg-[linear-gradient(90deg,#7c3aed_0%,#c084fc_100%)]",
+    badge: "border-violet-200 bg-violet-50 text-violet-800",
+    icon: "bg-violet-100 text-violet-700",
+  };
+};
+
 type ContactsModalProps = {
   onClose: () => void;
   user: FirebaseUser | null;
@@ -699,6 +748,7 @@ export function ContactsModal({
                 const showDescription = Boolean(
                   contact.person && contact.description,
                 );
+                const cardTone = contactCardTone(contact.institutionKey);
 
                 return (
                   <article
@@ -708,16 +758,20 @@ export function ContactsModal({
                         ? highlightedContactRef
                         : undefined
                     }
-                    className={`relative isolate h-auto min-w-0 scroll-m-6 overflow-hidden rounded-[22px] border bg-white p-4 transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_18px_36px_rgba(15,23,42,0.12)] sm:p-5 ${
+                    className={`group/contact relative isolate h-auto min-w-0 scroll-m-6 overflow-hidden rounded-[22px] border bg-white/95 p-4 pt-5 ring-1 ring-slate-950/[0.035] transition duration-200 hover:-translate-y-1 hover:ring-slate-950/[0.07] sm:p-5 sm:pt-6 ${
                       contact.id === initialContactId
-                        ? "border-violet-400 shadow-[0_18px_42px_rgba(124,58,237,0.2)] ring-2 ring-violet-300/80"
-                        : "border-slate-200 shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                        ? "border-violet-400 shadow-[0_22px_48px_rgba(124,58,237,0.24)] ring-2 ring-violet-300/80"
+                        : `${cardTone.border} shadow-[0_16px_34px_rgba(15,23,42,0.11)] hover:shadow-[0_24px_48px_rgba(15,23,42,0.16)]`
                     }`}
                   >
                     <div
+                      className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${cardTone.bar}`}
+                      aria-hidden="true"
+                    />
+                    <div
                       className={`pointer-events-none absolute inset-0 ${institution.accentClass}`}
                     />
-                    <div className="pointer-events-none absolute -right-8 -top-8 h-48 w-72 opacity-[0.09] mix-blend-multiply sm:-right-5 sm:h-56 sm:w-80">
+                    <div className="pointer-events-none absolute -right-8 -top-8 h-48 w-72 opacity-[0.13] mix-blend-multiply transition-opacity duration-200 group-hover/contact:opacity-[0.18] sm:-right-5 sm:h-56 sm:w-80">
                       <Image
                         src={institution.logoPath}
                         alt=""
@@ -731,12 +785,13 @@ export function ContactsModal({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1 pr-2">
                           {!institutionIsTitle ? (
-                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                            <p className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${cardTone.badge}`}>
+                              <Building2 className="h-3 w-3" aria-hidden="true" />
                               {institution.label}
                             </p>
                           ) : null}
                           <h3
-                            className={`${institutionIsTitle ? "" : "mt-1"} text-lg font-black leading-6 tracking-[-0.025em] text-slate-950 sm:text-xl`}
+                            className={`${institutionIsTitle ? "" : "mt-2"} text-xl font-black leading-6 tracking-[-0.03em] text-slate-950 sm:text-[1.35rem]`}
                           >
                             {contactTitle}
                           </h3>
@@ -760,24 +815,26 @@ export function ContactsModal({
                         </div>
                       </div>
                       {showDescription ? (
-                        <p className="mt-2 text-xs font-medium leading-5 text-slate-500">
+                        <p className="mt-2.5 border-l-2 border-slate-300 pl-3 text-xs font-semibold leading-5 text-slate-600">
                           {contact.description}
                         </p>
                       ) : null}
 
-                      <div className="mt-4 space-y-1">
+                      <div className="mt-4 space-y-2">
                         {contact.phone ? (
                           <a
                             href={`tel:${contact.phone.href}`}
-                            className="group flex min-h-9 items-center gap-2.5 py-1 text-sm font-bold text-slate-700 transition hover:text-violet-800"
+                            className="group flex min-h-11 items-center gap-2.5 rounded-xl border border-slate-200/90 bg-white/85 px-2.5 py-1.5 text-sm font-extrabold text-slate-800 shadow-[0_5px_14px_rgba(15,23,42,0.05)] transition hover:border-violet-300 hover:bg-violet-50/80 hover:text-violet-900 hover:shadow-[0_8px_18px_rgba(109,40,217,0.10)]"
                           >
-                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-slate-500 transition group-hover:text-violet-700">
+                            <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition group-hover:bg-violet-100 group-hover:text-violet-700 ${cardTone.icon}`}>
                               <Phone className="h-4 w-4" />
                             </span>
                             <span className="min-w-0 flex-1">
                               {contact.phone.display}
                             </span>
-                            <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-violet-500" />
+                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 transition group-hover:bg-white group-hover:text-violet-600">
+                              <ArrowUpRight className="h-4 w-4" />
+                            </span>
                           </a>
                         ) : null}
 
@@ -785,22 +842,24 @@ export function ContactsModal({
                           <a
                             key={`${email.value}-${email.label ?? ""}`}
                             href={mailtoHref(email)}
-                            className="group flex min-h-9 items-center gap-2.5 py-1 text-slate-700 transition hover:text-violet-800"
+                            className="group flex min-h-11 items-center gap-2.5 rounded-xl border border-slate-200/90 bg-white/85 px-2.5 py-1.5 text-slate-800 shadow-[0_5px_14px_rgba(15,23,42,0.05)] transition hover:border-violet-300 hover:bg-violet-50/80 hover:text-violet-900 hover:shadow-[0_8px_18px_rgba(109,40,217,0.10)]"
                           >
-                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-slate-500 transition group-hover:text-violet-700">
+                            <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition group-hover:bg-violet-100 group-hover:text-violet-700 ${cardTone.icon}`}>
                               <Mail className="h-4 w-4" />
                             </span>
                             <span className="min-w-0 flex-1">
                               {email.label ? (
-                                <span className="block text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                <span className="block text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">
                                   {email.label}
                                 </span>
                               ) : null}
-                              <span className="block break-all text-xs font-bold sm:text-[13px]">
+                              <span className="block break-all text-xs font-extrabold sm:text-[13px]">
                                 {email.value}
                               </span>
                             </span>
-                            <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-violet-500" />
+                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 transition group-hover:bg-white group-hover:text-violet-600">
+                              <ArrowUpRight className="h-4 w-4" />
+                            </span>
                           </a>
                         ))}
                       </div>

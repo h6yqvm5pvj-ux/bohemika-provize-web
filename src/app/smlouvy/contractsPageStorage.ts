@@ -4,7 +4,6 @@ import {
 } from "@/app/lib/commissionAudit";
 import { CATEGORY_DEFS, INSTITUTION_DEFS } from "./contractsPageFilters";
 import type {
-  ContractListViewMode,
   ContractsApiResponse,
   ContractsCache,
   ContractsViewState,
@@ -15,13 +14,10 @@ import type {
 export const CONTRACTS_CACHE_KEY = "contracts_cache_v3";
 export const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 export const CONTRACTS_VIEW_STATE_KEY = "contracts_view_state_v1";
-export const CONTRACTS_LIST_VIEW_MODE_KEY = "contracts_list_view_mode_v1";
 export const CONTRACTS_SILENT_REFRESH_COOLDOWN_MS = 60_000;
 export const CONTRACT_LIST_WINDOWING_THRESHOLD = 90;
-export const CONTRACT_LIST_ESTIMATED_CARD_ROW_HEIGHT = 340;
 export const CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT = 92;
 export const CONTRACT_LIST_OVERSCAN_ROWS = 3;
-export const DEFAULT_CONTRACT_LIST_VIEW_MODE: ContractListViewMode = "compact";
 
 export const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
@@ -105,14 +101,11 @@ export function readContractsViewState(
     return {
       userEmail: normalized,
       showTeam: Boolean(parsed.showTeam),
-      listViewMode:
-        parsed.listViewMode === "cards"
-          ? "cards"
-          : DEFAULT_CONTRACT_LIST_VIEW_MODE,
       filterMode: parsed.filterMode === "anniversary" ? "anniversary" : "latest",
       searchText: typeof parsed.searchText === "string" ? parsed.searchText : "",
       showUnpaidOnly: Boolean(parsed.showUnpaidOnly),
       showRefreshOnly: Boolean(parsed.showRefreshOnly),
+      showActiveOnly: Boolean(parsed.showActiveOnly),
       showStornoOnly: Boolean(parsed.showStornoOnly),
       showMaturedOnly: Boolean(parsed.showMaturedOnly),
       commissionAuditMode: parseCommissionAuditMode(
@@ -151,34 +144,6 @@ export function readContractsViewState(
     };
   } catch {
     return null;
-  }
-}
-
-export function readContractListViewMode(
-  userEmail: string | null | undefined
-): ContractListViewMode | null {
-  if (typeof window === "undefined") return null;
-  const normalized = normalizeEmail(userEmail);
-  if (!normalized) return null;
-  try {
-    const raw = localStorage.getItem(`${CONTRACTS_LIST_VIEW_MODE_KEY}:${normalized}`);
-    return raw === "compact" || raw === "cards" ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-export function writeContractListViewMode(
-  userEmail: string | null | undefined,
-  mode: ContractListViewMode
-) {
-  if (typeof window === "undefined") return;
-  const normalized = normalizeEmail(userEmail);
-  if (!normalized) return;
-  try {
-    localStorage.setItem(`${CONTRACTS_LIST_VIEW_MODE_KEY}:${normalized}`, mode);
-  } catch {
-    // best-effort preference
   }
 }
 

@@ -112,7 +112,6 @@ export type AppUser = {
 
 export type DisplayedContract = ContractDoc & {
   adviserEmail?: string | null;
-  groupedEntryCount?: number;
   groupedEndorsementCount?: number;
   groupedHasRefresh?: boolean;
   groupedLatestSortMs?: number;
@@ -123,7 +122,6 @@ export type DisplayedContract = ContractDoc & {
 };
 
 export type FilterMode = "latest" | "anniversary";
-export type ContractListViewMode = "cards" | "compact";
 export type CommissionAuditFilterMode = CommissionAuditMode;
 export type CommissionAuditFilterCode = CommissionAuditCodeFilter;
 export type ProductCategory =
@@ -175,6 +173,7 @@ export type ContractsListFilters = {
   filterMode: FilterMode;
   showUnpaidOnly: boolean;
   showRefreshOnly: boolean;
+  showActiveOnly: boolean;
   showStornoOnly: boolean;
   showMaturedOnly: boolean;
   commissionAuditMode: CommissionAuditFilterMode;
@@ -187,11 +186,11 @@ export type ContractsListFilters = {
 export type ContractsViewState = {
   userEmail: string;
   showTeam: boolean;
-  listViewMode: ContractListViewMode;
   filterMode: FilterMode;
   searchText: string;
   showUnpaidOnly: boolean;
   showRefreshOnly: boolean;
+  showActiveOnly: boolean;
   showStornoOnly: boolean;
   showMaturedOnly: boolean;
   commissionAuditMode: CommissionAuditFilterMode;

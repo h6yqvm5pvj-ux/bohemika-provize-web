@@ -1,4 +1,25 @@
+import { type ReactNode } from "react";
+
 import { type ToastMessage } from "./contractDetailTypes";
+
+export function ContractSectionHeading({
+  icon,
+  children,
+  className = "",
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <h3
+      className={`flex items-center gap-2.5 font-mono text-sm font-black uppercase tracking-[0.14em] text-slate-950 ${className}`}
+    >
+      <span className="inline-flex shrink-0 text-violet-700">{icon}</span>
+      <span>{children}</span>
+    </h3>
+  );
+}
 
 export const Spinner = ({ className = "h-4 w-4" }: { className?: string }) => (
   <span

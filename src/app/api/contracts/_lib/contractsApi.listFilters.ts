@@ -26,9 +26,7 @@ import type {
   ContractListProductCategory,
 } from "./contractsApi.types";
 
-const CONTRACT_LIST_PROPERTY_PRODUCTS = PROPERTY_PRODUCTS.filter(
-  (product) => product !== "zamex"
-);
+const CONTRACT_LIST_PROPERTY_PRODUCTS = PROPERTY_PRODUCTS;
 const uniqueProducts = (products: Product[]): Product[] =>
   Array.from(new Set(products));
 
@@ -47,7 +45,6 @@ const CONTRACT_LIST_PROPERTY_LIABILITY_PRODUCTS = uniqueProducts([
   ...LIABILITY_PRODUCTS,
 ]).filter(
   (product) =>
-    product !== "zamex" &&
     !CONTRACT_LIST_BUSINESS_PRODUCTS.includes(product) &&
     !CONTRACT_LIST_FOREIGNER_PRODUCTS.includes(product)
 );
@@ -238,6 +235,9 @@ export const parseContractListFilters = (
     refreshOnly:
       search.get("refreshOnly") === "1" ||
       search.get("refreshOnly") === "true",
+    activeOnly:
+      search.get("activeOnly") === "1" ||
+      search.get("activeOnly") === "true",
     stornoOnly:
       search.get("stornoOnly") === "1" ||
       search.get("stornoOnly") === "true",
@@ -267,6 +267,7 @@ export const hasContractListClientFilters = (
   filters.mode === "anniversary" ||
   filters.unpaidOnly ||
   filters.refreshOnly ||
+  filters.activeOnly ||
   filters.stornoOnly ||
   filters.maturedOnly ||
   isCommissionAuditFilterActive({
@@ -322,7 +323,7 @@ export function contractListIndexFieldsForContract(
 const selectedLifecycleStatusesForFilters = (
   filters: ContractListFilters
 ): ContractLifecycleStatus[] => {
-  if (filters.unpaidOnly) return ["active"];
+  if (filters.unpaidOnly || filters.activeOnly) return ["active"];
   const statuses: ContractLifecycleStatus[] = [];
   if (filters.stornoOnly) statuses.push("storno");
   if (filters.maturedOnly) statuses.push("dozita");
@@ -496,7 +497,9 @@ export function contractMatchesListFilters(
   }
 
   const lifecycleStatus = contractLifecycleStatus(contract);
-  if (filters.stornoOnly || filters.maturedOnly) {
+  if (filters.activeOnly) {
+    if (lifecycleStatus !== "active") return false;
+  } else if (filters.stornoOnly || filters.maturedOnly) {
     if (
       !(
         (filters.stornoOnly && lifecycleStatus === "storno") ||

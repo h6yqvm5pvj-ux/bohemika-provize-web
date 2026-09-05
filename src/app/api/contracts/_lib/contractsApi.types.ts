@@ -598,6 +598,7 @@ export type ContractListFilters = {
   mode: ContractListFilterMode;
   unpaidOnly: boolean;
   refreshOnly: boolean;
+  activeOnly: boolean;
   stornoOnly: boolean;
   maturedOnly: boolean;
   commissionAuditMode: CommissionAuditMode;

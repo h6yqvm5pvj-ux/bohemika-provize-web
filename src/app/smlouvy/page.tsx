@@ -31,14 +31,13 @@ import {
   ExternalLink,
   HeartPulse,
   Home,
-  LayoutGrid,
   ListFilter,
-  List,
   Plane,
   PencilLine,
   RefreshCw,
   ReceiptText,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   UserRound,
   UserSearch,
@@ -100,8 +99,6 @@ import {
 } from "./contractsPageFilters";
 import {
   commissionAuditCompactLabel,
-  commissionAuditStatusLabel,
-  commissionAuditSummaryLabel,
   commissionAuditTimingLabel,
   commissionAuditToneClasses,
   formatCommissionAuditDate,
@@ -109,22 +106,18 @@ import {
 import {
   CONTRACTS_UPDATED_KEY,
   CONTRACTS_SILENT_REFRESH_COOLDOWN_MS,
-  CONTRACT_LIST_ESTIMATED_CARD_ROW_HEIGHT,
   CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT,
   CONTRACT_LIST_OVERSCAN_ROWS,
   CONTRACT_LIST_WINDOWING_THRESHOLD,
-  DEFAULT_CONTRACT_LIST_VIEW_MODE,
   cursorFromApi,
   getErrorMessage,
   normalizeContractNumberForSearch,
   normalizeCursorToken,
   normalizeEmail,
   normalizeSearchValue,
-  readContractListViewMode,
   readContractsApiResponseSafe,
   readContractsCache,
   readContractsViewState,
-  writeContractListViewMode,
   writeContractsCache,
   writeContractsViewState,
 } from "./contractsPageStorage";
@@ -134,7 +127,6 @@ import type {
   CommissionAuditFilterMode,
   ContractDetailWindowState,
   ContractDoc,
-  ContractListViewMode,
   ContractsApiResponse,
   ContractsListFilters,
   DisplayedContract,
@@ -363,73 +355,31 @@ function contractStatusBadgeMeta({
   if (isStorno) {
     return {
       label: "Storno",
-      cardWrapper:
-        "border-amber-200/75 bg-amber-300/24 text-amber-50 shadow-[0_10px_24px_rgba(217,119,6,0.28)] ring-1 ring-amber-100/20",
-      cardIconWrap:
-        "border-amber-500/80 bg-[linear-gradient(135deg,#fbbf24_0%,#d97706_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(217,119,6,0.34)]",
       compactClass: "border-amber-200 bg-amber-50 text-amber-800",
       compactDotClass: "bg-amber-500",
-      icon: (
-        <CalendarDays
-          size={12}
-          strokeWidth={2.2}
-          className="shrink-0"
-          aria-hidden="true"
-        />
-      ),
     };
   }
 
   if (isDozita) {
     return {
       label: "Dožitá",
-      cardWrapper:
-        "border-sky-200/75 bg-sky-300/24 text-sky-50 shadow-[0_10px_24px_rgba(14,116,144,0.28)] ring-1 ring-sky-100/20",
-      cardIconWrap:
-        "border-sky-500/80 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(3,105,161,0.34)]",
       compactClass: "border-sky-200 bg-sky-50 text-sky-800",
       compactDotClass: "bg-sky-500",
-      icon: (
-        <CalendarDays
-          size={12}
-          strokeWidth={2.2}
-          className="shrink-0"
-          aria-hidden="true"
-        />
-      ),
     };
   }
 
   if (paid) {
     return {
       label: "Zaplaceno",
-      cardWrapper:
-        "border-emerald-200/75 bg-emerald-300/24 text-emerald-50 shadow-[0_10px_24px_rgba(5,150,105,0.28)] ring-1 ring-emerald-100/20",
-      cardIconWrap:
-        "border-emerald-500/80 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(5,150,105,0.34)]",
       compactClass: "border-emerald-200 bg-emerald-50 text-emerald-800",
       compactDotClass: "bg-emerald-500",
-      icon: (
-        <span className="text-[13px] font-black leading-none" aria-hidden="true">
-          ✓
-        </span>
-      ),
     };
   }
 
   return {
     label: "Nezaplaceno",
-    cardWrapper:
-      "border-rose-200/75 bg-rose-300/24 text-rose-50 shadow-[0_10px_24px_rgba(225,29,72,0.28)] ring-1 ring-rose-100/20",
-    cardIconWrap:
-      "border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-[#fbf7ff] shadow-[0_8px_16px_rgba(225,29,72,0.34)]",
     compactClass: "border-rose-200 bg-rose-50 text-rose-700",
     compactDotClass: "bg-rose-500",
-    icon: (
-      <span className="text-[13px] font-black leading-none" aria-hidden="true">
-        !
-      </span>
-    ),
   };
 }
 
@@ -655,15 +605,12 @@ function ContractsPageContent() {
   const [teamCursorDate, setTeamCursorDate] = useState<string | null>(null);
 
   const [showTeam, setShowTeam] = useState(false);
-  const [listViewMode, setListViewMode] = useState<ContractListViewMode>(
-    DEFAULT_CONTRACT_LIST_VIEW_MODE
-  );
-  const [listViewModeReadyForEmail, setListViewModeReadyForEmail] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
   const [searchText, setSearchText] = useState("");
   const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
   const [showRefreshOnly, setShowRefreshOnly] = useState(false);
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [showStornoOnly, setShowStornoOnly] = useState(false);
   const [showMaturedOnly, setShowMaturedOnly] = useState(false);
   const [commissionAuditMode, setCommissionAuditMode] =
@@ -715,7 +662,6 @@ function ContractsPageContent() {
   const searchResponseCacheRef = useRef(
     new Map<string, { expiresAt: number; data: ContractsApiResponse }>()
   );
-  const [contractsColumns, setContractsColumns] = useState(1);
   const [contractsWindowMetrics, setContractsWindowMetrics] = useState({
     scrollY: 0,
     viewportHeight: 0,
@@ -784,6 +730,7 @@ function ContractsPageContent() {
     anniversaryModeActive ||
     showUnpaidOnly ||
     showRefreshOnly ||
+    showActiveOnly ||
     showStornoOnly ||
     showMaturedOnly ||
     commissionAuditActive ||
@@ -796,6 +743,7 @@ function ContractsPageContent() {
       filterMode: anniversaryModeActive ? "anniversary" : "latest",
       showUnpaidOnly,
       showRefreshOnly,
+      showActiveOnly,
       showStornoOnly,
       showMaturedOnly,
       commissionAuditMode,
@@ -809,6 +757,7 @@ function ContractsPageContent() {
       anniversaryModeActive,
       showUnpaidOnly,
       showRefreshOnly,
+      showActiveOnly,
       showStornoOnly,
       showMaturedOnly,
       commissionAuditMode,
@@ -868,6 +817,9 @@ function ContractsPageContent() {
         }
         if (filters.showRefreshOnly) {
           params.set("refreshOnly", "1");
+        }
+        if (filters.showActiveOnly) {
+          params.set("activeOnly", "1");
         }
         if (filters.showStornoOnly) {
           params.set("stornoOnly", "1");
@@ -1041,7 +993,9 @@ function ContractsPageContent() {
       signal?: AbortSignal
     ) => {
       const teamEmails = teamUsersRef.current.map((u) => u.email).filter(Boolean);
-      if (teamEmails.length === 0) {
+      const hasExplicitSubordinateFilter =
+        (filters?.selectedSubordinates.length ?? 0) > 0;
+      if (teamEmails.length === 0 && !hasExplicitSubordinateFilter) {
         if (requestId != null && serverFilterRequestRef.current !== requestId) {
           return { list: [] as (ContractDoc & { adviserEmail: string | null })[], oldest: null as Date | null, hasMore: false };
         }
@@ -1488,7 +1442,6 @@ function ContractsPageContent() {
         latestSortMs: number;
         latestCreatedMs: number;
         preferRootDisplay: boolean;
-        entryCount: number;
         endorsementCount: number;
         hasRefresh: boolean;
         searchClientTokens: Set<string>;
@@ -1535,7 +1488,6 @@ function ContractsPageContent() {
           latestSortMs: sortMs,
           latestCreatedMs: createdMs,
           preferRootDisplay,
-          entryCount: 1,
           endorsementCount: isEndorsement ? 1 : 0,
           hasRefresh,
           searchClientTokens: new Set(
@@ -1551,7 +1503,6 @@ function ContractsPageContent() {
         return;
       }
 
-      existing.entryCount += 1;
       if (isEndorsement) existing.endorsementCount += 1;
       if (hasRefresh) existing.hasRefresh = true;
       if (normalizedClient.length > 0) {
@@ -1604,7 +1555,6 @@ function ContractsPageContent() {
                 paid: group.latest.paid ?? group.display.paid,
               }
             : {}),
-          groupedEntryCount: group.entryCount,
           groupedEndorsementCount: group.endorsementCount,
           groupedHasRefresh: group.hasRefresh,
           groupedLatestSortMs: group.latestSortMs,
@@ -1673,7 +1623,11 @@ function ContractsPageContent() {
       base = base.filter((c) => isRefreshContract(c));
     }
 
-    if (showStornoOnly || showMaturedOnly) {
+    if (showActiveOnly) {
+      base = base.filter(
+        (c) => contractLifecycleStatus(c as ContractDoc) === "active"
+      );
+    } else if (showStornoOnly || showMaturedOnly) {
       base = base.filter((c) => {
         const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
         return (
@@ -1745,6 +1699,7 @@ function ContractsPageContent() {
     searchText,
     showUnpaidOnly,
     showRefreshOnly,
+    showActiveOnly,
     showStornoOnly,
     showMaturedOnly,
     commissionAuditActive,
@@ -1756,10 +1711,6 @@ function ContractsPageContent() {
   ]);
 
   const effectiveFilteredContracts = filteredContracts;
-  const contractListEstimatedRowHeight =
-    listViewMode === "compact"
-      ? CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT
-      : CONTRACT_LIST_ESTIMATED_CARD_ROW_HEIGHT;
 
   const virtualizedContracts = useMemo(() => {
     const total = effectiveFilteredContracts.length;
@@ -1776,27 +1727,27 @@ function ContractsPageContent() {
       };
     }
 
-    const rows = Math.ceil(total / contractsColumns);
+    const rows = total;
     const relativeTop = contractsWindowMetrics.scrollY - contractsWindowMetrics.listTop;
     const startRow = Math.max(
       0,
-      Math.floor(relativeTop / contractListEstimatedRowHeight) -
+      Math.floor(relativeTop / CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT) -
         CONTRACT_LIST_OVERSCAN_ROWS
     );
     const endRow = Math.min(
       rows - 1,
       Math.ceil(
         (relativeTop + contractsWindowMetrics.viewportHeight) /
-          contractListEstimatedRowHeight
+          CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT
       ) + CONTRACT_LIST_OVERSCAN_ROWS
     );
 
-    const startIndex = startRow * contractsColumns;
-    const endExclusive = Math.min(total, (endRow + 1) * contractsColumns);
-    const topPadding = startRow * contractListEstimatedRowHeight;
+    const startIndex = startRow;
+    const endExclusive = Math.min(total, endRow + 1);
+    const topPadding = startRow * CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT;
     const bottomPadding = Math.max(
       0,
-      (rows - endRow - 1) * contractListEstimatedRowHeight
+      (rows - endRow - 1) * CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT
     );
 
     return {
@@ -1808,18 +1759,16 @@ function ContractsPageContent() {
   }, [
     effectiveFilteredContracts,
     contractsWindowMetrics,
-    contractsColumns,
-    contractListEstimatedRowHeight,
   ]);
 
   const listTransitionSignature = useMemo(
     () =>
       JSON.stringify({
         view: showTeam && canShowTeamToggle ? "team" : "mine",
-        listViewMode,
         mode: filterMode,
         unpaidOnly: showUnpaidOnly,
         refreshOnly: showRefreshOnly,
+        activeOnly: showActiveOnly,
         stornoOnly: showStornoOnly,
         maturedOnly: showMaturedOnly,
         commissionAuditMode,
@@ -1831,10 +1780,10 @@ function ContractsPageContent() {
     [
       showTeam,
       canShowTeamToggle,
-      listViewMode,
       filterMode,
       showUnpaidOnly,
       showRefreshOnly,
+      showActiveOnly,
       showStornoOnly,
       showMaturedOnly,
       commissionAuditMode,
@@ -1862,19 +1811,6 @@ function ContractsPageContent() {
     });
     return () => window.cancelAnimationFrame(raf);
   }, [listTransitionSignature]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const media = window.matchMedia("(min-width: 768px)");
-    const syncColumns = () => {
-      setContractsColumns(listViewMode === "compact" ? 1 : media.matches ? 2 : 1);
-    };
-    syncColumns();
-    media.addEventListener("change", syncColumns);
-    return () => {
-      media.removeEventListener("change", syncColumns);
-    };
-  }, [listViewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1910,7 +1846,7 @@ function ContractsPageContent() {
       window.removeEventListener("scroll", onWindowChange);
       window.removeEventListener("resize", onWindowChange);
     };
-  }, [effectiveFilteredContracts.length, showTeam, filterMode, listViewMode]);
+  }, [effectiveFilteredContracts.length, showTeam, filterMode]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore) return;
@@ -2046,11 +1982,11 @@ function ContractsPageContent() {
     if (!normalizedUserEmail) return;
     writeContractsViewState(normalizedUserEmail, {
       showTeam,
-      listViewMode,
       filterMode,
       searchText,
       showUnpaidOnly,
       showRefreshOnly,
+      showActiveOnly,
       showStornoOnly,
       showMaturedOnly,
       commissionAuditMode,
@@ -2063,11 +1999,11 @@ function ContractsPageContent() {
   }, [
     normalizedUserEmail,
     showTeam,
-    listViewMode,
     filterMode,
     searchText,
     showUnpaidOnly,
     showRefreshOnly,
+    showActiveOnly,
     showStornoOnly,
     showMaturedOnly,
     commissionAuditMode,
@@ -2223,41 +2159,25 @@ function ContractsPageContent() {
   );
 
   useEffect(() => {
-    if (!normalizedUserEmail) {
-      setListViewModeReadyForEmail(null);
-      return;
-    }
-    setListViewModeReadyForEmail(null);
-    const savedMode = readContractListViewMode(normalizedUserEmail);
-    setListViewMode(savedMode ?? DEFAULT_CONTRACT_LIST_VIEW_MODE);
-    setListViewModeReadyForEmail(normalizedUserEmail);
-  }, [normalizedUserEmail]);
-
-  useEffect(() => {
-    if (!normalizedUserEmail) return;
-    if (listViewModeReadyForEmail !== normalizedUserEmail) return;
-    writeContractListViewMode(normalizedUserEmail, listViewMode);
-  }, [normalizedUserEmail, listViewMode, listViewModeReadyForEmail]);
-
-  useEffect(() => {
     if (!shouldRestoreView) return;
     if (!normalizedUserEmail) return;
     const saved = readContractsViewState(normalizedUserEmail);
     if (!saved) return;
 
-    setShowTeam(saved.showTeam);
-    setListViewMode(saved.listViewMode);
+    const restoredSubordinates = new Set(saved.selectedSubordinates);
+    setShowTeam(saved.showTeam || restoredSubordinates.size > 0);
     setFilterMode(saved.filterMode);
     setSearchText(saved.searchText);
     setShowUnpaidOnly(saved.showUnpaidOnly);
     setShowRefreshOnly(saved.showRefreshOnly);
+    setShowActiveOnly(saved.showActiveOnly);
     setShowStornoOnly(saved.showStornoOnly);
     setShowMaturedOnly(saved.showMaturedOnly);
     setCommissionAuditMode(saved.commissionAuditMode);
     setCommissionAuditCodeFilter(saved.commissionAuditCodeFilter);
     setSelectedCategories(new Set(saved.selectedCategories));
     setSelectedInstitutions(new Set(saved.selectedInstitutions));
-    setSelectedSubordinates(new Set(saved.selectedSubordinates));
+    setSelectedSubordinates(restoredSubordinates);
     pendingScrollRestoreRef.current = saved.scrollY;
   }, [shouldRestoreView, normalizedUserEmail]);
 
@@ -2293,6 +2213,7 @@ function ContractsPageContent() {
     showTeam,
     showUnpaidOnly,
     showRefreshOnly,
+    showActiveOnly,
     showStornoOnly,
     showMaturedOnly,
     commissionAuditMode,
@@ -2312,6 +2233,7 @@ function ContractsPageContent() {
     selectedCategoryList.length +
     selectedInstitutionList.length +
     (showTeam && canShowTeamToggle ? selectedSubordinateList.length : 0) +
+    (showActiveOnly ? 1 : 0) +
     (showStornoOnly ? 1 : 0) +
     (showMaturedOnly ? 1 : 0) +
     (commissionAuditActive ? 1 : 0);
@@ -2553,6 +2475,7 @@ function ContractsPageContent() {
     (filterMode === "anniversary" ? 1 : 0) +
     (showUnpaidOnly ? 1 : 0) +
     (showRefreshOnly ? 1 : 0) +
+    (showActiveOnly ? 1 : 0) +
     (showStornoOnly ? 1 : 0) +
     (showMaturedOnly ? 1 : 0);
   const commissionFilterCount = commissionAuditActive
@@ -2610,7 +2533,10 @@ function ContractsPageContent() {
                       >
                         <button
                           type="button"
-                          onClick={() => setShowTeam(false)}
+                          onClick={() => {
+                            setShowTeam(false);
+                            setSelectedSubordinates(new Set());
+                          }}
                           className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
                             !showTeam
                               ? activePurpleButtonClass
@@ -2635,37 +2561,6 @@ function ContractsPageContent() {
                       </div>
                     )}
 
-                    <div
-                      className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
-                      aria-label="Zobrazení seznamu smluv"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setListViewMode("cards")}
-                        aria-pressed={listViewMode === "cards"}
-                        className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                          listViewMode === "cards"
-                            ? activePurpleButtonClass
-                            : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                        }`}
-                      >
-                        <LayoutGrid size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                        <span>Karty</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setListViewMode("compact")}
-                        aria-pressed={listViewMode === "compact"}
-                        className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                          listViewMode === "compact"
-                            ? activePurpleButtonClass
-                            : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                        }`}
-                      >
-                        <List size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                        <span>Kompakt</span>
-                      </button>
-                    </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
@@ -2858,6 +2753,13 @@ function ContractsPageContent() {
                     V aktuálním výběru nejsou žádné smlouvy označené jako Refresh nebo Náhrada.
                   </p>
                 </>
+              ) : showActiveOnly ? (
+                <>
+                  <p className="font-medium">Žádné aktivní smlouvy</p>
+                  <p className="text-xs text-slate-500">
+                    V aktuálním výběru nejsou žádné smlouvy mimo stav storno nebo dožitá.
+                  </p>
+                </>
               ) : showStornoOnly || showMaturedOnly ? (
                 <>
                   <p className="font-medium">Žádné smlouvy v tomto stavu</p>
@@ -2927,28 +2829,21 @@ function ContractsPageContent() {
                   {bulkSuccess}
                 </div>
               )}
-              {listViewMode === "compact" && (
-                <div className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.04)] lg:grid lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center lg:gap-3">
-                  <span>Smlouva</span>
-                  <span>Datum</span>
-                  <span>Pojistné</span>
-                  <span>Stav</span>
-                  <span className="text-right">Akce</span>
-                </div>
-              )}
+              <div className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.04)] lg:grid lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center lg:gap-3">
+                <span>Smlouva</span>
+                <span>Datum</span>
+                <span>Pojistné</span>
+                <span>Stav</span>
+                <span className="text-right">Akce</span>
+              </div>
               <div
                 ref={contractsListRef}
-                className={
-                  listViewMode === "compact"
-                    ? "grid grid-cols-1 gap-2"
-                    : "grid grid-cols-1 gap-3 md:grid-cols-2"
-                }
+                className="grid grid-cols-1 gap-2"
               >
               {virtualizedContracts.enabled &&
                 virtualizedContracts.topPadding > 0 && (
                   <div
                     aria-hidden="true"
-                    className={listViewMode === "compact" ? "" : "md:col-span-2"}
                     style={{ height: virtualizedContracts.topPadding }}
                   />
                 )}
@@ -3011,9 +2906,6 @@ function ContractsPageContent() {
                 const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
                 const isStorno = lifecycleStatus === "storno";
                 const isDozita = lifecycleStatus === "dozita";
-                const groupedEntryCount = Number(
-                  (c as ContractDoc).groupedEntryCount ?? 1
-                );
                 const groupedEndorsementCount = Number(
                   (c as ContractDoc).groupedEndorsementCount ?? 0
                 );
@@ -3239,265 +3131,6 @@ function ContractsPageContent() {
                     </article>
                   );
 
-                  const CardContent = (
-                    <article
-                      className={`relative isolate overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-4 py-4 font-mono shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 ring-[#7a35a7]/22 transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-[#9756d1] hover:shadow-[0_24px_44px_rgba(20,8,34,0.5)] ${
-                        isSelected ? "border-[#c084fc] ring-2 ring-[#b967ff]/45" : ""
-                      }`}
-                      style={{
-                        contentVisibility: "auto",
-                        containIntrinsicSize: "340px",
-                      }}
-                    >
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.11)_0%,rgba(190,92,255,0)_40%,rgba(164,82,244,0.11)_100%)]" />
-                    <div className="pointer-events-none absolute -top-16 left-12 h-56 w-px rotate-[34deg] bg-[#9d61ca]/16" />
-                    <div className="pointer-events-none absolute -right-14 top-8 h-36 w-36 rounded-full bg-[#ab66ff]/22 blur-3xl" />
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
-                    />
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-x-10 top-[2px] z-[1] h-px rounded-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(250,245,255,0.62),rgba(168,85,247,0))]"
-                    />
-                    {selectMode && (
-                      <div className="absolute right-3 top-3 z-10">
-                        <span
-                          className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
-                            isSelected
-                              ? "border-[#d8b4fe] bg-[linear-gradient(135deg,#b967ff_0%,#9350ea_100%)] text-[#fbf7ff] shadow-[0_10px_20px_rgba(168,79,240,0.36)]"
-                              : "border-[#9a67d0]/80 bg-[#2e1c43]/92 text-[#d8bcf3]"
-                          }`}
-                        >
-                          ✓
-                      </span>
-                    </div>
-                  )}
-                    {!selectMode && (
-                      <div
-                        className="pointer-events-none absolute right-3 top-3 z-[2] inline-flex items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                        aria-hidden="true"
-                      >
-                        <ContractInstitutionGhostLogo
-                          product={c.productKey as Product | undefined}
-                        />
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[#9a67d0]/80 bg-[#2e1c43]/92 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-[#d8bcf3] shadow-[0_10px_20px_rgba(20,8,34,0.3)]">
-                          <span>Detail</span>
-                          <span className="text-[11px]">↗</span>
-                        </span>
-                      </div>
-                    )}
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4">
-                    <div className="relative z-[1] min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                          <ContractCategoryIcon
-                            product={c.productKey as Product | undefined}
-                            surface="dark"
-                          />
-                          {institutionLabel ? (
-                            <span className="inline-flex items-center rounded-[9px] bg-[linear-gradient(135deg,#b85cff_0%,#9d47ed_100%)] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#fbf7ff] shadow-[0_10px_20px_rgba(159,72,237,0.36)]">
-                              {institutionLabel}
-                            </span>
-                          ) : null}
-                          <div className="min-w-0 text-[1.65rem] leading-tight font-semibold text-[#fbf7ff] sm:text-[1.95rem]">
-                            {displayProductName}
-                          </div>
-                          {isEndorsement && (
-                            <span className="inline-flex items-center rounded-full border border-sky-300/45 bg-sky-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-100">
-                              Dodatek
-                            </span>
-                          )}
-                          {hasOriginalReplacement && (
-                            <span className="inline-flex items-center rounded-full border border-indigo-300/45 bg-indigo-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-100">
-                              {originalReplacementBadgeLabel}
-                            </span>
-                          )}
-                          {wasTransferred && (
-                            <span className="inline-flex items-center rounded-full border border-violet-300/45 bg-violet-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-100">
-                              Převedeno
-                            </span>
-                          )}
-                          {groupedEndorsementCount > 0 && (
-                            <span className="inline-flex items-center rounded-full border border-[#9a67d0]/70 bg-[#2e1c43]/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#d8bcf3]">
-                              {groupedEndorsementCount}× změna
-                            </span>
-                          )}
-                      </div>
-
-                      {anniversaryInfo.soon && (
-                          <div
-                            className="mt-2 text-xs font-semibold text-rose-200"
-                          title={
-                            anniversaryInfo.next
-                              ? `${
-                                  anniversaryInfo.anniversaryNumber
-                                    ? `${anniversaryInfo.anniversaryNumber}. výročí`
-                                    : "Výročí"
-                                }: ${anniversaryInfo.next.toLocaleDateString(
-                                  "cs-CZ"
-                                )}`
-                              : undefined
-                          }
-                        >
-                          {anniversaryInfo.daysLeft != null
-                            ? `${
-                                anniversaryInfo.anniversaryNumber
-                                  ? `${anniversaryInfo.anniversaryNumber}. výročí`
-                                  : "Výročí"
-                              } za ${formatDaysLeft(anniversaryInfo.daysLeft)}`
-                            : "Blížící se výročí"}
-                        </div>
-                      )}
-
-                      {primaryCommissionAuditItem && commissionAuditTone ? (
-                        <div
-                          className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${commissionAuditTone.card}`}
-                          title={`${primaryCommissionAuditItem.label} · ${formatCommissionAuditDate(
-                            primaryCommissionAuditItem.expectedDateMs
-                          )}`}
-                        >
-                          <Clock size={12} strokeWidth={2} className="shrink-0" aria-hidden="true" />
-                          <span className="truncate">
-                            {primaryCommissionAuditItem.code ??
-                              primaryCommissionAuditItem.label}
-                          </span>
-                          <span className="shrink-0">
-                            {commissionAuditStatusLabel(primaryCommissionAuditItem)}
-                          </span>
-                          {commissionAuditSummary &&
-                          commissionAuditSummary.items.length > 1 ? (
-                            <span className="shrink-0">
-                              · {commissionAuditSummaryLabel(commissionAuditSummary)}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                        <div className="mt-3 grid grid-cols-1 gap-1.5 text-[15px] leading-tight text-[#d8bcf3]">
-                          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                              Číslo smlouvy
-                            </span>
-                            <span className="font-medium text-[#fbf7ff]">{c.contractNumber ?? "—"}</span>
-                          </p>
-                          {c.clientName && (
-                            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                              <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                                Klient
-                              </span>
-                              <span className="text-base font-semibold text-[#fbf7ff]">{c.clientName}</span>
-                            </p>
-                          )}
-                          <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                              Datum sjednání
-                            </span>
-                            <span className="text-[#fbf7ff]">{signedStr}</span>
-                          </p>
-                          {wasTransferred ? (
-                            <>
-                              <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                                  Sjednal
-                                </span>
-                                <span className="text-[#fbf7ff]">{originalAdviserName}</span>
-                              </p>
-                              <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                                  Správce
-                                </span>
-                                <span className="text-[#fbf7ff]">{servicingAdviserName}</span>
-                              </p>
-                              {transferEffectiveDate ? (
-                                <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                                  <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                                    Správa od
-                                  </span>
-                                  <span className="text-[#fbf7ff]">
-                                    {transferEffectiveDate.toLocaleDateString("cs-CZ")}
-                                  </span>
-                                </p>
-                              ) : null}
-                            </>
-                          ) : adviserName ? (
-                            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                              <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                                Sjednal
-                              </span>
-                              <span className="text-[#fbf7ff]">{adviserName}</span>
-                            </p>
-                          ) : null}
-                          {groupedEntryCount > 1 && (
-                            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                              <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                                Verzí v kartě
-                              </span>
-                              <span className="text-[#fbf7ff]">{groupedEntryCount}</span>
-                            </p>
-                          )}
-                          {isEndorsement && premiumDelta != null && (
-                            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                              <span className="text-[10px] font-semibold uppercase tracking-[0.11em] text-[#c8aee4]">
-                                Změna pojistného
-                              </span>
-                              <span
-                                className={
-                                  premiumDelta >= 0 ? "text-emerald-200" : "text-rose-200"
-                                }
-                            >
-                              {premiumDelta >= 0 ? "+" : "−"}
-                              {formatMoney(Math.abs(premiumDelta))}
-                            </span>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                      <div className="relative z-[1] border-t-2 border-[#a855f7]/75 pt-3 sm:border-l-2 sm:border-t-0 sm:pl-5 sm:pt-0">
-                        <div className="flex items-end justify-between gap-3 sm:h-full sm:flex-col sm:items-end sm:justify-between">
-                          <div className="text-right">
-                            <span className="text-[11px] font-black uppercase tracking-[0.14em] text-[#f3e8ff] drop-shadow-[0_2px_8px_rgba(243,232,255,0.18)]">
-                              {isEndorsement ? "Nové pojistné" : "Pojistné"}
-                            </span>
-                            <div className="mt-1 whitespace-nowrap text-4xl leading-none font-black tracking-tight text-[#fbf7ff] drop-shadow-[0_8px_18px_rgba(168,85,247,0.2)]">
-                              {formatMoney(premiumDisplay.amount)}
-                            </div>
-                            {premiumDisplay.cadenceLabel && (
-                              <div className="mt-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#f3e8ff] drop-shadow-[0_2px_8px_rgba(243,232,255,0.18)]">
-                                {premiumDisplay.cadenceLabel}
-                              </div>
-                            )}
-                            {isEndorsement && premiumDelta != null && (
-                              <div
-                                className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                                  premiumDelta >= 0 ? "text-emerald-200" : "text-rose-200"
-                                }`}
-                            >
-                              {premiumDelta >= 0 ? "Navýšení" : "Ponížení"}{" "}
-                              {formatMoney(Math.abs(premiumDelta))}
-                            </div>
-                          )}
-                        </div>
-                          <span
-                            className={`inline-flex items-center gap-2 rounded-full border px-1.5 py-1 pr-2.5 text-[12px] font-semibold leading-none tracking-[0.01em] ${statusBadge.cardWrapper}`}
-                          >
-                            <span
-                              className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ring-1 ring-[#fbf7ff]/45 ${statusBadge.cardIconWrap}`}
-                            >
-                              {statusBadge.icon}
-                            </span>
-                            <span className="pr-1">{statusBadge.label}</span>
-                          </span>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              );
-
-              const renderedContract = listViewMode === "compact" ? CompactContent : CardContent;
-
               return selectMode ? (
                 <button
                   key={c.id}
@@ -3508,7 +3141,7 @@ function ContractsPageContent() {
                   }
                   className="block group h-full w-full text-left"
                 >
-                  {renderedContract}
+                  {CompactContent}
                 </button>
               ) : (
                 <button
@@ -3522,7 +3155,7 @@ function ContractsPageContent() {
                   }
                   className="block group h-full w-full text-left"
                 >
-                  {renderedContract}
+                  {CompactContent}
                 </button>
               );
               })}
@@ -3530,7 +3163,6 @@ function ContractsPageContent() {
                 virtualizedContracts.bottomPadding > 0 && (
                   <div
                     aria-hidden="true"
-                    className={listViewMode === "compact" ? "" : "md:col-span-2"}
                     style={{ height: virtualizedContracts.bottomPadding }}
                   />
                 )}
@@ -3709,6 +3341,46 @@ function ContractsPageContent() {
 
                       <button
                         type="button"
+                        onClick={() => {
+                          const nextActive = !showActiveOnly;
+                          setShowActiveOnly(nextActive);
+                          if (nextActive) {
+                            setShowStornoOnly(false);
+                            setShowMaturedOnly(false);
+                          }
+                        }}
+                        className={`${filterCardBaseClass} ${
+                          showActiveOnly
+                            ? activeFilterCardClass
+                            : inactiveFilterCardClass
+                        }`}
+                      >
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
+                            showActiveOnly
+                              ? activeFilterIconClass
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          <ShieldCheck size={16} strokeWidth={2.1} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black">Aktivní smlouvy</span>
+                          <span
+                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
+                              showActiveOnly ? "text-slate-600" : "text-slate-500"
+                            }`}
+                          >
+                            Bez stornovaných a dožitých smluv.
+                          </span>
+                        </span>
+                        {showActiveOnly && (
+                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => setShowUnpaidOnly((prev) => !prev)}
                         className={`${filterCardBaseClass} ${
                           showUnpaidOnly
@@ -3775,7 +3447,10 @@ function ContractsPageContent() {
 
                       <button
                         type="button"
-                        onClick={() => setShowMaturedOnly((prev) => !prev)}
+                        onClick={() => {
+                          setShowActiveOnly(false);
+                          setShowMaturedOnly((prev) => !prev);
+                        }}
                         className={`${filterCardBaseClass} ${
                           showMaturedOnly
                             ? activeFilterCardClass
@@ -3808,7 +3483,10 @@ function ContractsPageContent() {
 
                       <button
                         type="button"
-                        onClick={() => setShowStornoOnly((prev) => !prev)}
+                        onClick={() => {
+                          setShowActiveOnly(false);
+                          setShowStornoOnly((prev) => !prev);
+                        }}
                         className={`${filterCardBaseClass} ${
                           showStornoOnly
                             ? activeFilterCardClass
@@ -4187,7 +3865,10 @@ function ContractsPageContent() {
                             <input
                               type="checkbox"
                               checked={allSearchableSubordinatesSelected}
-                              onChange={() =>
+                              onChange={() => {
+                                if (!allSearchableSubordinatesSelected) {
+                                  setShowTeam(true);
+                                }
                                 setSelectedSubordinates((prev) => {
                                   const next = new Set(prev);
                                   for (const member of searchableSubordinateOptions) {
@@ -4198,8 +3879,8 @@ function ContractsPageContent() {
                                     }
                                   }
                                   return next;
-                                })
-                              }
+                                });
+                              }}
                               className="h-4 w-4 shrink-0 accent-violet-700"
                             />
                             <span className="truncate">
@@ -4224,7 +3905,8 @@ function ContractsPageContent() {
                               <button
                                 key={member.email}
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  if (!active) setShowTeam(true);
                                   setSelectedSubordinates((prev) => {
                                     const next = new Set(prev);
                                     if (next.has(member.email)) {
@@ -4233,8 +3915,8 @@ function ContractsPageContent() {
                                       next.add(member.email);
                                     }
                                     return next;
-                                  })
-                                }
+                                  });
+                                }}
                                 className={`flex w-full items-center justify-between gap-3 rounded-[18px] border px-3 py-2.5 text-left transition ${
                                   active
                                       ? "border-violet-700 bg-white text-slate-950 ring-2 ring-violet-200"
@@ -4275,6 +3957,7 @@ function ContractsPageContent() {
                     setFilterMode("latest");
                     setShowUnpaidOnly(false);
                     setShowRefreshOnly(false);
+                    setShowActiveOnly(false);
                     setShowStornoOnly(false);
                     setShowMaturedOnly(false);
                     setCommissionAuditMode("off");
@@ -4291,7 +3974,10 @@ function ContractsPageContent() {
               </button>
               <button
                 type="button"
-                onClick={() => setFilterModalOpen(false)}
+                onClick={() => {
+                  if (selectedSubordinates.size > 0) setShowTeam(true);
+                  setFilterModalOpen(false);
+                }}
                 className="ui-focus inline-flex h-11 items-center gap-2 rounded-[17px] border border-violet-700 bg-violet-700 px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(109,40,217,0.24)] transition hover:bg-violet-800 [&_*]:!text-white"
               >
                 <Check size={16} strokeWidth={2.5} aria-hidden="true" />

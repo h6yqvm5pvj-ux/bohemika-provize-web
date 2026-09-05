@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { AlertTriangle, ChevronDown, Info, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, Coins, Info, X } from "lucide-react";
 
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import {
@@ -19,6 +19,7 @@ import {
   hasNeonImmediateCoefficient,
 } from "./contractDetailLogic";
 import { type ContractCommissionPayout } from "./contractDetailTypes";
+import { ContractSectionHeading } from "./ContractDetailUi";
 
 export type MeziprovisionCard = {
   key: string;
@@ -75,8 +76,6 @@ const commissionTotalValueDarkClass =
 const monoHeadingClass = "font-mono tracking-tight text-slate-900";
 const monoChipClass =
   "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-mono tracking-tight text-slate-900";
-const monoChipDarkClass =
-  "inline-flex items-center rounded-full border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-mono tracking-tight text-white";
 const collapsibleButtonClass =
   "flex h-10 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
 const COMMISSION_PAYOUT_AMOUNT_TOLERANCE = 10;
@@ -1172,10 +1171,11 @@ export function ContractCommissionSection({
 
       {isOwnContract ? (
         <section className="space-y-3">
-          <h3 className={`flex items-center gap-2 text-lg font-semibold ${monoHeadingClass}`}>
-            <span className={monoChipDarkClass}>Provize</span>
+          <ContractSectionHeading
+            icon={<Coins size={17} strokeWidth={2.2} aria-hidden="true" />}
+          >
             Výpočet provizí
-          </h3>
+          </ContractSectionHeading>
           <div className={commissionPanelClass}>
             {renderCommissionWarning()}
             <div className="space-y-1">
