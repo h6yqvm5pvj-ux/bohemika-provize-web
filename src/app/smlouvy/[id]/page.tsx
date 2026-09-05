@@ -782,6 +782,7 @@ export default function ContractDetailPage() {
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
         setShowContractActionsMenu(false);
+        setShowProductPanel(false);
         setSelectedContractPdf(null);
         setNeonImmediateBreakdown(null);
         setStatementPreview(null);
@@ -799,6 +800,7 @@ export default function ContractDetailPage() {
       showContractPdfModal ||
       showContractPdfOptions ||
       showContractActionsMenu ||
+      showProductPanel ||
       isNeonImmediateBreakdownOpen ||
       isStatementPreviewOpen
     ) {
@@ -819,6 +821,7 @@ export default function ContractDetailPage() {
     showContractPdfModal,
     showContractPdfOptions,
     showContractActionsMenu,
+    showProductPanel,
     isNeonImmediateBreakdownOpen,
     isStatementPreviewOpen,
     closeAllianzPortalModal,
@@ -5318,29 +5321,6 @@ export default function ContractDetailPage() {
 
   const renderProductPanelContent = () => (
     <>
-      <div className="flex items-center justify-between gap-3">
-        <ContractSectionHeading
-          icon={<Package size={17} strokeWidth={2.2} aria-hidden="true" />}
-        >
-          Detail produktu
-        </ContractSectionHeading>
-        <span className="text-sm font-semibold text-slate-600">{productLabel(prod)}</span>
-      </div>
-      {canManageContract && !editMode && hasContractPdfAttachment && (
-        <button
-          type="button"
-          onClick={handleRefreshDetailsFromPdf}
-          disabled={refreshingPdfDetails}
-          className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 disabled:opacity-60"
-        >
-          {refreshingPdfDetails ? (
-            <Spinner className="h-3.5 w-3.5 border-2 border-slate-300 border-t-slate-700" />
-          ) : (
-            <FileText size={14} strokeWidth={2} aria-hidden="true" />
-          )}
-          <span>{refreshingPdfDetails ? "Načítám…" : "Načíst z PDF"}</span>
-        </button>
-      )}
       {isAutoProduct(prod) && (
         <AutoDetailPanel
           prod={prod}
@@ -5880,7 +5860,7 @@ export default function ContractDetailPage() {
                             type="button"
                             onClick={() => {
                               setShowContractActionsMenu(false);
-                              setShowProductPanel((value) => !value);
+                              setShowProductPanel(true);
                             }}
                             className={`${contractActionMenuItemClass} border-fuchsia-100 bg-fuchsia-50/70 hover:border-fuchsia-200 hover:bg-fuchsia-50`}
                           >
@@ -5889,7 +5869,7 @@ export default function ContractDetailPage() {
                             </span>
                             <span className="min-w-0">
                               <span className="block text-sm font-black text-slate-950">
-                                {showProductPanel ? "Skrýt detail produktu" : "Detail produktu"}
+                                Detail produktu
                               </span>
                               <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
                                 Uložené parametry pojištění
@@ -6168,12 +6148,6 @@ export default function ContractDetailPage() {
                         className="h-9 w-auto flex-shrink-0"
                       />
                     </div>
-                  </section>
-                )}
-
-                {showProductPanel && (
-                  <section className={`${surfaceCardClass} space-y-4`}>
-                    {renderProductPanelContent()}
                   </section>
                 )}
 
@@ -7174,6 +7148,81 @@ export default function ContractDetailPage() {
         statement={statementPreview}
         onClose={() => setStatementPreview(null)}
       />
+
+      {showProductPanel && (
+        <section
+          aria-labelledby="product-detail-view-title"
+          className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-slate-50"
+        >
+          <div className="relative shrink-0 overflow-hidden border-b border-slate-200 bg-white shadow-[0_5px_18px_rgba(15,23,42,0.06)]">
+            <div
+              className={`mx-auto flex w-full items-center gap-3 px-3 py-3.5 sm:px-4 ${
+                isAutoProduct(prod) ? "max-w-[1180px]" : "max-w-[660px]"
+              }`}
+            >
+              <div
+                className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-700 via-fuchsia-500 to-violet-300"
+                aria-hidden="true"
+              />
+              <button
+                type="button"
+                onClick={() => setShowProductPanel(false)}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                aria-label="Zpět na detail smlouvy"
+              >
+                <ArrowLeft size={17} strokeWidth={2.3} aria-hidden="true" />
+                <span className="hidden sm:inline">Zpět</span>
+              </button>
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 text-violet-700 shadow-sm">
+                  <Package size={21} strokeWidth={2.2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700">
+                    Parametry pojištění
+                  </span>
+                  <h2
+                    id="product-detail-view-title"
+                    className="truncate text-xl font-black tracking-tight text-slate-950"
+                  >
+                    Detail produktu
+                  </h2>
+                  <p className="truncate text-xs font-semibold text-slate-500">
+                    {productLabel(prod)}
+                  </p>
+                </div>
+              </div>
+              {canManageContract && !editMode && hasContractPdfAttachment && (
+                <button
+                  type="button"
+                  onClick={handleRefreshDetailsFromPdf}
+                  disabled={refreshingPdfDetails}
+                  className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-60"
+                >
+                  {refreshingPdfDetails ? (
+                    <Spinner className="h-3.5 w-3.5 border-2 border-slate-300 border-t-violet-700" />
+                  ) : (
+                    <FileText size={15} strokeWidth={2.1} aria-hidden="true" />
+                  )}
+                  <span className="hidden sm:inline">
+                    {refreshingPdfDetails ? "Načítám…" : "Načíst z PDF"}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(124,58,237,0.07),transparent_28rem)]">
+            <div
+              className={`mx-auto w-full px-3 py-4 sm:px-4 sm:py-5 ${
+                isAutoProduct(prod) ? "max-w-[1180px]" : "max-w-[660px]"
+              }`}
+            >
+              <div className="space-y-3">{renderProductPanelContent()}</div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {neonImmediateBreakdown && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">

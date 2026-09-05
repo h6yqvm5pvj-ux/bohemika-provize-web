@@ -1,10 +1,26 @@
-import React from "react";
+import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  BadgeCheck,
   Car,
   CarFront,
+  Check,
+  CloudLightning,
+  Copy,
+  Flame,
+  Hammer,
+  KeyRound,
   LifeBuoy,
+  Luggage,
+  PackageOpen,
+  PanelTop,
+  PawPrint,
+  Route,
+  Scale,
   Shield,
+  ShieldCheck,
+  Sparkles,
+  UsersRound,
   Wrench,
 } from "lucide-react";
 import type { Product } from "@/app/types/domain";
@@ -141,6 +157,41 @@ const formatLimitLabel = (val: string): string => {
   return `${mil}/${mil} mil. Kč`;
 };
 
+type CoverageTone = "violet" | "sky" | "emerald" | "amber" | "rose" | "cyan";
+
+const COVERAGE_SELECTED_CLASS =
+  "border-slate-200 bg-white shadow-[0_3px_10px_rgba(15,23,42,0.04)]";
+const COVERAGE_ICON_CLASS = "border-violet-100 bg-violet-50 text-violet-600";
+const COVERAGE_CHECK_CLASS = "bg-violet-600 text-white";
+
+const AUTO_ADDON_VISUALS: Record<
+  string,
+  { icon: LucideIcon; tone: CoverageTone }
+> = {
+  carAddonEso: { icon: Sparkles, tone: "violet" },
+  carAddonNaturalRisks: { icon: CloudLightning, tone: "cyan" },
+  carAddonKlika: { icon: ShieldCheck, tone: "emerald" },
+  carAddonGlass: { icon: PanelTop, tone: "sky" },
+  carAddonAnimalCollision: { icon: PawPrint, tone: "amber" },
+  carAddonAnimalDamage: { icon: PawPrint, tone: "amber" },
+  carAddonVandalism: { icon: Hammer, tone: "rose" },
+  carAddonTheft: { icon: KeyRound, tone: "violet" },
+  carAddonNatural: { icon: CloudLightning, tone: "cyan" },
+  carAddonOwnDamage: { icon: CarFront, tone: "rose" },
+  carAddonPothole: { icon: Route, tone: "amber" },
+  carAddonNonFaultAccident: { icon: ShieldCheck, tone: "emerald" },
+  carAddonGap: { icon: Shield, tone: "violet" },
+  carAddonSmartGap: { icon: Sparkles, tone: "violet" },
+  carAddonServisPro: { icon: Wrench, tone: "sky" },
+  carAddonReplacementCar: { icon: Car, tone: "cyan" },
+  carAddonLuggage: { icon: Luggage, tone: "violet" },
+  carAddonTransportedGoods: { icon: PackageOpen, tone: "sky" },
+  carAddonFireExplosion: { icon: Flame, tone: "rose" },
+  carAddonLegalAdvice: { icon: Scale, tone: "violet" },
+  carAddonPassengerInjury: { icon: UsersRound, tone: "rose" },
+  carAddonKeyLossTheft: { icon: KeyRound, tone: "amber" },
+};
+
 type Props = {
   prod?: Product | null;
   editMode: boolean;
@@ -163,34 +214,46 @@ const ToggleRow = ({
   checked,
   onChange,
   disabled = false,
+  icon: Icon = ShieldCheck,
 }: {
   label: string;
   checked: boolean;
   onChange: (val: boolean) => void;
   disabled?: boolean;
-}) => (
-  <button
-    type="button"
-    disabled={disabled}
-    onClick={() => onChange(!checked)}
-    className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition ${
-      checked
-        ? "border-slate-900 bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.18)]"
-        : "border-slate-300 bg-white text-slate-900 hover:border-slate-900"
-    } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
-  >
-    <span className="text-left">{label}</span>
-    <span
-      className={`flex h-6 w-6 items-center justify-center rounded-full border text-sm font-semibold ${
+  icon?: LucideIcon;
+  tone?: CoverageTone;
+}) => {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`group flex min-h-[56px] w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-[15px] transition ${
         checked
-          ? "border-slate-900 bg-white text-slate-900"
-          : "border-slate-300 bg-slate-100 text-slate-500"
-      }`}
+          ? COVERAGE_SELECTED_CLASS
+          : "border-slate-200 bg-white text-slate-800 hover:border-violet-200 hover:bg-slate-50"
+      } ${disabled ? "cursor-default" : "hover:-translate-y-0.5 hover:shadow-md"}`}
     >
-      {checked ? "✓" : ""}
-    </span>
-  </button>
-);
+      <span
+        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+          checked ? COVERAGE_ICON_CLASS : "border-slate-200 bg-slate-100 text-slate-500"
+        }`}
+      >
+        <Icon size={16} strokeWidth={2.1} aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1 text-left font-bold leading-snug text-slate-900">
+        {label}
+      </span>
+      <span
+        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+          checked ? COVERAGE_CHECK_CLASS : "border border-slate-300 bg-white text-transparent"
+        }`}
+      >
+        <Check size={12} strokeWidth={3} aria-hidden="true" />
+      </span>
+    </button>
+  );
+};
 
 const AddonToggleWithLimitRow = ({
   label,
@@ -202,6 +265,7 @@ const AddonToggleWithLimitRow = ({
   limitValue,
   onToggle,
   onLimitChange,
+  icon: Icon = ShieldCheck,
 }: {
   label: string;
   checked: boolean;
@@ -212,21 +276,30 @@ const AddonToggleWithLimitRow = ({
   limitValue: string;
   onToggle: (val: boolean) => void;
   onLimitChange: (key: AutoAddonLimitField, value: string) => void;
+  icon?: LucideIcon;
+  tone?: CoverageTone;
 }) => {
   const selectedClass = checked
-    ? "border-slate-900 bg-slate-900 text-white shadow-[0_6px_14px_rgba(15,23,42,0.18)]"
-    : "border-slate-300 bg-white text-slate-900";
-  const disabledClass = disabled ? "opacity-60 cursor-not-allowed" : "";
+    ? COVERAGE_SELECTED_CLASS
+    : "border-slate-200 bg-white text-slate-900";
+  const disabledClass = disabled ? "cursor-default" : "hover:-translate-y-0.5 hover:shadow-md";
 
   return (
     <div
-      className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm transition ${selectedClass} ${disabledClass}`}
+      className={`flex min-h-[56px] w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-[15px] transition ${selectedClass} ${disabledClass}`}
     >
+      <span
+        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+          checked ? COVERAGE_ICON_CLASS : "border-slate-200 bg-slate-100 text-slate-500"
+        }`}
+      >
+        <Icon size={16} strokeWidth={2.1} aria-hidden="true" />
+      </span>
       <button
         type="button"
         disabled={disabled}
         onClick={() => onToggle(!checked)}
-        className="min-w-0 flex-1 text-left font-medium"
+        className="min-w-0 flex-1 text-left font-bold leading-snug text-slate-900"
       >
         {label}
       </button>
@@ -247,10 +320,10 @@ const AddonToggleWithLimitRow = ({
       )}
       {checked && !editMode && limitAmount != null && (
         <div className="shrink-0 text-right">
-          <div className="text-[10px] font-bold uppercase leading-tight text-white/65">
+          <div className="text-[9px] font-bold uppercase leading-tight tracking-wide text-slate-500">
             Limit
           </div>
-          <div className="mt-0.5 whitespace-nowrap text-sm font-bold leading-tight text-white">
+          <div className="mt-0.5 whitespace-nowrap text-sm font-black leading-tight text-slate-950">
             {formatMoney(limitAmount)}
           </div>
         </div>
@@ -259,13 +332,11 @@ const AddonToggleWithLimitRow = ({
         type="button"
         disabled={disabled}
         onClick={() => onToggle(!checked)}
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
-          checked
-            ? "border-slate-900 bg-white text-slate-900"
-            : "border-slate-300 bg-slate-100 text-slate-500"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+          checked ? COVERAGE_CHECK_CLASS : "border border-slate-300 bg-white text-transparent"
         }`}
       >
-        {checked ? "✓" : ""}
+        <Check size={12} strokeWidth={3} aria-hidden="true" />
       </button>
     </div>
   );
@@ -277,15 +348,38 @@ const SectionTitle = ({
 }: {
   icon: LucideIcon;
   label: string;
+  tone?: CoverageTone;
 }) => (
-  <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-    <Icon size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
+  <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-600">
+    <span
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border ${COVERAGE_ICON_CLASS}`}
+    >
+      <Icon size={16} strokeWidth={2.2} aria-hidden="true" />
+    </span>
     <span>{label}</span>
   </div>
 );
 
 export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: Props) {
+  const [copiedVehicleField, setCopiedVehicleField] = useState<
+    "plate" | "orv" | "vin" | null
+  >(null);
   if (!prod) return null;
+  const copyVehicleValue = async (
+    field: "plate" | "orv" | "vin",
+    value: string
+  ) => {
+    if (!value || value === "—" || !navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedVehicleField(field);
+      window.setTimeout(() => {
+        setCopiedVehicleField((current) => (current === field ? null : current));
+      }, 1_800);
+    } catch {
+      setCopiedVehicleField(null);
+    }
+  };
   const showAnnualMileageBox = prod === "allianzAuto" || prod === "pillowAuto";
   const showAllianzScopeBox = prod === "allianzAuto";
   const hasTextValue = (value: string | undefined | null) => {
@@ -361,101 +455,200 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
       amount: numericLimit(contract?.carAddonGapLimit),
     },
   };
+  const vehicleMake = contract?.carMake || fields.carMake || "—";
+  const vehiclePlate = contract?.carPlate || fields.carPlate || "—";
+  const vehicleVin = contract?.carVin || fields.carVin || "—";
+  const vehicleTp = contract?.carTp || fields.carTp || "—";
+  const vehicleOrv = contract?.carOrv || fields.carOrv || "—";
+  const activeAddonCount =
+    Object.keys(AUTO_ADDON_VISUALS).filter(
+      (key) => fields[key as keyof AutoFields] === true
+    ).length +
+    (slaviaDetail?.driverInjury === true ? 1 : 0) +
+    (slaviaDetail?.tires === true ? 1 : 0);
+  const hasAnyAddon = activeAddonCount > 0;
 
   return (
-    <>
-      <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-1 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <SectionTitle icon={CarFront} label="Parametry vozidla" />
-        <div className="text-sm text-slate-900">
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Značka / model</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <input
-                  type="text"
-                  value={fields.carMake}
-                  onChange={(e) => onChange("carMake", e.target.value)}
-                  className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                  placeholder="např. Škoda Octavia"
-                />
-              ) : (
-                contract?.carMake || fields.carMake || "—"
-              )}
-            </span>
-          </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">SPZ</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <input
-                  type="text"
-                  value={fields.carPlate}
-                  onChange={(e) => onChange("carPlate", e.target.value)}
-                  className="w-36 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                  placeholder="např. 1AB2345"
-                />
-              ) : (
-                contract?.carPlate || fields.carPlate || "—"
-              )}
-            </span>
-          </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">VIN</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
-                <input
-                  type="text"
-                  value={fields.carVin}
-                  onChange={(e) => onChange("carVin", e.target.value)}
-                  className="w-52 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                  placeholder="VIN"
-                />
-              ) : (
-                contract?.carVin || fields.carVin || "—"
-              )}
-            </span>
-          </div>
-          {(editMode || hasTpValue) && (
-            <div className="flex justify-between gap-2">
-              <span className="text-slate-600">TP</span>
-              <span className="font-semibold text-right">
+    <div className="grid items-start gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+      <aside className="min-w-0 space-y-3 lg:sticky lg:top-3">
+      <div className="relative overflow-hidden rounded-[22px] border border-violet-500 bg-[linear-gradient(145deg,#5b21b6_0%,#7c3aed_56%,#a855f7_100%)] p-4 text-white shadow-[0_18px_36px_rgba(109,40,217,0.28)]">
+        <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full border border-white/10" />
+        <div className="pointer-events-none absolute -right-2 top-4 h-24 w-24 rounded-full border border-white/10" />
+        <div className="relative">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-violet-200 shadow-inner backdrop-blur-sm">
+                <CarFront size={23} strokeWidth={2} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-200">
+                  Pojištěné vozidlo
+                </p>
                 {editMode ? (
                   <input
                     type="text"
-                    value={fields.carTp}
-                    onChange={(e) => onChange("carTp", e.target.value)}
-                    className="w-36 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                    placeholder="Číslo TP"
+                    value={fields.carMake}
+                    onChange={(e) => onChange("carMake", e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-white/20 bg-white px-2.5 py-1.5 text-sm font-bold text-slate-950 outline-none focus:ring-2 focus:ring-violet-300"
+                    placeholder="např. Škoda Octavia"
                   />
                 ) : (
-                  contract?.carTp || fields.carTp
+                  <h3 className="truncate text-xl font-black tracking-tight text-white">
+                    {vehicleMake}
+                  </h3>
                 )}
-              </span>
+              </div>
             </div>
-          )}
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-600">ORV</span>
-            <span className="font-semibold text-right">
-              {editMode ? (
+            {!editMode && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-200">
+                <BadgeCheck size={13} strokeWidth={2.4} aria-hidden="true" />
+                Údaje vozidla
+              </span>
+            )}
+          </div>
+
+          {editMode ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <input
+                type="text"
+                value={fields.carPlate}
+                onChange={(e) => onChange("carPlate", e.target.value)}
+                className="rounded-xl border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-violet-300"
+                placeholder="SPZ"
+              />
+              <input
+                type="text"
+                value={fields.carOrv}
+                onChange={(e) => onChange("carOrv", e.target.value)}
+                className="rounded-xl border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-violet-300"
+                placeholder="Číslo ORV"
+              />
+              <input
+                type="text"
+                value={fields.carVin}
+                onChange={(e) => onChange("carVin", e.target.value)}
+                className="rounded-xl border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-violet-300 sm:col-span-2"
+                placeholder="VIN"
+              />
+              {(editMode || hasTpValue) && (
                 <input
                   type="text"
-                  value={fields.carOrv}
-                  onChange={(e) => onChange("carOrv", e.target.value)}
-                  className="w-36 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                  placeholder="Číslo ORV"
+                  value={fields.carTp}
+                  onChange={(e) => onChange("carTp", e.target.value)}
+                  className="rounded-xl border border-white/20 bg-white px-3 py-2 text-xs font-semibold text-slate-950 outline-none focus:ring-2 focus:ring-violet-300 sm:col-span-2"
+                  placeholder="Číslo TP"
                 />
-              ) : (
-                contract?.carOrv || fields.carOrv || "—"
               )}
-            </span>
-          </div>
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void copyVehicleValue("plate", vehiclePlate)}
+                disabled={vehiclePlate === "—"}
+                aria-label={
+                  copiedVehicleField === "plate"
+                    ? "SPZ zkopírována"
+                    : `Zkopírovat SPZ ${vehiclePlate}`
+                }
+                title="Kliknutím zkopíruješ SPZ"
+                className="group flex min-w-0 items-center justify-between gap-2 rounded-xl border border-white/15 bg-white/[0.08] px-3 py-2 text-left transition hover:border-violet-300/60 hover:bg-white/[0.14] disabled:cursor-default disabled:opacity-60"
+              >
+                <span className="min-w-0">
+                  <span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    SPZ
+                  </span>
+                  <span className="block truncate text-base font-black tracking-wide text-white">
+                    {vehiclePlate}
+                  </span>
+                </span>
+                {copiedVehicleField === "plate" ? (
+                  <Check size={16} strokeWidth={2.8} className="shrink-0 text-emerald-300" aria-label="Zkopírováno" />
+                ) : (
+                  <Copy size={15} strokeWidth={2.1} className="shrink-0 text-violet-200 transition group-hover:text-white" aria-hidden="true" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => void copyVehicleValue("orv", vehicleOrv)}
+                disabled={vehicleOrv === "—"}
+                aria-label={
+                  copiedVehicleField === "orv"
+                    ? "ORV zkopírováno"
+                    : `Zkopírovat ORV ${vehicleOrv}`
+                }
+                title="Kliknutím zkopíruješ ORV"
+                className="group flex min-w-0 items-center justify-between gap-2 rounded-xl border border-white/15 bg-white/[0.08] px-3 py-2 text-left transition hover:border-violet-300/60 hover:bg-white/[0.14] disabled:cursor-default disabled:opacity-60"
+              >
+                <span className="min-w-0">
+                  <span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    ORV
+                  </span>
+                  <span className="block truncate text-base font-black tracking-wide text-white">
+                    {vehicleOrv}
+                  </span>
+                </span>
+                {copiedVehicleField === "orv" ? (
+                  <Check size={16} strokeWidth={2.8} className="shrink-0 text-emerald-300" aria-label="Zkopírováno" />
+                ) : (
+                  <Copy size={15} strokeWidth={2.1} className="shrink-0 text-violet-200 transition group-hover:text-white" aria-hidden="true" />
+                )}
+              </button>
+              <div className="col-span-2 grid gap-x-4 gap-y-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <button
+                  type="button"
+                  onClick={() => void copyVehicleValue("vin", vehicleVin)}
+                  disabled={vehicleVin === "—"}
+                  aria-label={
+                    copiedVehicleField === "vin"
+                      ? "VIN zkopírován"
+                      : `Zkopírovat VIN ${vehicleVin}`
+                  }
+                  title="Kliknutím zkopíruješ VIN"
+                  className="group flex min-w-0 items-center justify-between gap-2 text-left disabled:cursor-default disabled:opacity-60"
+                >
+                  <span className="min-w-0">
+                  <span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    VIN
+                  </span>
+                  <span className="block break-all text-sm font-bold text-slate-100">
+                    {vehicleVin}
+                  </span>
+                  </span>
+                  {copiedVehicleField === "vin" ? (
+                    <Check
+                      size={16}
+                      strokeWidth={2.8}
+                      className="shrink-0 text-emerald-300"
+                      aria-label="Zkopírováno"
+                    />
+                  ) : (
+                    <Copy
+                      size={15}
+                      strokeWidth={2.1}
+                      className="shrink-0 text-violet-100 transition group-hover:text-white"
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
+                {hasTpValue && (
+                  <div className="min-w-0 sm:text-right">
+                    <span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      TP
+                    </span>
+                    <span className="block text-sm font-bold text-slate-100">{vehicleTp}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {showAnnualMileageBox && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <SectionTitle icon={Car} label="Roční nájezd km" />
-          <div className="text-sm text-slate-900">
+        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_5px_16px_rgba(15,23,42,0.04)]">
+          <SectionTitle icon={Route} label="Roční nájezd km" tone="sky" />
+          <div className="text-base text-slate-900">
             <div className="flex justify-between gap-2">
               <span className="text-slate-600">Hodnota</span>
               <span className="font-semibold text-right">
@@ -477,9 +670,9 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {showAllianzScopeBox && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <SectionTitle icon={Car} label="Rozsah" />
-          <div className="text-sm text-slate-900">
+        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_5px_16px_rgba(15,23,42,0.04)]">
+          <SectionTitle icon={Sparkles} label="Rozsah" tone="violet" />
+          <div className="text-base text-slate-900">
             <div className="flex justify-between gap-2">
               <span className="text-slate-600">Varianta</span>
               <span className="font-semibold text-right">
@@ -503,10 +696,14 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
           </div>
         </div>
       )}
+      </aside>
 
-      <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <SectionTitle icon={Shield} label="Povinné ručení" />
-        <div className="text-sm text-slate-900">
+      <div className="min-w-0 space-y-3">
+        <div className="grid items-start gap-3 xl:grid-cols-2">
+
+      <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_5px_16px_rgba(15,23,42,0.04)]">
+        <SectionTitle icon={ShieldCheck} label="Povinné ručení" tone="emerald" />
+        <div className="text-base text-slate-900">
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">
               {slaviaDetail ? "Limit újmy na zdraví" : "Limity"}
@@ -561,9 +758,9 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <SectionTitle icon={LifeBuoy} label="Asistence" />
-        <div className="text-sm text-slate-900">
+      <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_5px_16px_rgba(15,23,42,0.04)]">
+        <SectionTitle icon={LifeBuoy} label="Asistence" tone="sky" />
+        <div className="text-base text-slate-900">
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Tarif</span>
             <span className="font-semibold text-right">
@@ -604,11 +801,12 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
           </div>
         </div>
       </div>
+        </div>
 
       {(editMode || hasHullData) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <SectionTitle icon={Car} label="Havarijní pojištění" />
-          <div className="text-sm text-slate-900 space-y-2">
+        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_5px_16px_rgba(15,23,42,0.04)]">
+          <SectionTitle icon={Car} label="Havarijní pojištění" tone="rose" />
+          <div className="space-y-2 text-base text-slate-900">
             <div className="flex justify-between gap-2">
               <span className="text-slate-600">Pojistná částka</span>
               <span className="font-semibold text-right">
@@ -649,7 +847,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                 )}
               </span>
             </div>
-            <div className="pt-1 space-y-1">
+            <div className="grid gap-2 pt-1 sm:grid-cols-2">
               {[
                 {
                   key: "carHullRiskAccident",
@@ -678,23 +876,52 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                 },
               ]
                 .filter((item) => editMode || item.checked)
-                .map((item) => (
-                  <ToggleRow
-                    key={item.key}
-                    label={item.label}
-                    checked={item.checked}
-                    onChange={(val) => onChange(item.key as keyof AutoFields, val)}
-                    disabled={!editMode}
-                  />
-                ))}
+                .map((item) => {
+                  const visual =
+                    AUTO_ADDON_VISUALS[
+                      item.key === "carHullRiskAccident"
+                        ? "carAddonOwnDamage"
+                        : item.key === "carHullRiskTheft"
+                          ? "carAddonTheft"
+                          : item.key === "carHullRiskNatural"
+                            ? "carAddonNatural"
+                            : item.key === "carHullRiskVandalism"
+                              ? "carAddonVandalism"
+                              : "carAddonAnimalCollision"
+                    ];
+                  return (
+                    <ToggleRow
+                      key={item.key}
+                      label={item.label}
+                      checked={item.checked}
+                      onChange={(val) => onChange(item.key as keyof AutoFields, val)}
+                      disabled={!editMode}
+                      icon={visual.icon}
+                      tone={visual.tone}
+                    />
+                  );
+                })}
             </div>
           </div>
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <SectionTitle icon={Wrench} label="Připojištění" />
-        <div className="space-y-1">
+      <div className="space-y-3 rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_7px_20px_rgba(15,23,42,0.05)]">
+        <div className="flex items-center justify-between gap-3">
+          <SectionTitle icon={Wrench} label="Připojištění" tone="violet" />
+          {!editMode && (
+            <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-violet-700">
+              {activeAddonCount === 1 ? "1 aktivní" : `${activeAddonCount} aktivních`}
+            </span>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {!editMode && !hasAnyAddon && (
+            <div className="col-span-full flex items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white/70 px-3 py-3 text-sm text-slate-500">
+              <Shield size={18} strokeWidth={1.9} className="text-slate-400" aria-hidden="true" />
+              U této smlouvy není evidované žádné připojištění.
+            </div>
+          )}
           {!editMode && slaviaDetail?.driverInjury === true && (
             <div className="space-y-1">
               <ToggleRow
@@ -702,6 +929,8 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                 checked
                 onChange={() => undefined}
                 disabled
+                icon={UsersRound}
+                tone="rose"
               />
               <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                 Trvalé následky {slaviaMoney(slaviaDetail.driverInjuryPermanentLimit)} · smrt úrazem {slaviaMoney(slaviaDetail.driverInjuryDeathLimit)}
@@ -715,6 +944,8 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                 checked
                 onChange={() => undefined}
                 disabled
+                icon={Route}
+                tone="sky"
               />
               <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                 Limit {slaviaMoney(slaviaDetail.tiresLimit)} · spoluúčast {slaviaMoney(slaviaDetail.tiresDeductible)}
@@ -782,6 +1013,10 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
           ]
             .filter((item) => editMode || item.checked)
             .map((item) => {
+              const visual = AUTO_ADDON_VISUALS[item.key] ?? {
+                icon: ShieldCheck,
+                tone: "violet" as CoverageTone,
+              };
               const limitConfig = addonLimitConfig[item.key];
               const showLimitInput = Boolean(limitConfig && editMode && item.checked);
               const showLimitValue = Boolean(
@@ -805,6 +1040,8 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                     limitValue={fields[limitConfig.field]}
                     onToggle={(val) => onChange(item.key as keyof AutoFields, val)}
                     onLimitChange={(key, value) => onChange(key, value)}
+                    icon={visual.icon}
+                    tone={visual.tone}
                   />
                 );
               }
@@ -816,6 +1053,8 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                     checked={item.checked}
                     onChange={(val) => onChange(item.key as keyof AutoFields, val)}
                     disabled={!editMode}
+                    icon={visual.icon}
+                    tone={visual.tone}
                   />
                   {!editMode && slaviaAddonDetail(item.key) && (
                     <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
@@ -853,6 +1092,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
             })}
         </div>
       </div>
-    </>
+      </div>
+    </div>
   );
 }
