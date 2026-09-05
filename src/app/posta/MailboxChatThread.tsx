@@ -37,6 +37,8 @@ import {
   parseMailboxReactions,
 } from "./postaHelpers";
 import type { MailboxAttachment, MailboxItem } from "./postaTypes";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 
 const metadataText = (item: MailboxItem, key: string): string => {
   const value = item.metadata?.[key];
@@ -65,6 +67,7 @@ const counterpartForMessage = (item: MailboxItem) => {
     return {
       email: participants > 0 ? `${participants} účastníků` : "Skupinový chat",
       name: metadataText(item, "groupName") || "Skupinová konverzace",
+      profileAvatar: "",
     };
   }
   const sent = isSentMailboxItem(item);
@@ -75,6 +78,9 @@ const counterpartForMessage = (item: MailboxItem) => {
   return {
     email,
     name: storedName || (email ? nameFromEmail(email) : "Uživatel"),
+    profileAvatar: normalizeProfileAvatar(
+      item.metadata?.[sent ? "recipientAvatar" : "senderAvatar"]
+    ),
   };
 };
 
@@ -90,6 +96,7 @@ function LazyMailboxAttachment({
   file,
   sent,
   deliveryStatus,
+  bareImage = false,
   onLoad,
   onPreview,
 }: {
@@ -97,6 +104,7 @@ function LazyMailboxAttachment({
   file: MailboxAttachment;
   sent: boolean;
   deliveryStatus: MailboxItem["clientDeliveryStatus"];
+  bareImage?: boolean;
   onLoad?: (messageId: string, attachment: MailboxAttachment) => Promise<string>;
   onPreview: (attachment: MailboxAttachment) => void;
 }) {
@@ -107,6 +115,7 @@ function LazyMailboxAttachment({
   const [loadState, setLoadState] = useState<"idle" | "loading" | "ready" | "error">(
     resolvedUrl ? "ready" : "idle"
   );
+  const [imageAspectRatio, setImageAspectRatio] = useState<number | null>(null);
   const loadingPromiseRef = useRef<Promise<string> | null>(null);
   const image = isImageAttachment(file.name, file.contentType);
   const pdf = isPdfAttachment(file.name, file.contentType);
@@ -178,11 +187,15 @@ function LazyMailboxAttachment({
       onClick={() => void openAttachment()}
       className={
         ready && image
-          ? `block w-[min(320px,68vw)] overflow-hidden rounded-xl border text-left transition ${
-              sent
-                ? "border-white/20 bg-white/10 hover:bg-white/15"
-                : "border-slate-200 bg-slate-50 hover:border-violet-300"
-            }`
+          ? bareImage
+            ? "block w-[min(360px,78vw)] overflow-hidden rounded-2xl text-left"
+            : `block w-[min(320px,68vw)] overflow-hidden rounded-xl border text-left transition ${
+                sent
+                  ? "border-white/20 bg-white/10 hover:bg-white/15"
+                  : "border-slate-200 bg-slate-50 hover:border-violet-300"
+              }`
+          : bareImage && image
+            ? "grid aspect-[4/3] w-[min(360px,78vw)] place-items-center overflow-hidden rounded-2xl bg-slate-100 text-slate-500"
           : `${attachmentClass} ${!ready && pending ? "opacity-75" : ""}`
       }
       aria-label={
@@ -195,24 +208,46 @@ function LazyMailboxAttachment({
     >
       {ready && image ? (
         <>
-          <span className="relative block h-36 w-full bg-slate-100">
+          <span
+            className={`relative block w-full ${bareImage ? "bg-transparent" : "h-36 bg-slate-100"}`}
+            style={
+              bareImage
+                ? { aspectRatio: imageAspectRatio ? String(imageAspectRatio) : "4 / 3" }
+                : undefined
+            }
+          >
             <Image
               src={resolvedUrl}
               alt={file.name}
               fill
               unoptimized
-              sizes="320px"
-              className="object-cover"
+              sizes={bareImage ? "min(360px, 78vw)" : "320px"}
+              className={bareImage ? "object-contain" : "object-cover"}
+              onLoad={(event) => {
+                if (!bareImage) return;
+                const imageElement = event.currentTarget;
+                if (imageElement.naturalWidth > 0 && imageElement.naturalHeight > 0) {
+                  setImageAspectRatio(imageElement.naturalWidth / imageElement.naturalHeight);
+                }
+              }}
             />
           </span>
-          <span className="flex min-w-0 items-center gap-2 px-2.5 py-2">
-            <ImageIcon className="h-3.5 w-3.5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate text-xs font-semibold">{file.name}</span>
-            <span className={`shrink-0 text-[10px] ${sent ? "text-violet-100" : "text-slate-500"}`}>
-              {formatFileSize(file.sizeBytes)}
+          {!bareImage ? (
+            <span className="flex min-w-0 items-center gap-2 px-2.5 py-2">
+              <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate text-xs font-semibold">{file.name}</span>
+              <span className={`shrink-0 text-[10px] ${sent ? "text-violet-100" : "text-slate-500"}`}>
+                {formatFileSize(file.sizeBytes)}
+              </span>
             </span>
-          </span>
+          ) : null}
         </>
+      ) : bareImage && image ? (
+        failed ? (
+          <CircleAlert className="h-5 w-5 text-rose-500" aria-hidden="true" />
+        ) : (
+          <Loader2 className="h-5 w-5 animate-spin text-violet-500" aria-hidden="true" />
+        )
       ) : (
         <>
           <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${sent ? "bg-white/15 text-white" : image ? "bg-sky-100 text-sky-700" : "bg-violet-100 text-violet-700"}`}>
@@ -476,12 +511,12 @@ export function MailboxChatThread({
               <UsersRound className="h-5 w-5" />
             ) : (
               <>
-                <Image
-                  src="/icons/klient.webp"
-                  alt="Ikona uživatele"
-                  fill
+                <ProfileAvatar
+                  src={counterpart.profileAvatar}
+                  name={counterpart.name}
+                  className="h-full w-full rounded-2xl text-5xl"
+                  fallbackClassName="bg-sky-100 text-sky-700"
                   sizes="48px"
-                  className="object-cover"
                 />
                 <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${online ? "bg-emerald-500" : "bg-slate-300"}`} />
               </>
@@ -539,11 +574,21 @@ export function MailboxChatThread({
           const messageSenderName =
             metadataText(message, "senderName") ||
             nameFromEmail(normalizeEmail(message.metadata?.senderEmail));
-          const text = metadataText(message, "messageText") || message.body.trim() || "Bez textu.";
+          const metadataMessageText = metadataText(message, "messageText");
+          const bodyText = message.body.trim();
+          const bodyIsAttachmentPlaceholder =
+            bodyText === "Příloha bez textu." || bodyText === "Bez textu.";
+          const messageText =
+            metadataMessageText || (bodyIsAttachmentPlaceholder ? "" : bodyText);
+          const text = messageText || "Bez textu.";
           const attachments = [
             ...parseMailboxAttachments(message),
             ...(message.clientAttachments ?? []).map((file) => ({ ...file, url: "" })),
           ];
+          const containsOnlyImages =
+            !messageText &&
+            attachments.length > 0 &&
+            attachments.every((file) => isImageAttachment(file.name, file.contentType));
           const recipientReadAtMs = sent
             ? metadataMillis(message, "recipientReadAtMs")
             : null;
@@ -560,6 +605,7 @@ export function MailboxChatThread({
           const canOpenMenu =
             persisted && Boolean(onTogglePin || (sent && onSetReminder) || canManageOwn);
           const editing = editingMessageId === message.id;
+          const renderBareImages = containsOnlyImages && !editing;
           const actionBusy = messageActionBusyId === message.id;
           const pinned = Boolean(message.pinnedAtMs);
           const reminderAtMs = message.replyReminderAtMs ?? null;
@@ -629,13 +675,18 @@ export function MailboxChatThread({
               <div className={`flex ${sent ? "justify-end" : "justify-start"}`}>
                 <div className={`flex max-w-[92%] flex-col sm:max-w-[78%] ${sent ? "items-end" : "items-start"}`}>
                   <div
-                    className={`rounded-[18px] px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.07)] sm:rounded-[20px] sm:px-4 sm:py-3 ${
-                      sent
-                        ? "rounded-br-md bg-violet-700 text-[#fff]"
-                        : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
-                    }`}
+                    data-message-image-only={renderBareImages ? "true" : undefined}
+                    className={
+                      renderBareImages
+                        ? "space-y-2"
+                        : `rounded-[18px] px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.07)] sm:rounded-[20px] sm:px-4 sm:py-3 ${
+                            sent
+                              ? "rounded-br-md bg-violet-700 text-[#fff]"
+                              : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
+                          }`
+                    }
                   >
-                  {index === 0 && message.title ? (
+                  {!renderBareImages && index === 0 && message.title ? (
                     <p className={`mb-1.5 text-[10px] font-bold uppercase tracking-[0.1em] ${sent ? "text-violet-100" : "text-violet-700"}`}>
                       {message.title}
                     </p>
@@ -683,14 +734,14 @@ export function MailboxChatThread({
                         </span>
                       </div>
                     </div>
-                  ) : (
+                  ) : !renderBareImages ? (
                     <p className="whitespace-pre-wrap break-words text-sm leading-6 sm:text-[15px]">
                       {text}
                     </p>
-                  )}
+                  ) : null}
 
                   {attachments.length > 0 ? (
-                    <div className="mt-3 space-y-2">
+                    <div className={renderBareImages ? "space-y-2" : "mt-3 space-y-2"}>
                       {attachments.map((file) => (
                         <LazyMailboxAttachment
                           key={file.id}
@@ -698,6 +749,7 @@ export function MailboxChatThread({
                           file={file}
                           sent={sent}
                           deliveryStatus={deliveryStatus}
+                          bareImage={renderBareImages}
                           onLoad={onLoadAttachment}
                           onPreview={setAttachmentPreview}
                         />

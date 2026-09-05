@@ -174,6 +174,31 @@ describe("MailboxChatThread", () => {
     expect(html).toContain("Zobrazit náhled souboru smlouva.pdf");
   });
 
+  it("renders an image-only message without a message bubble or file details", () => {
+    const imageOnly = message("image-only", Date.now(), "sent", "Příloha bez textu.");
+    imageOnly.metadata = {
+      ...imageOnly.metadata,
+      messageText: "",
+      attachments: [
+        {
+          id: "photo",
+          name: "foto.png",
+          url: "https://example.com/foto.png",
+          contentType: "image/png",
+          sizeBytes: 1_024,
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<MailboxChatThread messages={[imageOnly]} />);
+
+    expect(html).toContain('data-message-image-only="true"');
+    expect(html).toContain("Zobrazit obrázek foto.png");
+    expect(html).not.toContain("Příloha bez textu.");
+    expect(html).not.toContain("1 kB");
+    expect(html).not.toContain("bg-violet-700");
+  });
+
   it("offers older history and keeps authenticated attachments lazy", () => {
     const lazy = message("lazy", Date.now(), "received", "Starší zpráva");
     lazy.metadata = {

@@ -11,12 +11,15 @@ import {
 import {
   Apple,
   BriefcaseBusiness,
+  Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   CircleHelp,
   ExternalLink,
   Loader2,
+  Landmark,
   PhoneCall,
   Play,
   Plus,
@@ -24,10 +27,13 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  UserRound,
   X,
 } from "lucide-react";
 
 import type { Position } from "@/app/types/domain";
+import type { AresIcoLookupState } from "@/components/profile/useAresIcoLookup";
+import { isValidProfilePhone } from "@/lib/profileFields";
 
 type AccountSetupStepId = "phone" | "career" | "security";
 
@@ -55,6 +61,11 @@ type AccountSetupWizardProps = {
   phoneSaving: boolean;
   ico: string;
   icoMaxLength: number;
+  fullName: string;
+  fullNameMaxLength: number;
+  agencyNumber: string;
+  agencyNumberMaxLength: number;
+  aresIcoLookup: AresIcoLookupState;
   timelineDraft: AccountSetupTimelineItem[];
   timelineSaving: boolean;
   positions: { id: Position; label: string }[];
@@ -78,6 +89,8 @@ type AccountSetupWizardProps = {
   onLogout: () => void;
   onPhoneChange: (value: string) => void;
   onIcoChange: (value: string) => void;
+  onFullNameChange: (value: string) => void;
+  onAgencyNumberChange: (value: string) => void;
   onTimelineRowChange: (
     rowId: string,
     patch: Partial<AccountSetupTimelineItem>
@@ -325,6 +338,11 @@ export function AccountSetupWizard({
   phoneSaving,
   ico,
   icoMaxLength,
+  fullName,
+  fullNameMaxLength,
+  agencyNumber,
+  agencyNumberMaxLength,
+  aresIcoLookup,
   timelineDraft,
   timelineSaving,
   positions,
@@ -348,6 +366,8 @@ export function AccountSetupWizard({
   onLogout,
   onPhoneChange,
   onIcoChange,
+  onFullNameChange,
+  onAgencyNumberChange,
   onTimelineRowChange,
   onRemoveTimelineRow,
   onAddTimelineRow,
@@ -358,6 +378,8 @@ export function AccountSetupWizard({
   onPrimaryAction,
 }: AccountSetupWizardProps) {
   const [isMfaHelpOpen, setIsMfaHelpOpen] = useState(false);
+  const phoneValid = Boolean(phone.trim()) && isValidProfilePhone(phone);
+  const icoValid = /^\d{8}$/.test(ico);
   const progress = completed ? 100 : ((stepIndex + 1) / steps.length) * 100;
   const lastStepIndex = steps.length - 1;
   const primaryLabel =
@@ -403,7 +425,7 @@ export function AccountSetupWizard({
               Účet úspěšně otevřen
             </h2>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-violet-100/72">
-              Telefon, kariéra a 2FA jsou nastavené. Aplikace je připravená na přesné
+              Profil, kariéra a 2FA jsou nastavené. Aplikace je připravená na přesné
               výpočty a předvyplnění pozice.
             </p>
           </div>
@@ -475,12 +497,12 @@ export function AccountSetupWizard({
                     </span>
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                        Kontaktní údaje
+                        Základní profil
                       </p>
-                      <h3 className="mt-1 text-base font-semibold text-white">Telefon a IČO</h3>
+                      <h3 className="mt-1 text-base font-semibold text-white">Identita a kontaktní údaje</h3>
                       <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
-                        Údaje se uloží do profilu a použijí se tam, kde aplikace pracuje
-                        s identifikací a kontaktem poradce.
+                        Tyto údaje se uloží do profilu a budou se používat v dokumentech,
+                        týmu, poště i dalších částech aplikace.
                       </p>
                     </div>
                   </div>
@@ -488,38 +510,144 @@ export function AccountSetupWizard({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block space-y-2">
                       <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
+                        Jméno a příjmení
+                      </span>
+                      <span className="relative block">
+                        <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-200/55" aria-hidden="true" />
+                        <input
+                          type="text"
+                          value={fullName}
+                          onChange={(event) =>
+                            onFullNameChange(event.target.value.slice(0, fullNameMaxLength))
+                          }
+                          placeholder="Jméno a příjmení"
+                          maxLength={fullNameMaxLength}
+                          disabled={phoneSaving}
+                          className={`${ACCOUNT_SETUP_FIELD_CLASS} pl-10`}
+                        />
+                      </span>
+                    </label>
+
+                    <label className="block space-y-2">
+                      <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
                         Tel. číslo
                       </span>
-                      <input
-                        type="tel"
-                        inputMode="tel"
-                        value={phone}
-                        onChange={(event) =>
-                          onPhoneChange(event.target.value.slice(0, phoneMaxLength))
-                        }
-                        placeholder="777 123 456"
-                        maxLength={phoneMaxLength}
-                        disabled={phoneSaving}
-                        className={ACCOUNT_SETUP_FIELD_CLASS}
-                      />
+                      <span className="relative block">
+                        <PhoneCall className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-200/55" aria-hidden="true" />
+                        <input
+                          type="tel"
+                          inputMode="tel"
+                          value={phone}
+                          onChange={(event) =>
+                            onPhoneChange(event.target.value.slice(0, phoneMaxLength))
+                          }
+                          placeholder="777 123 456"
+                          maxLength={phoneMaxLength}
+                          disabled={phoneSaving}
+                          className={`${ACCOUNT_SETUP_FIELD_CLASS} pl-10 pr-10 ${
+                            phone.trim() && !phoneValid ? "border-rose-300/70" : ""
+                          }`}
+                        />
+                        {phoneValid ? (
+                          <CheckCircle2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-300" aria-hidden="true" />
+                        ) : null}
+                      </span>
+                    </label>
+
+                    <label className="block space-y-2">
+                      <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
+                        Agenturní číslo <span className="normal-case tracking-normal text-violet-200/45">(volitelné)</span>
+                      </span>
+                      <span className="relative block">
+                        <Landmark className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-200/55" aria-hidden="true" />
+                        <input
+                          type="text"
+                          value={agencyNumber}
+                          onChange={(event) =>
+                            onAgencyNumberChange(event.target.value.slice(0, agencyNumberMaxLength))
+                          }
+                          placeholder="Agenturní číslo"
+                          maxLength={agencyNumberMaxLength}
+                          disabled={phoneSaving}
+                          className={`${ACCOUNT_SETUP_FIELD_CLASS} pl-10`}
+                        />
+                      </span>
                     </label>
 
                     <label className="block space-y-2">
                       <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
                         IČO
                       </span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={ico}
-                        onChange={(event) =>
-                          onIcoChange(event.target.value.replace(/\D+/g, "").slice(0, icoMaxLength))
-                        }
-                        placeholder="12345678"
-                        maxLength={icoMaxLength}
-                        disabled={phoneSaving}
-                        className={ACCOUNT_SETUP_FIELD_CLASS}
-                      />
+                      <span className="relative block">
+                        <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-200/55" aria-hidden="true" />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={ico}
+                          onChange={(event) =>
+                            onIcoChange(event.target.value.replace(/\D+/g, "").slice(0, icoMaxLength))
+                          }
+                          placeholder="12345678"
+                          maxLength={icoMaxLength}
+                          disabled={phoneSaving}
+                          className={`${ACCOUNT_SETUP_FIELD_CLASS} pl-10 ${
+                            icoValid && aresIcoLookup.status !== "idle" ? "pr-32" : "pr-10"
+                          } ${
+                            ico && !icoValid ? "border-rose-300/70" : ""
+                          }`}
+                          aria-describedby={
+                            icoValid && aresIcoLookup.status !== "idle"
+                              ? "account-setup-ico-ares-status"
+                              : undefined
+                          }
+                        />
+                        {icoValid && aresIcoLookup.status === "loading" ? (
+                          <span
+                            id="account-setup-ico-ares-status"
+                            className="absolute right-2.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-full border border-violet-200/25 bg-white/[0.07] px-2 py-1 text-[9px] font-bold text-violet-100"
+                            role="status"
+                          >
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                            Ověřuji
+                          </span>
+                        ) : icoValid && aresIcoLookup.status === "match" ? (
+                          <span
+                            id="account-setup-ico-ares-status"
+                            className={`absolute right-2.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-bold ${
+                              aresIcoLookup.entity.active
+                                ? "border-emerald-300/30 bg-emerald-400/12 text-emerald-100"
+                                : "border-amber-200/30 bg-amber-300/12 text-amber-100"
+                            }`}
+                            title={[aresIcoLookup.entity.companyName, aresIcoLookup.entity.address]
+                              .filter(Boolean)
+                              .join(" · ")}
+                            role="status"
+                          >
+                            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                            ARES · {aresIcoLookup.entity.active ? "shoda" : "ukončeno"}
+                          </span>
+                        ) : icoValid && aresIcoLookup.status === "not-found" ? (
+                          <span
+                            id="account-setup-ico-ares-status"
+                            className="absolute right-2.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-full border border-amber-200/30 bg-amber-300/12 px-2 py-1 text-[9px] font-bold text-amber-100"
+                            title="Pro toto IČO nebyla v ARESu nalezena shoda."
+                            role="status"
+                          >
+                            <CircleAlert className="h-3 w-3" aria-hidden="true" />
+                            Nenalezeno
+                          </span>
+                        ) : icoValid && aresIcoLookup.status === "error" ? (
+                          <span
+                            id="account-setup-ico-ares-status"
+                            className="absolute right-2.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-full border border-amber-200/30 bg-amber-300/12 px-2 py-1 text-[9px] font-bold text-amber-100"
+                            title={aresIcoLookup.message}
+                            role="status"
+                          >
+                            <CircleAlert className="h-3 w-3" aria-hidden="true" />
+                            ARES offline
+                          </span>
+                        ) : null}
+                      </span>
                     </label>
                   </div>
                 </div>

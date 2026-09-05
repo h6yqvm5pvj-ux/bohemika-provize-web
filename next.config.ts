@@ -40,6 +40,13 @@ const nextConfig: NextConfig = {
   images: {
     minimumCacheTTL: 60 * 60 * 24 * 7,
     qualities: [70, 75, 100],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "firebasestorage.googleapis.com",
+        pathname: "/v0/b/**",
+      },
+    ],
   },
   outputFileTracingIncludes: {
     "/api/documents/file": ["./private/dokumenty/**/*"],

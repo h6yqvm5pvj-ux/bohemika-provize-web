@@ -48,6 +48,7 @@ import type {
   TeamProductionGoals,
   TipStats,
 } from "./teamOverview.types";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -831,6 +832,7 @@ function candidateFromDoc(
   return {
     email,
     name: fullName,
+    profileAvatar: normalizeProfileAvatar(data.profileAvatar),
     accountType,
     position: hasValidTimeline ? timelinePosition : fallbackPosition,
     commissionMode:
@@ -940,6 +942,7 @@ async function loadTeamContext(
     ownCandidate = {
       email: ownEmail,
       name: nameFromEmail(ownEmail),
+      profileAvatar: "",
       accountType: "advisor",
       position: null,
       commissionMode: null,
@@ -1052,6 +1055,7 @@ async function loadTeamContext(
         membersByEmail.set(cursor, {
           email: cursor,
           name: nameFromEmail(cursor),
+          profileAvatar: "",
           accountType: "advisor",
           position: null,
           commissionMode: null,
@@ -3003,6 +3007,7 @@ export async function GET(req: NextRequest) {
         members: context.members.map((member) => ({
           email: member.email,
           name: member.name,
+          profileAvatar: member.profileAvatar,
           accountType: member.accountType,
           position: member.position,
           commissionMode: member.commissionMode,
@@ -3145,6 +3150,7 @@ export async function GET(req: NextRequest) {
       members: context.members.map((member) => ({
         email: member.email,
         name: member.name,
+        profileAvatar: member.profileAvatar,
         accountType: member.accountType,
         position: member.position,
         commissionMode: member.commissionMode,

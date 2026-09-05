@@ -5,6 +5,7 @@ export type AccountType = "advisor" | "tipster";
 export type TeamMember = {
   email: string;
   name: string;
+  profileAvatar: string;
   accountType: AccountType;
   position: Position | null;
   commissionMode: CommissionMode | null;
@@ -77,6 +78,7 @@ export type TeamOverviewSuccess = {
   members: Array<{
     email: string;
     name: string;
+    profileAvatar: string;
     accountType: AccountType;
     position: Position | null;
     commissionMode: CommissionMode | null;

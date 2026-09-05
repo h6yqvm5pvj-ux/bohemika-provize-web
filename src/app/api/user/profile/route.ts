@@ -27,6 +27,7 @@ import {
   type OnlineCardTestimonial,
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 
 export const runtime = "nodejs";
 
@@ -110,6 +111,7 @@ const PHONE_NUMBER_MAX_LEN = 40;
 const PROFILE_ICO_MAX_LEN = 8;
 const ALLOWED_PATCH_KEYS = new Set([
   "fullName",
+  "profileAvatar",
   "commissionMode",
   "agencyNumber",
   "ico",
@@ -896,6 +898,18 @@ function buildPatchFromBody(
     }
     patch.fullName = value;
     patch.name = value;
+  }
+
+  if (body.profileAvatar != null) {
+    if (typeof body.profileAvatar !== "string") {
+      return { error: "Profilový obrázek má neplatný formát." };
+    }
+    const rawValue = body.profileAvatar.trim();
+    const value = normalizeProfileAvatar(rawValue);
+    if (rawValue && !value) {
+      return { error: "Profilový obrázek nepochází z povoleného zdroje." };
+    }
+    patch.profileAvatar = value;
   }
 
   if (body.agencyNumber != null) {

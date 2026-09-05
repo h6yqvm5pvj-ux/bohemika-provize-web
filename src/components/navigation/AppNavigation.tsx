@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { COMMISSION_STATEMENTS_ENABLED } from "@/app/_provizni-vypisy/statementFeature";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
 
 export type ActivePage =
   | "home"
@@ -59,6 +60,7 @@ interface AppNavigationProps {
   logoutLabel: string;
   hasUser: boolean;
   userEmail: string;
+  userAvatar: string;
   hasTeam: boolean;
   hasTipsters: boolean;
   isAdminRequestsUser: boolean;
@@ -270,6 +272,7 @@ export function AppNavigation({
   logoutLabel,
   hasUser,
   userEmail,
+  userAvatar,
   hasTeam,
   hasTipsters,
   isAdminRequestsUser,
@@ -355,9 +358,12 @@ export function AppNavigation({
           <div className="overflow-hidden rounded-[24px] border border-white/75 bg-white/85 p-3 shadow-[0_16px_34px_rgba(15,23,42,0.1)]">
             {hasUser ? (
               <div className="mb-3 flex min-w-0 items-center gap-3">
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#101827_0%,#2d1a62_100%)] text-sm font-bold text-white shadow-[0_10px_20px_rgba(45,26,98,0.28)]">
-                  {userInitial}
-                </span>
+                <ProfileAvatar
+                  src={userAvatar}
+                  name={userEmail || userInitial}
+                  className="h-10 w-10 rounded-2xl text-[2.5rem] shadow-[0_10px_20px_rgba(45,26,98,0.28)]"
+                  sizes="40px"
+                />
                 <span className="min-w-0">
                   <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
                     Přihlášen

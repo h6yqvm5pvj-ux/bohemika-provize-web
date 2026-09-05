@@ -139,6 +139,109 @@ const getReportMetric = (
   key: WeeklyTeamReportCategoryKey
 ): WeeklyTeamReportMetrics => report.categories?.[key] ?? emptyMetrics();
 
+function EmbeddedWeeklyTeamReport({
+  report,
+  errorText,
+  periodLabel,
+  totalContracts,
+  totalAnnualPremium,
+}: {
+  report: WeeklyTeamReport | null;
+  errorText: string | null;
+  periodLabel: string;
+  totalContracts: number;
+  totalAnnualPremium: number;
+}) {
+  return (
+    <main className="relative h-[100dvh] overflow-hidden bg-[#07010a] p-4 text-[#f8fafc] sm:p-5">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(217,70,239,0.28),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(124,58,237,0.22),transparent_28%),linear-gradient(135deg,#040206_0%,#13031b_50%,#020102_100%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.13] [background-image:linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:28px_28px]" />
+
+      <section className="relative z-10 mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/12 bg-black/82 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.5)] sm:p-5">
+        <span className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-white via-fuchsia-300 to-violet-600" />
+
+        <header className="shrink-0">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/35 bg-white/[0.06] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-violet-100">
+            <Sparkles className="h-3 w-3" strokeWidth={2.4} aria-hidden="true" />
+            Týdenní report týmu
+          </div>
+          <div className="mt-2 flex min-w-0 items-end justify-between gap-4">
+            <h1 className="truncate text-3xl font-black leading-none tracking-[-0.03em] text-[#f8fafc] sm:text-4xl">
+              Shrnutí za týden
+            </h1>
+            <p className="shrink-0 text-xs font-bold text-white/55 sm:text-sm">{periodLabel}</p>
+          </div>
+        </header>
+
+        {errorText || !report ? (
+          <div className="mt-4 grid min-h-0 flex-1 place-items-center rounded-2xl border border-white/12 bg-white/[0.06] p-5 text-center">
+            <div>
+              <div className="text-lg font-black text-[#f8fafc]">
+                {errorText ? "Report nejde načíst" : "Report zatím není dostupný"}
+              </div>
+              <p className="mt-2 text-sm font-semibold text-white/55">
+                {errorText ?? "Pro vybrané období tu není uložený týdenní report."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mt-3 grid shrink-0 grid-cols-3 gap-2">
+              <article className="min-w-0 rounded-2xl bg-white px-3 py-2.5 text-black">
+                <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                  <FileCheck2 className="h-3.5 w-3.5" aria-hidden="true" /> Sjednáno
+                </div>
+                <div className="mt-1 text-2xl font-black leading-none">{totalContracts}</div>
+                <div className="mt-0.5 text-[11px] font-bold text-slate-600">{contractLabel(totalContracts)}</div>
+              </article>
+              <article className="min-w-0 rounded-2xl border border-violet-300/24 bg-violet-500/14 px-3 py-2.5">
+                <div className="text-[9px] font-black uppercase tracking-[0.12em] text-violet-100/75">Roční objem</div>
+                <div className="mt-1 truncate text-xl font-black leading-none text-[#f8fafc] sm:text-2xl">{formatMetricMoney(totalAnnualPremium)}</div>
+                <div className="mt-0.5 text-[11px] font-bold text-white/50">orientačně</div>
+              </article>
+              <article className="min-w-0 rounded-2xl border border-white/12 bg-white/[0.06] px-3 py-2.5">
+                <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/55">
+                  <Trophy className="h-3.5 w-3.5 text-fuchsia-200" aria-hidden="true" /> Nejaktivnější
+                </div>
+                <div className="mt-1 truncate text-lg font-black leading-tight text-[#f8fafc] sm:text-xl">{report.topAdvisor?.name ?? "Bez produkce"}</div>
+                <div className="mt-0.5 text-[11px] font-bold text-white/50">{report.topAdvisor ? contractLabel(report.topAdvisor.contracts) : "za období"}</div>
+              </article>
+            </div>
+
+            <div className="mt-3 grid min-h-0 flex-1 grid-cols-2 grid-rows-3 gap-2">
+              {CATEGORY_ROWS.map((row) => {
+                const metrics = getReportMetric(report, row.key);
+                const premium = row.key === "life" ? metrics.monthlyPremium : metrics.annualPremium;
+                const Icon = row.icon;
+                return (
+                  <article key={row.key} className="relative flex min-h-0 items-center gap-2.5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2">
+                    <span className="absolute inset-y-0 left-0 w-0.5 bg-gradient-to-b from-fuchsia-300 via-fuchsia-500 to-violet-700" />
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/14 bg-white/[0.09] text-fuchsia-100">
+                      <Icon className="h-[18px] w-[18px]" strokeWidth={2.15} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-black text-[#f8fafc]">{row.title}</span>
+                      <span className="mt-0.5 block truncate text-[9px] font-black uppercase tracking-[0.1em] text-white/45">{row.premiumLabel}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-lg font-black leading-none text-[#f8fafc]">{metrics.contracts}×</span>
+                      <span className="mt-1 block text-xs font-black text-violet-100">{formatMetricMoney(premium)}</span>
+                    </span>
+                  </article>
+                );
+              })}
+            </div>
+
+            <footer className="mt-3 shrink-0 border-t border-white/10 pt-2 text-[10px] font-semibold text-white/42 sm:text-[11px]">
+              Data vychází z produkce podřízených za posledních 7 dní.
+            </footer>
+          </>
+        )}
+      </section>
+    </main>
+  );
+}
+
 function LoadingState() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-[#07010a] px-4 text-white">
@@ -159,6 +262,12 @@ export default function WeeklyTeamReportPage() {
   const [report, setReport] = useState<WeeklyTeamReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [embeddedInMailbox, setEmbeddedInMailbox] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setEmbeddedInMailbox(params.get("embed") === "mailbox");
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
@@ -238,6 +347,18 @@ export default function WeeklyTeamReportPage() {
   const periodLabel = report
     ? formatReportPeriod(report.periodStart, report.periodEnd)
     : "Uplynulý týden";
+
+  if (embeddedInMailbox) {
+    return (
+      <EmbeddedWeeklyTeamReport
+        report={report}
+        errorText={errorText}
+        periodLabel={periodLabel}
+        totalContracts={totals.contracts}
+        totalAnnualPremium={totals.annualPremium}
+      />
+    );
+  }
 
   return (
     <main className="min-h-[100dvh] overflow-hidden bg-[#07010a] text-white">

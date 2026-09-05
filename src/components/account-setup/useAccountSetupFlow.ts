@@ -18,6 +18,8 @@ import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import type { Position } from "@/app/types/domain";
+import { useAresIcoLookup } from "@/components/profile/useAresIcoLookup";
+import { formatProfilePhoneInput, isValidProfilePhone } from "@/lib/profileFields";
 
 export type AccountType = "advisor" | "tipster";
 export type AccountSetupStepId = "phone" | "career" | "security";
@@ -62,8 +64,10 @@ export const ACCOUNT_SETUP_POSITIONS: { id: Position; label: string }[] = [
 
 export const PHONE_NUMBER_MAX_LEN = 40;
 export const PROFILE_ICO_MAX_LEN = 8;
+export const PROFILE_FULL_NAME_MAX_LEN = 120;
+export const AGENCY_NUMBER_MAX_LEN = 80;
 export const ACCOUNT_SETUP_STEPS: { id: AccountSetupStepId; label: string }[] = [
-  { id: "phone", label: "Kontakt" },
+  { id: "phone", label: "Profil" },
   { id: "career", label: "Kariéra" },
   { id: "security", label: "2FA" },
 ];
@@ -212,6 +216,8 @@ export function useAccountSetupFlow({
   const [savedPhone, setSavedPhone] = useState("");
   const [ico, setIco] = useState("");
   const [savedIco, setSavedIco] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [agencyNumber, setAgencyNumber] = useState("");
   const [phoneSaving, setPhoneSaving] = useState(false);
   const [timelineDraft, setTimelineDraft] = useState<AccountSetupTimelineItem[]>([]);
   const [timelineSaving, setTimelineSaving] = useState(false);
@@ -231,6 +237,11 @@ export function useAccountSetupFlow({
   const [mfaGraceStartedAt, setMfaGraceStartedAt] = useState<string | null>(null);
   const [, setSecurityHardRequired] = useState(false);
   const [, setWizardManuallyOpened] = useState(false);
+  const aresIcoLookup = useAresIcoLookup({
+    user,
+    ico,
+    enabled: showWizard && stepIndex === PHONE_STEP_INDEX,
+  });
 
   const clearMfaDraft = useCallback(() => {
     setMfaSecret(null);
@@ -249,6 +260,8 @@ export function useAccountSetupFlow({
     setSavedPhone("");
     setIco("");
     setSavedIco("");
+    setFullName("");
+    setAgencyNumber("");
     setTimelineDraft([]);
     setError(null);
     setInfo(null);
@@ -273,6 +286,8 @@ export function useAccountSetupFlow({
     setSavedPhone("");
     setIco("");
     setSavedIco("");
+    setFullName("");
+    setAgencyNumber("");
     setCompletedAt(null);
     setMfaGraceStartedAt(null);
     setSecurityHardRequired(false);
@@ -285,12 +300,21 @@ export function useAccountSetupFlow({
       options: { accountType: AccountType; hasInternalProfile: boolean }
     ) => {
       const parsedTimeline = parsePositionTimeline(data.positionTimeline);
-      const nextPhoneNumber =
-        typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "";
+      const nextPhoneNumber = formatProfilePhoneInput(
+        typeof data.phoneNumber === "string" ? data.phoneNumber : ""
+      );
       const nextIco =
         typeof data.ico === "string"
           ? data.ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
           : "";
+      const nextFullName =
+        typeof data.fullName === "string" && data.fullName.trim()
+          ? data.fullName.trim()
+          : typeof data.name === "string"
+            ? data.name.trim()
+            : "";
+      const nextAgencyNumber =
+        typeof data.agencyNumber === "string" ? data.agencyNumber.trim() : "";
       const nextCompletedAt = normalizeIsoDateTime(data.accountSetupCompletedAt);
       const nextMfaGraceStartedAt = normalizeIsoDateTime(data.mfaSetupGraceStartedAt);
       const timelineRequired =
@@ -301,6 +325,8 @@ export function useAccountSetupFlow({
       setSavedPhone(nextPhoneNumber);
       setIco(nextIco);
       setSavedIco(nextIco);
+      setFullName(nextFullName);
+      setAgencyNumber(nextAgencyNumber);
       setCompletedAt(nextCompletedAt);
       setMfaGraceStartedAt(nextMfaGraceStartedAt);
       setTimelineDraft(parsedTimeline);
@@ -512,15 +538,24 @@ export function useAccountSetupFlow({
       return;
     }
 
-    const nextPhoneNumber = phone.trim();
+    const nextPhoneNumber = formatProfilePhoneInput(phone);
     const nextIco = ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN);
-    const digitCount = nextPhoneNumber.replace(/\D+/g, "").length;
+    const nextFullName = fullName.trim();
+    const nextAgencyNumber = agencyNumber.trim();
+    if (!nextFullName) {
+      setError("Vyplň jméno a příjmení.");
+      return;
+    }
+    if (nextFullName.length > PROFILE_FULL_NAME_MAX_LEN) {
+      setError(`Jméno a příjmení může mít maximálně ${PROFILE_FULL_NAME_MAX_LEN} znaků.`);
+      return;
+    }
     if (!nextPhoneNumber) {
       setError("Vyplň telefonní číslo.");
       return;
     }
-    if (digitCount < 6) {
-      setError("Telefonní číslo je příliš krátké.");
+    if (!isValidProfilePhone(nextPhoneNumber)) {
+      setError("Telefonní číslo musí obsahovat alespoň 9 číslic.");
       return;
     }
     if (nextPhoneNumber.length > PHONE_NUMBER_MAX_LEN) {
@@ -535,13 +570,22 @@ export function useAccountSetupFlow({
       setError(`IČO musí mít ${PROFILE_ICO_MAX_LEN} číslic.`);
       return;
     }
+    if (nextAgencyNumber.length > AGENCY_NUMBER_MAX_LEN) {
+      setError(`Agenturní číslo může mít maximálně ${AGENCY_NUMBER_MAX_LEN} znaků.`);
+      return;
+    }
 
     setPhoneSaving(true);
     setError(null);
     try {
       await fetchAuthedJsonOrThrow(user, "/api/user/profile", {
         method: "PATCH",
-        body: JSON.stringify({ phoneNumber: nextPhoneNumber, ico: nextIco }),
+        body: JSON.stringify({
+          fullName: nextFullName,
+          agencyNumber: nextAgencyNumber,
+          phoneNumber: nextPhoneNumber,
+          ico: nextIco,
+        }),
       });
       userProfileCache.invalidateUserProfileCache(user.email);
       onInternalProfileReady();
@@ -549,6 +593,8 @@ export function useAccountSetupFlow({
       setSavedPhone(nextPhoneNumber);
       setIco(nextIco);
       setSavedIco(nextIco);
+      setFullName(nextFullName);
+      setAgencyNumber(nextAgencyNumber);
       setStepIndex(CAREER_STEP_INDEX);
     } catch (saveError) {
       const message =
@@ -559,7 +605,7 @@ export function useAccountSetupFlow({
     } finally {
       setPhoneSaving(false);
     }
-  }, [ico, onInternalProfileReady, phone, user]);
+  }, [agencyNumber, fullName, ico, onInternalProfileReady, phone, user]);
 
   const addTimelineRow = useCallback(() => {
     setError(null);
@@ -947,6 +993,11 @@ export function useAccountSetupFlow({
       phoneSaving,
       ico,
       icoMaxLength: PROFILE_ICO_MAX_LEN,
+      fullName,
+      fullNameMaxLength: PROFILE_FULL_NAME_MAX_LEN,
+      agencyNumber,
+      agencyNumberMaxLength: AGENCY_NUMBER_MAX_LEN,
+      aresIcoLookup,
       timelineDraft,
       timelineSaving,
       positions: ACCOUNT_SETUP_POSITIONS,
@@ -969,11 +1020,19 @@ export function useAccountSetupFlow({
       busy,
       hasInvalidRangeOrder,
       onPhoneChange: (value: string) => {
-        setPhone(value);
+        setPhone(formatProfilePhoneInput(value));
         setError(null);
       },
       onIcoChange: (value: string) => {
         setIco(value);
+        setError(null);
+      },
+      onFullNameChange: (value: string) => {
+        setFullName(value);
+        setError(null);
+      },
+      onAgencyNumberChange: (value: string) => {
+        setAgencyNumber(value);
         setError(null);
       },
       onTimelineRowChange: updateTimelineRow,
@@ -1012,6 +1071,9 @@ export function useAccountSetupFlow({
       completionSaving,
       currentStep,
       error,
+      agencyNumber,
+      aresIcoLookup,
+      fullName,
       handlePrimaryAction,
       ico,
       info,

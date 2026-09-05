@@ -8,7 +8,6 @@ import {
   Pencil,
   Search,
   UserMinus,
-  UserPlus,
   UsersRound,
   X,
 } from "lucide-react";
@@ -22,6 +21,8 @@ import type {
   RecipientOption,
   UserSearchResponse,
 } from "./postaTypes";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 
 type MailboxGroupManagerProps = {
   user: FirebaseUser;
@@ -78,7 +79,7 @@ export function MailboxGroupManager({
         );
         if (sequence !== lookupSequence.current) return;
         const next = (payload.users ?? [])
-          .map((row) => {
+          .map((row): RecipientOption | null => {
             const email = normalizeEmail(row.email);
             if (!email || !EMAIL_RE.test(email) || participantEmails.has(email)) return null;
             return {
@@ -87,6 +88,7 @@ export function MailboxGroupManager({
                 typeof row.name === "string" && row.name.trim()
                   ? row.name.trim()
                   : nameFromEmail(email),
+              profileAvatar: normalizeProfileAvatar(row.profileAvatar),
             };
           })
           .filter((row): row is RecipientOption => row !== null);
@@ -231,9 +233,14 @@ export function MailboxGroupManager({
                 const removing = busyAction === `remove:${email}`;
                 return (
                   <div key={email} className="flex items-center gap-3 bg-white px-3 py-3">
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
-                      {participant.name.slice(0, 1).toUpperCase()}
-                    </span>
+                    <ProfileAvatar
+                      src={participant.profileAvatar}
+                      name={participant.name}
+                      alt=""
+                      className="h-9 w-9 rounded-full text-4xl ring-1 ring-slate-200"
+                      fallbackClassName="bg-slate-100 text-slate-600"
+                      sizes="36px"
+                    />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 truncate text-sm font-bold text-slate-800">
                         {participant.name}
@@ -284,7 +291,14 @@ export function MailboxGroupManager({
                       disabled={Boolean(busyAction)}
                       className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-violet-50 disabled:opacity-50"
                     >
-                      <UserPlus className="h-4 w-4 shrink-0 text-violet-700" />
+                      <ProfileAvatar
+                        src={suggestion.profileAvatar}
+                        name={suggestion.name}
+                        alt=""
+                        className="h-9 w-9 rounded-xl text-4xl ring-1 ring-violet-200"
+                        fallbackClassName="bg-violet-100 text-violet-700"
+                        sizes="36px"
+                      />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-bold text-slate-800">{suggestion.name}</span>
                         <span className="block truncate text-xs text-slate-500">{suggestion.email}</span>

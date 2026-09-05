@@ -47,7 +47,7 @@ describe("profilePatchScopeError", () => {
         isImpersonating: true,
         effectiveEmail: "petra.janackova@bohemika.eu",
         declaredTargetEmail: "petra.janackova@bohemika.eu",
-        patchKeys: ["positionTimeline", "commissionMode"],
+        patchKeys: ["positionTimeline", "commissionMode", "profileAvatar"],
         hasPositionTimeline: true,
       })
     ).toBeNull();

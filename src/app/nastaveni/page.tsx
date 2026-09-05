@@ -89,6 +89,7 @@ import {
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
 import { ProfileSettingsPanel } from "./components/ProfileSettingsPanel";
+import { useAresIcoLookup } from "@/components/profile/useAresIcoLookup";
 import { SubscriptionSettingsPanel } from "./components/SubscriptionSettingsPanel";
 import { UserRequestsPanel } from "./components/UserRequestsPanel";
 import {
@@ -99,6 +100,12 @@ import {
   type NotificationSettings,
 } from "./notificationSettings";
 import { getPasswordPolicyFailure } from "./passwordPolicy";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
+import {
+  formatProfilePhoneInput,
+  isValidProfileIco,
+  isValidProfilePhone,
+} from "@/lib/profileFields";
 import {
   type SubscriptionEffectiveState,
   type SubscriptionMeResponse,
@@ -425,6 +432,37 @@ type SettingsProfilePatchResponse = {
   email: string;
 };
 
+type ProfileAvatarUploadResponse = {
+  ok?: boolean;
+  avatar?: string;
+  error?: string;
+};
+
+type ProfileDraftSnapshot = {
+  fullName: string;
+  profileAvatar: string;
+  agencyNumber: string;
+  ico: string;
+  phoneNumber: string;
+};
+
+const profileDraftSnapshot = ({
+  fullName,
+  profileAvatar,
+  agencyNumber,
+  ico,
+  phoneNumber,
+}: ProfileDraftSnapshot): ProfileDraftSnapshot => ({
+  fullName: fullName.trim(),
+  profileAvatar: normalizeProfileAvatar(profileAvatar),
+  agencyNumber: agencyNumber.trim(),
+  ico: ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN),
+  phoneNumber: formatProfilePhoneInput(phoneNumber),
+});
+
+const profileDraftKey = (value: ProfileDraftSnapshot): string =>
+  JSON.stringify(profileDraftSnapshot(value));
+
 type DirectManagerInfo = {
   email: string;
   name: string;
@@ -724,6 +762,7 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
 export default function SettingsPage() {
   const settingsTabQueryAppliedRef = useRef(false);
   const metaLoadVersionRef = useRef(0);
+  const profileSuccessTimeoutRef = useRef<number | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [impersonation, setImpersonation] =
     useState<AdminImpersonationState | null>(null);
@@ -733,11 +772,14 @@ export default function SettingsPage() {
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
   const [fullName, setFullName] = useState("");
+  const [profileAvatar, setProfileAvatar] = useState("");
   const [managerEmail, setManagerEmail] = useState("");
   const [directManager, setDirectManager] = useState<DirectManagerInfo | null>(null);
   const [agencyNumber, setAgencyNumber] = useState("");
   const [ico, setIco] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [savedProfileDraft, setSavedProfileDraft] =
+    useState<ProfileDraftSnapshot | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileStatus, setProfileStatus] = useState<InlineStatus | null>(null);
   const [appCacheClearing, setAppCacheClearing] = useState(false);
@@ -808,6 +850,11 @@ export default function SettingsPage() {
   const [positionTimelineLocked, setPositionTimelineLocked] = useState(false);
   const [timelineSetupRequired, setTimelineSetupRequired] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const aresIcoLookup = useAresIcoLookup({
+    user,
+    ico,
+    enabled: activeTab === "profile" && !loadingMeta,
+  });
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [subscriptionSnapshot, setSubscriptionSnapshot] =
@@ -1176,6 +1223,7 @@ export default function SettingsPage() {
       };
 
       setLoadingMeta(true);
+      setSavedProfileDraft(null);
 
       try {
         const payload = await fetchAuthedJsonOrThrow<{
@@ -1208,7 +1256,18 @@ export default function SettingsPage() {
               : typeof data.name === "string" && data.name.trim()
                 ? data.name.trim()
                 : nameFromEmail(email);
+          const nextProfileAvatar = normalizeProfileAvatar(data.profileAvatar);
+          const nextAgencyNumber =
+            typeof data.agencyNumber === "string" ? data.agencyNumber.trim() : "";
+          const nextIco =
+            typeof data.ico === "string"
+              ? data.ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
+              : "";
+          const nextPhoneNumber = formatProfilePhoneInput(
+            typeof data.phoneNumber === "string" ? data.phoneNumber : ""
+          );
           setFullName(profileFullName);
+          setProfileAvatar(nextProfileAvatar);
           const profileManagerEmail =
             typeof data.managerEmail === "string"
               ? normalizeEmail(data.managerEmail)
@@ -1238,13 +1297,18 @@ export default function SettingsPage() {
             setMode("accelerated");
           }
 
-          setAgencyNumber(typeof data.agencyNumber === "string" ? data.agencyNumber.trim() : "");
-          setIco(
-            typeof data.ico === "string"
-              ? data.ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN)
-              : ""
+          setAgencyNumber(nextAgencyNumber);
+          setIco(nextIco);
+          setPhoneNumber(nextPhoneNumber);
+          setSavedProfileDraft(
+            profileDraftSnapshot({
+              fullName: profileFullName,
+              profileAvatar: nextProfileAvatar,
+              agencyNumber: nextAgencyNumber,
+              ico: nextIco,
+              phoneNumber: nextPhoneNumber,
+            })
           );
-          setPhoneNumber(typeof data.phoneNumber === "string" ? data.phoneNumber.trim() : "");
           setMfaLastVerifiedAt(
             typeof data.mfaLastVerifiedAt === "string" &&
               !Number.isNaN(Date.parse(data.mfaLastVerifiedAt))
@@ -1309,10 +1373,21 @@ export default function SettingsPage() {
           setPositionTimelineLocked(false);
           setTimelineSetupRequired(true);
           setFullName(nameFromEmail(email));
+          setProfileAvatar("");
           setManagerEmail("");
           setDirectManager(null);
           setAgencyNumber("");
+          setIco("");
           setPhoneNumber("");
+          setSavedProfileDraft(
+            profileDraftSnapshot({
+              fullName: nameFromEmail(email),
+              profileAvatar: "",
+              agencyNumber: "",
+              ico: "",
+              phoneNumber: "",
+            })
+          );
           setMfaLastVerifiedAt(null);
           setProfileStatus(null);
           setOnlineCardDraft(defaultOnlineCardFromUser(email, {}));
@@ -1737,11 +1812,41 @@ export default function SettingsPage() {
     await saveUserFields({ commissionMode: value });
   };
 
+  const handleProfileAvatarUpload = async (file: File) => {
+    if (!user) throw new Error("Nejsi přihlášený.");
+    const liveImpersonatedEmail = normalizeEmail(readAdminImpersonationState()?.email);
+    if (liveImpersonatedEmail !== impersonatedEmail) {
+      throw new Error("Přepnutí uživatele se mezitím změnilo. Obnov stránku a zkus to znovu.");
+    }
+
+    setProfileStatus({ type: "info", message: "Nahrávám a upravuji fotografii…" });
+    const form = new FormData();
+    form.append("file", file);
+    const payload = await fetchAuthedJsonOrThrow<ProfileAvatarUploadResponse>(
+      user,
+      "/api/user/profile/avatar",
+      {
+        method: "POST",
+        headers: liveImpersonatedEmail
+          ? { [ADMIN_IMPERSONATION_HEADER]: liveImpersonatedEmail }
+          : undefined,
+        body: form,
+      }
+    );
+    const avatar = normalizeProfileAvatar(payload.avatar);
+    if (!avatar) throw new Error(payload.error || "Server nevrátil platnou fotografii.");
+    setProfileAvatar(avatar);
+    setProfileStatus({
+      type: "info",
+      message: "Fotografie je připravená. Změnu potvrď tlačítkem Uložit profil.",
+    });
+  };
+
   const handleSaveProfile = async () => {
     const nextFullName = fullName.trim();
     const nextAgencyNumber = agencyNumber.trim();
     const nextIco = ico.replace(/\D+/g, "").slice(0, PROFILE_ICO_MAX_LEN);
-    const nextPhoneNumber = phoneNumber.trim();
+    const nextPhoneNumber = formatProfilePhoneInput(phoneNumber);
     if (!nextFullName) {
       setProfileStatus({
         type: "error",
@@ -1770,6 +1875,13 @@ export default function SettingsPage() {
       });
       return;
     }
+    if (!isValidProfilePhone(nextPhoneNumber)) {
+      setProfileStatus({
+        type: "error",
+        message: "Telefonní číslo musí obsahovat alespoň 9 číslic.",
+      });
+      return;
+    }
     if (nextPhoneNumber.length > PHONE_NUMBER_MAX_LEN) {
       setProfileStatus({
         type: "error",
@@ -1783,6 +1895,7 @@ export default function SettingsPage() {
     try {
       const saved = await saveUserFields({
         fullName: nextFullName,
+        profileAvatar,
         agencyNumber: nextAgencyNumber,
         ico: nextIco,
         phoneNumber: nextPhoneNumber,
@@ -1795,10 +1908,28 @@ export default function SettingsPage() {
       setAgencyNumber(nextAgencyNumber);
       setIco(nextIco);
       setPhoneNumber(nextPhoneNumber);
+      setSavedProfileDraft(
+        profileDraftSnapshot({
+          fullName: nextFullName,
+          profileAvatar,
+          agencyNumber: nextAgencyNumber,
+          ico: nextIco,
+          phoneNumber: nextPhoneNumber,
+        })
+      );
       setProfileStatus({
         type: "success",
         message: "Profil byl uložen.",
       });
+      if (profileSuccessTimeoutRef.current !== null) {
+        window.clearTimeout(profileSuccessTimeoutRef.current);
+      }
+      profileSuccessTimeoutRef.current = window.setTimeout(() => {
+        setProfileStatus((current) =>
+          current?.type === "success" ? null : current
+        );
+        profileSuccessTimeoutRef.current = null;
+      }, 3_000);
     } finally {
       setProfileSaving(false);
     }
@@ -3078,6 +3209,31 @@ export default function SettingsPage() {
     }
   };
 
+  const currentProfileDraft = useMemo(
+    () =>
+      profileDraftSnapshot({
+        fullName,
+        profileAvatar,
+        agencyNumber,
+        ico,
+        phoneNumber,
+      }),
+    [agencyNumber, fullName, ico, phoneNumber, profileAvatar]
+  );
+  const profileDirty =
+    savedProfileDraft !== null &&
+    profileDraftKey(currentProfileDraft) !== profileDraftKey(savedProfileDraft);
+
+  useEffect(() => {
+    if (!profileDirty || typeof window === "undefined") return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [profileDirty]);
+
   if (!user) {
     // redirect už běží, tady jen nic nerenderujeme
     return null;
@@ -3099,10 +3255,10 @@ export default function SettingsPage() {
     (managerEmail ? nameFromEmail(managerEmail) || managerEmail : "Nenastaveno");
   const managerEmailDisplay = directManager?.email || managerEmail;
   const profileCompletionItems = [
-    fullName.trim(),
-    agencyNumber.trim(),
-    ico.trim(),
-    phoneNumber.trim(),
+    Boolean(fullName.trim()),
+    Boolean(agencyNumber.trim()),
+    Boolean(ico.trim()) && isValidProfileIco(ico),
+    Boolean(phoneNumber.trim()) && isValidProfilePhone(phoneNumber),
   ];
   const profileCompletionCount = profileCompletionItems.filter(Boolean).length;
   const profileCompletionPercent = Math.round(
@@ -3781,6 +3937,7 @@ export default function SettingsPage() {
                 <ProfileSettingsPanel
                   profileInitial={profileInitial}
                   profileDisplayName={profileDisplayName}
+                  profileAvatar={profileAvatar}
                   profileStatus={profileStatus}
                   completionPercent={profileCompletionPercent}
                   positionLabel={profilePositionLabel}
@@ -3797,6 +3954,8 @@ export default function SettingsPage() {
                   appCacheStatus={appCacheStatus}
                   appCacheClearing={appCacheClearing}
                   profileSaving={profileSaving}
+                  profileDirty={profileDirty}
+                  aresIcoLookup={aresIcoLookup}
                   fullNameMaxLength={PROFILE_FULL_NAME_MAX_LEN}
                   agencyNumberMaxLength={AGENCY_NUMBER_MAX_LEN}
                   icoMaxLength={PROFILE_ICO_MAX_LEN}
@@ -3805,6 +3964,14 @@ export default function SettingsPage() {
                     setFullName(value);
                     setProfileStatus(null);
                   }}
+                  onProfileAvatarChange={(value) => {
+                    setProfileAvatar(value);
+                    setProfileStatus({
+                      type: "info",
+                      message: "Výchozí obrázek je zvolený. Změnu potvrď tlačítkem Uložit profil.",
+                    });
+                  }}
+                  onProfileAvatarUpload={handleProfileAvatarUpload}
                   onAgencyNumberChange={(value) => {
                     setAgencyNumber(value);
                     setProfileStatus(null);
@@ -3814,7 +3981,7 @@ export default function SettingsPage() {
                     setProfileStatus(null);
                   }}
                   onPhoneNumberChange={(value) => {
-                    setPhoneNumber(value);
+                    setPhoneNumber(formatProfilePhoneInput(value));
                     setProfileStatus(null);
                   }}
                   onCommissionModeChange={handleModeChange}

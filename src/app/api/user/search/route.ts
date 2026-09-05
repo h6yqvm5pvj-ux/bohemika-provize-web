@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAdvisorAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ type UserSearchSuccess = {
     name: string;
     managerEmail: string | null;
     accountType: UserAccountType;
+    profileAvatar: string;
   }>;
 };
 
@@ -34,6 +36,7 @@ type UserDirectoryRow = {
   name: string;
   managerEmail: string | null;
   accountType: UserAccountType;
+  profileAvatar: string;
   searchEmail: string;
   searchName: string;
 };
@@ -118,7 +121,7 @@ async function loadUserDirectoryRows(): Promise<UserDirectoryRow[]> {
   const loadPromise = (async () => {
     const usersSnap = await db
       .collection("users")
-      .select("email", "fullName", "name", "managerEmail", "accountType", "userRole")
+      .select("email", "fullName", "name", "managerEmail", "accountType", "userRole", "profileAvatar")
       .get();
     const rowsByEmail = new Map<string, UserDirectoryRow>();
 
@@ -133,6 +136,7 @@ async function loadUserDirectoryRows(): Promise<UserDirectoryRow[]> {
         name,
         managerEmail,
         accountType: resolveAccountType(data),
+        profileAvatar: normalizeProfileAvatar(data.profileAvatar),
         searchEmail: normalizeSearch(email),
         searchName: normalizeSearch(name),
       };
@@ -219,6 +223,7 @@ export async function GET(req: NextRequest) {
         name: item.row.name,
         managerEmail: item.row.managerEmail,
         accountType: item.row.accountType,
+        profileAvatar: item.row.profileAvatar,
       }));
 
     return withRateLimitHeaders(

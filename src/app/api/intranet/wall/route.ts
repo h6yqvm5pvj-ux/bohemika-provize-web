@@ -24,6 +24,7 @@ import {
   parseIntranetWallSourcesJson,
   sanitizeStoredIntranetWallSources,
 } from "@/app/intranet/wallSources";
+import { loadProfileAvatarsByEmail } from "@/lib/server/userProfileAvatars";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,7 @@ type WallAuthor = {
   uid: string;
   email: string;
   name: string;
+  profileAvatar: string;
 };
 
 type WallPollOption = {
@@ -345,6 +347,7 @@ const parseAuthor = (
     uid,
     email,
     name,
+    profileAvatar: "",
   };
 };
 
@@ -904,6 +907,37 @@ function mapPostFromDoc(
   };
 }
 
+async function hydrateWallAuthorAvatars(posts: WallPost[]): Promise<WallPost[]> {
+  const authorEmails = new Set<string>();
+  posts.forEach((post) => {
+    if (post.author.email) authorEmails.add(post.author.email);
+    post.comments.forEach((comment) => {
+      if (comment.author.email) authorEmails.add(comment.author.email);
+      comment.replies.forEach((reply) => {
+        if (reply.author.email) authorEmails.add(reply.author.email);
+      });
+    });
+  });
+  const avatars = await loadProfileAvatarsByEmail(authorEmails);
+  const hydrateAuthor = (author: WallAuthor): WallAuthor => ({
+    ...author,
+    profileAvatar: avatars[author.email] || "",
+  });
+
+  return posts.map((post) => ({
+    ...post,
+    author: hydrateAuthor(post.author),
+    comments: post.comments.map((comment) => ({
+      ...comment,
+      author: hydrateAuthor(comment.author),
+      replies: comment.replies.map((reply) => ({
+        ...reply,
+        author: hydrateAuthor(reply.author),
+      })),
+    })),
+  }));
+}
+
 export async function GET(req: NextRequest) {
   const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:intranet-wall:get",
@@ -1001,12 +1035,15 @@ export async function GET(req: NextRequest) {
       : null;
     const hasMore = hasMoreCandidate && nextCursorMs !== null;
 
-    const posts = await Promise.all(
+    const parsedPosts = await Promise.all(
       docsToReturn.map(async (doc) => {
         const raw = doc.data() as Record<string, unknown>;
         const comments = await loadCommentsForPost(doc.id, viewerEmail);
         return mapPostFromDoc(doc.id, raw, comments, viewerEmail);
       })
+    );
+    const posts = await hydrateWallAuthorAvatars(
+      parsedPosts.filter((post): post is WallPost => post !== null)
     );
 
     return withRateLimitHeaders(
@@ -1014,7 +1051,6 @@ export async function GET(req: NextRequest) {
         ok: true,
         sections: INTRANET_SECTIONS,
         posts: posts
-          .filter((post): post is WallPost => post !== null)
           .sort((a, b) => {
             if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
             return (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0);

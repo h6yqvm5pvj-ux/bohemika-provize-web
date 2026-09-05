@@ -213,6 +213,7 @@ export function AppLayout({
     loadingProfile,
     markInternalProfileReady,
     profileLoadFailureVersion,
+    profileAvatar,
     reloadProfile,
     showPaywall,
     subscriptionAccessState,
@@ -624,6 +625,11 @@ export function AppLayout({
             phoneSaving={accountSetup.phoneSaving}
             ico={accountSetup.ico}
             icoMaxLength={accountSetup.icoMaxLength}
+            fullName={accountSetup.fullName}
+            fullNameMaxLength={accountSetup.fullNameMaxLength}
+            agencyNumber={accountSetup.agencyNumber}
+            agencyNumberMaxLength={accountSetup.agencyNumberMaxLength}
+            aresIcoLookup={accountSetup.aresIcoLookup}
             timelineDraft={accountSetup.timelineDraft}
             timelineSaving={accountSetup.timelineSaving}
             positions={accountSetup.positions}
@@ -647,6 +653,8 @@ export function AppLayout({
             onLogout={handleLogout}
             onPhoneChange={accountSetup.onPhoneChange}
             onIcoChange={accountSetup.onIcoChange}
+            onFullNameChange={accountSetup.onFullNameChange}
+            onAgencyNumberChange={accountSetup.onAgencyNumberChange}
             onTimelineRowChange={accountSetup.onTimelineRowChange}
             onRemoveTimelineRow={accountSetup.onRemoveTimelineRow}
             onAddTimelineRow={accountSetup.onAddTimelineRow}
@@ -672,6 +680,7 @@ export function AppLayout({
           logoutLabel={layoutCopy.logout}
           hasUser={Boolean(user)}
           userEmail={user?.email ?? ""}
+          userAvatar={profileAvatar}
           hasTeam={hasTeam}
           hasTipsters={hasTipsters}
           isAdminRequestsUser={isAdminRequestsUser}

@@ -18,6 +18,7 @@ import {
   evaluateSubscriptionFromProfile,
   type EvaluatedSubscriptionAccess,
 } from "@/lib/subscriptionAccess";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 
 export type SubscriptionAccessUiState = "none" | "active" | "grace" | "blocked";
 export type SubscriptionBlockReason = "none" | "unpaid" | "expired";
@@ -85,6 +86,7 @@ export function useUserProfileAccess({
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [hasTeam, setHasTeam] = useState<boolean>(true);
   const [hasTipsters, setHasTipsters] = useState(false);
+  const [profileAvatar, setProfileAvatar] = useState("");
   const [accountSetupProfileSync, setAccountSetupProfileSync] =
     useState<AccountSetupProfileSync | null>(null);
   const [profileLoadFailureVersion, setProfileLoadFailureVersion] = useState(0);
@@ -99,6 +101,7 @@ export function useUserProfileAccess({
     setAccountType("advisor");
     setHasTeam(false);
     setHasTipsters(false);
+    setProfileAvatar("");
     setAccountSetupProfileSync(null);
   }, []);
 
@@ -117,6 +120,7 @@ export function useUserProfileAccess({
         : null;
 
       setAccountType(nextAccountType);
+      setProfileAvatar(normalizeProfileAvatar(data.profileAvatar));
       onLanguageResolved(nextLanguage);
       setHasInternalProfile(nextHasInternalProfile);
       setAccountSetupProfileSync((prev) => ({
@@ -189,6 +193,7 @@ export function useUserProfileAccess({
         setAccountType("advisor");
         setHasTeam(false);
         setHasTipsters(false);
+        setProfileAvatar("");
         setProfileLoadFailureVersion((prev) => prev + 1);
       } finally {
         if (effectiveUserEmail(currentUser.email) === requestScopeEmail) {
@@ -305,6 +310,7 @@ export function useUserProfileAccess({
       loadingProfile,
       markInternalProfileReady,
       profileLoadFailureVersion,
+      profileAvatar,
       reloadProfile,
       showPaywall,
       subscriptionAccessState,
@@ -321,6 +327,7 @@ export function useUserProfileAccess({
       loadingProfile,
       markInternalProfileReady,
       profileLoadFailureVersion,
+      profileAvatar,
       reloadProfile,
       showPaywall,
       subscriptionAccessState,

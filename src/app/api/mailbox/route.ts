@@ -14,6 +14,7 @@ import {
 } from "@/lib/server/mailboxAttachmentStorage";
 import { decryptMailboxJson } from "@/lib/server/mailboxEncryption";
 import { mailboxConversationId } from "@/lib/server/mailboxConversation";
+import { loadProfileAvatarsByEmail } from "@/lib/server/userProfileAvatars";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -274,6 +275,54 @@ const parseMailboxDoc = (
     replyReminderSetAtMs,
     metadata: normalizedMetadata,
   };
+};
+
+type ParsedMailboxItem = ReturnType<typeof parseMailboxDoc>;
+
+const hydrateMailboxAvatars = async (
+  items: ParsedMailboxItem[]
+): Promise<ParsedMailboxItem[]> => {
+  const emails = new Set<string>();
+  items.forEach((item) => {
+    const metadata = item.metadata;
+    if (!metadata) return;
+    [metadata.senderEmail, metadata.recipientEmail].forEach((value) => {
+      const email = normalizeMailboxEmail(value);
+      if (email) emails.add(email);
+    });
+    if (Array.isArray(metadata.participants)) {
+      metadata.participants.forEach((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+        const email = normalizeMailboxEmail((entry as Record<string, unknown>).email);
+        if (email) emails.add(email);
+      });
+    }
+  });
+
+  const avatars = await loadProfileAvatarsByEmail(emails);
+  return items.map((item) => {
+    const metadata = item.metadata;
+    if (!metadata) return item;
+    const senderEmail = normalizeMailboxEmail(metadata.senderEmail);
+    const recipientEmail = normalizeMailboxEmail(metadata.recipientEmail);
+    const participants = Array.isArray(metadata.participants)
+      ? metadata.participants.map((entry) => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+          const row = entry as Record<string, unknown>;
+          const email = normalizeMailboxEmail(row.email);
+          return { ...row, profileAvatar: avatars[email] || "" };
+        })
+      : metadata.participants;
+    return {
+      ...item,
+      metadata: {
+        ...metadata,
+        senderAvatar: avatars[senderEmail] || "",
+        recipientAvatar: avatars[recipientEmail] || "",
+        ...(Array.isArray(participants) ? { participants } : {}),
+      },
+    };
+  });
 };
 
 const conversationIdFromMailboxData = (data: Record<string, unknown>): string => {
@@ -657,6 +706,7 @@ export async function GET(req: NextRequest) {
         limit,
         cursor,
       });
+      page.items = await hydrateMailboxAvatars(page.items);
       return withRateLimitHeaders(
         NextResponse.json({ ok: true, unreadCount, ...page }),
         ctx
@@ -668,7 +718,9 @@ export async function GET(req: NextRequest) {
       .limit(limit)
       .get();
 
-    const items = itemsSnap.docs.map((docSnap) => parseMailboxDoc(docSnap));
+    const items = await hydrateMailboxAvatars(
+      itemsSnap.docs.map((docSnap) => parseMailboxDoc(docSnap))
+    );
 
     return withRateLimitHeaders(
       NextResponse.json({ ok: true, unreadCount, items }),

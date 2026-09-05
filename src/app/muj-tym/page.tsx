@@ -45,6 +45,8 @@ import { TeamOverviewLoader } from "./TeamOverviewLoader";
 import { TeamSummaryDashboard } from "./TeamSummaryDashboard";
 import { ProductionGoalProgress } from "./ProductionGoalProgress";
 import { TeamGoalsDialog } from "./TeamGoalsDialog";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 import {
   emptyProductionGoal,
 } from "@/app/api/team-overview/teamGoals";
@@ -62,6 +64,7 @@ type CopyableMemberField = "agencyNumber" | "phoneNumber" | "ico";
 type Member = {
   email: string;
   name: string;
+  profileAvatar?: string;
   accountType?: AccountType | null;
   position?: Position | null;
   managerEmail?: string | null;
@@ -444,6 +447,7 @@ type TeamOverviewApiSuccess = {
   members?: Array<{
     email?: string | null;
     name?: string | null;
+    profileAvatar?: string | null;
     accountType?: AccountType | null;
     position?: Position | null;
     managerEmail?: string | null;
@@ -901,6 +905,7 @@ export default function TeamPage() {
           membersByEmail.set(email, {
             email,
             name: (raw.name ?? "").trim() || nameFromEmail(email),
+            profileAvatar: normalizeProfileAvatar(raw.profileAvatar),
             accountType,
             position: (raw.position as Position | null | undefined) ?? null,
             managerEmail,
@@ -917,6 +922,7 @@ export default function TeamPage() {
           membersByEmail.set(userEmail, {
             email: userEmail,
             name: nameFromEmail(userEmail),
+            profileAvatar: "",
             accountType: "advisor",
             position: null,
             managerEmail: null,
@@ -2386,23 +2392,19 @@ export default function TeamPage() {
 	                              <span className="absolute inset-y-0 left-0 w-1 bg-violet-500" />
                             ) : null}
                             <div className="flex w-full items-center gap-2">
-                              <div
+                              <ProfileAvatar
+                                src={m.profileAvatar}
+                                name={m.name}
+                                alt=""
                                 className={[
-                                  "relative h-8 w-8 shrink-0 overflow-hidden rounded-full border bg-white",
+                                  "h-8 w-8 rounded-full border text-[2rem]",
                                   isSelected
 	                                    ? "border-violet-300 shadow-[0_0_0_1px_rgba(109,40,217,0.20)]"
 	                                    : "border-violet-100",
                                 ].join(" ")}
-                                aria-hidden="true"
-                              >
-                                <Image
-                                  src="/icons/klient.webp"
-                                  alt=""
-                                  fill
-                                  sizes="32px"
-                                  className="object-cover"
-                                />
-                              </div>
+                                fallbackClassName="bg-violet-100 text-violet-700"
+                                sizes="32px"
+                              />
 
                               <div className="min-w-0 flex-1">
                                 <div className="flex min-w-0 items-center justify-between gap-2">
@@ -2444,7 +2446,15 @@ export default function TeamPage() {
 		                        <span className="pointer-events-none absolute -right-20 -top-28 h-44 w-44 rounded-full bg-white/18 blur-3xl" />
 		                        <span className="pointer-events-none absolute -left-20 -bottom-24 h-40 w-40 rounded-full bg-fuchsia-300/18 blur-3xl" />
 		                        <div className="team-detail-hero-content relative z-10 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-	                          <div className="min-w-0">
+	                          <div className="flex min-w-0 items-center gap-3">
+	                            <ProfileAvatar
+	                              src={selected.profileAvatar}
+	                              name={selected.name}
+	                              className="h-16 w-16 rounded-[20px] border border-white/25 text-[4rem] shadow-[0_14px_30px_rgba(0,0,0,0.24)] sm:h-[72px] sm:w-[72px] sm:rounded-[22px] sm:text-[4.5rem]"
+	                              fallbackClassName="bg-white/15 text-white"
+	                              sizes="72px"
+	                            />
+	                            <div className="min-w-0">
 	                            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em] !text-violet-100/80">Detail</div>
 	                            <div className="team-detail-name break-words text-3xl font-bold leading-tight !text-white sm:text-4xl">{selected.name}</div>
 	                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -2458,6 +2468,7 @@ export default function TeamPage() {
 	                              </div>
 	                              <span className="hidden h-1 w-1 rounded-full bg-white/35 sm:inline-flex" aria-hidden="true" />
 	                              <p className="min-w-0 break-all text-sm !text-violet-50/80">{selected.email}</p>
+	                            </div>
 	                            </div>
 	                          </div>
 	                          <div className="team-detail-meta flex flex-wrap items-center gap-2 lg:max-w-[360px] lg:justify-end">

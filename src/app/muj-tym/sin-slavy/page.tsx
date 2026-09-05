@@ -22,10 +22,13 @@ import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 import { type Position } from "@/app/types/domain";
 import SplitTitle from "@/app/pomucky/plan-produkce/SplitTitle";
 import intranetStyles from "@/app/intranet/intranetWallArt.module.css";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 
 type TeamMember = {
   email: string;
   name: string;
+  profileAvatar: string;
 };
 
 type SourceCategory =
@@ -53,6 +56,7 @@ type TeamOverviewResponse = {
   members?: Array<{
     email?: string | null;
     name?: string | null;
+    profileAvatar?: string | null;
   }>;
   contractCounts?: Record<string, TeamOverviewContractStats | undefined>;
 };
@@ -70,6 +74,7 @@ type HallRow = {
   rank: number;
   email: string;
   name: string;
+  profileAvatar: string;
   contracts: number;
   annualPremium: number;
   leaderRatioPct: number;
@@ -167,15 +172,6 @@ function formatMoney(value: number): string {
   return formatMoneyValue(value, { nonPositiveAsEmpty: false });
 }
 
-function getInitials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-}
-
 function accentForRank(rank: number) {
   if (rank === 1) return ACCENTS[0];
   if (rank === 2) return ACCENTS[1];
@@ -230,7 +226,11 @@ export default function HallOfFamePage() {
               const email = (member.email ?? "").trim().toLowerCase();
               if (!email) return null;
               const name = (member.name ?? "").trim() || email;
-              return { email, name };
+              return {
+                email,
+                name,
+                profileAvatar: normalizeProfileAvatar(member.profileAvatar),
+              };
             })
             .filter((member): member is TeamMember => Boolean(member))
         );
@@ -266,6 +266,7 @@ export default function HallOfFamePage() {
         return {
           email: member.email,
           name: member.name,
+          profileAvatar: member.profileAvatar,
           contracts,
           annualPremium,
         };
@@ -285,6 +286,7 @@ export default function HallOfFamePage() {
         rank: index + 1,
         email: row.email,
         name: row.name,
+        profileAvatar: row.profileAvatar,
         contracts: row.contracts,
         annualPremium: row.annualPremium,
         leaderRatioPct: Math.max(0, Math.min(100, Math.round((row.annualPremium / base) * 100))),
@@ -443,9 +445,13 @@ export default function HallOfFamePage() {
                             </div>
 
                             <div>
-                              <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/25 bg-white/7 text-[10px] font-semibold text-slate-200">
-                                {getInitials(activeDeckRow.name)}
-                              </div>
+                              <ProfileAvatar
+                                src={activeDeckRow.profileAvatar}
+                                name={activeDeckRow.name}
+                                className="mb-3 h-14 w-14 rounded-2xl border border-white/25 text-[3.5rem] shadow-[0_12px_26px_rgba(0,0,0,0.24)]"
+                                fallbackClassName="bg-white/10 text-slate-200"
+                                sizes="56px"
+                              />
                               <div className="text-[1.65rem] font-semibold leading-tight tracking-tight text-white">
                                 {activeDeckRow.name}
                               </div>
@@ -563,9 +569,13 @@ export default function HallOfFamePage() {
                               </div>
 
                               <div>
-                                <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/25 bg-white/7 text-[10px] font-semibold text-slate-200">
-                                  {getInitials(row.name)}
-                                </div>
+                                <ProfileAvatar
+                                  src={row.profileAvatar}
+                                  name={row.name}
+                                  className="mb-3 h-14 w-14 rounded-2xl border border-white/25 text-[3.5rem] shadow-[0_12px_26px_rgba(0,0,0,0.24)]"
+                                  fallbackClassName="bg-white/10 text-slate-200"
+                                  sizes="56px"
+                                />
                                 <div className="truncate text-2xl font-semibold tracking-tight text-white">{row.name}</div>
                                 <div className="mt-1 text-[11px] text-white/65">{activeTab.label}</div>
                               </div>

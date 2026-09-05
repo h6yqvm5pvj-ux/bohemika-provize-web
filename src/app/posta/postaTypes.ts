@@ -61,6 +61,7 @@ export type MailboxSharedPreviewResponse = {
 export type RecipientOption = {
   email: string;
   name: string;
+  profileAvatar?: string;
 };
 
 export type UserSearchResponse = {
@@ -69,6 +70,7 @@ export type UserSearchResponse = {
     email?: string | null;
     name?: string | null;
     managerEmail?: string | null;
+    profileAvatar?: string | null;
   }>;
   error?: string;
 };
@@ -103,6 +105,7 @@ export type MailboxActivityResponse = {
 export type MailboxConversationParticipant = {
   email: string;
   name: string;
+  profileAvatar?: string;
 };
 
 export type MailboxConversationResponse = {

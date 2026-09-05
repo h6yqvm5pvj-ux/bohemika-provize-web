@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import Image from "next/image";
 import dynamic from "next/dynamic";
 import type { LucideIcon } from "lucide-react";
 import { EmojiStyle, type EmojiClickData } from "emoji-picker-react";
@@ -45,6 +44,8 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 import { systemSansFont } from "@/lib/fonts";
 import { auth } from "@/app/firebase";
 import {
@@ -87,6 +88,7 @@ type WallAuthor = {
   uid: string;
   email: string;
   name: string;
+  profileAvatar: string;
 };
 
 type WallAttachment = {
@@ -604,6 +606,24 @@ const restoreTextAreaCursor = (textarea: HTMLTextAreaElement | null, cursor: num
 const normalizeWallPosts = (rawPosts: WallPost[]): WallPost[] =>
   rawPosts.map((post) => ({
     ...post,
+    author: {
+      ...post.author,
+      profileAvatar: normalizeProfileAvatar(post.author.profileAvatar),
+    },
+    comments: post.comments.map((comment) => ({
+      ...comment,
+      author: {
+        ...comment.author,
+        profileAvatar: normalizeProfileAvatar(comment.author.profileAvatar),
+      },
+      replies: comment.replies.map((reply) => ({
+        ...reply,
+        author: {
+          ...reply.author,
+          profileAvatar: normalizeProfileAvatar(reply.author.profileAvatar),
+        },
+      })),
+    })),
     pinned: post.pinned === true,
     readByDay:
       typeof post.readByDay === "string" && /^\d{4}-\d{2}-\d{2}$/.test(post.readByDay)
@@ -2651,15 +2671,12 @@ export default function IntranetPage() {
                         <div className="min-w-0">
                           <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 pb-4">
                         <div className="flex min-w-0 items-start gap-3.5">
-                          <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200">
-                            <Image
-                              src="/icons/klient.webp"
-                              alt="Ikona klienta"
-                              fill
-                              sizes="48px"
-                              className="object-cover"
-                            />
-                          </div>
+                          <ProfileAvatar
+                            src={post.author.profileAvatar}
+                            name={post.author.name}
+                            className="h-12 w-12 rounded-2xl text-5xl shadow-inner ring-1 ring-slate-200"
+                            sizes="48px"
+                          />
 
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -2935,15 +2952,13 @@ export default function IntranetPage() {
                                     className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2"
                                   >
                                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                                      <span className="relative inline-flex h-6 w-6 overflow-hidden rounded-full ring-1 ring-slate-300">
-                                        <Image
-                                          src="/icons/klient.webp"
-                                          alt="Ikona klienta"
-                                          fill
-                                          sizes="24px"
-                                          className="object-cover"
-                                        />
-                                      </span>
+                                      <ProfileAvatar
+                                        src={comment.author.profileAvatar}
+                                        name={comment.author.name}
+                                        alt=""
+                                        className="h-6 w-6 rounded-full text-2xl ring-1 ring-slate-300"
+                                        sizes="24px"
+                                      />
                                       <span className="font-semibold text-slate-700">{comment.author.name}</span>
                                       <span>{formatDateTime(comment.createdAtMs)}</span>
                                     </div>
@@ -3004,15 +3019,13 @@ export default function IntranetPage() {
                                               className="rounded-lg border border-slate-200/90 bg-slate-50/80 px-2.5 py-2"
                                             >
                                               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                                                <span className="relative inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-slate-300">
-                                                  <Image
-                                                    src="/icons/klient.webp"
-                                                    alt="Ikona klienta"
-                                                    fill
-                                                    sizes="20px"
-                                                    className="object-cover"
-                                                  />
-                                                </span>
+                                                <ProfileAvatar
+                                                  src={reply.author.profileAvatar}
+                                                  name={reply.author.name}
+                                                  alt=""
+                                                  className="h-5 w-5 rounded-full text-xl ring-1 ring-slate-300"
+                                                  sizes="20px"
+                                                />
                                                 <span className="font-semibold text-slate-700">
                                                   {reply.author.name}
                                                 </span>
@@ -3258,15 +3271,12 @@ export default function IntranetPage() {
             />
             <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3.5 sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200">
-                  <Image
-                    src="/icons/klient.webp"
-                    alt="Ikona autora"
-                    fill
-                    sizes="44px"
-                    className="object-cover"
-                  />
-                </div>
+                <ProfileAvatar
+                  src={readerPost.author.profileAvatar}
+                  name={readerPost.author.name}
+                  className="h-11 w-11 rounded-2xl text-[2.75rem] shadow-inner ring-1 ring-slate-200"
+                  sizes="44px"
+                />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span

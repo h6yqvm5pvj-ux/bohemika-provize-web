@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { loadProfileAvatarsByEmail } from "@/lib/server/userProfileAvatars";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ const GROUP_CONVERSATION_ID_RE = /^group_[A-Za-z0-9_-]{10,100}$/;
 const GROUP_NAME_MAX_LEN = 80;
 const GROUP_MAX_PARTICIPANTS = 12;
 
-type Participant = { email: string; name: string };
+type Participant = { email: string; name: string; profileAvatar?: string };
 
 const normalizeText = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -71,7 +72,7 @@ const loadUserByEmail = async (email: string): Promise<Participant | null> => {
   };
 };
 
-const conversationPayload = ({
+const conversationPayload = async ({
   conversationId,
   data,
   currentEmail,
@@ -82,6 +83,11 @@ const conversationPayload = ({
 }) => {
   const participants = parseParticipants(data.participants);
   const participantEmails = participants.map((participant) => participant.email);
+  const avatars = await loadProfileAvatarsByEmail(participantEmails);
+  const currentParticipants = participants.map((participant) => ({
+    ...participant,
+    profileAvatar: avatars[participant.email] || "",
+  }));
   const ownerEmail =
     normalizeEmail(data.groupOwnerEmail) ||
     normalizeEmail(data.createdByEmail) ||
@@ -92,7 +98,7 @@ const conversationPayload = ({
     conversationId,
     groupName: normalizeText(data.groupName) || "Skupinová konverzace",
     ownerEmail,
-    participants,
+    participants: currentParticipants,
     participantEmails,
     muted: data.muted === true,
     active: data.active !== false,
@@ -179,7 +185,7 @@ export async function GET(req: NextRequest) {
       );
     }
     return withRateLimitHeaders(
-      NextResponse.json(conversationPayload({ conversationId, data: conversation.data, currentEmail: ctx.email })),
+      NextResponse.json(await conversationPayload({ conversationId, data: conversation.data, currentEmail: ctx.email })),
       ctx
     );
   } catch (error) {
@@ -244,7 +250,7 @@ export async function PATCH(req: NextRequest) {
       );
       const nextData = { ...loaded.data, muted: body.muted };
       return withRateLimitHeaders(
-        NextResponse.json(conversationPayload({ conversationId, data: nextData, currentEmail: ctx.email })),
+        NextResponse.json(await conversationPayload({ conversationId, data: nextData, currentEmail: ctx.email })),
         ctx
       );
     }
@@ -387,7 +393,7 @@ export async function PATCH(req: NextRequest) {
       active: true,
     };
     return withRateLimitHeaders(
-      NextResponse.json(conversationPayload({ conversationId, data: nextData, currentEmail: ctx.email })),
+      NextResponse.json(await conversationPayload({ conversationId, data: nextData, currentEmail: ctx.email })),
       ctx
     );
   } catch (error) {

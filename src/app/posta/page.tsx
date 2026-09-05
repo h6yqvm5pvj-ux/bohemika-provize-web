@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Archive,
@@ -45,6 +44,8 @@ import {
   useEffectiveUserEmail,
 } from "@/app/lib/useAdminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 import { MailboxChatComposer } from "./MailboxChatComposer";
 import { MailboxChatThread } from "./MailboxChatThread";
 import { MailboxGroupManager } from "./MailboxGroupManager";
@@ -118,6 +119,7 @@ type MailboxChatListRow =
       key: string;
       counterpartName: string;
       counterpartEmail: string;
+      counterpartAvatar: string;
       latestItem: MailboxItem;
       items: MailboxItem[];
       unreadCount: number;
@@ -296,20 +298,25 @@ const mailboxParticipants = (item: MailboxItem): RecipientOption[] => {
       typeof row.name === "string" && row.name.trim()
         ? row.name.trim()
         : nameFromEmail(email);
-    byEmail.set(email, { email, name });
+    byEmail.set(email, {
+      email,
+      name,
+      profileAvatar: normalizeProfileAvatar(row.profileAvatar),
+    });
   });
   return [...byEmail.values()];
 };
 
 const directMessageCounterpart = (
   item: MailboxItem
-): { email: string; name: string } => {
+): { email: string; name: string; profileAvatar: string } => {
   if (isGroupMailboxItem(item)) {
     const participants = mailboxParticipants(item);
     const groupName = mailboxMetadataText(item, "groupName");
     return {
       email: pluralCount(participants.length, "účastník", "účastníci", "účastníků"),
       name: groupName || "Skupinová konverzace",
+      profileAvatar: "",
     };
   }
   const sent = isSentMailboxItem(item);
@@ -323,6 +330,9 @@ const directMessageCounterpart = (
   return {
     email,
     name: storedName || (email ? nameFromEmail(email) : "Uživatel"),
+    profileAvatar: normalizeProfileAvatar(
+      item.metadata?.[sent ? "recipientAvatar" : "senderAvatar"]
+    ),
   };
 };
 
@@ -380,6 +390,7 @@ const buildMailboxChatListRows = (
       key,
       counterpartName: counterpart.name,
       counterpartEmail: counterpart.email,
+      counterpartAvatar: counterpart.profileAvatar,
       latestItem,
       items: visibleThread,
       unreadCount: visibleThread.filter(
@@ -991,14 +1002,18 @@ export default function PostaPage() {
 
         const rows = Array.isArray(payload?.users) ? payload.users : [];
         const nextSuggestions = rows
-          .map((row) => {
+          .map((row): RecipientOption | null => {
             const email = normalizeEmail(row.email);
             if (!email) return null;
             const name =
               typeof row.name === "string" && row.name.trim().length > 0
                 ? row.name.trim()
                 : nameFromEmail(email);
-            return { email, name } satisfies RecipientOption;
+            return {
+              email,
+              name,
+              profileAvatar: normalizeProfileAvatar(row.profileAvatar),
+            } satisfies RecipientOption;
           })
           .filter((row): row is RecipientOption => row !== null);
         composeSearchCacheRef.current.set(cacheKey, nextSuggestions);
@@ -2098,12 +2113,12 @@ export default function PostaPage() {
               {groupConversation ? (
                 <UsersRound className="h-5 w-5" />
               ) : (
-                <Image
-                  src="/icons/klient.webp"
-                  alt="Ikona uživatele"
-                  fill
+                <ProfileAvatar
+                  src={row.counterpartAvatar}
+                  name={row.counterpartName}
+                  className="h-full w-full rounded-2xl text-[2.75rem]"
+                  fallbackClassName="bg-sky-100 text-sky-700"
                   sizes="44px"
-                  className="object-cover"
                 />
               )}
             </span>
@@ -3091,15 +3106,13 @@ export default function PostaPage() {
         ) : null}
 
         <div className="flex items-start gap-3">
-          <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-white shadow-inner ring-1 ring-slate-200">
-            <Image
-              src="/icons/klient.webp"
-              alt="Ikona uživatele"
-              fill
-              sizes="44px"
-              className="object-cover"
-            />
-          </span>
+          <ProfileAvatar
+            src={mailboxMetadataText(standardDirectPreviewItem, "senderAvatar")}
+            name={standardDirectSenderName}
+            className="h-11 w-11 rounded-2xl text-[2.75rem] shadow-inner ring-1 ring-slate-200"
+            fallbackClassName="bg-sky-100 text-sky-700"
+            sizes="44px"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
               <p className="min-w-0 truncate text-sm font-bold text-slate-950 sm:text-base">
@@ -3419,7 +3432,13 @@ export default function PostaPage() {
                                 <UsersRound className="h-5 w-5" />
                               ) : (
                                 <>
-                                  <Image src="/icons/klient.webp" alt="Ikona uživatele" fill sizes="44px" className="object-cover" />
+                                  <ProfileAvatar
+                                    src={standardDirectCounterpart?.profileAvatar}
+                                    name={standardDirectCounterpart?.name}
+                                    className="h-full w-full rounded-2xl text-[2.75rem]"
+                                    fallbackClassName="bg-sky-100 text-sky-700"
+                                    sizes="44px"
+                                  />
                                   <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white ${chatPresence.online ? "bg-emerald-500" : "bg-slate-300"}`} />
                                 </>
                               )}
@@ -4058,12 +4077,22 @@ export default function PostaPage() {
                             disabled={composeGroupMode && composeSelectedRecipients.some((recipient) => recipient.email === option.email)}
                             className="flex w-full items-start justify-between rounded-xl px-3 py-2 text-left transition hover:bg-slate-50"
                           >
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-semibold text-slate-900">
-                                {option.name}
-                              </span>
-                              <span className="block truncate text-xs text-slate-500">
-                                {option.email}
+                            <span className="flex min-w-0 items-center gap-2.5">
+                              <ProfileAvatar
+                                src={option.profileAvatar}
+                                name={option.name}
+                                alt=""
+                                className="h-9 w-9 rounded-xl text-4xl ring-1 ring-slate-200"
+                                fallbackClassName="bg-violet-100 text-violet-700"
+                                sizes="36px"
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-semibold text-slate-900">
+                                  {option.name}
+                                </span>
+                                <span className="block truncate text-xs text-slate-500">
+                                  {option.email}
+                                </span>
                               </span>
                             </span>
                             <span className="ml-2 shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
@@ -4183,7 +4212,13 @@ export default function PostaPage() {
                           {isGroupMailboxItem(standardDirectPreviewItem) ? (
                             <UsersRound className="h-4 w-4" />
                           ) : (
-                            <Image src="/icons/klient.webp" alt="" fill sizes="32px" className="object-cover" />
+                            <ProfileAvatar
+                              src={standardDirectCounterpart?.profileAvatar}
+                              name={standardDirectCounterpart?.name}
+                              alt=""
+                              className="h-full w-full rounded-xl text-[2rem]"
+                              sizes="32px"
+                            />
                           )}
                         </span>
                         <span className="min-w-0">
