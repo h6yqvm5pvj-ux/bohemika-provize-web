@@ -1,0 +1,81 @@
+.shell { container-type: inline-size; position: relative; color: #211a30; }
+.car { position: absolute; top: 49%; left: 50%; width: 111%; max-width: none; height: auto; transform: translate(-50%, -47%); }
+.searchForm { min-width: 0; }
+.searchLabel { display: block; margin-bottom: 9px; color: #40394f; font-size: 12px; font-weight: 650; }
+.searchRow { display: flex; align-items: stretch; gap: 10px; }
+.searchBox { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; padding: 6px 6px 6px 14px; border: 1px solid #ded9e9; border-radius: 14px; background: white; transition: border-color .2s, box-shadow .2s; }
+.searchBox:focus-within { border-color: #a17ace; box-shadow: 0 0 0 4px #9866cf13; }
+.searchBox > svg { color: #9a8baa; flex-shrink: 0; }
+.searchBox input { flex: 1; min-width: 0; width: 100%; padding: 9px 0; border: 0; outline: none; color: #3c304c; background: transparent; font-size: 13px; font-weight: 550; letter-spacing: .025em; }
+.searchBox input::placeholder { font-weight: 400; letter-spacing: 0; color: #8c809b; }
+.submit { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 8px; min-height: 45px; padding: 0 13px; border: 1px solid #7441bc; border-radius: 10px; background: #8050c7; color: white; font-size: 12px; font-weight: 650; transition: background .2s; }
+.submit:hover:not(:disabled) { background: #6e3bb5; }
+.submit:disabled { cursor: not-allowed; background: #bba3d7; border-color: #bba3d7; }
+.searchForm button:focus-visible { outline: 3px solid #bd9be8; outline-offset: 3px; }
+.inputHint { margin-top: 10px; color: #82778e; font-size: 10px; line-height: 1.7; }
+.refineToggle { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; padding: 4px 0; border-radius: 4px; color: #877094; font-size: 11px; text-align: left; }
+.refineToggle:hover:not(:disabled) { color: #7044a6; }
+.refineToggle:disabled { opacity: .6; }
+.refineToggle svg { flex-shrink: 0; }
+.expanded { transform: rotate(90deg); }
+.mileageField { max-width: 330px; margin-top: 12px; }
+.mileageField label { display: block; margin-bottom: 8px; font-size: 11px; font-weight: 550; color: #655670; }
+.mileageField label > span { margin-left: 5px; color: #9989a6; font-size: 10px; font-weight: 400; }
+.mileageField > div { display: flex; align-items: center; padding: 0 12px; border: 1px solid #e5ddec; border-radius: 10px; background: #faf8fd; }
+.mileageField > div:focus-within { outline: 2px solid #d1b9ee; }
+.mileageField input { width: 100%; min-width: 0; padding: 11px 0; font-size: 13px; color: #4b3e59; border: 0; outline: none; background: transparent; }
+.mileageField > div > span, .mileageField p { font-size: 10px; color: #9785a5; }
+.mileageField p { margin-top: 7px; }
+.reset { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 18px; border: 1px solid #e2d9ec; border-radius: 13px; color: #867294; font-size: 12px; font-weight: 550; }
+.reset:hover:not(:disabled) { background: #faf7fd; color: #6d459c; }
+.reset:disabled { opacity: .5; cursor: not-allowed; }
+.compactHeader { display: flex; align-items: center; gap: 13px; padding: 24px 0 0; }
+.compactHeader > span { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #e7def8; border-radius: 14px; background: #f6f2fc; color: #8050c7; }
+.compactHeader h1 { color: #211a30; font-size: 24px; font-weight: 700; letter-spacing: -.035em; }
+.compactHeader p { margin-top: 3px; color: #8d839a; font-size: 12px; }
+.compactForm { padding-top: 6px; }
+.compactForm .searchBox input { font-size: 15px; }
+.notice { display: flex; align-items: flex-start; gap: 9px; margin-top: 14px; padding: 12px 14px; border: 1px solid #f2dfb8; border-radius: 12px; background: #fffbf4; color: #94662f; font-size: 12px; line-height: 1.7; }
+.notice svg { flex-shrink: 0; margin-top: 2px; }
+.overviewHeading { display: flex; align-items: center; justify-content: space-between; gap: 25px; padding: 5px 0; }
+.overviewHeading > div:first-child { min-width: 0; }
+.overviewHeading h2 { margin-top: 14px; color: #211a30; font-size: clamp(26px, 3.7cqi, 42px); font-weight: 720; line-height: 1.25; letter-spacing: -.045em; overflow-wrap: anywhere; }
+.overviewHeading h2, .notice { scroll-margin-top: 28px; }
+.overviewHeading h2:focus, .notice:focus { outline: none; }
+.overviewHeading p { margin-top: 9px; color: #8a7b98; font-size: 12px; }
+.resultCar { width: 190px; flex-shrink: 0; }
+.facts { margin-top: 18px; padding: 20px 0; border-top: 1px solid #eee8f5; border-bottom: 1px solid #eee8f5; }
+.identifier { overflow-wrap: anywhere; word-break: break-word; }
+
+@container (max-width: 1000px) {
+  .searchForm:not(.compactForm) .searchBox { flex-wrap: wrap; padding: 8px; gap: 3px 9px; }
+  .searchForm:not(.compactForm) .searchBox input { flex: initial; width: calc(100% - 32px); }
+  .searchForm:not(.compactForm) .submit { width: 100%; margin-top: 4px; }
+}
+@container (max-width: 690px) {
+  .car { width: 365px; top: 44%; transform: translate(-50%, -47%); }
+  .overviewHeading { gap: 8px; }
+  .resultCar { width: 125px; }
+  .compactHeader h1 { font-size: 22px; }
+  .compactForm .searchRow { flex-wrap: wrap; gap: 8px; }
+  .compactForm .reset { min-height: 35px; margin-left: auto; }
+  .searchBox input, .mileageField input, .compactForm .searchBox input { font-size: 16px; }
+}
+@container (max-width: 440px) {
+  .car { width: 340px; }
+  .searchBox { flex-wrap: wrap; padding: 8px; gap: 3px 9px; }
+  .searchBox input { flex: initial; width: calc(100% - 32px); }
+  .submit { width: 100%; margin-top: 4px; }
+  .compactForm .searchBox { flex-basis: 100%; }
+  .resultCar { width: 90px; }
+  .overviewHeading h2 { font-size: 25px; }
+}
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .shell :global(.vehicle-reveal) { animation: reveal 350ms ease-out backwards; }
+}
+:global(:root[data-motion="off"]) .shell :global(.vehicle-reveal) { animation: none; }

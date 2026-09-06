@@ -1,55 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import type { LucideIcon } from "lucide-react";
-import {
-  Building2,
-  CalendarClock,
-  ExternalLink,
-  Home,
-  Landmark,
-  Loader2,
-  Map,
-  MapPin,
-  Ruler,
-  Search,
-  Sparkles,
-  UserRound,
-  X,
-} from "lucide-react";
+import { ArrowRight, Loader2, MapPin, RefreshCw, Search, SearchX, WifiOff, X } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
-import { ColorButton } from "@/components/ColorButton";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { auth } from "../firebase";
-
-type RuianMatch = {
-  kod: number;
-  adresa: string;
-  psc?: number;
-  cislodomovni?: number;
-  cisloorientacni?: number;
-  cisloorientacnipismeno?: string;
-  stavebniobjekt?: number | null; // ✅ doplněno
-};
-
-type ParcelRow = {
-  id?: number | string;
-  parcela?: string;
-  vymeraM2?: number;
-  druh?: string;
-  katUzemi?: string;
-  lv?: string | number;
-  typParcely?: string;
-};
+import { CuzkIntro } from "./CuzkIntro";
+import { CuzkLoader } from "./CuzkLoader";
+import { CuzkResults } from "./CuzkResults";
+import { CuzkAddressList, type RuianMatch } from "./CuzkAddressList";
+import searchStyles from "./cuzkSearch.module.css";
+import type { ParcelRow, DateInsight } from "./cuzkResultData";
+import resultStyles from "./cuzkResults.module.css";
+import introStyles from "@/components/tools/toolIntro.module.css";
 
 type CuzkSearchApiSuccess = {
   ok: true;
   data?: unknown;
   resolvedAddress?: string;
   suggestions?: RuianMatch[];
+  matches?: RuianMatch[];
 };
 
 type CuzkSearchApiError = {
@@ -75,10 +47,14 @@ function readCuzkApiError(payload: unknown, fallback: string): string {
 
 async function callCuzkSearchApi(
   user: FirebaseUser,
-  params: Record<string, string>
+  params: Record<string, string>,
+  signal?: AbortSignal
 ): Promise<CuzkSearchApiSuccess> {
   const searchParams = new URLSearchParams(params);
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
   const timer = window.setTimeout(
     () => controller.abort(),
     CUZK_CLIENT_TIMEOUT_MS
@@ -92,6 +68,7 @@ async function callCuzkSearchApi(
       signal: controller.signal,
     });
   } catch (err: any) {
+    if (signal?.aborted) throw err;
     if (err?.name === "AbortError") {
       throw new Error(
         "ČÚZK odpovídá příliš dlouho. Zkus dotaz znovu, případně vyber přesnou adresu z našeptávače."
@@ -100,6 +77,7 @@ async function callCuzkSearchApi(
     throw err;
   } finally {
     window.clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
 
   if (payload && typeof payload === "object" && (payload as CuzkSearchApiSuccess).ok) {
@@ -122,14 +100,6 @@ function safeNum(v: any): number | undefined {
   if (v === null || v === undefined || v === "") return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
-}
-
-function formatEpochMsCs(v: any): string {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
-  const d = new Date(n);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("cs-CZ");
 }
 
 function parseDateCandidate(value: any): Date | null {
@@ -173,37 +143,6 @@ function wholeDaysBetween(from: Date, to: Date): number {
   const fromUtc = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
   const toUtc = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
   return Math.floor((toUtc - fromUtc) / (24 * 60 * 60 * 1000));
-}
-
-function formatDateCs(value: Date): string {
-  return value.toLocaleDateString("cs-CZ");
-}
-
-function relativeDateLabel(value: Date): string {
-  const diffDays = wholeDaysBetween(value, new Date());
-  if (diffDays === 0) return "dnes";
-  if (diffDays > 0) return `před ${diffDays} dny`;
-  return `za ${Math.abs(diffDays)} dní`;
-}
-
-type DateInsightTone = "fresh" | "normal" | "warning";
-type DateInsight = {
-  key: string;
-  label: string;
-  date: Date;
-  hint: string;
-  tone: DateInsightTone;
-};
-
-function dateInsightToneClass(tone: DateInsightTone): string {
-  switch (tone) {
-    case "fresh":
-      return "border-fuchsia-200 bg-fuchsia-50/70";
-    case "warning":
-      return "border-amber-200 bg-amber-50/70";
-    default:
-      return "border-slate-200 bg-slate-50/50";
-  }
 }
 
 function formatParcelaFromDef(p: any): string | undefined {
@@ -343,289 +282,6 @@ function extractAdresniMista(obj: any): { adresa: string; ruian?: number }[] {
   });
 }
 
-function Field({
-  label,
-  value,
-  right,
-}: {
-  label: string;
-  value: React.ReactNode;
-  right?: React.ReactNode;
-}) {
-  return (
-    <div className="px-1 py-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
-          <div className="text-sm font-semibold text-slate-900">{value}</div>
-        </div>
-        {right ? <div className="text-[11px] font-medium text-slate-500">{right}</div> : null}
-      </div>
-    </div>
-  );
-}
-
-function SummaryPill({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(15,23,42,0.04)]">
-      <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-        <Icon className="h-3.5 w-3.5 opacity-80" />
-        <span>{label}</span>
-      </div>
-      <div className="mt-1 text-sm font-semibold text-slate-900 break-words">{value}</div>
-    </div>
-  );
-}
-
-const CUZK_LOADING_PHASES = [
-  "Načítám adresu z RÚIAN",
-  "Ověřuji stavební objekt",
-  "Stahuji parcely a jednotky",
-  "Skládám přehled nemovitosti",
-] as const;
-
-function CuzkLookupLoadingState({
-  phaseIndex,
-  progress,
-  query,
-}: {
-  phaseIndex: number;
-  progress: number;
-  query: string;
-}) {
-  const safePhaseIndex = Math.max(0, Math.min(phaseIndex, CUZK_LOADING_PHASES.length - 1));
-  const progressPct = Math.max(0, Math.min(99, Math.round(progress)));
-  const phase = CUZK_LOADING_PHASES[safePhaseIndex];
-  const queryLabel = query.trim() ? query.trim() : "vybranou adresu";
-
-  return (
-    <>
-      <section className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)]">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_36%,#fdf4ff_36%,#fff7fb_56%,#ffffff_56%,#ffffff_100%)]" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#c026d3_56%,#f472b6_100%)]" />
-
-        <div className="relative grid min-h-[390px] gap-8 px-7 py-8 sm:px-10 sm:py-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
-          <div className="min-w-0">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-700 shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
-              <Home className="h-3.5 w-3.5" />
-              Katastr
-            </div>
-
-            <div className="mt-8 flex items-end gap-2">
-              <span className="text-[92px] font-black leading-[0.82] tracking-tight text-black sm:text-[122px]">
-                {progressPct}
-              </span>
-              <span className="pb-2 text-4xl font-black leading-none text-fuchsia-700 sm:text-5xl">
-                %
-              </span>
-            </div>
-
-            <div className="mt-7 space-y-2">
-              <h2 className="text-3xl font-black leading-tight tracking-tight text-black sm:text-4xl">
-                Prověřuji nemovitost
-              </h2>
-              <p className="min-h-[28px] text-base font-bold text-slate-500 sm:text-lg">
-                {phase}
-              </p>
-              <p className="text-sm font-semibold text-slate-400">
-                Dotaz: <span className="text-slate-600">{queryLabel}</span>
-              </p>
-            </div>
-
-            <div className="mt-8 max-w-md">
-              <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100 shadow-inner">
-                <div
-                  className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#c026d3_62%,#f472b6_100%)] transition-[width] duration-300 ease-out"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-              <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(192,38,211,0.34),rgba(2,6,23,0))]" />
-            </div>
-          </div>
-
-          <div className="relative flex min-h-[270px] items-center justify-center overflow-hidden px-5 py-8">
-            <div className="absolute inset-0 opacity-[0.32] [background-image:linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:34px_34px]" />
-            <div className="absolute inset-x-10 bottom-10 h-4 rounded-full bg-slate-950/10 blur-md" />
-
-            <div className="relative h-[245px] w-full max-w-[540px]">
-              <svg
-                viewBox="0 0 540 260"
-                className="absolute inset-0 h-full w-full overflow-visible"
-                aria-hidden="true"
-              >
-                <defs>
-                  <linearGradient id="cuzk-loader-roof" x1="102" y1="84" x2="432" y2="84" gradientUnits="userSpaceOnUse">
-                    <stop offset="0" stopColor="#020617" />
-                    <stop offset="0.58" stopColor="#111827" />
-                    <stop offset="1" stopColor="#020617" />
-                  </linearGradient>
-                  <linearGradient id="cuzk-loader-wall" x1="118" y1="122" x2="422" y2="224" gradientUnits="userSpaceOnUse">
-                    <stop offset="0" stopColor="#ffffff" />
-                    <stop offset="1" stopColor="#eef2f7" />
-                  </linearGradient>
-                  <linearGradient id="cuzk-loader-window" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stopColor="#fae8ff" />
-                    <stop offset="1" stopColor="#ffffff" />
-                  </linearGradient>
-                  <filter id="cuzk-loader-house-shadow" x="-8%" y="-20%" width="116%" height="150%">
-                    <feDropShadow dx="0" dy="20" stdDeviation="18" floodColor="#020617" floodOpacity="0.18" />
-                  </filter>
-                  <filter id="cuzk-loader-fuchsia-glow" x="-80%" y="-80%" width="260%" height="260%">
-                    <feGaussianBlur stdDeviation="6" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-
-                <ellipse cx="270" cy="231" rx="202" ry="16" fill="#020617" opacity="0.1" />
-                <g filter="url(#cuzk-loader-house-shadow)">
-                  <path
-                    d="M92 121 270 34l178 87H92Z"
-                    fill="url(#cuzk-loader-roof)"
-                  />
-                  <path
-                    d="M123 116h294v101c0 12-10 22-22 22H145c-12 0-22-10-22-22V116Z"
-                    fill="url(#cuzk-loader-wall)"
-                    stroke="#cbd5e1"
-                    strokeWidth="3"
-                  />
-                  <path
-                    d="M270 34 92 121h356L270 34Z"
-                    fill="none"
-                    stroke="#ffffff"
-                    strokeOpacity="0.22"
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <rect x="163" y="143" width="62" height="52" rx="12" fill="url(#cuzk-loader-window)" stroke="#cbd5e1" strokeWidth="3" />
-                  <rect x="315" y="143" width="62" height="52" rx="12" fill="url(#cuzk-loader-window)" stroke="#cbd5e1" strokeWidth="3" />
-                  <path d="M194 143v52M163 169h62M346 143v52M315 169h62" stroke="#f5d0fe" strokeWidth="3" strokeLinecap="round" />
-                  <path
-                    d="M243 239v-69c0-9 7-16 16-16h22c9 0 16 7 16 16v69h-54Z"
-                    fill="#020617"
-                  />
-                  <circle cx="284" cy="198" r="4" fill="#d946ef" filter="url(#cuzk-loader-fuchsia-glow)" />
-                  <rect x="129" y="116" width="282" height="9" rx="4.5" fill="#d946ef" opacity="0.88" filter="url(#cuzk-loader-fuchsia-glow)" />
-                  <path
-                    d="M110 122 270 43l160 79"
-                    fill="none"
-                    stroke="#020617"
-                    strokeOpacity="0.18"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </g>
-              </svg>
-
-              <div className="cuzk-house-lens absolute top-1/2 z-10 flex h-28 w-28 items-center justify-center rounded-full border border-fuchsia-300/80 bg-white/68 shadow-[0_22px_50px_rgba(217,70,239,0.2)] backdrop-blur-md">
-                <Search className="h-11 w-11 text-fuchsia-700" strokeWidth={2.6} />
-                <span className="absolute -bottom-8 right-2 h-12 w-4 rotate-[-38deg] rounded-full bg-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.24)]" />
-              </div>
-
-              <div className="cuzk-house-beam absolute top-[8%] z-[9] h-[80%] w-[2px] rounded-full bg-fuchsia-600 shadow-[0_0_18px_rgba(217,70,239,0.72),0_0_42px_rgba(244,114,182,0.45)]" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <style jsx global>{`
-        @keyframes cuzk-house-lens-move {
-          0% {
-            left: 11%;
-            transform: translate3d(0, -50%, 0) rotate(-8deg) scale(0.98);
-          }
-          42% {
-            left: 50%;
-            transform: translate3d(-50%, -50%, 0) rotate(2deg) scale(1.03);
-          }
-          74% {
-            left: 76%;
-            transform: translate3d(-50%, -50%, 0) rotate(-4deg) scale(1);
-          }
-          100% {
-            left: 11%;
-            transform: translate3d(0, -50%, 0) rotate(-8deg) scale(0.98);
-          }
-        }
-
-        @keyframes cuzk-house-beam-move {
-          0% {
-            left: 14%;
-            opacity: 0.3;
-          }
-          42% {
-            left: 50%;
-            opacity: 0.95;
-          }
-          74% {
-            left: 78%;
-            opacity: 0.65;
-          }
-          100% {
-            left: 14%;
-            opacity: 0.3;
-          }
-        }
-
-        .cuzk-house-lens {
-          left: 50%;
-          transform: translate3d(-50%, -50%, 0);
-          animation: cuzk-house-lens-move 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-        }
-
-        .cuzk-house-beam {
-          left: 50%;
-          animation: cuzk-house-beam-move 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-        }
-
-        :root[data-motion="off"] .cuzk-house-lens {
-          left: 50% !important;
-          animation: none !important;
-          opacity: 1 !important;
-          transform: translate3d(-50%, -50%, 0) !important;
-          filter: none !important;
-        }
-
-        :root[data-motion="off"] .cuzk-house-beam {
-          left: 50% !important;
-          animation: none !important;
-          opacity: 0.8 !important;
-          filter: none !important;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .cuzk-house-lens {
-            left: 50% !important;
-            animation: none !important;
-            opacity: 1 !important;
-            transform: translate3d(-50%, -50%, 0) !important;
-            filter: none !important;
-          }
-
-          .cuzk-house-beam {
-            left: 50% !important;
-            animation: none !important;
-            opacity: 0.8 !important;
-            filter: none !important;
-          }
-        }
-      `}</style>
-    </>
-  );
-}
-
 export default function CuzkPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
 
@@ -635,25 +291,27 @@ export default function CuzkPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [matches, setMatches] = useState<RuianMatch[]>([]);
-  const [selectedKod, setSelectedKod] = useState<number | null>(null);
   const [result, setResult] = useState<unknown>(null);
   const [searchActivated, setSearchActivated] = useState(false);
-  const [loadingPhaseIndex, setLoadingPhaseIndex] = useState(0);
-  const [loadingProgress, setLoadingProgress] = useState(0);
 
-  // našeptávač
   const [suggestions, setSuggestions] = useState<RuianMatch[]>([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState(false);
+  const [suggestRetry, setSuggestRetry] = useState(0);
   const [activeIdx, setActiveIdx] = useState(-1);
   const suggestWrapRef = useRef<HTMLDivElement | null>(null);
   const suggestReqSeq = useRef(0);
+  const suggestAbortRef = useRef<AbortController | null>(null);
+  const suggestCacheRef = useRef(new Map<string, { matches: RuianMatch[]; expiresAt: number }>());
+  const suggestDismissedRef = useRef(false);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
   const suppressSuggestRef = useRef(false);
   const autoLookupAddressRef = useRef<string | null>(null);
+  const lookupInProgressRef = useRef(false);
+  const lookupAbortRef = useRef<AbortController | null>(null);
   const resultScrollTargetRef = useRef<HTMLDivElement | null>(null);
-
-  const [showJson, setShowJson] = useState(false);
-  const [gmapsEmbedError, setGmapsEmbedError] = useState<string | null>(null);
+  const searchPanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
@@ -661,275 +319,173 @@ export default function CuzkPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const raw = params.get("address") ?? params.get("q") ?? "";
-    const normalized = String(raw ?? "").trim();
+    const normalized = normalizeSpaces(params.get("address") ?? params.get("q") ?? "");
     setAddressFromQuery(normalized);
+    setAddressQuery(normalized);
+    return () => { suggestAbortRef.current?.abort(); lookupAbortRef.current?.abort(); };
   }, []);
 
   useEffect(() => {
-    if (!addressFromQuery) return;
-    setAddressQuery((prev) => (prev === addressFromQuery ? prev : addressFromQuery));
-  }, [addressFromQuery]);
-
-  useEffect(() => {
-    if (!loading) {
-      const resetFrame = window.requestAnimationFrame(() => {
-        setLoadingPhaseIndex(0);
-        setLoadingProgress(0);
-      });
-      return () => window.cancelAnimationFrame(resetFrame);
-    }
-
-    setLoadingPhaseIndex(0);
-    setLoadingProgress(7);
-
-    const phaseInterval = window.setInterval(() => {
-      setLoadingPhaseIndex((current) => (current + 1) % CUZK_LOADING_PHASES.length);
-    }, 1200);
-    const progressInterval = window.setInterval(() => {
-      setLoadingProgress((current) => {
-        if (current < 34) return Math.min(current + 5, 34);
-        if (current < 68) return Math.min(current + 3, 68);
-        if (current < 92) return Math.min(current + 2, 92);
-        return Math.min(current + 1, 97);
-      });
-    }, 170);
-
-    return () => {
-      window.clearInterval(phaseInterval);
-      window.clearInterval(progressInterval);
-    };
-  }, [loading]);
-
-  useEffect(() => {
-    if (!searchActivated || loading || typeof window === "undefined") return;
+    if (!searchActivated || (!loading && !result && !matches.length && !error)) return;
     const frame = window.requestAnimationFrame(() => {
-      resultScrollTargetRef.current?.scrollIntoView({
-        behavior: "smooth",
+      const target = !loading && (matches.length > 0 || error) ? searchPanelRef.current : resultScrollTargetRef.current;
+      target?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off" ? "auto" : "smooth",
         block: "start",
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [loading, searchActivated]);
+  }, [loading, searchActivated, matches.length, error, result]);
 
-  const canSearch = useMemo(() => !!user && addressQuery.trim().length >= 2, [user, addressQuery]);
+  const canSearch = !!user && normalizeSpaces(addressQuery).length >= 2;
+
+  const dismissSuggestions = () => {
+    suggestDismissedRef.current = true;
+    setSuggestOpen(false);
+    setActiveIdx(-1);
+  };
+
+  const changeAddress = (value: string) => {
+    ++suggestReqSeq.current;
+    suggestAbortRef.current?.abort();
+    suppressSuggestRef.current = false;
+    suggestDismissedRef.current = false;
+    setAddressQuery(value);
+    setSuggestions([]);
+    setSuggestError(false);
+    setActiveIdx(-1);
+    setMatches([]);
+    setError(null);
+  };
 
   const clearAll = () => {
-    setError(null);
+    changeAddress("");
     setResult(null);
-    setMatches([]);
-    setSelectedKod(null);
     setSearchActivated(false);
-
-    setSuggestions([]);
     setSuggestOpen(false);
     setSuggestLoading(false);
-    setActiveIdx(-1);
-
-    setShowJson(false);
-    setGmapsEmbedError(null);
+    window.requestAnimationFrame(() => addressInputRef.current?.focus());
   };
 
   useEffect(() => {
-    if (!user) {
-      setSuggestions([]);
-      setSuggestOpen(false);
-      setSuggestLoading(false);
-      setActiveIdx(-1);
-      return;
-    }
-
-    const typed = normalizeSpaces(addressQuery);
-    if (typed.length < 2) {
-      setSuggestions([]);
-      setSuggestOpen(false);
-      setSuggestLoading(false);
-      setActiveIdx(-1);
-      return;
-    }
-
-    if (suppressSuggestRef.current) {
-      setSuggestions([]);
-      setSuggestOpen(false);
-      setSuggestLoading(false);
-      setActiveIdx(-1);
-      suppressSuggestRef.current = false;
-      return;
-    }
-
     const mySeq = ++suggestReqSeq.current;
-
-    const t = setTimeout(async () => {
+    const typed = normalizeSpaces(addressQuery);
+    setSuggestions([]);
+    setSuggestError(false);
+    setActiveIdx(-1);
+    if (!user || loading || typed.length < 2 || suppressSuggestRef.current) {
+      setSuggestOpen(false);
+      setSuggestLoading(false);
+      return;
+    }
+    const cacheKey = `${user.uid}:${typed.toLocaleLowerCase("cs-CZ")}`;
+    const cached = suggestCacheRef.current.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      setSuggestions(cached.matches);
+      setSuggestLoading(false);
+      setSuggestOpen(!suggestDismissedRef.current);
+      return;
+    }
+    const controller = new AbortController();
+    suggestAbortRef.current = controller;
+    setSuggestLoading(true);
+    setSuggestOpen(!suggestDismissedRef.current);
+    const timer = setTimeout(async () => {
       try {
-        setSuggestLoading(true);
-        setSuggestOpen(true);
-        const payload = await callCuzkSearchApi(user, {
-          action: "suggest",
-          q: typed,
-        });
+        const payload = await callCuzkSearchApi(user, { action: "suggest", q: typed }, controller.signal);
+        if (controller.signal.aborted || mySeq !== suggestReqSeq.current) return;
         const list = Array.isArray(payload.suggestions) ? payload.suggestions : [];
-
-        if (mySeq !== suggestReqSeq.current) return;
+        const cache = suggestCacheRef.current;
+        if (cache.size >= 30) cache.delete(cache.keys().next().value!);
+        cache.set(cacheKey, { matches: list, expiresAt: Date.now() + 45_000 });
         setSuggestions(list);
-        setActiveIdx(-1);
-        setSuggestOpen(list.length > 0);
+        setSuggestOpen(!suggestDismissedRef.current);
       } catch {
-        if (mySeq !== suggestReqSeq.current) return;
+        if (controller.signal.aborted || mySeq !== suggestReqSeq.current) return;
         setSuggestions([]);
-        setSuggestOpen(false);
-        setActiveIdx(-1);
+        setSuggestError(true);
+        setSuggestOpen(!suggestDismissedRef.current);
       } finally {
-        if (mySeq !== suggestReqSeq.current) return;
-        setSuggestLoading(false);
+        if (!controller.signal.aborted && mySeq === suggestReqSeq.current) setSuggestLoading(false);
       }
-    }, 250);
-
-    return () => clearTimeout(t);
-  }, [addressQuery, user]);
+    }, 220);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [addressQuery, user, loading, suggestRetry]);
 
   useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      const el = suggestWrapRef.current;
-      if (!el) return;
-      if (!el.contains(e.target as Node)) {
+    const onDown = (event: PointerEvent) => {
+      if (!suggestWrapRef.current?.contains(event.target as Node)) {
+        suggestDismissedRef.current = true;
         setSuggestOpen(false);
         setActiveIdx(-1);
       }
     };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
   }, []);
 
-  const pickSuggestion = (m: RuianMatch) => {
+  useEffect(() => {
+    if (suggestOpen && activeIdx >= 0) document.getElementById(`cuzk-suggestion-${activeIdx}`)?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx, suggestOpen]);
+
+  const runLookup = useCallback(async (query: string, kod?: number) => {
+    if (!user || lookupInProgressRef.current) return;
+    const q = normalizeSpaces(query);
+    if (q.length < 2) return;
+    lookupInProgressRef.current = true;
+    const controller = new AbortController();
+    lookupAbortRef.current = controller;
+    suggestAbortRef.current?.abort();
+    ++suggestReqSeq.current;
     suppressSuggestRef.current = true;
-    setAddressQuery(m.adresa);
-    const k = Number(m.kod);
-    setSelectedKod(Number.isFinite(k) && k > 0 ? k : null);
-
-    setSuggestions([]);
+    suggestDismissedRef.current = true;
     setSuggestOpen(false);
-    setActiveIdx(-1);
-    setMatches([]);
-  };
-
-  const handleSearchAddress = useCallback(async () => {
-    if (!user) {
-      setError("Nejsi přihlášený.");
-      return;
-    }
-    const q = addressQuery.trim();
-    if (q.length < 2) {
-      setError("Zadej prosím adresu (aspoň pár znaků). Např. „Dlouhá 12, Praha“.");
-      return;
-    }
-
+    setSuggestLoading(false);
+    setAddressQuery(q);
     setSearchActivated(true);
     setLoading(true);
     setError(null);
     setResult(null);
     setMatches([]);
-    setShowJson(false);
-    setGmapsEmbedError(null);
-
     try {
-      const payload =
-        selectedKod && Number.isFinite(selectedKod) && selectedKod > 0
-          ? await callCuzkSearchApi(user, {
-              action: "detail",
-              kod: String(selectedKod),
-              includeUnits: "1",
-            })
-          : await callCuzkSearchApi(user, {
-              action: "search",
-              q,
-              includeUnits: "1",
-            });
-      const data = payload.data ?? null;
-      const resolvedAddress = payload.resolvedAddress;
-      if (resolvedAddress) {
-        suppressSuggestRef.current = true;
-        setAddressQuery(resolvedAddress);
+      const payload = await callCuzkSearchApi(user, kod && Number.isInteger(kod) && kod > 0
+        ? { action: "detail", kod: String(kod), includeUnits: "1" }
+        : { action: "search", q, includeUnits: "1" }, controller.signal);
+      if (controller.signal.aborted) return;
+      const data = payload.data as { mode?: string; matches?: RuianMatch[]; match?: { adresa?: string } } | null | undefined;
+      const foundMatches = payload.matches ?? (data?.mode === "MULTI_MATCH" ? data.matches : undefined);
+      if (Array.isArray(foundMatches) && foundMatches.length) {
+        setMatches(foundMatches);
+      } else {
+        const resolvedAddress = payload.resolvedAddress ?? data?.match?.adresa;
+        if (resolvedAddress) setAddressQuery(resolvedAddress);
+        setResult(payload.data ?? null);
       }
-      setSelectedKod(null);
-      setResult(data);
-    } catch (e: any) {
-      setError(String(e?.message ?? "Nepodařilo se načíst data."));
+    } catch (err) {
+      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Nepodařilo se načíst nemovitost.");
     } finally {
-      setLoading(false);
+      lookupInProgressRef.current = false;
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [addressQuery, selectedKod, user]);
+  }, [user]);
+
+  const handleSearchAddress = () => runLookup(addressQuery);
+  const pickSuggestion = (match: RuianMatch) => { void runLookup(match.adresa, match.kod); };
 
   useEffect(() => {
-    if (!user) return;
-    const query = addressFromQuery.trim();
-    if (query.length < 2) return;
-    const marker = query.toLowerCase();
+    if (!user || addressFromQuery.length < 2) return;
+    const marker = `${user.uid}:${addressFromQuery.toLocaleLowerCase("cs-CZ")}`;
     if (autoLookupAddressRef.current === marker) return;
     autoLookupAddressRef.current = marker;
-    setSearchActivated(true);
-    setSelectedKod(null);
-    setMatches([]);
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    setShowJson(false);
-    setGmapsEmbedError(null);
+    void runLookup(addressFromQuery);
+  }, [user, addressFromQuery, runLookup]);
 
-    void (async () => {
-      try {
-        const payload = await callCuzkSearchApi(user, {
-          action: "search",
-          q: query,
-          includeUnits: "1",
-        });
-        const data = payload.data ?? null;
-        const resolvedAddress = payload.resolvedAddress;
-        if (resolvedAddress) {
-          suppressSuggestRef.current = true;
-          setAddressQuery(resolvedAddress);
-        }
-        setResult(data);
-      } catch (e: any) {
-        setError(String(e?.message ?? "Nepodařilo se načíst data."));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [user, addressFromQuery]);
-
-  const handleLoadSelected = async () => {
-    if (!user) {
-      setError("Nejsi přihlášený.");
-      return;
-    }
-    if (!selectedKod || !Number.isFinite(selectedKod) || selectedKod <= 0) {
-      setError("Vyber prosím konkrétní adresu ze seznamu.");
-      return;
-    }
-
-    setSearchActivated(true);
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    setShowJson(false);
-    setGmapsEmbedError(null);
-
-    try {
-      const payload = await callCuzkSearchApi(user, {
-        action: "detail",
-        kod: String(selectedKod),
-        includeUnits: "1",
-      });
-      const data = payload.data ?? null;
-      setMatches([]);
-      setSelectedKod(null);
-      setResult(data);
-    } catch (e: any) {
-      setError(String(e?.message ?? "Nepodařilo se načíst detail."));
-    } finally {
-      setLoading(false);
+  const focusAddress = () => {
+    suggestDismissedRef.current = false;
+    if (normalizeSpaces(addressQuery).length >= 2) {
+      suppressSuggestRef.current = false;
+      setSuggestRetry(value => value + 1);
     }
   };
 
@@ -966,7 +522,7 @@ export default function CuzkPage() {
   const stavba = obj?.stavba ?? null;
   const ruianStavebniObjekt = obj?.ruianStavebniObjekt ?? null;
 
-  const jednotky = Array.isArray(obj?.jednotky) ? obj.jednotky : [];
+  const jednotky = Array.isArray(obj?.jednotky) ? obj.jednotky.filter((unit: unknown) => unit && typeof unit === "object" && !Array.isArray(unit)) : [];
   const parcels = useMemo(() => extractParcels(obj), [obj]);
   const adresniMista = useMemo(() => extractAdresniMista(obj), [obj]);
   const dateInsights = useMemo(() => {
@@ -1021,7 +577,6 @@ export default function CuzkPage() {
   const summaryBuildingCode = safeStr(
     ruianStavebniObjekt?.kod ?? obj?.match?.stavebniobjekt ?? stavba?.id
   );
-  const summaryOwner = safeStr(obj?.forUser ?? obj?.user ?? obj?.email);
 
   const marushkaUrl = useMemo(() => {
     // Maruška deep-link podle stavebního objektu (SO)
@@ -1044,874 +599,164 @@ export default function CuzkPage() {
     return `https://vdp.cuzk.gov.cz/marushka/?${params.toString()}`;
   }, [obj]);
 
+  const suggestionsVisible = !!user && suggestOpen && !loading && normalizeSpaces(addressQuery).length >= 2;
+  const handleAddressKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Escape" || event.key === "Tab") {
+      dismissSuggestions();
+      return;
+    }
+    if (suggestions.length && !suggestLoading && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      suggestDismissedRef.current = false;
+      setSuggestOpen(true);
+      setActiveIdx(index => event.key === "ArrowDown" ? (index + 1) % suggestions.length : (index <= 0 ? suggestions.length - 1 : index - 1));
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (suggestionsVisible && !suggestLoading && activeIdx >= 0 && suggestions[activeIdx]) pickSuggestion(suggestions[activeIdx]);
+      else if (canSearch && !loading) void handleSearchAddress();
+    }
+  };
+  const suggestionList = suggestionsVisible ? (
+    <div className={searchStyles.dropdown}>
+      <div className={searchStyles.heading}><span>{suggestions.length && !suggestLoading ? `Nalezené adresy · ${suggestions.length}` : "Hledání adresy"}</span><span>RÚIAN</span></div>
+      {suggestLoading ? <div className={searchStyles.message} role="status"><Loader2 size={16} className="motion-safe:animate-spin" aria-hidden="true" /><span>Hledám odpovídající adresy…</span></div>
+        : suggestError ? <div className={searchStyles.message} role="status"><WifiOff size={17} aria-hidden="true" /><div><strong>Našeptávač teď neodpovídá</strong>Zkus vyhledat celou adresu nebo nabídku obnovit.<br /><button type="button" className={searchStyles.retry} onClick={() => { focusAddress(); addressInputRef.current?.focus(); }}><RefreshCw size={12} aria-hidden="true" /> Zkusit znovu</button></div></div>
+        : suggestions.length === 0 ? <div className={searchStyles.message} role="status"><SearchX size={17} aria-hidden="true" /><div><strong>Pro tento dotaz nemáme návrhy</strong>Doplň obec nebo číslo domu. Celou adresu můžeš zkusit vyhledat tlačítkem Vyhledat.</div></div> : null}
+      <CuzkAddressList matches={suggestLoading ? [] : suggestions} query={addressQuery} activeIndex={activeIdx} onActive={setActiveIdx} onPick={pickSuggestion} />
+      {!suggestLoading && suggestions.length > 0 && <div className={searchStyles.footer}><span>Výběrem otevřeš nemovitost</span><span><kbd>↑ ↓</kbd> výběr · <kbd>Enter</kbd> otevřít</span></div>}
+    </div>
+  ) : null;
+
   const hasAnyResult = result !== null && !loading;
 
   return (
     <AppLayout active="tools">
-      <div className="cuzk-shell mx-auto w-full max-w-6xl space-y-6 pb-10">
-        <header className="cuzk-reveal px-1 pt-5 sm:pt-8">
-          <div className="mx-auto max-w-4xl text-center">
-            <div className="cuzk-float inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-5 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-fuchsia-700">
-              <Sparkles className="h-4 w-4" />
-              Oficiální data z registru ČÚZK
-            </div>
-            <h1 className="mt-5 text-5xl font-bold leading-[0.98] tracking-tight text-slate-900 sm:text-6xl md:text-7xl">
-              Katastr nemovitostí
-              <span className="block text-fuchsia-700">během vteřiny</span>
-            </h1>
-            <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-500 sm:text-base">
-              Vyhledej adresu, načti detail stavby, parcel a jednotek a pokračuj rovnou s klientem.
-            </p>
-          </div>
-        </header>
+      <div className="cuzk-shell mx-auto w-full max-w-6xl space-y-6 pb-10" data-search-active={searchActivated}>
+        {searchActivated && (
+          <header className={introStyles.resultHeader}>
+            <span><MapPin size={22} strokeWidth={1.7} /></span>
+            <div><h1>Katastr nemovitostí</h1><p>Údaje o stavbě, parcelách a jednotkách</p></div>
+          </header>
+        )}
 
-        {/* ✅ vždy NAD výsledkem (kvůli dropdownu) */}
         {!searchActivated ? (
-          <div className="cuzk-reveal mx-auto w-full max-w-3xl px-2 sm:px-4" style={{ animationDelay: "90ms" }}>
-            <section
-              ref={suggestWrapRef}
-              className="cuzk-glow relative isolate overflow-visible rounded-[30px] border border-slate-200 bg-white p-2 shadow-[0_14px_34px_rgba(15,23,42,0.08)]"
-            >
-              <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                <div className="relative flex min-w-0 flex-1 items-center gap-3 px-4 py-2">
-                  <Search className="h-8 w-8 text-slate-400" />
+          <CuzkIntro onExample={() => {
+            changeAddress("Tyršova 133, Kadaň");
+            addressInputRef.current?.focus();
+          }}>
+            <form className={introStyles.searchForm} role="search" aria-label="Vyhledání nemovitosti" onSubmit={event => { event.preventDefault(); if (canSearch && !loading) void handleSearchAddress(); }}>
+              <label htmlFor="cuzk-address" className={introStyles.searchLabel}>Adresa nemovitosti</label>
+              <div ref={suggestWrapRef} className={introStyles.searchBox}>
+                <Search size={18} className={introStyles.searchIcon} aria-hidden="true" />
+                <input
+                  ref={addressInputRef}
+                  id="cuzk-address"
+                  type="text"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={suggestionsVisible}
+                  aria-controls={suggestionsVisible ? "cuzk-suggestions" : undefined}
+                  aria-activedescendant={suggestionsVisible && !suggestLoading && activeIdx >= 0 ? `cuzk-suggestion-${activeIdx}` : undefined}
+                  autoComplete="off"
+                  enterKeyHint="search"
+                  spellCheck={false}
+                  value={addressQuery}
+                  onChange={event => changeAddress(event.target.value)}
+                  onFocus={focusAddress}
+                  onKeyDown={handleAddressKeyDown}
+                  className={introStyles.addressInput}
+                  placeholder="Ulice, číslo domu a obec"
+                />
+                <button type="submit" disabled={loading || !canSearch} className={introStyles.submit}>Vyhledat <ArrowRight size={16} aria-hidden="true" /></button>
+                {suggestionList}
+              </div>
+            </form>
+          </CuzkIntro>
+        ) : !loading ? (
+          <div className="cuzk-reveal" style={{ animationDelay: "90ms" }}>
+            <section ref={searchPanelRef} className={resultStyles.searchPanel} aria-label="Vyhledat další nemovitost">
+              <div className={resultStyles.searchRow}>
+                <div className={resultStyles.searchInputWrap} ref={suggestWrapRef}>
                   <input
                     type="text"
                     value={addressQuery}
-                    onChange={(e) => {
-                      suppressSuggestRef.current = false;
-                      setAddressQuery(e.target.value);
-                      setSelectedKod(null);
-                    }}
-                    onFocus={() => {
-                      if (suggestions.length) setSuggestOpen(true);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && canSearch && !loading) {
-                        e.preventDefault();
-                        void handleSearchAddress();
-                        return;
-                      }
-                      if (!suggestOpen || !suggestions.length) return;
-                      if (e.key === "ArrowDown") {
-                        e.preventDefault();
-                        setActiveIdx((i) => Math.min(i + 1, suggestions.length - 1));
-                      } else if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        setActiveIdx((i) => Math.max(i - 1, 0));
-                      } else if (e.key === "Enter") {
-                        if (activeIdx >= 0 && activeIdx < suggestions.length) {
-                          e.preventDefault();
-                          pickSuggestion(suggestions[activeIdx]);
-                        }
-                      } else if (e.key === "Escape") {
-                        setSuggestOpen(false);
-                        setActiveIdx(-1);
-                      }
-                    }}
-                    className="w-full border-none bg-transparent text-xl font-medium text-slate-900 placeholder:text-slate-400 outline-none"
-                    placeholder='např. "Tyršova 133, Kadaň"'
+                    onChange={event => changeAddress(event.target.value)}
+                    onFocus={focusAddress}
+                    onKeyDown={handleAddressKeyDown}
+                    ref={addressInputRef}
+                    id="cuzk-address"
+                    role="combobox"
+                    aria-label="Adresa nemovitosti"
+                    aria-autocomplete="list"
+                    aria-expanded={suggestionsVisible}
+                    aria-controls={suggestionsVisible ? "cuzk-suggestions" : undefined}
+                    aria-activedescendant={suggestionsVisible && !suggestLoading && activeIdx >= 0 ? `cuzk-suggestion-${activeIdx}` : undefined}
+                    autoComplete="off"
+                    enterKeyHint="search"
+                    spellCheck={false}
+                    className={resultStyles.searchInput}
+                    placeholder="Ulice, číslo domu a obec"
                   />
-
-                  {user && suggestOpen && (suggestLoading || suggestions.length > 0) && (
-                    <div className="absolute left-0 right-0 top-full z-[999] mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
-                      {suggestLoading && <div className="px-3 py-2 text-xs text-slate-600">Našeptávám…</div>}
-                      {!suggestLoading && suggestions.length > 0 && (
-                        <div className="max-h-72 overflow-auto">
-                          {suggestions.map((m, idx) => {
-                            const active = idx === activeIdx;
-                            return (
-                              <button
-                                key={`${m.kod}-${m.adresa}-${idx}`}
-                                type="button"
-                                onClick={() => pickSuggestion(m)}
-                                onMouseEnter={() => setActiveIdx(idx)}
-                                className={[
-                                  "w-full text-left px-3 py-2 transition",
-                                  "border-b border-slate-200 last:border-b-0",
-                                  active ? "bg-slate-100" : "bg-transparent hover:bg-slate-100",
-                                ].join(" ")}
-                              >
-                                <div className="text-sm text-slate-900">{m.adresa}</div>
-                                <div className="text-[11px] text-slate-500">
-                                  RÚIAN: <span className="text-slate-800">{m.kod ? m.kod : "—"}</span>
-                                  {m.psc ? (
-                                    <>
-                                      {" "}
-                                      • PSČ: <span className="text-slate-800">{m.psc}</span>
-                                    </>
-                                  ) : null}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {suggestionList}
                 </div>
-
-                <ColorButton
-                  onClick={() => void handleSearchAddress()}
-                  disabled={loading || !canSearch}
-                  size="hero"
-                  className="gap-3 shadow-[0_16px_36px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] active:scale-[0.99] disabled:opacity-60"
-                >
-                  {loading ? "Načítám..." : "Vyhledat"}
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
-                    {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <Search className="h-5 w-5" />}
-                  </span>
-                </ColorButton>
-              </div>
-            </section>
-          </div>
-        ) : (
-          <div className="cuzk-reveal mx-auto w-full max-w-3xl" style={{ animationDelay: "90ms" }}>
-            {/* Levý box: dotaz */}
-            <section className="cuzk-glow relative z-30 isolate overflow-visible rounded-[30px] border border-slate-200 bg-white px-5 py-5 space-y-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
-              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-fuchsia-500 to-pink-400" />
-              <div className="relative" ref={suggestWrapRef}>
-                <input
-                  type="text"
-                  value={addressQuery}
-                  onChange={(e) => {
-                    suppressSuggestRef.current = false;
-                    setAddressQuery(e.target.value);
-                    setSelectedKod(null);
-                  }}
-                  onFocus={() => {
-                    if (suggestions.length) setSuggestOpen(true);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && canSearch && !loading) {
-                      e.preventDefault();
-                      void handleSearchAddress();
-                      return;
-                    }
-                    if (!suggestOpen || !suggestions.length) return;
-
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      setActiveIdx((i) => Math.min(i + 1, suggestions.length - 1));
-                    } else if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      setActiveIdx((i) => Math.max(i - 1, 0));
-                    } else if (e.key === "Enter") {
-                      if (activeIdx >= 0 && activeIdx < suggestions.length) {
-                        e.preventDefault();
-                        pickSuggestion(suggestions[activeIdx]);
-                      }
-                    } else if (e.key === "Escape") {
-                      setSuggestOpen(false);
-                      setActiveIdx(-1);
-                    }
-                  }}
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-lg font-medium text-slate-900 outline-none transition focus:border-fuchsia-400 focus:ring-4 focus:ring-fuchsia-400/20"
-                  placeholder='např. "Tyršova 133, Kadaň"'
-                />
-
-                {user && suggestOpen && (suggestLoading || suggestions.length > 0) && (
-                  <div className="absolute z-[999] mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
-                    {suggestLoading && <div className="px-3 py-2 text-xs text-slate-600">Našeptávám…</div>}
-                    {!suggestLoading && suggestions.length > 0 && (
-                      <div className="max-h-72 overflow-auto">
-                        {suggestions.map((m, idx) => {
-                          const active = idx === activeIdx;
-                          return (
-                            <button
-                              key={`${m.kod}-${m.adresa}-${idx}`}
-                              type="button"
-                              onClick={() => pickSuggestion(m)}
-                              onMouseEnter={() => setActiveIdx(idx)}
-                              className={[
-                                "w-full text-left px-3 py-2 transition",
-                                "border-b border-slate-200 last:border-b-0",
-                                active ? "bg-slate-100" : "bg-transparent hover:bg-slate-100",
-                              ].join(" ")}
-                            >
-                              <div className="text-sm text-slate-900">{m.adresa}</div>
-                              <div className="text-[11px] text-slate-500">
-                                RÚIAN: <span className="text-slate-800">{m.kod ? m.kod : "—"}</span>
-                                {m.psc ? (
-                                  <>
-                                    {" "}
-                                    • PSČ: <span className="text-slate-800">{m.psc}</span>
-                                  </>
-                                ) : null}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <ColorButton
-                  onClick={handleSearchAddress}
-                  disabled={loading || !canSearch}
-                  size="lg"
-                  className="w-full gap-3 shadow-[0_14px_30px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] disabled:opacity-60"
-                >
-                  {loading ? "Načítám..." : "Vyhledat"}
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
-                    {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <Search className="h-5 w-5" />}
-                  </span>
-                </ColorButton>
-
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  disabled={loading || (result === null && matches.length === 0 && !error)}
-                  className="w-full inline-flex h-14 items-center justify-center gap-2 rounded-[18px] border border-slate-300 bg-white px-4 py-2 text-base font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <X className="h-4 w-4" />
-                  Vyčistit
-                </button>
+                <button type="button" onClick={() => void handleSearchAddress()} disabled={!canSearch} className={resultStyles.searchButton}><Search size={15} /> Vyhledat</button>
+                <button type="button" onClick={clearAll} className={resultStyles.resetButton}><X size={15} /> Vyčistit</button>
               </div>
 
               {error ? (
-                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-500/60 rounded-xl px-3 py-2">
+                <p className={resultStyles.searchError} role="alert">
                   {error}
                 </p>
               ) : null}
 
               {matches.length > 0 && (
-                <div className="rounded-2xl border border-slate-300 bg-white px-4 py-3 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-slate-900 font-semibold">Nalezeno více adres — vyber správnou:</p>
-                    <span className="text-[11px] text-slate-500">{matches.length} možností</span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {matches.map((m) => (
-                      <label
-                        key={m.kod}
-                        className="flex items-start gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 hover:bg-slate-100 transition cursor-pointer"
-                      >
-                        <input
-                          type="radio"
-                          name="ruian_match"
-                          checked={selectedKod === m.kod}
-                          onChange={() => setSelectedKod(m.kod)}
-                          className="mt-1 h-4 w-4"
-                        />
-                        <div className="space-y-0.5">
-                          <div className="text-sm text-slate-900">{m.adresa}</div>
-                          <div className="text-[11px] text-slate-500">
-                            RÚIAN kód: <span className="text-slate-800">{m.kod}</span>
-                            {m.psc ? (
-                              <>
-                                {" "}
-                                • PSČ: <span className="text-slate-800">{m.psc}</span>
-                              </>
-                            ) : null}
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={handleLoadSelected}
-                      disabled={loading || !user}
-                      className="inline-flex items-center gap-2 rounded-full border border-fuchsia-300 bg-fuchsia-50 px-6 py-2 text-sm font-semibold text-fuchsia-800 hover:border-fuchsia-400 hover:bg-fuchsia-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {loading ? "Načítám…" : "Načíst vybranou adresu"}
-                    </button>
-                  </div>
-                </div>
+                <section className={searchStyles.matches} aria-label="Výběr nalezené adresy">
+                  <div className={searchStyles.matchesHeader}><h2>Vyber nemovitost, kterou hledáš</h2><p>Našli jsme možné adresy. Výběrem načteš podrobnosti konkrétní nemovitosti.</p></div>
+                  <CuzkAddressList matches={matches} query={addressQuery} onPick={pickSuggestion} suggestions={false} />
+                </section>
               )}
             </section>
 
           </div>
-        )}
+        ) : null}
 
         <div ref={resultScrollTargetRef} className="scroll-mt-28" />
 
         {searchActivated && loading && (
           <div className="cuzk-reveal" style={{ animationDelay: "120ms" }}>
-            <CuzkLookupLoadingState
-              phaseIndex={loadingPhaseIndex}
-              progress={loadingProgress}
-              query={addressQuery}
-            />
+            <CuzkLoader query={addressQuery} />
           </div>
         )}
 
-        {searchActivated && !loading && !error && (
-          <>
-            {/* Výsledek */}
-            <section className="cuzk-reveal relative z-0 overflow-visible rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-6" style={{ animationDelay: "180ms" }}>
-              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-900 via-fuchsia-500 to-pink-400" />
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50">
-                    <Building2 className="h-4 w-4 text-slate-700" />
-                  </span>
-                  <span>Výsledek</span>
-                </h2>
-                <div className="flex items-center gap-2">
-                  {result !== null && (
-                    <button
-                      type="button"
-                      onClick={() => setShowJson((s) => !s)}
-                      className="text-[11px] rounded-full border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-                    >
-                      {showJson ? "Skrýt JSON" : "Zobrazit JSON"}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {!hasAnyResult ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  Zatím nic nezobrazuji. Zadej adresu a klikni na „Vyhledat“.
-                </div>
-              ) : (
-                <>
-              <div className="relative overflow-visible rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-5">
-                <span className="absolute inset-x-0 top-0 h-1 bg-slate-900" />
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="space-y-2">
-                    <div className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                      <Sparkles className="h-3.5 w-3.5 text-slate-500" />
-                      Přehled nemovitosti
-                    </div>
-                    <div className="text-lg font-bold leading-tight text-slate-900 sm:text-xl">{summaryAddress}</div>
-                    <div className="text-[12px] text-slate-600">
-                      Detail z RÚIAN s technickými údaji a vazbami na parcelu.
-                    </div>
-                  </div>
-
-                  <div className="hidden shrink-0 lg:block">
-                    <Image
-                      src="/icons/icon_domex.webp"
-                      alt="Ilustrace nemovitosti"
-                      width={140}
-                      height={96}
-                      className="h-20 w-auto opacity-95"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <SummaryPill icon={MapPin} label="RÚIAN adresa" value={summaryRuianCode} />
-                  <SummaryPill icon={Building2} label="Stavba" value={summaryBuildingCode} />
-                  <SummaryPill icon={Ruler} label="Parcely" value={`${parcels.length}`} />
-                  <SummaryPill icon={UserRound} label="Uživatel" value={summaryOwner} />
-                </div>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-3">
-                <ColorButton
-                  onClick={() => {
-                    if (!gmapsUrl) return;
-                    window.open(gmapsUrl, "_blank", "noopener,noreferrer");
-                  }}
-                  disabled={!gmapsUrl}
-                  tone="magenta"
-                  size="sm"
-                  className="disabled:opacity-45"
-                >
-                  <MapPin className="h-4 w-4" />
-                  Google Mapy
-                  <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-                </ColorButton>
-
-                <ColorButton
-                  onClick={() => {
-                    if (!marushkaUrl) return;
-                    window.open(marushkaUrl, "_blank", "noopener,noreferrer");
-                  }}
-                  disabled={!marushkaUrl}
-                  tone="blue"
-                  size="sm"
-                  className="disabled:opacity-45"
-                >
-                  <Map className="h-4 w-4" />
-                  Katastrální Mapy
-                  <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-                </ColorButton>
-
-                <ColorButton
-                  onClick={() => {
-                    if (!vdpUrl) return;
-                    window.open(vdpUrl, "_blank", "noopener,noreferrer");
-                  }}
-                  disabled={!vdpUrl}
-                  tone="orange"
-                  size="sm"
-                  className="disabled:opacity-45"
-                >
-                  <Building2 className="h-4 w-4" />
-                  Katastr
-                  <ExternalLink className="h-3.5 w-3.5 opacity-90" />
-                </ColorButton>
-              </div>
-
-              {dateInsights.length > 0 ? (
-                <div className="space-y-3 border-t border-slate-200 pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <CalendarClock className="h-4 w-4 text-fuchsia-700" />
-                      Časová osa dat
-                    </div>
-                    <div className="text-[11px] font-semibold text-slate-500">
-                      RÚIAN / ČÚZK
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {dateInsights.map((item) => (
-                      <div
-                        key={item.key}
-                        className={`rounded-xl border px-3 py-2.5 ${dateInsightToneClass(item.tone)}`}
-                      >
-                        <div className="text-[11px] uppercase tracking-wide text-slate-500">{item.label}</div>
-                        <div className="mt-1 text-sm font-bold text-slate-900">{formatDateCs(item.date)}</div>
-                        <div className="mt-1 text-[12px] text-slate-700">{item.hint}</div>
-                        <div className="mt-0.5 text-[11px] text-slate-500">{relativeDateLabel(item.date)}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                </div>
-              ) : null}
-
-              {showJson ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-800 space-y-1">
-                  <div>
-                    <span className="text-slate-500">gmapsEmbedUrl:</span> {gmapsEmbedUrl ? gmapsEmbedUrl : "—"}
-                  </div>
-                  <div>
-                    <span className="text-slate-500">obj.links.mapPreview:</span> {obj?.links?.mapPreview ? String(obj.links.mapPreview) : "—"}
-                  </div>
-                  <div>
-                    <span className="text-slate-500">marushkaUrl:</span> {marushkaUrl ? marushkaUrl : "—"}
-                  </div>
-                </div>
-              ) : null}
-
-              {gmapsEmbedUrl ? (
-                <div className="space-y-3 border-t border-slate-200 pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <Map className="h-4 w-4 text-fuchsia-700" />
-                      Náhled mapy
-                    </div>
-                    <div className="text-[11px] font-semibold text-slate-500">
-                      Google Maps
-                    </div>
-                  </div>
-
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                    <iframe
-                      key={gmapsEmbedUrl}
-                      title="Náhled mapy"
-                      src={gmapsEmbedUrl}
-                      className="w-full h-[280px]"
-                      loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
-                      allowFullScreen
-                      onLoad={() => setGmapsEmbedError(null)}
-                      onError={() =>
-                        setGmapsEmbedError(
-                          "Google Maps náhled se nepodařilo načíst (blokováno prohlížečem / CSP / rozšířením)."
-                        )
-                      }
-                    />
-                  </div>
-
-                  {gmapsEmbedError ? (
-                    <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
-                      {gmapsEmbedError}
-                    </div>
-                  ) : null}
-
-                  <div className="text-[11px] text-slate-500">
-                    Tip: Klikni na tlačítko <span className="text-slate-800">Google Mapy</span> v odkazech výše pro otevření v novém okně.
-                  </div>
-                </div>
-              ) : null}
-
-
-
-
-              <div className="space-y-3 border-t border-slate-200 pt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Home className="h-4 w-4 text-slate-700" />
-                    Stavba
-                  </div>
-                  <div className="text-[11px] font-semibold text-slate-500">
-                    ID: {safeStr(stavba?.id)}
-                  </div>
-                </div>
-
-                <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
-                  <Field label="Typ stavby" value={safeStr(stavba?.typStavby?.nazev ?? stavba?.typStavby)} />
-                  <Field
-                    label="Způsob využití"
-                    value={safeStr(
-                      stavba?.zpusobVyuziti?.nazev ??
-                        stavba?.zpusobVyuziti ??
-                        stavba?.druhStavby?.nazev ??
-                        stavba?.druhStavby
-                    )}
-                  />
-                  <Field label="Obec" value={safeStr(stavba?.obec?.nazev ?? stavba?.obec)} />
-                  <Field label="Část obce" value={safeStr(stavba?.castObce?.nazev ?? stavba?.castObce)} />
-                  <Field
-                    label="Číslo domovní"
-                    value={safeStr(
-                      Array.isArray(stavba?.cislaDomovni)
-                        ? stavba.cislaDomovni.join(", ")
-                        : stavba?.cisloDomovni ?? stavba?.cislodomovni
-                    )}
-                  />
-                  <Field label="Číslo orientační" value={safeStr(stavba?.cisloOrientacni ?? stavba?.cisloorientacni)} />
-                  <Field
-                    label="Dočasná stavba"
-                    value={typeof stavba?.docasna === "boolean" ? (stavba.docasna ? "Ano" : "Ne") : safeStr(stavba?.docasna)}
-                  />
-                  <Field
-                    label="Vazba"
-                    value={safeStr(stavba?.typVazby ?? stavba?.typyVazby ?? stavba?.vazba)}
-                  />
-                </div>
-              </div>
-
-              {ruianStavebniObjekt ? (
-                <div className="space-y-3 border-t border-slate-200 pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <Landmark className="h-4 w-4 text-fuchsia-700" />
-                      Stavební objekt (RÚIAN) – technicko‑ekonomické atributy
-                    </div>
-                    <div className="text-[11px] font-semibold text-slate-500">
-                      Kód: {safeStr(ruianStavebniObjekt?.kod)}
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
-                    <Field label="ISKN budova ID" value={safeStr(ruianStavebniObjekt?.isknbudovaid)} />
-                    <Field label="Identifikační parcela (ID)" value={safeStr(ruianStavebniObjekt?.identifikacniparcela)} />
-
-                    <Field label="Datum dokončení" value={formatEpochMsCs(ruianStavebniObjekt?.dokonceni)} />
-                    <Field label="Platí od" value={formatEpochMsCs(ruianStavebniObjekt?.platiod)} />
-
-                    <Field
-                      label="Zastavěná plocha"
-                      value={
-                        safeNum(ruianStavebniObjekt?.zastavenaplocha) != null
-                          ? `${safeNum(ruianStavebniObjekt?.zastavenaplocha)} m²`
-                          : "—"
-                      }
-                    />
-                    <Field
-                      label="Obestavěný prostor"
-                      value={
-                        safeNum(ruianStavebniObjekt?.obestavenyprostor) != null
-                          ? `${safeNum(ruianStavebniObjekt?.obestavenyprostor)} m³`
-                          : "—"
-                      }
-                    />
-
-                    <Field label="Počet bytů" value={safeStr(ruianStavebniObjekt?.pocetbytu)} />
-                    <Field label="Počet podlaží" value={safeStr(ruianStavebniObjekt?.pocetpodlazi)} />
-
-                    <Field
-                      label="Podlahová plocha"
-                      value={
-                        safeNum(ruianStavebniObjekt?.podlahovaplocha) != null
-                          ? `${safeNum(ruianStavebniObjekt?.podlahovaplocha)} m²`
-                          : "—"
-                      }
-                    />
-                    <Field label="Druh konstrukce (kód)" value={safeStr(ruianStavebniObjekt?.druhkonstrukcekod)} />
-
-                    <Field
-                      label="Plocha geometrie (ST_Area)"
-                      value={
-                        safeNum((ruianStavebniObjekt as any)?.["st_area(shape)"]) != null
-                          ? `${safeNum((ruianStavebniObjekt as any)?.["st_area(shape)"])} m²`
-                          : "—"
-                      }
-                    />
-                    <Field
-                      label="Délka geometrie (ST_Length)"
-                      value={
-                        safeNum((ruianStavebniObjekt as any)?.["st_length(shape)"]) != null
-                          ? `${safeNum((ruianStavebniObjekt as any)?.["st_length(shape)"])} m`
-                          : "—"
-                      }
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="space-y-3 border-t border-slate-200 pt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Ruler className="h-4 w-4 text-amber-700" />
-                    Parcely / pozemky
-                  </div>
-                  <div className="text-[11px] font-semibold text-slate-500">
-                    {parcels.length ? `${parcels.length} položek` : "—"}
-                  </div>
-                </div>
-
-                {parcels.length ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1">
-                    {parcels.map((p, idx) => (
-                      <div
-                        key={`${p.id ?? p.parcela ?? "p"}-${idx}`}
-                        className="border-b border-slate-200 px-1 py-3 last:border-b-0"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm text-slate-900">
-                            <span className="font-semibold">Parcela:</span> {p.parcela ? p.parcela : "—"}
-                            {p.typParcely ? <span className="text-slate-500"> ({p.typParcely})</span> : null}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                            {p.katUzemi ? (
-                              <span className="rounded-full bg-white px-2 py-0.5 text-slate-700">
-                                KÚ: {p.katUzemi}
-                              </span>
-                            ) : null}
-                            {p.lv != null ? (
-                              <span className="rounded-full bg-white px-2 py-0.5 text-slate-700">
-                                LV: {p.lv}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        <div className="mt-1 text-[12px] text-slate-600">
-                          {p.druh ? (
-                            <>
-                              Druh: <span className="text-slate-800">{p.druh}</span>
-                            </>
-                          ) : (
-                            <>Druh: —</>
-                          )}
-                          {"  "}•{" "}
-                          {p.vymeraM2 != null ? (
-                            <>
-                              Výměra: <span className="text-slate-800">{p.vymeraM2} m²</span>
-                            </>
-                          ) : (
-                            <>Výměra: —</>
-                          )}
-                        </div>
-
-                        {p.vymeraM2 == null ? (
-                          <div className="mt-2 text-[11px] text-slate-500">
-                            Pozn.: stavba vrací jen základ parcely (ParcelaDef). Pro výměru je potřeba dotáhnout detail parcely/pozemku v backendu.
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
-                    Parcely/výměra se v téhle odpovědi nenašly.
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3 border-t border-slate-200 pt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <MapPin className="h-4 w-4 text-fuchsia-700" />
-                    Adresní místa
-                  </div>
-                  <div className="text-[11px] font-semibold text-slate-500">
-                    {adresniMista.length ? `${adresniMista.length} položek` : "—"}
-                  </div>
-                </div>
-
-                {adresniMista.length ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1">
-                    {adresniMista.map((a, idx) => (
-                      <div
-                        key={`${a.adresa}-${a.ruian ?? "x"}-${idx}`}
-                        className="border-b border-slate-200 px-1 py-3 last:border-b-0"
-                      >
-                        <div className="text-sm text-slate-900">{a.adresa}</div>
-                        <div className="mt-1 text-[11px] text-slate-500">
-                          <span className="rounded-full bg-white px-2 py-0.5 text-slate-700">
-                            RÚIAN: {a.ruian != null ? a.ruian : "—"}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
-                    Žádné adresní místo v odpovědi.
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3 border-t border-slate-200 pt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <Building2 className="h-4 w-4 text-indigo-700" />
-                    Jednotky
-                  </div>
-                  <div className="text-[11px] font-semibold text-slate-500">
-                    {jednotky.length ? `${jednotky.length} ks` : "0 ks"}
-                  </div>
-                </div>
-
-                {jednotky.length ? (
-                  <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
-                    {jednotky.slice(0, 8).map((j: any, idx: number) => (
-                      <div
-                        key={`${j?.id ?? "j"}-${idx}`}
-                        className="rounded-lg bg-white px-3 py-2.5"
-                      >
-                        <div className="text-sm text-slate-900">Jednotka ID: {safeStr(j?.id)}</div>
-                        <div className="mt-1 text-[12px] text-slate-600">
-                          {j?.typJednotky?.nazev ? `Typ: ${j.typJednotky.nazev}` : "Typ: —"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">
-                    Žádné jednotky nejsou k dispozici.
-                  </div>
-                )}
-              </div>
-
-              {showJson && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 overflow-x-auto">
-                  <pre className="whitespace-pre-wrap break-all font-mono text-xs text-slate-900">
-                    {JSON.stringify(result, null, 2)}
-                  </pre>
-                </div>
-              )}
-                </>
-              )}
-            </section>
-          </>
+        {searchActivated && !loading && !error && matches.length === 0 && (
+          hasAnyResult ? <CuzkResults
+            key={`${summaryBuildingCode}-${summaryAddress}`}
+            address={summaryAddress}
+            addressCode={summaryRuianCode}
+            buildingCode={summaryBuildingCode}
+            building={stavba}
+            technical={ruianStavebniObjekt}
+            parcels={parcels}
+            addresses={adresniMista}
+            units={jednotky}
+            dates={dateInsights}
+            links={{ google: gmapsUrl, cadastral: marushkaUrl, registry: vdpUrl, embed: gmapsEmbedUrl }}
+            rawData={result}
+          /> : <p className={resultStyles.empty} role="status">Pro tuto adresu nejsou k dispozici podrobnosti. Zkus vybrat přesnou adresu z našeptávače.</p>
         )}
 
         <style jsx>{`
           @keyframes cuzk-reveal-up {
-            from {
-              opacity: 0;
-              transform: translate3d(0, 16px, 0);
-            }
-            to {
-              opacity: 1;
-              transform: translate3d(0, 0, 0);
-            }
+            from { opacity: 0; transform: translate3d(0, 12px, 0); }
+            to { opacity: 1; transform: translate3d(0, 0, 0); }
           }
-
-          @keyframes cuzk-glow-pulse {
-            0%,
-            100% {
-              box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
-            }
-            50% {
-              box-shadow:
-                0 18px 42px rgba(192, 38, 211, 0.18),
-                0 0 0 1px rgba(217, 70, 239, 0.15);
-            }
-          }
-
-          @keyframes cuzk-float {
-            0%,
-            100% {
-              transform: translateY(0px);
-            }
-            50% {
-              transform: translateY(-4px);
-            }
-          }
-
-          .cuzk-shell {
-            position: relative;
-            isolation: isolate;
-            overflow: visible;
-          }
-
-          .cuzk-shell::before {
-            content: "";
-            position: absolute;
-            inset: 60px -72px auto 0;
-            height: 240px;
-            background:
-              radial-gradient(48% 70% at 18% 40%, rgba(217, 70, 239, 0.12) 0%, rgba(217, 70, 239, 0) 100%),
-              radial-gradient(42% 64% at 78% 36%, rgba(244, 114, 182, 0.1) 0%, rgba(244, 114, 182, 0) 100%);
-            z-index: -1;
-            pointer-events: none;
-          }
-
-          .cuzk-shell::after {
-            content: "";
-            position: absolute;
-            inset: 86px -72px 0 0;
-            background-image:
-              linear-gradient(to right, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
-            background-size: 34px 34px;
-            mask-image: radial-gradient(circle at 50% 12%, rgba(0, 0, 0, 0.9), transparent 78%);
-            opacity: 0.36;
-            z-index: -1;
-            pointer-events: none;
-          }
-
-          .cuzk-reveal {
-            opacity: 0;
-            animation: cuzk-reveal-up 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-          }
-
-          .cuzk-glow {
-            animation: cuzk-glow-pulse 4.4s ease-in-out infinite;
-          }
-
-          .cuzk-float {
-            animation: cuzk-float 5s ease-in-out infinite;
-          }
-
-          :global(:root[data-motion="off"]) .cuzk-shell::before,
-          :global(:root[data-motion="off"]) .cuzk-shell::after,
-          :global(:root[data-motion="off"]) .cuzk-reveal,
-          :global(:root[data-motion="off"]) .cuzk-glow,
-          :global(:root[data-motion="off"]) .cuzk-float {
-            animation: none !important;
-          }
-
-          :global(:root[data-motion="off"]) .cuzk-reveal {
-            opacity: 1 !important;
-            transform: none !important;
-            filter: none !important;
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            .cuzk-shell::before,
-            .cuzk-shell::after,
-            .cuzk-reveal,
-            .cuzk-glow,
-            .cuzk-float {
-              animation: none !important;
-            }
-
-            .cuzk-reveal {
-              opacity: 1 !important;
-              transform: none !important;
-              filter: none !important;
-            }
-          }
+          .cuzk-shell { position: relative; isolation: isolate; overflow: visible; }
+          .cuzk-reveal { animation: cuzk-reveal-up 520ms cubic-bezier(.22, 1, .36, 1) both; }
+          :global(:root[data-motion="off"]) .cuzk-reveal { animation: none; }
+          @media (prefers-reduced-motion: reduce) { .cuzk-reveal { animation: none; } }
         `}</style>
       </div>
     </AppLayout>

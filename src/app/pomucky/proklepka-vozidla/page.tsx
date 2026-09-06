@@ -15,7 +15,6 @@ import {
   Gauge,
   History,
   LineChart,
-  Loader2,
   MapPin,
   Search,
   ShieldCheck,
@@ -32,16 +31,10 @@ import {
   roundTo,
   type VehicleValuationSummary,
 } from "../naceneni-vozidla/valuation";
-import { systemSansFont } from "@/lib/fonts";
-
-const headingFont = systemSansFont;
-
-const VEHICLE_LOADING_PHASES = [
-  "Načítám data z STK",
-  "Načítám vlastníky a provozovatele",
-  "Skládám technická data vozidla",
-  "Počítám tržní cenu",
-] as const;
+import { VehicleIntro, VehicleLoader } from "./VehicleScenes";
+import { VehicleSearchForm } from "./VehicleSearchForm";
+import { VehicleIllustration } from "./VehicleIllustration";
+import styles from "./vehicleAudit.module.css";
 
 type VehicleData = Record<string, unknown>;
 
@@ -955,7 +948,8 @@ function statusLabel(data: VehicleData | null): string {
 }
 
 function statusTone(status: string): "green" | "amber" {
-  if (status.includes("PROVOZ") || status.includes("AKTIV")) return "green";
+  const normalized = status.toUpperCase();
+  if (normalized.includes("PROVOZ") || normalized.includes("AKTIV")) return "green";
   return "amber";
 }
 
@@ -1216,16 +1210,16 @@ function mergeOwnerHistory(primary: OwnerRecord[], fallback: OwnerRecord[]): Own
 function confidenceToneClass(value: string): string {
   const normalized = normalizeText(value);
   if (normalized.includes("velmi") || normalized.includes("vysoka")) {
-    return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
+    return "border-violet-200 bg-violet-50 text-violet-700";
   }
-  if (normalized.includes("stred")) return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
+  if (normalized.includes("stred")) return "border-violet-200 bg-violet-50 text-violet-700";
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "green" | "amber" | "rose" }) {
   const styles: Record<typeof tone, string> = {
     neutral: "border-slate-200 bg-slate-100 text-slate-700",
-    green: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+    green: "border-emerald-200 bg-emerald-50 text-emerald-700",
     amber: "border-amber-200 bg-amber-50 text-amber-700",
     rose: "border-rose-200 bg-rose-50 text-rose-700",
   };
@@ -1236,14 +1230,14 @@ function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neu
 function Tile({ title, value, subtitle, icon, tone = "neutral" }: { title: string; value: string; subtitle?: string; icon: ReactNode; tone?: "neutral" | "green" | "rose" | "amber" }) {
   const borderTone = {
     neutral: "border-slate-200",
-    green: "border-fuchsia-200",
+    green: "border-emerald-200",
     rose: "border-rose-200",
     amber: "border-amber-200",
   }[tone];
 
   const valueTone = {
     neutral: "text-slate-900",
-    green: "text-fuchsia-700",
+    green: "text-emerald-700",
     rose: "text-rose-700",
     amber: "text-amber-700",
   }[tone];
@@ -1254,8 +1248,8 @@ function Tile({ title, value, subtitle, icon, tone = "neutral" }: { title: strin
         {icon}
         <span>{title}</span>
       </div>
-      <div className={`mt-2 text-4xl font-semibold leading-none tracking-tight ${valueTone}`}>{value}</div>
-      {subtitle && <div className="mt-2 text-sm text-slate-500">{subtitle}</div>}
+      <div className={`mt-3 text-2xl font-semibold leading-tight tracking-tight ${valueTone}`}>{value}</div>
+      {subtitle && <div className="mt-2 text-xs leading-relaxed text-slate-500">{subtitle}</div>}
     </div>
   );
 }
@@ -1304,9 +1298,9 @@ function PriceBand({
   const zone = estimatePos < underPct ? "PODHODNOCENÉ PÁSMO" : estimatePos <= fairEnd ? "FÉROVÉ PÁSMO" : "PŘEDRAŽENÉ PÁSMO";
   const zoneClass =
     estimatePos < underPct
-      ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
+      ? "border-violet-200 bg-violet-50 text-violet-700"
       : estimatePos <= fairEnd
-        ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
+        ? "border-violet-200 bg-violet-50 text-violet-700"
         : "border-rose-200 bg-rose-50 text-rose-700";
 
   return (
@@ -1321,11 +1315,11 @@ function PriceBand({
       <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4 sm:px-4">
         <div className="relative pb-8 pt-2">
           <div className="relative h-4 overflow-hidden rounded-full bg-slate-200">
-            <div className="absolute inset-y-0 left-0 bg-fuchsia-500" style={{ width: `${underPct}%` }} />
+            <div className="absolute inset-y-0 left-0 bg-violet-500" style={{ width: `${underPct}%` }} />
             <div className="absolute inset-y-0 bg-pink-400" style={{ left: `${underPct}%`, width: `${fairPct}%` }} />
             <div className="absolute inset-y-0 bg-rose-500" style={{ left: `${overLeft}%`, width: `${overPct}%` }} />
             <div
-              className="absolute inset-y-0 rounded-full border border-fuchsia-700/45 bg-fuchsia-700/15"
+              className="absolute inset-y-0 rounded-full border border-violet-700/45 bg-violet-700/15"
               style={{ left: `${fairRangeStart}%`, width: `${fairRangeWidth}%` }}
             />
           </div>
@@ -1350,11 +1344,11 @@ function PriceBand({
       </div>
 
       <div className="flex flex-wrap gap-3 text-xs font-semibold">
-        <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-fuchsia-700">
+        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-700">
           <Dot className="h-4 w-4" />
           PODHODNOCENÉ {underShare} %
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-fuchsia-700">
+        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-700">
           <Dot className="h-4 w-4" />
           FÉROVÉ {fairShare} %
         </span>
@@ -1392,16 +1386,16 @@ function MileagePriceBars({
               : computedWidth;
           return (
             <div key={`${row.km}-${row.price}-${idx}`} className="grid grid-cols-[92px_1fr_124px] items-center gap-3">
-              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-fuchsia-700" : "text-slate-500"}`}>
+              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-violet-700" : "text-slate-500"}`}>
                 {formatNumber(row.km)} km
               </div>
               <div className="h-10 overflow-hidden rounded-xl bg-slate-100">
                 <div
-                  className={`h-full rounded-xl ${row.highlighted ? "bg-fuchsia-600" : "bg-fuchsia-300"}`}
+                  className={`h-full rounded-xl ${row.highlighted ? "bg-violet-600" : "bg-violet-300"}`}
                   style={{ width: `${width}%` }}
                 />
               </div>
-              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-fuchsia-700" : "text-slate-800"}`}>
+              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-violet-700" : "text-slate-800"}`}>
                 {formatCurrency(row.price)}
               </div>
             </div>
@@ -1586,7 +1580,7 @@ function MileageChart({ points }: { points: MileagePoint[] }) {
 
 function StkCard({ check }: { check: StkCheck }) {
   return (
-    <article className="rounded-3xl border border-fuchsia-200 bg-white p-4">
+    <article className="rounded-3xl border border-violet-200 bg-white p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="text-xl font-semibold text-slate-900">{check.dateLabel}</div>
@@ -1615,7 +1609,7 @@ function StkCard({ check }: { check: StkCheck }) {
 
 function OwnerCard({ owner }: { owner: OwnerRecord }) {
   return (
-    <article className={`rounded-3xl border bg-white p-4 ${owner.isCurrent ? "border-fuchsia-300" : "border-slate-200"}`}>
+    <article className={`rounded-3xl border bg-white p-4 ${owner.isCurrent ? "border-violet-300" : "border-slate-200"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-2xl font-semibold text-slate-900">{owner.name}</div>
@@ -1663,13 +1657,13 @@ function CollapsibleSectionHeader({
   onToggle: () => void;
 }) {
   const surfaceClass = expanded
-    ? "border-fuchsia-300 bg-fuchsia-50/70 shadow-sm shadow-fuchsia-100/80"
+    ? "border-violet-300 bg-violet-50/70 shadow-sm shadow-violet-100/80"
     : "border-slate-200 bg-slate-50";
   const countClass = expanded
-    ? "border-fuchsia-200 bg-white text-fuchsia-700"
+    ? "border-violet-200 bg-white text-violet-700"
     : "border-slate-200 bg-white text-slate-600";
   const arrowClass = expanded
-    ? "border-fuchsia-200 bg-white text-fuchsia-600"
+    ? "border-violet-200 bg-white text-violet-600"
     : "border-slate-200 bg-white text-slate-500";
 
   return (
@@ -1723,161 +1717,6 @@ function TechnicalSection({ section }: { section: SpecSection }) {
   );
 }
 
-function VehicleAuditLoadingState({
-  phaseIndex,
-  progress,
-}: {
-  phaseIndex: number;
-  progress: number;
-}) {
-  const safePhaseIndex = clamp(phaseIndex, 0, VEHICLE_LOADING_PHASES.length - 1);
-  const progressPct = clamp(Math.round(progress), 0, 99);
-  const phase = VEHICLE_LOADING_PHASES[safePhaseIndex];
-
-  return (
-    <section className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)]">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_36%,#fff1ff_36%,#fff8ff_56%,#ffffff_56%,#ffffff_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#c026d3_56%,#f472b6_100%)]" />
-
-      <div className="relative grid min-h-[390px] gap-8 px-7 py-8 sm:px-10 sm:py-10 lg:grid-cols-[0.86fr_1.14fr] lg:items-center">
-        <div className="min-w-0">
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-700 shadow-[0_10px_24px_rgba(217,70,239,0.1)]">
-            <CarFront className="h-3.5 w-3.5" />
-            Proklepka vozidla
-          </div>
-
-          <div className="mt-8 flex items-end gap-2">
-            <span className="text-[92px] font-black leading-[0.82] tracking-tight text-black sm:text-[122px]">
-              {progressPct}
-            </span>
-            <span className="pb-2 text-4xl font-black leading-none text-fuchsia-700 sm:text-5xl">
-              %
-            </span>
-          </div>
-
-          <div className="mt-7 space-y-2">
-            <h2 className="text-3xl font-black leading-tight tracking-tight text-black sm:text-4xl">
-              Prověřuji vozidlo
-            </h2>
-            <p className="min-h-[28px] text-base font-bold text-slate-500 sm:text-lg">
-              {phase}
-            </p>
-          </div>
-
-          <div className="mt-8 max-w-md">
-            <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100 shadow-inner">
-              <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#c026d3_62%,#f472b6_100%)] transition-[width] duration-300 ease-out"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-            <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(192,38,211,0.34),rgba(2,6,23,0))]" />
-          </div>
-        </div>
-
-        <div className="relative flex min-h-[270px] items-center justify-center overflow-hidden px-5 py-8">
-          <div className="absolute inset-0 opacity-[0.34] [background-image:linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:34px_34px]" />
-          <div className="absolute inset-x-8 bottom-10 h-3 rounded-full bg-slate-950/10 blur-md" />
-
-          <div className="relative h-[230px] w-full max-w-[560px]">
-            <svg
-              viewBox="0 0 560 240"
-              className="absolute inset-0 h-full w-full overflow-visible"
-              aria-hidden="true"
-            >
-              <defs>
-                <linearGradient id="vehicle-loader-body" x1="86" y1="64" x2="484" y2="178" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stopColor="#020617" />
-                  <stop offset="0.52" stopColor="#111827" />
-                  <stop offset="1" stopColor="#020617" />
-                </linearGradient>
-                <linearGradient id="vehicle-loader-window" x1="200" y1="64" x2="378" y2="120" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.96" />
-                  <stop offset="1" stopColor="#e5e7eb" stopOpacity="0.86" />
-                </linearGradient>
-                <linearGradient id="vehicle-loader-fuchsia" x1="108" y1="139" x2="164" y2="139" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stopColor="#f472b6" />
-                  <stop offset="1" stopColor="#d946ef" />
-                </linearGradient>
-                <filter id="vehicle-loader-shadow" x="-8%" y="-24%" width="116%" height="156%">
-                  <feDropShadow dx="0" dy="20" stdDeviation="18" floodColor="#020617" floodOpacity="0.22" />
-                </filter>
-                <filter id="vehicle-loader-glow" x="-80%" y="-80%" width="260%" height="260%">
-                  <feGaussianBlur stdDeviation="6" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-
-              <ellipse cx="282" cy="204" rx="218" ry="16" fill="#020617" opacity="0.1" />
-              <g filter="url(#vehicle-loader-shadow)">
-                <path
-                  d="M83 148c3-31 20-45 54-45h33l44-49c13-14 31-21 54-21h91c24 0 41 9 53 27l26 40h24c27 0 45 13 52 38l7 29c4 17-8 34-25 34H72c-15 0-26-13-23-27l4-18c3-6 13-8 30-8Z"
-                  fill="url(#vehicle-loader-body)"
-                />
-                <path
-                  d="M195 101l35-38c8-8 19-13 33-13h32v51H195Z"
-                  fill="url(#vehicle-loader-window)"
-                />
-                <path
-                  d="M314 50h42c14 0 25 6 33 18l22 33h-97V50Z"
-                  fill="url(#vehicle-loader-window)"
-                />
-                <path
-                  d="M306 50v51"
-                  stroke="#020617"
-                  strokeOpacity="0.35"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M228 59c9-8 20-12 34-12h94c14 0 26 7 35 19"
-                  fill="none"
-                  stroke="#ffffff"
-                  strokeOpacity="0.22"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                />
-                <rect x="107" y="133" width="56" height="15" rx="7.5" fill="url(#vehicle-loader-fuchsia)" filter="url(#vehicle-loader-glow)" />
-                <rect x="456" y="132" width="44" height="15" rx="7.5" fill="#f8fafc" opacity="0.96" />
-                <path
-                  d="M178 129h45"
-                  stroke="#ffffff"
-                  strokeOpacity="0.13"
-                  strokeWidth="7"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M349 128h36"
-                  stroke="#ffffff"
-                  strokeOpacity="0.13"
-                  strokeWidth="7"
-                  strokeLinecap="round"
-                />
-                <circle cx="160" cy="190" r="43" fill="#020617" />
-                <circle cx="160" cy="190" r="26" fill="#ffffff" />
-                <circle cx="160" cy="190" r="12" fill="#cbd5e1" />
-                <circle cx="426" cy="190" r="43" fill="#020617" />
-                <circle cx="426" cy="190" r="26" fill="#ffffff" />
-                <circle cx="426" cy="190" r="12" fill="#cbd5e1" />
-              </g>
-            </svg>
-
-            <div className="vehicle-scan-lens absolute top-1/2 z-10 flex h-28 w-28 items-center justify-center rounded-full border border-fuchsia-300/80 bg-white/65 shadow-[0_22px_50px_rgba(217,70,239,0.2)] backdrop-blur-md">
-              <Search className="h-11 w-11 text-fuchsia-700" strokeWidth={2.6} />
-              <span className="absolute -bottom-8 right-2 h-12 w-4 rotate-[-38deg] rounded-full bg-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.24)]" />
-            </div>
-
-            <div className="vehicle-scan-beam absolute top-[12%] z-[9] h-[76%] w-[2px] rounded-full bg-fuchsia-600 shadow-[0_0_18px_rgba(217,70,239,0.72),0_0_42px_rgba(244,114,182,0.45)]" />
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export default function VehicleAuditPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [vin, setVin] = useState("");
@@ -1894,12 +1733,14 @@ export default function VehicleAuditPage() {
   const [searchActivated, setSearchActivated] = useState(false);
   const [stkExpanded, setStkExpanded] = useState(false);
   const [ownersExpanded, setOwnersExpanded] = useState(false);
-  const [loadingPhaseIndex, setLoadingPhaseIndex] = useState(0);
-  const [loadingProgress, setLoadingProgress] = useState(0);
+  const lookupInFlightRef = useRef(false);
+  const lookupVersionRef = useRef(0);
 
   const autoLookupVinRef = useRef<string | null>(null);
   const compactVinInputRef = useRef<HTMLInputElement | null>(null);
   const resultScrollTargetRef = useRef<HTMLDivElement | null>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const errorRef = useRef<HTMLParagraphElement | null>(null);
 
   const [sautoLoading, setSautoLoading] = useState(false);
   const [sautoError, setSautoError] = useState<string | null>(null);
@@ -1921,36 +1762,6 @@ export default function VehicleAuditPage() {
     if (!vinFromQuery) return;
     setVin(vinFromQuery);
   }, [vinFromQuery]);
-
-  useEffect(() => {
-    if (!loading) {
-      const resetFrame = window.requestAnimationFrame(() => {
-        setLoadingPhaseIndex(0);
-        setLoadingProgress(0);
-      });
-      return () => window.cancelAnimationFrame(resetFrame);
-    }
-
-    setLoadingPhaseIndex(0);
-    setLoadingProgress(7);
-
-    const phaseInterval = window.setInterval(() => {
-      setLoadingPhaseIndex((current) => (current + 1) % VEHICLE_LOADING_PHASES.length);
-    }, 1200);
-    const progressInterval = window.setInterval(() => {
-      setLoadingProgress((current) => {
-        if (current < 34) return Math.min(current + 5, 34);
-        if (current < 68) return Math.min(current + 3, 68);
-        if (current < 92) return Math.min(current + 2, 92);
-        return Math.min(current + 1, 97);
-      });
-    }, 170);
-
-    return () => {
-      window.clearInterval(phaseInterval);
-      window.clearInterval(progressInterval);
-    };
-  }, [loading]);
 
   const data = (result?.payload?.Data ?? null) as VehicleData | null;
   const displayedVin = safeStr(result?.vin ?? vin);
@@ -2692,6 +2503,9 @@ export default function VehicleAuditPage() {
     }
 
     const queryVin = normalizeVinInput(value);
+    if (lookupInFlightRef.current || queryVin.length < 11) return;
+    lookupInFlightRef.current = true;
+    lookupVersionRef.current += 1;
     setLoading(true);
     setError(null);
     setResult(null);
@@ -2700,6 +2514,8 @@ export default function VehicleAuditPage() {
     setOwnersExpanded(false);
     setSautoError(null);
     setSautoMarket(null);
+    setSautoLoading(false);
+    setSautoPanelActivated(false);
 
     try {
       const [rsvResult, proklepniResult] = await Promise.allSettled([
@@ -2727,14 +2543,16 @@ export default function VehicleAuditPage() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Nepodařilo se načíst data vozidla.");
     } finally {
+      lookupInFlightRef.current = false;
       setLoading(false);
     }
   }, [user]);
 
   const handleSearch = useCallback(async () => {
+    if (!canSearch || lookupInFlightRef.current) return;
     setSearchActivated(true);
     await handleSearchByVin(vin);
-  }, [handleSearchByVin, vin]);
+  }, [canSearch, handleSearchByVin, vin]);
 
   useEffect(() => {
     if (!user) return;
@@ -2746,27 +2564,15 @@ export default function VehicleAuditPage() {
   }, [handleSearchByVin, user, vinFromQuery]);
 
   useEffect(() => {
-    if (!searchActivated || typeof window === "undefined") return;
-    const frame = window.requestAnimationFrame(() => {
-      const input = compactVinInputRef.current;
-      if (!input) return;
-      input.focus();
-      const cursor = input.value.length;
-      input.setSelectionRange(cursor, cursor);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [searchActivated]);
-
-  useEffect(() => {
     if (!searchActivated || loading || typeof window === "undefined") return;
     const frame = window.requestAnimationFrame(() => {
-      resultScrollTargetRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
+      const target = error ? errorRef.current : resultHeadingRef.current ?? resultScrollTargetRef.current;
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ behavior: reduceMotion ? "instant" : "smooth", block: "start" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [loading, searchActivated]);
+  }, [error, loading, searchActivated]);
 
   const handleSautoSearch = useCallback(async () => {
     setSautoPanelActivated(true);
@@ -2781,6 +2587,7 @@ export default function VehicleAuditPage() {
       return;
     }
 
+    const lookupVersion = lookupVersionRef.current;
     setSautoLoading(true);
     setSautoError(null);
 
@@ -2810,11 +2617,11 @@ export default function VehicleAuditPage() {
         throw new Error(readApiError(payload) ?? "Nepodařilo se načíst tržní data ze Sauto.");
       }
 
-      setSautoMarket(payload);
+      if (lookupVersion === lookupVersionRef.current) setSautoMarket(payload);
     } catch (err: unknown) {
-      setSautoError(err instanceof Error ? err.message : "Nepodařilo se načíst tržní data ze Sauto.");
+      if (lookupVersion === lookupVersionRef.current) setSautoError(err instanceof Error ? err.message : "Nepodařilo se načíst tržní data ze Sauto.");
     } finally {
-      setSautoLoading(false);
+      if (lookupVersion === lookupVersionRef.current) setSautoLoading(false);
     }
   }, [hasVehicleForSauto, mileageKm, summary, user]);
 
@@ -2863,125 +2670,81 @@ export default function VehicleAuditPage() {
     }
   };
 
+  const handleReset = () => {
+    if (lookupInFlightRef.current) return;
+    lookupVersionRef.current += 1;
+    setSearchActivated(false);
+    setVin("");
+    setRefineMileage("");
+    setShowRefineInputs(false);
+    setResult(null);
+    setError(null);
+    setProklepniReport(null);
+    setSautoMarket(null);
+    setSautoError(null);
+    setSautoLoading(false);
+    setSautoPanelActivated(false);
+    window.requestAnimationFrame(() => compactVinInputRef.current?.focus());
+  };
+
+  const searchForm = (
+    <>
+      <VehicleSearchForm
+        vin={vin}
+        onVinChange={(value) => setVin(normalizeVinInput(value))}
+        inputRef={compactVinInputRef}
+        onSearch={() => void handleSearch()}
+        canSearch={canSearch}
+        loading={loading}
+        compact={searchActivated}
+        onReset={handleReset}
+        mileage={refineMileage}
+        onMileageChange={setRefineMileage}
+        showMileage={showRefineInputs}
+        onToggleMileage={() => setShowRefineInputs((value) => !value)}
+      />
+      {!user && <p className={styles.notice}>Pro načtení údajů o vozidle se přihlas.</p>}
+      {error && <p ref={errorRef} tabIndex={-1} className={styles.notice} role="alert"><AlertTriangle size={17} aria-hidden="true" />{error}</p>}
+    </>
+  );
+
   return (
     <AppLayout active="tools">
-      <div className="vehicle-audit-shell mx-auto w-full max-w-6xl space-y-5 pb-10 md:[zoom:0.92] xl:[zoom:0.86]">
-        <section className="vehicle-reveal px-2 py-10 sm:px-4 sm:py-14" style={revealStyle(20)}>
-          <div className="mx-auto max-w-4xl">
-            <div className="text-center">
-              <div className="vehicle-float inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-fuchsia-700">
-                <ShieldCheck className="h-4 w-4" />
-                Oficiální data z registru ČR
-              </div>
-              <h1 className={`${headingFont.className} vehicle-hero-title mx-auto mt-5 max-w-4xl text-5xl font-bold leading-[1.02] tracking-tight text-slate-900 sm:text-6xl md:text-7xl`}>
-                Prověř historii vozu
-                <span className="block text-fuchsia-700">během vteřiny</span>
-              </h1>
-            </div>
-
-            <div className="vehicle-glow mx-auto mt-8 w-full max-w-3xl rounded-[30px] border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/60">
-              <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2">
-                  <Search className="h-8 w-8 text-slate-400" />
-                  <input
-                    ref={compactVinInputRef}
-                    type="text"
-                    value={vin}
-                    onChange={(event) => setVin(normalizeVinInput(event.target.value))}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && canSearch && !loading) void handleSearch();
-                    }}
-                    className="w-full border-none bg-transparent text-xl font-medium text-slate-900 placeholder:text-slate-400 outline-none"
-                    placeholder="Zadejte VIN vozidla"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleSearch()}
-                  disabled={loading || !canSearch}
-                  className="vehicle-cta group inline-flex h-16 items-center justify-center gap-3 rounded-[22px] border border-fuchsia-900/20 bg-[linear-gradient(135deg,#020617_0%,#a21caf_48%,#d946ef_100%)] px-8 text-lg font-semibold tracking-tight text-white shadow-[0_16px_36px_rgba(192,38,211,0.32),inset_0_1px_0_rgba(255,255,255,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-fuchsia-200 sm:text-2xl disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-                >
-                  {loading ? "Načítám..." : "Proklepnout"}
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/25 transition group-hover:translate-x-0.5">
-                    {loading ? <Loader2 className="h-5 w-5 motion-safe:animate-spin" /> : <ChevronRight className="h-5 w-5" />}
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            <div className="mx-auto mt-5 max-w-3xl text-center">
-              <button
-                type="button"
-                onClick={() => setShowRefineInputs((value) => !value)}
-                className="inline-flex items-center gap-2 text-base font-semibold text-slate-500 transition hover:text-slate-700 sm:text-2xl"
-              >
-                <ChevronRight className={`h-6 w-6 transition-transform ${showRefineInputs ? "rotate-90" : ""}`} />
-                Přidej nájezd pro přesnější odhad!
-              </button>
-              {showRefineInputs && (
-                <div className="mt-3 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-1">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={refineMileage}
-                    onChange={(event) => setRefineMileage(event.target.value)}
-                    className="mx-auto h-12 w-full max-w-xs rounded-xl border border-slate-200 px-3 text-base font-medium text-slate-900 outline-none transition focus:border-fuchsia-400 focus:ring-2 focus:ring-fuchsia-100"
-                    placeholder="Nájezd (km)"
-                  />
-                </div>
-              )}
-
-              {!user && (
-                <p className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Přihlaš se, aby šlo volat data o vozidle.
-                </p>
-              )}
-              {error && (
-                <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  {error}
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <div ref={resultScrollTargetRef} className="scroll-mt-28" />
-
-        {searchActivated && loading && (
-          <div className="vehicle-reveal" style={revealStyle(60)}>
-            <VehicleAuditLoadingState
-              phaseIndex={loadingPhaseIndex}
-              progress={loadingProgress}
-            />
-          </div>
+      <div className={`${styles.shell} mx-auto w-full max-w-6xl space-y-5 pb-10`}>
+        {!searchActivated ? <VehicleIntro>{searchForm}</VehicleIntro> : (
+          <>
+            <header className={styles.compactHeader}>
+              <span><CarFront size={23} strokeWidth={1.7} aria-hidden="true" /></span>
+              <div><h1>Proklepka vozidla</h1><p>Historie, technické údaje a odhad ceny</p></div>
+            </header>
+            {searchForm}
+          </>
         )}
+
+        <div ref={resultScrollTargetRef} className="scroll-mt-8" />
+        {searchActivated && loading && <VehicleLoader vin={vin} />}
 
         {searchActivated && !loading && summary && (
           <>
-            <section className="vehicle-reveal rounded-3xl border border-slate-200 bg-white p-5" style={revealStyle(40)}>
-              <div className="flex flex-wrap items-center gap-2">
-                <Pill tone={statusTone(summary.status)}>{summary.status}</Pill>
-                <Pill>{safeStr(firstOf(data, ["Kategorie", "KategorieVozidla"]))}</Pill>
-              </div>
-
-              <h2 className="mt-3 text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-                {summary.brand} <span className="text-slate-700">{summary.model}</span>
-              </h2>
-
-              <div className="mt-4 rounded-2xl border border-fuchsia-200 bg-fuchsia-50 px-4 py-3 text-sm text-fuchsia-800">
-                <div className="inline-flex items-center gap-2 font-semibold">
-                  <ShieldCheck className="h-4 w-4" />
-                  Neevidováno jako odcizené
+            <section className="vehicle-reveal" style={revealStyle(40)} aria-label="Přehled vozidla">
+              <div className={styles.overviewHeading}>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Pill tone={statusTone(summary.status)}>{summary.status}</Pill>
+                    <Pill>{safeStr(firstOf(data, ["Kategorie", "KategorieVozidla"]))}</Pill>
+                  </div>
+                  <h2 ref={resultHeadingRef} tabIndex={-1}>{summary.brand} {summary.model}</h2>
+                  <p>Údaje z registru silničních vozidel</p>
                 </div>
-                <div className="mt-1 text-fuchsia-700">Zdroj: Policie ČR (interní ověření přes registr)</div>
+                <div className={styles.resultCar}><VehicleIllustration /></div>
               </div>
 
-              <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <div className={styles.facts}>
                 <div className="space-y-3">
-                  <div className="grid gap-2 text-sm sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-5 text-sm sm:grid-cols-4">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rok</div>
-                      <div className="text-xl font-semibold text-slate-900">{formatNumber(summary.year)}</div>
+                      <div className="text-xl font-semibold text-slate-900">{summary.year ?? "—"}</div>
                     </div>
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Palivo</div>
@@ -3001,10 +2764,10 @@ export default function VehicleAuditPage() {
                     <button
                       type="button"
                       onClick={() => void handleCopyIdentifier("vin", displayedVin)}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                      className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
                     >
                       <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">VIN</span>
-                      <span className="font-semibold text-slate-900">{displayedVin}</span>
+                      <span className={`${styles.identifier} font-semibold text-slate-900`}>{displayedVin}</span>
                       <ClipboardCopy className="h-3.5 w-3.5 text-slate-500" />
                       <span className="text-[11px] text-slate-500">
                         {copiedId === "vin" ? "Zkopírováno" : "Kopírovat"}
@@ -3015,10 +2778,10 @@ export default function VehicleAuditPage() {
                       type="button"
                       onClick={() => void handleCopyIdentifier("orv", orvLabel)}
                       disabled={orvLabel === "—"}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">ORV</span>
-                      <span className="font-semibold text-slate-900">{orvLabel}</span>
+                      <span className={`${styles.identifier} font-semibold text-slate-900`}>{orvLabel}</span>
                       <ClipboardCopy className="h-3.5 w-3.5 text-slate-500" />
                       <span className="text-[11px] text-slate-500">
                         {copiedId === "orv" ? "Zkopírováno" : "Kopírovat"}
@@ -3047,7 +2810,7 @@ export default function VehicleAuditPage() {
                     value={formatKm(mileageKm)}
                     subtitle={`Ø ${formatNumber(averageAnnualKm)} km/rok`}
                     icon={<Gauge className="h-3.5 w-3.5" />}
-                    tone="green"
+                    tone="neutral"
                   />
                   <Tile
                     title="Původ"
@@ -3072,7 +2835,7 @@ export default function VehicleAuditPage() {
                   type="button"
                   onClick={() => void handleSautoSearch()}
                   disabled={sautoLoading || !user || !hasVehicleForSauto}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Search className="h-4 w-4" />
                   {sautoLoading ? "Načítám SAUTO..." : "Dopočítat ze SAUTO"}
@@ -3089,7 +2852,7 @@ export default function VehicleAuditPage() {
 
               <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
                 <div>
-                  <div className="text-6xl font-semibold leading-none tracking-tight text-fuchsia-700">{formatCurrency(valuationRecommended)}</div>
+                  <div className="text-4xl font-semibold leading-none tracking-tight text-violet-700 sm:text-5xl">{formatCurrency(valuationRecommended)}</div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                     <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${confidenceToneClass(valuationConfidenceLabel)}`}>
                       {valuationConfidenceLabel}
@@ -3101,7 +2864,7 @@ export default function VehicleAuditPage() {
                     </span>
                     <span>při {formatKm(valuationReferenceMileage)}</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-6 text-xl font-semibold text-slate-800">
+                  <div className="mt-3 flex flex-wrap items-center gap-4 text-sm font-semibold text-slate-700">
                     <span>
                       Férové rozmezí {formatCurrency(valuationRangeLow)} - {formatCurrency(valuationRangeHigh)}
                       {valuationFairRangePct != null ? ` ± ${formatNumber(valuationFairRangePct)} %` : ""}
@@ -3112,7 +2875,7 @@ export default function VehicleAuditPage() {
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   <div className="inline-flex items-center gap-2 font-semibold text-slate-700">
-                    <AlertTriangle className="h-4 w-4 text-fuchsia-700" />
+                    <AlertTriangle className="h-4 w-4 text-violet-700" />
                     {valuationInfoTitle !== "—" ? valuationInfoTitle : "Odhad na základě registru"}
                   </div>
                   <div className="mt-1">
@@ -3193,8 +2956,8 @@ export default function VehicleAuditPage() {
                 onToggle={() => setOwnersExpanded((value) => !value)}
               />
 
-              <div className="rounded-3xl border border-fuchsia-200 bg-fuchsia-50 p-4 text-sm text-slate-700">
-                <div className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Aktuální stav</div>
+              <div className="rounded-3xl border border-violet-200 bg-violet-50 p-4 text-sm text-slate-700">
+                <div className="text-xs font-semibold uppercase tracking-wide text-violet-700">Aktuální stav</div>
                 <div className="mt-2 space-y-1">
                   <div><span className="font-semibold">Vlastník:</span> {currentOwner?.name ?? "Neuvedený subjekt"} ({currentOwner?.fromLabel ?? "—"})</div>
                   <div><span className="font-semibold">Provozovatel:</span> {currentOperator?.name ?? "Neuvedený subjekt"} ({currentOperator?.fromLabel ?? "—"})</div>
@@ -3225,238 +2988,23 @@ export default function VehicleAuditPage() {
             <section className="vehicle-reveal rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3" style={revealStyle(500)}>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-fuchsia-700" />
+                  <ShieldCheck className="h-4 w-4 text-violet-700" />
                   <span>VIN: {displayedVin}</span>
                 </div>
-                <span>Uživatel: {safeStr(result?.forUser)}</span>
+                <span>Registr silničních vozidel</span>
                 <span>Status odpovědi: {safeStr(result?.payload?.Status)}</span>
               </div>
             </section>
           </>
         )}
 
-        {searchActivated && !loading && !summary && (
-          <section className="vehicle-reveal rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600" style={revealStyle(60)}>
-            Zatím nejsou načtená validní data z registru.
+        {searchActivated && !loading && !summary && !error && (
+          <section role="status" className="vehicle-reveal rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600" style={revealStyle(60)}>
+            Pro tento VIN nemáme dostupné údaje. Zkontroluj zadané VIN a zkus vyhledat znovu.
           </section>
         )}
       </div>
-      <style jsx global>{`
-        @keyframes vehicle-bg-pan {
-          0% {
-            transform: translate3d(-10%, -12%, 0) scale(1);
-            opacity: 0.52;
-          }
-          50% {
-            transform: translate3d(8%, 4%, 0) scale(1.06);
-            opacity: 0.7;
-          }
-          100% {
-            transform: translate3d(16%, -10%, 0) scale(1.03);
-            opacity: 0.5;
-          }
-        }
 
-        @keyframes vehicle-reveal-up {
-          0% {
-            opacity: 0;
-            transform: translateY(26px) scale(0.985);
-            filter: blur(6px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            filter: blur(0);
-          }
-        }
-
-        @keyframes vehicle-float-y {
-          0%,
-          100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-5px);
-          }
-        }
-
-        @keyframes vehicle-glow-pulse {
-          0%,
-          100% {
-            box-shadow: 0 12px 28px rgba(192, 38, 211, 0.08), 0 0 0 1px rgba(217, 70, 239, 0.08);
-          }
-          50% {
-            box-shadow: 0 16px 34px rgba(192, 38, 211, 0.16), 0 0 0 1px rgba(217, 70, 239, 0.18);
-          }
-        }
-
-        @keyframes vehicle-cta-shimmer {
-          0% {
-            transform: translateX(-130%);
-          }
-          50%,
-          100% {
-            transform: translateX(130%);
-          }
-        }
-
-        @keyframes vehicle-scan-lens-move {
-          0% {
-            left: 9%;
-            transform: translate3d(0, -50%, 0) rotate(-9deg) scale(0.98);
-          }
-          42% {
-            left: 49%;
-            transform: translate3d(-50%, -50%, 0) rotate(2deg) scale(1.03);
-          }
-          74% {
-            left: 76%;
-            transform: translate3d(-50%, -50%, 0) rotate(-4deg) scale(1);
-          }
-          100% {
-            left: 9%;
-            transform: translate3d(0, -50%, 0) rotate(-9deg) scale(0.98);
-          }
-        }
-
-        @keyframes vehicle-scan-beam-move {
-          0% {
-            left: 12%;
-            opacity: 0.3;
-          }
-          42% {
-            left: 49%;
-            opacity: 0.95;
-          }
-          74% {
-            left: 78%;
-            opacity: 0.65;
-          }
-          100% {
-            left: 12%;
-            opacity: 0.3;
-          }
-        }
-
-        .vehicle-audit-shell {
-          position: relative;
-          isolation: isolate;
-        }
-
-        .vehicle-audit-shell::before {
-          content: "";
-          position: absolute;
-          inset: 32px 16px auto 16px;
-          height: 300px;
-          z-index: -1;
-          border-radius: 44px;
-          background: radial-gradient(50% 60% at 18% 44%, rgba(217, 70, 239, 0.14), transparent 74%),
-            radial-gradient(58% 62% at 82% 36%, rgba(244, 114, 182, 0.16), transparent 78%);
-          filter: blur(18px);
-          animation: vehicle-bg-pan 14s ease-in-out infinite alternate;
-        }
-
-        .vehicle-reveal {
-          opacity: 0;
-          animation: vehicle-reveal-up 760ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-        }
-
-        .vehicle-float {
-          animation: vehicle-float-y 4.6s ease-in-out infinite;
-        }
-
-        .vehicle-glow {
-          animation: vehicle-glow-pulse 4.2s ease-in-out infinite;
-        }
-
-        .vehicle-hero-title {
-          text-wrap: balance;
-        }
-
-        .vehicle-cta {
-          position: relative;
-          overflow: hidden;
-        }
-
-        .vehicle-cta::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(110deg, transparent 34%, rgba(255, 255, 255, 0.35) 50%, transparent 66%);
-          transform: translateX(-130%);
-          animation: vehicle-cta-shimmer 3.3s ease-in-out infinite;
-          pointer-events: none;
-        }
-
-        .vehicle-cta:disabled::after {
-          animation: none;
-        }
-
-        .vehicle-scan-lens {
-          left: 49%;
-          transform: translate3d(-50%, -50%, 0);
-          animation: vehicle-scan-lens-move 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-        }
-
-        .vehicle-scan-beam {
-          left: 49%;
-          animation: vehicle-scan-beam-move 4.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-        }
-
-        :root[data-motion="off"] .vehicle-audit-shell::before,
-        :root[data-motion="off"] .vehicle-reveal,
-        :root[data-motion="off"] .vehicle-float,
-        :root[data-motion="off"] .vehicle-glow,
-        :root[data-motion="off"] .vehicle-cta::after {
-          animation: none !important;
-          opacity: 1 !important;
-          transform: none !important;
-          filter: none !important;
-        }
-
-        :root[data-motion="off"] .vehicle-scan-lens {
-          left: 49% !important;
-          animation: none !important;
-          opacity: 1 !important;
-          transform: translate3d(-50%, -50%, 0) !important;
-          filter: none !important;
-        }
-
-        :root[data-motion="off"] .vehicle-scan-beam {
-          left: 49% !important;
-          animation: none !important;
-          opacity: 0.8 !important;
-          filter: none !important;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .vehicle-audit-shell::before,
-          .vehicle-reveal,
-          .vehicle-float,
-          .vehicle-glow,
-          .vehicle-cta::after {
-            animation: none !important;
-            opacity: 1 !important;
-            transform: none !important;
-            filter: none !important;
-          }
-
-          .vehicle-scan-lens {
-            left: 49% !important;
-            animation: none !important;
-            opacity: 1 !important;
-            transform: translate3d(-50%, -50%, 0) !important;
-            filter: none !important;
-          }
-
-          .vehicle-scan-beam {
-            left: 49% !important;
-            animation: none !important;
-            opacity: 0.8 !important;
-            filter: none !important;
-          }
-        }
-      `}</style>
     </AppLayout>
   );
 }

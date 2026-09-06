@@ -358,7 +358,7 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
   {
     key: "katastr",
     category: "Pojištění majetku",
-    title: "Nahlížení do katastru nemovitostí",
+    title: "Katastr nemovitostí",
     description:
       "Vyhledej údaje z CUZK podle kódu adresního místa (RÚIAN) s autorizací přes tvůj účet.",
     href: "/cuzk",

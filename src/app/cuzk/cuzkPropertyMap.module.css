@@ -1,0 +1,19 @@
+.map { overflow: visible; }
+.parcelTrace { stroke-dasharray: 24 76; stroke-dashoffset: 24; }
+.locationPulse { opacity: .4; transform-box: fill-box; transform-origin: center; }
+.houseScan { opacity: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .pin { animation: pin-arrive 800ms cubic-bezier(.2,.8,.2,1) both; }
+  .map[data-animated="true"] .pin { animation: pin-float 3.8s ease-in-out infinite; }
+  .map[data-animated="true"] .parcelTrace { animation: parcel-trace 4.8s linear infinite; }
+  .map[data-animated="true"] .locationPulse { animation: location-pulse 3.8s ease-out infinite; }
+  .map[data-animated="true"] .houseScan { animation: house-scan 4.8s ease-in-out infinite; }
+  @keyframes pin-arrive { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pin-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  @keyframes parcel-trace { to { stroke-dashoffset: -76; } }
+  @keyframes location-pulse { 0% { opacity: .5; transform: scale(.9); } 85%, 100% { opacity: 0; transform: scale(2.3); } }
+  @keyframes house-scan { 0%, 12% { opacity: 0; transform: translateX(-60px); } 25% { opacity: 1; } 70%, 100% { opacity: 0; transform: translateX(260px); } }
+}
+
+:global(:root[data-motion="off"]) .map * { animation: none !important; }

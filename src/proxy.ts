@@ -64,7 +64,7 @@ function getMeetingEmbedFrameAncestors(): string {
   return configured ? `'self' ${configured}` : "'self' *";
 }
 
-function buildBaselineCsp(frameAncestors = "'none'"): string {
+function buildBaselineCsp(frameAncestors = "'none'", frameSrc = FRAME_SRC): string {
   const scriptSrc = [
     "'self'",
     "'unsafe-inline'",
@@ -77,7 +77,7 @@ function buildBaselineCsp(frameAncestors = "'none'"): string {
     `frame-ancestors ${frameAncestors}`,
     "object-src 'none'",
     "form-action 'self'",
-    `frame-src ${FRAME_SRC}`,
+    `frame-src ${frameSrc}`,
     "worker-src 'self' blob:",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https:",
@@ -90,7 +90,8 @@ function buildBaselineCsp(frameAncestors = "'none'"): string {
 
 function buildStrictNonceCsp(
   nonce: string,
-  frameAncestors = "'none'"
+  frameAncestors = "'none'",
+  frameSrc = FRAME_SRC
 ): string {
   const scriptSrc = [
     "'self'",
@@ -105,7 +106,7 @@ function buildStrictNonceCsp(
     `frame-ancestors ${frameAncestors}`,
     "object-src 'none'",
     "form-action 'self'",
-    `frame-src ${FRAME_SRC}`,
+    `frame-src ${frameSrc}`,
     "worker-src 'self' blob:",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https:",
@@ -281,7 +282,11 @@ export async function proxy(req: NextRequest) {
       },
     });
 
-  const strictCsp = buildStrictNonceCsp(nonce, frameAncestors);
+  // The cadastral result embeds Google Maps; keep other pages' frame sources unchanged.
+  const frameSrc = pathname === "/cuzk" || pathname === "/cuzk/"
+    ? `${FRAME_SRC} https://www.google.com/maps https://www.google.com/maps/`
+    : FRAME_SRC;
+  const strictCsp = buildStrictNonceCsp(nonce, frameAncestors, frameSrc);
   if (isMeetingEmbed) {
     res.headers.delete("X-Frame-Options");
     res.headers.set("Cross-Origin-Opener-Policy", "unsafe-none");
@@ -295,7 +300,7 @@ export async function proxy(req: NextRequest) {
   if (process.env.CSP_STRICT_ENFORCE === "1") {
     res.headers.set("Content-Security-Policy", strictCsp);
   } else {
-    res.headers.set("Content-Security-Policy", buildBaselineCsp(frameAncestors));
+    res.headers.set("Content-Security-Policy", buildBaselineCsp(frameAncestors, frameSrc));
     res.headers.set("Content-Security-Policy-Report-Only", strictCsp);
   }
 

@@ -153,48 +153,51 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
   const showNote = editMode || hasValue(domexDetail?.note);
   const resolvedAddress = (editMode
     ? fields.address
-    : domexDetail?.address || fields.address || ""
+    : domexDetail?.address ?? ""
   ).trim();
-  const cuzkHref = resolvedAddress
+  const cuzkHref = resolvedAddress.length >= 2
     ? `/cuzk?address=${encodeURIComponent(resolvedAddress)}`
-    : "/cuzk";
+    : null;
 
   return (
     <>
       {showPropertyBlock && (
         <>
-          <div className="mb-2">
-            <Link
-              href={cuzkHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-            >
-              <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
-              Katastr
-            </Link>
-          </div>
           <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
           <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
             <House size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
             <span>Pojištění stavby</span>
           </div>
           <div className="space-y-2 text-sm text-slate-900">
-            <div className="flex justify-between gap-2">
-              <span className="text-slate-600">Adresa</span>
-              <span className="font-semibold text-right">
-                {editMode ? (
-                  <input
-                    type="text"
-                    value={fields.address}
-                    onChange={(e) => onChange("address", e.target.value)}
-                    className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
-                    placeholder="Adresa"
-                  />
-                ) : (
-                  domexDetail?.address || "—"
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+              <span className="shrink-0 text-slate-600">Adresa</span>
+              <div className="flex min-w-0 max-w-full flex-1 flex-wrap items-center justify-end gap-2">
+                <span className="min-w-0 max-w-full font-semibold text-right [overflow-wrap:anywhere]">
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={fields.address}
+                      onChange={(e) => onChange("address", e.target.value)}
+                      aria-label="Adresa pojištěné nemovitosti"
+                      className="w-44 max-w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                      placeholder="Adresa"
+                    />
+                  ) : (
+                    resolvedAddress || "—"
+                  )}
+                </span>
+                {cuzkHref && (
+                  <Link
+                    href={cuzkHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-2 text-left text-xs font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
+                  >
+                    <ExternalLink size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                    <span>Prověřit v katastru<span className="sr-only"> (otevře se v nové kartě)</span></span>
+                  </Link>
                 )}
-              </span>
+              </div>
             </div>
             <div className="flex justify-between gap-2">
               <span className="text-slate-600">Typ nemovitosti</span>

@@ -1,0 +1,18 @@
+.illustration { width: 100%; height: auto; overflow: visible; }
+.scan { opacity: 0; pointer-events: none; }
+.animated .scan { opacity: .75; transform: translate(110px, -28px); }
+
+@keyframes scan {
+  0% { transform: translate(0, 0); opacity: 0; }
+  12% { opacity: .85; }
+  80% { opacity: .85; }
+  100% { transform: translate(240px, -62px); opacity: 0; }
+}
+@keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: no-preference) {
+  .animated .scan { animation: scan 3.8s ease-in-out infinite; }
+  .animated .point, .animated .track { animation: pulse 2.4s ease-in-out infinite; }
+  .animated .callout { animation: float 3.8s ease-in-out infinite; }
+}
+:global(:root[data-motion="off"]) .animated * { animation: none !important; }

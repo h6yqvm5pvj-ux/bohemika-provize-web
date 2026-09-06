@@ -138,6 +138,37 @@ describe("server session revocation", () => {
   });
 });
 
+describe("cadastral map frame policy", () => {
+  it.each(["0", "1"])("allows Google Maps only on cadastral pages with strict enforcement %s", async (strict) => {
+    vi.stubEnv("CSP_STRICT_ENFORCE", strict);
+    const cookie = await issue();
+    const defaultSources = ["'self'", "https://*.firebaseapp.com", "https://*.web.app"];
+    for (const path of ["/cuzk", "/cuzk/", "/cuzk?address=Kadan", "/", "/pomucky", "/intranet", "/cuzk-other", "/api/cuzk-search"]) {
+      const response = await middleware(request(path, cookie.value));
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      const policies = [response.headers.get("Content-Security-Policy")!];
+      if (strict === "0") policies.push(response.headers.get("Content-Security-Policy-Report-Only")!);
+      const isCadastralPage = ["/cuzk", "/cuzk/", "/cuzk?address=Kadan"].includes(path);
+      for (const policy of policies) {
+        const frameSources = policy.split("; ").find(directive => directive.startsWith("frame-src "))!.split(" ").slice(1);
+        expect(frameSources).toEqual(isCadastralPage
+          ? [...defaultSources, "https://www.google.com/maps", "https://www.google.com/maps/"]
+          : defaultSources);
+        expect(policy).toContain("frame-ancestors 'none'");
+        expect(policy).toContain("object-src 'none'");
+      }
+      expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+    }
+  });
+
+  it("still requires authentication to view cadastral results", async () => {
+    const response = await middleware(request("/cuzk", undefined, undefined, false));
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("https://bohemka.app/login?next=%2Fcuzk");
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
+  });
+});
+
 describe("fresh reauthentication for signing out other devices", () => {
   it("cannot turn a bearer token without a matching cookie into a new session", async () => {
     for (const action of ["prepareRevokeOthers", "revokeOthers"]) {
