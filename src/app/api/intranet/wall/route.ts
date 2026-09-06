@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldPath, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { randomUUID } from "node:crypto";
 
@@ -24,7 +24,8 @@ import {
   parseIntranetWallSourcesJson,
   sanitizeStoredIntranetWallSources,
 } from "@/app/intranet/wallSources";
-import { loadProfileAvatarsByEmail } from "@/lib/server/userProfileAvatars";
+import { loadIntranetAuthorProfiles } from "@/lib/server/intranetAuthorProfiles";
+import { isWallId, matchesWallView, normalizeWallPersonalState, type WallPersonalState, type WallView } from "@/app/intranet/wallPersonal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +77,7 @@ type WallAuthor = {
   email: string;
   name: string;
   profileAvatar: string;
+  specialist?: boolean;
 };
 
 type WallPollOption = {
@@ -113,7 +115,7 @@ type WallCommentReply = {
   parentCommentId: string;
 };
 
-type WallPost = {
+type WallPost = WallPersonalState & {
   id: string;
   title: string;
   text: string;
@@ -122,6 +124,7 @@ type WallPost = {
   createdAtMs: number | null;
   updatedAtMs: number | null;
   pinned: boolean;
+  acceptedCommentId: string | null;
   readByDay: string | null;
   commentCount: number;
   likeCount: number;
@@ -734,7 +737,8 @@ async function uploadAttachmentsToStorage({
 
 async function loadCommentsForPost(
   postId: string,
-  viewerEmail: string
+  viewerEmail: string,
+  acceptedCommentId: string | null
 ): Promise<WallComment[]> {
   if (!adminDb) return [];
   const viewerEmailNormalized = normalizeEmail(viewerEmail);
@@ -742,9 +746,24 @@ async function loadCommentsForPost(
     .collection(POSTS_COLLECTION)
     .doc(postId)
     .collection(COMMENTS_SUBCOLLECTION)
-    .orderBy("createdAt", "asc")
+    .orderBy("createdAt", "desc")
     .limit(COMMENTS_PER_POST_LIMIT)
     .get();
+
+  const commentDocs: FirebaseFirestore.DocumentSnapshot[] = [...snap.docs].reverse();
+  if (acceptedCommentId) {
+    const selected = commentDocs.find(doc => doc.id === acceptedCommentId)
+      ?? await adminDb.collection(POSTS_COLLECTION).doc(postId).collection(COMMENTS_SUBCOLLECTION).doc(acceptedCommentId).get();
+    if (selected.exists) {
+      if (!commentDocs.some(doc => doc.id === selected.id)) commentDocs.push(selected);
+      const parentId = selected.data()?.parentCommentId;
+      if (isWallId(parentId) && !commentDocs.some(doc => doc.id === parentId)) {
+        const parent = await adminDb.collection(POSTS_COLLECTION).doc(postId).collection(COMMENTS_SUBCOLLECTION).doc(parentId).get();
+        if (parent.exists) commentDocs.push(parent);
+      }
+    }
+  }
+  commentDocs.sort((a, b) => (toMillis(a.data()?.createdAt) ?? 0) - (toMillis(b.data()?.createdAt) ?? 0));
 
   type ParsedCommentNode = {
     id: string;
@@ -756,7 +775,7 @@ async function loadCommentsForPost(
     parentCommentId: string | null;
   };
 
-  const parsedNodes: ParsedCommentNode[] = snap.docs.map((doc) => {
+  const parsedNodes: ParsedCommentNode[] = commentDocs.map((doc) => {
     const data = doc.data() as Record<string, unknown>;
     const author = parseAuthor(data);
     const parentRaw = normalizeText(data.parentCommentId);
@@ -845,7 +864,8 @@ function mapPostFromDoc(
   docId: string,
   raw: Record<string, unknown>,
   comments: WallComment[],
-  viewerEmail: string
+  viewerEmail: string,
+  personalState: WallPersonalState
 ): WallPost | null {
   const title = normalizeText(raw.title);
   const text = normalizeText(raw.text);
@@ -884,7 +904,9 @@ function mapPostFromDoc(
   const poll = parsePoll(raw.poll, raw.pollVotes, viewerEmail);
 
   return {
+    ...personalState,
     id: docId,
+    acceptedCommentId: section === "pomoc" && isWallId(raw.acceptedCommentId) ? raw.acceptedCommentId : null,
     title,
     text,
     section,
@@ -908,20 +930,12 @@ function mapPostFromDoc(
 }
 
 async function hydrateWallAuthorAvatars(posts: WallPost[]): Promise<WallPost[]> {
-  const authorEmails = new Set<string>();
-  posts.forEach((post) => {
-    if (post.author.email) authorEmails.add(post.author.email);
-    post.comments.forEach((comment) => {
-      if (comment.author.email) authorEmails.add(comment.author.email);
-      comment.replies.forEach((reply) => {
-        if (reply.author.email) authorEmails.add(reply.author.email);
-      });
-    });
-  });
-  const avatars = await loadProfileAvatarsByEmail(authorEmails);
+  const authors = posts.flatMap(post => [post.author, ...post.comments.flatMap(comment => [comment.author, ...comment.replies.map(reply => reply.author)])]);
+  const profiles = await loadIntranetAuthorProfiles(authors);
   const hydrateAuthor = (author: WallAuthor): WallAuthor => ({
     ...author,
-    profileAvatar: avatars[author.email] || "",
+    profileAvatar: profiles[author.email]?.profileAvatar || "",
+    specialist: profiles[author.email]?.specialist === true,
   });
 
   return posts.map((post) => ({
@@ -970,6 +984,14 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const viewParam = req.nextUrl.searchParams.get("view") ?? "all";
+  const requestedPostId = req.nextUrl.searchParams.get("postId");
+  const cursorId = req.nextUrl.searchParams.get("cursorId");
+  if (!["all", "saved", "unread", "following"].includes(viewParam) ||
+      (requestedPostId !== null && !isWallId(requestedPostId)) || (cursorId !== null && !isWallId(cursorId))) {
+    return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Neplatný filtr příspěvků." }, { status: 400 }), ctx);
+  }
+  const view = viewParam as WallView;
   const searchQuery = normalizeText(req.nextUrl.searchParams.get("q")).slice(0, 120);
   const normalizedSearchQuery = normalizeSearchText(searchQuery);
 
@@ -984,67 +1006,59 @@ export async function GET(req: NextRequest) {
 
   try {
     const viewerEmail = normalizeEmail(ctx.email);
-    const batchLimit = Math.max(limit + 1, POSTS_SCAN_BATCH_LIMIT);
-    const matchingDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
-    let query: FirebaseFirestore.Query = adminDb
-      .collection(POSTS_COLLECTION)
-      .orderBy("createdAt", "desc")
-      .limit(batchLimit);
-    if (cursorMs) {
-      query = query.startAfter(Timestamp.fromMillis(cursorMs));
-    }
-
-    while (matchingDocs.length <= limit) {
-      const postsSnap = await query.get();
-      if (postsSnap.empty) break;
-
-      for (const doc of postsSnap.docs) {
-        const raw = doc.data() as Record<string, unknown>;
-        const docSection = parseSection(raw.section);
-        const matchesSection = !section || docSection === section;
-        const matchesSearch =
-          !normalizedSearchQuery ||
-          [
-            raw.title,
-            raw.text,
-            raw.createdByName,
-            raw.createdByEmail,
-            sanitizeStoredIntranetWallSources(raw.sources).join(" "),
-          ].some((value) => normalizeSearchText(value).includes(normalizedSearchQuery));
-        if (matchesSection && matchesSearch) {
-          matchingDocs.push(doc);
+    const db = adminDb;
+    const personalStates = new Map<string, WallPersonalState>();
+    const loadStates = async (docs: FirebaseFirestore.DocumentSnapshot[]) => {
+      if (!docs.length) return;
+      const states = await db.getAll(...docs.map(doc => doc.ref.collection("viewerStates").doc(viewerEmail)));
+      states.forEach((state, index) => personalStates.set(docs[index].id, normalizeWallPersonalState(state.data(), normalizeEmail(docs[index].data()?.createdByEmail) === viewerEmail)));
+    };
+    const matchingDocs: FirebaseFirestore.DocumentSnapshot[] = [];
+    if (requestedPostId) {
+      const doc = await db.collection(POSTS_COLLECTION).doc(requestedPostId).get();
+      if (!doc.exists) return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Příspěvek už neexistuje." }, { status: 404 }), ctx);
+      matchingDocs.push(doc);
+      await loadStates([doc]);
+    } else {
+      const batchLimit = Math.max(limit + 1, POSTS_SCAN_BATCH_LIMIT);
+      const baseQuery = () => db.collection(POSTS_COLLECTION)
+        .orderBy("createdAt", "desc").orderBy(FieldPath.documentId(), "desc").limit(batchLimit);
+      let query: FirebaseFirestore.Query = baseQuery();
+      if (cursorMs) query = cursorId
+        ? query.startAfter(Timestamp.fromMillis(cursorMs), cursorId)
+        : query.startAfter(Timestamp.fromMillis(cursorMs));
+      while (matchingDocs.length <= limit) {
+        const postsSnap = await query.get();
+        if (postsSnap.empty) break;
+        const candidates = postsSnap.docs.filter(doc => {
+          const raw = doc.data() as Record<string, unknown>;
+          const docSection = parseSection(raw.section);
+          if (!docSection || !normalizeText(raw.title) || !normalizeText(raw.text)) return false;
+          return (!section || docSection === section) && (!normalizedSearchQuery ||
+            [raw.title, raw.text, raw.createdByName, raw.createdByEmail, sanitizeStoredIntranetWallSources(raw.sources).join(" ")]
+              .some(value => normalizeSearchText(value).includes(normalizedSearchQuery)));
+        });
+        await loadStates(candidates);
+        for (const doc of candidates) {
+          if (matchesWallView(personalStates.get(doc.id)!, view)) matchingDocs.push(doc);
           if (matchingDocs.length > limit) break;
         }
+        if (matchingDocs.length > limit || postsSnap.size < batchLimit) break;
+        query = baseQuery().startAfter(postsSnap.docs[postsSnap.docs.length - 1]);
       }
-
-      if (matchingDocs.length > limit || postsSnap.size < batchLimit) break;
-      const lastDoc = postsSnap.docs[postsSnap.docs.length - 1];
-      if (!lastDoc) break;
-      query = adminDb
-        .collection(POSTS_COLLECTION)
-        .orderBy("createdAt", "desc")
-        .startAfter(lastDoc)
-        .limit(batchLimit);
     }
-
     const docsToReturn = matchingDocs.slice(0, limit);
-    const hasMoreCandidate = matchingDocs.length > limit;
-    const lastReturnedDoc = docsToReturn[docsToReturn.length - 1] ?? null;
-    const nextCursorMs = hasMoreCandidate
-      ? toMillis(lastReturnedDoc?.data().createdAt) ?? null
-      : null;
-    const hasMore = hasMoreCandidate && nextCursorMs !== null;
-
-    const parsedPosts = await Promise.all(
-      docsToReturn.map(async (doc) => {
-        const raw = doc.data() as Record<string, unknown>;
-        const comments = await loadCommentsForPost(doc.id, viewerEmail);
-        return mapPostFromDoc(doc.id, raw, comments, viewerEmail);
-      })
-    );
-    const posts = await hydrateWallAuthorAvatars(
-      parsedPosts.filter((post): post is WallPost => post !== null)
-    );
+    const lastDoc = docsToReturn[docsToReturn.length - 1];
+    const nextCursorMs = matchingDocs.length > limit ? toMillis(lastDoc?.data()?.createdAt) : null;
+    const nextCursorId = nextCursorMs !== null ? lastDoc.id : null;
+    const hasMore = nextCursorMs !== null;
+    const parsedPosts = await Promise.all(docsToReturn.map(async doc => {
+      const raw = doc.data() as Record<string, unknown>;
+      const acceptedId = raw.section === "pomoc" && isWallId(raw.acceptedCommentId) ? raw.acceptedCommentId : null;
+      const comments = await loadCommentsForPost(doc.id, viewerEmail, acceptedId);
+      return mapPostFromDoc(doc.id, raw, comments, viewerEmail, personalStates.get(doc.id)!);
+    }));
+    const posts = await hydrateWallAuthorAvatars(parsedPosts.filter((post): post is WallPost => post !== null));
 
     return withRateLimitHeaders(
       NextResponse.json({
@@ -1058,6 +1072,7 @@ export async function GET(req: NextRequest) {
           .slice(0, limit),
         hasMore,
         nextCursorMs,
+        nextCursorId,
       }),
       ctx
     );

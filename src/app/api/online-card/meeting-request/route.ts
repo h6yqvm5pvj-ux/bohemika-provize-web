@@ -3,9 +3,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
-import { recordOnlineCardAnalyticsEvent } from "@/lib/server/onlineCardAnalytics";
+import { recordOnlineCardAnalyticsEvent, resolveOnlineCardAnalyticsOwnerEmail } from "@/lib/server/onlineCardAnalytics";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
 import { collectPushTokens } from "@/lib/server/pushTokens";
+import { parseTravelInquiry, travelInquiryMessage } from "@/lib/travelInsurance";
 import {
   applyRateLimitHeaders,
   consumeRateLimit,
@@ -45,6 +46,7 @@ const URL_RE = /\b(?:https?:\/\/|www\.)/gi;
 type PublicOnlineCardOwner = {
   slug: string;
   ownerEmail: string;
+  analyticsOwnerEmail: string | null;
   ownerName: string;
 };
 
@@ -57,6 +59,7 @@ type IncomingBody = {
   topics?: unknown;
   company?: unknown;
   locale?: unknown;
+  travel?: unknown;
 };
 
 type AntiSpamCheck = {
@@ -300,6 +303,7 @@ function parseCardOwner(
   return {
     slug,
     ownerEmail: ownerEmailCandidate,
+    analyticsOwnerEmail: resolveOnlineCardAnalyticsOwnerEmail(data, docId),
     ownerName,
   };
 }
@@ -353,19 +357,21 @@ async function sendPushNotification({
   ownerEmail,
   requesterName,
   requestId,
+  isTravel = false,
 }: {
   req: NextRequest;
   ownerEmail: string;
   requesterName: string;
   requestId: string;
+  isTravel?: boolean;
 }) {
   if (!adminMessaging) return;
 
   const tokens = await loadOwnerPushTokens(ownerEmail);
   if (tokens.length === 0) return;
 
-  const title = "Nová žádost o schůzku";
-  const body = `${requesterName} chce domluvit schůzku.`;
+  const title = isTravel ? "Nová poptávka cestovního pojištění" : "Nová žádost o schůzku";
+  const body = isTravel ? `${requesterName} posílá plán své cesty.` : `${requesterName} chce domluvit schůzku.`;
   const deepLink = "/posta";
   const webPushLink = `${req.nextUrl.protocol}//${req.nextUrl.host}${deepLink}`;
   const createdAtIso = new Date().toISOString();
@@ -442,8 +448,13 @@ export async function POST(req: NextRequest) {
     const fullName = sanitizeText(body.fullName, 120);
     const phone = sanitizeText(body.phone, 80);
     const email = normalizeEmail(body.email);
-    const messageRaw = sanitizeText(body.message, 1200);
-    const topicsRaw = sanitizeMeetingTopics(body.topics);
+    const parsedTravel = body.travel !== undefined ? parseTravelInquiry(body.travel) : null;
+    if (parsedTravel && !parsedTravel.ok) {
+      return withRateHeaders(NextResponse.json({ ok: false, error: parsedTravel.error } satisfies ApiError, { status: 400 }), rateLimit);
+    }
+    const travel = parsedTravel?.ok ? parsedTravel.value : null;
+    const messageRaw = travel ? travelInquiryMessage(travel) : sanitizeText(body.message, 1200);
+    const topicsRaw = travel ? ["Cestovní pojištění", travel.intent === "review" ? "Kontrola stávajícího pojištění" : "Příprava nabídky"] : sanitizeMeetingTopics(body.topics);
     const honeypot = sanitizeText(body.company, 120);
     const locale = normalizeLocale(body.locale);
     const parsedLegacy = splitTopicsAndNoteFromMessage(messageRaw);
@@ -518,9 +529,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Travel inquiries belong to the advisor account, not an editable public contact address.
+    const recipientEmail = travel ? owner.analyticsOwnerEmail : owner.ownerEmail;
+    if (!recipientEmail) {
+      return withRateHeaders(NextResponse.json({ ok: false, error: "Příjemce poptávky se nepodařilo ověřit." } satisfies ApiError, { status: 503 }), rateLimit);
+    }
     const antiSpamLimit = await consumeMeetingAntiSpamLimits({
       slug,
-      ownerEmail: owner.ownerEmail,
+      ownerEmail: recipientEmail,
       fullName,
       phone,
       email,
@@ -537,7 +553,7 @@ export async function POST(req: NextRequest) {
     await requestRef.set({
       requestId: requestRef.id,
       slug,
-      ownerEmail: owner.ownerEmail,
+      ownerEmail: recipientEmail,
       ownerName: owner.ownerName,
       requester: {
         fullName,
@@ -552,31 +568,32 @@ export async function POST(req: NextRequest) {
       source: {
         host: req.nextUrl.host,
         protocol: req.nextUrl.protocol,
-        pagePath: `/vizitka/${slug}`,
+        pagePath: travel ? `/vizitka/${slug}/cestovni-pojisteni` : `/vizitka/${slug}`,
         rateLimitStore: rateLimit.store,
         ipResolved: ip !== "unknown",
         antiSpamVersion: 1,
       },
+      ...(travel ? { travel } : {}),
       createdAtMs,
       createdAt: FieldValue.serverTimestamp(),
     });
 
     try {
-      await recordOnlineCardAnalyticsEvent({
-        ownerEmail: owner.ownerEmail,
+      if (owner.analyticsOwnerEmail) await recordOnlineCardAnalyticsEvent({
+        ownerEmail: owner.analyticsOwnerEmail,
         slug,
-        event: "meeting_submitted",
+        event: travel ? "travel_submitted" : "meeting_submitted",
       });
     } catch (error) {
       // The valid meeting request must not fail just because its aggregate metric cannot be saved.
       console.warn("Online card meeting analytics failed:", error);
     }
 
-    const mailboxTitle = "Nová žádost o schůzku";
+    const mailboxTitle = travel ? "Nová poptávka cestovního pojištění" : "Nová žádost o schůzku";
     const mailboxBody = `${fullName} (${phone}) • ${email}`;
 
     await writeMailboxEntries({
-      recipientEmails: [owner.ownerEmail],
+      recipientEmails: [recipientEmail],
       type: "online_card_meeting_request",
       title: mailboxTitle,
       body: mailboxBody,
@@ -592,15 +609,17 @@ export async function POST(req: NextRequest) {
         requesterMessage: message,
         requesterLocale: locale,
         meetingOwnerName: owner.ownerName,
+        ...(travel ? { inquiryKind: "travel", preferredContact: travel.preferredContact } : {}),
       },
     });
 
     try {
       await sendPushNotification({
         req,
-        ownerEmail: owner.ownerEmail,
+        ownerEmail: recipientEmail,
         requesterName: fullName,
         requestId: requestRef.id,
+        isTravel: Boolean(travel),
       });
     } catch (error) {
       console.warn("Online card meeting push notification failed:", error);

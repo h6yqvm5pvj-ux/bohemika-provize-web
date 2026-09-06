@@ -32,7 +32,7 @@ import {
   onlineCardLanguageMeta,
   type OnlineCardLocale,
 } from "@/lib/onlineCardI18n";
-import type { OnlineCardAnalyticsEvent } from "@/lib/onlineCardAnalytics";
+import { trackOnlineCardEvent, trackOnlineCardVisit } from "@/lib/onlineCardTracking";
 import { getOnlineCardHeroArtwork } from "@/lib/onlineCardHeroArtwork";
 
 type OfficePhotoMeta = {
@@ -120,19 +120,6 @@ const sanitizeVCardFilename = (value: string): string => {
 
   return normalized || "kontakt";
 };
-
-function trackOnlineCardEvent(slug: string, event: OnlineCardAnalyticsEvent) {
-  if (!slug || typeof window === "undefined") return;
-
-  void fetch("/api/online-card/analytics", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slug, event }),
-    keepalive: true,
-  }).catch(() => {
-    // Tracking is optional and must never affect the public card flow.
-  });
-}
 
 export default function OnlineCardPublicClient({
   slug,
@@ -238,14 +225,7 @@ export default function OnlineCardPublicClient({
   }, [locale]);
 
   useEffect(() => {
-    const visitKey = `online-card:visit:${slug}`;
-    try {
-      if (window.sessionStorage.getItem(visitKey)) return;
-      window.sessionStorage.setItem(visitKey, "1");
-    } catch {
-      // A strict browser mode may disable session storage; recording a single page load is still safe.
-    }
-    trackOnlineCardEvent(slug, "visit");
+    void trackOnlineCardVisit(slug);
   }, [slug]);
 
   useEffect(() => {
@@ -602,6 +582,7 @@ export default function OnlineCardPublicClient({
           goldPageHref={`/vizitka/${slug}/zlato`}
           lifeInsurancePageHref={`/vizitka/${slug}/zivotni-pojisteni`}
           vehicleInsurancePageHref={`/vizitka/${slug}/pojisteni-vozidla`}
+          travelInsurancePageHref={`/vizitka/${slug}/cestovni-pojisteni`}
         />
         <OnlineCardTestimonials
           slug={slug}

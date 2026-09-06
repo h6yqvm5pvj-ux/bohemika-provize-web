@@ -26,7 +26,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const POSTS_COLLECTION = "intranetWallPosts";
-const COMMENTS_SUBCOLLECTION = "comments";
 const DELETE_RATE_LIMIT = 30;
 const DELETE_RATE_LIMIT_WINDOW_MS = 60_000;
 const PATCH_RATE_LIMIT = 40;
@@ -625,6 +624,7 @@ export async function PATCH(
       ...(sources ? { sources } : {}),
       pinned,
       readByDay,
+      ...(section !== "pomoc" ? { acceptedCommentId: null, acceptedByEmail: null, acceptedAt: null } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -715,13 +715,7 @@ export async function DELETE(
   }
 
   try {
-    const commentsSnap = await postRef.collection(COMMENTS_SUBCOLLECTION).get();
-    const batch = adminDb.batch();
-    commentsSnap.docs.forEach((doc) => {
-      batch.delete(doc.ref);
-    });
-    batch.delete(postRef);
-    await batch.commit();
+    await adminDb.recursiveDelete(postRef);
 
     return withRateLimitHeaders(
       NextResponse.json({ ok: true, postId }),

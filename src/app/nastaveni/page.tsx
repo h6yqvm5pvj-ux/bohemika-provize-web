@@ -3689,7 +3689,12 @@ export default function SettingsPage() {
     </section>
   );
   const onlineCardAnalyticsPanel = (
-    <OnlineCardAnalyticsPanel user={user} enabled={onlineCardDraft.enabled} />
+    <OnlineCardAnalyticsPanel
+      key={impersonatedEmail || user?.uid || "signed-out"}
+      user={user}
+      enabled={onlineCardDraft.enabled}
+      impersonatedEmail={impersonatedEmail}
+    />
   );
 
   const onlineCardStudioPublishPanel = (

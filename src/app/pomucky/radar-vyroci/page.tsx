@@ -1,28 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
   BriefcaseBusiness,
   CarFront,
   CalendarCheck,
   CalendarSearch,
+  Check,
+  CircleCheck,
   ChevronDown,
   CircleOff,
   Download,
   Eye,
   ExternalLink,
-  Flame,
   HeartPulse,
+  History,
   House,
+  Inbox,
   Loader2,
+  MessageSquareText,
   PhoneCall,
   PhoneMissed,
-  PartyPopper,
   Radar,
   RotateCcw,
   ShieldCheck,
-  Sparkles,
+  Search,
   Target,
   Users,
   X,
@@ -30,10 +33,13 @@ import {
 
 import { auth } from "@/app/firebase";
 import { AppLayout } from "@/components/AppLayout";
-import SplitTitle from "../plan-produkce/SplitTitle";
 import introStyles from "@/app/cashflow/cashflowIntro.module.css";
-import { AnimatedNumber } from "@/app/home/components/AnimatedNumbers";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { loadAnniversaryPortfolio, type AnniversaryContract as ContractRow } from "@/app/lib/anniversaryPortfolio";
+import type { AnniversaryReview, AnniversaryReviewMutationResponse, ContactOutcome } from "@/app/lib/anniversaryReviews";
+import { AnniversaryHistory } from "./AnniversaryHistory";
+import { anniversaryStage, RADAR_STAGE_LABELS, type RadarActivityFilter } from "./radarActivity";
+import styles from "./radar.module.css";
 import {
   ADMIN_IMPERSONATION_EVENT,
   readAdminImpersonationState,
@@ -59,44 +65,6 @@ import {
   shouldTrackAnniversary,
 } from "@/app/lib/contractAnniversary";
 
-type ContractRow = {
-  id: string;
-  entryType?: string | null;
-  status?: string | null;
-  productKey?: Product | null;
-  clientName?: string | null;
-  clientPhone?: string | null;
-  clientEmail?: string | null;
-  contractNumber?: string | null;
-  policyStartDate?: unknown;
-  policyEndDate?: unknown;
-  contractSignedDate?: unknown;
-  createdAt?: unknown;
-  durationYears?: number | null;
-  durationMonths?: number | null;
-  userEmail?: string | null;
-  adviserEmail?: string | null;
-  carHullSumInsured?: number | null;
-  carHullSumInsuredText?: string | null;
-  carHullDeductible?: number | null;
-  carHullDeductibleText?: string | null;
-  carHullRiskAccident?: boolean | null;
-  carHullRiskTheft?: boolean | null;
-  carHullRiskNatural?: boolean | null;
-  carHullRiskVandalism?: boolean | null;
-  carHullRiskAnimalCollision?: boolean | null;
-};
-
-type ContractsListResponse = {
-  ok: boolean;
-  error?: string;
-  position?: Position | null;
-  contracts?: ContractRow[];
-  hasMore?: boolean;
-  teamContracts?: ContractRow[];
-  teamHasMore?: boolean;
-};
-
 type ReviewsResponse = {
   ok: boolean;
   error?: string;
@@ -104,6 +72,32 @@ type ReviewsResponse = {
 };
 
 const WINDOW_OPTIONS = [14, 30, 60, DEFAULT_ANNIVERSARY_WINDOW_DAYS] as const;
+
+const ACTIVITY_FILTERS = [
+  { key: "new", label: RADAR_STAGE_LABELS.new, icon: Inbox },
+  { key: "active", label: RADAR_STAGE_LABELS.active, icon: MessageSquareText },
+  { key: "completed", label: RADAR_STAGE_LABELS.completed, icon: CircleCheck },
+  { key: "all", label: "Všechny", icon: Target },
+] as const;
+
+const ACTIVITY_COPY: Record<RadarActivityFilter, { title: string; description: string; emptyTitle: string; emptyDescription: string }> = {
+  new: {
+    title: "Tady začíná další kontakt", description: "Smlouvy bez kontaktu či poznámky k aktuálnímu výročí.",
+    emptyTitle: "V tomto období nejsou žádná nezpracovaná výročí", emptyDescription: "Zkus delší období nebo jiný druh pojištění.",
+  },
+  active: {
+    title: "Navaž na předchozí jednání", description: "Zapsaný kontakt nebo poznámka. Případ zůstává rozpracovaný, dokud ho neoznačíš jako dokončený.",
+    emptyTitle: "Žádné rozpracované případy", emptyDescription: "Po uložení kontaktu nebo poznámky se případ přesune sem. Dokončené najdeš zvlášť.",
+  },
+  completed: {
+    title: "Dokončené případy", description: "Výslovně uzavřená výročí. Kdykoliv je můžeš vrátit k řešení, historie zůstane uložená.",
+    emptyTitle: "Zatím žádné dokončené případy", emptyDescription: "Dovolání ani schůzka případ neuzavřou. Až bude vše vyřešené, použij tlačítko Dokončit.",
+  },
+  all: {
+    title: "Všechna výročí na jednom místě", description: "Nejprve nezpracované, potom rozpracované a nakonec dokončené případy.",
+    emptyTitle: "V tomto období nejsou žádná výročí", emptyDescription: "Zkus delší období nebo jiný druh pojištění.",
+  },
+};
 
 type RadarProductFilter =
   | "all"
@@ -143,19 +137,6 @@ const matchesRadarProductFilter = (
   if (filter === "auto") return AUTO_PRODUCTS.includes(product);
   if (filter === "entrepreneurs") return RADAR_ENTREPRENEUR_PRODUCTS.has(product);
   return RADAR_PROPERTY_LIABILITY_PRODUCTS.has(product);
-};
-
-type ContactOutcome = "reached" | "no_answer" | "meeting" | "ignore";
-
-type AnniversaryReview = {
-  ownerEmail: string;
-  entryId: string;
-  occurrenceKey: string;
-  contactOutcome?: ContactOutcome | null;
-  note?: string | null;
-  meetingAt?: string | null;
-  handled?: boolean;
-  reviewedBy?: string | null;
 };
 
 const CONTACT_OUTCOME_OPTIONS: Array<{
@@ -207,31 +188,10 @@ const RADAR_LOADER_STAGES = [
 
 type Tone = "urgent" | "soon" | "later";
 
-const TONE_META: Record<
-  Tone,
-  { label: string; strip: string; ring: string; badge: string; chipBg: string }
-> = {
-  urgent: {
-    label: "Tento týden",
-    strip: "bg-[linear-gradient(90deg,#fb7185_0%,#e11d48_100%)]",
-    ring: "#e11d48",
-    badge: "border-rose-200 bg-rose-50 text-rose-700",
-    chipBg: "bg-[linear-gradient(135deg,#fb7185_0%,#be123c_100%)]",
-  },
-  soon: {
-    label: "Příštích 14 dní",
-    strip: "bg-[linear-gradient(90deg,#fbbf24_0%,#d97706_100%)]",
-    ring: "#d97706",
-    badge: "border-amber-200 bg-amber-50 text-amber-700",
-    chipBg: "bg-[linear-gradient(135deg,#fbbf24_0%,#b45309_100%)]",
-  },
-  later: {
-    label: "Později",
-    strip: "bg-[linear-gradient(90deg,#38bdf8_0%,#0369a1_100%)]",
-    ring: "#0369a1",
-    badge: "border-sky-200 bg-sky-50 text-sky-700",
-    chipBg: "bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)]",
-  },
+const TONE_META: Record<Tone, { label: string }> = {
+  urgent: { label: "Tento týden" },
+  soon: { label: "Za 8–14 dní" },
+  later: { label: "Později" },
 };
 
 function toneFor(daysLeft: number): Tone {
@@ -390,84 +350,6 @@ function csvEscape(value: string): string {
     return `"${safe.replace(/"/g, '""')}"`;
   }
   return safe;
-}
-
-function UrgencyRing({
-  daysLeft,
-  windowDays,
-  color,
-}: {
-  daysLeft: number;
-  windowDays: number;
-  color: string;
-}) {
-  const size = 46;
-  const stroke = 4;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = Math.max(0, Math.min(1, 1 - daysLeft / windowDays));
-  const offset = circumference * (1 - progress);
-  return (
-    <div className="relative flex h-[46px] w-[46px] shrink-0 items-center justify-center">
-      <svg width={size} height={size} className="-rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="rgba(15,23,42,0.08)"
-          strokeWidth={stroke}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          style={{ transition: "stroke-dashoffset 800ms cubic-bezier(0.22,1,0.36,1)" }}
-        />
-      </svg>
-      <span className="absolute text-[13px] font-bold tabular-nums" style={{ color }}>
-        {daysLeft}
-      </span>
-    </div>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  gradient,
-  glow,
-}: {
-  icon: typeof Flame;
-  label: string;
-  value: number;
-  gradient: string;
-  glow: string;
-}) {
-  return (
-    <div className="group flex items-center gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_32px_rgba(15,23,42,0.1)]">
-      <div
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white transition-transform duration-200 group-hover:scale-105 ${gradient} ${glow}`}
-      >
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="min-w-0">
-        <div className="text-2xl font-bold leading-none text-slate-950">
-          <AnimatedNumber value={value} duration={700} />
-        </div>
-        <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
-          {label}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function RadarAnniversaryLoader() {
@@ -854,19 +736,26 @@ export default function RadarVyrociPage() {
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [portfolioFailed, setPortfolioFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [windowDays, setWindowDays] = useState<number>(30);
   const [showTeam, setShowTeam] = useState(false);
-  const [hideReviewed, setHideReviewed] = useState(false);
+  const [activityFilter, setActivityFilter] = useState<RadarActivityFilter>("new");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [savedNotice, setSavedNotice] = useState<{ message: string; destination: RadarActivityFilter } | null>(null);
   const [productFilter, setProductFilter] = useState<RadarProductFilter>("all");
 
   const [position, setPosition] = useState<Position | null>(null);
   const [contracts, setContracts] = useState<ContractRow[]>([]);
-  const [truncated, setTruncated] = useState(false);
   const [reviewRecords, setReviewRecords] = useState<Map<string, AnniversaryReview>>(new Map());
   const [noteDrafts, setNoteDrafts] = useState<Map<string, string>>(new Map());
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
+  const pendingMutations = useRef(new Set<string>());
+  const mutationIds = useRef(new Map<string, string>());
+  const activeAccount = useRef("");
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [contractDetailWindow, setContractDetailWindow] =
     useState<ContractDetailWindowState | null>(null);
@@ -894,60 +783,71 @@ export default function RadarVyrociPage() {
 
   const effectiveUserEmail =
     normalizeEmail(adminImpersonation?.email) || normalizeEmail(user?.email);
+  useEffect(() => {
+    activeAccount.current = effectiveUserEmail;
+    return () => { activeAccount.current = ""; };
+  }, [effectiveUserEmail]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (signal: AbortSignal) => {
     if (!user || !effectiveUserEmail) return;
     setLoading(true);
     setLoadedOnce(false);
+    setPortfolioFailed(false);
     setError(null);
+    setContracts([]);
+    setPosition(null);
+    setReviewRecords(new Map());
+    setNoteDrafts(new Map());
+    setPendingKeys(new Set());
+    setExpandedKeys(new Set());
+    setContactDialog(null);
+    setContractDetailWindow(null);
+    setSavedNotice(null);
     try {
-      const params = new URLSearchParams({ scope: "my", mode: "anniversary" });
-      params.set("includeTeam", "1");
-      const data = await fetchAuthedJsonOrThrow<ContractsListResponse>(
-        user,
-        `/api/contracts/list?${params.toString()}`
-      );
-      if (!data.ok) throw new Error(data.error || "Nepodařilo se načíst smlouvy.");
-
-      const my = data.contracts ?? [];
-      const team = data.teamContracts ?? [];
-      setContracts([...my, ...team]);
-      setPosition(data.position ?? null);
-      setTruncated(Boolean(data.hasMore) || Boolean(data.teamHasMore));
-
+      const portfolio = await loadAnniversaryPortfolio(user, signal);
       const reviewsData = await fetchAuthedJsonOrThrow<ReviewsResponse>(
         user,
-        "/api/contracts/anniversary-review"
+        "/api/contracts/anniversary-review",
+        { signal }
       );
-      if (reviewsData.ok && reviewsData.reviews) {
-        const map = new Map<string, AnniversaryReview>();
-        const drafts = new Map<string, string>();
-        for (const r of reviewsData.reviews) {
-          const key = reviewKey(r.ownerEmail, r.entryId);
-          map.set(key, {
-            ...r,
-            ownerEmail: normalizeEmail(r.ownerEmail),
-            note: r.note ?? "",
-            meetingAt: r.meetingAt ?? null,
-            contactOutcome: r.contactOutcome ?? null,
-            handled: Boolean(r.handled || r.contactOutcome),
-          });
-          drafts.set(key, r.note ?? "");
-        }
-        setReviewRecords(map);
-        setNoteDrafts(drafts);
+      signal.throwIfAborted();
+      if (!reviewsData?.ok || !Array.isArray(reviewsData.reviews)) {
+        throw new Error(reviewsData?.error || "Nepodařilo se načíst stav výročí smluv.");
       }
+      const map = new Map<string, AnniversaryReview>();
+      for (const r of reviewsData.reviews) {
+        const key = reviewKey(r.ownerEmail, r.entryId);
+        map.set(key, {
+          ...r,
+          ownerEmail: normalizeEmail(r.ownerEmail),
+          note: r.note ?? "",
+          meetingAt: r.meetingAt ?? null,
+          contactOutcome: r.contactOutcome ?? null,
+          handled: Boolean(r.handled || r.contactOutcome),
+        });
+      }
+      setReviewRecords(map);
+      setNoteDrafts(new Map());
+      setContracts(portfolio.contracts);
+      setPosition(portfolio.position);
     } catch (e) {
+      if (signal.aborted) return;
+      setPortfolioFailed(true);
       setError(e instanceof Error ? e.message : "Nepodařilo se načíst data.");
     } finally {
-      setLoading(false);
-      setLoadedOnce(true);
+      if (!signal.aborted) {
+        setLoading(false);
+        setLoadedOnce(true);
+        setLoadedFor(effectiveUserEmail);
+      }
     }
   }, [effectiveUserEmail, user]);
 
   useEffect(() => {
-    if (user && effectiveUserEmail) void loadData();
-  }, [effectiveUserEmail, user, loadData]);
+    const controller = new AbortController();
+    if (user && effectiveUserEmail) void loadData(controller.signal);
+    return () => controller.abort();
+  }, [effectiveUserEmail, user, loadData, loadAttempt]);
 
   const closeContractDetailWindow = useCallback(() => {
     setContractDetailWindow(null);
@@ -990,18 +890,16 @@ export default function RadarVyrociPage() {
 
   const openContactDialog = useCallback(
     (item: RadarItem) => {
-      const review = reviewRecords.get(item.key);
-      const currentReview = isCurrentReview(review, item.occurrenceKey) ? review : undefined;
-      const meeting = splitMeetingAt(currentReview?.meetingAt ?? null);
+      setError(null);
       setContactDialog({
         item,
-        outcome: currentReview?.contactOutcome ?? null,
-        note: noteDrafts.get(item.key) ?? currentReview?.note ?? "",
-        meetingDate: meeting.date,
-        meetingTime: meeting.time,
+        outcome: null,
+        note: "",
+        meetingDate: "",
+        meetingTime: "",
       });
     },
-    [noteDrafts, reviewRecords]
+    []
   );
 
   const canShowTeam = isManagerPosition(position);
@@ -1057,229 +955,118 @@ export default function RadarVyrociPage() {
     [productFilter, radarItems]
   );
 
-  const visibleItems = useMemo(() => {
-    if (!hideReviewed) return productFilteredItems;
-    return productFilteredItems.filter(
-      (item) => !isReviewHandled(reviewRecords.get(item.key), item.occurrenceKey)
-    );
-  }, [productFilteredItems, hideReviewed, reviewRecords]);
+  const searchedItems = useMemo(() => {
+    const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs-CZ");
+    const query = normalize(searchQuery.trim());
+    return query ? productFilteredItems.filter(item =>
+      normalize(`${item.clientName} ${item.contractNumber ?? ""} ${item.clientPhone ?? ""}`).includes(query)
+    ) : productFilteredItems;
+  }, [productFilteredItems, searchQuery]);
 
-  const handledCount = useMemo(
-    () =>
-      productFilteredItems.filter((item) =>
-        isReviewHandled(reviewRecords.get(item.key), item.occurrenceKey)
-      ).length,
-    [productFilteredItems, reviewRecords]
-  );
-  const urgentCount = useMemo(
-    () => productFilteredItems.filter((item) => item.daysLeft <= 7).length,
-    [productFilteredItems]
-  );
+  const activityCounts = useMemo(() => {
+    const counts = { new: 0, active: 0, completed: 0, all: searchedItems.length };
+    for (const item of searchedItems) counts[anniversaryStage(reviewRecords.get(item.key), item.occurrenceKey)] += 1;
+    return counts;
+  }, [searchedItems, reviewRecords]);
+
+  const visibleItems = useMemo(() => searchedItems.filter(item => {
+    if (activityFilter === "all") return true;
+    return anniversaryStage(reviewRecords.get(item.key), item.occurrenceKey) === activityFilter;
+  }), [searchedItems, activityFilter, reviewRecords]);
 
   const groups = useMemo(() => {
-    const buckets: Record<Tone, RadarItem[]> = { urgent: [], soon: [], later: [] };
-    for (const item of visibleItems) buckets[toneFor(item.daysLeft)].push(item);
-    return (["urgent", "soon", "later"] as Tone[])
-      .map((tone) => ({ tone, items: buckets[tone] }))
-      .filter((g) => g.items.length > 0);
-  }, [visibleItems]);
-
-  const saveContactOutcome = useCallback(
-    async (
-      item: RadarItem,
-      outcome: ContactOutcome,
-      details?: { note?: string; meetingAt?: string | null }
-    ) => {
-      if (!user || pendingKeys.has(item.key)) return;
-      setPendingKeys((prev) => new Set(prev).add(item.key));
-      const prevRecord = reviewRecords.get(item.key) ?? null;
-      const note = details?.note ?? noteDrafts.get(item.key) ?? (prevRecord?.note ?? "");
-      const meetingAt = outcome === "meeting" ? details?.meetingAt ?? null : null;
-
-      setNoteDrafts((prev) => {
-        const next = new Map(prev);
-        next.set(item.key, note);
-        return next;
-      });
-
-      setReviewRecords((prev) => {
-        const next = new Map(prev);
-        next.set(item.key, {
-          ownerEmail: item.ownerEmail,
-          entryId: item.entryId,
-          occurrenceKey: item.occurrenceKey,
-          contactOutcome: outcome,
-          note,
-          meetingAt,
-          handled: true,
-        });
-        return next;
-      });
-
-      try {
-        await fetchAuthedJsonOrThrow(user, "/api/contracts/anniversary-review", {
-          method: "POST",
-          body: JSON.stringify({
-            action: "mark",
-            ownerEmail: item.ownerEmail,
-            entryId: item.entryId,
-            occurrenceKey: item.occurrenceKey,
-            contractNumber: item.contractNumber,
-            contactOutcome: outcome,
-            note,
-            meetingAt,
-          }),
-        });
-        setContactDialog(null);
-      } catch (e) {
-        setReviewRecords((prev) => {
-          const next = new Map(prev);
-          if (prevRecord) next.set(item.key, prevRecord);
-          else next.delete(item.key);
-          return next;
-        });
-        setError(e instanceof Error ? e.message : "Uložení se nepodařilo.");
-      } finally {
-        setPendingKeys((prev) => {
-          const next = new Set(prev);
-          next.delete(item.key);
-          return next;
-        });
+    return (["new", "active", "completed"] as const).flatMap(activity => {
+      const buckets: Record<Tone, RadarItem[]> = { urgent: [], soon: [], later: [] };
+      for (const item of visibleItems) {
+        const itemActivity = anniversaryStage(reviewRecords.get(item.key), item.occurrenceKey);
+        if (itemActivity === activity) buckets[toneFor(item.daysLeft)].push(item);
       }
-    },
-    [user, pendingKeys, reviewRecords, noteDrafts]
-  );
+      return (["urgent", "soon", "later"] as Tone[])
+        .map(tone => ({ activity, tone, items: buckets[tone] }))
+        .filter(group => group.items.length > 0)
+        .map((group, index) => ({ ...group, firstInActivity: index === 0 }));
+    });
+  }, [visibleItems, reviewRecords]);
 
-  const clearContactOutcome = useCallback(
-    async (item: RadarItem) => {
-      if (!user || pendingKeys.has(item.key)) return;
-      setPendingKeys((prev) => new Set(prev).add(item.key));
-      const prevRecord = reviewRecords.get(item.key) ?? null;
-      const note = noteDrafts.get(item.key) ?? (prevRecord?.note ?? "");
-
-      setReviewRecords((prev) => {
-        const next = new Map(prev);
-        if (note.trim()) {
-          next.set(item.key, {
-            ownerEmail: item.ownerEmail,
-            entryId: item.entryId,
-            occurrenceKey: item.occurrenceKey,
-            contactOutcome: null,
-            note,
-            meetingAt: null,
-            handled: false,
-          });
-        } else {
-          next.delete(item.key);
+  const mutateReview = useCallback(
+    async (item: RadarItem, changes: { action: "mark" | "save" | "clearOutcome" | "complete" | "reopen"; note?: string; contactOutcome?: ContactOutcome; meetingAt?: string | null }) => {
+      if (!user || pendingMutations.current.has(item.key)) return false;
+      const account = effectiveUserEmail;
+      const body = {
+        ...changes, ownerEmail: item.ownerEmail, entryId: item.entryId,
+        occurrenceKey: item.occurrenceKey, contractNumber: item.contractNumber,
+      };
+      const fingerprint = JSON.stringify({ account, ...body });
+      const requestId = mutationIds.current.get(fingerprint) ?? crypto.randomUUID();
+      mutationIds.current.set(fingerprint, requestId);
+      pendingMutations.current.add(item.key);
+      setPendingKeys(previous => new Set(previous).add(item.key));
+      setError(null);
+      setSavedNotice(null);
+      try {
+        const data = await fetchAuthedJsonOrThrow<AnniversaryReviewMutationResponse>(user, "/api/contracts/anniversary-review", {
+          method: "POST", body: JSON.stringify({ ...body, requestId }),
+        });
+        if (!data?.ok || !data.review) throw new Error(data?.error || "Záznam se nepodařilo uložit.");
+        mutationIds.current.delete(fingerprint);
+        if (activeAccount.current !== account) return false;
+        setReviewRecords(previous => new Map(previous).set(item.key, data.review));
+        if (changes.action !== "complete" && changes.action !== "reopen") {
+          setNoteDrafts(previous => new Map(previous).set(item.key, data.review.note ?? ""));
         }
-        return next;
-      });
-
-      try {
-        await fetchAuthedJsonOrThrow(user, "/api/contracts/anniversary-review", {
-          method: "POST",
-          body: JSON.stringify({
-            action: "clearOutcome",
-            ownerEmail: item.ownerEmail,
-            entryId: item.entryId,
-          }),
-        });
-        setContactDialog(null);
-      } catch (e) {
-        setReviewRecords((prev) => {
-          const next = new Map(prev);
-          if (prevRecord) next.set(item.key, prevRecord);
-          else next.delete(item.key);
-          return next;
-        });
-        setError(e instanceof Error ? e.message : "Uložení se nepodařilo.");
+        return data.review;
+      } catch (cause) {
+        if (activeAccount.current === account) setError(cause instanceof Error ? cause.message : "Záznam se nepodařilo uložit.");
+        return false;
       } finally {
-        setPendingKeys((prev) => {
-          const next = new Set(prev);
-          next.delete(item.key);
-          return next;
+        pendingMutations.current.delete(item.key);
+        if (activeAccount.current === account) setPendingKeys(previous => {
+          const next = new Set(previous); next.delete(item.key); return next;
         });
       }
-    },
-    [user, pendingKeys, reviewRecords, noteDrafts]
+    }, [user, effectiveUserEmail]
   );
+
+  const clearContactOutcome = useCallback(async (item: RadarItem) => {
+    if (await mutateReview(item, { action: "clearOutcome" })) setContactDialog(null);
+  }, [mutateReview]);
+
+  const changeCompletion = useCallback(async (item: RadarItem, completed: boolean) => {
+    const saved = await mutateReview(item, { action: completed ? "complete" : "reopen" });
+    if (saved) {
+      const destination = anniversaryStage(saved, item.occurrenceKey);
+      setSavedNotice({
+        message: `${item.clientName}: ${destination === "completed" ? "případ označen jako dokončený." : !completed && destination === "active" ? "případ vrácen k řešení. Předchozí jednání zůstává uložené." : `stav se mezitím změnil. Aktuální přehled: ${RADAR_STAGE_LABELS[destination]}.`}`,
+        destination,
+      });
+    }
+  }, [mutateReview]);
 
   const updateNoteDraft = useCallback((key: string, value: string) => {
-    setNoteDrafts((prev) => {
-      const next = new Map(prev);
-      next.set(key, value.slice(0, 280));
-      return next;
-    });
+    setNoteDrafts(previous => new Map(previous).set(key, value.slice(0, 280)));
   }, []);
 
-  const saveReviewNote = useCallback(
-    async (item: RadarItem) => {
-      if (!user || pendingKeys.has(item.key)) return;
-      setPendingKeys((prev) => new Set(prev).add(item.key));
-      const prevRecord = reviewRecords.get(item.key) ?? null;
-      const note = noteDrafts.get(item.key) ?? "";
+  const saveReviewNote = useCallback(async (item: RadarItem) => {
+    const saved = await mutateReview(item, { action: "save", note: noteDrafts.get(item.key) ?? "" });
+    if (saved) {
+      setSavedNotice({ message: `${item.clientName}: poznámka uložena.`, destination: anniversaryStage(saved, item.occurrenceKey) });
+    }
+  }, [mutateReview, noteDrafts]);
 
-      setReviewRecords((prev) => {
-        const next = new Map(prev);
-        next.set(item.key, {
-          ownerEmail: item.ownerEmail,
-          entryId: item.entryId,
-          occurrenceKey: item.occurrenceKey,
-          contactOutcome: isCurrentReview(prevRecord ?? undefined, item.occurrenceKey)
-            ? prevRecord?.contactOutcome ?? null
-            : null,
-          note,
-          meetingAt: isCurrentReview(prevRecord ?? undefined, item.occurrenceKey)
-            ? prevRecord?.meetingAt ?? null
-            : null,
-          handled: isReviewHandled(prevRecord ?? undefined, item.occurrenceKey),
-        });
-        return next;
-      });
-
-      try {
-        await fetchAuthedJsonOrThrow(user, "/api/contracts/anniversary-review", {
-          method: "POST",
-          body: JSON.stringify({
-            action: "save",
-            ownerEmail: item.ownerEmail,
-            entryId: item.entryId,
-            occurrenceKey: item.occurrenceKey,
-            contractNumber: item.contractNumber,
-            note,
-          }),
-        });
-      } catch (e) {
-        setReviewRecords((prev) => {
-          const next = new Map(prev);
-          if (prevRecord) next.set(item.key, prevRecord);
-          else next.delete(item.key);
-          return next;
-        });
-        setError(e instanceof Error ? e.message : "Uložení poznámky se nepodařilo.");
-      } finally {
-        setPendingKeys((prev) => {
-          const next = new Set(prev);
-          next.delete(item.key);
-          return next;
-        });
-      }
-    },
-    [user, pendingKeys, reviewRecords, noteDrafts]
-  );
-
-  const saveContactDialog = useCallback(() => {
+  const saveContactDialog = useCallback(async () => {
     if (!contactDialog?.outcome) return;
-    const meetingAt =
-      contactDialog.outcome === "meeting"
-        ? combineMeetingAt(contactDialog.meetingDate, contactDialog.meetingTime)
-        : null;
-
-    void saveContactOutcome(contactDialog.item, contactDialog.outcome, {
+    const saved = await mutateReview(contactDialog.item, {
+      action: "mark", contactOutcome: contactDialog.outcome,
       note: contactDialog.note.slice(0, 280),
-      meetingAt,
+      meetingAt: contactDialog.outcome === "meeting"
+        ? combineMeetingAt(contactDialog.meetingDate, contactDialog.meetingTime) : null,
     });
-  }, [contactDialog, saveContactOutcome]);
+    if (saved) {
+      const destination = anniversaryStage(saved, contactDialog.item.occurrenceKey);
+      setSavedNotice({ message: `${contactDialog.item.clientName}: kontakt uložen. ${destination === "active" ? "Případ zůstává rozpracovaný." : `Aktuální přehled: ${RADAR_STAGE_LABELS[destination]}.`}`, destination });
+      setContactDialog(null);
+    }
+  }, [contactDialog, mutateReview]);
 
   const toggleExpanded = useCallback((key: string) => {
     setExpandedKeys((prev) => {
@@ -1298,6 +1085,7 @@ export default function RadarVyrociPage() {
       "Pojišťovna",
       "Datum výročí",
       "Kolikáté výročí",
+      "Stav zpracování",
       "Výsledek kontaktu",
       "Termín schůzky",
       "Poznámka",
@@ -1312,6 +1100,7 @@ export default function RadarVyrociPage() {
         productInstitutionLabel(item.product) ?? "",
         item.next.toLocaleDateString("cs-CZ"),
         item.anniversaryNumber != null ? `${item.anniversaryNumber}.` : "",
+        RADAR_STAGE_LABELS[anniversaryStage(review, item.occurrenceKey)],
         outcomeLabel(contactOutcome) || (isReviewHandled(review, item.occurrenceKey) ? "Zkontrolováno" : ""),
         formatMeetingAt(isCurrentReview(review, item.occurrenceKey) ? review?.meetingAt : null),
         isCurrentReview(review, item.occurrenceKey) ? review?.note ?? "" : "",
@@ -1329,8 +1118,7 @@ export default function RadarVyrociPage() {
     URL.revokeObjectURL(url);
   }, [visibleItems, reviewRecords]);
 
-  let renderIndex = 0;
-  const isInitialLoading = !authReady || (Boolean(user) && (loading || !loadedOnce));
+  const isInitialLoading = !authReady || (Boolean(user) && (loading || !loadedOnce || loadedFor !== effectiveUserEmail));
   const contactDialogPending = contactDialog ? pendingKeys.has(contactDialog.item.key) : false;
   const contactDialogDateIncomplete = Boolean(
     contactDialog?.outcome === "meeting" &&
@@ -1344,6 +1132,7 @@ export default function RadarVyrociPage() {
   const contactDialogIsHandled = contactDialog
     ? isReviewHandled(contactDialogReview, contactDialog.item.occurrenceKey)
     : false;
+  const hasProcessedItems = activityCounts.active + activityCounts.completed > 0;
 
   if (isInitialLoading) {
     return (
@@ -1355,309 +1144,162 @@ export default function RadarVyrociPage() {
     );
   }
 
+  if (portfolioFailed) {
+    return (
+      <AppLayout active="tools">
+        <div role="alert" className="w-full max-w-5xl space-y-3 rounded-2xl border border-red-200 bg-red-50 p-6">
+          <p className="font-semibold text-slate-900">Portfolio se nepodařilo načíst celé</p>
+          <p className="text-sm text-red-700">{error}</p>
+          <button type="button" onClick={() => setLoadAttempt(attempt => attempt + 1)} className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700">
+            <RotateCcw className="h-4 w-4" /> Zkusit znovu
+          </button>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6">
-        <header className="relative -mx-1 overflow-hidden rounded-3xl px-1 pb-1 pt-2">
-          <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(244,63,94,0.16)_0%,transparent_70%)]" />
-          <div className="pointer-events-none absolute -bottom-24 -left-12 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.14)_0%,transparent_70%)]" />
-          <div className="relative space-y-1 px-3 pt-2">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-700">
-              <Sparkles className="h-3 w-3" />
-              Nová pomůcka
-            </div>
-            <SplitTitle text="Radar výročí" />
-            <p className="max-w-xl text-sm text-slate-500">
-              Klientům se blíží výročí smlouvy – zavolej a projdi krytí dřív, než to udělá konkurence.
-            </p>
+      <div className={styles.page}>
+        <header className={styles.hero}>
+          <div>
+            <div className={styles.eyebrow}><Radar size={14} /> Péče o klienty</div>
+            <h1 className={styles.title}>Radar výročí</h1>
+            <p className={styles.subtitle}>Ozvi se klientům včas. Kontakty, poznámky a další kroky na jednom místě.</p>
           </div>
-
-          <div className="relative mt-4 grid grid-cols-2 gap-3 px-3 sm:grid-cols-3">
-            <StatTile
-              icon={Flame}
-              label="Tento týden"
-              value={urgentCount}
-              gradient="bg-[linear-gradient(135deg,#fb7185_0%,#be123c_100%)]"
-              glow="shadow-[0_10px_22px_rgba(190,18,60,0.28)]"
-            />
-            <StatTile
-              icon={Target}
-              label={`V okně ${windowDays} dní`}
-              value={productFilteredItems.length}
-              gradient="bg-[linear-gradient(135deg,#818cf8_0%,#4338ca_100%)]"
-              glow="shadow-[0_10px_22px_rgba(67,56,202,0.26)]"
-            />
-            <StatTile
-              icon={PartyPopper}
-              label="Vyřízeno"
-              value={handledCount}
-              gradient="bg-[linear-gradient(135deg,#34d399_0%,#047857_100%)]"
-              glow="shadow-[0_10px_22px_rgba(4,120,87,0.26)]"
-            />
-          </div>
+          <div className={styles.heroIcon} aria-hidden="true"><Radar size={42} strokeWidth={1.3} /></div>
         </header>
 
-        <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-          <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1">
-            {WINDOW_OPTIONS.map((days) => (
-              <button
-                key={days}
-                type="button"
-                onClick={() => setWindowDays(days)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
-                  windowDays === days
-                    ? "bg-[linear-gradient(135deg,#334155_0%,#0f172a_100%)] !text-white shadow-[0_6px_16px_rgba(15,23,42,0.28)]"
-                    : "text-slate-600 hover:bg-white"
-                }`}
-              >
-                <span className={windowDays === days ? "!text-white" : ""}>
-                  {days} dní
-                </span>
+        {error && <div role="alert" className={styles.notice}>{error}</div>}
+
+        <section className={styles.workspace} aria-label="Přehled výročí smluv">
+          <div className={styles.tabs} role="group" aria-label="Stav zpracování">
+            {ACTIVITY_FILTERS.map(({ key, label, icon: Icon }) => (
+              <button key={key} type="button" className={styles.tab} aria-pressed={activityFilter === key} onClick={() => setActivityFilter(key)}>
+                <Icon size={15} /><span>{label}</span><span className={styles.tabCount}>{activityCounts[key]}</span>
               </button>
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1">
-            {RADAR_PRODUCT_FILTERS.map((filter) => {
-              const isActive = productFilter === filter.key;
-              return (
-                <button
-                  key={filter.key}
-                  type="button"
-                  onClick={() => setProductFilter(filter.key)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
-                    isActive
-                      ? "bg-[linear-gradient(135deg,#7c3aed_0%,#5b21b6_100%)] !text-white shadow-[0_6px_16px_rgba(109,40,217,0.28)]"
-                      : "text-slate-600 hover:bg-white"
-                  }`}
-                >
-                  <span className={isActive ? "!text-white" : ""}>{filter.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {canShowTeam && (
-            <button
-              type="button"
-              onClick={() => setShowTeam((v) => !v)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
-                showTeam
-                  ? "border-indigo-500 bg-[linear-gradient(135deg,#818cf8_0%,#4338ca_100%)] text-white shadow-[0_6px_16px_rgba(67,56,202,0.3)]"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-              }`}
-            >
-              <Users className="h-3.5 w-3.5" />
-              Tým
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setHideReviewed((v) => !v)}
-            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600"
-          >
-            <span
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ${
-                hideReviewed ? "bg-emerald-500" : "bg-slate-200"
-              }`}
-            >
-              <span
-                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200 ${
-                  hideReviewed ? "translate-x-[18px]" : "translate-x-[3px]"
-                }`}
-              />
-            </span>
-            Skrýt vyřízené
-          </button>
-
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-slate-500">
-              {visibleItems.length} výročí{handledCount > 0 ? ` · ${handledCount} vyřízeno` : ""}
-            </span>
-            <button
-              type="button"
-              onClick={exportCsv}
-              disabled={visibleItems.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_8px_18px_rgba(15,23,42,0.1)] disabled:pointer-events-none disabled:opacity-40"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export CSV
-            </button>
-          </div>
-        </section>
-
-        {truncated && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-            Zobrazuje se první dávka smluv. Pro úplný přehled velkého portfolia použij filtr „Výročí“ přímo ve
-            Smlouvách.
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">{error}</div>
-        )}
-
-        <section className="space-y-6">
-          {visibleItems.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white py-16 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#818cf8_0%,#4338ca_100%)] text-white shadow-[0_12px_26px_rgba(67,56,202,0.3)]">
-                <Sparkles className="h-6 w-6" />
+          <div className={styles.filters}>
+            <div className={styles.filterRow}>
+              <div className={styles.windowFilter}>
+                <span className={styles.filterLabel}>Výročí do</span>
+                <div className={styles.segments} role="group" aria-label="Období výročí">
+                  {WINDOW_OPTIONS.map(days => (
+                    <button key={days} type="button" className={styles.segment} aria-pressed={windowDays === days} onClick={() => setWindowDays(days)}>{days} dní</button>
+                  ))}
+                </div>
               </div>
-              <div className="text-sm font-medium text-slate-700">
-                V tomto okně nejsou výročí smluv pro zvolený filtr.
+              <div className={styles.search}>
+                <Search size={15} aria-hidden="true" />
+                <input type="search" aria-label="Hledat klienta, smlouvu nebo telefon" placeholder="Hledat klienta nebo smlouvu…" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} />
+                {searchQuery && <button type="button" onClick={() => setSearchQuery("")} aria-label="Vymazat hledání"><X size={14} /></button>}
               </div>
-              <div className="text-xs text-slate-400">Zkus zvětšit okno nebo zapnout pohled na tým.</div>
+              {canShowTeam && <button type="button" className={styles.teamButton} aria-pressed={showTeam} onClick={() => setShowTeam(value => !value)}><Users size={14} /> Tým</button>}
             </div>
-          ) : (
-            groups.map((group) => {
-              const meta = TONE_META[group.tone];
-              return (
-                <div key={group.tone} className="space-y-3">
-                  <div className="flex items-center gap-2 px-1">
-                    <span
-                      className={`anniversary-group-badge inline-flex h-6 items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-[0.12em] !text-white ${meta.chipBg}`}
-                    >
-                      {meta.label}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-400">{group.items.length}</span>
-                    <span className="h-px flex-1 bg-slate-100" />
-                  </div>
+            <div className={styles.products} role="group" aria-label="Druh pojištění">
+              {RADAR_PRODUCT_FILTERS.map(filter => {
+                const Icon = { all: null, life: HeartPulse, propertyLiability: House, auto: CarFront, entrepreneurs: BriefcaseBusiness }[filter.key];
+                return <button key={filter.key} type="button" className={styles.product} aria-pressed={productFilter === filter.key} onClick={() => setProductFilter(filter.key)}>{Icon && <Icon size={13} />}{filter.key === "all" ? "Všechny produkty" : filter.label}</button>;
+              })}
+            </div>
+          </div>
 
-                  <div className="space-y-3">
-                    {group.items.map((item) => {
-                      const review = reviewRecords.get(item.key);
-                      const isHandled = isReviewHandled(review, item.occurrenceKey);
-                      const activeOutcome = isCurrentReview(review, item.occurrenceKey)
-                        ? review?.contactOutcome ?? null
-                        : null;
-                      const ActiveOutcomeIcon = outcomeIcon(activeOutcome);
-                      const isExpanded = expandedKeys.has(item.key);
-                      const isPending = pendingKeys.has(item.key);
-                      const savedNote = isCurrentReview(review, item.occurrenceKey) ? review?.note ?? "" : "";
-                      const meetingAt = isCurrentReview(review, item.occurrenceKey)
-                        ? review?.meetingAt ?? null
-                        : null;
-                      const noteDraft = noteDrafts.get(item.key) ?? savedNote;
-                      const noteDirty = noteDraft.trim() !== savedNote.trim();
-                      const tone = TONE_META[group.tone];
-                      const delay = Math.min(renderIndex, 8) * 40;
-                      renderIndex += 1;
-                      return (
-                        <article
-                          key={item.key}
-                          className={`animate-in fade-in slide-in-from-bottom-2 overflow-hidden rounded-2xl border bg-white shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(15,23,42,0.1)] ${
-                            isHandled ? "border-violet-200 opacity-80" : "border-slate-200"
-                          }`}
-                          style={{ animationDelay: `${delay}ms`, animationDuration: "450ms" }}
-                        >
-                          <div className={`h-1 ${meta.strip}`} />
-                          <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
-                            <UrgencyRing daysLeft={item.daysLeft} windowDays={windowDays} color={tone.ring} />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                <span className="truncate text-sm font-semibold text-slate-950">
-                                  {item.clientName}
-                                </span>
-                                {item.contractNumber && (
-                                  <span className="text-xs text-slate-400">#{item.contractNumber}</span>
-                                )}
+          <div className={styles.list}>
+            <div className={styles.listIntro}>
+              <div>
+                <h2>{ACTIVITY_COPY[activityFilter].title}</h2>
+                <p>{ACTIVITY_COPY[activityFilter].description} Seřazeno od nejbližšího výročí.</p>
+              </div>
+              <button type="button" className={styles.export} onClick={exportCsv} disabled={visibleItems.length === 0} aria-label="Export CSV" title="Exportovat právě zobrazené smlouvy"><Download size={14} /><span>Export CSV</span></button>
+            </div>
+
+            {savedNotice && <div className={styles.savedNotice} role="status">
+              <Check size={14} /><span>{savedNotice.message}</span>
+              {activityFilter !== savedNotice.destination && activityFilter !== "all" && <button type="button" onClick={() => setActivityFilter(savedNotice.destination)}>Zobrazit {savedNotice.destination === "completed" ? "dokončené" : savedNotice.destination === "new" ? "nezpracované" : "rozpracované"}</button>}
+              <button type="button" onClick={() => setSavedNotice(null)} aria-label="Zavřít oznámení"><X size={14} /></button>
+            </div>}
+
+            {visibleItems.length === 0 ? (
+              <div className={styles.empty}>
+                <div className={styles.emptyIcon}>{searchQuery.trim() ? <Search size={24} /> : activityFilter === "completed" || (activityFilter === "new" && hasProcessedItems) ? <CircleCheck size={24} /> : <Inbox size={24} />}</div>
+                <h3>{searchQuery.trim() ? "Žádná shoda" : activityFilter === "new" && hasProcessedItems ? "Všechny smlouvy už mají první krok" : ACTIVITY_COPY[activityFilter].emptyTitle}</h3>
+                <p>{searchQuery.trim() ? "Zkus jiné jméno, číslo smlouvy nebo jiný stav zpracování." : activityFilter === "new" && hasProcessedItems ? "Případy najdeš v přehledech Rozpracované a Dokončené." : ACTIVITY_COPY[activityFilter].emptyDescription}</p>
+                {searchQuery.trim() ? <button type="button" onClick={() => setSearchQuery("")}>Vymazat hledání</button>
+                  : activityFilter === "new" && hasProcessedItems ? <button type="button" onClick={() => setActivityFilter("all")}>Zobrazit všechny smlouvy</button>
+                  : activityFilter === "completed" ? <button type="button" onClick={() => setActivityFilter("active")}>Zobrazit rozpracované</button>
+                  : activityFilter === "active" ? <button type="button" onClick={() => setActivityFilter("new")}>Přejít na nezpracované</button> : null}
+              </div>
+            ) : (
+              groups.map(group => {
+                const meta = TONE_META[group.tone];
+                return (
+                  <div key={`${group.activity}-${group.tone}`} className={styles.group}>
+                    {activityFilter === "all" && group.firstInActivity && <h2 className={styles.activityHeading}>{RADAR_STAGE_LABELS[group.activity]} <span className={styles.tabCount}>{activityCounts[group.activity]}</span></h2>}
+                    <div className={styles.groupHeading} data-tone={group.activity === "completed" ? "later" : group.tone}>
+                      <span className={styles.groupDot} /><h3>{meta.label}</h3><span>{group.items.length}</span>
+                    </div>
+                    <div className={styles.cards}>
+                      {group.items.map(item => {
+                        const review = reviewRecords.get(item.key);
+                        const stage = anniversaryStage(review, item.occurrenceKey);
+                        const hasActivity = stage !== "new";
+                        const isCompleted = stage === "completed";
+                        const isHandled = isReviewHandled(review, item.occurrenceKey);
+                        const activeOutcome = isCurrentReview(review, item.occurrenceKey) ? review?.contactOutcome ?? null : null;
+                        const ActiveOutcomeIcon = isCompleted ? CircleCheck : activeOutcome ? outcomeIcon(activeOutcome) : hasActivity ? MessageSquareText : Inbox;
+                        const isExpanded = expandedKeys.has(item.key);
+                        const isPending = pendingKeys.has(item.key);
+                        const savedNote = isCurrentReview(review, item.occurrenceKey) ? review?.note ?? "" : "";
+                        const meetingAt = isCurrentReview(review, item.occurrenceKey) ? review?.meetingAt ?? null : null;
+                        const noteDraft = noteDrafts.get(item.key) ?? savedNote;
+                        const noteDirty = noteDraft.trim() !== savedNote.trim();
+                        return (
+                          <article key={item.key} className={styles.card} data-urgent={group.tone === "urgent" && !hasActivity} data-completed={isCompleted} aria-label={`${item.clientName}, smlouva ${item.contractNumber ?? item.entryId}`}>
+                            <div className={styles.cardRow}>
+                              <div className={styles.client}>
+                                <span className={styles.categoryIcon}><ProductCategoryIcon product={item.product} /></span>
+                                <div className={styles.clientInfo}>
+                                  <div className={styles.clientName} title={item.clientName}>{item.clientName}</div>
+                                  <div className={styles.productName} title={productLabel(item.product)}>{productLabel(item.product)}{productInstitutionLabel(item.product) ? ` · ${productInstitutionLabel(item.product)}` : ""}</div>
+                                  {item.contractNumber && <div className={styles.contractNumber}>#{item.contractNumber}</div>}
+                                  {showTeam && item.ownerEmail !== effectiveUserEmail && <div className={styles.contractNumber} title={item.ownerEmail}>{item.ownerEmail}</div>}
+                                </div>
                               </div>
-                              <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-                                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md border border-violet-100 bg-violet-50 text-violet-700">
-                                  <ProductCategoryIcon product={item.product} />
+                              <div className={styles.deadline} data-tone={isCompleted ? "later" : group.tone}>
+                                <div className={styles.daysLeft}>{item.daysLeft === 0 ? "Výročí dnes" : item.daysLeft === 1 ? "Výročí zítra" : `Za ${formatDaysLeft(item.daysLeft)}`}</div>
+                                <time dateTime={item.occurrenceKey}>{item.next.toLocaleDateString("cs-CZ")}</time>
+                                {item.anniversaryNumber != null && <div className={styles.anniversaryNumber}>{item.anniversaryNumber}. výročí smlouvy</div>}
+                              </div>
+                              <div className={styles.status}>
+                                <span className={styles.statusBadge} data-outcome={isCompleted ? "completed" : activeOutcome ?? (hasActivity && !isHandled ? "note" : "new")}>
+                                  <ActiveOutcomeIcon size={12} className="shrink-0" aria-hidden="true" />
+                                  <span>{isCompleted ? "Dokončeno" : outcomeLabel(activeOutcome) || (savedNote && !isHandled ? "Uložena poznámka" : hasActivity ? "Rozpracováno" : "Čeká na první krok")}</span>
                                 </span>
-                                <span className="truncate">
-                                  {productLabel(item.product)}
-                                  {productInstitutionLabel(item.product)
-                                    ? ` · ${productInstitutionLabel(item.product)}`
-                                    : ""}
-                                  {showTeam && item.ownerEmail !== effectiveUserEmail
-                                    ? ` · ${item.ownerEmail}`
-                                    : ""}
-                                </span>
+                                {isCompleted && activeOutcome && <span className={styles.statusNote}>{outcomeLabel(activeOutcome)}</span>}
+                                {meetingAt && <span className={styles.meeting}>{formatMeetingAt(meetingAt)}</span>}
+                                {savedNote && <span className={styles.statusNote} title={savedNote}>{savedNote}</span>}
+                                {!isCompleted && <button type="button" className={styles.completeButton} disabled={isPending || noteDirty} onClick={() => changeCompletion(item, true)} title={noteDirty ? "Nejdřív ulož rozepsanou poznámku" : "Označit toto výročí jako dokončené"} aria-label={`Dokončit případ: ${item.clientName}`}><CircleCheck size={13} /> Dokončit</button>}
+                                {!isCompleted && noteDirty && <span className={styles.statusNote}>Nejdřív ulož rozepsanou poznámku.</span>}
+                              </div>
+                              <div className={styles.actions}>
+                                <button type="button" disabled={isPending} onClick={() => isCompleted ? changeCompletion(item, false) : openContactDialog(item)} className={styles.contactButton} data-active={hasActivity}>
+                                  {isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : isCompleted ? <RotateCcw size={13} aria-hidden="true" /> : <PhoneCall size={13} aria-hidden="true" />}
+                                  {isCompleted ? "Vrátit k řešení" : hasActivity ? "Další kontakt" : "Zapsat kontakt"}
+                                </button>
+                                <div className={styles.secondaryActions}>
+                                  <button type="button" onClick={() => openContractDetailWindow(item)} aria-label={`Otevřít smlouvu ${item.contractNumber ?? item.clientName}`}><Eye size={12} /> Smlouva</button>
+                                  <button type="button" onClick={() => toggleExpanded(item.key)} title="Historie jednání a kontrolní body" aria-label={`Historie jednání: ${item.clientName}`} aria-expanded={isExpanded} aria-controls={`anniversary-details-${item.key}`}>
+                                    <History size={12} /> Historie{review?.historyCount ? ` (${review.historyCount})` : ""}<ChevronDown size={11} className={isExpanded ? "rotate-180" : ""} />
+                                  </button>
+                                </div>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <div
-                                className={`text-sm font-semibold ${
-                                  group.tone === "urgent" ? "text-rose-700" : "text-slate-900"
-                                }`}
-                              >
-                                za {formatDaysLeft(item.daysLeft)}
-                              </div>
-                              <div className="text-xs text-slate-400">
-                                {item.next.toLocaleDateString("cs-CZ")}
-                                {item.anniversaryNumber != null ? ` · ${item.anniversaryNumber}. výročí` : ""}
-                              </div>
-                            </div>
-                            <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:min-w-[210px] sm:items-end">
-                              {isHandled ? (
-                                <>
-                                  <span className="anniversary-purple-fill inline-flex max-w-full items-center gap-1.5 rounded-full bg-violet-700 px-3 py-1.5 text-[11px] font-bold text-white shadow-[0_8px_18px_rgba(109,40,217,0.22)]">
-                                    <ActiveOutcomeIcon className="h-3.5 w-3.5 shrink-0 text-white" aria-hidden="true" />
-                                    <span className="truncate text-white">
-                                      {outcomeLabel(activeOutcome) || "Zkontrolováno"}
-                                    </span>
-                                  </span>
-                                  {meetingAt && (
-                                    <span className="max-w-full truncate text-[11px] font-semibold text-violet-700">
-                                      {formatMeetingAt(meetingAt)}
-                                    </span>
-                                  )}
-                                  {savedNote && (
-                                    <span className="max-w-[260px] truncate text-[11px] text-slate-500">
-                                      {savedNote}
-                                    </span>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="text-[11px] font-semibold text-slate-400">
-                                  Zatím nezpracováno
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                disabled={isPending}
-                                onClick={() => openContactDialog(item)}
-                                className="anniversary-purple-fill inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-violet-700 bg-violet-700 px-3 text-xs font-bold text-white shadow-[0_8px_18px_rgba(109,40,217,0.2)] transition hover:bg-violet-800 disabled:opacity-50"
-                              >
-                                {isPending ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-white" aria-hidden="true" />
-                                ) : (
-                                  <PhoneCall className="h-3.5 w-3.5 text-white" aria-hidden="true" />
-                                )}
-                                {isHandled ? "Upravit" : "Kontakt"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openContractDetailWindow(item)}
-                                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.06)] transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 hover:shadow-[0_8px_18px_rgba(109,40,217,0.12)]"
-                                title="Zobrazit smlouvu"
-                                aria-label={`Otevřít smlouvu ${item.contractNumber ?? item.clientName}`}
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                                <span>Smlouva</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => toggleExpanded(item.key)}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
-                                title="Kontrolní body"
-                              >
-                                <ChevronDown
-                                  className={`h-3.5 w-3.5 transition-transform duration-200 ${
-                                    isExpanded ? "rotate-180" : ""
-                                  }`}
-                                />
-                              </button>
-                            </div>
-                          </div>
 
                           {isExpanded && (
-                            <div className="animate-in fade-in slide-in-from-top-1 border-t border-slate-100 bg-slate-50 px-4 py-3 duration-200">
+                            <div id={`anniversary-details-${item.key}`} className="animate-in fade-in slide-in-from-top-1 border-t border-slate-100 bg-slate-50 px-4 py-3 duration-200">
+                              {user && <div className="mb-4"><AnniversaryHistory user={user} ownerEmail={item.ownerEmail} entryId={item.entryId} occurrenceKey={item.occurrenceKey} version={review?.historyCount} /></div>}
                               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                 Co zkontrolovat
                               </div>
@@ -1714,6 +1356,7 @@ export default function RadarVyrociPage() {
               );
             })
           )}
+          </div>
         </section>
       </div>
       {contactDialog ? (
@@ -1721,18 +1364,18 @@ export default function RadarVyrociPage() {
           className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 px-3 py-4 backdrop-blur-md sm:px-5 sm:py-6"
           role="dialog"
           aria-modal="true"
-          aria-label="Výsledek kontaktu"
+          aria-label="Nový kontakt"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeContactDialog();
             }
           }}
         >
-          <div className="w-[min(620px,94vw)] overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_36px_92px_rgba(2,6,23,0.38)]">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-[linear-gradient(135deg,#ffffff_0%,#f7f1ff_100%)] px-5 py-4">
+          <div className="flex max-h-[90dvh] w-[min(620px,94vw)] flex-col overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_36px_92px_rgba(2,6,23,0.38)]">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 bg-[linear-gradient(135deg,#ffffff_0%,#f7f1ff_100%)] px-5 py-4">
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-700">
-                  Výsledek kontaktu
+                  Nový kontakt
                 </p>
                 <h2 className="mt-1 truncate text-xl font-bold text-slate-950">
                   {contactDialog.item.clientName}
@@ -1752,7 +1395,9 @@ export default function RadarVyrociPage() {
               </button>
             </div>
 
-            <div className="space-y-5 px-5 py-5">
+            <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5">
+              <p className="text-xs text-slate-500">Zapiš další krok jednání. Předchozí kontakty zůstávají v historii.</p>
+              {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-xs text-red-700">{error}</p>}
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
                   Co se stalo
@@ -1846,7 +1491,7 @@ export default function RadarVyrociPage() {
                     htmlFor="contact-dialog-note"
                     className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500"
                   >
-                    Poznámka k výročí
+                    Poznámka k tomuto kontaktu
                   </label>
                   <span className="text-[10px] font-semibold text-slate-400">
                     {contactDialog.note.length}/280
@@ -1865,9 +1510,10 @@ export default function RadarVyrociPage() {
                   className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                 />
               </div>
+              {user && <AnniversaryHistory user={user} ownerEmail={contactDialog.item.ownerEmail} entryId={contactDialog.item.entryId} occurrenceKey={contactDialog.item.occurrenceKey} version={contactDialogReview?.historyCount} />}
             </div>
 
-            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 {contactDialogIsHandled && (
                   <button
@@ -1881,7 +1527,7 @@ export default function RadarVyrociPage() {
                     ) : (
                       <RotateCcw className="h-4 w-4" aria-hidden="true" />
                     )}
-                    Vymazat výsledek
+                    Vymazat výsledek kontaktu
                   </button>
                 )}
               </div>
@@ -1904,7 +1550,7 @@ export default function RadarVyrociPage() {
                   ) : contactDialogDateIncomplete ? (
                     "Doplň datum i čas"
                   ) : (
-                    "Uložit výsledek"
+                    "Přidat záznam"
                   )}
                 </button>
               </div>
@@ -1970,12 +1616,6 @@ export default function RadarVyrociPage() {
           color: #ffffff !important;
           -webkit-text-fill-color: #ffffff !important;
           stroke: #ffffff !important;
-        }
-
-        body.simple-bg.simple-bg-white .app-content .anniversary-group-badge,
-        body.simple-bg.simple-bg-white .app-content .anniversary-group-badge * {
-          color: #ffffff !important;
-          -webkit-text-fill-color: #ffffff !important;
         }
       `}</style>
     </AppLayout>

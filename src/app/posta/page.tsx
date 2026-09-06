@@ -4344,7 +4344,7 @@ export default function PostaPage() {
                             : previewItem.type === "production_plan_share"
                             ? "Náhled sdíleného plánu produkce"
                             : previewItem.type === "online_card_meeting_request"
-                            ? "Detail žádosti o schůzku"
+                            ? previewItem.metadata?.inquiryKind === "travel" ? "Detail poptávky cestovního pojištění" : "Detail žádosti o schůzku"
                             : "Náhled zprávy"
                         }
                         className="h-full w-full bg-white"

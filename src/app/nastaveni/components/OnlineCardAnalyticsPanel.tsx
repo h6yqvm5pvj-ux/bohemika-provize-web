@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User as FirebaseUser } from "firebase/auth";
 import {
   BarChart3,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { ADMIN_IMPERSONATION_HEADER } from "@/lib/adminImpersonationShared";
 import {
   EMPTY_ONLINE_CARD_ANALYTICS_EVENTS,
   type OnlineCardAnalyticsDay,
@@ -44,29 +45,42 @@ const emptyAnalyticsResponse = (rangeDays: number): AnalyticsResponse => ({
 export function OnlineCardAnalyticsPanel({
   user,
   enabled,
+  impersonatedEmail = "",
 }: {
   user: FirebaseUser | null;
   enabled: boolean;
+  impersonatedEmail?: string;
 }) {
   const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30);
   const [data, setData] = useState<AnalyticsResponse>(() => emptyAnalyticsResponse(30));
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const activeRequest = useRef<AbortController | null>(null);
 
   const loadAnalytics = useCallback(async () => {
+    activeRequest.current?.abort();
     if (!user || !enabled) {
       setData(emptyAnalyticsResponse(rangeDays));
       setError(null);
+      setLoading(false);
       return;
     }
 
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setLoading(true);
     setError(null);
     try {
       const response = await fetchAuthedJsonOrThrow<AnalyticsResponse>(
         user,
-        `/api/online-card/analytics?days=${rangeDays}`
+        `/api/online-card/analytics?days=${rangeDays}`,
+        {
+          signal: controller.signal,
+          headers: { [ADMIN_IMPERSONATION_HEADER]: impersonatedEmail },
+        }
       );
+      if (controller.signal.aborted) return;
+      if (!response?.ok) throw new Error("Přehled návštěvnosti se nepodařilo načíst.");
       setData({
         ok: true,
         rangeDays,
@@ -74,6 +88,7 @@ export function OnlineCardAnalyticsPanel({
         totals: response.totals ?? EMPTY_ONLINE_CARD_ANALYTICS_EVENTS(),
       });
     } catch (cause) {
+      if (controller.signal.aborted) return;
       setData(emptyAnalyticsResponse(rangeDays));
       setError(
         cause instanceof Error && cause.message.trim()
@@ -81,12 +96,13 @@ export function OnlineCardAnalyticsPanel({
           : "Přehled návštěvnosti se nepodařilo načíst."
       );
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [enabled, rangeDays, user]);
+  }, [enabled, rangeDays, user, impersonatedEmail]);
 
   useEffect(() => {
     void loadAnalytics();
+    return () => activeRequest.current?.abort();
   }, [loadAnalytics]);
 
   const totals = data.totals;
@@ -95,7 +111,7 @@ export function OnlineCardAnalyticsPanel({
     () => Math.max(1, ...data.days.map((day) => day.events.visit)),
     [data.days]
   );
-  const displayedDays = data.days.length > 42 ? data.days.slice(-42) : data.days;
+  const displayedDays = data.days;
   const firstDay = displayedDays[0]?.day;
   const middleDay = displayedDays[Math.floor(displayedDays.length / 2)]?.day;
   const lastDay = displayedDays.at(-1)?.day;
@@ -103,8 +119,8 @@ export function OnlineCardAnalyticsPanel({
   const metrics = [
     { label: "Návštěvy", value: totals.visit, icon: Eye, className: "text-violet-700 bg-violet-50 border-violet-100" },
     { label: "Telefon a e-mail", value: contactClicks, icon: MousePointerClick, className: "text-sky-700 bg-sky-50 border-sky-100" },
-    { label: "Uložené kontakty", value: totals.vcard_download, icon: Download, className: "text-emerald-700 bg-emerald-50 border-emerald-100" },
-    { label: "Objednané schůzky", value: totals.meeting_submitted, icon: CalendarCheck, className: "text-rose-700 bg-rose-50 border-rose-100" },
+    { label: "Stažení kontaktu", value: totals.vcard_download, icon: Download, className: "text-emerald-700 bg-emerald-50 border-emerald-100" },
+    { label: "Žádosti o schůzku", value: totals.meeting_submitted, icon: CalendarCheck, className: "text-rose-700 bg-rose-50 border-rose-100" },
   ];
 
   return (
@@ -117,7 +133,7 @@ export function OnlineCardAnalyticsPanel({
           </p>
           <h2 className="mt-1 text-lg font-bold tracking-[-0.02em] text-slate-950">Návštěvy a konverze</h2>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">
-            Agregované události bez jmen, e-mailů nebo úplných IP adres návštěvníků.
+            Návštěvy vizitky a provedené akce za vybrané období. Opakované otevření ve stejné relaci prohlížeče se počítá jednou.
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -126,6 +142,7 @@ export function OnlineCardAnalyticsPanel({
               key={days}
               type="button"
               onClick={() => setRangeDays(days as 7 | 30 | 90)}
+              aria-pressed={rangeDays === days}
               className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
                 rangeDays === days
                   ? "bg-violet-700 !text-white shadow-[0_6px_14px_rgba(109,40,217,0.24)]"
@@ -138,7 +155,7 @@ export function OnlineCardAnalyticsPanel({
           <button
             type="button"
             onClick={() => void loadAnalytics()}
-            disabled={loading || !enabled}
+            disabled={loading || !enabled || !user}
             className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-violet-100 bg-white text-violet-700 transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-45"
             title="Obnovit přehled"
             aria-label="Obnovit přehled výkonu vizitky"
@@ -152,8 +169,12 @@ export function OnlineCardAnalyticsPanel({
         <div className="mt-4 rounded-2xl border border-dashed border-violet-200 bg-white/75 px-4 py-4 text-sm text-slate-600">
           Statistiky se začnou zapisovat po zveřejnění online vizitky.
         </div>
+      ) : !user || loading ? (
+        <div role="status" className="mt-4 rounded-2xl border border-violet-100 bg-white/75 px-4 py-6 text-sm text-slate-600">
+          Načítám statistiky vizitky…
+        </div>
       ) : error ? (
-        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+        <div role="alert" className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
           {error}
         </div>
       ) : (
@@ -178,9 +199,12 @@ export function OnlineCardAnalyticsPanel({
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-100/75">Vývoj návštěv</p>
               <p className="text-[11px] font-semibold text-violet-100/55">{data.rangeDays} dní</p>
             </div>
-            <div className="mt-3 flex h-24 items-end gap-px" aria-label="Graf návštěv vizitky">
+            <div className="relative mt-3 flex h-24 items-end gap-px" role="img" aria-label={`Graf návštěv vizitky za ${data.rangeDays} dní, celkem ${totals.visit} návštěv`}>
+              {totals.visit === 0 && (
+                <p className="absolute inset-0 flex items-center justify-center text-xs text-violet-100/70">Ve vybraném období zatím nejsou návštěvy.</p>
+              )}
               {displayedDays.map((day) => {
-                const height = Math.max(4, Math.round((day.events.visit / maxVisits) * 100));
+                const height = day.events.visit > 0 ? Math.max(2, Math.round((day.events.visit / maxVisits) * 100)) : 0;
                 return (
                   <div
                     key={day.day}
@@ -204,6 +228,14 @@ export function OnlineCardAnalyticsPanel({
             <span>Web: {totals.website_click}</span>
             <span>Mapa: {totals.map_click}</span>
             <span>Otevřený formulář: {totals.meeting_open}</span>
+          </div>
+          <div className="mt-4 rounded-2xl border border-violet-100 bg-white/80 p-3">
+            <p className="text-xs font-bold text-violet-800">Cestovní pojištění</p>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-slate-500">
+              <span><strong className="block text-lg text-slate-900">{totals.travel_visit ?? 0}</strong>Návštěvy stránky</span>
+              <span><strong className="block text-lg text-slate-900">{totals.travel_plan ?? 0}</strong>Zobrazené plány</span>
+              <span><strong className="block text-lg text-slate-900">{totals.travel_submitted ?? 0}</strong>Odeslané poptávky</span>
+            </div>
           </div>
         </>
       )}

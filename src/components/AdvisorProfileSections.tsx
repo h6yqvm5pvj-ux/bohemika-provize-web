@@ -35,6 +35,7 @@ type AdvisorProfileSectionsProps = {
   goldPageHref?: string;
   lifeInsurancePageHref?: string;
   vehicleInsurancePageHref?: string;
+  travelInsurancePageHref?: string;
 };
 
 const PARTNER_INSURERS: PartnerInsurer[] = [
@@ -158,6 +159,7 @@ export function AdvisorProfileSections({
   goldPageHref,
   lifeInsurancePageHref,
   vehicleInsurancePageHref,
+  travelInsurancePageHref,
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
   const light = theme === "light";
@@ -224,6 +226,8 @@ export function AdvisorProfileSections({
                 ? lifeInsurancePageHref
                 : index === 2
                   ? vehicleInsurancePageHref
+                : index === 3
+                  ? travelInsurancePageHref
                 : index === ADVISOR_SERVICES.length - 1
                   ? goldPageHref
                   : undefined;
@@ -246,6 +250,8 @@ export function AdvisorProfileSections({
                     ? "Zjistit více o životním a úrazovém pojištění"
                     : index === 2
                       ? "Zjistit více o pojištění vozidel"
+                    : index === 3
+                      ? "Vybrat cestovní pojištění podle své cesty"
                       : index === ADVISOR_SERVICES.length - 1
                         ? "Zjistit více o investičním zlatě a stříbru"
                         : undefined

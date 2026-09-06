@@ -1,0 +1,176 @@
+.scene {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: min(760px, calc(100svh - 112px));
+  overflow: hidden;
+  border: 1px solid #eae7f2;
+  border-radius: 28px;
+  background: linear-gradient(155deg, #ffffff 25%, #fdfcff 70%, #faf9ff);
+  color: #1e1b35;
+  box-shadow: 0 16px 60px #44346a08, 0 2px 8px #44346a03;
+  animation: sceneEnter 450ms ease-out both;
+  container-type: inline-size;
+}
+
+.scene::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 34%, #ede9fe65, transparent 58%);
+  content: "";
+  pointer-events: none;
+}
+
+.header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 26px 32px 0; }
+.sectionLabel { display: inline-flex; align-items: center; gap: 8px; color: #78678f; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.sectionLabel svg { color: #8b5cf6; }
+.liveLabel { display: inline-flex; align-items: center; gap: 7px; color: #9b92ab; font-size: 10px; }
+.liveLabel > span { width: 5px; height: 5px; border-radius: 50%; background: #a78bfa; box-shadow: 0 0 0 4px #f3efff; }
+.content { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding: 12px 24px 32px; }
+
+.network { position: relative; width: min(100%, 600px); aspect-ratio: 600 / 340; flex-shrink: 0; margin-bottom: 18px; }
+.ambient { position: absolute; inset: 10% 18% 7%; border-radius: 50%; background: radial-gradient(ellipse, #ede5ff9c, #ede9fe30 60%, transparent 72%); filter: blur(14px); }
+.connections { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.outerOrbit { stroke: #e7e1f1; stroke-width: 1; stroke-dasharray: 2 7; }
+.innerOrbit { stroke: #eae4f5; stroke-width: 1; }
+.connection { stroke: #e0d7f0; stroke-width: 1.4; }
+.signal { stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 9 91; animation: signalTravel 3.6s linear infinite; }
+.orbitDot { fill: #d8c9f4; }
+.smallDot { fill: #d8d6e5; }
+
+.memberPosition { position: absolute; z-index: 2; transform: translate(-50%, -50%); }
+.member { position: relative; display: grid; place-items: center; width: 50px; height: 50px; border: 1px solid #e8e2f2; border-radius: 17px; background: linear-gradient(155deg, #fff, #faf7ff); color: #a493c5; box-shadow: 0 6px 18px #5c458110, 0 2px 4px #5c458105; animation: memberFloat 5s ease-in-out infinite; animation-delay: var(--member-delay); }
+.member > svg { width: 23px; height: 23px; }
+.member[data-tone="blue"] { border-color: #e3e7f5; background: linear-gradient(155deg, #fff, #f4f6ff); color: #8996c6; }
+.member[data-tone="rose"] { border-color: #f0e1ef; background: linear-gradient(155deg, #fff, #fdf6fc); color: #c09cbd; }
+.memberSignal { position: absolute; right: -2px; bottom: 3px; width: 8px; height: 8px; border: 2px solid white; border-radius: 50%; background: #b49adc; box-shadow: 0 0 0 3px #f4efff; animation: memberSignal 3.6s ease-in-out infinite; animation-delay: var(--member-delay); }
+
+.hubPosition { position: absolute; z-index: 3; top: 48.529%; left: 50%; width: 92px; height: 92px; transform: translate(-50%, -50%); }
+.hubHalo { position: absolute; inset: -14px; border: 1px solid #daceef; border-radius: 36px; background: #e8dcfa40; animation: haloBreath 4s ease-in-out infinite; }
+.hub { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; overflow: hidden; border: 1px solid #9c79db; border-radius: 27px; background: linear-gradient(145deg, #43306d, #6d41aa 65%, #9571ce); color: #fff; box-shadow: 0 14px 36px #6d28d92b, inset 0 1px 0 #ffffff40, inset 0 -2px 4px #381b6120; }
+.hub::after { position: absolute; inset: 0; background: linear-gradient(120deg, transparent 20%, #ffffff16 42%, transparent 64%); content: ""; animation: hubShine 5s ease-in-out infinite; }
+.hub > svg, .hub > span { position: relative; z-index: 1; color: #fff; }
+.hub > span { font-size: 10px; font-weight: 550; letter-spacing: .01em; }
+
+.floatingCard { position: absolute; z-index: 4; display: flex; align-items: center; gap: 9px; padding: 12px 13px; border: 1px solid #ede8f3; border-radius: 13px; background: #ffffffeb; box-shadow: 0 8px 26px #52406f08; animation: cardFloat 6s ease-in-out infinite; }
+.activityCard { top: 75%; left: 4%; }
+.productionCard { top: 2%; right: 0; animation-delay: -3s; }
+.cardIcon { display: grid; flex-shrink: 0; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: #f5f0fd; color: #a385ca; }
+.cardLabel { display: block; color: #796c8d; font-size: 10px; font-weight: 550; white-space: nowrap; }
+.skeletonLine { display: block; width: 45px; height: 4px; margin-top: 7px; border-radius: 4px; background: #eee9f4; }
+.miniBars { display: flex; align-items: flex-end; gap: 3px; height: 26px; margin-left: 7px; }
+.miniBars i { display: block; width: 4px; border-radius: 3px; background: #c8b5e9; transform-origin: bottom; animation: barBreath 2.8s ease-in-out infinite; }
+.sparkline { width: 35px; height: 25px; margin-left: 8px; color: #b5a0d8; }
+.networkCaption { position: absolute; right: 4%; bottom: 3%; display: inline-flex; align-items: center; gap: 6px; color: #ada1bd; font-size: 9px; letter-spacing: .02em; }
+
+.copy { position: relative; text-align: center; }
+.copy h1 { margin: 0; color: #241c38; font-size: clamp(26px, 3.2cqw, 38px); font-weight: 650; line-height: 1.26; letter-spacing: -.04em; }
+.copy h1 > span { color: #8c70b1; }
+.copy > p { margin: 15px 0 0; color: #7d718a; font-size: 12px; line-height: 1.7; }
+.loading { width: min(100%, 310px); margin-top: 27px; }
+.track { position: relative; height: 3px; overflow: hidden; border-radius: 5px; background: #eee8f6; }
+.track > span { position: absolute; inset: 0 auto 0 0; width: 45%; border-radius: inherit; background: linear-gradient(90deg, #d2c0ed, #9b76ce, #d2c0ed); animation: progressTravel 2.4s ease-in-out infinite; }
+.loadingLabel { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 20px; margin: 13px 0 0; color: #77648e; font-size: 11px; }
+.loadingDots { display: inline-flex; flex-shrink: 0; gap: 3px; }
+.loadingDots i { width: 3px; height: 3px; border-radius: 50%; background: #a68abd; animation: loadingDot 1.5s ease-in-out infinite; }
+.loadingDots i:nth-child(2) { animation-delay: .15s; }
+.loadingDots i:nth-child(3) { animation-delay: .3s; }
+.stage { animation: stageEnter 220ms ease-out both; }
+.footer { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 30px; margin: 0 32px; padding: 19px 0 21px; border-top: 1px solid #eeeaf4; }
+.feature { display: inline-flex; align-items: center; gap: 7px; color: #b0a5bd; font-size: 10px; transition: color 500ms ease; }
+.feature[data-active="true"] { color: #9474b8; }
+
+@keyframes sceneEnter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes signalTravel { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes memberFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes cardFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes memberSignal { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+@keyframes haloBreath { 0%, 100% { transform: scale(1); opacity: .6; } 50% { transform: scale(1.06); opacity: 1; } }
+@keyframes hubShine { 0%, 20% { transform: translateX(-100%); } 70%, 100% { transform: translateX(100%); } }
+@keyframes barBreath { 0%, 100% { transform: scaleY(.7); } 50% { transform: scaleY(1); } }
+@keyframes progressTravel { 0% { transform: translateX(-105%); } 100% { transform: translateX(330%); } }
+@keyframes loadingDot { 0%, 70%, 100% { opacity: .4; } 35% { opacity: 1; } }
+@keyframes stageEnter { from { opacity: .3; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+
+@container (max-width: 640px) {
+  .header { padding: 22px 22px 0; }
+  .content { padding: 26px 20px 30px; }
+  .network { margin-bottom: 28px; }
+  .member { width: 42px; height: 42px; border-radius: 14px; }
+  .member > svg { width: 21px; height: 21px; }
+  .hubPosition { width: 78px; height: 78px; }
+  .hub { border-radius: 23px; gap: 4px; }
+  .hub > svg { width: 28px; height: 28px; }
+  .hubHalo { inset: -10px; border-radius: 31px; }
+  .floatingCard { gap: 6px; padding: 9px; border-radius: 11px; }
+  .activityCard { left: 1%; }
+  .productionCard { right: -1%; }
+  .cardIcon { width: 24px; height: 24px; }
+  .cardLabel { font-size: 9px; }
+  .miniBars { gap: 2px; margin-left: 3px; }
+  .miniBars i { width: 3px; }
+  .sparkline { width: 28px; margin-left: 2px; }
+  .networkCaption { display: none; }
+  .copy > p { max-width: 290px; margin-right: auto; margin-left: auto; }
+  .loading { margin-top: 23px; }
+  .footer { gap: 22px; margin: 0 22px; }
+}
+
+@container (max-width: 400px) {
+  .header { padding: 20px 18px 0; }
+  .content { padding: 32px 16px; }
+  .network { margin-bottom: 36px; }
+  .member { width: 32px; height: 32px; border-radius: 11px; }
+  .member > svg { width: 17px; height: 17px; }
+  .memberSignal { width: 6px; height: 6px; right: -1px; bottom: 0; box-shadow: 0 0 0 2px #f4efff; }
+  .hubPosition { width: 62px; height: 62px; }
+  .hub { border-radius: 18px; gap: 3px; }
+  .hub > svg { width: 23px; height: 23px; }
+  .hub > span { font-size: 8px; }
+  .hubHalo { inset: -8px; border-radius: 25px; }
+  .floatingCard { gap: 5px; padding: 7px 8px; }
+  .cardIcon { width: 20px; height: 20px; border-radius: 6px; }
+  .cardIcon > svg { width: 12px; height: 12px; }
+  .cardLabel { font-size: 8px; }
+  .skeletonLine { width: 30px; height: 3px; margin-top: 5px; }
+  .miniBars, .sparkline { display: none; }
+  .productionCard { top: -4%; right: 0; }
+  .activityCard { top: 81%; left: 0; }
+  .copy h1 { font-size: 25px; }
+  .copy > p { max-width: 245px; font-size: 11px; }
+  .loadingLabel { font-size: 10px; }
+  .footer { gap: 15px; margin: 0 18px; }
+  .feature { gap: 5px; font-size: 9px; }
+  .feature > svg { width: 12px; height: 12px; }
+}
+
+@media (max-height: 740px) and (min-width: 700px) {
+  .scene { min-height: 0; }
+  .network { width: min(100%, 440px); margin-bottom: 16px; }
+  .member { width: 38px; height: 38px; border-radius: 13px; }
+  .member > svg { width: 19px; height: 19px; }
+  .hubPosition { width: 68px; height: 68px; }
+  .hub { border-radius: 21px; gap: 4px; }
+  .hub > svg { width: 25px; height: 25px; }
+  .hubHalo { inset: -9px; border-radius: 29px; }
+  .floatingCard { gap: 6px; padding: 9px; }
+  .activityCard { top: 79%; left: 0; }
+  .productionCard { top: 0; }
+  .cardIcon { width: 24px; height: 24px; }
+  .cardLabel { font-size: 9px; }
+  .miniBars, .sparkline { display: none; }
+  .content { padding-top: 12px; padding-bottom: 24px; }
+  .copy h1 { font-size: 30px; }
+  .copy > p { margin-top: 10px; }
+  .loading { margin-top: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene, .scene *, .scene *::before, .scene *::after { animation: none !important; transition: none !important; }
+  .signal { stroke-dasharray: none; opacity: .35; }
+  .hub::after { display: none; }
+  .track > span { width: 100%; opacity: .55; }
+}

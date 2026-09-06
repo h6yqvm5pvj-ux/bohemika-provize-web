@@ -1799,7 +1799,7 @@ const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | n
         <div class="page">
           <section class="inner">
             <header>
-              <span class="pill">Žádost o schůzku</span>
+              <span class="pill">${metadata.inquiryKind === "travel" ? "Cestovní pojištění" : "Žádost o schůzku"}</span>
               <h1>${escapeHtml(item.title || "Nová žádost o schůzku")}</h1>
               <div class="meta">Doručeno ${escapeHtml(deliveredAt)}${
                 ownerName ? ` • <span class="advisor">Poradce: ${escapeHtml(ownerName)}</span>` : ""

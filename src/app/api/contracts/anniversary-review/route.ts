@@ -1,8 +1,9 @@
-import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { requireContractsEntryGuard } from "../_lib/contractsApi";
+import { CONTACT_OUTCOMES, type ContactOutcome } from "@/app/lib/anniversaryReviews";
+import { appendReviewHistory, readReviewHistory, reviewDto, ReviewMutationError, REVIEWS_COLLECTION as COLLECTION, safeId, type ReviewMutation } from "./history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +13,11 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const FIRESTORE_IN_QUERY_MAX = 30;
 const OCCURRENCE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MEETING_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
-const COLLECTION = "anniversaryReviews";
-const CONTACT_OUTCOMES = new Set(["reached", "no_answer", "meeting", "ignore"]);
+const validDay = (value: string): boolean => {
+  if (!OCCURRENCE_KEY_RE.test(value)) return false;
+  const date = new Date(`${value}T12:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -27,10 +31,6 @@ const normalizeText = (value: unknown, maxLen: number): string | null => {
 
 const hasOwn = (value: Record<string, unknown>, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(value, key);
-
-function docIdFor(ownerEmail: string, entryId: string): string {
-  return `${ownerEmail}__${entryId}`;
-}
 
 export async function GET(req: NextRequest) {
   const guard = await requireContractsEntryGuard(req, {
@@ -58,43 +58,40 @@ export async function GET(req: NextRequest) {
     ? allowedOwners.has(requestedOwner)
       ? [requestedOwner]
       : []
-    : Array.from(allowedOwners).slice(0, FIRESTORE_IN_QUERY_MAX);
+    : Array.from(allowedOwners);
 
   if (requestedOwner && ownersToQuery.length === 0) {
     return withRateLimit(
       NextResponse.json({ ok: false, error: "Nemáš oprávnění k této smlouvě." }, { status: 403 })
     );
   }
+  if (req.nextUrl.searchParams.get("history") === "1") {
+    const entryId = req.nextUrl.searchParams.get("entryId");
+    const beforeRaw = req.nextUrl.searchParams.get("before");
+    const before = beforeRaw === null ? null : Number(beforeRaw);
+    if (!requestedOwner || !safeId(entryId) || (before !== null && (!Number.isSafeInteger(before) || before < 1))) {
+      return withRateLimit(NextResponse.json({ ok: false, error: "Neplatný výběr historie." }, { status: 400 }));
+    }
+    const history = await readReviewHistory(adminDb, requestedOwner, entryId, before);
+    return withRateLimit(NextResponse.json({ ok: true, ...history }, { headers: { "Cache-Control": "private, no-store" } }));
+  }
   if (ownersToQuery.length === 0) {
     return withRateLimit(NextResponse.json({ ok: true, reviews: [] }));
   }
 
-  const snap = await adminDb
-    .collection(COLLECTION)
-    .where("ownerEmail", "in", ownersToQuery)
-    .get();
+  // Firestore limits each `in` query, not the size of the accessible team.
+  const docs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  for (let i = 0; i < ownersToQuery.length; i += FIRESTORE_IN_QUERY_MAX) {
+    const snap = await adminDb
+      .collection(COLLECTION)
+      .where("ownerEmail", "in", ownersToQuery.slice(i, i + FIRESTORE_IN_QUERY_MAX))
+      .get();
+    docs.push(...snap.docs);
+  }
 
-  const reviews = snap.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      ownerEmail: typeof data.ownerEmail === "string" ? data.ownerEmail : "",
-      entryId: typeof data.entryId === "string" ? data.entryId : "",
-      occurrenceKey: typeof data.occurrenceKey === "string" ? data.occurrenceKey : "",
-      contactOutcome:
-        typeof data.contactOutcome === "string" && CONTACT_OUTCOMES.has(data.contactOutcome)
-          ? data.contactOutcome
-          : null,
-      note: typeof data.note === "string" ? data.note : null,
-      meetingAt: typeof data.meetingAt === "string" ? data.meetingAt : null,
-      reviewedBy: typeof data.reviewedBy === "string" ? data.reviewedBy : null,
-      handled: Boolean(
-        typeof data.reviewedAt !== "undefined" ||
-          (typeof data.contactOutcome === "string" && CONTACT_OUTCOMES.has(data.contactOutcome))
-      ),
-    };
-  });
+  const reviews = docs.map((doc) => reviewDto(doc.data()));
 
-  return withRateLimit(NextResponse.json({ ok: true, reviews }));
+  return withRateLimit(NextResponse.json({ ok: true, reviews }, { headers: { "Cache-Control": "private, no-store" } }));
 }
 
 export async function POST(req: NextRequest) {
@@ -130,9 +127,9 @@ export async function POST(req: NextRequest) {
 
   const action = typeof payload.action === "string" ? payload.action.trim() : "";
   const ownerEmail = normalizeEmail(payload.ownerEmail);
-  const entryId = normalizeText(payload.entryId, 200);
+  const entryId = typeof payload.entryId === "string" ? payload.entryId.trim() : null;
 
-  if (!ownerEmail || !entryId) {
+  if (!ownerEmail || !safeId(entryId)) {
     return withRateLimit(
       NextResponse.json({ ok: false, error: "Chybí ownerEmail nebo entryId." }, { status: 400 })
     );
@@ -145,44 +142,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ref = db.collection(COLLECTION).doc(docIdFor(ownerEmail, entryId));
-
-  if (action === "clearOutcome") {
-    const current = await ref.get();
-    const note = current.exists ? normalizeText(current.data()?.note, 280) : null;
-    if (note) {
-      await ref.set(
-        {
-          ownerEmail,
-          entryId,
-          contactOutcome: FieldValue.delete(),
-          meetingAt: FieldValue.delete(),
-          reviewedAt: FieldValue.delete(),
-          reviewedBy: FieldValue.delete(),
-          updatedBy: email,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } else {
-      await ref.delete();
-    }
-    return withRateLimit(NextResponse.json({ ok: true, marked: false }));
-  }
-
-  if (action === "unmark") {
-    await ref.delete();
-    return withRateLimit(NextResponse.json({ ok: true, marked: false }));
-  }
-
-  if (action !== "mark" && action !== "save") {
+  if (action !== "mark" && action !== "save" && action !== "clearOutcome" && action !== "unmark" && action !== "complete" && action !== "reopen") {
     return withRateLimit(
       NextResponse.json({ ok: false, error: "Neznámá akce." }, { status: 400 })
     );
   }
 
-  const occurrenceKeyRaw = normalizeText(payload.occurrenceKey, 10);
-  if (!occurrenceKeyRaw || !OCCURRENCE_KEY_RE.test(occurrenceKeyRaw)) {
+  const occurrenceKeyRaw = typeof payload.occurrenceKey === "string" ? payload.occurrenceKey.trim() : null;
+  if ((action === "mark" || action === "save" || action === "complete" || action === "reopen" || payload.occurrenceKey != null) && (!occurrenceKeyRaw || !validDay(occurrenceKeyRaw))) {
     return withRateLimit(
       NextResponse.json({ ok: false, error: "Neplatné occurrenceKey." }, { status: 400 })
     );
@@ -191,52 +158,44 @@ export async function POST(req: NextRequest) {
   const noteProvided = hasOwn(payload, "note");
   const contactOutcomeProvided = hasOwn(payload, "contactOutcome");
   const meetingAtProvided = hasOwn(payload, "meetingAt");
+  if ((action === "complete" || action === "reopen") && (noteProvided || contactOutcomeProvided || meetingAtProvided)) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Změnu stavu zapiš samostatně od kontaktu a poznámky." }, { status: 400 }));
+  }
   const contactOutcome =
     typeof payload.contactOutcome === "string" ? payload.contactOutcome.trim() : null;
   const meetingAt = typeof payload.meetingAt === "string" ? payload.meetingAt.trim() : null;
 
-  if (contactOutcomeProvided && (!contactOutcome || !CONTACT_OUTCOMES.has(contactOutcome))) {
+  if (contactOutcomeProvided && (!contactOutcome || !CONTACT_OUTCOMES.has(contactOutcome as ContactOutcome))) {
     return withRateLimit(
       NextResponse.json({ ok: false, error: "Neplatný výsledek kontaktu." }, { status: 400 })
     );
   }
-  if (meetingAtProvided && meetingAt && !MEETING_AT_RE.test(meetingAt)) {
+  if (meetingAtProvided && meetingAt && (!MEETING_AT_RE.test(meetingAt) || !validDay(meetingAt.slice(0, 10)) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(meetingAt.slice(11)))) {
     return withRateLimit(
       NextResponse.json({ ok: false, error: "Neplatný datum nebo čas schůzky." }, { status: 400 })
     );
   }
 
-  const payloadToSave: Record<string, unknown> = {
+  if (hasOwn(payload, "requestId") && (typeof payload.requestId !== "string" || !/^[a-zA-Z0-9_-]{16,100}$/.test(payload.requestId))) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Neplatné ID zápisu." }, { status: 400 }));
+  }
+  const mutation: ReviewMutation = {
+    action,
     ownerEmail,
     entryId,
     contractNumber,
     occurrenceKey: occurrenceKeyRaw,
-    updatedBy: email,
-    updatedAt: FieldValue.serverTimestamp(),
+    requestId: typeof payload.requestId === "string" ? payload.requestId : undefined,
   };
-
-  if (noteProvided) {
-    payloadToSave.note = normalizeText(payload.note, 280) ?? null;
+  if (noteProvided) mutation.note = normalizeText(payload.note, 280);
+  if (meetingAtProvided) mutation.meetingAt = meetingAt || null;
+  if (contactOutcomeProvided && contactOutcome) mutation.contactOutcome = contactOutcome as ContactOutcome;
+  try {
+    const review = await appendReviewHistory(db, mutation, ctx.actorEmail || email);
+    return withRateLimit(NextResponse.json({ ok: true, marked: review.handled, review }, { headers: { "Cache-Control": "private, no-store" } }));
+  } catch (error) {
+    if (error instanceof ReviewMutationError) return withRateLimit(NextResponse.json({ ok: false, error: error.message }, { status: error.status }));
+    console.error("Anniversary contact could not be saved", error);
+    return withRateLimit(NextResponse.json({ ok: false, error: "Záznam se nepodařilo uložit. Zkus to prosím znovu." }, { status: 503 }));
   }
-  if (meetingAtProvided) {
-    payloadToSave.meetingAt = meetingAt || FieldValue.delete();
-  }
-
-  if (action === "mark") {
-    payloadToSave.reviewedBy = email;
-    payloadToSave.reviewedAt = FieldValue.serverTimestamp();
-  }
-
-  if (contactOutcomeProvided && contactOutcome) {
-    payloadToSave.contactOutcome = contactOutcome;
-    if (contactOutcome !== "meeting") {
-      payloadToSave.meetingAt = FieldValue.delete();
-    }
-    payloadToSave.reviewedBy = email;
-    payloadToSave.reviewedAt = FieldValue.serverTimestamp();
-  }
-
-  await ref.set(payloadToSave, { merge: true });
-
-  return withRateLimit(NextResponse.json({ ok: true, marked: true }));
 }

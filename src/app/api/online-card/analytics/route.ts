@@ -3,11 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   EMPTY_ONLINE_CARD_ANALYTICS_EVENTS,
   isOnlineCardAnalyticsEvent,
+  readOnlineCardAnalyticsCounts,
   type OnlineCardAnalyticsDay,
   type OnlineCardAnalyticsEventCounts,
 } from "@/lib/onlineCardAnalytics";
 import { ONLINE_CARD_SLUG_RE, normalizeOnlineCardSlug } from "@/lib/server/onlineCard";
-import { recordOnlineCardAnalyticsEvent } from "@/lib/server/onlineCardAnalytics";
+import { recordOnlineCardAnalyticsEvent, resolveOnlineCardAnalyticsOwnerEmail } from "@/lib/server/onlineCardAnalytics";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { requireAuthedRateLimited } from "@/lib/server/apiEntryGuard";
 import { consumeRateLimit, getRequestIp } from "@/lib/server/rateLimit";
@@ -17,19 +18,10 @@ export const dynamic = "force-dynamic";
 
 const EVENT_RATE_LIMIT = 120;
 const EVENT_RATE_LIMIT_WINDOW_MS = 10 * 60_000;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type PublicAnalyticsRequest = {
   slug?: unknown;
   event?: unknown;
-};
-
-const normalizeEmail = (value: unknown): string =>
-  typeof value === "string" ? value.trim().toLowerCase() : "";
-
-const toSafeNumber = (value: unknown): number => {
-  const numeric = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
 };
 
 async function findOnlineCardOwner(slug: string): Promise<{ ownerEmail: string } | null> {
@@ -44,9 +36,7 @@ async function findOnlineCardOwner(slug: string): Promise<{ ownerEmail: string }
     const card = rawCard as Record<string, unknown>;
     if (card.enabled !== true || normalizeOnlineCardSlug(card.slug) !== slug) continue;
 
-    const ownerEmail = [card.email, data.email, docSnap.id]
-      .map(normalizeEmail)
-      .find((email) => EMAIL_RE.test(email));
+    const ownerEmail = resolveOnlineCardAnalyticsOwnerEmail(data, docSnap.id);
     if (ownerEmail) return { ownerEmail };
   }
 
@@ -76,20 +66,12 @@ function normalizeRange(value: string | null): number {
   return parsed === 7 || parsed === 90 ? parsed : 30;
 }
 
-function readEventCounts(value: unknown): OnlineCardAnalyticsEventCounts {
-  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const events = EMPTY_ONLINE_CARD_ANALYTICS_EVENTS();
-  (Object.keys(events) as Array<keyof OnlineCardAnalyticsEventCounts>).forEach((event) => {
-    events[event] = toSafeNumber(source[event]);
-  });
-  return events;
-}
-
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as PublicAnalyticsRequest | null;
   const slug = normalizeOnlineCardSlug(body?.slug);
-  if (!slug || slug.length < 3 || !ONLINE_CARD_SLUG_RE.test(slug) || !isOnlineCardAnalyticsEvent(body?.event)) {
-    return new NextResponse(null, { status: 204 });
+  if (!slug || slug.length < 3 || !ONLINE_CARD_SLUG_RE.test(slug) || !isOnlineCardAnalyticsEvent(body?.event) || body.event === "meeting_submitted" || body.event === "travel_submitted") {
+    // Completed requests are recorded by the meeting endpoint, never by the browser.
+    return new NextResponse(null, { status: 400 });
   }
 
   const rateLimit = await consumeRateLimit({
@@ -98,11 +80,12 @@ export async function POST(req: NextRequest) {
     limit: EVENT_RATE_LIMIT,
     windowMs: EVENT_RATE_LIMIT_WINDOW_MS,
   });
-  if (!rateLimit.allowed) return new NextResponse(null, { status: 204 });
+  if (!rateLimit.allowed) return new NextResponse(null, { status: 429 });
 
   try {
+    if (!adminDb) return new NextResponse(null, { status: 503 });
     const owner = await findOnlineCardOwner(slug);
-    if (!owner) return new NextResponse(null, { status: 204 });
+    if (!owner) return new NextResponse(null, { status: 404 });
 
     await recordOnlineCardAnalyticsEvent({
       ownerEmail: owner.ownerEmail,
@@ -112,6 +95,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     // Analytics must never prevent a visitor from using the public card.
     console.warn("Online card analytics event failed:", error);
+    return new NextResponse(null, { status: 503 });
   }
 
   return new NextResponse(null, { status: 204 });
@@ -150,7 +134,7 @@ export async function GET(req: NextRequest) {
       const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
       const day = typeof data.day === "string" ? data.day : "";
       if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-        storedDays.set(day, readEventCounts(data.events));
+        storedDays.set(day, readOnlineCardAnalyticsCounts(data));
       }
     });
 
@@ -169,7 +153,9 @@ export async function GET(req: NextRequest) {
       return result;
     }, EMPTY_ONLINE_CARD_ANALYTICS_EVENTS());
 
-    return NextResponse.json({ ok: true, rangeDays, days, totals });
+    return NextResponse.json({ ok: true, rangeDays, days, totals }, {
+      headers: { "Cache-Control": "private, no-store, max-age=0" },
+    });
   } catch (error) {
     console.error("Online card analytics summary failed:", error);
     return NextResponse.json(

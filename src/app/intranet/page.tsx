@@ -7,6 +7,8 @@ import type { LucideIcon } from "lucide-react";
 import { EmojiStyle, type EmojiClickData } from "emoji-picker-react";
 import {
   BarChart3,
+  CheckCircle2,
+  LayoutGrid,
   BookOpen,
   CarFront,
   ChevronDown,
@@ -75,6 +77,10 @@ import {
   wallPostReadingMinutes,
 } from "./wallPostPreview";
 import styles from "./intranetWallArt.module.css";
+import { matchesWallView, normalizeWallPersonalState, type WallPersonalAction, type WallPersonalState, type WallView } from "./wallPersonal";
+import { SolutionAction, SpecialistBadge, WallFeedFilters, WallPostPersonalActions } from "./WallPersonalControls";
+
+type FeedSection = IntranetSectionKey | "all";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
@@ -89,6 +95,7 @@ type WallAuthor = {
   email: string;
   name: string;
   profileAvatar: string;
+  specialist?: boolean;
 };
 
 type WallAttachment = {
@@ -136,7 +143,7 @@ type WallCommentReply = {
   parentCommentId: string;
 };
 
-type WallPost = {
+type WallPost = WallPersonalState & {
   id: string;
   title: string;
   text: string;
@@ -145,6 +152,7 @@ type WallPost = {
   createdAtMs: number | null;
   updatedAtMs: number | null;
   pinned: boolean;
+  acceptedCommentId: string | null;
   readByDay: string | null;
   commentCount: number;
   likeCount: number;
@@ -162,6 +170,7 @@ type WallApiResponse = {
   posts?: WallPost[];
   hasMore?: boolean;
   nextCursorMs?: number | null;
+  nextCursorId?: string | null;
 };
 
 type WallCreateResponse = {
@@ -606,6 +615,8 @@ const restoreTextAreaCursor = (textarea: HTMLTextAreaElement | null, cursor: num
 const normalizeWallPosts = (rawPosts: WallPost[]): WallPost[] =>
   rawPosts.map((post) => ({
     ...post,
+    ...normalizeWallPersonalState(post),
+    acceptedCommentId: post.section === "pomoc" ? post.acceptedCommentId ?? null : null,
     author: {
       ...post.author,
       profileAvatar: normalizeProfileAvatar(post.author.profileAvatar),
@@ -1422,7 +1433,25 @@ function PollCard({
 export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const effectiveEmail = useEffectiveUserEmail(user?.email);
-  const [selectedSection, setSelectedSection] = useState<IntranetSectionKey>("zivot");
+  const [selectedSection, setSelectedSection] = useState<FeedSection>("all");
+  const [view, setView] = useState<WallView>("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [postsCursorId, setPostsCursorId] = useState<string | null>(null);
+  const [personalBusy, setPersonalBusy] = useState<Record<string, boolean>>({});
+  const [personalErrors, setPersonalErrors] = useState<Record<string, string | null>>({});
+  const personalRequests = useRef(new Set<string>());
+  const feedRequestId = useRef(0);
+  const accountRef = useRef(effectiveEmail);
+  accountRef.current = effectiveEmail;
+  const feedKey = JSON.stringify([effectiveEmail, selectedSection, view, searchQuery]);
+  const feedKeyRef = useRef(feedKey);
+  feedKeyRef.current = feedKey;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearchQuery(searchInput.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
   const [posts, setPosts] = useState<WallPost[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [loadingOlderPosts, setLoadingOlderPosts] = useState(false);
@@ -1480,6 +1509,19 @@ export default function IntranetPage() {
   );
   const [deepLinkPostId, setDeepLinkPostId] = useState<string | null>(null);
 
+  const readerDialogRef = useRef<HTMLDivElement | null>(null);
+  const readerTriggerRef = useRef<HTMLElement | null>(null);
+  const readerPostId = readerPost?.id;
+  useEffect(() => {
+    if (!readerPostId) return;
+    readerDialogRef.current?.focus();
+    return () => {
+      const trigger = readerTriggerRef.current;
+      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+      else document.querySelector<HTMLElement>('[aria-label="Zobrazení příspěvků"] [aria-pressed="true"]')?.focus({ preventScroll: true });
+    };
+  }, [readerPostId]);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replaceAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const postTextEditorRef = useRef<WallPostRichTextEditorHandle | null>(null);
@@ -1494,7 +1536,7 @@ export default function IntranetPage() {
   const resetPostFormForCreate = () => {
     setTitle("");
     setText("");
-    setPostSection(selectedSection);
+    setPostSection(selectedSection === "all" ? "obecne" : selectedSection);
     setPostPinned(false);
     setPostReadByDay("");
     setPostSources([]);
@@ -1651,17 +1693,48 @@ export default function IntranetPage() {
     setIsDraggingFiles(false);
   }, [postModalOpen]);
 
-  const loadPosts = async (
+  const applyPostPatch = useCallback((postId: string, patch: Partial<WallPost>) => {
+    setPosts(previous => previous.map(post => post.id === postId ? { ...post, ...patch } : post));
+    setReaderPost(previous => previous?.id === postId ? { ...previous, ...patch } : previous);
+  }, []);
+
+  const changePersonalState = useCallback(async (post: WallPost, action: WallPersonalAction) => {
+    if (!user) return;
+    const account = effectiveEmail;
+    const key = `${account}:${post.id}:${action.field}`;
+    if (personalRequests.current.has(key)) return;
+    personalRequests.current.add(key);
+    setPersonalBusy(previous => ({ ...previous, [`${post.id}:${action.field}`]: true }));
+    setPersonalErrors(previous => ({ ...previous, [post.id]: null }));
+    try {
+      const payload = await fetchAuthedJsonOrThrow<{ ok?: boolean; state?: WallPersonalState; error?: string }>(user, `/api/intranet/wall/${encodeURIComponent(post.id)}/state`, { method: "POST", body: JSON.stringify(action) });
+      if (!payload.ok || !payload.state) throw new Error(payload.error || "Změnu se nepodařilo uložit.");
+      if (account !== accountRef.current) return;
+      const field = action.field === "read" ? "readAtMs" : action.field;
+      applyPostPatch(post.id, { [field]: payload.state[field] });
+    } catch (error) {
+      if (account === accountRef.current) setPersonalErrors(previous => ({ ...previous, [post.id]: error instanceof Error ? error.message : "Změnu se nepodařilo uložit." }));
+    } finally {
+      personalRequests.current.delete(key);
+      if (account === accountRef.current) setPersonalBusy(previous => ({ ...previous, [`${post.id}:${action.field}`]: false }));
+    }
+  }, [user, effectiveEmail, applyPostPatch]);
+
+  const loadPosts = useCallback(async (
     currentUser: FirebaseUser,
-    section: IntranetSectionKey,
-    options?: { append?: boolean; cursorMs?: number | null }
+    section: FeedSection,
+    options?: { append?: boolean; cursorMs?: number | null; cursorId?: string | null }
   ) => {
     const append = options?.append === true;
+    const requestId = ++feedRequestId.current;
+    const requestKey = JSON.stringify([effectiveEmail, section, view, searchQuery]);
+    const isCurrent = () => requestId === feedRequestId.current && requestKey === feedKeyRef.current;
     if (append) {
       setLoadingOlderPosts(true);
       setOlderPostsError(null);
     } else {
       setLoadingPosts(true);
+      setLoadingOlderPosts(false);
       setPostsError(null);
       setOlderPostsError(null);
       setPostsHasMore(false);
@@ -1669,10 +1742,13 @@ export default function IntranetPage() {
     }
     try {
       const query = new URLSearchParams();
-      query.set("section", section);
+      if (section !== "all") query.set("section", section);
+      query.set("view", view);
+      if (searchQuery) query.set("q", searchQuery);
       query.set("limit", String(POSTS_PAGE_SIZE));
       if (append && options?.cursorMs) {
         query.set("cursorMs", String(options.cursorMs));
+        if (options.cursorId) query.set("cursorId", options.cursorId);
       }
       const endpoint = `/api/intranet/wall${query.toString() ? `?${query.toString()}` : ""}`;
       const payload = await fetchAuthedJsonOrThrow<WallApiResponse>(currentUser, endpoint, {
@@ -1681,6 +1757,7 @@ export default function IntranetPage() {
       if (!payload?.ok) {
         throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
       }
+      if (!isCurrent()) return;
       const rawPosts = Array.isArray(payload.posts) ? payload.posts : [];
       const normalizedPosts = normalizeWallPosts(rawPosts);
       setPosts((prev) => {
@@ -1696,12 +1773,14 @@ export default function IntranetPage() {
         ];
       });
       setPostsHasMore(payload.hasMore === true);
+      setPostsCursorId(payload.nextCursorId ?? null);
       setPostsCursorMs(
         typeof payload.nextCursorMs === "number" && Number.isFinite(payload.nextCursorMs)
           ? payload.nextCursorMs
           : null
       );
     } catch (error) {
+      if (!isCurrent()) return;
       if (append) {
         setOlderPostsError(
           error instanceof Error ? error.message : "Nepodařilo se načíst starší příspěvky."
@@ -1715,24 +1794,47 @@ export default function IntranetPage() {
         setPostsCursorMs(null);
       }
     } finally {
-      if (append) {
-        setLoadingOlderPosts(false);
-      } else {
-        setLoadingPosts(false);
+      if (isCurrent()) {
+        if (append) setLoadingOlderPosts(false);
+        else setLoadingPosts(false);
       }
     }
-  };
+  }, [effectiveEmail, view, searchQuery]);
 
   useEffect(() => {
     if (!user) {
+      feedRequestId.current += 1;
       setPosts([]);
+      setLoadingPosts(false);
+      setLoadingOlderPosts(false);
       setPostsHasMore(false);
       setPostsCursorMs(null);
       setOlderPostsError(null);
       return;
     }
     void loadPosts(user, selectedSection);
-  }, [effectiveEmail, user, selectedSection]);
+  }, [effectiveEmail, user, selectedSection, view, searchQuery, loadPosts]);
+
+  useEffect(() => {
+    setReaderPost(null);
+    setPersonalErrors({});
+    setPersonalBusy({});
+  }, [effectiveEmail]);
+
+  useEffect(() => {
+    if (!user || !pendingFocusPostId || loadingPosts || posts.some(post => post.id === pendingFocusPostId)) return;
+    let cancelled = false;
+    const currentAccount = effectiveEmail;
+    void fetchAuthedJsonOrThrow<WallApiResponse>(user, `/api/intranet/wall?postId=${encodeURIComponent(pendingFocusPostId)}`)
+      .then(payload => {
+        if (cancelled || currentAccount !== accountRef.current) return;
+        const targeted = normalizeWallPosts(payload.posts ?? []);
+        setPosts(previous => [...targeted.filter(post => !previous.some(existing => existing.id === post.id)), ...previous]);
+        if (!targeted.length) setPendingFocusPostId(null);
+      })
+      .catch(error => { if (!cancelled) { setPostsError(error instanceof Error ? error.message : "Příspěvek se nepodařilo otevřít."); setPendingFocusPostId(null); } });
+    return () => { cancelled = true; };
+  }, [user, effectiveEmail, pendingFocusPostId, loadingPosts, posts]);
 
   useEffect(() => {
     if (!pendingFocusPostId || loadingPosts) return;
@@ -1747,6 +1849,9 @@ export default function IntranetPage() {
       block: "center",
     });
     setHighlightPostId(pendingFocusPostId);
+    setExpandedCommentsById(previous => ({ ...previous, [pendingFocusPostId]: true }));
+    const opened = posts.find(post => post.id === pendingFocusPostId);
+    if (opened && opened.readAtMs === null) void changePersonalState(opened, { field: "read", value: true });
 
     if (highlightTimerRef.current != null) {
       window.clearTimeout(highlightTimerRef.current);
@@ -1760,7 +1865,7 @@ export default function IntranetPage() {
     }, 2600);
 
     setPendingFocusPostId(null);
-  }, [pendingFocusPostId, loadingPosts, posts]);
+  }, [pendingFocusPostId, loadingPosts, posts, changePersonalState]);
 
   useEffect(
     () => () => {
@@ -1796,11 +1901,11 @@ export default function IntranetPage() {
   }, [files]);
 
   const currentSectionLabel = useMemo(
-    () => INTRANET_SECTION_LABEL_BY_KEY.get(selectedSection) ?? selectedSection,
+    () => selectedSection === "all" ? "Intranet" : INTRANET_SECTION_LABEL_BY_KEY.get(selectedSection) ?? selectedSection,
     [selectedSection]
   );
-  const currentSectionVisual = SECTION_VISUALS[selectedSection];
-  const CurrentSectionIcon = currentSectionVisual.icon;
+  const currentSectionVisual = SECTION_VISUALS[selectedSection === "all" ? "obecne" : selectedSection];
+  const CurrentSectionIcon = selectedSection === "all" ? LayoutGrid : currentSectionVisual.icon;
 
   const selectedPostSectionVisual = SECTION_VISUALS[postSection];
   const SelectedPostIcon = selectedPostSectionVisual.icon;
@@ -2242,6 +2347,7 @@ export default function IntranetPage() {
 
   const handleCreateComment = async (postId: string, parentCommentId?: string) => {
     if (!user) return;
+    const commentAccount = effectiveEmail;
     const isReply = !!parentCommentId;
     const composerKey = parentCommentId ? replyComposerKey(postId, parentCommentId) : postId;
     const draft = isReply
@@ -2274,6 +2380,7 @@ export default function IntranetPage() {
         throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
       }
 
+      if (commentAccount !== accountRef.current) return;
       if (isReply) {
         setReplyDraftsById((prev) => ({ ...prev, [composerKey]: "" }));
         setReplyComposerOpenById((prev) => ({ ...prev, [composerKey]: false }));
@@ -2281,7 +2388,14 @@ export default function IntranetPage() {
         setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
       }
       setExpandedCommentsById((prev) => ({ ...prev, [postId]: true }));
-      await loadPosts(user, selectedSection);
+      try {
+        const refreshed = await fetchAuthedJsonOrThrow<WallApiResponse>(user, `/api/intranet/wall?postId=${encodeURIComponent(postId)}`);
+        const updated = normalizeWallPosts(refreshed.posts ?? [])[0];
+        if (!refreshed.ok || !updated) throw new Error("REFRESH_FAILED");
+        if (commentAccount === accountRef.current) applyPostPatch(postId, { comments: updated.comments, commentCount: updated.commentCount });
+      } catch {
+        if (commentAccount === accountRef.current) setPersonalErrors(previous => ({ ...previous, [postId]: "Komentář je uložený. Diskusi se nepodařilo obnovit; použij tlačítko Obnovit." }));
+      }
     } catch (error) {
       if (isReply) {
         setReplyErrorById((prev) => ({
@@ -2305,8 +2419,52 @@ export default function IntranetPage() {
     }
   };
 
+  const openReader = (post: WallPost, trigger?: HTMLElement) => {
+    readerTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setReaderPost(post);
+    if (post.readAtMs === null) void changePersonalState(post, { field: "read", value: true });
+  };
+
+  const selectSolution = async (post: WallPost, commentId: string | null) => {
+    if (!user) return;
+    const account = effectiveEmail;
+    const key = `${account}:${post.id}:solution`;
+    if (personalRequests.current.has(key)) return;
+    personalRequests.current.add(key);
+    setPersonalBusy(previous => ({ ...previous, [`${post.id}:solution`]: true }));
+    setPersonalErrors(previous => ({ ...previous, [post.id]: null }));
+    try {
+      const payload = await fetchAuthedJsonOrThrow<{ ok?: boolean; acceptedCommentId?: string | null; error?: string }>(user, `/api/intranet/wall/${encodeURIComponent(post.id)}/solution`, { method: "POST", body: JSON.stringify({ commentId }) });
+      if (!payload.ok) throw new Error(payload.error || "Řešení se nepodařilo uložit.");
+      if (account === accountRef.current) applyPostPatch(post.id, { acceptedCommentId: payload.acceptedCommentId ?? null });
+    } catch (error) {
+      if (account === accountRef.current) setPersonalErrors(previous => ({ ...previous, [post.id]: error instanceof Error ? error.message : "Řešení se nepodařilo uložit." }));
+    } finally {
+      personalRequests.current.delete(key);
+      if (account === accountRef.current) setPersonalBusy(previous => ({ ...previous, [`${post.id}:solution`]: false }));
+    }
+  };
+
+  const personalActions = (post: WallPost) => <WallPostPersonalActions state={post} disabled={!user}
+    busy={{ saved: personalBusy[`${post.id}:saved`], following: personalBusy[`${post.id}:following`], read: personalBusy[`${post.id}:read`] }}
+    onChange={action => void changePersonalState(post, action)} />;
+
+  const solutionAction = (post: WallPost, commentId: string) => <SolutionAction
+    accepted={post.acceptedCommentId === commentId}
+    allowed={post.section === "pomoc" && canDeletePost(post)}
+    busy={personalBusy[`${post.id}:solution`] === true}
+    onSelect={() => void selectSolution(post, post.acceptedCommentId === commentId ? null : commentId)} />;
+
+  const jumpToSolution = (post: WallPost) => {
+    setExpandedCommentsById(previous => ({ ...previous, [post.id]: true }));
+    if (post.readAtMs === null) void changePersonalState(post, { field: "read", value: true });
+    window.setTimeout(() => document.getElementById(`wall-comment-${post.id}-${post.acceptedCommentId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 0);
+  };
+
   const handleToggleComments = (postId: string) => {
     const nextExpanded = !expandedCommentsById[postId];
+    const post = posts.find(item => item.id === postId);
+    if (nextExpanded && post?.readAtMs === null) void changePersonalState(post, { field: "read", value: true });
     setExpandedCommentsById((prev) => ({ ...prev, [postId]: nextExpanded }));
     if (!nextExpanded) {
       setCommentComposerOpenById((prev) => ({ ...prev, [postId]: false }));
@@ -2477,6 +2635,7 @@ export default function IntranetPage() {
     void loadPosts(user, selectedSection, {
       append: true,
       cursorMs: postsCursorMs,
+      cursorId: postsCursorId,
     });
   };
 
@@ -2485,6 +2644,10 @@ export default function IntranetPage() {
     const author = normalizeEmail(post.author.email);
     return !!me && !!author && me === author;
   };
+
+  const visiblePosts = posts.filter(post => matchesWallView(post, view)
+    || (view === "unread" && expandedCommentsById[post.id])
+    || post.id === highlightPostId || post.id === pendingFocusPostId);
 
   const previewAttachmentIsPdf = attachmentPreview
     ? isPdfAttachment(attachmentPreview.attachment)
@@ -2561,6 +2724,8 @@ export default function IntranetPage() {
             aria-label="Sekce intranetu"
           >
             <div className="flex gap-2 overflow-x-auto px-2 py-2">
+              <button type="button" onClick={() => { setSelectedSection("all"); setPendingFocusPostId(null); }} aria-pressed={selectedSection === "all"}
+                className={`${styles.sectionChip} inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold ${selectedSection === "all" ? "border-violet-300 bg-violet-100 text-violet-900" : "border-slate-300 bg-white text-slate-700"}`}><LayoutGrid size={16} aria-hidden="true" />Vše</button>
               {INTRANET_SECTIONS.map((section) => {
                 const visual = SECTION_VISUALS[section.key];
                 const SectionIcon = visual.icon;
@@ -2570,7 +2735,8 @@ export default function IntranetPage() {
                   <button
                     key={section.key}
                     type="button"
-                    onClick={() => setSelectedSection(section.key)}
+                    aria-pressed={isActive}
+                    onClick={() => { setSelectedSection(section.key); setPendingFocusPostId(null); }}
                     className={[
                       styles.sectionChip,
                       "inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold transition",
@@ -2583,7 +2749,7 @@ export default function IntranetPage() {
                     {section.label}
                     {isActive ? (
                       <span className="ml-1 rounded-full border border-white/40 bg-white/20 px-2 py-0.5 text-[11px] font-bold leading-none text-current">
-                        {postsHasMore ? `${posts.length}+` : posts.length}
+                        {postsHasMore ? `${visiblePosts.length}+` : visiblePosts.length}
                       </span>
                     ) : null}
                   </button>
@@ -2591,6 +2757,8 @@ export default function IntranetPage() {
               })}
             </div>
           </nav>
+          <WallFeedFilters view={view} onViewChange={next => { setView(next); setPendingFocusPostId(null); }} search={searchInput} onSearchChange={value => { setSearchInput(value); setPendingFocusPostId(null); }} sectionLabel={selectedSection === "all" ? "ve všech kategoriích" : `v sekci ${currentSectionLabel}`} />
+          <p className="break-words px-2 text-xs text-slate-500">{selectedSection === "all" ? "Všechny kategorie" : currentSectionLabel}{searchQuery ? ` · Výsledky pro „${searchQuery}“` : ""}{view === "unread" ? " · Přečtení se zaznamená po otevření příspěvku nebo diskuse." : ""}</p>
 
           <section>
             {loadingPosts ? (
@@ -2606,15 +2774,17 @@ export default function IntranetPage() {
               <div className="rounded-3xl border border-red-300/80 bg-red-50/90 px-4 py-4 text-sm text-red-700 shadow-[0_14px_34px_rgba(248,113,113,0.18)]">
                 {postsError}
               </div>
-            ) : posts.length === 0 ? (
+            ) : visiblePosts.length === 0 ? (
               <div className="rounded-[30px] border border-slate-200/80 bg-white/80 px-6 py-10 text-center shadow-[0_20px_58px_rgba(15,23,42,0.1)] backdrop-blur-xl">
                 <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_12px_30px_rgba(16,185,129,0.2)]">
                   <Sparkles className="h-6 w-6" />
                 </div>
-                <h3 className="mt-4 text-2xl font-semibold text-slate-900">Tahle sekce čeká na první zprávu</h3>
+                <h3 className="mt-4 text-2xl font-semibold text-slate-900">{searchQuery ? "Nic jsme nenašli" : view === "saved" ? "Zatím nemáš uložené příspěvky" : view === "unread" ? "Žádné nepřečtené příspěvky" : view === "following" ? "Zatím nesleduješ žádnou diskusi" : "Tahle sekce čeká na první zprávu"}</h3>
                 <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600 sm:text-base">
-                  V sekci <strong>{currentSectionLabel}</strong> zatím nejsou žádné příspěvky. Přidej první inspiraci, tip nebo odpověď týmu.
+                  {searchQuery ? "Zkus jiné hledání nebo vyber všechny kategorie." : view === "saved" ? "U příspěvku klikni na Uložit a najdeš ho tady." : view === "unread" ? "V tomto výběru nejsou další neotevřené příspěvky." : view === "following" ? "Kliknutím na Sledovat se přihlásíš k upozorněním na nové komentáře." : "Přidej první inspiraci, tip nebo odpověď týmu."}
                 </p>
+                {postsHasMore && <button type="button" onClick={handleLoadOlderPosts} disabled={loadingOlderPosts} className="mt-4 rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700">{loadingOlderPosts ? "Načítám…" : "Zobrazit starší příspěvky"}</button>}
+                {olderPostsError && <p role="alert" className="mt-3 text-sm text-red-700">{olderPostsError}</p>}
                 <div className="mt-6">
                   <button
                     type="button"
@@ -2628,7 +2798,7 @@ export default function IntranetPage() {
               </div>
             ) : (
               <div className="grid gap-3">
-                {posts.map((post, index) => {
+                {visiblePosts.map((post, index) => {
                   const visual = SECTION_VISUALS[post.section] ?? SECTION_VISUALS.obecne;
                   const SectionIcon = visual.icon;
                   const isDeletingThis = deletingPostId === post.id;
@@ -2640,10 +2810,12 @@ export default function IntranetPage() {
                   const otherAttachments = post.attachments.filter((attachment) => !attachment.isImage);
                   const hasAttachments = post.attachments.length > 0;
                   const isLongPost = shouldCollapseWallPostText(post.text);
+                  const accepted = post.acceptedCommentId ? post.comments.flatMap(comment => [comment, ...comment.replies]).find(comment => comment.id === post.acceptedCommentId) : null;
 
                   return (
                     <article
                       key={post.id}
+                      data-post-id={post.id}
                       ref={(node) => {
                         postCardRefs.current[post.id] = node;
                       }}
@@ -2692,6 +2864,9 @@ export default function IntranetPage() {
                               <span className="truncate text-sm font-medium text-slate-600">
                                 od <strong className="text-slate-800">{post.author.name}</strong>
                               </span>
+                              <SpecialistBadge specialist={post.author.specialist} />
+                              {post.readAtMs === null && <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">Nepřečtené</span>}
+                              {post.acceptedCommentId && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><CheckCircle2 size={12} aria-hidden="true" />Vyřešeno</span>}
                               {post.pinned ? (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-800">
                                   <Pin className="h-3 w-3 fill-current" />
@@ -2746,7 +2921,7 @@ export default function IntranetPage() {
                           <div className="mt-5">
                           <div className="min-w-0 max-w-5xl">
                           <h3 className="text-2xl font-bold leading-[1.14] tracking-[-0.025em] text-slate-950 sm:text-[1.7rem]">
-                            {post.title}
+                            <button type="button" onClick={event => openReader(post, event.currentTarget)} className="text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400" aria-label={`Otevřít příspěvek: ${post.title}`}>{post.title}</button>
                           </h3>
                           {isLongPost ? (
                             <div className="mt-3">
@@ -2767,7 +2942,7 @@ export default function IntranetPage() {
                                 />
                                 <button
                                   type="button"
-                                  onClick={() => setReaderPost(post)}
+                                  onClick={event => openReader(post, event.currentTarget)}
                                   aria-haspopup="dialog"
                                   className="group/readmore relative inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 py-1.5 pl-2 pr-1.5 text-left text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.11)] backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_32px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
                                 >
@@ -2852,7 +3027,14 @@ export default function IntranetPage() {
                           ) : null}
                         </div>
 
+                      {accepted && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-emerald-800"><CheckCircle2 size={15} aria-hidden="true" /><strong>Vybrané řešení</strong><span>{accepted.author.name}</span><SpecialistBadge specialist={accepted.author.specialist} /></div>
+                        <LinkedText text={accepted.text} className="line-clamp-3 whitespace-pre-wrap text-sm text-slate-700" />
+                        <button type="button" onClick={() => jumpToSolution(post)} className="mt-2 text-xs font-semibold text-emerald-800 underline underline-offset-2">Přejít na odpověď</button>
+                      </div>}
+                      {personalErrors[post.id] && <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{personalErrors[post.id]}</p>}
                       <div className="mt-5 border-t border-slate-200/80 pt-4">
+                        <div className="mb-3">{personalActions(post)}</div>
                           <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200/90 bg-[linear-gradient(145deg,#f8fafc_0%,#ffffff_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_22px_rgba(15,23,42,0.05)]">
                                 {post.sources.length > 0 ? (
                                   <button
@@ -2933,6 +3115,7 @@ export default function IntranetPage() {
                       {commentsExpanded ? (
                         <div className="mt-3 rounded-2xl border border-slate-200/90 bg-[linear-gradient(150deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,0.95)_100%)] p-3">
                           <div className="space-y-2">
+                            {post.commentCount > post.comments.reduce((count, comment) => count + 1 + comment.replies.length, 0) && <p className="px-1 text-xs text-slate-500">Zobrazeny nejnovější komentáře a případné vybrané řešení.</p>}
                             {post.comments.length === 0 ? (
                               <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-500">
                                 Zatím bez komentářů.
@@ -2949,7 +3132,8 @@ export default function IntranetPage() {
                                 return (
                                   <div
                                     key={comment.id}
-                                    className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2"
+                                    id={`wall-comment-${post.id}-${comment.id}`}
+                                    className={`scroll-mt-24 rounded-xl border px-3 py-2 ${post.acceptedCommentId === comment.id ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white/95"}`}
                                   >
                                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                                       <ProfileAvatar
@@ -2960,6 +3144,7 @@ export default function IntranetPage() {
                                         sizes="24px"
                                       />
                                       <span className="font-semibold text-slate-700">{comment.author.name}</span>
+                                      <SpecialistBadge specialist={comment.author.specialist} />
                                       <span>{formatDateTime(comment.createdAtMs)}</span>
                                     </div>
                                     <LinkedText
@@ -2968,6 +3153,7 @@ export default function IntranetPage() {
                                     />
 
                                     <div className="mt-2 flex flex-wrap items-center gap-2">
+                                      {solutionAction(post, comment.id)}
                                       <button
                                         type="button"
                                         onClick={() => void handleToggleCommentLike(post.id, comment.id)}
@@ -3016,7 +3202,8 @@ export default function IntranetPage() {
                                           return (
                                             <div
                                               key={reply.id}
-                                              className="rounded-lg border border-slate-200/90 bg-slate-50/80 px-2.5 py-2"
+                                              id={`wall-comment-${post.id}-${reply.id}`}
+                                              className={`scroll-mt-24 rounded-lg border px-2.5 py-2 ${post.acceptedCommentId === reply.id ? "border-emerald-300 bg-emerald-50" : "border-slate-200/90 bg-slate-50/80"}`}
                                             >
                                               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                                                 <ProfileAvatar
@@ -3029,13 +3216,15 @@ export default function IntranetPage() {
                                                 <span className="font-semibold text-slate-700">
                                                   {reply.author.name}
                                                 </span>
+                                                <SpecialistBadge specialist={reply.author.specialist} />
                                                 <span>{formatDateTime(reply.createdAtMs)}</span>
                                               </div>
                                               <LinkedText
                                                 text={reply.text}
                                                 className="mt-1 whitespace-pre-wrap text-sm text-slate-700"
                                               />
-                                              <div className="mt-1.5">
+                                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                                {solutionAction(post, reply.id)}
                                                 <button
                                                   type="button"
                                                   onClick={() =>
@@ -3263,6 +3452,17 @@ export default function IntranetPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="intranet-reader-title"
+            ref={readerDialogRef}
+            tabIndex={-1}
+            onKeyDown={event => {
+              if (event.key !== "Tab") return;
+              const focusable = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), [tabindex="0"]')];
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (!first) { event.preventDefault(); return; }
+              if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last.focus(); }
+              else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            }}
             className="relative z-10 flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[30px] border border-white/80 bg-white shadow-[0_38px_110px_rgba(2,6,23,0.58)]"
           >
             <div
@@ -3291,6 +3491,7 @@ export default function IntranetPage() {
                     <span className="truncate text-xs font-semibold text-slate-600">
                       {readerPost.author.name}
                     </span>
+                    <SpecialistBadge specialist={readerPost.author.specialist} />
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
                     <span className="inline-flex items-center gap-1">
@@ -3329,6 +3530,8 @@ export default function IntranetPage() {
                   className="mt-7 whitespace-pre-wrap text-[16px] leading-8 text-slate-700 sm:text-[17px] sm:leading-8"
                 />
 
+                <div className="mt-6">{personalActions(readerPost)}</div>
+                {personalErrors[readerPost.id] && <p role="alert" className="mt-3 text-sm text-red-700">{personalErrors[readerPost.id]}</p>}
                 {readerPost.sources.length > 0 ? (
                   <div className="mt-8 border-t border-slate-200 pt-5">
                     <button

@@ -3,6 +3,13 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { OnlineCardAnalyticsEvent } from "@/lib/onlineCardAnalytics";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 
+export function resolveOnlineCardAnalyticsOwnerEmail(profile: Record<string, unknown>, docId: string): string | null {
+  // The public contact address can differ from the account that owns the card.
+  return [profile.email, docId]
+    .map(value => typeof value === "string" ? value.trim().toLowerCase() : "")
+    .find(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ?? null;
+}
+
 function pragueDayKey(now = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Prague",
@@ -25,7 +32,8 @@ export async function recordOnlineCardAnalyticsEvent({
   slug: string;
   event: OnlineCardAnalyticsEvent;
 }): Promise<void> {
-  if (!adminDb || !ownerEmail || !slug) return;
+  if (!adminDb) throw new Error("Online card analytics database is unavailable.");
+  if (!ownerEmail || !slug) return;
 
   const day = pragueDayKey();
   const dayRef = adminDb
@@ -40,7 +48,7 @@ export async function recordOnlineCardAnalyticsEvent({
       ownerEmail,
       slug,
       updatedAt: FieldValue.serverTimestamp(),
-      [`events.${event}`]: FieldValue.increment(1),
+      events: { [event]: FieldValue.increment(1) },
     },
     { merge: true }
   );
