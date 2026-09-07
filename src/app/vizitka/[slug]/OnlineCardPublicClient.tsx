@@ -1,11 +1,11 @@
 "use client";
 
 import {
+  ArrowDown,
+  ArrowUpRight,
   Building2,
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
   Download,
   Globe2,
   Mail,
@@ -17,15 +17,14 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
-import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import { OnlineCardTestimonials } from "@/components/OnlineCardTestimonials";
 import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
-import {
-  PremiumOnlineCardPreview,
-  type PremiumOnlineCardValue,
-} from "@/components/PremiumOnlineCardPreview";
+import { OnlineCardHeroVisual } from "@/components/OnlineCardHeroVisual";
+import type { PremiumOnlineCardValue } from "@/components/PremiumOnlineCardPreview";
+import styles from "@/components/OnlineCardMinimal.module.css";
 import {
   ONLINE_CARD_COPY,
   ONLINE_CARD_LANGUAGE_OPTIONS,
@@ -64,12 +63,6 @@ const normalizeWebsiteLabel = (value: string): string => value.replace(/^https?:
 const normalizePhoneHref = (value: string): string => {
   const cleaned = value.replace(/[^\d+]/g, "");
   return cleaned ? `tel:${cleaned}` : "";
-};
-
-const ONLINE_CARD_LANGUAGE_FLAGS: Record<OnlineCardLocale, string> = {
-  cs: "🇨🇿",
-  en: "🇬🇧",
-  uk: "🇺🇦",
 };
 
 const normalizeMapsAddressQuery = (value: string): string => {
@@ -126,9 +119,9 @@ export default function OnlineCardPublicClient({
   card,
   initialLocale,
 }: OnlineCardPublicClientProps) {
-  const shellRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
   const [locale, setLocale] = useState<OnlineCardLocale>(initialLocale);
   const [officePhotoIndex, setOfficePhotoIndex] = useState(0);
   const [officePhotoMetaByUrl, setOfficePhotoMetaByUrl] = useState<Record<string, OfficePhotoMeta>>({});
@@ -169,11 +162,7 @@ export default function OnlineCardPublicClient({
   const activeOfficePhotoIsPortrait = activeOfficePhotoMeta
     ? activeOfficePhotoMeta.height > activeOfficePhotoMeta.width * 1.05
     : false;
-  const activeOfficePhotoIsLandscape = activeOfficePhotoMeta
-    ? activeOfficePhotoMeta.width > activeOfficePhotoMeta.height * 1.05
-    : false;
   const officeAddressText = officeLabel || localizedCard.location.trim();
-  const officeLocationDisplay = officeAddressText.split(",").at(-1)?.trim() || officeAddressText;
   const officeMapsQuery = normalizeMapsAddressQuery(officeAddressText);
   const officeMapsLink = officeAddressText
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(officeMapsQuery)}`
@@ -255,70 +244,27 @@ export default function OnlineCardPublicClient({
   };
 
   useEffect(() => {
-    const root = shellRef.current;
-    if (!root) return;
-
-    const revealItems = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-vizitka-reveal]")
-    );
-    if (revealItems.length === 0) return;
-
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReducedMotion || !("IntersectionObserver" in window)) {
-      revealItems.forEach((item) => item.classList.add("is-visible"));
-      return;
-    }
-
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    const pendingItems = revealItems.filter((item) => {
-      const rect = item.getBoundingClientRect();
-      const alreadyReached = rect.top < viewportHeight * 0.92;
-      if (alreadyReached) {
-        item.classList.add("is-visible");
-        return false;
-      }
-      item.classList.remove("is-visible");
-      return true;
-    });
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          entry.target.classList.add("is-visible");
-          observer.unobserve(entry.target);
-        });
-      },
-      {
-        rootMargin: "0px 0px -12% 0px",
-        threshold: 0.16,
-      }
-    );
-
-    pendingItems.forEach((item) => observer.observe(item));
-
-    return () => observer.disconnect();
-  }, [theme]);
-
-  useEffect(() => {
-    const root = shellRef.current;
-    if (!root) return;
-
-    const updateScrollProgress = () => {
-      const documentElement = document.documentElement;
-      const maxScroll = Math.max(documentElement.scrollHeight - window.innerHeight, 1);
-      const progress = Math.min(1, Math.max(0, window.scrollY / maxScroll));
-      root.style.setProperty("--online-card-scroll-progress", progress.toFixed(4));
+    if (!open) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Tab") return;
+      const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not([type="hidden"]):not([tabindex="-1"]), textarea, a[href]') ?? []).filter(element => element.getClientRects().length > 0);
+      const first = elements[0];
+      const last = elements.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
-
-    updateScrollProgress();
-    window.addEventListener("scroll", updateScrollProgress, { passive: true });
-    window.addEventListener("resize", updateScrollProgress);
+    window.addEventListener("keydown", onKeyDown);
     return () => {
-      window.removeEventListener("scroll", updateScrollProgress);
-      window.removeEventListener("resize", updateScrollProgress);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
     };
-  }, []);
+  }, [open]);
 
   const openModal = () => {
     setStatus(null);
@@ -425,504 +371,196 @@ export default function OnlineCardPublicClient({
     });
   };
 
-  const handleShellPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") return;
-    const root = event.currentTarget;
-    const x = Math.round((event.clientX / Math.max(window.innerWidth, 1)) * 100);
-    const y = Math.round((event.clientY / Math.max(window.innerHeight, 1)) * 100);
-    root.style.setProperty("--online-card-pointer-x", `${x}%`);
-    root.style.setProperty("--online-card-pointer-y", `${y}%`);
-  };
-
-  const resetShellPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.currentTarget.style.setProperty("--online-card-pointer-x", "50%");
-    event.currentTarget.style.setProperty("--online-card-pointer-y", "28%");
-  };
+  const nameParts = localizedCard.fullName.trim().split(/\s+/);
+  const givenName = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : localizedCard.fullName;
+  const surname = nameParts.length > 1 ? nameParts.at(-1) : "";
+  const bioParagraphs = localizedCard.bio.trim().split(/\n\s*\n/).filter(Boolean);
 
   return (
     <>
-      <div
-        className={`pointer-events-none fixed inset-0 z-0 transition-colors duration-300 ${
-          lightMode
-            ? "bg-[radial-gradient(circle_at_18%_8%,rgba(37,99,235,0.12),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]"
-            : "bg-[radial-gradient(circle_at_15%_12%,#0b2a52_0%,#07172f_36%,#050d1e_72%,#030817_100%)]"
-        }`}
-        aria-hidden="true"
-      />
-      <div
-        ref={shellRef}
-        onPointerMove={handleShellPointerMove}
-        onPointerLeave={resetShellPointer}
-        className={`online-card-public-shell online-card-theme-${theme} relative z-10 w-full overflow-hidden transition-colors duration-300 ${
-          lightMode
-            ? "bg-[linear-gradient(180deg,#ffffff_0%,#eff6ff_48%,#ffffff_100%)] text-slate-950"
-            : "bg-[linear-gradient(180deg,#07152c_0%,#081a33_48%,#050d1e_100%)] text-white"
-        }`}
-      >
-        <div className="online-card-pointer-glow" aria-hidden="true" />
-        <div className="online-card-scroll-progress" aria-hidden="true" />
-        <div
-          className={`sticky top-0 z-30 flex h-12 items-center justify-between gap-1 border-b px-2.5 py-1.5 backdrop-blur-xl sm:absolute sm:right-5 sm:top-5 sm:h-auto sm:gap-2 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none ${
-            lightMode ? "border-blue-100/90 bg-white/82" : "border-white/8 bg-[#07152c]/82"
-          }`}
-        >
-          <button
-            type="button"
-            onClick={handleShareOnlineCard}
-            className="online-card-action inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-blue-300/30 bg-blue-700 text-xs font-bold text-white shadow-[0_10px_20px_rgba(37,99,235,0.28)] transition hover:bg-blue-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
-            aria-label={copy.public.share}
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{copy.public.share}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadContactVCard}
-            className="online-card-action inline-flex h-8 w-8 items-center justify-center rounded-[11px] border border-blue-300/30 bg-blue-700 text-xs font-bold text-white shadow-[0_10px_20px_rgba(37,99,235,0.28)] transition hover:bg-blue-800 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-2"
-            aria-label={copy.public.saveContact}
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{copy.public.saveContact}</span>
-          </button>
-          <div
-            className={`inline-flex h-8 items-center rounded-[11px] border p-0.5 text-[11px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.16)] backdrop-blur sm:h-auto sm:rounded-full sm:p-1 sm:text-xs ${
-              lightMode
-                ? "border-blue-200 bg-white/90 text-slate-700"
-                : "border-white/16 bg-slate-950/42 text-blue-100"
-            }`}
-            aria-label={copy.public.displayMode}
-          >
-            <button
-              type="button"
-              onClick={() => setTheme("dark")}
-              aria-pressed={!lightMode}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5 ${
-                !lightMode ? "bg-blue-700 text-white shadow-[0_8px_22px_rgba(37,99,235,0.36)]" : "hover:bg-blue-50"
-              }`}
-            >
-              <Moon className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{copy.public.dark}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTheme("light")}
-              aria-pressed={lightMode}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-[8px] transition sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5 ${
-                lightMode ? "bg-blue-700 text-white shadow-[0_8px_22px_rgba(37,99,235,0.36)]" : "hover:bg-white/10"
-              }`}
-            >
-              <Sun className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{copy.public.light}</span>
-            </button>
-          </div>
-          <div
-            className={`inline-flex h-8 items-center rounded-[11px] border p-0.5 text-[11px] font-bold shadow-[0_10px_20px_rgba(15,23,42,0.16)] backdrop-blur sm:h-auto sm:rounded-full sm:p-1 sm:text-xs ${
-              lightMode
-                ? "border-blue-200 bg-white/90 text-slate-700"
-                : "border-white/16 bg-slate-950/42 text-blue-100"
-            }`}
-            aria-label={copy.public.language}
-          >
-            {ONLINE_CARD_LANGUAGE_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => selectLocale(option.id)}
-                aria-pressed={locale === option.id}
-                aria-label={option.label}
-                className={`inline-flex h-7 w-7 items-center justify-center gap-1 rounded-[8px] transition sm:h-auto sm:w-auto sm:rounded-full sm:px-3 sm:py-1.5 ${
-                  locale === option.id
-                    ? "bg-blue-700 text-white shadow-[0_8px_22px_rgba(37,99,235,0.36)]"
-                    : "hover:bg-white/10"
-                }`}
-              >
-                <span aria-hidden="true" className="text-sm leading-none sm:text-xs">
-                  {ONLINE_CARD_LANGUAGE_FLAGS[option.id]}
-                </span>
-                <span className="hidden sm:inline">{option.shortLabel}</span>
+      <div className={styles.shell} data-theme={theme}>
+        <header className={styles.nav}>
+          <div className={[styles.container, styles.navInner].join(" ")}>
+            <a href="#profile" className={styles.brand} aria-label="Bohemika">
+              <span className={styles.brandEmblem} aria-hidden="true"><Image src="/icons/bohemikalogo.png" alt="" width={146} height={146} priority /></span>
+              <span className={styles.brandLogo}>
+                <Image src={lightMode ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"} alt="Bohemika" width={168} height={168} priority />
+              </span>
+            </a>
+            <nav className={styles.navLinks} aria-label={copy.public.onlineCardTitle}>
+              <a href="#services">{copy.advisor.serviceKicker}</a>
+              <a href="#company">{copy.advisor.aboutKicker}</a>
+              <a href="#contact" className={styles.navContact}>{copy.public.contact}<ArrowUpRight aria-hidden="true" /></a>
+            </nav>
+            <div className={styles.navTools}>
+              <button type="button" onClick={handleShareOnlineCard} className={styles.iconButton} aria-label={copy.public.share} title={copy.public.share}>
+                <Share2 aria-hidden="true" />
               </button>
-            ))}
+              <button type="button" onClick={handleDownloadContactVCard} className={[styles.iconButton, styles.desktopControl].join(" ")} aria-label={copy.public.saveContact} title={copy.public.saveContact}>
+                <Download aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => setTheme(lightMode ? "dark" : "light")} className={styles.iconButton} aria-label={lightMode ? copy.public.dark : copy.public.light} title={lightMode ? copy.public.dark : copy.public.light}>
+                {lightMode ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}
+              </button>
+              <select className={styles.language} value={locale} onChange={event => selectLocale(event.target.value as OnlineCardLocale)} aria-label={copy.public.language}>
+                {ONLINE_CARD_LANGUAGE_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.shortLabel}</option>)}
+              </select>
+            </div>
           </div>
-        </div>
+        </header>
 
-        <PremiumOnlineCardPreview
-          value={localizedCard}
-          layout="fullWidth"
-          surface="seamless"
-          theme={theme}
-          locale={locale}
-          showContactSection={false}
-          heroArtwork={heroArtwork}
-          meetingCta={{
-            label: copy.preview.scheduleMeeting,
-            onClick: openModal,
-            disabled: false,
-          }}
-        />
+        <section id="profile" className={styles.hero} aria-labelledby="card-name">
+          <div className={styles.container}>
+          <div className={styles.heroGrid}>
+            <div className={styles.heroIdentity}>
+              <div className={styles.heroTopline}>
+                <p className={styles.eyebrow}>{copy.preview.advisorProfile}</p>
+                {localizedCard.title ? <p className={styles.role}>{localizedCard.title}</p> : null}
+              </div>
+              <h1 id="card-name" className={styles.name}>{givenName}{surname ? <> <span className={styles.surname}>{surname}</span></> : null}</h1>
+              <p className={styles.heroBio}>{bioParagraphs[0] || copy.preview.noBio}</p>
+              <div className={styles.actions}>
+                <button type="button" className={styles.primaryButton} onClick={openModal}>{copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" /></button>
+                <button type="button" className={styles.heroSaveButton} onClick={handleDownloadContactVCard}><Download aria-hidden="true" />{copy.public.saveContact}</button>
+              </div>
+            </div>
+            <OnlineCardHeroVisual artwork={heroArtwork} location={localizedCard.location} promise={copy.advisor.pillars[0][0]} />
+          </div>
+          <div className={styles.heroFoot}>
+            <a href="#services" className={styles.exploreLink}>{copy.advisor.serviceKicker}<span><ArrowDown aria-hidden="true" /></span></a>
+          </div>
+          </div>
+        </section>
+
+        {bioParagraphs.length > 1 ? <section className={[styles.container, styles.personalIntro].join(" ")} aria-labelledby="card-about-title">
+          <div>
+            <h2 id="card-about-title" className={styles.eyebrow}>{copy.preview.about}</h2>
+            <p className={styles.introStatement}>{bioParagraphs[1]}</p>
+          </div>
+          <div className={styles.introBody}>
+            {bioParagraphs.slice(2).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+          </div>
+        </section> : null}
 
         {status ? (
-          <p
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold vizitka-anim-up ${
-              status.type === "success"
-                ? "border border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
-                : "border border-rose-300/40 bg-rose-400/15 text-rose-100"
-            }`}
-          >
-            {status.type === "success" ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+          <p className={styles.status} role="status" data-error={status.type === "error"}>
             {status.message}
           </p>
         ) : null}
+
         <AdvisorProfileSections
-          flush
-          reveal
-          connectToHero
+          minimal
           theme={theme}
           locale={locale}
           onScheduleMeeting={openModal}
-          goldPageHref={`/vizitka/${slug}/zlato`}
-          lifeInsurancePageHref={`/vizitka/${slug}/zivotni-pojisteni`}
-          vehicleInsurancePageHref={`/vizitka/${slug}/pojisteni-vozidla`}
-          travelInsurancePageHref={`/vizitka/${slug}/cestovni-pojisteni`}
+          goldPageHref={"/vizitka/" + slug + "/zlato"}
+          lifeInsurancePageHref={"/vizitka/" + slug + "/zivotni-pojisteni"}
+          vehicleInsurancePageHref={"/vizitka/" + slug + "/pojisteni-vozidla"}
+          travelInsurancePageHref={"/vizitka/" + slug + "/cestovni-pojisteni"}
+          useMetalVig
         />
-        <OnlineCardTestimonials
-          slug={slug}
-          testimonials={localizedCard.testimonials}
-          locale={locale}
-          theme={theme}
-          reveal
-          mode="showcase"
-        />
+        <OnlineCardTestimonials slug={slug} testimonials={localizedCard.testimonials} locale={locale} theme={theme} mode="showcase" minimal />
+
         {hasOfficeSection ? (
-          <section
-            data-vizitka-reveal
-            className={`online-card-public-section online-card-scroll-reveal vizitka-anim-up relative overflow-hidden px-4 ${
-              activeOfficePhoto ? "py-10 sm:px-10 sm:py-16" : "py-8 sm:px-10 sm:py-12"
-            } [animation-delay:680ms] ${
-              lightMode
-                ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(239,246,255,0.94)_100%)]"
-                : "bg-[linear-gradient(180deg,rgba(7,21,44,0.99)_0%,rgba(8,26,51,0.99)_100%)]"
-            }`}
-          >
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(37,99,235,0.14),transparent_34%)]" />
-            <div
-              className={`relative z-10 mx-auto gap-5 ${
-                activeOfficePhoto
-                  ? `grid max-w-[1280px] lg:items-stretch ${
-                      activeOfficePhotoIsPortrait
-                        ? "lg:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]"
-                        : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
-                    }`
-                  : "max-w-xl"
-              }`}
-            >
+          <section className={styles.section} aria-labelledby="card-office-title">
+            <div className={[styles.container, activeOfficePhoto ? styles.officeGrid : ""].join(" ")}>
               {activeOfficePhoto ? (
-                <div className="space-y-3">
-                  <div
-                    className={`mx-auto w-full ${
-                      activeOfficePhotoIsPortrait
-                        ? "max-w-[390px]"
-                        : activeOfficePhotoIsLandscape
-                          ? "max-w-none"
-                          : "max-w-[620px]"
-                    }`}
-                  >
-                    <div
-                      className={`relative overflow-hidden rounded-2xl border border-white/14 bg-[radial-gradient(circle_at_15%_10%,rgba(129,140,248,0.18),rgba(2,6,23,0.65)_55%)] ${
-                        activeOfficePhotoIsPortrait
-                          ? "h-[330px] sm:h-[430px] lg:h-[500px]"
-                          : activeOfficePhotoIsLandscape
-                            ? "h-[230px] sm:h-[320px] lg:h-[400px]"
-                            : "h-[260px] sm:h-[360px] lg:h-[430px]"
-                      }`}
-                    >
-                      <Image
-                        src={activeOfficePhoto}
-                        alt={`${copy.public.office} ${safeOfficePhotoIndex + 1}`}
-                        fill
-                        sizes={
-                          activeOfficePhotoIsPortrait
-                            ? "(min-width: 1024px) 390px, 100vw"
-                            : "(min-width: 1024px) 680px, 100vw"
-                        }
-                        unoptimized
-                        onLoadingComplete={(image) =>
-                          handleOfficePhotoLoad(
-                            activeOfficePhoto,
-                            image.naturalWidth,
-                            image.naturalHeight
-                          )
-                        }
-                        className="object-contain"
-                      />
-                      {officePhotoCount > 1 ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleOfficePhotoShift(-1)}
-                            className="absolute left-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-slate-950/45 text-white transition hover:bg-slate-950/65"
-                            aria-label={copy.public.previousOfficePhoto}
-                          >
-                            <ChevronLeft className="h-5 w-5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOfficePhotoShift(1)}
-                            className="absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-slate-950/45 text-white transition hover:bg-slate-950/65"
-                            aria-label={copy.public.nextOfficePhoto}
-                          >
-                            <ChevronRight className="h-5 w-5" />
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
+                <div>
+                  <div className={[styles.officePhoto, activeOfficePhotoIsPortrait ? styles.officePortrait : ""].join(" ")}>
+                    <Image
+                      src={activeOfficePhoto}
+                      alt={copy.public.office + " " + (safeOfficePhotoIndex + 1)}
+                      fill
+                      sizes="(max-width: 760px) calc(100vw - 40px), 600px"
+                      unoptimized
+                      onLoad={event => handleOfficePhotoLoad(activeOfficePhoto, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
+                    />
                   </div>
-
-                {officePhotoCount > 1 ? (
-                  <div className="flex justify-center gap-1.5">
-                    {officePhotos.map((photoUrl, index) => (
-                      <button
-                        key={photoUrl}
-                        type="button"
-                        onClick={() => setOfficePhotoIndex(index)}
-                        className={`h-2.5 rounded-full transition ${
-                          index === safeOfficePhotoIndex ? "w-6 bg-blue-200" : "w-2.5 bg-white/35 hover:bg-white/60"
-                        }`}
-                        aria-label={`${copy.public.showOfficePhoto} ${index + 1}`}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-                </div>
-              ) : null}
-
-              <div className={activeOfficePhoto ? "flex items-stretch" : "flex justify-center text-center"}>
-                <div
-                  className={`w-full max-w-[640px] ${
-                    activeOfficePhoto
-                      ? `relative flex min-h-[310px] flex-col overflow-hidden rounded-[28px_28px_28px_10px] border p-6 shadow-[0_24px_60px_rgba(3,2,14,0.22)] sm:p-8 lg:min-h-0 lg:p-10 ${
-                          lightMode
-                            ? "border-blue-200/85 bg-white/80"
-                            : "border-blue-200/[0.16] bg-white/[0.035]"
-                        }`
-                      : "mx-auto space-y-4"
-                  }`}
-                >
-                  {activeOfficePhoto ? (
-                    <>
-                      <div className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(147,197,253,0.35)_1px,transparent_1px),linear-gradient(90deg,rgba(147,197,253,0.35)_1px,transparent_1px)] [background-size:38px_38px]" />
-                      <div className="pointer-events-none absolute -right-8 bottom-6 max-w-[130%] select-none whitespace-nowrap text-5xl font-bold tracking-[-0.08em] text-blue-300/[0.12] sm:text-7xl" aria-hidden="true">
-                        {officeLocationDisplay}
-                      </div>
-                      <Image
-                        src="/images/bohemkalogo.png"
-                        alt=""
-                        width={1024}
-                        height={1536}
-                        aria-hidden="true"
-                        className={`pointer-events-none absolute -right-12 -top-32 z-[1] h-[39rem] w-auto select-none ${lightMode ? "opacity-[0.09] mix-blend-multiply" : "opacity-[0.14] mix-blend-screen"}`}
-                      />
-                      <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full bg-cyan-400/[0.10] blur-[78px]" />
-                    </>
-                  ) : null}
-                  <div className={activeOfficePhoto ? "relative z-10 flex h-full flex-col" : ""}>
-                  {!activeOfficePhoto ? (
-                    <Building2 className="mx-auto h-10 w-10 text-blue-200/75 vizitka-float-soft" strokeWidth={1.45} />
-                  ) : null}
-                  <p className={`inline-flex w-fit items-center gap-2 rounded-full border border-blue-300/35 bg-white/[0.05] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
-                    lightMode ? "text-blue-800" : "text-blue-100"
-                  } ${
-                    activeOfficePhoto ? "" : "mx-auto"
-                  }`}>
-                    <Building2 className="h-3.5 w-3.5" />
-                    {copy.public.office}
-                  </p>
-
-                  {officeAddressText ? (
-                    <p className={`mt-5 max-w-[20ch] text-xl font-bold leading-[1.05] tracking-[-0.035em] sm:text-3xl ${
-                      lightMode ? "text-slate-950" : "text-white"
-                    } ${
-                      activeOfficePhoto ? "" : "mx-auto"
-                    }`}>
-                      {officeAddressText}
-                    </p>
-                  ) : (
-                    <p className={`mt-5 text-sm ${lightMode ? "text-slate-500" : "text-blue-100/70"}`}>{copy.public.noOfficeAddress}</p>
-                  )}
-                  {activeOfficePhoto ? (
-                    <p className={`mt-5 max-w-[33ch] text-sm leading-relaxed ${lightMode ? "text-slate-600" : "text-blue-100/72"}`}>
-                      {copy.public.officeWelcome}
-                    </p>
-                  ) : null}
-
-                  <div className={`flex flex-wrap gap-3 ${activeOfficePhoto ? "mt-auto pt-8" : "pt-1"}`}>
-                    <button
-                      type="button"
-                      onClick={openModal}
-                      className="online-card-action relative isolate inline-flex items-center gap-2 overflow-hidden rounded-full border border-white/35 bg-[linear-gradient(120deg,rgba(29,78,216,0.9)_0%,rgba(37,99,235,0.84)_55%,rgba(56,189,248,0.82)_100%)] px-4 py-2 text-sm font-bold text-white shadow-[0_16px_32px_rgba(37,99,235,0.38),inset_0_1px_0_rgba(255,255,255,0.42)] backdrop-blur-xl transition hover:brightness-110 before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-white/85 before:opacity-70 vizitka-cta-glow"
-                    >
-                      <CalendarDays className="h-4 w-4" />
-                      {copy.preview.scheduleMeeting}
-                    </button>
-                    {officeMapsLink ? (
-                      <a
-                        href={officeMapsLink}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        onClick={() => trackOnlineCardEvent(slug, "map_click")}
-                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                          lightMode
-                            ? "border-blue-200 bg-white/70 text-blue-900 hover:bg-blue-50"
-                            : "border-blue-300/35 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                        }`}
-                      >
-                        <MapPin className="h-4 w-4" />
-                        {copy.public.openMaps}
-                      </a>
+                  <div className={styles.photoTools}>
+                    <span className={styles.photoCount}>{String(safeOfficePhotoIndex + 1).padStart(2, "0")} / {String(officePhotoCount).padStart(2, "0")}</span>
+                    {officePhotoCount > 1 ? (
+                      <>
+                        <div className={styles.photoDots}>
+                          {officePhotos.map((url, index) => (
+                            <button key={url} type="button" onClick={() => setOfficePhotoIndex(index)} aria-pressed={index === safeOfficePhotoIndex} aria-label={copy.public.showOfficePhoto + " " + (index + 1)} />
+                          ))}
+                        </div>
+                        <div>
+                          <button type="button" onClick={() => handleOfficePhotoShift(-1)} className={styles.iconButton} aria-label={copy.public.previousOfficePhoto}><ChevronLeft /></button>
+                          <button type="button" onClick={() => handleOfficePhotoShift(1)} className={styles.iconButton} aria-label={copy.public.nextOfficePhoto}><ChevronRight /></button>
+                        </div>
+                      </>
                     ) : null}
                   </div>
-                  </div>
+                </div>
+              ) : null}
+              <div className={styles.officeCopy}>
+                <p className={styles.eyebrow}>{copy.public.office}</p>
+                <h2 id="card-office-title" className={styles.heading}>{copy.public.officeWelcome}</h2>
+                <p className={styles.address}><MapPin aria-hidden="true" /><span>{officeAddressText || copy.public.noOfficeAddress}</span></p>
+                <div className={styles.actions}>
+                  <button type="button" onClick={openModal} className={styles.primaryButton}>{copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" /></button>
+                  {officeMapsLink ? <a href={officeMapsLink} target="_blank" rel="noreferrer noopener" onClick={() => trackOnlineCardEvent(slug, "map_click")} className={styles.textLink}>{copy.public.openMaps}<ArrowUpRight aria-hidden="true" /></a> : null}
                 </div>
               </div>
             </div>
           </section>
         ) : null}
-        <section
-          data-vizitka-reveal
-          className={`online-card-public-section online-card-scroll-reveal relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 vizitka-anim-up [animation-delay:720ms] ${
-            lightMode
-              ? "bg-[linear-gradient(180deg,rgba(239,246,255,0.94)_0%,rgba(255,255,255,0.98)_100%)]"
-              : "bg-[linear-gradient(180deg,rgba(8,26,51,0.99)_0%,rgba(5,13,30,0.99)_100%)]"
-          }`}
-        >
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(37,99,235,0.12),transparent_44%)]" />
-          <div className="relative z-10 mx-auto max-w-[1680px]">
-            <div className="text-center">
-              <p
-                className={`mx-auto inline-flex items-center gap-2 rounded-full border px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
-                  lightMode
-                    ? "border-blue-300/55 bg-blue-50 text-blue-800"
-                    : "border-blue-300/35 bg-white/[0.05] text-blue-100"
-                }`}
-              >
-                <Mail className="h-3.5 w-3.5" />
-                {copy.public.contact}
-              </p>
+
+        <section id="contact" className={[styles.section, styles.contactSection].join(" ")} aria-labelledby="card-contact-title">
+          <div className={styles.container}>
+            <div className={styles.contactHead}>
+              <div>
+                <p className={styles.eyebrow}>{copy.public.contact}</p>
+                <h2 id="card-contact-title" className={styles.heading}>{copy.public.scheduleTitle}</h2>
+              </div>
+              <button type="button" onClick={openModal} className={styles.primaryButton}>{copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" /></button>
             </div>
-
-            <div
-              className={`mt-7 grid gap-x-0 gap-y-7 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)_minmax(0,1.2fr)_minmax(0,.8fr)_minmax(0,.85fr)] xl:divide-x ${
-                lightMode ? "xl:divide-blue-200" : "xl:divide-white/[0.09]"
-              }`}
-            >
-              {contactItems.map((item) => (
-                <div
-                  key={item.key}
-                  className="group min-w-0 px-1 text-center transition duration-300 sm:px-5"
-                >
-                  <div className="flex items-center justify-center gap-2.5">
-                    <span
-                      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center transition duration-300 group-hover:-translate-y-0.5 ${
-                        lightMode
-                          ? "text-blue-700 group-hover:text-blue-950"
-                          : "text-blue-200 group-hover:text-white"
-                      }`}
-                    >
-                      <item.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
-                    </span>
-                    <span className={`text-[10px] font-bold uppercase tracking-[0.18em] ${lightMode ? "text-blue-700/70" : "text-blue-200/75"}`}>
-                      {item.label}
-                    </span>
-                  </div>
-
-                  <div className={`mt-3 break-words text-base font-semibold leading-snug sm:text-lg ${lightMode ? "text-slate-900" : "text-white/92"}`}>
-                    {item.value ? (
-                      item.href ? (
-                        <a
-                          href={item.href}
-                          target={item.href.startsWith("http") ? "_blank" : undefined}
-                          rel={item.href.startsWith("http") ? "noreferrer noopener" : undefined}
-                          onClick={() => {
-                            if (item.analyticsEvent) {
-                              trackOnlineCardEvent(slug, item.analyticsEvent);
-                            }
-                          }}
-                          className="underline decoration-blue-300/45 underline-offset-4 transition hover:decoration-blue-500"
-                        >
-                          {item.value}
-                        </a>
-                      ) : (
-                        item.value
-                      )
-                    ) : (
-                      <span className={lightMode ? "text-slate-400" : "text-white/35"}>{copy.public.notFilled}</span>
-                    )}
-                  </div>
+            <dl className={styles.contactGrid}>
+              {contactItems.map(item => (
+                <div key={item.key} className={styles.contactItem}>
+                  <dt><item.icon aria-hidden="true" />{item.label}</dt>
+                  <dd>{item.value ? item.href ? (
+                    <a href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer noopener" : undefined} onClick={() => { if (item.analyticsEvent) trackOnlineCardEvent(slug, item.analyticsEvent); }}>{item.value}</a>
+                  ) : item.value : copy.public.notFilled}</dd>
                 </div>
               ))}
-            </div>
-
-            <div className="mt-8 flex justify-center pt-6">
-              <button
-                type="button"
-                onClick={handleDownloadContactVCard}
-                className="online-card-action inline-flex w-full items-center justify-center gap-2 rounded-[16px] border border-blue-300/30 bg-blue-700 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_42px_rgba(37,99,235,0.38)] transition hover:-translate-y-0.5 hover:bg-blue-800 sm:w-auto"
-              >
-                <Download className="h-4 w-4" />
-                {copy.public.saveContact}
-              </button>
+            </dl>
+            <div className={styles.contactFooter}>
+              <button type="button" onClick={handleDownloadContactVCard} className={styles.textLink}><Download aria-hidden="true" />{copy.public.saveContact}</button>
+              <button type="button" onClick={handleShareOnlineCard} className={styles.textLink}><Share2 aria-hidden="true" />{copy.public.share}</button>
             </div>
           </div>
         </section>
-        <OnlineCardTestimonials
-          slug={slug}
-          testimonials={localizedCard.testimonials}
-          locale={locale}
-          theme={theme}
-          reveal
-          mode="submission"
-        />
+        <OnlineCardTestimonials slug={slug} testimonials={localizedCard.testimonials} locale={locale} theme={theme} mode="submission" minimal />
+
+        <footer className={styles.footer}>
+          <div className={[styles.container, styles.footerInner].join(" ")}>
+            <a href="#profile" className={styles.brand} aria-label="Bohemika">
+              <span className={styles.brandLogo}><Image src={lightMode ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"} alt="Bohemika" width={168} height={168} /></span>
+            </a>
+            <span>{localizedCard.fullName} · Bohemika a.s.</span>
+            <a href="#profile" className={styles.iconButton} aria-label={copy.preview.advisorProfile}><ArrowUpRight aria-hidden="true" /></a>
+          </div>
+        </footer>
       </div>
 
       {open ? (
-        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-[#070512]/74 p-0 backdrop-blur-xl sm:items-center sm:p-4 vizitka-anim-up">
-          <div className="relative max-h-[100dvh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-[30px] border border-blue-300/25 bg-[#071a36] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-white shadow-[0_34px_100px_rgba(3,10,26,0.76),inset_0_1px_0_rgba(191,219,254,0.16)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-[32px] sm:p-6 vizitka-anim-up [animation-delay:60ms]">
-            <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-blue-500/25 blur-[90px]" />
-            <div className="pointer-events-none absolute -bottom-32 left-1/4 h-48 w-80 rounded-full bg-indigo-500/10 blur-[80px]" />
-            <div className="relative flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3.5">
-                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-200/25 bg-blue-400/15 text-blue-100 shadow-[0_10px_24px_rgba(37,99,235,0.3)]">
-                  <CalendarDays className="h-5 w-5" />
-                </span>
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-200/80">
-                    {copy.public.scheduleKicker}
-                  </p>
-                  <h2 className="mt-1 text-xl font-bold tracking-[-0.035em] text-white sm:text-2xl">
-                    {copy.public.scheduleTitle}
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-blue-100/70">
-                    {copy.public.scheduleDescription}
-                  </p>
-                </div>
+        <div className={styles.overlay} onClick={event => { if (event.target === event.currentTarget) closeModal(); }}>
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="card-meeting-title" className={styles.dialog} data-theme={theme}>
+            <div className={styles.dialogHeader}>
+              <div>
+                <p className={styles.eyebrow}>{copy.public.scheduleKicker}</p>
+                <h2 id="card-meeting-title">{copy.public.scheduleTitle}</h2>
+                <p>{copy.public.scheduleDescription}</p>
               </div>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.07] text-blue-100 transition hover:rotate-90 hover:bg-white/[0.14]"
-                aria-label={copy.public.closeForm}
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <button type="button" onClick={closeModal} className={styles.iconButton} aria-label={copy.public.closeForm}><X aria-hidden="true" /></button>
             </div>
-
             <OnlineCardMeetingStepper
               slug={slug}
               locale={locale}
               onSubmitted={() => {
-                setStatus({
-                  type: "success",
-                  message: copy.public.submitted,
-                });
+                setStatus({ type: "success", message: copy.public.submitted });
                 setOpen(false);
               }}
             />

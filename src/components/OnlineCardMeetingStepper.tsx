@@ -254,6 +254,7 @@ export function OnlineCardMeetingStepper({
                   key={topic.id}
                   type="button"
                   onClick={() => toggleTopic(topic.id)}
+                  aria-pressed={selected}
                   className={`group relative flex min-h-[58px] items-center gap-2.5 overflow-hidden rounded-[16px] border px-3 py-2 text-left transition duration-200 sm:min-h-[64px] sm:gap-3 sm:rounded-[18px] sm:px-3.5 sm:py-2.5 ${
                     selected
                       ? "border-blue-200/70 bg-[linear-gradient(135deg,rgba(37,99,235,0.46),rgba(29,78,216,0.22))] text-white shadow-[0_12px_28px_rgba(37,99,235,0.28)]"

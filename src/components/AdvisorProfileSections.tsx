@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowUpRight,
   Building2,
   CarFront,
   ChartNoAxesCombined,
@@ -16,7 +17,9 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import type { CSSProperties } from "react";
+import { VigMetalModel } from "@/components/VigMetalModel";
 import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
+import minimalStyles from "./OnlineCardMinimal.module.css";
 
 type PartnerInsurer = {
   label: string;
@@ -36,6 +39,8 @@ type AdvisorProfileSectionsProps = {
   lifeInsurancePageHref?: string;
   vehicleInsurancePageHref?: string;
   travelInsurancePageHref?: string;
+  useMetalVig?: boolean;
+  minimal?: boolean;
 };
 
 const PARTNER_INSURERS: PartnerInsurer[] = [
@@ -69,53 +74,94 @@ function getPartnerLogoClassName(insurer: PartnerInsurer) {
 const ADVISOR_SERVICES = [
   {
     label: "Životní pojištění a zajištění příjmu",
+    artwork: "/images/online-card-services/life-v2.webp",
     icon: HeartHandshake,
     iconClass: "text-blue-200",
     accentClass: "bg-blue-300/80",
   },
   {
     label: "Pojištění majetku a odpovědnosti",
+    artwork: "/images/online-card-services/property-v2.webp",
     icon: HousePlus,
     iconClass: "text-emerald-200",
     accentClass: "bg-emerald-300/80",
   },
   {
     label: "Pojištění vozidel a flotil",
+    artwork: "/images/online-card-services/vehicle-v2.webp",
     icon: CarFront,
     iconClass: "text-sky-200",
     accentClass: "bg-sky-300/80",
   },
   {
     label: "Cestovní pojištění",
+    artwork: "/images/online-card-services/travel-v2.webp",
     icon: PlaneTakeoff,
     iconClass: "text-indigo-200",
     accentClass: "bg-indigo-300/80",
   },
   {
     label: "Pojištění cizinců",
+    artwork: "/images/online-card-services/foreigners-v2.webp",
     icon: Languages,
     iconClass: "text-rose-200",
     accentClass: "bg-rose-300/80",
   },
   {
     label: "Investice",
+    artwork: "/images/online-card-services/investments-v2.webp",
     icon: ChartNoAxesCombined,
     iconClass: "text-cyan-200",
     accentClass: "bg-cyan-300/80",
   },
   {
     label: "Úvěry a hypotéky",
+    artwork: "/images/online-card-services/mortgage-v2.webp",
     icon: Landmark,
     iconClass: "text-lime-200",
     accentClass: "bg-lime-300/80",
   },
   {
     label: "Investiční zlato a stříbro",
+    artwork: "/images/investicni-zlato-slitky.png",
     icon: Gem,
     iconClass: "text-amber-200",
     accentClass: "bg-amber-300/80",
   },
 ];
+
+const SERVICE_SUMMARIES: Record<OnlineCardLocale, readonly string[]> = {
+  cs: [
+    "Pro vás i ty, na kterých vám záleží.",
+    "Domov a věci, které tvoří váš svět.",
+    "Pro každodenní cesty i celé flotily.",
+    "Za zážitky. S pojištěním na cestu.",
+    "Zdravotní pojištění pro život v Česku.",
+    "Vaše cíle. Váš investiční plán.",
+    "Od prvního plánu ke klíčům od bydlení.",
+    "Skutečná hodnota, kterou držíte v ruce.",
+  ],
+  en: [
+    "For you and the people who matter.",
+    "Your home and the things that make it yours.",
+    "For everyday journeys and entire fleets.",
+    "New experiences. Insurance for the journey.",
+    "Health insurance for life in Czechia.",
+    "Your goals. Your investment plan.",
+    "From the first plan to the keys to your home.",
+    "Tangible value you can hold in your hand.",
+  ],
+  uk: [
+    "Для вас і тих, хто вам дорогий.",
+    "Дім і речі, що створюють ваш світ.",
+    "Для щоденних поїздок і цілих автопарків.",
+    "За враженнями. Зі страхуванням у дорогу.",
+    "Медичне страхування для життя в Чехії.",
+    "Ваші цілі. Ваш інвестиційний план.",
+    "Від першого плану до ключів від оселі.",
+    "Відчутна цінність у ваших руках.",
+  ],
+};
 
 const COMPANY_PILLARS = [
   {
@@ -160,6 +206,8 @@ export function AdvisorProfileSections({
   lifeInsurancePageHref,
   vehicleInsurancePageHref,
   travelInsurancePageHref,
+  useMetalVig = false,
+  minimal = false,
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
   const light = theme === "light";
@@ -177,6 +225,114 @@ export function AdvisorProfileSections({
   const bodyClass = light ? "text-slate-600" : "text-blue-100/72";
   const labelClass = light ? "text-blue-700" : "text-blue-200/90";
   const dividerClass = light ? "border-slate-200" : "border-blue-200/[0.14]";
+
+  if (minimal) {
+    return (
+      <>
+        <section id="services" className={minimalStyles.section} aria-labelledby="card-services-title">
+          <div className={minimalStyles.container}>
+            <div className={minimalStyles.sectionHead}>
+              <div>
+                <p className={minimalStyles.eyebrow}><span>01</span>{copy.advisor.serviceKicker}</p>
+                <h2 id="card-services-title" className={minimalStyles.heading}>{copy.advisor.serviceTitle}</h2>
+              </div>
+              <p className={minimalStyles.sectionLead}>{copy.advisor.serviceLead}</p>
+            </div>
+            <div className={minimalStyles.services}>
+              {ADVISOR_SERVICES.map((service, index) => {
+                const href = index === 0 ? lifeInsurancePageHref
+                  : index === 2 ? vehicleInsurancePageHref
+                    : index === 3 ? travelInsurancePageHref
+                      : index === 7 ? goldPageHref : undefined;
+                const content = (
+                  <>
+                    <span className={minimalStyles.serviceArtwork} data-studio={service.artwork.endsWith("-v2.webp")} aria-hidden="true">
+                      <Image
+                        src={service.artwork}
+                        alt=""
+                        width={640}
+                        height={427}
+                        sizes="(max-width: 760px) 45vw, (max-width: 1100px) 43vw, 290px"
+                        className={minimalStyles.serviceIllustration}
+                      />
+                    </span>
+                    <span className={minimalStyles.serviceCopy}>
+                      <span className={minimalStyles.serviceLabel}>{copy.advisor.services[index]}</span>
+                      <span className={minimalStyles.serviceSummary}>{SERVICE_SUMMARIES[locale][index]}</span>
+                    </span>
+                    <span className={minimalStyles.serviceNumber} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                    {href ? <ArrowUpRight className={minimalStyles.serviceArrow} aria-hidden="true" /> : null}
+                  </>
+                );
+                return href ? (
+                  <a key={service.label} href={href} className={minimalStyles.service}>{content}</a>
+                ) : (
+                  <div key={service.label} className={minimalStyles.service}>{content}</div>
+                );
+              })}
+            </div>
+            {onScheduleMeeting ? (
+              <div className={minimalStyles.sectionAction}>
+                <button type="button" className={minimalStyles.textLink} onClick={onScheduleMeeting}>
+                  {copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section id="company" className={`${minimalStyles.section} ${minimalStyles.company}`} aria-labelledby="card-company-title">
+          <div className={minimalStyles.container}>
+            <div className={minimalStyles.companyHead}>
+              <Image src="/images/bohemika-ghost-logo.png" alt="" aria-hidden="true" width={280} height={420} sizes="(max-width: 760px) 220px, 280px" className={minimalStyles.ghostMark} />
+              <div>
+                <p className={minimalStyles.eyebrow}><span>02</span>{copy.advisor.aboutKicker}</p>
+                <h2 id="card-company-title" className={minimalStyles.companyName}>Bohemika <span>a.s.</span></h2>
+              </div>
+              <div className={minimalStyles.companyIntro}>
+                <p>{copy.advisor.companyLead}</p>
+              </div>
+            </div>
+            <div className={minimalStyles.companyCopy}>
+              {copy.advisor.companyParagraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}
+            </div>
+            <p className={`${minimalStyles.eyebrow} ${minimalStyles.pillarsLabel}`}>{copy.advisor.pillarsKicker}</p>
+            <div className={minimalStyles.pillars}>
+              {COMPANY_PILLARS.map((pillar, index) => (
+                <div key={pillar.title} className={minimalStyles.pillar}>
+                  <pillar.icon aria-hidden="true" />
+                  <h3>{copy.advisor.pillars[index]?.[0]}</h3>
+                  <p>{copy.advisor.pillars[index]?.[1]}</p>
+                </div>
+              ))}
+            </div>
+            <div className={minimalStyles.vigBand}>
+              <p>{copy.advisor.vig}</p>
+              {useMetalVig ? <VigMetalModel className={minimalStyles.vigModel} /> : (
+                <Image src="/icons/vienna-insurance-group.svg" alt="Vienna Insurance Group" width={360} height={165} />
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className={minimalStyles.section} aria-labelledby="card-partners-title">
+          <div className={minimalStyles.container}>
+            <div className={minimalStyles.partnersHead}>
+              <p className={minimalStyles.eyebrow}><span>03</span>{copy.advisor.partnersKicker}</p>
+              <h2 id="card-partners-title" className={minimalStyles.heading}>{copy.advisor.partnersTitle}</h2>
+            </div>
+            <div className={minimalStyles.partners}>
+              {PARTNER_INSURERS.map(insurer => (
+                <div key={insurer.label} className={`${minimalStyles.partner} ${insurer.darkTile ? minimalStyles.partnerDark : ""}`}>
+                  <Image src={insurer.logoPath} alt={insurer.label} width={160} height={66} sizes="(max-width: 760px) 100px, 180px" className={getPartnerLogoClassName(insurer)} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  }
 
   return (
     <div
@@ -405,22 +561,28 @@ export function AdvisorProfileSections({
                   </div>
                 ))}
               </div>
-
-              <div className={`relative mt-6 border-t pt-5 ${dividerClass}`}>
-                <span className="absolute left-0 top-0 h-px w-20 bg-[linear-gradient(90deg,#e3000f,rgba(227,0,15,0.08))]" aria-hidden="true" />
-                <div className="pointer-events-none absolute -left-10 top-1/2 h-20 w-52 -translate-y-1/2 rounded-full bg-cyan-400/10 blur-[48px]" />
-                <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5 lg:flex-col lg:items-start lg:gap-3 xl:flex-row xl:items-center xl:gap-5">
-                  <Image
-                    src="/icons/vienna-insurance-group.svg"
-                    alt="Vienna Insurance Group"
-                    width={236}
-                    height={108}
-                    className="h-auto w-[148px] shrink-0 brightness-150 contrast-125 drop-shadow-[0_8px_18px_rgba(8,10,36,0.28)] sm:w-[170px]"
-                  />
-                  <span className={`hidden h-9 w-px shrink-0 sm:block lg:hidden xl:block ${light ? "bg-slate-200" : "bg-blue-200/[0.22]"}`} aria-hidden="true" />
-                  <p className={`max-w-xl text-[13px] leading-relaxed tracking-[-0.01em] sm:text-sm ${light ? "text-slate-700" : "text-blue-50"}`}>
-                    {copy.advisor.vig}
-                  </p>
+              <div className={`relative mt-7 border-t pt-6 sm:mt-9 sm:pt-8 ${dividerClass}`}>
+                <span className="absolute left-0 top-0 h-px w-24 bg-[linear-gradient(90deg,#e3000f,rgba(227,0,15,0.08))]" aria-hidden="true" />
+                <div className="pointer-events-none absolute left-[10%] top-1/2 h-28 w-[44%] -translate-y-1/2 rounded-full bg-cyan-400/[0.09] blur-[56px]" />
+                <div className="relative">
+                  <div className="relative min-w-0">
+                    {useMetalVig ? (
+                      <VigMetalModel className="h-[340px] sm:h-[410px]" />
+                    ) : (
+                      <Image
+                        src="/icons/vienna-insurance-group.svg"
+                        alt="Vienna Insurance Group"
+                        width={720}
+                        height={410}
+                        className="mx-auto h-[340px] w-full max-w-[720px] object-contain brightness-150 contrast-125 drop-shadow-[0_16px_28px_rgba(8,10,36,0.28)] sm:h-[410px]"
+                      />
+                    )}
+                  </div>
+                  <div className={`relative mt-2 border-t pt-5 ${light ? "border-slate-200" : "border-blue-200/[0.22]"}`}>
+                    <p className={`max-w-[25rem] text-base leading-relaxed tracking-[-0.02em] sm:text-lg ${light ? "text-slate-700" : "text-blue-50"}`}>
+                      {copy.advisor.vig}
+                    </p>
+                  </div>
                 </div>
               </div>
             </aside>

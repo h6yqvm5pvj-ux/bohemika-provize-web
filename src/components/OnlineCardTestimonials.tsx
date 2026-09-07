@@ -1,10 +1,11 @@
 "use client";
 
-import { Loader2, MessageSquareQuote, X } from "lucide-react";
+import { ArrowUpRight, Loader2, MessageSquareQuote, X } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { LogoLoop, type LogoLoopItem } from "@/components/LogoLoop";
+import styles from "./OnlineCardMinimal.module.css";
 import {
   ONLINE_CARD_COPY,
   onlineCardLanguageMeta,
@@ -20,6 +21,7 @@ type OnlineCardTestimonialsProps = {
   reveal?: boolean;
   allowSubmission?: boolean;
   mode?: "showcase" | "submission";
+  minimal?: boolean;
 };
 
 type ReviewDraft = {
@@ -73,6 +75,7 @@ export function OnlineCardTestimonials({
   reveal = false,
   allowSubmission = true,
   mode = "showcase",
+  minimal = false,
 }: OnlineCardTestimonialsProps) {
   const copy = ONLINE_CARD_COPY[locale].public;
   const visibleTestimonials = (testimonials ?? []).filter(
@@ -188,7 +191,7 @@ export function OnlineCardTestimonials({
   return (
     <section
       {...revealAttrs}
-      className={`online-card-public-section relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 ${
+      className={minimal ? (mode === "showcase" ? styles.section : styles.container) : `online-card-public-section relative overflow-hidden px-4 py-10 sm:px-10 sm:py-16 ${
         reveal ? "online-card-scroll-reveal" : ""
       } ${
         light
@@ -196,6 +199,34 @@ export function OnlineCardTestimonials({
           : "bg-[linear-gradient(180deg,rgba(8,26,51,0.99)_0%,rgba(5,13,30,0.99)_100%)]"
       }`}
     >
+      {minimal ? (
+        mode === "showcase" ? (
+          <div className={styles.container}>
+            <p className={styles.eyebrow}>{copy.testimonialsKicker}</p>
+            <h2 className={styles.heading}>{copy.testimonialsTitle}</h2>
+            <div className={styles.reviews}>
+              {visibleTestimonials.map(testimonial => {
+                const author = testimonial.author || copy.testimonialsContextFallback;
+                return (
+                  <article key={testimonial.id} className={styles.review}>
+                    <MessageSquareQuote className={styles.quoteMark} aria-hidden="true" />
+                    <blockquote>{testimonial.quote}</blockquote>
+                    <div className={styles.reviewAuthor}>
+                      <span className={styles.reviewAvatar} aria-hidden="true">{getInitials(author)}</span>
+                      <div><strong>{author}</strong>{testimonial.submittedAt ? <time dateTime={testimonial.submittedAt}>{formatReviewDate(testimonial.submittedAt, locale)}</time> : null}</div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className={styles.reviewPrompt}>
+            <h2>{copy.reviewPrompt}</h2>
+            <button type="button" onClick={openReview} className={styles.secondaryButton}>{copy.writeReview}<ArrowUpRight aria-hidden="true" /></button>
+          </div>
+        )
+      ) : (<>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(37,99,235,0.18),transparent_34%)]" />
       <div className={`relative z-10 mx-auto ${mode === "showcase" ? "max-w-[1680px]" : "max-w-5xl"}`}>
         <div className="text-left sm:text-center">
@@ -243,28 +274,30 @@ export function OnlineCardTestimonials({
           </div>
         ) : null}
       </div>
+      </>)}
 
       {reviewOpen && mode === "submission" && allowSubmission && mounted
         ? createPortal(
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/62 p-3 backdrop-blur-xl sm:p-6">
+        <div className={minimal ? styles.overlay : "fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/62 p-3 backdrop-blur-xl sm:p-6"} onClick={event => { if (event.target === event.currentTarget) closeReview(); }}>
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="online-card-review-title"
-            className="max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-[28px] border border-blue-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(96,165,250,0.24),transparent_34%),linear-gradient(155deg,#071a36_0%,#061225_100%)] p-4 text-white shadow-[0_34px_90px_rgba(2,8,23,0.72),inset_0_1px_0_rgba(147,197,253,0.2)] sm:max-h-[calc(100dvh-3rem)] sm:p-6"
+            data-theme={theme}
+            className={minimal ? styles.dialog : "max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-[28px] border border-blue-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(96,165,250,0.24),transparent_34%),linear-gradient(155deg,#071a36_0%,#061225_100%)] p-4 text-white shadow-[0_34px_90px_rgba(2,8,23,0.72),inset_0_1px_0_rgba(147,197,253,0.2)] sm:max-h-[calc(100dvh-3rem)] sm:p-6"}
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className={minimal ? styles.dialogHeader : "flex items-start justify-between gap-3"}>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/80">
+                <p className={minimal ? styles.eyebrow : "text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-200/80"}>
                   {copy.testimonialsKicker}
                 </p>
-                <h2 id="online-card-review-title" className="mt-1 text-xl font-bold tracking-[-0.02em] text-white">{copy.reviewTitle}</h2>
-                <p className="mt-1 text-sm text-blue-100/75">{copy.reviewDescription}</p>
+                <h2 id="online-card-review-title" className={minimal ? undefined : "mt-1 text-xl font-bold tracking-[-0.02em] text-white"}>{copy.reviewTitle}</h2>
+                <p className={minimal ? undefined : "mt-1 text-sm text-blue-100/75"}>{copy.reviewDescription}</p>
               </div>
               <button
                 type="button"
                 onClick={closeReview}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-blue-100 transition hover:bg-white/18"
+                className={minimal ? styles.iconButton : "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-blue-100 transition hover:bg-white/18"}
                 aria-label={copy.closeForm}
               >
                 <X className="h-4 w-4" />
