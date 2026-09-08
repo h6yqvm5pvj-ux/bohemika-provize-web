@@ -26,7 +26,6 @@ import {
   RotateCcw,
   TrendingDown,
   TrendingUp,
-  UploadCloud,
   UsersRound,
   WalletCards,
   type LucideIcon,
@@ -91,6 +90,13 @@ import {
   type CppAutoBatchQueuePatch,
 } from "./CppAutoBatchQueue";
 import { StatementPairingLoader } from "./StatementPairingLoader";
+import { StatementImportPanel } from "./StatementImportPanel";
+import { StatementProgressPanel } from "./StatementProgressPanel";
+import importStyles from "./statementImport.module.css";
+import workspaceStyles from "./statementWorkspace.module.css";
+import { StatementSection } from "./StatementSection";
+import { StatementContractHeader } from "./StatementContractHeader";
+import detailStyles from "./statementContractDetail.module.css";
 import {
   NeonRefreshConversionPromptModal,
   StornoStatementActionModal,
@@ -201,7 +207,6 @@ import {
   StatementCorrectionWarning,
 } from "./statementWarnings";
 import {
-  PROCESSING_CAPTIONS,
   ProcessingAuditPanel,
   ProcessedStatementHistoryModal,
   StatementProcessingOverlay,
@@ -1450,12 +1455,7 @@ const statusForContract = (
   return { label: "Ke kontrole", tone: "warn" };
 };
 
-const statusClass = (tone: "ok" | "warn" | "info" | "tip"): string => {
-  if (tone === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (tone === "warn") return "border-amber-200 bg-amber-50 text-amber-900";
-  if (tone === "tip") return "border-violet-200 bg-violet-50 text-violet-800";
-  return "border-sky-200 bg-sky-50 text-sky-800";
-};
+
 
 const generalCommissionKindClass = (kind: GeneralCommissionKind): string => {
   switch (kind) {
@@ -5476,113 +5476,87 @@ function LifeSplitContractCard({
       }
     : null;
   return (
-    <article className="relative overflow-hidden border-b border-violet-100 bg-white/35 px-4 py-3 last:border-b-0">
+    <article className={detailStyles.card} data-expanded={expanded}>
       {markedItem && (
-        <div className="mb-3 flex justify-end">
+        <div className={detailStyles.marking}>
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="grid w-full gap-3 text-left lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
-        aria-expanded={expanded}
-      >
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-bold text-slate-950">
-              Smlouva {contract.contractNumber}
-            </h3>
-            <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(status.tone)}`}>
+      <StatementContractHeader
+        contractNumber={contract.contractNumber}
+        client={contract.client || "Klient se doplní po spárování se systémem"}
+        commission={total}
+        expanded={expanded}
+        onToggle={() => setExpanded(value => !value)}
+        products={<>
+            <span className={detailStyles.product}>
+              <StatementProductLogo product={contractProductMeta} size="xs" />
+              <span>{contract.productLabel} · {contract.productCode}</span>
+            </span>
+        </>}
+        badges={<>
+            <span className={detailStyles.badge} data-tone={status.tone}>
               {status.label}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-xs font-semibold text-slate-700">
-              <StatementProductLogo product={contractProductMeta} size="xs" />
-              {contract.productLabel} · {contract.productCode}
-            </span>
+
             <SystemMatchBadge
               match={match}
               scope={matchScope}
               presentation={systemMatchPresentation}
             />
             {correctionLabel && (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span className={detailStyles.badge} data-tone="warn">
                 {correctionLabel}
               </span>
             )}
             {currentCorrectionInfo && (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span className={detailStyles.badge} data-tone="warn">
                 {currentCorrectionInfo.label}
               </span>
             )}
             {hasCareerIssue && (
-              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+              <span className={detailStyles.badge} data-tone="error">
                 {statementCareerBadgeLabel(careerCheck?.careers)}
               </span>
             )}
             {timelinePositionMismatch && (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span className={detailStyles.badge} data-tone="warn">
                 Pozice mimo timeline
               </span>
             )}
             {amountComparisons.length > 0 && (
               <span
-                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                  amountIssueCount === 0
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border-rose-200 bg-rose-50 text-rose-800"
-                }`}
+                className={detailStyles.badge} data-tone={amountIssueCount === 0 ? "ok" : "error"}
               >
                 {amountIssueCount === 0 ? "Provize sedí" : amountIssueCountLabel(amountIssueCount)}
               </span>
             )}
             {coefficientOverride && (
-              <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
+              <span className={detailStyles.badge} data-tone="neutral">
                 Výpis použil {coefficientSetLabel(coefficientOverride.coefficientSet)}
               </span>
             )}
             {premiumBaseExplainedByEndorsement && (
-              <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
+              <span className={detailStyles.badge} data-tone="info">
                 Základna z dodatku
               </span>
             )}
             {hasLifePremiumIncrease && (
-              <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-800">
+              <span className={detailStyles.badge} data-tone="info">
                 Navýšení pojistného
               </span>
             )}
             {missingB36Warning && (
-              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+              <span className={detailStyles.badge} data-tone="error">
                 Chybí 50% z B36
               </span>
             )}
-          </div>
-          <div className="mt-1 text-lg font-black tracking-tight text-slate-950">
-            {contract.client || "Klient se doplní po spárování se systémem"}
-          </div>
-        </div>
 
-        <div className="flex shrink-0 items-center gap-3 self-start lg:self-auto lg:justify-self-end">
-          <div className="min-w-36 text-right">
-            <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-              Provize celkem
-            </div>
-            <div className="mt-1 whitespace-nowrap text-lg font-black text-violet-700">
-              {formatMoney(total)} Kč
-            </div>
-          </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-100 bg-white/80 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
-            <ChevronDown
-              className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`}
-              strokeWidth={2.2}
-              aria-hidden="true"
-            />
-          </span>
-        </div>
-      </button>
+        </>}
+      />
 
       {expanded && (
-        <div className="mt-3">
+        <div className={detailStyles.cardBody}>
           {tip > 0 && (
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
               ATP101: provize z TIPU. Párovat přes TIP vazbu, ne jako vlastní sjednání smlouvy.
@@ -5597,7 +5571,7 @@ function LifeSplitContractCard({
             presentation={systemMatchPresentation}
           />
           {(systemContract || detailUrl || extranetUrl || calculatorPrefill) && (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className={detailStyles.actions}>
               <BohemkaContractDetailLink contract={systemContract} />
               <ContractDetailLink href={detailUrl} />
               <SjednatelExtranetLink href={extranetUrl} />
@@ -5827,34 +5801,34 @@ function OtherProductContractCard({
     : null;
 
   return (
-    <article className="relative overflow-hidden border-b border-violet-100 bg-white/35 px-4 py-3 last:border-b-0">
+    <article className={detailStyles.card} data-expanded={expanded}>
       {markedItem && (
-        <div className="mb-3 flex justify-end">
+        <div className={detailStyles.marking}>
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="grid w-full gap-3 text-left lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
-        aria-expanded={expanded}
-      >
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-base font-bold text-slate-950">
-              Smlouva {contract.contractNumber || "—"}
-            </h4>
+      <StatementContractHeader
+        contractNumber={contract.contractNumber}
+        client={contract.client || "Klient nezjištěn"}
+        commission={totalCommission}
+        reserve={totalReserve}
+        expanded={expanded}
+        onToggle={() => setExpanded(value => !value)}
+        products={<>
             {productMetas.map((product) => (
               <span
                 key={product.rawCode}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-xs font-semibold text-slate-700"
+                className={detailStyles.product}
               >
                 <StatementProductLogo product={product} size="xs" />
-                {product.label} · {product.rawCode} · {statementProductCategoryLabel(product.category)}
+                <span>{product.label} · {product.rawCode} · {statementProductCategoryLabel(product.category)}</span>
               </span>
             ))}
+        </>}
+        badges={<>
+
             {hasUnknown && (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span className={detailStyles.badge} data-tone="warn">
                 Neznámý kód
               </span>
             )}
@@ -5864,28 +5838,28 @@ function OtherProductContractCard({
               presentation={systemMatchPresentation}
             />
             {correctionLabel && (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span className={detailStyles.badge} data-tone="warn">
                 {correctionLabel}
               </span>
             )}
             {currentCorrectionInfo && (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span className={detailStyles.badge} data-tone="warn">
                 {currentCorrectionInfo.label}
               </span>
             )}
             {hasCareerIssue && (
-              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+              <span className={detailStyles.badge} data-tone="error">
                 {statementCareerBadgeLabel(careerCheck?.careers)}
               </span>
             )}
             {timelinePositionMismatch && (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span className={detailStyles.badge} data-tone="warn">
                 Pozice mimo timeline
               </span>
             )}
             {autoPremiumChange && (
               <span
-                className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800"
+                className={detailStyles.badge} data-tone="error"
               >
                 {autoPremiumChange.direction === "increase" ? (
                   <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
@@ -5899,62 +5873,27 @@ function OtherProductContractCard({
             )}
             {amountComparisonsForReview.length > 0 && (
               <span
-                className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                  amountIssueCount === 0
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border-rose-200 bg-rose-50 text-rose-800"
-                }`}
+                className={detailStyles.badge} data-tone={amountIssueCount === 0 ? "ok" : "error"}
               >
                 {amountIssueCount === 0 ? "Provize sedí" : amountIssueCountLabel(amountIssueCount)}
               </span>
             )}
             {coefficientOverride && (
-              <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
+              <span className={detailStyles.badge} data-tone="neutral">
                 Výpis použil {coefficientSetLabel(coefficientOverride.coefficientSet)}
               </span>
             )}
             {missingB36Warning && (
-              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
+              <span className={detailStyles.badge} data-tone="error">
                 Chybí 50% z B36
               </span>
             )}
-          </div>
-          <div className="mt-1 text-lg font-black tracking-tight text-slate-950">
-            {contract.client || "Klient nezjištěn"}
-          </div>
-        </div>
 
-        <div className="flex shrink-0 items-center gap-3 self-start lg:self-auto lg:justify-self-end">
-          <div className="grid grid-cols-2 gap-5 text-right">
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-                Provize celkem
-              </div>
-              <div className="mt-1 whitespace-nowrap text-lg font-black text-violet-700">
-                {formatMoney(totalCommission)} Kč
-              </div>
-            </div>
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-                Rez. fond
-              </div>
-              <div className="mt-1 whitespace-nowrap text-lg font-black text-rose-700">
-                {formatMoney(totalReserve)} Kč
-              </div>
-            </div>
-          </div>
-          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-100 bg-white/80 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
-            <ChevronDown
-              className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`}
-              strokeWidth={2.2}
-              aria-hidden="true"
-            />
-          </span>
-        </div>
-      </button>
+        </>}
+      />
 
       {expanded && (
-        <div className="mt-3">
+        <div className={detailStyles.cardBody}>
           {notes.length > 0 && (
             <div className="space-y-1 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
               {notes.map((note) => (
@@ -5970,7 +5909,7 @@ function OtherProductContractCard({
             presentation={systemMatchPresentation}
           />
           {(systemContract || detailUrl || extranetUrl || calculatorPrefillWithCppA101Queue) && (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className={detailStyles.actions}>
               <BohemkaContractDetailLink contract={systemContract} />
               <ContractDetailLink href={detailUrl} />
               <SjednatelExtranetLink href={extranetUrl} />
@@ -5981,35 +5920,35 @@ function OtherProductContractCard({
             </div>
           )}
 
-          <div className="mt-3 grid divide-y divide-violet-100 border-y border-violet-100 text-xs font-semibold text-slate-600 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-            <div className="px-3 py-2">
-              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+          <div className={detailStyles.metadata}>
+            <div>
+              <div>
                 Uzavřeno
               </div>
-              <div className="mt-0.5 text-slate-900">{contract.signedAt || "—"}</div>
+              <div>{contract.signedAt || "—"}</div>
             </div>
-            <div className="px-3 py-2">
-              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+            <div>
+              <div>
                 Platnost
               </div>
-              <div className="mt-0.5 text-slate-900">{contract.validFrom || "—"}</div>
+              <div>{contract.validFrom || "—"}</div>
             </div>
-            <div className="px-3 py-2">
-              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+            <div>
+              <div>
                 Položky
               </div>
-              <div className="mt-0.5 text-slate-900">
-                {contract.rows.length} řádků
+              <div>
+                {contract.rows.length} {contract.rows.length === 1 ? "řádek" : contract.rows.length >= 2 && contract.rows.length <= 4 ? "řádky" : "řádků"}
                 {contract.b36Payments.length > 0
                   ? ` · ${contract.b36Payments.length} B36`
                   : ""}
               </div>
             </div>
-            <div className="px-3 py-2">
-              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+            <div>
+              <div>
                 Pojistné
               </div>
-              <div className="mt-0.5 text-slate-900">
+              <div>
                 {productMetas.some((product) => product.usesAnnualPremiumBase)
                   ? annualBase > 0
                     ? `${formatWholeMoney(annualBase)} Kč ročně`
@@ -6246,40 +6185,17 @@ function UnpairedContractsSection({
     otherContracts.reduce((sum, contract) => sum + otherProductContractTotal(contract), 0);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/70 shadow-[0_14px_32px_rgba(120,53,15,0.05)]">
-      <span className="pointer-events-none absolute inset-y-0 left-0 w-3 bg-amber-500" />
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-2 py-4 pl-7 pr-4 text-left sm:flex-row sm:items-center sm:justify-between"
-        aria-expanded={expanded}
-      >
-        <div className="flex items-start gap-3">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-white text-amber-700">
-            <AlertTriangle className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <div>
-            <h3 className="text-lg font-bold text-amber-950">Nespárované smlouvy</h3>
-            <p className="text-sm text-amber-900">
-              Smlouvy bez jednoznačné shody v systému. Před zápisem budou vyžadovat ruční kontrolu.
-            </p>
-          </div>
-        </div>
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-amber-950">
-          <span>{totalContracts} smluv · {formatMoney(totalCommission)} Kč</span>
-          <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900">
-            {uncertaintyCountLabel(totalContracts)}
-          </span>
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="space-y-3 border-t border-amber-200 bg-white/45 py-3 pl-4 pr-3 sm:pl-5">
+    <StatementSection
+      title="Nespárované smlouvy"
+      icon={AlertTriangle}
+      tone="warning"
+      count={totalContracts}
+      amount={totalCommission}
+      description="Bez jednoznačné shody v systému. Před zápisem zkontroluj ručně."
+      badge="K ruční kontrole"
+      expanded={expanded}
+      onToggle={() => setExpanded(value => !value)}
+    >
           <LifeSplitProductsSection
             contracts={lifeContracts}
             matchesByContractNumber={matchesByContractNumber}
@@ -6402,9 +6318,8 @@ function UnpairedContractsSection({
             correctionContext={correctionContext}
             markingControls={markingControls}
           />
-        </div>
-      )}
-    </div>
+
+    </StatementSection>
   );
 }
 
@@ -6850,42 +6765,19 @@ function ManagerCommissionsSection({
   ).length;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50/70 shadow-[0_14px_32px_rgba(67,56,202,0.05)]">
-      <span className="pointer-events-none absolute inset-y-0 left-0 w-3 bg-indigo-500" />
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-2 py-4 pl-7 pr-4 text-left sm:flex-row sm:items-center sm:justify-between"
-        aria-expanded={expanded}
-      >
-        <div className="flex items-start gap-3">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-indigo-200 bg-white text-indigo-700">
-            <UsersRound className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <div>
-            <h3 className="text-lg font-bold text-indigo-950">Provize manažera</h3>
-            <p className="text-sm text-indigo-900">
-              Meziprovize ze smluv podřízených poradců. Nejde o vlastní sjednané smlouvy.
-            </p>
-          </div>
-        </div>
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-950">
-          <span>{uniqueContractNumbers.length} smluv · {formatMoney(totalCommission)} Kč</span>
-          {unpairedContractCount > 0 && (
-            <span className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-800">
-              {uncertaintyCountLabel(unpairedContractCount)}
-            </span>
-          )}
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-
+    <StatementSection
+      title="Provize manažera"
+      icon={UsersRound}
+      tone="manager"
+      count={uniqueContractNumbers.length}
+      amount={totalCommission}
+      description="Meziprovize ze smluv týmu"
+      badge={unpairedContractCount > 0 ? uncertaintyCountLabel(unpairedContractCount) : undefined}
+      expanded={expanded}
+      onToggle={() => setExpanded(value => !value)}
+    >
       {expanded && (
-        <div className="space-y-4 border-t border-indigo-200 py-4 pl-7 pr-4">
+      <div className="space-y-4">
           <div className="grid gap-2 md:grid-cols-2">
             <div className="rounded-xl border border-indigo-200 bg-white px-3 py-2">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -7138,9 +7030,10 @@ function ManagerCommissionsSection({
               </article>
             );
           })}
-        </div>
+
+      </div>
       )}
-    </div>
+    </StatementSection>
   );
 }
 
@@ -7304,15 +7197,21 @@ function StatementPreview({
     hasOtherProductCategory: contractHasProductCategory,
   });
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+    <section className={workspaceStyles.statement}>
       <StatementPreviewHeader
         fileName={statement.fileName}
         statementNumber={statement.header.statementNumber}
         statementDate={statement.header.statementDate}
+        period={statement.header.period}
+        saved={Boolean(selectedStatementId)}
       />
       <StatementParseWarnings warnings={statement.parseWarnings} />
 
       <StatementSummary statement={statement} />
+      <div className={workspaceStyles.breakdownHeading}>
+        <h3>Rozpad výpisu</h3>
+        <p>Rozbal kategorii a projdi jednotlivé smlouvy</p>
+      </div>
 
       <LifeSplitProductsSection
         contracts={pairedLifeSplitContracts}
@@ -7539,7 +7438,7 @@ function StatementPreview({
         onRequestSystemStorno={onRequestSystemStorno}
       />
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className={workspaceStyles.referencePanels}>
         <CommissionCodeRulesPanel statement={statement} />
         <ContractStatusRulesPanel rules={statement.contractStatusRules} />
       </div>
@@ -7575,6 +7474,7 @@ export default function CommissionStatementsPage() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [matchingError, setMatchingError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
+  const [readingFileCount, setReadingFileCount] = useState(0);
   const [statementSaveState, setStatementSaveState] = useState<StatementSaveState>({
     status: "idle",
     message: null,
@@ -7590,7 +7490,7 @@ export default function CommissionStatementsPage() {
   const [stornoActionError, setStornoActionError] = useState<string | null>(null);
   const statementRecordsProcessing = statementSaveState.status === "saving";
   const statementRecordsProcessed = statementSaveState.status === "saved";
-  const [processingStepIndex, setProcessingStepIndex] = useState(0);
+  const [processingCompletedCount, setProcessingCompletedCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [processedStatementHistory, setProcessedStatementHistory] = useState<
     SavedCommissionStatement[]
@@ -7701,21 +7601,6 @@ export default function CommissionStatementsPage() {
     setNeonRefreshPromptTargets([]);
     setNeonRefreshPromptError(null);
   }, [user]);
-
-  useEffect(() => {
-    if (!statementRecordsProcessing) {
-      setProcessingStepIndex(0);
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setProcessingStepIndex((previous) =>
-        Math.min(previous + 1, PROCESSING_CAPTIONS.length - 1)
-      );
-    }, 1700);
-
-    return () => window.clearInterval(intervalId);
-  }, [statementRecordsProcessing]);
 
   const openStornoActionModal = (target: StornoStatementActionTarget) => {
     const suggestedDate = target.inference?.suggestedDate ?? target.suggestedDate;
@@ -8249,12 +8134,6 @@ export default function CommissionStatementsPage() {
       })),
     [allAutoDiscrepancyIssues, discrepancyNotes, markedDiscrepancyItems]
   );
-  const activeProcessingCaption =
-    PROCESSING_CAPTIONS[processingStepIndex % PROCESSING_CAPTIONS.length];
-  const processingProgressPercent = Math.round(
-    ((processingStepIndex + 1) / PROCESSING_CAPTIONS.length) * 100
-  );
-
   const toggleMarkedDiscrepancy = (item: MarkedDiscrepancyItem, selected: boolean) => {
     setMarkedDiscrepancies((previous) => {
       if (selected) {
@@ -8332,6 +8211,7 @@ export default function CommissionStatementsPage() {
       return;
     }
 
+    setReadingFileCount(htmlFiles.length);
     setParsing(true);
     setError(null);
     setMatchingError(null);
@@ -8395,7 +8275,7 @@ export default function CommissionStatementsPage() {
 
     setStatementSaveState({
       status: "ready",
-      message: "Výpis je připravený ke kontrole. Zápis proběhne až po kliknutí na Zpracovat záznam.",
+      message: "Výpis je připravený ke kontrole. Provize zapíšeme až po kliknutí na Zpracovat výpis.",
     });
     setParsing(false);
   };
@@ -8509,7 +8389,7 @@ export default function CommissionStatementsPage() {
     }
 
     statementProcessingInFlightRef.current = true;
-    setProcessingStepIndex(0);
+    setProcessingCompletedCount(0);
     setStatementSaveState({
       status: "saving",
       message: "Zpracovávám záznam a ukládám výpis pro provizní kalendář…",
@@ -8553,6 +8433,7 @@ export default function CommissionStatementsPage() {
           throw new Error(payload?.error || "Provizní výpis se nepodařilo uložit.");
         }
         processingResults.push(payload.processingResult ?? {});
+        setProcessingCompletedCount(processingResults.length);
         if (payload.item?.id) {
           nextProcessedStatementIdsByKey[statementDiscrepancyKey(parsedFile.statement)] =
             payload.item.id;
@@ -8618,7 +8499,7 @@ export default function CommissionStatementsPage() {
     }
 
     statementProcessingInFlightRef.current = true;
-    setProcessingStepIndex(0);
+    setProcessingCompletedCount(0);
     setStatementSaveState({
       status: "saving",
       message: "Znovu zpracovávám uložený výpis podle aktuálních smluv…",
@@ -9041,24 +8922,34 @@ export default function CommissionStatementsPage() {
     <BohemkaContractDetailModalContext.Provider value={setContractDetailModal}>
       <StatementCalculatorPrefillContext.Provider value={setCalculatorPrefillPanel}>
         <AppLayout active="statements">
-      <div className="w-full max-w-7xl space-y-4">
+      <div className={`w-full max-w-7xl space-y-4 ${workspaceStyles.workspace}`}>
         {!freshUploadPairingInProgress && (
           <section
             className={`px-1 py-1 ${
               statements.length === 0 ? "mx-auto w-full max-w-5xl" : ""
             }`}
           >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h1 className="text-2xl font-black text-slate-950 sm:text-4xl">
-                Kontrola provizního výpisu
-              </h1>
+            <div className={statements.length === 0 ? importStyles.pageHeading : workspaceStyles.pageHeading}>
+              {statements.length === 0 ? (
+                <div>
+                  <p className={importStyles.eyebrow}>PROVIZNÍ VÝPISY</p>
+                  <h1 className={importStyles.pageTitle}>Každá provize pod kontrolou.</h1>
+                  <p className={importStyles.pageLead}>Porovnej výpis se smlouvami a zkontroluj vyplacené provize.</p>
+                </div>
+              ) : (
+                <div>
+                  <p className={workspaceStyles.eyebrow}>PROVIZNÍ VÝPISY</p>
+                  <h1 className={workspaceStyles.pageTitle}>Přehled provizí.</h1>
+                  <p className={workspaceStyles.pageLead}>Částky, smlouvy a vše, co potřebuje tvoji pozornost.</p>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   setProcessedStatementHistoryVisible(true);
                   void refreshProcessedStatementHistory();
                 }}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:bg-black"
+                className={importStyles.historyButton}
               >
                 <CalendarDays className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                 Zobrazit historii
@@ -9071,16 +8962,14 @@ export default function CommissionStatementsPage() {
             </div>
 
             {statements.length > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/75 p-1 shadow-[0_14px_36px_rgba(15,23,42,0.08)] ring-1 ring-violet-100/70 backdrop-blur-xl">
+              <div className={workspaceStyles.toolbar}>
+                <div className={workspaceStyles.toolGroup}>
                   <button
                     type="button"
                     onClick={() => setMarkingMode((value) => !value)}
-                    className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-bold transition ${
-                      markingMode
-                        ? "bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
-                        : "text-slate-800 hover:bg-violet-50 hover:text-violet-800"
-                    }`}
+                    className={workspaceStyles.toolButton}
+                    data-active={markingMode}
+                    aria-pressed={markingMode}
                   >
                     <ListChecks className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                     {markingMode ? "Dokončit" : "Označit"}
@@ -9088,7 +8977,7 @@ export default function CommissionStatementsPage() {
                   <button
                     type="button"
                     onClick={resetStatementWorkspace}
-                    className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-bold text-slate-700 transition hover:bg-violet-50 hover:text-violet-800"
+                    className={workspaceStyles.toolButton}
                   >
                     <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                     Vymazat
@@ -9102,12 +8991,12 @@ export default function CommissionStatementsPage() {
                         setPdfError(null);
                         setReportModalOpen(true);
                       }}
-                      className="inline-flex h-10 items-center gap-2 rounded-full border border-violet-100 bg-white/75 px-4 text-sm font-bold text-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] ring-1 ring-white/70 backdrop-blur-xl transition hover:border-violet-200 hover:text-violet-800"
+                      className={workspaceStyles.toolButton}
                     >
                       <Printer className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                       Souhrn nesrovnalostí
                     </button>
-                    <span className="inline-flex h-9 items-center rounded-full bg-violet-50 px-3 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
+                    <span className={workspaceStyles.selectionCount}>
                       Označeno {markedDiscrepancyItems.length}
                     </span>
                   </>
@@ -9126,6 +9015,7 @@ export default function CommissionStatementsPage() {
           onChange={(event) => {
             if (event.target.files) {
               void parseFiles(event.target.files);
+              event.target.value = "";
             }
           }}
         />
@@ -9164,15 +9054,9 @@ export default function CommissionStatementsPage() {
             )}
             {visibleStatementSaveMessage && (
               <div
-                className={`flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold ${
-                  statementSaveState.status === "saved"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : statementSaveState.status === "saving"
-                      ? "border-sky-200 bg-sky-50 text-sky-800"
-                      : statementSaveState.status === "ready"
-                        ? "border-slate-200 bg-white text-slate-800"
-                        : "border-amber-200 bg-amber-50 text-amber-900"
-                }`}
+                className={workspaceStyles.notice}
+                data-status={statementSaveState.status}
+                role="status"
               >
                 {statementSaveState.status === "saving" ? (
                   <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
@@ -9193,91 +9077,13 @@ export default function CommissionStatementsPage() {
           <ProcessingAuditPanel summary={processingAuditSummary} />
         )}
 
-        {statements.length === 0 ? (
-          <section className="mx-auto w-full max-w-5xl pt-3">
-            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_34px_110px_rgba(15,23,42,0.12)]">
-              <div
-                className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#d946ef_58%,#ec4899_100%)]"
-                aria-hidden="true"
-              />
-              <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
-                <div className="relative min-h-[19rem] overflow-hidden bg-slate-950 p-6 text-white sm:p-7">
-                  <div
-                    className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.18)_1px,transparent_1px)] [background-size:28px_28px]"
-                    aria-hidden="true"
-                  />
-                  <div
-                    className="pointer-events-none absolute inset-y-0 right-0 w-px bg-white/12"
-                    aria-hidden="true"
-                  />
-                  <div className="relative flex h-full min-h-[16rem] flex-col justify-between">
-                    <div>
-                      <span className="inline-flex rounded-full border border-fuchsia-300/35 bg-fuchsia-400/14 px-3 py-1 text-xs font-bold uppercase text-fuchsia-100">
-                        HTML import
-                      </span>
-                      <h2 className="mt-5 max-w-sm text-4xl font-black leading-none text-white sm:text-5xl">
-                        Nahrát výpis
-                      </h2>
-                    </div>
-
-                    <div className="mt-8 space-y-3">
-                      <div className="h-2.5 w-24 rounded-full bg-white/90" />
-                      <div className="h-2.5 w-full max-w-[18rem] rounded-full bg-white/18" />
-                      <div className="h-2.5 w-4/5 max-w-[15rem] rounded-full bg-fuchsia-400/70" />
-                      <div className="h-2.5 w-3/5 max-w-[12rem] rounded-full bg-white/18" />
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  className="relative flex min-h-[19rem] flex-col justify-between p-6 transition hover:bg-slate-50/70 sm:p-7"
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    void parseFiles(event.dataTransfer.files);
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-[0_12px_26px_rgba(15,23,42,0.09)]">
-                      <UploadCloud size={27} strokeWidth={2.2} aria-hidden="true" />
-                    </span>
-                    <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-xs font-bold uppercase text-fuchsia-700 shadow-sm">
-                      .HTML / .HTM
-                    </span>
-                  </div>
-
-                  <div>
-                    <p className="max-w-md text-xl font-black leading-7 text-slate-950 sm:text-2xl">
-                      Přetáhni výpis sem
-                    </p>
-                    <p className="mt-2 max-w-md text-sm font-semibold leading-6 text-slate-600">
-                      nebo vyber HTML soubor ze zařízení.
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={parsing}
-                      className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-[0_18px_34px_rgba(15,23,42,0.2)] transition hover:-translate-y-0.5 hover:bg-black disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
-                    >
-                      {parsing ? (
-                        <Loader2
-                          className="h-[18px] w-[18px] animate-spin shrink-0"
-                          strokeWidth={2.2}
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <UploadCloud size={18} strokeWidth={2.2} className="shrink-0" aria-hidden="true" />
-                      )}
-                      {parsing ? "Načítám…" : "Nahrát výpis"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+        {parsing ? (
+          <StatementProgressPanel mode="reading" fileCount={readingFileCount} />
+        ) : statements.length === 0 ? (
+          <StatementImportPanel
+            onChooseFiles={() => fileInputRef.current?.click()}
+            onDropFiles={files => { void parseFiles(files); }}
+          />
         ) : freshUploadPairingInProgress ? (
           <StatementPairingLoader stats={matchStats} hasUser={Boolean(user)} />
         ) : (
@@ -9322,18 +9128,17 @@ export default function CommissionStatementsPage() {
               );
             })}
 
-            <section className="relative overflow-hidden rounded-lg border border-white/70 bg-white/75 px-4 py-3 shadow-[0_16px_36px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/70 backdrop-blur-xl sm:px-5">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-violet-500/60" aria-hidden="true" />
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-700 ring-1 ring-violet-100">
+            <section className={workspaceStyles.savePanel}>
+              <div className={workspaceStyles.saveRow}>
+                <div className={workspaceStyles.saveIdentity}>
+                  <span className={workspaceStyles.saveIcon}>
                     <ReceiptText className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
-                    <h2 className="text-sm font-black tracking-tight text-slate-950">
+                    <h2 className={workspaceStyles.saveTitle}>
                       Zápis výpisu
                     </h2>
-                    <p className="mt-0.5 truncate text-sm font-semibold text-slate-600">
+                    <p className={workspaceStyles.saveLead}>
                     {statementRecordsProcessed
                       ? "Výpis byl zpracovaný."
                       : `${statements.length} ${
@@ -9343,7 +9148,7 @@ export default function CommissionStatementsPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className={workspaceStyles.saveActions}>
                   {canReprocessSelectedHistoryStatement && (
                     <button
                       type="button"
@@ -9351,7 +9156,7 @@ export default function CommissionStatementsPage() {
                         void reprocessSelectedHistoryStatement();
                       }}
                       disabled={statementRecordsProcessing}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-violet-100 bg-white/70 px-4 text-sm font-bold text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:border-violet-200 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      className={workspaceStyles.secondaryButton}
                     >
                       {statementRecordsProcessing ? (
                         <Loader2
@@ -9368,7 +9173,7 @@ export default function CommissionStatementsPage() {
                     </button>
                   )}
                   {statementRecordsProcessed && !statementRecordsProcessing ? (
-                    <span className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white shadow-[0_12px_28px_rgba(15,23,42,0.16)]">
+                    <span className={workspaceStyles.savedBadge}>
                       <CheckCircle2 className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                       Zpracováno
                     </span>
@@ -9382,7 +9187,7 @@ export default function CommissionStatementsPage() {
                         statementRecordsProcessing ||
                         statementFilesForProcessing.length === 0
                       }
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                      className={workspaceStyles.primaryButton}
                     >
                       {statementRecordsProcessing ? (
                         <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
@@ -9402,9 +9207,7 @@ export default function CommissionStatementsPage() {
 
       {statementRecordsProcessing && (
         <StatementProcessingOverlay
-          caption={activeProcessingCaption}
-          progress={processingProgressPercent}
-          stepIndex={processingStepIndex}
+          completedCount={processingCompletedCount}
           statementCount={statements.length}
         />
       )}

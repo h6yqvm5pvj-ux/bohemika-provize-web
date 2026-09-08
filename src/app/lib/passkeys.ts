@@ -2,7 +2,7 @@ import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
-import type { User as FirebaseUser } from "firebase/auth";
+import type { User as FirebaseUser, UserCredential } from "firebase/auth";
 import { signInWithCustomToken } from "firebase/auth";
 
 import { auth } from "@/app/firebase";
@@ -163,7 +163,7 @@ export async function createPasskeyForUser(
   return finishPayload.credential;
 }
 
-export async function signInWithPasskey(): Promise<void> {
+export async function signInWithPasskey(): Promise<UserCredential> {
   const optionsPayload = await fetchJsonOrThrow<AuthenticationOptionsResponse>(
     "/api/auth/passkeys/authentication-options",
     { method: "POST", body: JSON.stringify({}) }
@@ -182,7 +182,7 @@ export async function signInWithPasskey(): Promise<void> {
     }
   );
 
-  await signInWithCustomToken(auth, finishPayload.customToken);
+  return signInWithCustomToken(auth, finishPayload.customToken);
 }
 
 export async function listPasskeysForUser(

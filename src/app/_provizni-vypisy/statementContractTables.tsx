@@ -1,3 +1,6 @@
+import { ReceiptText } from "lucide-react";
+import styles from "./statementContractDetail.module.css";
+
 import {
   classifyGeneralCommissionCode,
   formatMoney,
@@ -22,29 +25,32 @@ export function LifeSplitCommissionTable({
   pairedB36PaymentIndexes: Set<number>;
 }) {
   return (
-    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
+    <div className={styles.lineItems} data-kind="life">
+      <h5 className={styles.lineItemsHeading}><ReceiptText aria-hidden="true" />Položky z provizního výpisu</h5>
+      <p className={styles.tableHint}>Další sloupce zobrazíš posunutím do strany →</p>
+      <div className={styles.tableScroll} role="region" aria-label="Položky z provizního výpisu" tabIndex={0}>
+      <table className={styles.table}>
+        <thead>
           <tr>
-            <th className="px-3 py-2">Kód</th>
-            <th className="px-3 py-2">Význam</th>
-            <th className="px-3 py-2 text-right">Základna</th>
-            <th className="px-3 py-2 text-right">Procento</th>
-            <th className="px-3 py-2 text-right">Provize</th>
-            <th className="px-3 py-2 text-right">Rez. fond</th>
+            <th scope="col">Kód</th>
+            <th scope="col">Význam</th>
+            <th scope="col">Základna</th>
+            <th scope="col">Procento</th>
+            <th scope="col">Provize</th>
+            <th scope="col">Rez. fond</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {rows.map((row) => (
             <tr key={`${row.id}-${row.type}-${row.commission}`}>
-              <td className="px-3 py-2 font-semibold text-slate-900">{row.type}</td>
-              <td className="px-3 py-2 text-slate-700">{row.lifeSplitLabel}</td>
-              <td className="px-3 py-2 text-right text-slate-700">{formatMoney(row.base)}</td>
-              <td className="px-3 py-2 text-right text-slate-700">{row.percent || "—"}</td>
-              <td className="px-3 py-2 text-right font-semibold text-slate-950">
+              <td>{row.type}</td>
+              <td>{row.lifeSplitLabel}</td>
+              <td>{formatMoney(row.base)}</td>
+              <td>{row.percent || "—"}</td>
+              <td>
                 {formatMoney(row.commission)}
               </td>
-              <td className="px-3 py-2 text-right text-slate-700">
+              <td>
                 {formatMoney(row.reserveFund)}
               </td>
             </tr>
@@ -52,24 +58,25 @@ export function LifeSplitCommissionTable({
           {b36Payments.map((payment, index) => {
             const isOffsetPair = pairedB36PaymentIndexes.has(index);
             return (
-              <tr key={`${payment.contractNumber}-b36-${index}`} className="bg-emerald-50/60">
-                <td className="px-3 py-2 font-semibold text-slate-900">B36</td>
-                <td className="px-3 py-2 text-slate-700">
+              <tr key={`${payment.contractNumber}-b36-${index}`} data-payment="true">
+                <td>B36</td>
+                <td>
                   {b36HalfLabel} z ostatních plateb
                   {payment.isStorno ? " / storno" : ""}
                   {isOffsetPair ? " / vyplaceno a odečteno ve stejném výpisu" : ""}
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">—</td>
-                <td className="px-3 py-2 text-right text-slate-700">—</td>
-                <td className="px-3 py-2 text-right font-semibold text-slate-950">
+                <td>—</td>
+                <td>—</td>
+                <td>
                   {formatMoney(payment.amount)}
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">—</td>
+                <td>—</td>
               </tr>
             );
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -86,31 +93,34 @@ export function OtherProductCommissionTable({
   generalCommissionKindClass: (kind: GeneralCommissionKind) => string;
 }) {
   return (
-    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
+    <div className={styles.lineItems}>
+      <h5 className={styles.lineItemsHeading}><ReceiptText aria-hidden="true" />Položky z provizního výpisu</h5>
+      <p className={styles.tableHint}>Další sloupce zobrazíš posunutím do strany →</p>
+      <div className={styles.tableScroll} role="region" aria-label="Položky z provizního výpisu" tabIndex={0}>
+      <table className={styles.table}>
+        <thead>
           <tr>
-            <th className="px-3 py-2">Produkt</th>
-            <th className="px-3 py-2">Kód</th>
-            <th className="px-3 py-2">Význam</th>
-            <th className="px-3 py-2 text-right">Základna</th>
-            <th className="px-3 py-2 text-right">Procento</th>
-            <th className="px-3 py-2 text-right">Provize</th>
-            <th className="px-3 py-2 text-right">Rez. fond</th>
+            <th scope="col">Produkt</th>
+            <th scope="col">Kód</th>
+            <th scope="col">Význam</th>
+            <th scope="col">Základna</th>
+            <th scope="col">Procento</th>
+            <th scope="col">Provize</th>
+            <th scope="col">Rez. fond</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {rows.map((row) => {
             const classification = classifyGeneralCommissionCode(row.product, row.type);
             const rowProductMeta = resolveStatementProduct(row.product);
             return (
               <tr key={`${row.id}-${row.type}-${row.commission}`}>
-                <td className="px-3 py-2 text-slate-700">
-                  <div className="font-semibold text-slate-900">{rowProductMeta.label}</div>
-                  <div className="text-xs text-slate-500">{rowProductMeta.rawCode}</div>
+                <td>
+                  <div className={styles.cellTitle}>{rowProductMeta.label}</div>
+                  <div className={styles.secondary}>{rowProductMeta.rawCode}</div>
                 </td>
-                <td className="px-3 py-2 font-semibold text-slate-900">{row.type || "—"}</td>
-                <td className="px-3 py-2 text-slate-700">
+                <td>{row.type || "—"}</td>
+                <td>
                   <span
                     className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${generalCommissionKindClass(
                       classification.kind
@@ -119,19 +129,19 @@ export function OtherProductCommissionTable({
                     {classification.label}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">
+                <td>
                   <div>{formatMoney(row.base)}</div>
                   {rowProductMeta.usesAnnualPremiumBase && row.base > 0 && (
-                    <div className="text-xs text-slate-500">
+                    <div className={styles.secondary}>
                       měs. {formatWholeMoney(row.base / 12)} Kč
                     </div>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">{row.percent || "—"}</td>
-                <td className="px-3 py-2 text-right font-semibold text-slate-950">
+                <td>{row.percent || "—"}</td>
+                <td>
                   {formatMoney(row.commission)}
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">
+                <td>
                   {formatMoney(row.reserveFund)}
                 </td>
               </tr>
@@ -140,13 +150,13 @@ export function OtherProductCommissionTable({
           {b36Payments.map((payment, index) => {
             const isOffsetPair = pairedB36PaymentIndexes.has(index);
             return (
-              <tr key={`${payment.contractNumber}-b36-${index}`} className="bg-emerald-50/60">
-                <td className="px-3 py-2 text-slate-700">
-                  <div className="font-semibold text-slate-900">Ostatní platby</div>
-                  <div className="text-xs text-slate-500">bez produktového kódu</div>
+              <tr key={`${payment.contractNumber}-b36-${index}`} data-payment="true">
+                <td>
+                  <div className={styles.cellTitle}>Ostatní platby</div>
+                  <div className={styles.secondary}>bez produktového kódu</div>
                 </td>
-                <td className="px-3 py-2 font-semibold text-slate-900">B36</td>
-                <td className="px-3 py-2 text-slate-700">
+                <td>B36</td>
+                <td>
                   <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
                     50% z B36 z ostatních plateb
                   </span>
@@ -156,17 +166,18 @@ export function OtherProductCommissionTable({
                     </div>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">—</td>
-                <td className="px-3 py-2 text-right text-slate-700">—</td>
-                <td className="px-3 py-2 text-right font-semibold text-slate-950">
+                <td>—</td>
+                <td>—</td>
+                <td>
                   {formatMoney(payment.amount)}
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">—</td>
+                <td>—</td>
               </tr>
             );
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

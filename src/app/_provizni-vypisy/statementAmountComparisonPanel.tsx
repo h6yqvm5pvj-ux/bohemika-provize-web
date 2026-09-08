@@ -1,4 +1,4 @@
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { ListChecks, TrendingDown, TrendingUp } from "lucide-react";
 
 import {
   ANNUAL_PREMIUM_TOLERANCE,
@@ -7,6 +7,7 @@ import {
   formatWholeMoney,
   paymentAmountWithFrequencyLabel,
 } from "./statementParsing";
+import styles from "./statementContractDetail.module.css";
 import type {
   CommissionAmountComparison,
   CommissionAmountComparisonStatus,
@@ -50,14 +51,14 @@ const amountComparisonStatusLabel = (status: CommissionAmountComparisonStatus): 
   }
 };
 
-const amountComparisonStatusClass = (status: CommissionAmountComparisonStatus): string => {
+const amountComparisonStatusTone = (status: CommissionAmountComparisonStatus): string => {
   switch (status) {
     case "ok":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+      return "ok";
     case "missing_statement":
     case "missing_expected":
     case "diff":
-      return "border-rose-200 bg-rose-50 text-rose-800";
+      return "error";
   }
 };
 
@@ -145,22 +146,7 @@ export function AmountComparisonPanel({
         : baseChangeCount > 0
           ? "sky"
           : "emerald";
-  const panelClass =
-    panelTone === "rose"
-      ? "border-rose-200 bg-rose-50"
-      : panelTone === "amber"
-        ? "border-amber-200 bg-amber-50"
-        : panelTone === "sky"
-          ? "border-sky-200 bg-sky-50"
-          : "border-emerald-200 bg-emerald-50";
-  const badgeClass =
-    panelTone === "rose"
-      ? "border-rose-200 bg-white text-rose-800"
-      : panelTone === "amber"
-        ? "border-amber-200 bg-white text-amber-900"
-        : panelTone === "sky"
-          ? "border-sky-200 bg-white text-sky-800"
-          : "border-emerald-200 bg-white text-emerald-800";
+  const badgeTone = panelTone === "rose" ? "error" : panelTone === "amber" ? "warn" : panelTone === "sky" ? "info" : "ok";
   const badgeLabel =
     issueCount > 0
       ? amountIssueCountLabel(issueCount)
@@ -176,79 +162,80 @@ export function AmountComparisonPanel({
     if (!comparison.canBeAnniversaryPremiumChange) return "Nesedí";
     return comparison.annualDifference > 0 ? "Pojistné navýšeno" : "Pojistné poníženo";
   };
-  const baseStatusClass = (comparison: PremiumBaseComparison): string => {
+  const baseStatusTone = (comparison: PremiumBaseComparison): string => {
     if (Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE) {
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+      return "ok";
     }
     if (!comparison.canBeAnniversaryPremiumChange) {
-      return "border-amber-200 bg-amber-50 text-amber-900";
+      return "warn";
     }
-    return "border-rose-200 bg-rose-50 text-rose-800";
+    return "error";
   };
 
   return (
-    <div className={`mt-3 rounded-xl border px-3 py-3 ${panelClass}`}>
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div className="font-bold text-slate-950">
+    <div className={styles.comparison} data-tone={panelTone}>
+      <div className={styles.comparisonHeading}>
+        <h5><ListChecks aria-hidden="true" />
           {baseComparisons.length > 0 ? "Kontrola výpisu" : "Kontrola vyplacených částek"}
-        </div>
-        <div className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
+        </h5>
+        <div className={styles.badge} data-tone={badgeTone}>
           {badgeLabel}
         </div>
       </div>
 
-      <div className="mt-3 overflow-x-auto rounded-lg border border-white/70 bg-white">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+      <p className={styles.tableHint}>Další sloupce zobrazíš posunutím do strany →</p>
+      <div className={styles.tableScroll} role="region" aria-label="Porovnání částek" tabIndex={0}>
+        <table className={styles.table}>
+          <thead>
             <tr>
-              <th className="px-3 py-2">Položka</th>
-              <th className="px-3 py-2 text-right">Bohemka.app</th>
-              <th className="px-3 py-2 text-right">Provizní výpis</th>
-              <th className="px-3 py-2 text-right">Rozdíl ve výpise</th>
-              <th className="px-3 py-2 text-right">Stav</th>
+              <th scope="col">Položka</th>
+              <th scope="col">Bohemka.app</th>
+              <th scope="col">Provizní výpis</th>
+              <th scope="col">Rozdíl ve výpise</th>
+              <th scope="col">Stav</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {baseComparisons.map((comparison) => {
               const systemLines = baseDisplayLines(comparison, "system");
               const statementLines = baseDisplayLines(comparison, "statement");
               const differenceLines = baseDifferenceLines(comparison);
               return (
                 <tr key={comparison.key}>
-                  <td className="px-3 py-2 font-semibold text-slate-900">{comparison.label}</td>
-                  <td className="px-3 py-2 text-right text-slate-700">
+                  <td>{comparison.label}</td>
+                  <td>
                     <div>{systemLines.primary}</div>
                     {systemLines.secondary && (
-                      <div className="text-xs text-slate-500">{systemLines.secondary}</div>
+                      <div className={styles.secondary}>{systemLines.secondary}</div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right text-slate-700">
+                  <td>
                     <div>{statementLines.primary}</div>
                     {statementLines.secondary && (
-                      <div className="text-xs text-slate-500">{statementLines.secondary}</div>
+                      <div className={styles.secondary}>{statementLines.secondary}</div>
                     )}
                   </td>
                   <td
-                    className={`px-3 py-2 text-right font-semibold ${
+                    className={styles.difference} data-tone={
                       Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE
-                        ? "text-slate-700"
+                        ? "neutral"
                         : !comparison.canBeAnniversaryPremiumChange
-                          ? "text-amber-900"
+                          ? "warn"
                           : comparison.annualDifference > 0
-                            ? "text-emerald-800"
-                            : "text-sky-800"
-                    }`}
+                            ? "ok"
+                            : "info"
+                    }
                   >
                     <div>{differenceLines.primary}</div>
                     {differenceLines.secondary && (
-                      <div className="text-xs font-medium text-slate-500">
+                      <div className={styles.secondary}>
                         {differenceLines.secondary}
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td>
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${baseStatusClass(comparison)}`}
+                      className={styles.badge} data-tone={baseStatusTone(comparison)}
                     >
                       {comparison.canBeAnniversaryPremiumChange &&
                         Math.abs(comparison.annualDifference) > ANNUAL_PREMIUM_TOLERANCE &&
@@ -265,35 +252,35 @@ export function AmountComparisonPanel({
             })}
             {comparisons.map((comparison) => (
               <tr key={comparison.key}>
-                <td className="px-3 py-2 font-semibold text-slate-900">
+                <td>
                   <div>{comparison.label}</div>
                   {comparison.detailLines && comparison.detailLines.length > 0 && (
-                    <div className="mt-1 space-y-0.5 text-xs font-medium leading-5 text-slate-500">
+                    <div className={styles.secondary}>
                       {comparison.detailLines.map((line) => (
                         <div key={line}>{line}</div>
                       ))}
                     </div>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">
+                <td>
                   {formatMoney(comparison.expectedAmount)} Kč
                 </td>
-                <td className="px-3 py-2 text-right text-slate-700">
+                <td>
                   {formatMoney(comparison.statementAmount)} Kč
                 </td>
                 <td
-                  className={`px-3 py-2 text-right font-semibold ${
+                  className={styles.difference} data-tone={
                     Math.abs(comparison.difference) <= COMMISSION_AMOUNT_TOLERANCE
-                      ? "text-slate-700"
-                      : "text-rose-800"
-                  }`}
+                      ? "neutral"
+                      : "error"
+                  }
                 >
                   {comparison.difference > 0 ? "+" : ""}
                   {formatMoney(comparison.difference)} Kč
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td>
                   <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${amountComparisonStatusClass(comparison.status)}`}
+                    className={styles.badge} data-tone={amountComparisonStatusTone(comparison.status)}
                   >
                     {amountComparisonStatusLabel(comparison.status)}
                   </span>

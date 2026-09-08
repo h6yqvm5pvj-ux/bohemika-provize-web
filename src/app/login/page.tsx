@@ -9,7 +9,6 @@ import {
   getMultiFactorResolver,
   type MultiFactorError,
   type MultiFactorResolver,
-  onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
@@ -230,6 +229,7 @@ export default function LoginPage() {
   const [isIosDevice, setIsIosDevice] = useState(false);
   const [rememberThisDevice, setRememberThisDevice] = useState(false);
   const loginRememberThisDeviceRef = useRef(false);
+  const loginAttemptInFlightRef = useRef(false);
   const mfaInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   const clearMfaState = () => {
@@ -270,77 +270,73 @@ export default function LoginPage() {
     [router]
   );
 
-  // pokud už je přihlášený, zkusíme ověřit předplatné a podle toho pustíme dál
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        return;
-      }
+  // Firebase can restore an old user (or receive one from another tab) while a
+  // passkey / MFA prompt is still pending. Only a credential returned by the
+  // current sign-in operation may create the server session and navigate away.
+  const completeLogin = useCallback(async (user: FirebaseUser) => {
+    const rawEmail = user.email;
+    if (!rawEmail) {
+      // nějaký divný user bez emailu – raději odhlásit
+      await safeSignOut();
+      setError("Účet nemá přiřazený e-mail. Kontaktuj podporu.");
+      setLoading(false);
+      return;
+    }
 
-      const rawEmail = user.email;
-      if (!rawEmail) {
-        // nějaký divný user bez emailu – raději odhlásit
+    try {
+      const loginToken = await withTimeout(
+        user.getIdToken(),
+        10000,
+        "Ověření přihlášení trvá příliš dlouho."
+      );
+      const finishLogin = async () => {
+        await finalizeServerSession(loginToken);
+      };
+      const loginAttemptState = await postLoginAttempt("success", rawEmail, loginToken);
+      if (!loginAttemptState.ok || loginAttemptState.locked) {
         await safeSignOut();
+        setError(buildLoginAttemptMessage(loginAttemptState));
         return;
       }
 
-      try {
-        const loginToken = await withTimeout(
-          user.getIdToken(),
-          10000,
-          "Ověření přihlášení trvá příliš dlouho."
-        );
-        const finishLogin = async () => {
-          await finalizeServerSession(loginToken);
-        };
-        const loginAttemptState = await postLoginAttempt("success", rawEmail, loginToken);
-        if (!loginAttemptState.ok || loginAttemptState.locked) {
-          await safeSignOut();
-          setError(buildLoginAttemptMessage(loginAttemptState));
-          return;
-        }
+      const response = await withTimeout(
+        getUserProfileCached(user, { force: true }),
+        10000,
+        "Ověření účtu trvá příliš dlouho."
+      );
 
-        const response = await withTimeout(
-          getUserProfileCached(user, { force: true }),
-          10000,
-          "Ověření účtu trvá příliš dlouho."
-        );
+      if (response?.hasProfile !== true) {
+        await finishLogin();
+        return;
+      }
+      const data = response?.profile ?? {};
+      const subscription = evaluateSubscriptionFromProfile(
+        data as Record<string, unknown>
+      );
+      const hasActive =
+        subscription.state === "active" || subscription.state === "grace";
 
-        if (response?.hasProfile !== true) {
-          await finishLogin();
-          return;
-        }
-        const data = response?.profile ?? {};
-        const subscription = evaluateSubscriptionFromProfile(
-          data as Record<string, unknown>
-        );
-        const hasActive =
-          subscription.state === "active" || subscription.state === "grace";
-
-        if (hasActive) {
-          // OK → pustíme na hlavní stránku
-          await finishLogin();
-        } else {
-          // žádné / expirované předplatné → odhlásit a ukázat hlášku
-          await safeSignOut();
-          setError(
-            subscription.reason === "unpaid"
-              ? "Tento účet je označený jako nezaplacený. Pro přístup je potřeba uhradit předplatné."
-              : "Tento účet nemá aktivní (platné) předplatné."
-          );
-        }
-      } catch (e) {
-        console.error("Chyba při ověřování přihlášení/předplatného:", e);
+      if (hasActive) {
+        // OK → pustíme na hlavní stránku
+        await finishLogin();
+      } else {
+        // žádné / expirované předplatné → odhlásit a ukázat hlášku
         await safeSignOut();
         setError(
-          "Nepodařilo se bezpečně dokončit přihlášení. Zkus to prosím znovu nebo kontaktuj podporu."
+          subscription.reason === "unpaid"
+            ? "Tento účet je označený jako nezaplacený. Pro přístup je potřeba uhradit předplatné."
+            : "Tento účet nemá aktivní (platné) předplatné."
         );
-      } finally {
-        setLoading(false);
       }
-    });
-
-    return () => unsub();
+    } catch (e) {
+      console.error("Chyba při ověřování přihlášení/předplatného:", e);
+      await safeSignOut();
+      setError(
+        "Nepodařilo se bezpečně dokončit přihlášení. Zkus to prosím znovu nebo kontaktuj podporu."
+      );
+    } finally {
+      setLoading(false);
+    }
   }, [finalizeServerSession, safeSignOut]);
 
   useEffect(() => {
@@ -388,6 +384,7 @@ export default function LoginPage() {
   }, [mfaResolver]);
 
   const handleMfaSubmit = async () => {
+    if (loginAttemptInFlightRef.current) return;
     if (!mfaResolver || !mfaHintUid) {
       setError("Dvoufázové ověření se nepodařilo inicializovat. Zkus přihlášení znovu.");
       return;
@@ -400,6 +397,7 @@ export default function LoginPage() {
       return;
     }
 
+    loginAttemptInFlightRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -414,7 +412,7 @@ export default function LoginPage() {
         "2FA ověření trvá příliš dlouho."
       );
       void recordSuccessfulMfaVerification(credential.user);
-      // dokončení přihlášení + kontrolu subscription řeší onAuthStateChanged
+      await completeLogin(credential.user);
     } catch (err: unknown) {
       logAuthIssue("handleMfaSubmit", err);
       const authErr = err as { code?: string };
@@ -434,17 +432,21 @@ export default function LoginPage() {
 
       setError(msg);
       setLoading(false);
+    } finally {
+      loginAttemptInFlightRef.current = false;
     }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (loginAttemptInFlightRef.current) return;
 
     if (mfaResolver) {
       await handleMfaSubmit();
       return;
     }
 
+    loginAttemptInFlightRef.current = true;
     setError(null);
     setLoading(true);
     loginRememberThisDeviceRef.current = rememberThisDevice;
@@ -466,14 +468,12 @@ export default function LoginPage() {
         return;
       }
 
-      await withTimeout(
+      const credential = await withTimeout(
         signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword),
         20000,
         "Přihlášení trvá příliš dlouho."
       );
-      // dál už to řeší onAuthStateChanged výše:
-      // ověří subscription a podle toho buď router.replace("/"),
-      // nebo signOut + error.
+      await completeLogin(credential.user);
     } catch (err: unknown) {
       logAuthIssue("handleSubmit", err);
       const authErr = err as { code?: string };
@@ -525,15 +525,19 @@ export default function LoginPage() {
 
       setError(msg);
       setLoading(false);
+    } finally {
+      loginAttemptInFlightRef.current = false;
     }
   };
 
   const handlePasskeyLogin = async () => {
+    if (loginAttemptInFlightRef.current) return;
     if (!passkeySupported) {
       setError("Tento prohlížeč nebo zařízení přístupové klíče nepodporuje.");
       return;
     }
 
+    loginAttemptInFlightRef.current = true;
     setError(null);
     setResetStatus(null);
     loginRememberThisDeviceRef.current = rememberThisDevice;
@@ -542,8 +546,8 @@ export default function LoginPage() {
     clearMfaState();
 
     try {
-      await signInWithPasskey();
-      // dokončení přihlášení + kontrolu subscription řeší onAuthStateChanged
+      const credential = await signInWithPasskey();
+      await completeLogin(credential.user);
     } catch (error) {
       logAuthIssue("handlePasskeyLogin", error);
       setError(
@@ -554,6 +558,7 @@ export default function LoginPage() {
       );
       setLoading(false);
     } finally {
+      loginAttemptInFlightRef.current = false;
       setPasskeyLoading(false);
     }
   };

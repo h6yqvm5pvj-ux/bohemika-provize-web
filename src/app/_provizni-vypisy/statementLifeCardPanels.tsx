@@ -3,6 +3,7 @@
 import { AlertTriangle, CheckCircle2, Loader2, RotateCcw } from "lucide-react";
 
 import { formatWholeMoney } from "./statementParsing";
+import styles from "./statementContractDetail.module.css";
 import type { LifeSplitContractPreview } from "./statementTypes";
 
 export type StatementRefreshConversionStatus = "idle" | "saving" | "success" | "error";
@@ -27,26 +28,26 @@ export function LifeSplitCardMetadata({
   monthlyPremium: number | null;
 }) {
   return (
-    <div className="mt-3 grid divide-y divide-violet-100 border-y border-violet-100 text-xs font-semibold text-slate-600 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-      <div className="px-3 py-2">
-        <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Uzavřeno</div>
-        <div className="mt-0.5 text-slate-900">{contract.signedAt || "—"}</div>
+    <div className={styles.metadata}>
+      <div>
+        <div>Uzavřeno</div>
+        <div>{contract.signedAt || "—"}</div>
       </div>
-      <div className="px-3 py-2">
-        <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Počátek</div>
-        <div className="mt-0.5 text-slate-900">{contract.validFrom || "—"}</div>
+      <div>
+        <div>Počátek</div>
+        <div>{contract.validFrom || "—"}</div>
       </div>
-      <div className="px-3 py-2">
-        <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+      <div>
+        <div>
           Roční základna
         </div>
-        <div className="mt-0.5 text-slate-900">
+        <div>
           {contract.annualPremium > 0 ? `${formatWholeMoney(contract.annualPremium)} Kč` : "—"}
         </div>
       </div>
-      <div className="px-3 py-2">
-        <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Měsíčně</div>
-        <div className="mt-0.5 text-slate-900">
+      <div>
+        <div>Měsíčně</div>
+        <div>
           {monthlyPremium === null ? "—" : `${formatWholeMoney(monthlyPremium)} Kč`}
         </div>
       </div>

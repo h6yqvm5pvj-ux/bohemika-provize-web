@@ -1,4 +1,6 @@
 import type { Position, Product } from "@/app/types/domain";
+import { CheckCircle2, CircleHelp, History } from "lucide-react";
+import styles from "./statementContractDetail.module.css";
 
 import {
   formatSystemDate,
@@ -51,16 +53,16 @@ export function SystemMatchBadge({
   const resolvedContract = presentation.matchedSystemContract(match);
   const historyLabel = presentation.systemMatchHistoryLabel(match);
 
-  const badgeClass =
+  const badgeTone =
     match.status === "matched"
       ? resolvedContract
-        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-        : "border-amber-200 bg-amber-50 text-amber-900"
+        ? "ok"
+        : "warn"
       : match.status === "loading"
-        ? "border-sky-200 bg-sky-50 text-sky-800"
+        ? "info"
         : match.status === "not_found"
-          ? "border-amber-200 bg-amber-50 text-amber-900"
-          : "border-rose-200 bg-rose-50 text-rose-800";
+          ? "warn"
+          : "error";
 
   const label =
     match.status === "matched"
@@ -84,7 +86,7 @@ export function SystemMatchBadge({
           : "Ověření nedokončeno";
 
   return (
-    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
+    <span className={styles.badge} data-tone={badgeTone}>
       {label}
     </span>
   );
@@ -144,7 +146,7 @@ export function SystemMatchPanel({
         : match.contracts;
 
   return (
-    <div className="mt-3 space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+    <div className={styles.matchPanel}>
       {displayContracts.map((contract) => {
         const productMismatch =
           Boolean(expectedProductKey && contract.productKey) &&
@@ -169,29 +171,30 @@ export function SystemMatchPanel({
 
         return (
           <div key={`${contract.adviserEmail ?? "owner"}-${contract.id}`}>
-            <div className="font-bold">
-              {contractLabel}: {contract.clientName || "klient bez názvu"}
+            <div className={styles.matchTitle}>
+              {!resolvedContract ? <CircleHelp aria-hidden="true" /> : hasFamilyHistory && !isSelected ? <History aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+              <span>{contractLabel}</span>
+              {contract.clientName || "klient bez názvu"}
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-emerald-900">
-              <span>{productLabelFromKey(contract.productKey)}</span>
-              <span>Poradce: {contract.adviserName || contract.adviserEmail || "—"}</span>
-              <span>Pozice: {presentation.positionLabel(presentation.systemContractPosition(contract))}</span>
-              <span>
-                Pojistné:{" "}
+            <dl className={styles.matchFacts}>
+              <div><dt>Produkt</dt><dd>{productLabelFromKey(contract.productKey)}</dd></div>
+              <div><dt>Poradce</dt><dd>{contract.adviserName || contract.adviserEmail || "—"}</dd></div>
+              <div><dt>Pozice</dt><dd>{presentation.positionLabel(presentation.systemContractPosition(contract))}</dd></div>
+              <div><dt>Pojistné</dt><dd>
                 {Number.isFinite(inputAmount)
                   ? paymentAmountWithFrequencyLabel(inputAmount, contract.frequencyRaw)
                   : "—"}
-              </span>
-              <span>Sjednáno: {formatSystemDate(contract.contractSignedDate)}</span>
-              <span>Počátek: {formatSystemDate(contract.policyStartDate)}</span>
-            </div>
+              </dd></div>
+              <div><dt>Sjednáno</dt><dd>{formatSystemDate(contract.contractSignedDate)}</dd></div>
+              <div><dt>Počátek</dt><dd>{formatSystemDate(contract.policyStartDate)}</dd></div>
+            </dl>
             {productMismatch && (
-              <div className="mt-1 font-semibold text-amber-900">
+              <div className={styles.matchNotice}>
                 Pozor: produkt ve výpisu nesedí s produktem uložené smlouvy.
               </div>
             )}
             {timelinePositionMismatch && (
-              <div className="mt-1 font-semibold text-amber-900">
+              <div className={styles.matchNotice}>
                 Pozor: uložená pozice {presentation.positionLabel(timelinePositionMismatch.storedPosition)} nesedí s historií kariéry ({presentation.positionLabel(timelinePositionMismatch.timelinePosition)} k datu sjednání).
               </div>
             )}

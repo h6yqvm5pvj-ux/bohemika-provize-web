@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useRef } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -8,14 +8,14 @@ import {
   ChevronDown,
   ListChecks,
   Loader2,
-  ReceiptText,
   RotateCcw,
   WalletCards,
   X,
   type LucideIcon,
 } from "lucide-react";
 
-import introStyles from "../cashflow/cashflowIntro.module.css";
+import { StatementProgressPanel } from "./StatementProgressPanel";
+import importStyles from "./statementImport.module.css";
 import { formatMoney, formatSystemDate } from "./statementParsing";
 import type {
   SavedCommissionStatement,
@@ -389,154 +389,30 @@ export function ProcessedStatementHistoryModal({
   );
 }
 
-export const PROCESSING_CAPTIONS = [
-  "Ukládám výpis do provizního kalendáře",
-  "Páruju smlouvy podle čísel smluv",
-  "Zapisuju vyplacené provizní položky",
-  "Kontroluju výročí aut a změny pojistného",
-  "Připravuju účetní opravy",
-  "Chystám podklady pro MAXX a extranet",
-  "Čekám na potvrzení zápisu",
-] as const;
-
-export function StatementProcessingOverlay({
-  caption,
-  progress,
-  stepIndex,
-  statementCount,
-}: {
-  caption: string;
-  progress: number;
-  stepIndex: number;
+export function StatementProcessingOverlay({ completedCount, statementCount }: {
+  completedCount: number;
   statementCount: number;
 }) {
-  const visibleProgress = Math.max(0, Math.min(100, progress));
-  const pileSheetCount = Math.max(4, Math.min(10, Math.ceil(visibleProgress / 12) + 2));
-  const progressStyle = useMemo(() => ({ width: `${visibleProgress}%` }), [visibleProgress]);
-  const documentStackStyle = useMemo(
-    () => ({
-      ["--statement-pile-height" as string]: `${70 + visibleProgress * 0.48}px`,
-      minHeight: "18rem",
-    }),
-    [visibleProgress]
-  );
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    overlayRef.current?.focus();
+    const keepFocus = (event: KeyboardEvent) => {
+      if (event.key === "Tab") { event.preventDefault(); overlayRef.current?.focus(); }
+    };
+    document.addEventListener("keydown", keepFocus);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", keepFocus);
+      previousFocus?.focus();
+    };
+  }, []);
 
   return (
-    <div
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-md"
-      aria-busy="true"
-      aria-live="polite"
-    >
-      <section
-        className={`${introStyles.initialLoaderShell} relative w-full max-w-5xl overflow-hidden rounded-[28px] border border-white/80 px-5 py-5 shadow-[0_32px_96px_rgba(15,23,42,0.28)] sm:px-7 sm:py-7`}
-        role="status"
-      >
-        <span className={introStyles.initialLoaderBeam} aria-hidden="true" />
-
-        <div className="relative z-10 grid items-center gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="space-y-6">
-            <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-fuchsia-200 bg-white text-fuchsia-700 shadow-[0_14px_30px_rgba(162,28,175,0.13)]">
-                <ReceiptText className="h-6 w-6" strokeWidth={2.2} aria-hidden="true" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-black">Zpracování výpisu</p>
-                <p className="text-sm text-black/55">
-                  {statementCount === 1
-                    ? "Zapisuji 1 provizní výpis"
-                    : `Zapisuji ${statementCount} provizní výpisy`}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-end gap-2 font-mono text-6xl font-semibold leading-none text-black sm:text-7xl">
-                <span>{visibleProgress}</span>
-                <span className="pb-1.5 text-2xl text-fuchsia-700 sm:text-3xl">%</span>
-              </div>
-              <h2
-                key={caption}
-                className={`${introStyles.initialLoaderStage} mt-4 min-h-10 text-2xl font-semibold leading-tight text-black sm:text-3xl`}
-              >
-                {caption}
-              </h2>
-              <div className="mt-3 flex flex-wrap gap-2 text-sm font-semibold text-black/55">
-                <span>Zápis do historie smluv</span>
-                <span aria-hidden="true">·</span>
-                <span>Provizní kalendář</span>
-              </div>
-            </div>
-
-            <div
-              className={introStyles.initialLoaderProgress}
-              role="progressbar"
-              aria-label="Průběh zpracování provizního výpisu"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={visibleProgress}
-            >
-              <span className={introStyles.initialLoaderProgressFill} style={progressStyle} />
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {PROCESSING_CAPTIONS.map((stage, index) => (
-                <span
-                  key={stage}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    index <= stepIndex ? "w-9 bg-slate-950" : "w-3 bg-white/80"
-                  }`}
-                  aria-hidden="true"
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className={introStyles.initialLoaderConsole} style={documentStackStyle} aria-hidden="true">
-            <div className="relative z-10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-black">
-                <Loader2 className="h-5 w-5 animate-spin text-fuchsia-700" strokeWidth={2.2} />
-                Zápis položek
-              </div>
-              <div className="text-sm font-semibold text-black/50">probíhá</div>
-            </div>
-
-            <div className={introStyles.statementLoaderDropZone} style={{ minHeight: "13rem" }}>
-              {[0, 1, 2, 3, 4].map((paperIndex) => (
-                <span
-                  key={paperIndex}
-                  className={introStyles.statementLoaderPaper}
-                  style={{ ["--paper-index" as string]: paperIndex }}
-                >
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              ))}
-
-              <div className={introStyles.statementLoaderPile}>
-                {Array.from({ length: pileSheetCount }, (_, sheetIndex) => {
-                  const xOffset = ((sheetIndex % 5) - 2) * 6;
-                  const rotation = ((sheetIndex % 6) - 2.5) * 1.4;
-
-                  return (
-                    <span
-                      key={sheetIndex}
-                      style={{
-                        bottom: `${sheetIndex * 6}px`,
-                        transform: `translateX(${xOffset}px) rotate(${rotation}deg)`,
-                        zIndex: sheetIndex + 1,
-                      }}
-                    >
-                      <span />
-                      <span />
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+    <div ref={overlayRef} className={importStyles.processingOverlay} role="dialog" aria-modal="true" aria-label="Zpracování provizního výpisu" tabIndex={-1}>
+      <StatementProgressPanel mode="saving" statementCount={statementCount} completedCount={completedCount} />
     </div>
   );
 }

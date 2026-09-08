@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { AlertTriangle, CalendarX, CheckCircle2, ChevronDown } from "lucide-react";
 
+import { StatementSection } from "./StatementSection";
+
 import { toDate } from "@/app/lib/formatters";
 import {
   BohemkaContractDetailLink,
@@ -268,39 +270,19 @@ export function StornoContractsSectionPanel({
   ].filter((section) => section.entries.length > 0);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full flex-col gap-3 px-4 py-4 text-left transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
-        aria-expanded={expanded}
-      >
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-700">
-            <AlertTriangle className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-          </span>
-          <div>
-            <h3 className="text-lg font-black tracking-tight text-slate-950">Storna</h3>
-            <p className="text-sm text-slate-600">
-              {pairedStornoGroupEntries.length} spárovaných · {unpairedStornoGroupEntries.length} nespárovaných
-            </p>
-          </div>
-        </div>
-        <span className="inline-flex items-center gap-3 text-right">
-          <span>
-            <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">Celkem</span>
-            <span className="block text-lg font-black text-rose-700">{formatMoney(totalStorno)} Kč</span>
-          </span>
-          <ChevronDown
-            className={`h-4 w-4 text-slate-500 transition-transform ${expanded ? "rotate-180" : ""}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
-
+    <StatementSection
+      title="Storna"
+      icon={AlertTriangle}
+      tone="storno"
+      count={combinedStornoGroups.length}
+      amount={totalStorno}
+      description={`${pairedStornoGroupEntries.length} spárovaných · ${unpairedStornoGroupEntries.length} nespárovaných`}
+      badge={unpairedStornoGroupEntries.length > 0 ? `${unpairedStornoGroupEntries.length} k ručnímu spárování` : undefined}
+      expanded={expanded}
+      onToggle={() => setExpanded(value => !value)}
+    >
       {expanded && (
-        <div className="space-y-5 border-t border-slate-200 px-4 py-4">
+      <div className="space-y-5">
           {stornoSections.map((section) => {
             const SectionIcon = section.icon;
             const sectionTotal = stornoSectionTotal(section.entries);
@@ -366,9 +348,9 @@ export function StornoContractsSectionPanel({
               </section>
             );
           })}
-        </div>
+      </div>
       )}
-    </section>
+    </StatementSection>
   );
 }
 
