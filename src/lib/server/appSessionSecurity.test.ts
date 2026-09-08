@@ -169,6 +169,46 @@ describe("cadastral map frame policy", () => {
   });
 });
 
+describe("statement calculator frame policy", () => {
+  it.each(["0", "1"])("allows the statement prefill inside the same app with strict enforcement %s", async (strict) => {
+    vi.stubEnv("CSP_STRICT_ENFORCE", strict);
+    const cookie = await issue();
+    const response = await middleware(request("/kalkulacka?prefill=commission-statement&product=neon&contractNumber=test-contract", cookie.value));
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+    expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+    if (strict === "0") {
+      expect(response.headers.get("Content-Security-Policy-Report-Only")).toContain("frame-ancestors 'self'");
+    }
+    expect(response.headers.get("Cache-Control")).toContain("private, no-store");
+  });
+
+  it.each([
+    "/kalkulacka",
+    "/kalkulacka?prefill=other",
+    "/kalkulacka?embedded=1",
+    "/kalkulacka/other?prefill=commission-statement",
+    "/nastaveni?prefill=commission-statement",
+    "/provizni-vypisy?prefill=commission-statement",
+  ])("keeps ordinary pages protected from framing: %s", async (path) => {
+    const cookie = await issue();
+    const response = await middleware(request(path, cookie.value));
+    expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
+  });
+
+  it.each(["missing", "revoked"])("still requires an active session for the embedded calculator (%s)", async (kind) => {
+    const cookie = await issue();
+    if (kind === "revoked") mocks.store.get(sessionPath("current"))!.revokedAtMs = nowMs;
+    const path = "/kalkulacka?prefill=commission-statement&product=neon";
+    const response = await middleware(request(path, kind === "missing" ? undefined : cookie.value));
+    expect(response.status).toBe(307);
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/login");
+    expect(new URL(response.headers.get("location")!).searchParams.get("next")).toBe(path);
+    expect(response.headers.get("x-middleware-next")).toBeNull();
+  });
+});
+
 describe("fresh reauthentication for signing out other devices", () => {
   it("cannot turn a bearer token without a matching cookie into a new session", async () => {
     for (const action of ["prepareRevokeOthers", "revokeOthers"]) {

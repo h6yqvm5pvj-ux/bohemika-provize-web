@@ -244,7 +244,7 @@ const PRODUCT_LOGOS: Record<string, string> = {
 const INSURER_LOGOS: Record<string, string> = {
   Allianz: "/icons/allianz.png",
   "ČPP": "/icons/cpp.png",
-  "ČSOB": "/icons/csob.png",
+  "ČSOB": "/icons/csb.png",
   "Generali Česká": "/icons/generali.png",
   "Komerční pojišťovna": "/icons/kblogo.png",
   Kooperativa: "/icons/koop-v2.png",

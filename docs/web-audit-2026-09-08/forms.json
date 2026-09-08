@@ -1,0 +1,13 @@
+{
+  "travelEmptyValidation": "Napište cílovou zemi nebo země vaší cesty.",
+  "travelActivityValidation": "Vyberte alespoň jednu aktivitu nebo typ cesty.",
+  "travelErrorPreservedInput": true,
+  "travelSuccess": true,
+  "travelDimensions": {
+    "width": 390,
+    "scrollWidth": 390
+  },
+  "mockedSubmissions": 2,
+  "productionSubmissions": 0,
+  "realNextRouterExternalRedirect": "http://audit.invalid/check"
+}

@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from "react";
-import { ArrowUpRight, ChartNoAxesColumnIncreasing } from "lucide-react";
+import { ArrowDown, ArrowUpRight, ChartNoAxesColumnIncreasing } from "lucide-react";
 
 import { formatMoney } from "@/app/lib/formatters";
 import { buildYearChart, CHART_MONTH_LABELS, formatChartAmount, isPastCashflowMonth } from "../yearChart";
@@ -64,12 +64,14 @@ export function CashflowYearChart({ yearGroup, onSelectMonth }: {
                   className={`${styles.column} ${isPast ? styles.pastColumn : ""} ${isCurrent ? styles.currentColumn : ""} ${month?.totalSource === "paid" ? styles.paidColumn : ""} ${isNegative ? styles.negativeColumn : ""}`}
                   data-month-index={index}
                   data-past-month={isPast || undefined}
+                  aria-current={isCurrent ? "date" : undefined}
                   disabled={!month}
-                  aria-label={month ? `${month.label}${isPast ? ", uplynulý měsíc" : ""}: ${formatMoney(month.total)}, ${month.totalSource === "paid" ? "dle výpisu" : "předpoklad"}. Otevřít detail měsíce.` : `${label}${isPast ? ", uplynulý měsíc" : ""}: bez dat v aktuálním výběru`}
+                  aria-label={month ? `${month.label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: ${formatMoney(month.total)}, ${month.totalSource === "paid" ? "dle výpisu" : "předpoklad"}. Otevřít detail měsíce.` : `${label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: bez dat v aktuálním výběru`}
                   onClick={() => { if (month) onSelectMonth(month); }}
                   onMouseEnter={() => setHoveredMonth(index)} onMouseLeave={() => setHoveredMonth(null)}
                   onFocus={() => setFocusedMonth(index)} onBlur={() => setFocusedMonth(null)}>
                   <span className={styles.barTrack} aria-hidden="true">
+                    {isCurrent && <ArrowDown className={styles.currentMonthArrow} size={18} strokeWidth={2.3} style={{ top: `${top}%` }} />}
                     {month && month.total !== 0
                       ? <span className={styles.bar} style={valueStyle} />
                       : <span className={month ? styles.zeroMarker : styles.missingMarker} style={{ top: `${chart.zeroPosition}%` }}>{month ? "0" : "—"}</span>}

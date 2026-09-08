@@ -95,7 +95,7 @@ const ADVISOR_SERVICES = [
   },
   {
     label: "Cestovní pojištění",
-    artwork: "/images/online-card-services/travel-v2.webp",
+    artwork: "/icons/icon_cestovko.webp",
     icon: PlaneTakeoff,
     iconClass: "text-indigo-200",
     accentClass: "bg-indigo-300/80",

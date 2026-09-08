@@ -1,7 +1,7 @@
-import { useMemo } from "react";
-import { ArrowUpRight, CalendarRange, TrendingUp } from "lucide-react";
+import { useId, type CSSProperties } from "react";
+import { CalendarDays, CalendarRange, Check, Layers3, Wallet } from "lucide-react";
 
-import introStyles from "../cashflowIntro.module.css";
+import styles from "./CashflowInitialLoader.module.css";
 
 type CashflowInitialLoaderProps = {
   completing: boolean;
@@ -11,6 +11,9 @@ type CashflowInitialLoaderProps = {
   detailText?: string | null;
 };
 
+const MONTHS = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"];
+const STEPS = ["Načtení dat", "Výpočet provizí", "Sestavení kalendáře"];
+
 export function CashflowInitialLoader({
   completing,
   tipsterMode = false,
@@ -18,121 +21,113 @@ export function CashflowInitialLoader({
   stageText,
   detailText,
 }: CashflowInitialLoaderProps) {
-  const visibleProgress = completing ? 100 : progress;
+  const titleId = useId();
+  const visibleProgress = completing
+    ? 100
+    : Math.max(0, Math.min(99, Math.round(Number.isFinite(progress) ? progress : 0)));
   const visibleStageText = completing
     ? "Hotovo. Otevírám kalendář."
     : stageText || (tipsterMode ? "Načítám TIP provize" : "Načítám provize");
-  const progressStyle = useMemo(
-    () => ({ width: `${Math.max(0, Math.min(100, visibleProgress))}%` }),
-    [visibleProgress]
-  );
+  const currentStep = visibleProgress < 88 ? 0 : visibleProgress < 98 ? 1 : 2;
+  const filledMonths = Math.floor((visibleProgress / 100) * MONTHS.length);
 
   return (
-    <section
-      className={`${introStyles.initialLoaderShell} min-h-[calc(100vh-7.5rem)] overflow-hidden rounded-[32px] border border-white/80 px-4 py-6 shadow-[0_28px_88px_rgba(15,23,42,0.14)] sm:px-7 sm:py-8 lg:px-10`}
-      aria-busy="true"
-      aria-live="polite"
-    >
-      <span className={introStyles.initialLoaderBeam} aria-hidden="true" />
+    <section className={styles.scene} aria-labelledby={titleId} data-complete={completing}>
+      <header className={styles.header} aria-hidden="true">
+        <span className={styles.sectionLabel}>
+          <CalendarRange size={16} strokeWidth={1.8} />
+          {tipsterMode ? "Provizní kalendář TIPŮ" : "Provizní kalendář"}
+        </span>
+        <span className={styles.liveLabel}>
+          {completing ? <Check size={13} /> : <span className={styles.liveDot} />}
+          {completing ? "Připraveno" : "Načítání"}
+        </span>
+      </header>
 
-      <div className="relative z-10 grid min-h-[calc(100vh-11.5rem)] grid-cols-1 items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
-        <div className="space-y-8">
-          <div className="flex items-center gap-3">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-fuchsia-200 bg-white text-fuchsia-700 shadow-[0_14px_30px_rgba(162,28,175,0.13)]">
-              <CalendarRange className="h-6 w-6" strokeWidth={2.2} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-black">Provizní kalendář</p>
-              <p className="text-sm text-black/55">
-                {tipsterMode ? "TIP cashflow" : "Cashflow engine"}
-              </p>
+      <div className={styles.content}>
+        <div className={styles.illustration} aria-hidden="true">
+          <div className={styles.orbit} />
+          <div className={styles.calendarStack}>
+            <div className={styles.calendar}>
+              <span className={`${styles.binding} ${styles.bindingLeft}`} />
+              <span className={`${styles.binding} ${styles.bindingRight}`} />
+              <div className={styles.calendarHeader}>
+                <div>
+                  <span className={styles.calendarEyebrow}>Měsíc po měsíci</span>
+                  <span className={styles.calendarTitle}>Přehled provizí</span>
+                </div>
+                <span className={styles.calendarIcon}><CalendarDays size={21} strokeWidth={1.6} /></span>
+              </div>
+              <div className={styles.months}>
+                {MONTHS.map((month, index) => (
+                  <div
+                    key={month}
+                    className={styles.month}
+                    data-filled={index < filledMonths}
+                    data-current={!completing && index === filledMonths}
+                    style={{ "--month-delay": `${index * 110}ms` } as CSSProperties}
+                  >
+                    <span className={styles.monthName}>{month}</span>
+                    <span className={styles.monthAmount} />
+                    <span className={styles.monthMarker} />
+                  </div>
+                ))}
+              </div>
+              <div className={styles.calendarFoot}><span /><span /><span /></div>
             </div>
           </div>
 
-          <div>
-            <div className="flex items-end gap-2 font-mono text-7xl font-semibold leading-none text-black sm:text-8xl lg:text-9xl">
-              <span>{Math.round(visibleProgress)}</span>
-              <span className="pb-2 text-3xl text-fuchsia-700 sm:text-4xl lg:pb-3">%</span>
-            </div>
-
-            <h1
-              key={visibleStageText}
-              className={`${introStyles.initialLoaderStage} mt-5 max-w-4xl text-3xl font-semibold leading-tight text-black sm:text-4xl`}
-            >
-              {visibleStageText}
-            </h1>
-            {!completing && detailText && (
-              <p className="mt-3 text-base font-medium text-black/55 sm:text-lg">
-                {detailText}
-              </p>
-            )}
+          <div className={`${styles.floatingCard} ${styles.contractCard}`}>
+            <span className={styles.cardIcon}><Layers3 size={17} strokeWidth={1.7} /></span>
+            <div><span className={styles.cardLabel}>{tipsterMode ? "Vaše tipy" : "Vaše smlouvy"}</span><span className={styles.skeletonLine} /></div>
+            <span className={styles.cardSignal}>{visibleProgress >= 88 ? <Check size={12} /> : <span />}</span>
           </div>
+          <div className={`${styles.floatingCard} ${styles.payoutCard}`}>
+            <span className={styles.cardIcon}><Wallet size={17} strokeWidth={1.7} /></span>
+            <div><span className={styles.cardLabel}>Výplaty provizí</span><span className={styles.skeletonLine} /></div>
+            <span className={styles.payoutDots}><i /><i /><i /></span>
+          </div>
+        </div>
 
+        <div className={styles.copy}>
+          <h1 id={titleId}>{tipsterMode ? "TIP provize pod kontrolou." : "Provize pod kontrolou."}<br /><span>Měsíc po měsíci.</span></h1>
+          <p>Připravujeme přehled výplat a očekávaných provizí.</p>
+        </div>
+
+        <div className={styles.loading}>
+          <div className={styles.progressHeading}>
+            <p className={styles.stage} role="status" aria-live="polite" aria-atomic="true">
+              {completing ? <Check size={14} aria-hidden="true" /> : <span className={styles.loadingDots} aria-hidden="true"><i /><i /><i /></span>}
+              <span>{visibleStageText}</span>
+            </p>
+            <span className={styles.percent} aria-hidden="true">{visibleProgress}<span> %</span></span>
+          </div>
           <div
-            className={introStyles.initialLoaderProgress}
+            className={styles.track}
             role="progressbar"
             aria-label="Načítání provizního kalendáře"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={Math.round(visibleProgress)}
+            aria-valuenow={visibleProgress}
+            aria-valuetext={`${visibleProgress} % · ${visibleStageText}`}
           >
-            <span className={introStyles.initialLoaderProgressFill} style={progressStyle} />
+            <span className={styles.fill} style={{ width: `${visibleProgress}%` }} />
           </div>
-        </div>
-
-        <div className={introStyles.initialLoaderConsole} aria-hidden="true">
-          <div className="relative z-10 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-black">
-              <TrendingUp className="h-5 w-5 text-fuchsia-700" strokeWidth={2.2} />
-              Graf cashflow
-            </div>
-            <div className="flex items-center gap-1.5 text-sm font-semibold text-black">
-              <ArrowUpRight className="h-4 w-4 text-[#16a34a]" strokeWidth={2.6} />
-              růst
-            </div>
-          </div>
-
-          <div className={introStyles.initialLoaderChart}>
-            <div className="relative z-10 flex justify-end">
-              <ArrowUpRight
-                className={introStyles.initialLoaderGrowthArrow}
-                strokeWidth={2.8}
-              />
-            </div>
-
-            <div className={introStyles.initialLoaderChartBars}>
-              {[32, 44, 39, 58, 67, 74, 88].map((height, index) => (
-                <span
-                  key={`${height}-${index}`}
-                  style={{
-                    height: `${height}%`,
-                    ["--cf-bar" as string]: String(index),
-                  }}
-                />
-              ))}
-            </div>
-
-            <svg
-              className={introStyles.initialLoaderChartSvg}
-              viewBox="0 0 420 210"
-              preserveAspectRatio="none"
-            >
-              <path
-                d="M24 184 C84 166 104 142 146 150 C194 160 205 112 246 116 C292 120 304 78 348 74 C376 72 394 50 410 34 L410 210 L24 210 Z"
-                fill="rgba(217,70,239,0.1)"
-              />
-              <path
-                className={introStyles.initialLoaderChartStroke}
-                d="M24 184 C84 166 104 142 146 150 C194 160 205 112 246 116 C292 120 304 78 348 74 C376 72 394 50 410 34"
-                fill="none"
-                stroke="#d946ef"
-                strokeWidth="7"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
+          <p className={styles.detail}>{!completing && detailText ? detailText : "\u00a0"}</p>
         </div>
       </div>
+
+      <ol className={styles.steps} aria-label="Postup přípravy kalendáře">
+        {STEPS.map((step, index) => {
+          const done = completing || index < currentStep;
+          return (
+            <li key={step} className={styles.step} data-done={done} aria-current={!completing && index === currentStep ? "step" : undefined}>
+              <span className={styles.stepNumber} aria-hidden="true">{done ? <Check size={12} strokeWidth={2.2} /> : index + 1}</span>
+              <span>{step}</span>
+            </li>
+          );
+        })}
+      </ol>
     </section>
   );
 }

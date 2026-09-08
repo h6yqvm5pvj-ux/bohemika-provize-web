@@ -92,6 +92,7 @@ import {
 import { StatementPairingLoader } from "./StatementPairingLoader";
 import { StatementImportPanel } from "./StatementImportPanel";
 import { StatementProgressPanel } from "./StatementProgressPanel";
+import { StatementProcessingSuccess, type StatementProcessingSuccessResult } from "./StatementProcessingSuccess";
 import importStyles from "./statementImport.module.css";
 import workspaceStyles from "./statementWorkspace.module.css";
 import { StatementSection } from "./StatementSection";
@@ -250,6 +251,7 @@ import {
   isInvestmentSectionProductCode,
   isLifeSplitProductCode,
   isNeonInitialCommissionCode,
+  lifeSplitAnnualPremiumBase,
   monthKeyFromDate,
   monthKeyFromIndex,
   monthKeyFromStatementPeriod,
@@ -3102,7 +3104,7 @@ const lifeSplitContractUncertaintyCount = (
       : {
           ...contract,
           rows: reviewRows,
-          annualPremium: reviewRows.find((row) => row.base > 0)?.base ?? contract.annualPremium,
+          annualPremium: lifeSplitAnnualPremiumBase(reviewRows),
         };
   if (reviewRows.length === 0 && contract.b36Payments.length === 0) return 0;
 
@@ -4672,7 +4674,7 @@ const buildStatementDiscrepancyIssues = (
         : {
             ...contract,
             rows: reviewRows,
-            annualPremium: reviewRows.find((row) => row.base > 0)?.base ?? contract.annualPremium,
+            annualPremium: lifeSplitAnnualPremiumBase(reviewRows),
           };
     if (reviewRows.length === 0 && contract.b36Payments.length === 0) continue;
     const productMeta = resolveStatementProduct(contract.productCode);
@@ -5312,7 +5314,7 @@ function LifeSplitContractCard({
       : {
           ...contract,
           rows: reviewRows,
-          annualPremium: reviewRows.find((row) => row.base > 0)?.base ?? contract.annualPremium,
+          annualPremium: lifeSplitAnnualPremiumBase(reviewRows),
         };
   const tipOnlyContract = lifeSplitContractHasOnlyTipRows(reviewContract);
   const matchScope = lifeSplitContractMatchScope(reviewContract);
@@ -7491,6 +7493,8 @@ export default function CommissionStatementsPage() {
   const statementRecordsProcessing = statementSaveState.status === "saving";
   const statementRecordsProcessed = statementSaveState.status === "saved";
   const [processingCompletedCount, setProcessingCompletedCount] = useState(0);
+  const [processingSuccess, setProcessingSuccess] = useState<StatementProcessingSuccessResult | null>(null);
+  const dismissProcessingSuccess = useCallback(() => setProcessingSuccess(null), []);
   const [error, setError] = useState<string | null>(null);
   const [processedStatementHistory, setProcessedStatementHistory] = useState<
     SavedCommissionStatement[]
@@ -7592,6 +7596,7 @@ export default function CommissionStatementsPage() {
   useEffect(() => {
     if (user) return;
 
+    setProcessingSuccess(null);
     setProcessedStatementHistory([]);
     setProcessedStatementHistoryError(null);
     setProcessedStatementHistoryLoading(false);
@@ -8178,6 +8183,7 @@ export default function CommissionStatementsPage() {
   };
 
   const resetStatementWorkspace = () => {
+    setProcessingSuccess(null);
     setStatements([]);
     setStatementFilesForProcessing([]);
     setError(null);
@@ -8212,6 +8218,7 @@ export default function CommissionStatementsPage() {
     }
 
     setReadingFileCount(htmlFiles.length);
+    setProcessingSuccess(null);
     setParsing(true);
     setError(null);
     setMatchingError(null);
@@ -8290,6 +8297,7 @@ export default function CommissionStatementsPage() {
     }
 
     setOpeningHistoryStatementId(normalizedStatementId);
+    setProcessingSuccess(null);
     setError(null);
     setMatchingError(null);
 
@@ -8389,6 +8397,7 @@ export default function CommissionStatementsPage() {
     }
 
     statementProcessingInFlightRef.current = true;
+    setProcessingSuccess(null);
     setProcessingCompletedCount(0);
     setStatementSaveState({
       status: "saving",
@@ -8463,6 +8472,7 @@ export default function CommissionStatementsPage() {
       setNeonRefreshPromptError(null);
       setNeonRefreshPromptSaving(false);
       void refreshProcessedStatementHistory();
+      setProcessingSuccess({ statementCount: filesForProcessing.length, summary: processingSummary });
     } catch (saveError) {
       console.warn("Provizní výpisy: zpracování záznamu selhalo.", saveError);
       setStatementSaveState({
@@ -8499,6 +8509,7 @@ export default function CommissionStatementsPage() {
     }
 
     statementProcessingInFlightRef.current = true;
+    setProcessingSuccess(null);
     setProcessingCompletedCount(0);
     setStatementSaveState({
       status: "saving",
@@ -8572,6 +8583,7 @@ export default function CommissionStatementsPage() {
       setNeonRefreshPromptError(null);
       setNeonRefreshPromptSaving(false);
       void refreshProcessedStatementHistory();
+      setProcessingSuccess({ statementCount: 1, summary: processingSummary });
     } catch (saveError) {
       console.warn("Provizní výpisy: opětovné zpracování výpisu selhalo.", saveError);
       setStatementSaveState({
@@ -9212,6 +9224,10 @@ export default function CommissionStatementsPage() {
         />
       )}
 
+      {processingSuccess && statementRecordsProcessed && (
+        <StatementProcessingSuccess result={processingSuccess} onDismiss={dismissProcessingSuccess} />
+      )}
+
       {reportModalOpen && (
         <DiscrepancyPdfNotesModal
           items={selectedPdfItems}
@@ -9260,7 +9276,7 @@ export default function CommissionStatementsPage() {
         />
       )}
 
-      {activeNeonRefreshPromptTarget && (
+      {activeNeonRefreshPromptTarget && !processingSuccess && (
         <NeonRefreshConversionPromptModal
           target={activeNeonRefreshPromptTarget}
           totalCount={neonRefreshPromptTargets.length}

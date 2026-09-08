@@ -180,7 +180,7 @@ const statementProductLogoMeta = (product: StatementProductMeta): StatementProdu
   if (rawCode.startsWith("KOO")) return { src: "/icons/koop-v2.png", alt: "Kooperativa" };
   if (rawCode.startsWith("UNIQA")) return { src: "/icons/uniqa.png", alt: "UNIQA" };
   if (rawCode.startsWith("CSOB") || rawCode.startsWith("ČSOB")) {
-    return { src: "/icons/csob.png", alt: "ČSOB" };
+    return { src: "/icons/csb.png", alt: "ČSOB" };
   }
   if (rawCode.startsWith("ALL")) return { src: "/icons/allianz.png", alt: "Allianz" };
   if (rawCode.startsWith("PIL")) return { src: "/icons/pillow.png", alt: "Pillow" };

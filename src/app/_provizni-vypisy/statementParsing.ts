@@ -635,8 +635,23 @@ const classifyLifeSplitCommissionCode = (
     return { kind: "care", label: `Pečovatelská provize ${cleanCode}` };
   }
   if (cleanCode === "ATP101") return { kind: "tip", label: "Provize z TIPU" };
+  if (comparableCode === "A201") {
+    return { kind: "unknown", label: "Provize z investiční složky" };
+  }
   return { kind: "unknown", label: `Nezařazený kód ${cleanCode || "-"}` };
 };
+
+const lifeSplitAnnualPremiumBase = (
+  rows: ReadonlyArray<Pick<CommissionRow, "type" | "base">>
+): number =>
+  // Investment components (e.g. A201) have their own base. Only commission
+  // codes supported by the life calculator can supply its premium base.
+  rows.find(
+    (row) =>
+      Number.isFinite(row.base) &&
+      row.base > 0 &&
+      classifyLifeSplitCommissionCode(row.type).kind !== "unknown"
+  )?.base ?? 0;
 
 const classifyGeneralCommissionCode = (
   product: string,
@@ -1437,14 +1452,17 @@ const buildLifeSplitContracts = (
         client: row.client,
         signedAt: row.signedAt,
         validFrom: row.validFrom,
-        annualPremium: row.base,
+        annualPremium: 0,
         rows: [],
         b36Payments: [],
       } satisfies LifeSplitContractPreview);
 
     existing.rows.push(row);
-    if (!existing.annualPremium && row.base) existing.annualPremium = row.base;
     grouped.set(key, existing);
+  }
+
+  for (const contract of grouped.values()) {
+    contract.annualPremium = lifeSplitAnnualPremiumBase(contract.rows);
   }
 
   const keysByContractNumber = [...grouped.entries()].reduce<Record<string, string[]>>(
@@ -1703,6 +1721,7 @@ export {
   isLifePremiumIncreaseCommissionCode,
   isLifeSplitProductCode,
   isNeonInitialCommissionCode,
+  lifeSplitAnnualPremiumBase,
   monthKeyFromDate,
   monthKeyFromIndex,
   monthKeyFromStatementPeriod,

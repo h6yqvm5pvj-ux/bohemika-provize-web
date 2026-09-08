@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = "bohemika-pwa-v2";
+const CACHE_PREFIX = "bohemika-pwa-";
+const CACHE_NAME = `${CACHE_PREFIX}v3`;
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_URLS = [
@@ -11,10 +12,8 @@ const PRECACHE_URLS = [
   "/favicon.ico",
 ];
 
-const SAME_ORIGIN_CACHE_ALLOWLIST = [
-  /^\/$/,
-  /^\/(admin\/zadosti|login|nastaveni|smlouvy|muj-tym|pomucky|kalkulacka|cuzk|cashflow|intranet|posta|tipy|vizitka|jakubrauscher)(\/.*)?$/,
-  /^\/_next\/image.*/,
+const STATIC_ASSET_ALLOWLIST = [
+  /^\/_next\/image$/,
   /^\/_next\/static\/.*/,
   /^\/demos\/.*/,
   /^\/fonts\/.*/,
@@ -168,21 +167,74 @@ function resolveSameOriginTargetUrl(targetPath) {
   }
 }
 
-function isSameOriginCacheCandidate(url, request) {
-  if (request.method !== "GET") return false;
-  if (url.origin !== self.location.origin) return false;
-  if (url.pathname.startsWith("/api/")) return false;
-  return SAME_ORIGIN_CACHE_ALLOWLIST.some((pattern) => pattern.test(url.pathname));
+function isPageDataRequest(url, request) {
+  return (
+    url.searchParams.has("_rsc") ||
+    request.headers.has("RSC") ||
+    request.headers.has("Next-Router-Prefetch") ||
+    request.headers.has("Next-Router-Segment-Prefetch") ||
+    request.headers.get("Accept")?.includes("text/x-component")
+  );
 }
 
 function shouldCacheResponse(response) {
-  return response && response.status === 200 && (response.type === "basic" || response.type === "default");
+  if (!response || response.status !== 200 || response.redirected) return false;
+  if (response.type !== "basic" && response.type !== "default") return false;
+  const directives = (response.headers.get("Cache-Control") || "")
+    .split(",")
+    .map((directive) => directive.split("=", 1)[0].trim().toLowerCase());
+  return !directives.some((directive) =>
+    ["no-store", "private", "no-cache"].includes(directive)
+  ) && !response.headers.get("Content-Type")?.includes("text/x-component");
+}
+
+async function readCachedResponse(request) {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const response = await cache.match(request);
+    return shouldCacheResponse(response) ? response : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchStaticAsset(request, immutable) {
+  const response = await fetch(request, { cache: immutable ? "default" : "no-cache" });
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    if (shouldCacheResponse(response) && !response.headers.get("Content-Type")?.includes("text/html")) {
+      await cache.put(request, response.clone());
+    } else {
+      // A new private/no-store response or a removed file invalidates the old copy.
+      await cache.delete(request);
+    }
+  } catch {
+    // Cache storage can be unavailable or full; still return the network response.
+  }
+  return response;
+}
+
+async function serveStaticAsset(request, immutable) {
+  if (immutable) {
+    const cached = await readCachedResponse(request);
+    if (cached) return cached;
+  }
+  try {
+    return await fetchStaticAsset(request, immutable);
+  } catch {
+    return (await readCachedResponse(request)) || Response.error();
+  }
 }
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)).catch(() => undefined)
+    caches.open(CACHE_NAME).then((cache) => Promise.allSettled(
+      PRECACHE_URLS.map(async (url) => {
+        const response = await fetch(url, { cache: "reload" });
+        if (shouldCacheResponse(response)) await cache.put(url, response);
+      })
+    )).catch(() => undefined)
   );
 });
 
@@ -192,7 +244,7 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME)
+          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
           .map((key) => caches.delete(key))
       );
       await self.clients.claim();
@@ -206,22 +258,22 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  if (!isSameOriginCacheCandidate(url, request)) return;
+  if (
+    request.method !== "GET" ||
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith("/api/") ||
+    request.cache === "no-store" ||
+    request.headers.has("Authorization") ||
+    request.headers.has("Range") ||
+    isPageDataRequest(url, request)
+  ) return;
 
+  // Documents always come from the server; offline never exposes a cached page.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (shouldCacheResponse(response)) {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned)).catch(() => undefined);
-          }
-          return response;
-        })
+      fetch(request, { cache: "no-store" })
         .catch(async () => {
-          const cachedPage = await caches.match(request);
-          if (cachedPage) return cachedPage;
-          const offline = await caches.match(OFFLINE_URL);
+          const offline = await readCachedResponse(OFFLINE_URL);
           return (
             offline ||
             new Response("Offline", {
@@ -235,20 +287,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request)
-        .then((response) => {
-          if (shouldCacheResponse(response)) {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned)).catch(() => undefined);
-          }
-          return response;
-        })
-        .catch(() => cached || Response.error());
-    })
-  );
+  if (!STATIC_ASSET_ALLOWLIST.some((pattern) => pattern.test(url.pathname))) return;
+
+  // Build-versioned Next assets are immutable. Other assets are revalidated online.
+  event.respondWith(serveStaticAsset(request, url.pathname.startsWith("/_next/static/")));
 });
 
 self.addEventListener("push", (event) => {

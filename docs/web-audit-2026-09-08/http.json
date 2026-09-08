@@ -1,0 +1,595 @@
+[
+  {
+    "path": "/admin/data-health",
+    "status": 307,
+    "location": "/login?next=%2Fadmin%2Fdata-health",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/admin/provizni-vypisy/produktova-mapa",
+    "status": 307,
+    "location": "/login?next=%2Fadmin%2Fprovizni-vypisy%2Fproduktova-mapa",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/admin/zadosti",
+    "status": 307,
+    "location": "/login?next=%2Fadmin%2Fzadosti",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/cashflow",
+    "status": 307,
+    "location": "/login?next=%2Fcashflow",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/cuzk",
+    "status": 307,
+    "location": "/login?next=%2Fcuzk",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/embed/pojisteni-vozidla",
+    "status": 200,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/embed/zivotni-pojisteni",
+    "status": 200,
+    "frame": "SAMEORIGIN",
+    "csp": "frame-ancestors 'self'"
+  },
+  {
+    "path": "/embed/zlato",
+    "status": 200,
+    "frame": "SAMEORIGIN",
+    "csp": "frame-ancestors 'self'"
+  },
+  {
+    "path": "/intranet",
+    "status": 307,
+    "location": "/login?next=%2Fintranet",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/jakubrauscher",
+    "status": 200,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/kalkulacka",
+    "status": 307,
+    "location": "/login?next=%2Fkalkulacka",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/klienti",
+    "status": 404,
+    "frame": "DENY"
+  },
+  {
+    "path": "/login",
+    "status": 200,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/muj-tym",
+    "status": 307,
+    "location": "/login?next=%2Fmuj-tym",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/muj-tym/sin-slavy",
+    "status": 307,
+    "location": "/login?next=%2Fmuj-tym%2Fsin-slavy",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/muj-tym/tydenni-report",
+    "status": 307,
+    "location": "/login?next=%2Fmuj-tym%2Ftydenni-report",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/nastaveni",
+    "status": 307,
+    "location": "/login?next=%2Fnastaveni",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/",
+    "status": 307,
+    "location": "/login",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/ai-asistent",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fai-asistent",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/ares",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fares",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/argumenty",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fargumenty",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fcestovni-pojisteni-cpp-vs-kooperativa",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/data-o-vozidle",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdata-o-vozidle",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/allianz",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fallianz",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/cpp",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fcpp",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/csob",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fcsob",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/kooperativa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fkooperativa",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/pillow",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fpillow",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/slavia",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fslavia",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/uniqa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Funiqa",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/allianz",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fallianz",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/cpp",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fcpp",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/kooperativa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fkooperativa",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/maxima",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fmaxima",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/pillow",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fpillow",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/allianz",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fallianz",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/cpp",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fcpp",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/kooperativa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fkooperativa",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/maxima",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fmaxima",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/pillow",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fpillow",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/export-produkce",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fexport-produkce",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/hypoteka-vlastni-zdroje",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fhypoteka-vlastni-zdroje",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/invalidita",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Finvalidita",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/jak-stiham-vypoved-smlouvy",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fjak-stiham-vypoved-smlouvy",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/karta-klienta",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fkarta-klienta",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/naceneni-celniho-skla",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fnaceneni-celniho-skla",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/naceneni-vozidla",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fnaceneni-vozidla",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/nahrada-smlouvy",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fnahrada-smlouvy",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/nastaveni-zivotniho-pojisteni",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fnastaveni-zivotniho-pojisteni",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/neon-life-vs-metlife-oneguard",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fneon-life-vs-metlife-oneguard",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/plan-produkce",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fplan-produkce",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/pracovni-neschopenka",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fpracovni-neschopenka",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/projekce-vykonu",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fprojekce-vykonu",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/proklepka-vozidla",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fproklepka-vozidla",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/radar-vyroci",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fradar-vyroci",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/skolici-materialy",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fskolici-materialy",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/srovnavac-pracovni-neschopnosti",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fsrovnavac-pracovni-neschopnosti",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/srovnavac-trvalych-nasledku",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fsrovnavac-trvalych-nasledku",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/srovnavac-zivotniho-pojisteni",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fsrovnavac-zivotniho-pojisteni",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/statistika",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fstatistika",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/struktura",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fstruktura",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/tipar",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Ftipar",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/tvorba",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Ftvorba",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/vypoved-smlouvy",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fvypoved-smlouvy",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/zaznam",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzaznam",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/zaznam/vysledky-auto",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzaznam%2Fvysledky-auto",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/zaznam/vysledky",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzaznam%2Fvysledky",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/zlato",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzlato",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/pomucky/zprava-tymu",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzprava-tymu",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/posta",
+    "status": 307,
+    "location": "/login?next=%2Fposta",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/provizni-vypisy",
+    "status": 307,
+    "location": "/login?next=%2Fprovizni-vypisy",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/smlouvy",
+    "status": 307,
+    "location": "/login?next=%2Fsmlouvy",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/tipy",
+    "status": 307,
+    "location": "/login?next=%2Ftipy",
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/icons/csob.png",
+    "status": 404,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/icons/csb.png",
+    "status": 200,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/provize/bytexprovize.pdf",
+    "status": 404,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/api/contracts/list",
+    "status": 401,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/api/mailbox",
+    "status": 401,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/api/user/profile",
+    "status": 401,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/api/contacts",
+    "status": 401,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/api/team-overview",
+    "status": 401,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  },
+  {
+    "path": "/api/admin/users",
+    "status": 401,
+    "frame": "DENY",
+    "csp": "frame-ancestors 'none'"
+  }
+]

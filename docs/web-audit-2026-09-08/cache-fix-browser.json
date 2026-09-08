@@ -1,0 +1,16 @@
+{
+  "beforeFirst": "page revision 1",
+  "beforeSecond": "page revision 1",
+  "cacheNamesAfterUpgrade": [
+    "unrelated-cache",
+    "bohemika-pwa-v3"
+  ],
+  "afterFirst": "page revision 2",
+  "afterSecond": "page revision 3",
+  "dynamicPageCached": false,
+  "assetFirst": "asset revision 3",
+  "assetSecond": "asset revision 4",
+  "assetOffline": "asset revision 4",
+  "offlinePage": "Offline fixture",
+  "networkPageRequests": 3
+}

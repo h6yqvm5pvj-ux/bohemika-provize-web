@@ -677,7 +677,7 @@ const FALLBACK_LOGOS: Partial<Record<InstitutionLogoKey, { src: string; alt: str
   allianz: { src: "/icons/allianz.png", alt: "Allianz" },
   slavia: { src: "/icons/slavialogo.png", alt: "Slavia" },
   uniqa: { src: "/icons/uniqa.png", alt: "UNIQA" },
-  csob: { src: "/icons/csob.png", alt: "ČSOB" },
+  csob: { src: "/icons/csb.png", alt: "ČSOB" },
   pillow: { src: "/icons/pillow.png", alt: "Pillow" },
   axa: { src: "/icons/axalogo.png", alt: "AXA" },
   comfort: { src: "/icons/cclogo.png", alt: "Comfort Commodity" },

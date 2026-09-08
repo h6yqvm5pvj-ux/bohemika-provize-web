@@ -1,0 +1,38 @@
+[
+  {
+    "path": "/login",
+    "status": 429,
+    "frame": null,
+    "location": null
+  },
+  {
+    "path": "/embed/pojisteni-vozidla",
+    "status": 429,
+    "frame": null,
+    "location": null
+  },
+  {
+    "path": "/kalkulacka?prefill=commission-statement",
+    "status": 429,
+    "frame": null,
+    "location": null
+  },
+  {
+    "path": "/muj-tym/tydenni-report?source=weekly-report&embed=mailbox",
+    "status": 429,
+    "frame": null,
+    "location": null
+  },
+  {
+    "path": "/icons/csob.png",
+    "status": 429,
+    "frame": null,
+    "location": null
+  },
+  {
+    "path": "/provize/bytexprovize.pdf",
+    "status": 429,
+    "frame": null,
+    "location": null
+  }
+]

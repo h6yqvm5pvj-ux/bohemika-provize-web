@@ -65,7 +65,7 @@ async function ensurePwaServiceWorkerRegistration(): Promise<ServiceWorkerRegist
   const existing = await navigator.serviceWorker.getRegistration("/");
   if (existing) return existing;
 
-  return navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  return navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
 }
 
 async function resolveMessagingRuntime(): Promise<MessagingRuntime> {

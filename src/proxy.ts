@@ -259,14 +259,20 @@ export async function proxy(req: NextRequest) {
     pathname === "/embed/zlato" || pathname === "/embed/zivotni-pojisteni";
   const isContractDetailEmbed =
     pathname.startsWith("/smlouvy/") && req.nextUrl.searchParams.get("embedded") === "1";
+  const isStatementCalculatorEmbed =
+    pathname === "/kalkulacka" &&
+    req.nextUrl.searchParams.get("prefill") === "commission-statement";
   const isToolsComparisonEmbed =
     pathname === "/pomucky/srovnavac-trvalych-nasledku" &&
     req.nextUrl.searchParams.get("embed") === "1" &&
     req.nextUrl.searchParams.get("preset") === "neon-oneguard-10x";
   const isVigModelEmbed = pathname === "/models/vig/index.html";
+  const isSameOriginEmbed =
+    isContractDetailEmbed || isStatementCalculatorEmbed || isOnlineCardEmbed ||
+    isToolsComparisonEmbed || isVigModelEmbed;
   const frameAncestors = isMeetingEmbed
     ? getMeetingEmbedFrameAncestors()
-    : isContractDetailEmbed || isOnlineCardEmbed || isToolsComparisonEmbed || isVigModelEmbed
+    : isSameOriginEmbed
       ? "'self'"
       : "'none'";
   const requestHeaders = new Headers(req.headers);
@@ -292,7 +298,7 @@ export async function proxy(req: NextRequest) {
     res.headers.delete("X-Frame-Options");
     res.headers.set("Cross-Origin-Opener-Policy", "unsafe-none");
     res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
-  } else if (isContractDetailEmbed || isOnlineCardEmbed || isToolsComparisonEmbed || isVigModelEmbed) {
+  } else if (isSameOriginEmbed) {
     res.headers.set("X-Frame-Options", "SAMEORIGIN");
   } else {
     res.headers.set("X-Frame-Options", "DENY");

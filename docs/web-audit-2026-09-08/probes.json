@@ -1,0 +1,64 @@
+{
+  "loginRedirect": {
+    "input": "?next=%2F%5Caudit.invalid%2Fcheck",
+    "accepted": "/\\audit.invalid/check",
+    "resolved": "https://audit.invalid/check"
+  },
+  "emailVerification": {
+    "status": 200,
+    "payload": {
+      "ok": true,
+      "emailVerified": true,
+      "alreadyVerified": false
+    },
+    "mockUpdates": [
+      {
+        "uid": "audit-user",
+        "fields": {
+          "emailVerified": true
+        }
+      }
+    ]
+  },
+  "authenticatedFrameHeaders": [
+    {
+      "path": "/kalkulacka?prefill=commission-statement&product=neon",
+      "xFrame": "DENY",
+      "ancestors": "frame-ancestors 'none'"
+    },
+    {
+      "path": "/embed/pojisteni-vozidla",
+      "xFrame": "DENY",
+      "ancestors": "frame-ancestors 'none'"
+    },
+    {
+      "path": "/smlouvy/audit-contract?embedded=1",
+      "xFrame": "SAMEORIGIN",
+      "ancestors": "frame-ancestors 'self'"
+    },
+    {
+      "path": "/embed/zivotni-pojisteni",
+      "xFrame": "SAMEORIGIN",
+      "ancestors": "frame-ancestors 'self'"
+    },
+    {
+      "path": "/muj-tym/tydenni-report?source=weekly-report&embed=mailbox",
+      "xFrame": "DENY",
+      "ancestors": "frame-ancestors 'none'"
+    }
+  ],
+  "serviceWorkerCache": {
+    "first": "revision-1",
+    "afterServerRevisionChange": "revision-1",
+    "networkCalls": 1,
+    "cachedDespiteNoStore": true
+  },
+  "recordDraftsAfterLogout": {
+    "remainingKeys": [
+      "carRecord.resultsInput",
+      "lifeRecordFormDraft",
+      "lifeRecordResultInput"
+    ],
+    "retiredClientCardRemoved": true
+  }
+}

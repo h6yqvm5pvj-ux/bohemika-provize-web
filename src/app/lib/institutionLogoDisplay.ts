@@ -19,7 +19,6 @@ const LOGO_KEY_BY_PATH: Record<string, InstitutionLogoKey> = {
   "/icons/allianz.png": "allianz",
   "/icons/slavialogo.png": "slavia",
   "/icons/uniqa.png": "uniqa",
-  "/icons/csob.png": "csob",
   "/icons/csb.png": "csob",
   "/icons/pillow.png": "pillow",
   "/icons/axalogo.png": "axa",

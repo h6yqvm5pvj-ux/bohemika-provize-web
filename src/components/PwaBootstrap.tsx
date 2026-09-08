@@ -47,7 +47,7 @@ export function PwaBootstrap() {
 
     const register = async () => {
       try {
-        await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
       } catch (error) {
         console.warn("[PWA] Registrace service workeru selhala:", error);
       }
