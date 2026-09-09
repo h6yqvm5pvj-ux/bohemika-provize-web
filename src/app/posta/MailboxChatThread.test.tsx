@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { canGroupMailboxMessages } from "./postaMessageGrouping";
 import { MailboxChatThread } from "./MailboxChatThread";
 import type { MailboxItem } from "./postaTypes";
 
@@ -270,5 +271,40 @@ describe("MailboxChatThread", () => {
     expect(html).toContain("Tým hypotéky");
     expect(html).toContain("3 účastníků");
     expect(html).toContain("Petra Nováková");
+  });
+});
+
+
+describe("consecutive chat messages", () => {
+  const at = new Date(2026, 8, 9, 12).getTime();
+  it("groups nearby messages by sender and renders one receipt for the group", () => {
+    const items = [message("a", at, "sent", "A", at + 5000), message("b", at + 1000, "sent", "B", at + 5000)];
+    expect(canGroupMailboxMessages(items[0], items[1])).toBe(true);
+    const html = renderToStaticMarkup(<MailboxChatThread messages={items} />);
+    expect(html.match(/data-grouped="true"/g)).toHaveLength(1);
+    expect(html.match(/Přečteno<\/span>/g)).toHaveLength(1);
+  });
+  it("separates different senders, long pauses, midnight, unknown dates and failed messages", () => {
+    const first = message("a", at, "received", "A");
+    const next = message("b", at + 1000, "received", "B");
+    expect(canGroupMailboxMessages(first, { ...next, metadata: { ...next.metadata, senderEmail: "other@example.cz" } })).toBe(false);
+    expect(canGroupMailboxMessages(first, { ...next, createdAtMs: at + 300001 })).toBe(false);
+    expect(canGroupMailboxMessages(first, { ...next, createdAtMs: null })).toBe(false);
+    expect(canGroupMailboxMessages(first, { ...next, createdAtMs: at - 1 })).toBe(false);
+    expect(canGroupMailboxMessages(first, { ...next, clientDeliveryStatus: "failed" })).toBe(false);
+    expect(canGroupMailboxMessages(first, { ...next, metadata: { ...next.metadata, groupCreatedEvent: true } })).toBe(false);
+    expect(canGroupMailboxMessages({ ...first, createdAtMs: new Date(2026,8,9,23,59).getTime() }, { ...next, createdAtMs: new Date(2026,8,10,0,0).getTime() })).toBe(false);
+  });
+  it("keeps the unread boundary and the last known read receipt visible", () => {
+    const items = [message("a", at, "sent", "A", at + 100), message("b", at + 1000, "sent", "B")];
+    const html = renderToStaticMarkup(<MailboxChatThread messages={items} firstUnreadMessageId="b" />);
+    expect(html).not.toContain('data-grouped="true"');
+    expect(html).toContain("Nové zprávy");
+    expect(html).toContain("Přečteno");
+  });
+  it("retains controls for every message even when their metadata is collapsed", () => {
+    const html = renderToStaticMarkup(<MailboxChatThread messages={[message("a", at, "sent", "A"), message("b", at+1000, "sent", "B")]} reactionEmojis={["👍"]} onToggleReaction={async () => {}} onEditMessage={async () => {}} />);
+    expect(html.match(/aria-label="Přidat reakci"/g)).toHaveLength(2);
+    expect(html.match(/aria-label="Další akce se zprávou"/g)).toHaveLength(2);
   });
 });

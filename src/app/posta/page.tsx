@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Clock3,
   Download,
+  ExternalLink,
   FileText,
   ImageIcon,
   Loader2,
@@ -1896,6 +1897,7 @@ export default function PostaPage() {
     return (
       <div
         key={item.id}
+        data-selected={selected}
         className={`${styles.mailCard} ${styles.mailItemCard} group relative w-full border-b border-slate-200/80 text-left transition focus-within:z-40 ${
           archived
             ? "bg-slate-50/80 hover:bg-slate-100"
@@ -2073,6 +2075,7 @@ export default function PostaPage() {
     return (
       <div
         key={row.key}
+        data-selected={selected}
         className={`${styles.mailCard} group relative border-b border-slate-200/80 transition focus-within:z-[60] ${
           selected
             ? "bg-violet-100/80 shadow-[inset_4px_0_0_#6d28d9]"
@@ -3045,6 +3048,29 @@ export default function PostaPage() {
   const standardDirectAttachments = standardDirectPreviewItem
     ? parseMailboxAttachments(standardDirectPreviewItem)
     : [];
+  const conversationActionMenu = previewItem && !standardDirectIsEmptyDraft ? (
+    <MailboxActionMenu label="Další akce s otevřenou konverzací">
+      <button type="button" onClick={() => void archivePreviewItem(!previewItemArchived)} disabled={archivingIds.includes(previewItem.id)} className={styles.conversationMenuItem}>
+        {previewItemArchived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+        {previewItemArchived ? "Vrátit z archivu" : "Archivovat"}
+      </button>
+      {activeConversationIsGroup && groupConversation?.active !== false && (
+        <button type="button" onClick={() => void handleToggleGroupMute()} disabled={groupConversationLoading || groupMuteSaving || !groupConversation} className={styles.conversationMenuItem}>
+          {groupMuteSaving ? <Loader2 size={15} className="animate-spin" /> : groupConversation?.muted ? <Volume2 size={15} /> : <VolumeX size={15} />}
+          {groupConversation?.muted ? "Zapnout upozornění" : "Ztlumit upozornění"}
+        </button>
+      )}
+      {activeConversationIsGroup && groupConversation?.canManage && (
+        <button type="button" onClick={() => setGroupManagerOpen(true)} className={styles.conversationMenuItem}><Settings2 size={15} />Správa skupiny</button>
+      )}
+      {!standardDirectPreviewItem && <button type="button" onClick={() => {
+        if (previewItem.type === "weekly_team_report") { router.push(weeklyTeamReportHref(previewItem)); return; }
+        setPreviewModalOpen(true);
+      }} className={styles.conversationMenuItem}><ExternalLink size={15} />Otevřít celé</button>}
+      <button type="button" onClick={() => void deletePreviewItem()} disabled={deletingIds.includes(previewItem.id)} className={`${styles.conversationMenuItem} ${styles.conversationMenuDanger}`}><Trash2 size={15} />{standardDirectPreviewItem ? "Smazat konverzaci" : "Smazat zprávu"}</button>
+    </MailboxActionMenu>
+  ) : null;
+
   const renderStandardDirectMessage = (showSubject: boolean) => {
     if (!standardDirectPreviewItem) return null;
     if (chatThreadMessages.length > 0) {
@@ -3290,6 +3316,7 @@ export default function PostaPage() {
                     return (
                       <button
                         key={id}
+                        aria-pressed={active}
                         type="button"
                         onClick={() => {
                           setMailFilter(id);
@@ -3423,9 +3450,9 @@ export default function PostaPage() {
               <aside className={`${styles.mailDetailPane} hidden min-w-0 flex-col bg-slate-50/65 xl:flex`}>
                 {previewItem && (mailboxPreviewHtml || weeklyReportPreviewHref || standardDirectPreviewItem) ? (
                   <>
-                    <div className="border-b border-slate-200 bg-white px-5 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-3">
+                    <div className={`${styles.conversationHeader} border-b border-slate-200 bg-white px-5 py-4`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
                           {standardDirectPreviewItem ? (
                             <span className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl ring-1 ring-slate-200 ${isGroupMailboxItem(standardDirectPreviewItem) ? "bg-violet-100 text-violet-700" : "bg-white"}`}>
                               {isGroupMailboxItem(standardDirectPreviewItem) ? (
@@ -3445,10 +3472,8 @@ export default function PostaPage() {
                             </span>
                           ) : null}
                           <div className="min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700">
-                              {standardDirectPreviewItem ? "Konverzace" : previewCorrespondent}
-                            </p>
-                            <h2 className="mt-1 line-clamp-2 text-lg font-bold leading-6 text-slate-950">
+                            {!standardDirectPreviewItem && <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700">{previewCorrespondent}</p>}
+                            <h2 className="truncate text-base font-semibold leading-6 text-slate-950">
                               {standardDirectCounterpart?.name || previewItem.title}
                             </h2>
                             {standardDirectCounterpart?.email ? (
@@ -3461,75 +3486,15 @@ export default function PostaPage() {
                             ) : null}
                           </div>
                         </div>
+                        <div className={styles.conversationControls}>
+                          {conversationActionMenu}
                         <button type="button" onClick={closePreviewModal} aria-label="Zavřít zprávu" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800">
                           <X className="h-4 w-4" />
                         </button>
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        {!standardDirectIsEmptyDraft ? (
-                          <button type="button" onClick={() => void archivePreviewItem(!previewItemArchived)} disabled={archivingIds.includes(previewItem.id)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50">
-                            {previewItemArchived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-                            {previewItemArchived ? "Vrátit" : "Archivovat"}
-                          </button>
-                        ) : null}
-                        {activeConversationIsGroup && groupConversation?.active !== false ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleToggleGroupMute()}
-                            disabled={groupConversationLoading || groupMuteSaving || !groupConversation}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50"
-                          >
-                            {groupMuteSaving ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : groupConversation?.muted ? (
-                              <Volume2 className="h-3.5 w-3.5" />
-                            ) : (
-                              <VolumeX className="h-3.5 w-3.5" />
-                            )}
-                            {groupConversation?.muted ? "Zapnout upozornění" : "Ztlumit"}
-                          </button>
-                        ) : null}
-                        {activeConversationIsGroup && groupConversation?.canManage ? (
-                          <button
-                            type="button"
-                            onClick={() => setGroupManagerOpen(true)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100"
-                          >
-                            <Settings2 className="h-3.5 w-3.5" />
-                            Správa skupiny
-                          </button>
-                        ) : null}
-                        {!standardDirectIsEmptyDraft ? (
-                          <MailboxActionMenu label="Další akce s otevřenou konverzací">
-                            <button
-                              type="button"
-                              onClick={() => void deletePreviewItem()}
-                              disabled={deletingIds.includes(previewItem.id)}
-                              className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              {standardDirectPreviewItem ? "Smazat konverzaci" : "Smazat zprávu"}
-                            </button>
-                          </MailboxActionMenu>
-                        ) : null}
-                        {!standardDirectPreviewItem ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (previewItem.type === "weekly_team_report") {
-                                router.push(weeklyTeamReportHref(previewItem));
-                                return;
-                              }
-                              setPreviewModalOpen(true);
-                            }}
-                            className="ml-auto rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100"
-                          >
-                            Otevřít celé
-                          </button>
-                        ) : null}
+                        </div>
                       </div>
                     </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+                    <div className={`${styles.conversationScroll} min-h-0 flex-1 overflow-y-auto`}>
                       {standardDirectPreviewItem ? (
                         renderStandardDirectMessage(false)
                       ) : weeklyReportPreviewHref ? (
@@ -4243,65 +4208,7 @@ export default function PostaPage() {
                   </div>
 
                   <div className={`${styles.previewHeaderActions} flex shrink-0 items-center gap-2`}>
-                    {activeConversationIsGroup && groupConversation?.active !== false ? (
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleGroupMute()}
-                        disabled={groupConversationLoading || groupMuteSaving || !groupConversation}
-                        className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25 disabled:opacity-55"
-                      >
-                        {groupMuteSaving ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : groupConversation?.muted ? (
-                          <Volume2 className="h-3.5 w-3.5" />
-                        ) : (
-                          <VolumeX className="h-3.5 w-3.5" />
-                        )}
-                        <span className="hidden sm:inline">
-                          {groupConversation?.muted ? "Zapnout" : "Ztlumit"}
-                        </span>
-                      </button>
-                    ) : null}
-                    {activeConversationIsGroup && groupConversation?.canManage ? (
-                      <button
-                        type="button"
-                        onClick={() => setGroupManagerOpen(true)}
-                        className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25"
-                      >
-                        <Settings2 className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">Správa</span>
-                      </button>
-                    ) : null}
-                    {!standardDirectIsEmptyDraft ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => void archivePreviewItem(!previewItemArchived)}
-                          disabled={archivingIds.includes(previewItem.id)}
-                          className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-55"
-                        >
-                          {previewItemArchived ? (
-                            <ArchiveRestore className="h-3.5 w-3.5" />
-                          ) : (
-                            <Archive className="h-3.5 w-3.5" />
-                          )}
-                          <span className="hidden sm:inline">
-                            {previewItemArchived ? "Vrátit" : "Archivovat"}
-                          </span>
-                        </button>
-                        <MailboxActionMenu label="Další akce s otevřenou konverzací">
-                          <button
-                            type="button"
-                            onClick={() => void deletePreviewItem()}
-                            disabled={deletingIds.includes(previewItem.id)}
-                            className="inline-flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {standardDirectPreviewItem ? "Smazat konverzaci" : "Smazat zprávu"}
-                          </button>
-                        </MailboxActionMenu>
-                      </>
-                    ) : null}
+                    {conversationActionMenu}
                     <button
                       type="button"
                       onClick={closePreviewModal}
@@ -4321,7 +4228,7 @@ export default function PostaPage() {
                   }`}
                 >
                   {standardDirectPreviewItem ? (
-                    <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+                    <div className={`${styles.conversationScroll} min-h-0 flex-1 overflow-y-auto`}>
                       {renderStandardDirectMessage(false)}
                     </div>
                   ) : previewItem.type === "production_export_share" && sharedExportPreviewLoading ? (

@@ -37,8 +37,23 @@ import {
   parseMailboxReactions,
 } from "./postaHelpers";
 import type { MailboxAttachment, MailboxItem } from "./postaTypes";
+import styles from "./mailboxChat.module.css";
+import { canGroupMailboxMessages } from "./postaMessageGrouping";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
+
+const openPopoverBelow = (button: HTMLElement): boolean => {
+  let parent = button.parentElement;
+  let top = 0;
+  while (parent) {
+    if (/(auto|scroll|hidden)/.test(getComputedStyle(parent).overflowY)) {
+      top = Math.max(0, parent.getBoundingClientRect().top);
+      break;
+    }
+    parent = parent.parentElement;
+  }
+  return button.getBoundingClientRect().top - top < 250;
+};
 
 const metadataText = (item: MailboxItem, key: string): string => {
   const value = item.metadata?.[key];
@@ -331,6 +346,7 @@ export function MailboxChatThread({
   const loadingOlderRequestRef = useRef(false);
   const [attachmentPreview, setAttachmentPreview] = useState<MailboxAttachment | null>(null);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
+  const [popoverBelow, setPopoverBelow] = useState(false);
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -553,7 +569,7 @@ export function MailboxChatThread({
         </div>
       ) : null}
 
-      <div className="space-y-3 sm:space-y-4">
+      <div className={styles.messages}>
         {hasOlderMessages || loadingOlderMessages ? (
           <div className="flex justify-center py-1">
             <button
@@ -620,6 +636,11 @@ export function MailboxChatThread({
               ).length
             : 0;
           const previousMessage = index > 0 ? messages[index - 1] : null;
+          const nextMessage = messages[index + 1];
+          const groupedWithPrevious = message.id !== firstUnreadMessageId && canGroupMailboxMessages(previousMessage, message);
+          const groupedWithNext = nextMessage?.id !== firstUnreadMessageId && canGroupMailboxMessages(message, nextMessage);
+          const showMetadata = !groupedWithNext || Boolean(editedAtMs || pinned || reminderAtMs || deliveryStatus === "failed" || deliveryStatus === "sending") ||
+            Boolean(recipientReadAtMs && !(nextMessage && metadataMillis(nextMessage, "recipientReadAtMs")));
           const showDaySeparator =
             !previousMessage ||
             mailboxMessageDayKey(previousMessage.createdAtMs) !==
@@ -627,7 +648,7 @@ export function MailboxChatThread({
 
           if (groupCreatedEvent) {
             return (
-              <div key={message.id} id={`mailbox-message-${message.id}`}>
+              <div key={message.id} id={`mailbox-message-${message.id}`} className={styles.message} data-grouped={groupedWithPrevious || undefined} data-group-end={!groupedWithNext || undefined}>
                 {showDaySeparator ? (
                   <div className="my-3 flex items-center gap-3 sm:my-5" role="separator" aria-label={formatMailboxMessageDay(message.createdAtMs)}>
                     <span className="h-px flex-1 bg-slate-200" />
@@ -652,7 +673,7 @@ export function MailboxChatThread({
           }
 
           return (
-            <div key={message.id} id={`mailbox-message-${message.id}`}>
+            <div key={message.id} id={`mailbox-message-${message.id}`} className={styles.message} data-grouped={groupedWithPrevious || undefined} data-group-end={!groupedWithNext || undefined}>
               {showDaySeparator ? (
                 <div className="my-3 flex items-center gap-3 sm:my-5" role="separator" aria-label={formatMailboxMessageDay(message.createdAtMs)}>
                   <span className="h-px flex-1 bg-slate-200" />
@@ -673,31 +694,24 @@ export function MailboxChatThread({
                 </div>
               ) : null}
               <div className={`flex ${sent ? "justify-end" : "justify-start"}`}>
-                <div className={`flex max-w-[92%] flex-col sm:max-w-[78%] ${sent ? "items-end" : "items-start"}`}>
+                <div className={styles.messageColumn} data-sent={sent} data-group-start={!groupedWithPrevious} data-group-end={!groupedWithNext} data-popover-below={popoverBelow || undefined} data-actions-open={reactionPickerMessageId === message.id || messageMenuId === message.id || undefined}>
                   <div
                     data-message-image-only={renderBareImages ? "true" : undefined}
-                    className={
-                      renderBareImages
-                        ? "space-y-2"
-                        : `rounded-[18px] px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.07)] sm:rounded-[20px] sm:px-4 sm:py-3 ${
-                            sent
-                              ? "rounded-br-md bg-violet-700 text-[#fff]"
-                              : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
-                          }`
-                    }
+                    title={formatMailboxMessageTime(message.createdAtMs)}
+                    className={renderBareImages ? styles.bareImages : styles.bubble}
                   >
                   {!renderBareImages && index === 0 && message.title ? (
                     <p className={`mb-1.5 text-[10px] font-bold uppercase tracking-[0.1em] ${sent ? "text-violet-100" : "text-violet-700"}`}>
                       {message.title}
                     </p>
                   ) : null}
-                  {groupConversation && !sent && messageSenderName ? (
+                  {groupConversation && !sent && !groupedWithPrevious && messageSenderName ? (
                     <p className="mb-1 text-[10px] font-bold text-violet-700">
                       {messageSenderName}
                     </p>
                   ) : null}
                   {editing ? (
-                    <div className="min-w-[min(360px,68vw)] space-y-2">
+                    <div className={styles.editor}>
                       <textarea
                         value={editText}
                         onChange={(event) => setEditText(event.target.value.slice(0, 4_000))}
@@ -758,7 +772,7 @@ export function MailboxChatThread({
                   ) : null}
                   </div>
 
-                  {reactions.length > 0 || canReact ? (
+                  {reactions.length > 0 ? (
                     <div className={`mt-1.5 flex flex-wrap items-center gap-1 ${sent ? "justify-end" : "justify-start"}`}>
                       {reactions.map((reaction) => {
                         const active = viewerEmail
@@ -784,44 +798,11 @@ export function MailboxChatThread({
                           </button>
                         );
                       })}
-                      {canReact ? (
-                        <div className="relative" data-mailbox-message-popover>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setReactionPickerMessageId((current) =>
-                                current === message.id ? null : message.id
-                              );
-                              setMessageMenuId(null);
-                            }}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                            aria-label="Přidat reakci"
-                            aria-expanded={reactionPickerMessageId === message.id}
-                          >
-                            <SmilePlus className="h-3.5 w-3.5" />
-                          </button>
-                          {reactionPickerMessageId === message.id ? (
-                            <div className={`absolute bottom-full z-30 mb-2 flex gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_14px_36px_rgba(15,23,42,0.2)] ${sent ? "right-0" : "left-0"}`}>
-                              {reactionEmojis.map((emoji) => (
-                                <button
-                                  key={emoji}
-                                  type="button"
-                                  onClick={() => void toggleReaction(message.id, emoji)}
-                                  disabled={reactionBusyKey !== null}
-                                  className="grid h-8 w-8 place-items-center rounded-lg text-base transition hover:bg-violet-50 disabled:opacity-50"
-                                  aria-label={`Reagovat ${emoji}`}
-                                >
-                                  {emoji}
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
+
                     </div>
                   ) : null}
 
-                  <div className={`mt-1.5 flex flex-wrap items-center gap-1.5 px-1 text-[10px] font-medium ${sent ? "justify-end text-slate-500" : "text-slate-400"}`}>
+                  {showMetadata && <div className={styles.metadata}>
                   <time dateTime={message.createdAtMs ? new Date(message.createdAtMs).toISOString() : undefined}>
                     {formatMailboxMessageTime(message.createdAtMs)}
                   </time>
@@ -890,11 +871,50 @@ export function MailboxChatThread({
                       </span>
                     )
                   ) : null}
+
+                  </div>}
+                  {(canReact || canOpenMenu) && <div className={styles.actions}>
+                      {canReact ? (
+                        <div className={styles.actionAnchor} data-mailbox-message-popover>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              setPopoverBelow(openPopoverBelow(event.currentTarget));
+                              setReactionPickerMessageId((current) =>
+                                current === message.id ? null : message.id
+                              );
+                              setMessageMenuId(null);
+                            }}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                            aria-label="Přidat reakci"
+                            aria-expanded={reactionPickerMessageId === message.id}
+                          >
+                            <SmilePlus className="h-3.5 w-3.5" />
+                          </button>
+                          {reactionPickerMessageId === message.id ? (
+                            <div className={`${styles.reactionPopover} ${styles.popover}`}>
+                              {reactionEmojis.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => void toggleReaction(message.id, emoji)}
+                                  disabled={reactionBusyKey !== null}
+                                  className="grid h-8 w-8 place-items-center rounded-lg text-base transition hover:bg-violet-50 disabled:opacity-50"
+                                  aria-label={`Reagovat ${emoji}`}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                   {canOpenMenu ? (
-                    <div className="relative" data-mailbox-message-popover>
+                    <div className={styles.actionAnchor} data-mailbox-message-popover>
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={(event) => {
+                          setPopoverBelow(openPopoverBelow(event.currentTarget));
                           setMessageMenuId((current) => current === message.id ? null : message.id);
                           setReactionPickerMessageId(null);
                         }}
@@ -906,7 +926,7 @@ export function MailboxChatThread({
                         {actionBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
                       </button>
                       {messageMenuId === message.id ? (
-                        <div className="absolute bottom-full right-0 z-30 mb-2 w-60 space-y-1 rounded-2xl border border-slate-200 bg-white p-2 text-xs shadow-[0_14px_36px_rgba(15,23,42,0.2)]">
+                        <div className={`${styles.menuPopover} ${styles.popover}`}>
                           {onTogglePin ? (
                             <button
                               type="button"
@@ -987,7 +1007,7 @@ export function MailboxChatThread({
                       ) : null}
                     </div>
                   ) : null}
-                  </div>
+                  </div>}
                   {actionError?.messageId === message.id ? (
                     <p className="mt-1 max-w-sm px-1 text-[10px] font-semibold text-rose-700" role="alert">
                       {actionError.text}

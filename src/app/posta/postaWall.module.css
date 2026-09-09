@@ -476,3 +476,54 @@
   transform: none;
   animation: none;
 }
+
+/* Calm surfaces and a compact conversation list for the three-pane mailbox. */
+.postaPage { font-family: var(--font-inter, system-ui, sans-serif); }
+.mailShell::before { display: none; }
+.mailShell { background: #fcfbfe; }
+.mailTopbar { min-height: 74px; padding: 16px 22px; border-color: #eae4f1; }
+.mailTopbar > div:first-child > span { background: #f2eafb; color: #8c60bd; border: 1px solid #e7d9f8; box-shadow: none; border-radius: 14px; }
+.mailTopbar h1 { font-size: 23px; letter-spacing: -.035em; color: #2e233b; }
+.mailTopbar > div:first-child p { color: #a087b6; font-size: 9px; }
+.mailSearch input { border-color: #e7e0ef; border-radius: 13px; background: #faf8fd; font-size: 12px; }
+.mailTopbar > button { border-color: #e8e1f0; border-radius: 12px; color: #8a789c; }
+.mailWorkspace { height: calc(100dvh - 78px); }
+.mailFolderRail { background: #fbf9fd; border-color: #eae4f1; }
+.mailFolderRail > .actionButton { border-radius: 13px; background: #8050c5; box-shadow: 0 4px 10px #8050c518; font-size: 12px; padding: 11px 10px; }
+.mailFolderNav > button { font-size: 12px; gap: 9px; border: 1px solid transparent; border-radius: 10px; color: #887796; padding: 10px; }
+.mailFolderNav > button[aria-pressed="true"] { background: #f0e7fb; border-color: #e5d7f5; color: #8053ac !important; box-shadow: none; }
+.mailFolderNav > button[aria-pressed="true"] > span:last-child { background: #e3d3f5; color: #8457b3; }
+.mailFolderRail > div:last-child { background: transparent; border: 0; border-top: 1px solid #eee7f4; border-radius: 0; padding: 18px 5px 5px; }
+.mailFolderRail > div:last-child p { font-size: 11px; color: #a08dae; }
+.mailMessageList { border-color: #eae4f1; }
+.mailMessageList > div:first-child { border-color: #eee8f5; padding: 18px; }
+.mailMessageList > div:first-child h2 { font-size: 16px; color: #44314f; }
+.mailMessageList > div:first-child p { font-size: 11px; color: #a08dad; }
+.mailListScroll { padding: 8px; }
+.mailWorkspace .mailCard { width: 100%; margin-bottom: 4px; border: 1px solid transparent; border-radius: 13px; background: transparent; box-shadow: none; animation: none; }
+.mailWorkspace .mailCard:hover { background: #faf7fd; }
+.mailWorkspace .mailCard[data-selected="true"] { background: #f3edfb; border-color: #e7dbf5; box-shadow: none; }
+.mailCard > button:first-of-type { padding: 13px 40px 13px 11px; }
+.mailDetailPane { background: #fcfbfe; border-left: 1px solid #ede7f4; }
+.conversationHeader { padding: 17px 22px 13px; border-color: #ece6f3; }
+.conversationHeader h2 { font-size: 16px; color: #3c2a49; }
+.conversationHeader > div:first-child p:first-child { font-size: 9px; color: #a58bb7; }
+.conversationHeader > div:last-child { margin-top: 10px; }
+.conversationHeader > div:last-child > button { font-size: 10px; border-radius: 9px; padding: 6px 9px; color: #8c799d; border-color: #eee7f4; }
+.conversationScroll { background: linear-gradient(160deg, #fcfbfe, #f8f5fc); scrollbar-width: thin; scrollbar-color: #dfd3ed transparent; }
+@media(min-width:1280px) { .mailWorkspace { grid-template-columns: 180px minmax(250px, 300px) minmax(0, 1fr); } }
+@media(max-width:1023px) { .mailWorkspace { height: auto; } .mailTopbar { padding: 14px; } .mailFolderNav > button { white-space: nowrap; min-width: auto; } }
+.conversationHeader { padding: 13px 20px; }
+.conversationHeader > div:last-child { margin-top: 0; }
+.conversationControls { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.conversationControls > div > button { width: 36px; height: 36px; border-radius: 11px; border-color: #e8e0f0; color: #9985aa; }
+.conversationMenuItem { display: flex; width: 100%; align-items: center; gap: 9px; padding: 10px; border-radius: 9px; text-align: left; font-size: 11px; font-weight: 550; color: #816b91; }
+.conversationMenuItem:hover { background: #f5effb; color: #8258ad; }
+.conversationMenuItem:disabled { opacity: .5; cursor: wait; }
+.conversationMenuDanger { color: #b35e7b; border-top: 1px solid #f1eaf5; margin-top: 4px; }
+.conversationMenuDanger:hover { background: #fff1f5; color: #a84467; }
+.chatPreviewHeader { background: #fff; border-color: #ece5f3; padding: 12px 16px; }
+.chatPreviewHeader > div:first-child span { color: #6e557f; }
+.chatPreviewHeader > div:first-child span span:first-child { color: #3f2c4f; }
+.chatPreviewContent { background: #faf7fd; }
+.chatPreviewHeader .previewHeaderActions > button { color: #95819f; border-color: #e7dfed; background: #fff; box-shadow: none; }
