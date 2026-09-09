@@ -151,6 +151,8 @@ describe("login verification boundary", () => {
     mocks.passkey.mockReturnValue(verification.promise);
     await enterPassword();
     await startPasskey();
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("Ověřuji přihlášení");
+    expect(container.querySelector("form")?.hasAttribute("inert")).toBe(true);
     await restoreCachedUser();
     await submit();
     expectNotLoggedIn();
@@ -171,6 +173,8 @@ describe("login verification boundary", () => {
     await act(async () => verification.reject(new DOMException("Cancelled", "NotAllowedError")));
     expectNotLoggedIn();
     expect(container.textContent).toContain("Ověření bylo zrušené");
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector("form")?.hasAttribute("inert")).toBe(false);
 
     mocks.passkey.mockResolvedValueOnce({ user: freshUser });
     await startPasskey();
@@ -190,8 +194,10 @@ describe("login verification boundary", () => {
     expect(sessionPosts()).toHaveLength(1);
     expect(JSON.parse(String(sessionPosts()[0][1]?.body))).toEqual({ rememberThisDevice: true });
     expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("Dokončuji přihlášení");
     await act(async () => session.resolve(Response.json({ ok: true })));
     expect(mocks.router.replace).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
   it("does not navigate when the server rejects session creation", async () => {
@@ -204,6 +210,7 @@ describe("login verification boundary", () => {
     expect(mocks.router.replace).not.toHaveBeenCalled();
     expect(mocks.signOut).toHaveBeenCalled();
     expect(container.textContent).toContain("Nepodařilo se bezpečně dokončit přihlášení");
+    expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
   it("still applies the account lockout after a verified passkey", async () => {

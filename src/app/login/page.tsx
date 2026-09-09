@@ -29,6 +29,8 @@ import {
   resolvePasskeyErrorMessage,
   signInWithPasskey,
 } from "@/app/lib/passkeys";
+import { PasskeyLoginLoader, type PasskeyLoginStage } from "./PasskeyLoginLoader";
+import passkeyStyles from "./passkeyLoginLoader.module.css";
 
 const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/multi-factor-auth-required",
@@ -218,7 +220,8 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyStage, setPasskeyStage] = useState<PasskeyLoginStage | null>(null);
+  const passkeyLoading = passkeyStage !== null;
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<string | null>(null);
@@ -541,12 +544,13 @@ export default function LoginPage() {
     setError(null);
     setResetStatus(null);
     loginRememberThisDeviceRef.current = rememberThisDevice;
-    setPasskeyLoading(true);
+    setPasskeyStage("verification");
     setLoading(true);
     clearMfaState();
 
     try {
       const credential = await signInWithPasskey();
+      setPasskeyStage("session");
       await completeLogin(credential.user);
     } catch (error) {
       logAuthIssue("handlePasskeyLogin", error);
@@ -559,7 +563,7 @@ export default function LoginPage() {
       setLoading(false);
     } finally {
       loginAttemptInFlightRef.current = false;
-      setPasskeyLoading(false);
+      setPasskeyStage(null);
     }
   };
 
@@ -645,7 +649,12 @@ export default function LoginPage() {
             <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
             <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
             <span className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
-            <form onSubmit={handleSubmit} className="relative z-10 space-y-4">
+            <form
+              onSubmit={handleSubmit}
+              inert={passkeyLoading}
+              aria-hidden={passkeyLoading || undefined}
+              className={`relative z-10 space-y-4 ${passkeyLoading ? passkeyStyles.pendingForm : ""}`}
+            >
               {!mfaResolver ? (
                 <>
                   <div className="space-y-1.5">
@@ -856,6 +865,7 @@ export default function LoginPage() {
                 </div>
               ) : null}
             </form>
+            {passkeyStage && <PasskeyLoginLoader stage={passkeyStage} />}
           </section>
         </div>
       </div>

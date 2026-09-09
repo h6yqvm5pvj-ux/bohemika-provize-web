@@ -32,7 +32,9 @@ import {
 } from "lucide-react";
 
 import { isAutoProduct } from "@/app/lib/productCatalog";
-import { isNeonRefreshStatementProductCode } from "@/app/lib/commissionPayoutRules";
+import { hasSmallLifeSubsequentBase, isNeonRefreshStatementProductCode, payoutHasSmallLifeSubsequentBase } from "@/app/lib/commissionPayoutRules";
+import { lifeSplitComparisonScope } from "./statementLifeComparison";
+import { LifeSmallBaseNotice } from "./statementLifeCardNotices";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
   type CommissionMode,
@@ -3098,7 +3100,7 @@ const lifeSplitContractUncertaintyCount = (
   const reviewRows = statementKey
     ? rowsForStatementReview(statementKey, contract.rows, correctionContext)
     : contract.rows;
-  const reviewContract =
+  const statementReviewContract =
     reviewRows.length === contract.rows.length
       ? contract
       : {
@@ -3108,10 +3110,14 @@ const lifeSplitContractUncertaintyCount = (
         };
   if (reviewRows.length === 0 && contract.b36Payments.length === 0) return 0;
 
-  const tipOnlyContract = lifeSplitContractHasOnlyTipRows(reviewContract);
-  const matchScope = lifeSplitContractMatchScope(reviewContract);
+  const tipOnlyContract = lifeSplitContractHasOnlyTipRows(statementReviewContract);
+  const matchScope = lifeSplitContractMatchScope(statementReviewContract);
   const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber, matchScope);
-  const systemContract = matchedSystemContractForLifeSplit(reviewContract, match);
+  const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
+  const { contract: reviewContract } = lifeSplitComparisonScope(
+    statementReviewContract,
+    systemContractAnnualPremiumBase(systemContract)
+  );
   const expectedProductKey = resolveStatementProduct(reviewContract.productCode).productKey;
   let count = 0;
 
@@ -3420,6 +3426,11 @@ const paidPayoutRecordsForRows = (
   rows: CommissionRow[]
 ): ContractCommissionPayoutRecord[] =>
   (systemContract.commissionPayouts ?? []).filter((payout) => {
+    if (payoutHasSmallLifeSubsequentBase({
+      product: systemContract.productKey,
+      payout,
+      riskAnnualBase: systemContractAnnualPremiumBase(systemContract),
+    })) return false;
     const amount = Number(payout.amount);
     return (
       Number.isFinite(amount) &&
@@ -3498,10 +3509,11 @@ const subsequentPayoutBundleInfo = ({
 };
 
 const buildLifeSplitAmountComparisons = (
-  contract: LifeSplitContractPreview,
+  sourceContract: LifeSplitContractPreview,
   systemContract: MatchedSystemContract,
   statementPeriod?: string | null
 ): CommissionAmountComparison[] => {
+  const { contract } = lifeSplitComparisonScope(sourceContract, systemContractAnnualPremiumBase(systemContract));
   if (isNeonRefreshMissingOriginalInSystem(systemContract)) return [];
   const coefficientOverride = lifeCoefficientOverrideInfo(contract, systemContract);
   const items = coefficientOverride?.items ?? systemContract.items ?? [];
@@ -4154,6 +4166,16 @@ const managerCommissionStatementBasePeriod = (
     systemFrequency: systemContract?.frequencyRaw,
   });
 
+const managerRowHasSmallLifeBase = (
+  row: ManagerCommissionRow,
+  systemContract: MatchedSystemContract | null
+): boolean => hasSmallLifeSubsequentBase({
+  product: resolveStatementProduct(row.product).productKey,
+  commissionCode: row.type,
+  statementAnnualBase: row.base,
+  riskAnnualBase: systemContractAnnualPremiumBase(systemContract),
+});
+
 const managerCommissionPremiumBaseMismatch = (
   row: ManagerCommissionRow,
   systemContract: MatchedSystemContract | null
@@ -4162,6 +4184,7 @@ const managerCommissionPremiumBaseMismatch = (
   systemLabel: string;
   differenceLabel: string;
 } | null => {
+  if (managerRowHasSmallLifeBase(row, systemContract)) return null;
   if (usesIndependentStatementCommissionBase(row.product)) return null;
   const statementBase = Number(row.base);
   if (!Number.isFinite(statementBase) || statementBase <= ANNUAL_PREMIUM_TOLERANCE) {
@@ -4204,6 +4227,7 @@ const managerCommissionBaseComparison = (
   systemContract: MatchedSystemContract | null,
   currentUserEmail: string | null | undefined
 ): PremiumBaseComparison | null => {
+  if (managerRowHasSmallLifeBase(row, systemContract)) return null;
   if (usesIndependentStatementCommissionBase(row.product)) return null;
   if (managerCommissionPaymentBundleInfo(row, systemContract, currentUserEmail)) return null;
   const statementBase = Number(row.base);
@@ -4301,6 +4325,7 @@ const buildManagerCommissionAmountComparison = (
   systemContract: MatchedSystemContract | null,
   currentUserEmail: string | null | undefined
 ): CommissionAmountComparison | null => {
+  if (managerRowHasSmallLifeBase(row, systemContract)) return null;
   if (row.isStorno || row.commission < 0) return null;
   if (!systemContract) return null;
 
@@ -4530,6 +4555,7 @@ const managerCareerPositionDiscrepancyIssue = ({
   systemContract: MatchedSystemContract | null;
   currentUserEmail: string | null | undefined;
 }): StatementDiscrepancyIssue | null => {
+  if (managerRowHasSmallLifeBase(row, systemContract)) return null;
   if (!systemContract) return null;
 
   const career = statementCareerPositionFromValue(row.career);
@@ -4668,7 +4694,7 @@ const buildStatementDiscrepancyIssues = (
 
   for (const contract of statement.lifeSplitContracts) {
     const reviewRows = rowsForStatementReview(statementKey, contract.rows, correctionContext);
-    const reviewContract =
+    const statementReviewContract =
       reviewRows.length === contract.rows.length
         ? contract
         : {
@@ -4680,10 +4706,14 @@ const buildStatementDiscrepancyIssues = (
     const productMeta = resolveStatementProduct(contract.productCode);
     const productLabel = `${productMeta.label} · ${productMeta.rawCode}`;
     const category = "Životní pojištění";
-    const tipOnlyContract = lifeSplitContractHasOnlyTipRows(reviewContract);
-    const matchScope = lifeSplitContractMatchScope(reviewContract);
+    const tipOnlyContract = lifeSplitContractHasOnlyTipRows(statementReviewContract);
+    const matchScope = lifeSplitContractMatchScope(statementReviewContract);
     const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber, matchScope);
-    const systemContract = matchedSystemContractForLifeSplit(reviewContract, match);
+    const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
+    const { contract: reviewContract } = lifeSplitComparisonScope(
+      statementReviewContract,
+      systemContractAnnualPremiumBase(systemContract)
+    );
     const expectedProductKey = productMeta.productKey;
 
     addIssue(
@@ -5308,7 +5338,7 @@ function LifeSplitContractCard({
   const reviewRows = statementKey
     ? rowsForStatementReview(statementKey, contract.rows, correctionContext)
     : contract.rows;
-  const reviewContract =
+  const statementReviewContract =
     reviewRows.length === contract.rows.length
       ? contract
       : {
@@ -5316,8 +5346,8 @@ function LifeSplitContractCard({
           rows: reviewRows,
           annualPremium: lifeSplitAnnualPremiumBase(reviewRows),
         };
-  const tipOnlyContract = lifeSplitContractHasOnlyTipRows(reviewContract);
-  const matchScope = lifeSplitContractMatchScope(reviewContract);
+  const tipOnlyContract = lifeSplitContractHasOnlyTipRows(statementReviewContract);
+  const matchScope = lifeSplitContractMatchScope(statementReviewContract);
   const correctionLabel = statementKey
     ? correctedRowsLabel(statementKey, contract.rows, correctionContext)
     : null;
@@ -5325,14 +5355,20 @@ function LifeSplitContractCard({
     ? correctedRowsDetails(statementKey, contract.rows, correctionContext)
     : [];
   const currentCorrectionInfo = currentStatementCorrectionInfoForRows(
-    reviewContract.rows,
+    statementReviewContract.rows,
     deductionRows
   );
-  const systemContract = matchedSystemContractForLifeSplit(reviewContract, match);
+  const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
+  const { contract: reviewContract, excludedRows: differentBaseRows } = lifeSplitComparisonScope(
+    statementReviewContract,
+    systemContractAnnualPremiumBase(systemContract)
+  );
   const reviewA101Rows = rowsByKind(reviewContract, "a101");
   const reviewB0301Rows = rowsByKind(reviewContract, "b0301");
   const hasHistoricalB0301 = hasHistoricalB0301Payout(systemContract);
-  const status = statusForContract(reviewContract, systemContract);
+  const status = differentBaseRows.length > 0 && reviewContract.rows.length === 0 && reviewContract.b36Payments.length === 0
+    ? { label: "Investiční složka", tone: "info" as const }
+    : statusForContract(reviewContract, systemContract);
   const missingClientCardCommissionWarning =
     reviewA101Rows.length > 0 && reviewB0301Rows.length === 0 && !hasHistoricalB0301;
   const deferredClientCardCommission =
@@ -5581,7 +5617,11 @@ function LifeSplitContractCard({
             </div>
           )}
 
-          <LifeSplitCardMetadata contract={contract} monthlyPremium={monthlyPremium} />
+          <LifeSplitCardMetadata
+            contract={reviewContract.annualPremium > 0 ? reviewContract : contract}
+            monthlyPremium={reviewContract.annualPremium > 0 ? reviewContract.annualPremium / 12 : monthlyPremium}
+          />
+          <LifeSmallBaseNotice rows={differentBaseRows} riskAnnualBase={systemContractAnnualPremiumBase(systemContract)} />
 
           <StatementRefreshConversionPanel
             showConversion={shouldShowStatementRefreshConversion}
@@ -5636,7 +5676,9 @@ function LifeSplitContractCard({
           <AcceleratedB36WarningNotice warning={missingB36Warning} />
 
           <LifeSplitCommissionTable
-            rows={contract.rows}
+            rows={contract.rows.map((row) => differentBaseRows.includes(row)
+              ? { ...row, lifeSplitLabel: "Investiční složka" }
+              : row)}
             b36Payments={contract.b36Payments}
             b36HalfLabel={b36HalfLabel}
             pairedB36PaymentIndexes={pairedB36PaymentIndexes}
@@ -6414,7 +6456,7 @@ function ManagerCommissionRowCard({
   const matchNotice = managerCommissionMatchNotice(match);
   const managerCareerCheck = matchedContract
     ? statementCareerMismatch(
-        rowItems,
+        rowItems.filter((item) => !managerRowHasSmallLifeBase(item, matchedContract)),
         managerOverrideForViewer(matchedContract, currentUserEmail)?.position
       )
     : null;
@@ -6598,6 +6640,10 @@ function ManagerCommissionRowCard({
         </div>
       </div>
 
+      <LifeSmallBaseNotice
+        rows={rowItems.filter((item) => managerRowHasSmallLifeBase(item, matchedContract))}
+        riskAnnualBase={systemContractAnnualPremiumBase(matchedContract)}
+      />
       {(rowComparisons.length > 0 || rowBaseComparisons.length > 0) && (
         <AmountComparisonPanel
           comparisons={rowComparisons}

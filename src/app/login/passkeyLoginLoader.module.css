@@ -1,0 +1,48 @@
+.pendingForm { opacity: 0; pointer-events: none; }
+
+.loader {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at 50% 36%, #9559dc1c, transparent 68%);
+  text-align: center;
+  animation: arrive 220ms ease-out both;
+}
+
+.visual { position: relative; display: grid; width: 144px; height: 144px; flex-shrink: 0; place-items: center; margin-bottom: 24px; }
+.halo { position: absolute; inset: 22px; border-radius: 50%; background: #aa73ef26; filter: blur(22px); animation: breathe 2.8s ease-in-out infinite; }
+.orbit { position: absolute; inset: -9px; border: 1px dashed #c5a4f01f; border-radius: 50%; }
+.spinner { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transform: rotate(-90deg); }
+.track { stroke: #cfb3f523; stroke-width: 1.5; }
+.arc { stroke: #d0adff; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 24 76; transform-origin: center; animation: spin 1.8s linear infinite; filter: drop-shadow(0 0 5px #b87cff80); }
+.icon { position: relative; display: grid; width: 88px; height: 88px; place-items: center; border: 1px solid #d4b7ff38; border-radius: 27px; background: linear-gradient(145deg, #c99cff23, #8d58cd0d); color: #e4d2ff; box-shadow: inset 0 1px 0 #e8d7ff1f, 0 12px 36px #0803132e; animation: breathe 2.8s ease-in-out infinite; }
+.eyebrow { margin: 0 0 10px; color: #c7a8e6; font-size: 10px; font-weight: 600; letter-spacing: .19em; text-transform: uppercase; }
+.title { margin: 0; color: #faf5ff; font-size: clamp(21px, 5vw, 26px); font-weight: 600; line-height: 1.3; letter-spacing: -.035em; text-wrap: balance; }
+.description { max-width: 285px; min-height: 44px; margin: 13px 0 0; color: #c4b2d9; font-size: 12px; line-height: 1.85; text-wrap: balance; }
+.dots { display: flex; gap: 6px; margin-top: 22px; }
+.dots i { width: 4px; height: 4px; border-radius: 50%; background: #c19aec; animation: dotPulse 1.4s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: .16s; }
+.dots i:nth-child(3) { animation-delay: .32s; }
+
+@keyframes arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe { 0%, 100% { opacity: .72; } 50% { opacity: 1; } }
+@keyframes dotPulse { 0%, 70%, 100% { opacity: .3; } 35% { opacity: 1; } }
+
+@media (max-width: 380px), (max-height: 600px) {
+  .visual { width: 120px; height: 120px; margin-bottom: 18px; }
+  .icon { width: 76px; height: 76px; border-radius: 23px; }
+  .dots { margin-top: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader, .loader * { animation: none !important; }
+}
+
+:global(:root[data-motion="off"]) .loader,
+:global(:root[data-motion="off"]) .loader * { animation: none !important; }

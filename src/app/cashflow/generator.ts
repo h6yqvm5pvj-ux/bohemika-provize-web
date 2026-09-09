@@ -1,4 +1,5 @@
 import type { PaymentFrequency } from "../types/domain";
+import { lifeRiskAnnualPremiumBase, payoutHasSmallLifeSubsequentBase } from "../lib/commissionPayoutRules";
 import { cppBytexSubsequentPayoutYears } from "../lib/productFormulas/cppbytex";
 import { domexSubsequentPayoutYears } from "../lib/productFormulas/domex";
 import { toDate } from "./helpers";
@@ -498,7 +499,13 @@ export function generateCashflow(
     const parsedStornoDate = toDate(entry.stornoDate);
     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
     const scopedPayouts = cashflowCommissionPayoutsForViewer(entry, viewerEmail);
-    const settledPayouts = indexSettledCommissionPayouts(scopedPayouts);
+    const settledPayouts = indexSettledCommissionPayouts(
+      scopedPayouts?.filter((payout) => !payoutHasSmallLifeSubsequentBase({
+        product: entry.productKey,
+        payout,
+        riskAnnualBase: lifeRiskAnnualPremiumBase(entry),
+      }))
+    );
     const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts);
     const consumedPayoutKeys = new Set<string>();
 
@@ -710,7 +717,11 @@ export function generateCashflow(
 
         consumedPayoutKeys.add(indexedPayout.key);
         const code = normalizeCommissionCode(indexedPayout.payout.code);
-        const commissionLabel = commissionLabelFromCode(code);
+        const commissionLabel = payoutHasSmallLifeSubsequentBase({
+          product,
+          payout: indexedPayout.payout,
+          riskAnnualBase: lifeRiskAnnualPremiumBase(entry),
+        }) ? "Investiční složka" : commissionLabelFromCode(code);
         const aliases = uniqueCommissionCodes([code]);
         const payoutStatus = String(indexedPayout.payout.status ?? "").trim().toLowerCase();
         const isStatementStorno = payoutStatus === "storno" || amount < 0;

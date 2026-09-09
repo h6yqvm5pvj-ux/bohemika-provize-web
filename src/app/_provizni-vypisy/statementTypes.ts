@@ -382,6 +382,8 @@ export type ContractCommissionPayoutRecord = {
   amount?: number | null;
   expectedAmount?: number | null;
   difference?: number | null;
+  statementBaseAmount?: number | null;
+  systemBaseAmount?: number | null;
   differenceReason?: string | null;
   career?: string | null;
   detail?: string | null;

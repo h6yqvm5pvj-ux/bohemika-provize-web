@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { coefficientSetLabel } from "@/app/lib/productFormulas/coefficientSets";
+import { LIFE_SUBSEQUENT_MIN_BASE_RATIO } from "@/app/lib/commissionPayoutRules";
 import { formatWholeMoney } from "./statementParsing";
 import type {
   CoefficientOverrideInfo,
@@ -12,6 +13,23 @@ export type LifePremiumBaseNoticeKind =
   | "mismatch"
   | "endorsement"
   | null;
+
+export function LifeSmallBaseNotice({ rows, riskAnnualBase }: {
+  rows: Array<{ type: string; base: number }>;
+  riskAnnualBase: number | null;
+}) {
+  if (rows.length === 0 || riskAnnualBase == null) return null;
+  const labels = [...new Set(rows.map((row) => `${row.type}: ${formatWholeMoney(row.base)} Kč`))];
+  return (
+    <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+      <div className="font-bold">Investiční složka</div>
+      <div className="mt-0.5 font-medium">
+        {labels.join(", ")} ročně. Základna je pod {LIFE_SUBSEQUENT_MIN_BASE_RATIO * 100} % rizikové základny {formatWholeMoney(riskAnnualBase)} Kč ročně.
+        {" "}Podle této základny řádky označujeme jako investiční složku a nezahrnujeme je do kontroly pojistného ani provize; vyplacené částky zůstávají ve výpisu.
+      </div>
+    </div>
+  );
+}
 
 export type LifePremiumBaseMismatchNotice = {
   statementAnnualPremium: number;

@@ -137,6 +137,7 @@ import {
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
 import { ContractCommissionHistory } from "./ContractCommissionHistory";
+import { lifeRiskAnnualPremiumBase } from "@/app/lib/commissionPayoutRules";
 import {
   ContractAutoPremiumHistory,
   initialAnnualPremiumFromStatementHistory,
@@ -6750,6 +6751,7 @@ export default function ContractDetailPage() {
 
             <div className="space-y-5">
               <ContractCommissionSection
+                riskAnnualBase={lifeRiskAnnualPremiumBase(contract)}
                 product={prod}
                 isOwnContract={isOwnContract}
                 isPaymentBasedProduct={isPaymentBasedProduct}
@@ -6791,6 +6793,7 @@ export default function ContractDetailPage() {
               />
 
               <ContractCommissionHistory
+                riskAnnualBase={lifeRiskAnnualPremiumBase(contract)}
                 product={contract?.productKey ?? null}
                 payouts={contract?.commissionPayouts ?? []}
                 viewerEmail={normalizedViewerEmail}

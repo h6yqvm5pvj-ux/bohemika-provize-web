@@ -16,7 +16,10 @@ import {
 } from "@/app/api/contracts/_lib/contractsApi";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import {
+  hasSmallLifeSubsequentBase,
   isFirstYearAutoACommissionPayout,
+  isLifeSubsequentCommissionPayout,
+  lifeRiskAnnualPremiumBase,
   isNeonInvestmentLifeA201Payout,
   isNeonRefreshStatementProductCode,
 } from "@/app/lib/commissionPayoutRules";
@@ -2175,6 +2178,12 @@ const expectedPayoutAmountForRow = (
   row: CommissionStatementPayoutRow,
   viewerEmail: string | null | undefined
 ): number | null => {
+  if (hasSmallLifeSubsequentBase({
+    product: contract.productKey,
+    commissionCode: row.commissionCode,
+    statementAnnualBase: row.baseAmount,
+    riskAnnualBase: lifeRiskAnnualPremiumBase(contract),
+  })) return null;
   // A201 in ČPP ŽP NEON is the investment-life component. It intentionally
   // uses a different premium base than A101, so it must not be compared with
   // the regular immediate commission calculated for the contract.
@@ -3187,6 +3196,18 @@ const payoutRecordDetail = ({
   viewerEmail: string | null | undefined;
 }): string => {
   const code = normalizeCommissionCodeKey(row.commissionCode) || "položka";
+  if (hasSmallLifeSubsequentBase({
+    product: contract.productKey,
+    commissionCode: row.commissionCode,
+    statementAnnualBase: row.baseAmount,
+    riskAnnualBase: lifeRiskAnnualPremiumBase(contract),
+  })) {
+    return [
+      `${code}: investiční složka, ${status === "storno" ? "odúčtováno" : "vyplaceno"} ${formatMoneyDetail(signedAmount)}. Základna výpisu ${formatMoneyDetail(row.baseAmount)}.`,
+      `Základna je pod 25 % rizikové základny ${formatMoneyDetail(lifeRiskAnnualPremiumBase(contract))}; pojistné ani provize se nesrovnává.`,
+      correctionInfo?.detail,
+    ].filter(Boolean).join(" ");
+  }
   const statementCareer = statementCareerPositionFromValue(row.career);
   const referencePosition =
     row.source === "manager"
@@ -3352,12 +3373,16 @@ const payoutRecordFromStatementRow = ({
     product: contract.productKey,
     commissionCode: row.commissionCode,
   });
-  const statementBaseAmount = canComparePremiumBase
+  const lifeSubsequent = isLifeSubsequentCommissionPayout({
+    product: contract.productKey,
+    commissionCode: row.commissionCode,
+  });
+  const statementBaseAmount = canComparePremiumBase || lifeSubsequent
     ? finiteMoneyOrNull(row.baseAmount)
     : null;
-  const systemCalculationBase = canComparePremiumBase
-    ? contractCalculationPremiumForCoefficientSet(contract)
-    : null;
+  const systemCalculationBase = lifeSubsequent
+    ? lifeRiskAnnualPremiumBase(contract)
+    : canComparePremiumBase ? contractCalculationPremiumForCoefficientSet(contract) : null;
   const systemBaseAmount =
     systemCalculationBase == null
       ? null

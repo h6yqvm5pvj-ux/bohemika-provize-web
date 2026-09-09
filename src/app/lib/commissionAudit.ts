@@ -1,7 +1,7 @@
 import { generateCashflow } from "@/app/cashflow/generator";
 import type { EntryDoc } from "@/app/cashflow/types";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
-import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
+import { isNeonInvestmentLifeA201Payout, lifeRiskAnnualPremiumBase, payoutHasSmallLifeSubsequentBase } from "@/app/lib/commissionPayoutRules";
 import { toDate } from "@/app/lib/formatters";
 import type {
   CommissionResultItemDTO,
@@ -674,6 +674,10 @@ export function commissionAuditSummaryForContract(
       isNeonInvestmentLifeA201Payout({
         product: contract.productKey,
         commissionCode: payout.code,
+      }) || payoutHasSmallLifeSubsequentBase({
+        product: contract.productKey,
+        payout,
+        riskAnnualBase: lifeRiskAnnualPremiumBase(entry),
       })
     ) {
       continue;

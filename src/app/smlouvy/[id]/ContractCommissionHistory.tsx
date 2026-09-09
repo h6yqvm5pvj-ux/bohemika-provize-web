@@ -6,6 +6,7 @@ import { ChevronDown, Eye, FileText, Info, RefreshCw } from "lucide-react";
 import {
   isFirstYearAutoACommissionPayout,
   isNeonInvestmentLifeA201Payout,
+  payoutHasSmallLifeSubsequentBase,
 } from "@/app/lib/commissionPayoutRules";
 import type { Product } from "@/app/types/domain";
 import { HelpDialog } from "@/components/HelpDialog";
@@ -17,6 +18,7 @@ import { ContractSectionHeading } from "./ContractDetailUi";
 type ContractCommissionHistoryProps = {
   product?: Product | null;
   payouts?: ContractCommissionPayout[] | null;
+  riskAnnualBase?: number | null;
   viewerEmail?: string | null;
   contractOwnerEmail?: string | null;
   onOpenStatement?: (statementId: string) => void;
@@ -417,6 +419,7 @@ const groupPayoutsByWriter = ({
 export function ContractCommissionHistory({
   product = null,
   payouts,
+  riskAnnualBase = null,
   viewerEmail = null,
   contractOwnerEmail = null,
   onOpenStatement,
@@ -587,7 +590,8 @@ export function ContractCommissionHistory({
                           product,
                           commissionCode: payout.code,
                         });
-                        const displayStatus = isExpectedInvestmentLifeA201
+                        const smallBase = payoutHasSmallLifeSubsequentBase({ product, payout, riskAnnualBase });
+                        const displayStatus = (isExpectedInvestmentLifeA201 || smallBase) && normalizeStatus(payout.status) !== "storno"
                           ? "paid"
                           : payout.status;
                         const isDifference =
@@ -596,7 +600,7 @@ export function ContractCommissionHistory({
                         const canOpenStatement = Boolean(statementId && onOpenStatement);
                         const isPreviewLoading = statementPreviewLoadingId === statementId;
                         const itemLabel = payoutItemLabel(payout);
-                        const alertMessage = isExpectedInvestmentLifeA201
+                        const alertMessage = isExpectedInvestmentLifeA201 || smallBase
                           ? null
                           : payoutAlertMessage(payout, product);
                         const rowKey =
@@ -621,6 +625,7 @@ export function ContractCommissionHistory({
                               <td className="px-2 py-2">
                                 <div className="break-words font-semibold leading-snug text-slate-800">
                                   {itemLabel}
+                                  {smallBase && <div className="mt-1 text-xs font-medium text-sky-700">Investiční složka · nesrovnává se</div>}
                                 </div>
                               </td>
                               <td className="whitespace-nowrap px-2 py-2 text-right font-bold text-slate-950">
