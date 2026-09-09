@@ -1,0 +1,58 @@
+.panel {
+  container-type: inline-size;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 22px;
+  border: 1px solid #ddd2ff1c;
+  border-radius: 21px;
+  background: linear-gradient(130deg, #ffffff09, #ffffff03);
+  color: #f5f0ff;
+  font-family: var(--font-inter, system-ui, sans-serif);
+  animation: appear 250ms ease-out both;
+}
+.layout { display: grid; gap: 22px; min-width: 0; }
+.copy { min-width: 0; }
+.eyebrow { display: flex; align-items: center; gap: 9px; color: #cfbcea; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .13em; }
+.icon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border: 1px solid #d4bfff29; border-radius: 11px; background: #c7a5ff0d; color: #d6c3f4; }
+.spinner { margin-left: 4px; flex-shrink: 0; color: #b697df; animation: spin 1.7s linear infinite; }
+.title { margin: 14px 0 7px; font-size: 20px; line-height: 1.25; letter-spacing: -.025em; font-weight: 650; color: #f7f2ff; }
+.description { margin: 0; font-size: 12px; line-height: 1.65; color: #bdafce; max-width: 330px; }
+.footer { display: flex; align-items: center; gap: 7px; margin-top: 22px; padding-top: 14px; border-top: 1px solid #e5d5ff12; font-size: 10px; color: #bba8d0; }
+.dot { width: 5px; height: 5px; border-radius: 50%; background: #bd9aec; flex-shrink: 0; animation: pulse 2s ease-in-out infinite; }
+.track { height: 3px; width: 72px; flex-shrink: 0; margin-left: auto; border-radius: 3px; overflow: hidden; background: #dfc8ff12; }
+.track i { display: block; width: 45%; height: 100%; border-radius: inherit; background: #bd9aec; animation: travel 2.4s ease-in-out infinite; }
+.chartScene { min-width: 0; padding: 16px 18px 12px; border: 1px solid #d8c3ff18; border-radius: 15px; background: linear-gradient(160deg, #bfa0ff09, #d7c3ff03); }
+.chartHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.chartHeader span, .chartHeader i, .chartLabels i { height: 5px; border-radius: 5px; background: #e2d4fa1a; }
+.chartHeader span { width: 64px; } .chartHeader i { width: 25px; }
+.chart { display: flex; align-items: flex-end; justify-content: space-between; gap: 9px; height: 95px; padding: 0 3px; border-bottom: 1px solid #e5d5ff1c; background: repeating-linear-gradient(to top, transparent 0, transparent 30px, #dac4ff0b 30px, #dac4ff0b 31px); }
+.chart span { flex: 1; max-width: 28px; border: 1px solid #dac2ff1c; border-bottom: 0; border-radius: 5px 5px 0 0; background: linear-gradient(to top, #a786df12, #c4a5f759); transform-origin: bottom; animation: bars 3s ease-in-out infinite; }
+.chart span:nth-last-child(-n+2) { background: linear-gradient(to top, #ae8fe21a, #c6acf78c); }
+.chartLabels { display: flex; justify-content: space-between; gap: 12px; margin-top: 9px; }
+.chartLabels i { width: 24px; height: 3px; }
+.payoutScene { min-width: 0; }
+.amountSkeleton { display: flex; align-items: flex-end; gap: 10px; margin: 2px 0 22px; }
+.amountSkeleton span { display: block; width: 65%; max-width: 200px; height: 33px; border-radius: 8px; background: #cab5eb26; }
+.amountSkeleton i { font-style: normal; color: #a38cbf; font-size: 16px; padding-bottom: 2px; }
+.amountSkeleton span, .payoutBreakdown i { position: relative; overflow: hidden; }
+.amountSkeleton span::after, .payoutBreakdown i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 15%, #e9dcff20 50%, transparent 85%); animation: shimmer 2.6s ease-in-out infinite; }
+.payoutBreakdown { display: grid; gap: 12px; }
+.payoutBreakdown > div { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.payoutBreakdown span { font-size: 11px; color: #baa9ce; }
+.payoutBreakdown i { width: 65px; height: 8px; border-radius: 5px; background: #dbc6f71a; }
+.payoutBreakdown > div:last-child i { width: 47px; background: #e9bdf51c; }
+.payout .eyebrow { display: none; }
+.payout .title { font-size: 15px; margin-top: 0; letter-spacing: -.01em; }
+.payout .layout { gap: 18px; }
+.payout .footer { margin-top: 20px; }
+@container (min-width: 520px) { .production .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 30px; } .production .title { font-size: 23px; } .production .chart { height: 112px; } }
+@container (max-width: 260px) { .title { font-size: 18px; } .chartScene { padding-inline: 12px; } .chart { gap: 6px; } }
+@media (max-width: 380px) { .panel { padding: 17px; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes travel { from { transform: translateX(-110%); } to { transform: translateX(330%); } }
+@keyframes bars { 0%, 100% { opacity: .65; transform: scaleY(.76); } 50% { opacity: 1; transform: scaleY(1); } }
+@keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+@keyframes shimmer { 0%, 15% { transform: translateX(-110%); } 85%, 100% { transform: translateX(110%); } }
+@keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .panel, .spinner, .dot, .track i, .chart span, .amountSkeleton span::after, .payoutBreakdown i::after { animation: none; } .track i { margin-inline: auto; } .amountSkeleton span::after, .payoutBreakdown i::after { display: none; } }

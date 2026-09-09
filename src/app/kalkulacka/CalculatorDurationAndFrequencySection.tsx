@@ -1,6 +1,7 @@
 "use client";
 
-import { PencilLine, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { CircleHelp, PencilLine, RotateCcw, SlidersHorizontal } from "lucide-react";
+import styles from "./calculatorForm.module.css";
 
 import {
   type MaxCizinKomplexVariant,
@@ -91,7 +92,7 @@ export function CalculatorDurationAndFrequencySection({
       ? comfortGradual
         ? "1% z Poplatku v 1. platbě"
         : "Poplatek"
-      : "Částka";
+      : isLifeProduct ? "Měsíční pojistné" : "Částka";
   const renderDurationYearsField = (labelClassName: string) => (
     <div className="space-y-1">
       <label className={`flex min-h-7 items-center ${labelClassName}`}>
@@ -101,11 +102,11 @@ export function CalculatorDurationAndFrequencySection({
             <button
               type="button"
               onClick={onToggleDurationHelp}
-              className="inline-flex items-center justify-center rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-900 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
+              className={styles.infoButton}
               aria-expanded={durationHelpOpen}
               aria-label="Zobrazit nápovědu k době trvání smlouvy"
             >
-              Info
+              <CircleHelp size={15} strokeWidth={1.8} aria-hidden="true" />
             </button>
           )}
         </span>
@@ -151,6 +152,8 @@ export function CalculatorDurationAndFrequencySection({
             ? "border-rose-400/70"
             : "border-violet-200"
         }`}
+        aria-label="Doba trvání smlouvy v letech"
+        placeholder="Počet let"
         value={durationYears ?? ""}
         disabled={durationUsingOriginal}
         onChange={(event) => {
@@ -173,10 +176,10 @@ export function CalculatorDurationAndFrequencySection({
 
   const content = (
     <>
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-bold text-slate-900">Parametry smlouvy</h2>
-        <span className="h-px flex-1 bg-violet-100" aria-hidden="true" />
-      </div>
+      <h2 className={styles.sectionHeading}>
+        <span className={styles.sectionIcon}><SlidersHorizontal size={18} strokeWidth={1.7} aria-hidden="true" /></span>
+        Parametry smlouvy
+      </h2>
       <div className="space-y-3">
         {hasContractParameterFields && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -188,6 +191,7 @@ export function CalculatorDurationAndFrequencySection({
                 <label className="flex min-h-7 items-center text-sm font-semibold text-slate-800">Varianta produktu</label>
                 <select
                   className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
+                  aria-label="Varianta produktu"
                   value={maxCizinKomplexVariant}
                   onChange={(event) => onMaxCizinVariantChange(event.target.value as MaxCizinKomplexVariant)}
                 >
@@ -212,6 +216,7 @@ export function CalculatorDurationAndFrequencySection({
                       ? "border-rose-400/70"
                       : "border-violet-200"
                   }`}
+                  aria-label="Doba trvání smlouvy v měsících"
                   value={durationMonths ?? ""}
                   onChange={(event) => {
                     const raw = event.target.value.trim();
@@ -234,16 +239,9 @@ export function CalculatorDurationAndFrequencySection({
         )}
 
         <div className="space-y-1.5">
-          <label className="block text-sm font-semibold text-slate-800">
-            <span className="inline-flex items-center gap-1.5">
-              <SlidersHorizontal size={14} strokeWidth={2} className="text-violet-700" aria-hidden="true" />
-              <span>Parametry platby</span>
-            </span>
-          </label>
+          {hasContractParameterFields && <p className={styles.subheading}>Parametry platby</p>}
           <div
-            className={`grid grid-cols-1 gap-2.5 ${
-              hasPaymentCompanionField ? "sm:max-w-xl sm:grid-cols-2" : "sm:max-w-xs"
-            }`}
+            className={hasPaymentCompanionField ? styles.fieldGrid : styles.singleField}
           >
             <div className="space-y-1">
               <label className="flex min-h-7 items-center text-xs font-semibold text-slate-700">{amountLabel}</label>
@@ -252,6 +250,7 @@ export function CalculatorDurationAndFrequencySection({
                 className={`h-10 w-full rounded-xl border bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
                   missingFields.includes("částku") ? "border-rose-400/70" : "border-violet-200"
                 }`}
+                aria-label={amountLabel}
                 value={amountText}
                 onChange={(event) => onAmountTextChange(event.target.value)}
                 placeholder={product === "comfortcc" ? "Zadejte poplatek" : placeholderForAmount(product, frequency)}
@@ -266,6 +265,7 @@ export function CalculatorDurationAndFrequencySection({
                     {hasFrequencyPicker ? (
                       <select
                         className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
+                        aria-label="Frekvence platby"
                         value={frequency}
                         onChange={(event) => onFrequencyChange(event.target.value as PaymentFrequency)}
                       >
@@ -289,11 +289,11 @@ export function CalculatorDurationAndFrequencySection({
   );
 
   if (embedded) {
-    return <section>{content}</section>;
+    return <section className={styles.fields}>{content}</section>;
   }
 
   return (
-    <section className="rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+    <section className={`${styles.card} ${styles.fields}`}>
       {content}
     </section>
   );

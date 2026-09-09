@@ -1,6 +1,7 @@
 "use client";
 
-import { Snail, Zap } from "lucide-react";
+import { BriefcaseBusiness, Snail, Zap } from "lucide-react";
+import styles from "./calculatorForm.module.css";
 
 import { type CommissionMode, type Position, type Product } from "../types/domain";
 import { positionLabel } from "@/app/lib/formatters";
@@ -33,8 +34,12 @@ export function CalculatorPositionModeSection({
   if (!isVisible) return null;
 
   return (
-    <section className="rounded-2xl border border-white/80 bg-white/80 px-3 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.06)] backdrop-blur-xl">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <section className={`${styles.card} ${styles.fields}`}>
+      <h2 className={styles.sectionHeading}>
+        <span className={styles.sectionIcon}><BriefcaseBusiness size={18} strokeWidth={1.7} aria-hidden="true" /></span>
+        Nastavení provize
+      </h2>
+      <div className={styles.fieldGrid}>
         <div className="space-y-1.5">
           <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
             Pozice
@@ -43,6 +48,7 @@ export function CalculatorPositionModeSection({
             className={`h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700 ${
               positionDisabled ? "cursor-not-allowed bg-slate-50 text-slate-600" : ""
             }`}
+            aria-label="Pozice"
             value={position}
             onChange={(event) => onPositionChange(event.target.value as Position)}
             disabled={positionDisabled}
@@ -61,7 +67,7 @@ export function CalculatorPositionModeSection({
               Režim provize
             </label>
             <div
-              className="grid h-10 grid-cols-2 gap-1 rounded-xl border border-violet-200 bg-white/80 p-0.5 shadow-sm"
+              className={styles.commissionMode}
               role="radiogroup"
               aria-label="Režim provize"
             >
@@ -92,11 +98,7 @@ export function CalculatorPositionModeSection({
                     key={option.value}
                     type="button"
                     onClick={() => onModeChange(option.value)}
-                    className={`inline-flex h-9 items-center justify-center gap-2 rounded-[0.65rem] border px-3 text-sm font-semibold transition ${
-                      active
-                        ? "border-violet-200 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.08)]"
-                        : "border-transparent text-slate-600 hover:bg-violet-50 hover:text-slate-900"
-                    }`}
+                    className={styles.commissionModeButton}
                     role="radio"
                     aria-checked={active}
                   >

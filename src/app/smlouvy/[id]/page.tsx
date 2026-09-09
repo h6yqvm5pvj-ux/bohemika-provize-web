@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { ContractDetailLoader } from "./ContractDetailLoader";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -298,67 +299,6 @@ const normalizeTransferSearch = (value: string): string =>
 const transferTargetLabel = (target: ContractTransferTarget): string =>
   target.name?.trim() || nameFromEmail(target.email) || target.email;
 
-function ContractScanPaper({ className = "" }: { className?: string }) {
-  return (
-    <div
-      className={`relative h-full w-full overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_24px_55px_rgba(15,23,42,0.18)] ${className}`}
-    >
-      <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#bd00c9_52%,#ff79f2_100%)]" />
-      <div className="absolute right-0 top-0 h-16 w-16 rounded-bl-[20px] border-b border-l border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_100%)] shadow-inner">
-        <div className="absolute right-0 top-0 h-full w-full bg-white/70 [clip-path:polygon(100%_0,0_0,100%_100%)]" />
-      </div>
-
-      <div className="relative flex h-full flex-col px-7 py-8">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-950 text-white shadow-[0_12px_26px_rgba(15,23,42,0.22)]">
-            <FileText size={24} strokeWidth={2.1} aria-hidden="true" />
-          </div>
-          <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-700">
-            Smlouva
-          </span>
-        </div>
-
-        <div className="mt-8 space-y-3">
-          <div className="h-4 w-28 rounded-full bg-slate-950" />
-          <div className="h-3 w-44 rounded-full bg-slate-200" />
-          <div className="h-3 w-36 rounded-full bg-fuchsia-300" />
-        </div>
-
-        <div className="mt-8 grid grid-cols-2 gap-3">
-          <div className="h-14 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="h-2.5 w-12 rounded-full bg-slate-300" />
-            <div className="mt-2 h-2.5 w-20 rounded-full bg-slate-200" />
-          </div>
-          <div className="h-14 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="h-2.5 w-14 rounded-full bg-fuchsia-300" />
-            <div className="mt-2 h-2.5 w-16 rounded-full bg-slate-200" />
-          </div>
-        </div>
-
-        <div className="mt-7 space-y-3">
-          {[0, 1, 2, 3].map((line) => (
-            <div
-              key={`contract-loader-line-${line}`}
-              className="h-2.5 rounded-full bg-slate-200"
-              style={{ width: `${88 - line * 12}%` }}
-            />
-          ))}
-        </div>
-
-        <div className="mt-auto flex items-end justify-between gap-5 border-t border-slate-200 pt-6">
-          <div className="space-y-2">
-            <div className="h-2.5 w-20 rounded-full bg-slate-300" />
-            <div className="h-2.5 w-28 rounded-full bg-slate-200" />
-          </div>
-          <div className="h-9 w-28 rounded-full border border-fuchsia-200 bg-[linear-gradient(90deg,rgba(189,0,201,0.12),rgba(255,121,242,0.2))]">
-            <div className="mx-auto mt-4 h-1 w-16 rounded-full bg-fuchsia-400" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const normalizeCppExtranetParam = (
   value: string | number | null | undefined
 ): string | null => {
@@ -568,8 +508,6 @@ export default function ContractDetailPage() {
 
   const [contract, setContract] = useState<ContractDoc | null>(null);
   const [loading, setLoading] = useState(true);
-  const [embeddedLoadProgress, setEmbeddedLoadProgress] = useState(0);
-  const [showEmbeddedLoader, setShowEmbeddedLoader] = useState(isEmbedded);
   const [error, setError] = useState<string | null>(null);
   const [contractTimeline, setContractTimeline] = useState<ContractDoc[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
@@ -744,29 +682,6 @@ export default function ContractDetailPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isEmbedded) return;
-
-    if (loading) {
-      setShowEmbeddedLoader(true);
-      setEmbeddedLoadProgress(0);
-      const timer = window.setInterval(() => {
-        setEmbeddedLoadProgress((current) => {
-          if (current < 32) return Math.min(current + 8, 32);
-          if (current < 68) return Math.min(current + 5, 68);
-          if (current < 92) return Math.min(current + 2, 92);
-          return current;
-        });
-      }, 120);
-      return () => window.clearInterval(timer);
-    }
-
-    setEmbeddedLoadProgress(100);
-    const doneTimer = window.setTimeout(() => {
-      setShowEmbeddedLoader(false);
-    }, 280);
-    return () => window.clearTimeout(doneTimer);
-  }, [isEmbedded, loading]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -5429,89 +5344,12 @@ export default function ContractDetailPage() {
     </div>
   );
 
-  if (isEmbedded && showEmbeddedLoader) {
-    const scanProgress = Math.max(0, Math.min(100, embeddedLoadProgress));
-    const scanClipPath = `inset(${100 - scanProgress}% 0 0 0)`;
-    const loaderStatus =
-      scanProgress < 34
-        ? "Načítám základní údaje"
-        : scanProgress < 72
-          ? "Skládám provize a historii"
-          : "Finalizuji detail smlouvy";
-
+  if (isEmbedded && loading) {
     return (
-      <main className="relative min-h-screen overflow-hidden bg-white font-mono text-slate-950">
-        <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_22%_20%,rgba(189,0,201,0.1),transparent_32%),radial-gradient(circle_at_78%_76%,rgba(15,23,42,0.08),transparent_34%),#ffffff]" />
+      <>
         <Toasts items={toasts} onDismiss={dismissToast} />
-        <div className="flex min-h-screen items-center justify-center px-4 py-8 sm:px-8">
-          <section className="relative w-full max-w-5xl overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.14)]">
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,#ffffff_0%,#ffffff_38%,#fff2ff_38%,#fff7ff_56%,#ffffff_56%,#ffffff_100%)]" />
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#020617_0%,#bd00c9_54%,#ff79f2_100%)]" />
-
-            <div className="relative grid min-h-[430px] grid-cols-1 gap-8 px-7 py-8 sm:px-10 sm:py-10 md:grid-cols-[0.9fr_1.1fr] md:items-center">
-              <div className="flex flex-col justify-center">
-                <div className="inline-flex w-fit items-center gap-2 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-fuchsia-700 shadow-[0_10px_24px_rgba(189,0,201,0.1)]">
-                  <FileText size={14} strokeWidth={2.2} aria-hidden="true" />
-                  <span>Detail smlouvy</span>
-                </div>
-
-                <div className="mt-8 flex items-end gap-2">
-                  <span className="text-[92px] font-black leading-[0.82] tracking-tight text-black sm:text-[118px]">
-                    {scanProgress}
-                  </span>
-                  <span className="pb-2 text-4xl font-black leading-none text-[#bd00c9] sm:text-5xl">
-                    %
-                  </span>
-                </div>
-
-                <div className="mt-7 space-y-2">
-                  <h1 className="max-w-sm text-3xl font-black leading-tight tracking-tight text-black sm:text-4xl">
-                    Načítám smlouvu
-                  </h1>
-                  <p className="text-base font-bold text-slate-500">
-                    {loaderStatus}
-                  </p>
-                </div>
-
-                <div className="mt-8 max-w-md">
-                  <div className="h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100 shadow-inner">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,#020617_0%,#bd00c9_62%,#ff79f2_100%)] transition-[width] duration-200 ease-out"
-                      style={{ width: `${scanProgress}%` }}
-                    />
-                  </div>
-                  <div className="mt-3 h-px w-full bg-[linear-gradient(90deg,rgba(2,6,23,0.22),rgba(189,0,201,0.34),rgba(2,6,23,0))]" />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center">
-                <div className="relative h-[310px] w-[226px] sm:h-[360px] sm:w-[262px]">
-                  <div className="absolute inset-4 rotate-[-5deg] rounded-[28px] bg-fuchsia-300/25 blur-3xl" />
-                  <div className="absolute inset-0 rotate-[-3deg]">
-                    <ContractScanPaper className="scale-[0.98] blur-[7px] opacity-45" />
-                  </div>
-                  <div
-                    className="absolute inset-0 rotate-[-3deg] overflow-hidden transition-[clip-path] duration-200 ease-out"
-                    style={{ clipPath: scanClipPath }}
-                  >
-                    <ContractScanPaper />
-                  </div>
-                  <div
-                    className="absolute left-[-14%] right-[-14%] z-10 h-1 rotate-[-3deg] rounded-full bg-[#bd00c9] shadow-[0_0_24px_rgba(189,0,201,0.55),0_0_48px_rgba(255,121,242,0.38)] transition-[bottom] duration-200 ease-out"
-                    style={{
-                      bottom: `${scanProgress}%`,
-                      transform: "translateY(50%)",
-                    }}
-                    aria-hidden="true"
-                  >
-                    <div className="absolute inset-x-0 -top-4 h-8 rounded-full bg-fuchsia-300/45 blur-xl" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-      </main>
+        <ContractDetailLoader />
+      </>
     );
   }
 

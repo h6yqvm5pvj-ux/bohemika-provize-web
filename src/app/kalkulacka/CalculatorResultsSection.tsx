@@ -2,9 +2,11 @@
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import styles from "./calculatorForm.module.css";
 import Link from "next/link";
 import {
   BarChart3,
+  Calculator,
   CheckCircle2,
   ChevronDown,
   FileText,
@@ -241,29 +243,22 @@ export function CalculatorResultsSection({
     : "Okamžitá v 1. roce po TIPU";
 
   return (
-    <div className="self-start space-y-3 lg:sticky lg:top-6">
+    <div className={styles.resultsColumn}>
       {topTools}
-      <section className="relative space-y-4 overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/80 px-4 py-4 text-slate-900 shadow-[0_22px_58px_rgba(15,23,42,0.09)] backdrop-blur-xl sm:px-5 sm:py-5">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#4c1d95_100%)]" aria-hidden="true" />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(245,243,255,0.58)_50%,rgba(255,255,255,0.82)_100%)]" aria-hidden="true" />
-        <div className="relative flex items-center justify-between gap-3">
-          <h2 className="inline-flex items-center gap-2 text-lg font-bold text-slate-950">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-200 bg-white/80 text-slate-950 shadow-sm">
-              <BarChart3 size={19} strokeWidth={2.2} aria-hidden="true" />
-            </span>
-            <span>Výsledky</span>
+      <section className={styles.resultsCard} aria-label="Výsledky výpočtu provizí">
+        <div className={styles.resultsHeader}>
+          <h2 className={styles.resultsTitle}>
+            <span className={styles.sectionIcon}><BarChart3 size={19} strokeWidth={1.7} aria-hidden="true" /></span>
+            Výsledky
           </h2>
-
-          <div className="flex items-center gap-2">
+          <div className={styles.resultsTools}>
             <button
               type="button"
               onClick={onOpenCoefModal}
               disabled={unsupported}
-              className={`ui-focus inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/80 px-3 py-2 text-xs font-bold text-slate-800 shadow-sm backdrop-blur transition hover:border-violet-300 hover:bg-white sm:text-sm ${
-                unsupported ? "opacity-60 cursor-not-allowed" : ""
-              }`}
+              className={styles.coefficientButton}
             >
-              <Sigma size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+              <Sigma size={14} strokeWidth={1.8} aria-hidden="true" />
               Zobrazit koeficienty
             </button>
 
@@ -385,7 +380,15 @@ export function CalculatorResultsSection({
         )}
 
         {!unsupported && items.length === 0 && (
-          <p className="relative z-10 text-sm font-medium text-slate-500">Zadej částku a produkt, hned vypočítáme jednotlivé provize.</p>
+          <div className={styles.emptyResults}>
+            <div className={styles.emptyScene} aria-hidden="true">
+              <span className={styles.emptyGlow} />
+              <span className={styles.emptySheet}><i /><i /><i /></span>
+              <span className={styles.emptyCalculator}><Calculator size={35} strokeWidth={1.3} /></span>
+            </div>
+            <h3>Tady uvidíš svou provizi</h3>
+            <p>Vyplň částku a ostatní parametry smlouvy. Výpočet se zobrazí automaticky.</p>
+          </div>
         )}
 
         {items.length > 0 && !unsupported && (() => {
@@ -393,7 +396,7 @@ export function CalculatorResultsSection({
             return (
               <div className="relative space-y-2">
                 <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-3">
-                  <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
+                  <span className={styles.rowTitle}>
                     <span className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
                       <Image src="/icons/penize2.webp" alt="" fill className="object-contain" />
                     </span>
@@ -403,17 +406,17 @@ export function CalculatorResultsSection({
                         : `Okamžitá provize (${tipsterPercent} %)`}
                     </span>
                   </span>
-                  <span className="whitespace-nowrap text-lg font-semibold text-slate-950 sm:text-2xl">
+                  <span className={styles.rowAmount}>
                     {formatMoneyResult(tipsterImmediateCommission)}
                   </span>
                 </div>
 
                 {!hideAnnualAutoTotals && (
-                  <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-4">
+                  <div className={styles.totals}>
                     <span className="font-semibold text-slate-700">{totalLabel}</span>
                     <AnimatedMoneyValue
                       value={tipsterImmediateCommission}
-                      className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
+                      className={styles.totalValue}
                     />
                   </div>
                 )}
@@ -447,26 +450,26 @@ export function CalculatorResultsSection({
           const splitImmediateTotal = sumCommissionItems(splitImmediateItems);
 
           return (
-            <div className="relative space-y-1">
+            <div className={styles.resultList}>
               {hasSplitImmediate && (
-                <div className="border-b border-slate-200">
+                <div className={styles.resultRow}>
                   <button
                     type="button"
                     onClick={() => setExpandedNeonImmediateBreakdown((value) => !value)}
                     aria-expanded={expandedNeonImmediateBreakdown}
-                    className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-3 text-left transition hover:bg-slate-50"
+                    className={styles.rowButton}
                   >
-                    <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
+                    <span className={styles.rowTitle}>
                       <div className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
                         <Image src="/icons/penize2.webp" alt="" fill className="object-contain" />
                       </div>
                       <span className="min-w-0">Okamžitá provize</span>
-                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                      <span className={styles.breakdownBadge}>
                         rozpis
                       </span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <span className="whitespace-nowrap text-lg font-semibold text-slate-950 sm:text-2xl">
+                    <span className={styles.rowValue}>
+                      <span className={styles.rowAmount}>
                         {formatMoneyResult(splitImmediateTotal)}
                       </span>
                       <ChevronDown
@@ -481,7 +484,7 @@ export function CalculatorResultsSection({
                   </button>
 
                   {expandedNeonImmediateBreakdown && (
-                    <div className="mb-3 space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                    <div className={styles.breakdown}>
                       <p className="text-sm font-semibold text-slate-900">
                         Rozpis okamžité provize
                       </p>
@@ -493,7 +496,7 @@ export function CalculatorResultsSection({
                           return (
                             <div
                               key={part.title}
-                              className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                              className={styles.breakdownPart}
                             >
                               <span className="min-w-0 text-sm font-medium text-slate-800">
                                 <span>{cleanResultTitle(part.title)}</span>
@@ -511,11 +514,11 @@ export function CalculatorResultsSection({
                         })}
                       </div>
 
-                      <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-950 px-3 py-2 text-white">
+                      <div className={styles.breakdownTotal}>
                         <span className="text-sm font-semibold">
                           Celkem okamžitá provize
                         </span>
-                        <span className="whitespace-nowrap text-lg font-bold text-emerald-300">
+                        <span className={styles.breakdownTotalAmount}>
                           {formatMoneyResult(splitImmediateTotal)}
                         </span>
                       </div>
@@ -539,7 +542,7 @@ export function CalculatorResultsSection({
                 const itemNote = displayNoteForCommissionItem(item);
 
                 return (
-                  <div key={idx} className="border-b border-slate-200">
+                  <div key={idx} className={styles.resultRow}>
                     <button
                       type="button"
                       onClick={
@@ -554,13 +557,9 @@ export function CalculatorResultsSection({
                           ? isNeonBreakdownExpanded
                           : undefined
                       }
-                      className={`flex w-full items-center justify-between gap-3 py-3 text-left ${
-                        neonImmediateBreakdown
-                          ? "rounded-xl px-2 transition hover:bg-slate-50"
-                          : "cursor-default"
-                      }`}
+                      className={styles.rowButton}
                     >
-                      <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-700">
+                      <span className={styles.rowTitle}>
                         {iconSrc && (
                           <div className="relative h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7">
                             <Image src={iconSrc} alt="" fill className="object-contain" />
@@ -575,13 +574,13 @@ export function CalculatorResultsSection({
                           )}
                         </span>
                         {neonImmediateBreakdown && (
-                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                          <span className={styles.breakdownBadge}>
                             rozpis
                           </span>
                         )}
                       </span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        <span className="whitespace-nowrap text-lg font-semibold text-slate-950 sm:text-2xl">
+                      <span className={styles.rowValue}>
+                        <span className={styles.rowAmount}>
                           {formatMoneyResult(item.amount)}
                         </span>
                         {neonImmediateBreakdown && (
@@ -598,7 +597,7 @@ export function CalculatorResultsSection({
                     </button>
 
                     {neonImmediateBreakdown && isNeonBreakdownExpanded && (
-                      <div className="mb-3 space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                      <div className={styles.breakdown}>
                         <p className="text-sm font-semibold text-slate-900">
                           Rozpis okamžité provize
                         </p>
@@ -607,7 +606,7 @@ export function CalculatorResultsSection({
                           {neonImmediateBreakdown.parts.map((part) => (
                             <div
                               key={part.label}
-                              className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                              className={styles.breakdownPart}
                             >
                               <span className="min-w-0 text-sm font-medium text-slate-800">
                                 <span>{part.label}</span>
@@ -624,11 +623,11 @@ export function CalculatorResultsSection({
                           ))}
                         </div>
 
-                        <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-950 px-3 py-2 text-white">
+                        <div className={styles.breakdownTotal}>
                           <span className="text-sm font-semibold">
                             Celkem okamžitá provize
                           </span>
-                          <span className="whitespace-nowrap text-lg font-bold text-emerald-300">
+                          <span className={styles.breakdownTotalAmount}>
                             {formatMoneyResult(neonImmediateBreakdown.total)}
                           </span>
                         </div>
@@ -665,33 +664,33 @@ export function CalculatorResultsSection({
               {!hideAnnualAutoTotals && (
                 <div className="flex items-center justify-between pt-3">
                   {paymentBasedTotalsMemo ? (
-                    <div className="w-full space-y-2 border-t border-slate-200 pt-4">
-                      <div className="flex items-center justify-between gap-3">
+                    <div className={styles.totals}>
+                      <div className={styles.totalLine}>
                         <span className="font-semibold text-slate-700">
                           Celkem v 1. roce{tipContractConfig ? " po TIPU" : ""}
                         </span>
                         <AnimatedMoneyValue
                           value={tipContractConfig ? tipContractImmediateNetFirstYear : paymentBasedTotalsMemo.immediate}
-                          className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
+                          className={styles.totalValue}
                         />
                       </div>
-                      <div className="flex items-center justify-between gap-3">
+                      <div className={styles.totalLine}>
                         <span className="font-semibold text-slate-700">Celkem následně ročně</span>
                         <AnimatedMoneyValue
                           value={paymentBasedTotalsMemo.subsequent}
-                          className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
+                          className={styles.totalValue}
                         />
                       </div>
                     </div>
                   ) : (
-                    <div className="w-full border-t border-slate-200 pt-4">
-                      <div className="flex items-center justify-between gap-3">
+                    <div className={styles.totals}>
+                      <div className={styles.totalLine}>
                         <span className="font-semibold text-slate-700">
                           {totalLabel}{tipContractConfig ? " po TIPU" : ""}
                         </span>
                         <AnimatedMoneyValue
                           value={tipContractConfig ? tipContractTotalNet : total}
-                          className="whitespace-nowrap text-2xl font-bold text-emerald-600 sm:text-3xl"
+                          className={styles.totalValue}
                         />
                       </div>
                     </div>
@@ -703,13 +702,13 @@ export function CalculatorResultsSection({
         })()}
       </section>
       {showSaveActions && !tipsterModeEnabled && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={styles.saveActions}>
           <button
             type="button"
             onClick={onSaveContract}
             disabled={!canSaveContract || saving}
             aria-busy={saving}
-            className="ui-focus inline-flex min-w-[208px] items-center justify-center gap-2 rounded-full border border-violet-700 bg-violet-700 px-7 py-3 text-sm font-black !text-white shadow-[0_16px_34px_rgba(109,40,217,0.20)] transition hover:-translate-y-0.5 hover:bg-violet-800 hover:shadow-[0_20px_44px_rgba(109,40,217,0.24)] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:border-slate-400 disabled:opacity-50 disabled:shadow-none disabled:hover:translate-y-0"
+            className={styles.saveButton}
           >
             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/15" aria-hidden="true">
               {saving ? (
@@ -725,7 +724,7 @@ export function CalculatorResultsSection({
               type="button"
               onClick={onAddToQueue}
               disabled={!canAddToQueue || saving}
-              className="ui-focus inline-flex min-w-[190px] items-center justify-center gap-2 rounded-full border border-emerald-700 bg-emerald-700 px-6 py-3 text-sm font-black !text-white shadow-[0_16px_34px_rgba(4,120,87,0.18)] transition hover:-translate-y-0.5 hover:bg-emerald-800 hover:shadow-[0_20px_44px_rgba(4,120,87,0.22)] disabled:cursor-not-allowed disabled:border-slate-400 disabled:bg-slate-400 disabled:opacity-50 disabled:shadow-none disabled:hover:translate-y-0"
+              className={styles.queueButton}
             >
               <ListPlus size={17} strokeWidth={2.4} className="shrink-0" aria-hidden="true" />
               Přidat do fronty
@@ -734,7 +733,7 @@ export function CalculatorResultsSection({
           {lastSavedContractHref && (
             <Link
               href={lastSavedContractHref}
-              className="ui-focus inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-900 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
+              className={styles.savedLink}
             >
               <FileText size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
               Zobrazit smlouvu

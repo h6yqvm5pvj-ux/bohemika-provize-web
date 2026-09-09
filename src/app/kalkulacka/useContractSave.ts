@@ -36,12 +36,15 @@ const invalidateContractsCache = () => {
   }
 };
 
+export type ContractSaveStage = "preparing" | "saving" | "attachment";
+
 export type SaveContractEntryInput = {
   user: User;
   ownerEmail: string;
   entry: Record<string, unknown>;
   fallbackError: string;
   pdfFile: File | null;
+  onStageChange?: (stage: ContractSaveStage) => void;
 };
 
 /** Shared persistence boundary for both a new contract and its endorsement. */
@@ -51,7 +54,9 @@ export const saveContractEntry = async ({
   entry,
   fallbackError,
   pdfFile,
+  onStageChange,
 }: SaveContractEntryInput): Promise<ContractEntrySaveResult> => {
+  onStageChange?.("saving");
   const { response, data } = await requestContractsMutationWithAuth({
     user,
     path: "/api/contracts",
@@ -87,6 +92,7 @@ export const saveContractEntry = async ({
     pdfAttachment = { status: "not-requested" };
   } else {
     try {
+      onStageChange?.("attachment");
       await uploadContractPdfAttachmentWithAuth({
         user,
         ownerEmail,

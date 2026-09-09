@@ -120,7 +120,7 @@ const bohemkaContractDetailHref = (
   const ownerEmail = normalizeText(contract?.adviserEmail);
   const entryId = normalizeText(contract?.id);
   if (!ownerEmail || !entryId) return null;
-  return `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}?from=commission-statements`;
+  return `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}?from=commission-statements&embedded=1`;
 };
 
 export function BohemkaContractDetailLink({

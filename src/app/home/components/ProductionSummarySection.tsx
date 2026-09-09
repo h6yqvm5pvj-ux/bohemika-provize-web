@@ -83,7 +83,7 @@ const PRODUCTION_SUMMARY_COPY: Record<
     commission: string;
     loadingTitle: string;
     loadingAccent: string;
-    loadingStages: [string, string, string];
+    loadingDescription: string;
     swipeHint: string;
     cards: Record<
       ProductionTone,
@@ -101,11 +101,7 @@ const PRODUCTION_SUMMARY_COPY: Record<
     commission: "Provize",
     loadingTitle: "Načítám data produkce",
     loadingAccent: "Produkce",
-    loadingStages: [
-      "Sbírám smlouvy a výkon…",
-      "Počítám vlastní, týmovou a tipařskou produkci…",
-      "Finalizuji součty a trendy…",
-    ],
+    loadingDescription: "Připravuji smlouvy, provize a přehled za vybrané období.",
     swipeHint: "Swipe do strany pro další produkci.",
     cards: {
       own: {
@@ -316,42 +312,9 @@ export function ProductionSummarySection({
   isLiteUI,
 }: Props) {
   const copy = PRODUCTION_SUMMARY_COPY[language];
-  const [loadingProgress, setLoadingProgress] = useState(14);
   const [mobileCardIndex, setMobileCardIndex] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const mobileCarouselRef = useRef<HTMLDivElement | null>(null);
-  const clampedLoadingProgress = Math.max(8, Math.min(97, loadingProgress));
-
-  useEffect(() => {
-    if (!loading) {
-      const resetFrame = window.requestAnimationFrame(() => setLoadingProgress(14));
-      return () => window.cancelAnimationFrame(resetFrame);
-    }
-
-    const startedAt = performance.now();
-    let frame = 0;
-
-    const animate = () => {
-      const elapsed = performance.now() - startedAt;
-      const phase = Math.min(1, elapsed / 3200);
-      const eased = 1 - Math.pow(1 - phase, 2.2);
-      const target = Math.round(14 + eased * 81);
-      setLoadingProgress((prev) => (target > prev ? target : prev));
-      frame = window.requestAnimationFrame(animate);
-    };
-
-    frame = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frame);
-  }, [loading]);
-
-  const loadingStage = showOnlyTeamProduction
-    ? "Počítám týmovou produkci…"
-    : clampedLoadingProgress < 35
-      ? copy.loadingStages[0]
-      : clampedLoadingProgress < 72
-        ? copy.loadingStages[1]
-        : copy.loadingStages[2];
-
   const containerShellClass = isLiteUI
     ? "relative h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-3 py-3 text-white transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 focus-within:border-violet-200/60 focus-within:shadow-[0_0_0_1px_rgba(221,214,254,0.3)] sm:px-4 sm:py-4"
     : "relative h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-3 py-3 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.24)] focus-within:border-violet-200/60 focus-within:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.3)] sm:px-4 sm:py-4";
@@ -549,8 +512,11 @@ export function ProductionSummarySection({
         <div className="relative z-10 flex h-full items-center">
           <LoadingProgressPanel
             title={copy.loadingTitle}
-            stage={loadingStage}
-            progress={clampedLoadingProgress}
+            description={
+              showOnlyTeamProduction
+                ? "Připravuji přehled týmových smluv a provizí."
+                : copy.loadingDescription
+            }
             accentLabel={copy.loadingAccent}
             visual="production"
           />

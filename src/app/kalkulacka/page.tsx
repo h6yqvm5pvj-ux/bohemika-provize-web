@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, CircleHelp, Loader2, UploadCloud, Users } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleHelp, Loader2, Users } from "lucide-react";
 import { auth } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
@@ -64,7 +64,6 @@ import {
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
 import { formatMoney, positionLabel } from "@/app/lib/formatters";
-import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   POSITION_ORDER,
@@ -115,7 +114,6 @@ import {
   type EndorsementSourceEntry,
   type EndorsementDraft,
   toNonNegativeNumber,
-  normalizeClientNameForSystemMatch,
 } from "./calculatorHelpers";
 import {
   buildEndorsementSourceEntries,
@@ -128,13 +126,16 @@ import {
   resolveRemainingEndorsementDurationYears,
 } from "./endorsementCalculation";
 import { useEndorsementPreparation } from "./useEndorsementPreparation";
-import { useContractSave } from "./useContractSave";
+import { useContractSave, type ContractSaveStage } from "./useContractSave";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
 import { CalculatorProductPickerModal } from "./CalculatorProductPickerModal";
 import { CalculatorProductAndPdfSection } from "./CalculatorProductAndPdfSection";
+import entryStyles from "./calculatorEntry.module.css";
+import formStyles from "./calculatorForm.module.css";
 import { usePdfDropzone } from "./usePdfDropzone";
 import { CalculatorDurationAndFrequencySection } from "./CalculatorDurationAndFrequencySection";
 import { CalculatorAmountAndActionsSection } from "./CalculatorAmountAndActionsSection";
+import { useClientNameLookup } from "./useClientNameLookup";
 import { CalculatorContractDetailsSection } from "./CalculatorContractDetailsSection";
 import { CalculatorPositionModeSection } from "./CalculatorPositionModeSection";
 import {
@@ -217,7 +218,6 @@ import {
   resolveRefreshOriginalContractInfo,
   uploadContractPdfAttachmentWithAuth,
   type ContractNumberLiveCheckState,
-  type ContractsApiResponse,
   type ContractsFindApiResponse,
   type ContractsPrecheckApiResponse,
   type RefreshOriginalLookupState,
@@ -594,9 +594,6 @@ const isSlaviaAutoDetailProduct = (product: Product): boolean =>
 const isUniqaAutoDetailProduct = (product: Product): boolean =>
   product === "uniqaAuto";
 const AUTO_HULL_USUAL_PRICE_TEXT = "Obvyklá cena vozidla";
-const CLIENT_SUGGESTIONS_PAGE_LIMIT = 50;
-const CLIENT_SUGGESTIONS_MAX_PAGES = 40;
-const CLIENT_SUGGESTIONS_VISIBLE_LIMIT = 6;
 const AUTO_PAID_POLICY_START_MONTHS = 6;
 
 const parseIsoDayAsLocalDate = (value: string): Date | null => {
@@ -645,150 +642,6 @@ const shouldAutoMarkPaidByPolicyStartDate = (policyStartDateIso: string): boolea
   today.setHours(0, 0, 0, 0);
   const cutoff = subtractMonthsClamped(today, AUTO_PAID_POLICY_START_MONTHS);
   return policyStart.getTime() <= cutoff.getTime();
-};
-
-const normalizeClientSuggestionText = (value: string | null | undefined): string =>
-  normalizeClientNameForSystemMatch(value)
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const clientNameTokens = (value: string | null | undefined): string[] =>
-  normalizeClientSuggestionText(value).split(" ").filter(Boolean);
-
-const clientNameSearchVariants = (value: string | null | undefined): string[] => {
-  const tokens = clientNameTokens(value);
-  const variants = new Set<string>();
-  const joined = tokens.join(" ");
-  if (joined) variants.add(joined);
-  if (tokens.length >= 2) {
-    variants.add([tokens[tokens.length - 1], ...tokens.slice(0, -1)].join(" "));
-  }
-  return [...variants];
-};
-
-const clientNameContainsTokenSequence = (
-  tokens: string[],
-  sequence: string[]
-): boolean =>
-  tokens.some((_, index) =>
-    sequence.every((token, offset) => tokens[index + offset] === token)
-  );
-
-const clientNameLooksLikeCompany = (value: string | null | undefined): boolean => {
-  const tokens = clientNameTokens(value);
-  if (
-    clientNameContainsTokenSequence(tokens, ["s", "r", "o"]) ||
-    clientNameContainsTokenSequence(tokens, ["a", "s"]) ||
-    clientNameContainsTokenSequence(tokens, ["z", "s"]) ||
-    clientNameContainsTokenSequence(tokens, ["o", "p", "s"])
-  ) {
-    return true;
-  }
-  return (
-    tokens.includes("sro") ||
-    tokens.includes("as") ||
-    tokens.includes("zs") ||
-    tokens.includes("ops") ||
-    tokens.includes("spol") ||
-    tokens.includes("druzstvo") ||
-    tokens.includes("nadace") ||
-    tokens.includes("ustav") ||
-    tokens.includes("obec") ||
-    tokens.includes("urad")
-  );
-};
-
-const clientNameLooksLikePersonQuery = (value: string | null | undefined): boolean => {
-  if (clientNameLooksLikeCompany(value)) return false;
-  const tokens = clientNameTokens(value).filter((token) => token.length > 1);
-  return tokens.length >= 2 && tokens.length <= 4;
-};
-
-const boundedLevenshteinDistance = (
-  left: string,
-  right: string,
-  maxDistance: number
-): number => {
-  if (left === right) return 0;
-  if (Math.abs(left.length - right.length) > maxDistance) return maxDistance + 1;
-
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex];
-    let rowBest = current[0] ?? 0;
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      const cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
-      const value = Math.min(
-        (previous[rightIndex] ?? 0) + 1,
-        (current[rightIndex - 1] ?? 0) + 1,
-        (previous[rightIndex - 1] ?? 0) + cost
-      );
-      current[rightIndex] = value;
-      rowBest = Math.min(rowBest, value);
-    }
-    if (rowBest > maxDistance) return maxDistance + 1;
-    previous = current;
-  }
-  return previous[right.length] ?? maxDistance + 1;
-};
-
-const clientNameTokenMatches = (queryToken: string, candidateToken: string): boolean => {
-  if (!queryToken || !candidateToken) return false;
-  if (queryToken === candidateToken) return true;
-  if (queryToken.length === 1) return candidateToken.length > 1 && candidateToken.startsWith(queryToken);
-  if (candidateToken.length === 1) return false;
-  if (
-    Math.min(queryToken.length, candidateToken.length) >= 3 &&
-    (candidateToken.startsWith(queryToken) || queryToken.startsWith(candidateToken))
-  ) {
-    return true;
-  }
-  if (Math.min(queryToken.length, candidateToken.length) < 3) return false;
-  const maxDistance = Math.max(queryToken.length, candidateToken.length) <= 4 ? 1 : 2;
-  return boundedLevenshteinDistance(queryToken, candidateToken, maxDistance) <= maxDistance;
-};
-
-const clientNameSuggestionScore = (query: string, candidate: string): number => {
-  const queryVariants = clientNameSearchVariants(query);
-  if (queryVariants.length === 0) return 0;
-
-  const candidateVariants = clientNameSearchVariants(candidate);
-  const candidateTokens = clientNameTokens(candidate);
-  let bestScore = 0;
-
-  for (const queryVariant of queryVariants) {
-    const queryTokens = queryVariant.split(" ").filter(Boolean);
-    for (const candidateVariant of candidateVariants) {
-      if (queryVariant === candidateVariant) bestScore = Math.max(bestScore, 1000);
-      if (candidateVariant.includes(queryVariant)) bestScore = Math.max(bestScore, 900);
-      if (queryVariant.includes(candidateVariant)) bestScore = Math.max(bestScore, 840);
-
-      const maxDistance = queryVariant.length <= 10 ? 2 : 3;
-      const wholeDistance = boundedLevenshteinDistance(
-        queryVariant,
-        candidateVariant,
-        maxDistance
-      );
-      if (wholeDistance <= maxDistance) {
-        bestScore = Math.max(bestScore, 760 - wholeDistance * 60);
-      }
-    }
-
-    if (
-      queryTokens.length > 0 &&
-      queryTokens.every((token) =>
-        candidateTokens.some((candidateToken) => clientNameTokenMatches(token, candidateToken))
-      )
-    ) {
-      const exactTokenMatches = queryTokens.filter((token) =>
-        candidateTokens.includes(token)
-      ).length;
-      bestScore = Math.max(bestScore, 700 + exactTokenMatches * 20);
-    }
-  }
-
-  return bestScore;
 };
 
 type CalculatorViewMode = "addContract" | "commissionOnly";
@@ -870,7 +723,6 @@ export default function CalculatorPage() {
   const [comfortTargetAmountText, setComfortTargetAmountText] = useState<string>("");
 
   const [clientName, setClientName] = useState<string>("");
-  const [clientSuggestions, setClientSuggestions] = useState<string[]>([]);
   const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false);
   const [statementClientNamePrefillActive, setStatementClientNamePrefillActive] =
     useState(false);
@@ -966,7 +818,6 @@ export default function CalculatorPage() {
   const [durationHelpOpen, setDurationHelpOpen] = useState(false);
   const [addContractHelpOpen, setAddContractHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const autoBulkFileInputRef = useRef<HTMLInputElement | null>(null);
   const pdfImportRunIdRef = useRef(0);
   const statementPrefillAppliedRef = useRef(false);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
@@ -985,8 +836,8 @@ export default function CalculatorPage() {
   >([]);
   const [importedContractPdfFile, setImportedContractPdfFile] = useState<File | null>(null);
   const [savingIncludesPdfAttachment, setSavingIncludesPdfAttachment] = useState(false);
+  const [savingStage, setSavingStage] = useState<ContractSaveStage>("preparing");
   const [pdfClientNameLoaded, setPdfClientNameLoaded] = useState(false);
-  const [pdfMatchedClientName, setPdfMatchedClientName] = useState(false);
   const {
     isOpen: productOpen,
     toggle: toggleProductPicker,
@@ -1007,7 +858,6 @@ export default function CalculatorPage() {
       setProduct(nextProduct);
       setHasSelectedProduct(true);
       setPdfClientNameLoaded(false);
-      setPdfMatchedClientName(false);
     },
   });
 
@@ -1062,7 +912,6 @@ export default function CalculatorPage() {
     setFrequency(nextFrequency);
     setTipsterModeEnabled(false);
     setPdfClientNameLoaded(false);
-    setPdfMatchedClientName(false);
     setImportedContractPdfFile(null);
     setPdfImportStatus(null);
     setPdfImportError(null);
@@ -1908,26 +1757,13 @@ export default function CalculatorPage() {
       setNeonDocAction(null);
     }
   };
-  const filteredClientSuggestions = useMemo(() => {
-    const q = normalizeClientSuggestionText(clientName);
-    if (!q) return [];
-    const personQuery = clientNameLooksLikePersonQuery(q);
-    return clientSuggestions
-      .map((name) => ({
-        name,
-        score:
-          personQuery && clientNameLooksLikeCompany(name)
-            ? 0
-            : clientNameSuggestionScore(q, name),
-      }))
-      .filter((item) => item.score > 0)
-      .sort((left, right) => {
-        if (right.score !== left.score) return right.score - left.score;
-        return left.name.localeCompare(right.name, "cs-CZ");
-      })
-      .slice(0, CLIENT_SUGGESTIONS_VISIBLE_LIMIT)
-      .map((item) => item.name);
-  }, [clientName, clientSuggestions]);
+  const clientNameLookup = useClientNameLookup({
+    user,
+    ownerEmail: effectiveSaveOwnerEmail,
+    isSavingForSubordinate,
+    impersonatedUserEmail,
+    query: clientName,
+  });
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
@@ -1935,95 +1771,6 @@ export default function CalculatorPage() {
     });
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchClientNames = async () => {
-      const targetOwnerEmail = effectiveSaveOwnerEmail;
-      if (!user?.email || !targetOwnerEmail) {
-        if (!cancelled) setClientSuggestions([]);
-        return;
-      }
-
-      if (!cancelled) {
-        setClientSuggestions([]);
-      }
-
-      const namesByKey = new Map<string, string>();
-      const publishClientSuggestions = () => {
-        if (!cancelled) {
-          setClientSuggestions(Array.from(namesByKey.values()));
-        }
-      };
-
-      try {
-        let bearerToken = await user.getIdToken();
-        let cursor: string | null = null;
-
-        for (let page = 0; page < CLIENT_SUGGESTIONS_MAX_PAGES; page += 1) {
-          const params = new URLSearchParams({
-            scope: isSavingForSubordinate ? "team" : "my",
-            limit: String(CLIENT_SUGGESTIONS_PAGE_LIMIT),
-            shape: "clientNames",
-          });
-          if (isSavingForSubordinate) {
-            params.set("subordinates", targetOwnerEmail);
-          }
-          if (cursor) params.set("cursor", cursor);
-
-          const requestWithToken = async (token: string) =>
-            fetch(`/api/contracts/list?${params.toString()}`, {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-              cache: "no-store",
-            });
-
-          let res = await requestWithToken(bearerToken);
-          if (res.status === 401) {
-            bearerToken = await user.getIdToken(true);
-            res = await requestWithToken(bearerToken);
-          }
-
-          const payload = (await res.json()) as ContractsApiResponse;
-          if (!res.ok || payload?.ok === false) {
-            throw new Error(payload?.error || "Nepodařilo se načíst smlouvy.");
-          }
-
-          (payload.contracts ?? [])
-            .map((d) => d.clientName)
-            .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
-            .forEach((name) => {
-              const trimmed = name.trim();
-              const key = normalizeClientNameForSystemMatch(trimmed);
-              if (key && !namesByKey.has(key)) {
-                namesByKey.set(key, trimmed);
-              }
-            });
-
-          publishClientSuggestions();
-
-          const nextCursor = payload.nextCursorToken ?? null;
-          if (!payload.hasMore || !nextCursor || nextCursor === cursor) {
-            break;
-          }
-          cursor = nextCursor;
-        }
-
-        publishClientSuggestions();
-      } catch (err) {
-        console.error("Failed to load client name suggestions", err);
-        publishClientSuggestions();
-      }
-    };
-
-    void fetchClientNames();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user, effectiveSaveOwnerEmail, isSavingForSubordinate]);
 
   useEffect(() => {
     if (!user || !canOverrideOwnerOnSave) {
@@ -2177,24 +1924,6 @@ export default function CalculatorPage() {
       cancelled = true;
     };
   }, [user, canOverrideOwnerOnSave, selectedSubordinateEmail]);
-
-  useEffect(() => {
-    if (!pdfClientNameLoaded) {
-      setPdfMatchedClientName(false);
-      return;
-    }
-
-    const normalizedClientName = normalizeClientNameForSystemMatch(clientName);
-    if (!normalizedClientName) {
-      setPdfMatchedClientName(false);
-      return;
-    }
-
-    const matched = clientSuggestions.some(
-      (name) => normalizeClientNameForSystemMatch(name) === normalizedClientName
-    );
-    setPdfMatchedClientName(matched);
-  }, [pdfClientNameLoaded, clientName, clientSuggestions]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3378,8 +3107,8 @@ export default function CalculatorPage() {
       "PDF je připravené k přiložení. Zkouším z něj načíst data…"
     );
     setImportedContractPdfFile(file);
+    setStatementClientNamePrefillActive(false);
     setPdfClientNameLoaded(false);
-    setPdfMatchedClientName(false);
     let importProduct: Product | null = hasSelectedProduct ? product : null;
     let productDetected = false;
     try {
@@ -3583,6 +3312,7 @@ export default function CalculatorPage() {
       if (parsed.clientName) {
         setClientName(parsed.clientName);
         setPdfClientNameLoaded(true);
+        setClientSuggestionsOpen(true);
         applied += 1;
       }
       if (parsed.policyStartDate) {
@@ -4225,6 +3955,21 @@ export default function CalculatorPage() {
     }
   };
 
+  const handlePdfFiles = (files: File[]) => {
+    if (files.length === 0 || saving || pdfImporting || autoBulkImporting) return;
+    if (files.length === 1) {
+      void handlePdfImport(files[0]);
+      return;
+    }
+    if (!hasSelectedProduct || !isBulkImportProduct(product) || tipsterModeEnabled || tipContractConfig) {
+      setPdfImportError("Pro tento produkt nebo režim nahraj smlouvy po jedné.");
+      return;
+    }
+    setPdfImportError(null);
+    setPdfImportStatus(null);
+    void handleAutoBulkImport(files);
+  };
+
   const {
     isDropActive: pdfDropActive,
     resetDropState: resetPdfDropState,
@@ -4233,10 +3978,9 @@ export default function CalculatorPage() {
     handleDragLeave: handlePdfDragLeave,
     handleDrop: handlePdfDrop,
   } = usePdfDropzone({
-    isBusy: pdfImporting,
-    onPdfFile: (file) => {
-      void handlePdfImport(file);
-    },
+    isBusy: pdfImporting || autoBulkImporting || saving,
+    onPdfFile: (file) => handlePdfFiles([file]),
+    onPdfFiles: handlePdfFiles,
     onInvalidFile: () => {
       setPdfImportError("Přetáhni prosím PDF soubor.");
       setPdfImportStatus(null);
@@ -4301,7 +4045,8 @@ export default function CalculatorPage() {
     setImportedContractPdfFile(draft.file);
     setPdfImporting(false);
     setPdfClientNameLoaded(Boolean(parsedPdfTextValue(parsed, "clientName")));
-    setPdfMatchedClientName(false);
+    setStatementClientNamePrefillActive(false);
+    setClientSuggestionsOpen(true);
     setPdfImportStatus(
       `Načteno ke kontrole z hromadného importu: ${row.fileName}. PDF se při uložení přiloží ke smlouvě.`
     );
@@ -4490,10 +4235,6 @@ export default function CalculatorPage() {
       (file) =>
         file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
     );
-
-    if (autoBulkFileInputRef.current) {
-      autoBulkFileInputRef.current.value = "";
-    }
 
     if (files.length === 0) {
       setAutoBulkImportStatus("Vyber alespoň jedno PDF smlouvy.");
@@ -5638,7 +5379,6 @@ export default function CalculatorPage() {
     });
 
     setPdfClientNameLoaded(false);
-    setPdfMatchedClientName(false);
     setStatementClientNamePrefillActive(false);
     setPdfImportStatus(null);
     setPdfImportError(null);
@@ -5995,6 +5735,7 @@ export default function CalculatorPage() {
     }
 
     setSavingIncludesPdfAttachment(Boolean(importedContractPdfFile));
+    setSavingStage("preparing");
     setSaving(true);
     setSaveMessage(null);
     setValidationError(null);
@@ -6084,6 +5825,7 @@ export default function CalculatorPage() {
         entry: endorsementEntryPayload,
         fallbackError: "Uložení dodatku selhalo.",
         pdfFile: importedContractPdfFile,
+        onStageChange: setSavingStage,
       });
       if (!saved.ok) {
         setSaveMessage(saved.error);
@@ -6384,6 +6126,7 @@ export default function CalculatorPage() {
         : null;
 
     setSavingIncludesPdfAttachment(Boolean(importedContractPdfFile));
+    setSavingStage("preparing");
     setSaving(true);
     setSaveMessage("Kontroluji duplicity…");
     setValidationError(null);
@@ -6895,6 +6638,7 @@ export default function CalculatorPage() {
         entry: contractEntryPayload,
         fallbackError: "Uložení smlouvy selhalo.",
         pdfFile: importedContractPdfFile,
+        onStageChange: setSavingStage,
       });
       if (!saved.ok) {
         setSaveMessage(saved.error);
@@ -8550,15 +8294,8 @@ export default function CalculatorPage() {
     },
     { saved: 0, review: 0, skipped: 0, failed: 0, processing: 0 }
   );
-  const autoBulkImportButtonDisabled =
-    autoBulkImporting ||
-    saving ||
-    pdfImporting ||
-    tipsterModeEnabled ||
-    Boolean(tipContractConfig);
   const renderAutoBulkImportPanel = () => {
-    if (!showAutoBulkImport) return null;
-    const bulkImportPanelTitle = "Hromadné nahrání smluv z PDF";
+    if (!showAutoBulkImport || (!autoBulkImportStatus && autoBulkImportRows.length === 0)) return null;
 
     const rowTone = (status: AutoBulkImportRowStatus): string => {
       switch (status) {
@@ -8593,48 +8330,8 @@ export default function CalculatorPage() {
     };
 
     return (
-      <section className="rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-white text-violet-800 shadow-sm">
-              <UploadCloud className="h-5 w-5" strokeWidth={2.3} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <h3 className="text-sm font-black text-slate-950">
-                {bulkImportPanelTitle}
-              </h3>
-              {autoBulkImportStatus ? (
-                <p className="mt-1 text-xs font-semibold text-slate-600" aria-live="polite">
-                  {autoBulkImportStatus}
-                </p>
-              ) : null}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => autoBulkFileInputRef.current?.click()}
-            disabled={autoBulkImportButtonDisabled}
-            className="ui-focus inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full border border-violet-700 bg-violet-700 px-4 py-2 text-sm font-black !text-white shadow-[0_12px_28px_rgba(109,40,217,0.18)] transition hover:-translate-y-0.5 hover:bg-violet-800 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
-          >
-            {autoBulkImporting ? (
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.3} aria-hidden="true" />
-            ) : (
-              <UploadCloud className="h-4 w-4" strokeWidth={2.3} aria-hidden="true" />
-            )}
-            {autoBulkImporting ? "Nahrávám…" : "Vybrat PDF"}
-          </button>
-          <input
-            ref={autoBulkFileInputRef}
-            type="file"
-            accept="application/pdf"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              void handleAutoBulkImport(event.target.files);
-            }}
-          />
-        </div>
-
+      <section className={formStyles.batchFeedback} aria-label="Hromadné zpracování PDF">
+        {autoBulkImportStatus && <p className={formStyles.importStatus} role="status">{autoBulkImportStatus}</p>}
         {autoBulkImportRows.length > 0 && (
           <div className="mt-3 space-y-2">
             <div className="flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.1em]">
@@ -8730,16 +8427,21 @@ export default function CalculatorPage() {
             : undefined
         }
         pdfDropActive={pdfDropActive}
-        pdfImporting={pdfImporting}
+        pdfImporting={pdfImporting || autoBulkImporting}
         pdfImportStatus={pdfImportStatus}
         pdfImportError={pdfImportError}
         fileInputRef={fileInputRef}
         onToggleProductPicker={toggleProductPicker}
         onOpenFileDialog={() => fileInputRef.current?.click()}
         onFileInputChange={(file) => {
-          resetPdfDropState();
-          void handlePdfImport(file);
+          if (file) handlePdfFiles([file]);
         }}
+        allowMultiplePdf={showAutoBulkImport && !tipsterModeEnabled && !tipContractConfig}
+        onFilesInputChange={(files) => {
+          resetPdfDropState();
+          handlePdfFiles(files);
+        }}
+        pdfAdditionalContent={renderAutoBulkImportPanel()}
         onDragEnter={handlePdfDragEnter}
         onDragOver={handlePdfDragOver}
         onDragLeave={handlePdfDragLeave}
@@ -8755,12 +8457,18 @@ export default function CalculatorPage() {
       />
       {saving ? (
         <CalculatorSaveLoader
-          message={saveMessage}
+          stage={savingStage}
           hasPdfAttachment={savingIncludesPdfAttachment}
+          clientName={clientName}
+          contractNumber={contractNumber}
+          isEndorsement={Boolean(endorsementDraft)}
         />
       ) : null}
-      <div className="w-full bg-[linear-gradient(180deg,#ffffff_0%,#fbfaff_48%,#ffffff_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
-      <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">
+      <div
+        className={!hasSelectedProduct ? entryStyles.surface : formStyles.surface}
+        data-impersonating={Boolean(impersonatedUserEmail) && !statementEmbedMode}
+      >
+      <div className={hasSelectedProduct ? formStyles.workspace : "mx-auto w-full max-w-6xl font-mono text-slate-900"}>
       <ValidationErrorModal
         message={validationError}
         onClose={() => setValidationError(null)}
@@ -8978,47 +8686,50 @@ export default function CalculatorPage() {
         </div>
       </HelpDialog>
 
-      <div className="w-full max-w-6xl space-y-6">
+      <div className={hasSelectedProduct ? formStyles.pageContent : "w-full max-w-6xl space-y-6"}>
         {/* Header */}
         <header
-          className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${
-            !hasSelectedProduct ? "mx-auto w-full max-w-4xl" : ""
-          }`}
+          className={`${entryStyles.header} ${hasSelectedProduct ? formStyles.pageHeader : ""}`}
         >
-          <SplitTitle text={headerTitle} className="!text-slate-900" />
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <div>
+            <h1 className={entryStyles.title}>{headerTitle}</h1>
+            <p className={entryStyles.subtitle}>
+              {hasSelectedProduct
+                ? isAddContractMode && !tipsterModeEnabled
+                  ? "Doplň údaje ze smlouvy. Provize se přepočítají průběžně."
+                  : "Uprav parametry a prohlédni si rozpis provizí."
+                : isAddContractMode && !tipsterModeEnabled
+                  ? "Začni nahráním PDF, nebo vyber produkt a vyplň smlouvu ručně."
+                  : "Vyber produkt a spočítej si provizi."}
+            </p>
+          </div>
+          <div className={entryStyles.actions}>
             {showAddContractHelp && (
               <button
                 type="button"
                 onClick={() => setAddContractHelpOpen(true)}
                 aria-label="Otevřít nápovědu k přidání smlouvy"
                 title="Nápověda"
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-violet-200 bg-white/90 text-violet-800 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur-xl transition hover:border-violet-300 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-600"
+                className={entryStyles.helpButton}
               >
                 <CircleHelp className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
               </button>
             )}
             {!tipsterModeEnabled && (
-              <div className="inline-flex items-center rounded-full border border-violet-200 bg-white/85 p-1 shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+              <div role="group" aria-label="Režim kalkulačky" className={entryStyles.modeSwitch}>
                 <button
                   type="button"
+                  aria-pressed={isAddContractMode}
                   onClick={() => setCalculatorViewMode("addContract")}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:text-sm ${
-                    isAddContractMode
-                      ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.18)]"
-                      : "text-slate-600 hover:bg-violet-50 hover:text-violet-800"
-                  }`}
+                  className={entryStyles.modeButton}
                 >
                   Přidat smlouvu
                 </button>
                 <button
                   type="button"
+                  aria-pressed={isCommissionOnlyMode}
                   onClick={() => setCalculatorViewMode("commissionOnly")}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:text-sm ${
-                    isCommissionOnlyMode
-                      ? "bg-violet-700 !text-white shadow-[0_8px_20px_rgba(109,40,217,0.18)]"
-                      : "text-slate-600 hover:bg-violet-50 hover:text-violet-800"
-                  }`}
+                  className={entryStyles.modeButton}
                 >
                   Kalkulačka provizí
                 </button>
@@ -9057,20 +8768,17 @@ export default function CalculatorPage() {
         )}
 
         {!hasSelectedProduct ? (
-          <div className="flex min-h-[calc(100vh-18rem)] items-center justify-center py-6">
-            <div className="w-full max-w-4xl">
-              {renderProductAndPdfSection(true)}
-            </div>
+          <div className={entryStyles.startWrap}>
+            {renderProductAndPdfSection(true)}
           </div>
         ) : (
-        <div className="grid gap-5 items-start lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-3.5 w-full lg:max-w-3xl">
+        <div className={formStyles.layout}>
+          <div className={formStyles.formColumn}>
             <div id="auto-bulk-review-form-anchor" className="scroll-mt-28" />
             {/* Produkt + PDF import */}
             {renderProductAndPdfSection(false)}
-            {renderAutoBulkImportPanel()}
 
-            <section className="space-y-3 rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+            <section className={`${formStyles.card} ${formStyles.parametersCard}`}>
               {/* Doba trvání + platba */}
               <CalculatorDurationAndFrequencySection
                 embedded
@@ -9190,15 +8898,11 @@ export default function CalculatorPage() {
               isVisible={!tipsterModeEnabled && isAddContractMode}
               missingFields={missingFields}
               clientName={clientName}
-              pdfClientNameLoaded={pdfClientNameLoaded}
-              pdfMatchedClientName={pdfMatchedClientName}
-              filteredClientSuggestions={filteredClientSuggestions}
+              clientNameSource={pdfClientNameLoaded ? "pdf" : statementClientNamePrefillActive ? "statement" : null}
+              clientNameMatches={clientNameLookup.matches}
+              clientLookupStatus={clientNameLookup.status}
               clientSuggestionsOpen={clientSuggestionsOpen}
-              clientSuggestionHint={
-                statementClientNamePrefillActive
-                  ? "Možná shoda v databázi podle jména bez diakritiky, obráceného pořadí nebo drobného překlepu."
-                  : null
-              }
+              onRetryClientLookup={clientNameLookup.retry}
               contractSignedDate={contractSignedDate}
               contractNumber={contractNumber}
               contractNumberLiveCheckStatus={contractNumberLiveCheck.status}
@@ -9220,18 +8924,14 @@ export default function CalculatorPage() {
               onClientNameChange={(value) => {
                 setClientName(value);
                 setPdfClientNameLoaded(false);
-                setPdfMatchedClientName(false);
                 setStatementClientNamePrefillActive(false);
                 setClientSuggestionsOpen(true);
               }}
               onClientNameFocus={() => setClientSuggestionsOpen(true)}
-              onClientNameBlur={() => {
-                setTimeout(() => setClientSuggestionsOpen(false), 100);
-              }}
+              onClientNameBlur={() => setClientSuggestionsOpen(false)}
               onSelectClientSuggestion={(name) => {
                 setClientName(name);
                 setPdfClientNameLoaded(false);
-                setPdfMatchedClientName(false);
                 setStatementClientNamePrefillActive(false);
                 setMissingFields((prev) => prev.filter((key) => key !== "jméno klienta"));
                 setClientSuggestionsOpen(false);
@@ -9276,16 +8976,12 @@ export default function CalculatorPage() {
           <CalculatorResultsSection
             topTools={
               canOverrideOwnerOnSave && isAddContractMode ? (
-                <div className="relative overflow-hidden rounded-[1.35rem] border border-white/80 bg-white/80 px-3 py-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#4c1d95_100%)]" aria-hidden="true" />
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Uložení smlouvy
-                      </p>
-                      <p className="truncate text-sm font-semibold text-slate-900">
-                        {selectedSaveOwnerLabel}
-                      </p>
+                <div className={formStyles.ownerCard}>
+                  <div className={formStyles.ownerHeader}>
+                    <span className={formStyles.ownerIcon}><Users size={18} strokeWidth={1.7} aria-hidden="true" /></span>
+                    <div className={formStyles.ownerInfo}>
+                      <p className={formStyles.eyebrow}>Smlouvu ukládáš poradci</p>
+                      <p className={formStyles.ownerName}>{selectedSaveOwnerLabel}</p>
                       {subordinateTimelineStatusText && (
                         <p className="mt-1 text-xs font-medium text-amber-700">
                           {subordinateTimelineStatusText}
@@ -9295,9 +8991,8 @@ export default function CalculatorPage() {
                     <button
                       type="button"
                       onClick={() => setSubordinatePickerOpen(true)}
-                      className="ui-focus inline-flex shrink-0 items-center gap-2 rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-black !text-white shadow-[0_12px_26px_rgba(109,40,217,0.18)] transition hover:-translate-y-0.5 hover:bg-violet-800"
+                      className={formStyles.ownerButton}
                     >
-                      <Users size={14} aria-hidden="true" />
                       Vybrat poradce
                     </button>
                   </div>

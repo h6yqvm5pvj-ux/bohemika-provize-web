@@ -84,4 +84,30 @@ describe("saveContractEntry", () => {
     expect(result).toEqual({ ok: false, error: "Smlouva už existuje." });
     expect(mocks.uploadContractPdfAttachmentWithAuth).not.toHaveBeenCalled();
   });
+
+  it("starts the PDF stage only after the server confirms a saved contract", async () => {
+    let confirmSave!: (value: unknown) => void;
+    let confirmUpload!: () => void;
+    mocks.requestContractsMutationWithAuth.mockImplementationOnce(() => new Promise((resolve) => { confirmSave = resolve; }));
+    mocks.uploadContractPdfAttachmentWithAuth.mockImplementationOnce(() => new Promise<void>((resolve) => { confirmUpload = resolve; }));
+    const onStageChange = vi.fn();
+
+    const saving = saveContractEntry({ ...input(), pdfFile: {} as File, onStageChange });
+    expect(onStageChange.mock.calls).toEqual([["saving"]]);
+    expect(mocks.uploadContractPdfAttachmentWithAuth).not.toHaveBeenCalled();
+
+    confirmSave({ response: new Response(null, { status: 200 }), data: { entryId: "saved-entry" } });
+    await vi.waitFor(() => expect(mocks.uploadContractPdfAttachmentWithAuth).toHaveBeenCalledOnce());
+    expect(onStageChange.mock.calls).toEqual([["saving"], ["attachment"]]);
+    confirmUpload();
+    expect(await saving).toMatchObject({ ok: true, pdfAttachment: { status: "uploaded" } });
+  });
+
+  it.each([false, true])("does not announce a PDF stage without a file or after a rejected save (rejected: %s)", async (rejected) => {
+    if (rejected) mocks.getContractsMutationError.mockReturnValue("Smlouva už existuje.");
+    const onStageChange = vi.fn();
+    await saveContractEntry({ ...input(), pdfFile: rejected ? {} as File : null, onStageChange });
+    expect(onStageChange.mock.calls).toEqual([["saving"]]);
+    expect(mocks.uploadContractPdfAttachmentWithAuth).not.toHaveBeenCalled();
+  });
 });

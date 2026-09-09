@@ -3,10 +3,11 @@ import { useRef, useState, type DragEvent } from "react";
 type UsePdfDropzoneArgs = {
   isBusy: boolean;
   onPdfFile: (file: File) => void;
+  onPdfFiles?: (files: File[]) => void;
   onInvalidFile: () => void;
 };
 
-export function usePdfDropzone({ isBusy, onPdfFile, onInvalidFile }: UsePdfDropzoneArgs) {
+export function usePdfDropzone({ isBusy, onPdfFile, onPdfFiles, onInvalidFile }: UsePdfDropzoneArgs) {
   const dragCounterRef = useRef(0);
   const [isDropActive, setIsDropActive] = useState(false);
 
@@ -44,19 +45,20 @@ export function usePdfDropzone({ isBusy, onPdfFile, onInvalidFile }: UsePdfDropz
 
     if (isBusy) return;
 
-    const file =
-      Array.from(event.dataTransfer?.files ?? []).find(
+    const files =
+      Array.from(event.dataTransfer?.files ?? []).filter(
         (candidate) =>
           candidate.type === "application/pdf" ||
           candidate.name.toLowerCase().endsWith(".pdf")
-      ) ?? null;
+      );
 
-    if (!file) {
+    if (files.length === 0) {
       onInvalidFile();
       return;
     }
 
-    onPdfFile(file);
+    if (onPdfFiles) onPdfFiles(files);
+    else onPdfFile(files[0]);
   };
 
   return {

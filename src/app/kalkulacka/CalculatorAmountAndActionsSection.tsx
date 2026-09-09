@@ -1,6 +1,7 @@
 "use client";
 
 import { RefreshCcw, Repeat2, Tag } from "lucide-react";
+import styles from "./calculatorForm.module.css";
 
 import { type PaymentFrequency, type Product } from "../types/domain";
 import { formatMoney } from "@/app/lib/formatters";
@@ -91,14 +92,12 @@ export function CalculatorAmountAndActionsSection({
   const showContractActionButtons = !tipsterModeEnabled && showContractActions;
   const showManualEntryButton = !tipsterModeEnabled && showManualEntryOption;
   const showHeading = showAmountInput || showComfortControls;
-  const contractActionButtonBaseClass =
-    "ui-focus inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-bold shadow-[0_10px_20px_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0";
-  const tipContractActionButtonClass = `${contractActionButtonBaseClass} border-violet-700 bg-violet-700 !text-white shadow-[0_12px_24px_rgba(109,40,217,0.18)] hover:bg-violet-800`;
-  const activeTipContractActionButtonClass = `${tipContractActionButtonClass} ring-2 ring-violet-200`;
-  const refreshContractActionButtonClass = `${contractActionButtonBaseClass} border-violet-700 bg-violet-700 !text-white shadow-[0_12px_24px_rgba(109,40,217,0.18)] hover:bg-violet-800`;
-  const activeRefreshContractActionButtonClass = `${refreshContractActionButtonClass} ring-2 ring-violet-200`;
-  const changeContractActionButtonClass = `${contractActionButtonBaseClass} border-violet-200 bg-white text-slate-950 shadow-[0_10px_22px_rgba(15,23,42,0.08)] hover:border-violet-300 hover:bg-violet-50`;
-  const activeChangeContractActionButtonClass = `${changeContractActionButtonClass} ring-2 ring-violet-200`;
+  const tipContractActionButtonClass = styles.actionButton;
+  const activeTipContractActionButtonClass = `${styles.actionButton} ${styles.actionActive}`;
+  const refreshContractActionButtonClass = styles.actionButton;
+  const activeRefreshContractActionButtonClass = `${styles.actionButton} ${styles.actionActive}`;
+  const changeContractActionButtonClass = styles.actionButton;
+  const activeChangeContractActionButtonClass = `${styles.actionButton} ${styles.actionActive}`;
   const canUseOriginalReplacement = supportsOriginalContractReplacement(product);
   const canSaveUnlinkedOriginal = canSaveUnlinkedOriginalReplacement(product);
   const originalReplacementButtonLabel =
@@ -208,7 +207,7 @@ export function CalculatorAmountAndActionsSection({
 
         {showContractActionButtons && (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className={styles.contractActions}>
               <button
                 type="button"
                 onClick={onOpenTipContractModal}
@@ -233,6 +232,7 @@ export function CalculatorAmountAndActionsSection({
                 <button
                   type="button"
                   onClick={onPrepareEndorsement}
+                  aria-pressed={Boolean(inlineEndorsementDraft)}
                   className={
                     inlineEndorsementDraft
                       ? activeChangeContractActionButtonClass
@@ -464,11 +464,11 @@ export function CalculatorAmountAndActionsSection({
   );
 
   if (embedded) {
-    return <section>{content}</section>;
+    return <section className={styles.fields}>{content}</section>;
   }
 
   return (
-    <section className="rounded-[1.1rem] border border-white/80 bg-white/80 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.07)] backdrop-blur-xl">
+    <section className={`${styles.card} ${styles.fields}`}>
       {content}
     </section>
   );

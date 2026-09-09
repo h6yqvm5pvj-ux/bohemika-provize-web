@@ -1,0 +1,49 @@
+.surface {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 28px 20px;
+  background: radial-gradient(ellipse at 50% 42%, #f0ebff 0, #faf9ff 38%, #fff 72%);
+  font-family: var(--font-inter, system-ui, sans-serif);
+  color: #201a35;
+}
+.panel {
+  width: min(100%, 420px);
+  padding: 32px 32px 26px;
+  text-align: center;
+  border: 1px solid #fff;
+  border-radius: 28px;
+  background: linear-gradient(160deg, #ffffffec, #ffffffa6);
+  box-shadow: 0 18px 65px #4732750d, inset 0 1px 0 #fff;
+  animation: enter 300ms ease-out both;
+}
+.scene { position: relative; width: 246px; max-width: 100%; height: 196px; margin: 0 auto 25px; }
+.orbit { position: absolute; width: 184px; height: 184px; top: 4px; left: calc(50% - 92px); border: 1px solid #e9e1fb; border-radius: 50%; background: radial-gradient(circle, #e9dcff60, #faf8ff30 68%); }
+.backPaper { position: absolute; width: 122px; height: 153px; top: 19px; left: calc(50% - 61px); border: 1px solid #e4daf7; border-radius: 15px; background: #f0eafa; transform: rotate(-10deg); }
+.paper { position: absolute; width: 126px; height: 158px; top: 17px; left: calc(50% - 63px); padding: 18px 16px; border: 1px solid #e5dcf4; border-radius: 15px; background: #fff; color: #7c3aed; box-shadow: 0 15px 30px #5b389d15; overflow: hidden; animation: float 4s ease-in-out infinite; }
+.paper::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 20%, #ede5ff85 49%, transparent 80%); transform: translateX(-110%); animation: shimmer 2.8s ease-in-out infinite; }
+.paperTitle, .paperLine { display: block; height: 5px; border-radius: 4px; background: #eee9f5; margin-top: 8px; }
+.paperTitle { margin-top: 12px; width: 72%; background: #cfb9ee; height: 6px; }
+.paperLine:last-of-type { width: 75%; }
+.paperFields { display: flex; gap: 6px; margin-top: 12px; }
+.paperFields i { width: 50%; height: 19px; border: 1px solid #eee8f7; border-radius: 4px; background: #faf8fd; }
+.paperFooter { display: flex; justify-content: space-between; margin-top: 12px; }
+.paperFooter i { width: 29%; height: 4px; background: #e9e1f5; border-radius: 4px; }
+.chartBadge, .historyBadge { position: absolute; display: grid; place-items: center; border: 1px solid #e9dff7; background: #fff; color: #8252be; border-radius: 14px; box-shadow: 0 8px 20px #5133800d; }
+.chartBadge { width: 48px; height: 48px; right: 5px; top: 38px; animation: float 4s ease-in-out -1s infinite; }
+.historyBadge { width: 42px; height: 42px; left: 6px; bottom: 19px; color: #648d88; animation: float 4s ease-in-out -2s infinite; }
+.eyebrow { margin: 0 0 10px; color: #8b6cb2; font-size: 10px; font-weight: 700; letter-spacing: .17em; }
+.title { margin: 0; font-size: 25px; line-height: 1.25; letter-spacing: -.035em; font-weight: 700; }
+.description { margin: 12px 0 21px; font-size: 13px; line-height: 1.7; color: #81768f; }
+.activity { display: flex; align-items: center; justify-content: center; gap: 8px; color: #8764b1; font-size: 11px; font-weight: 500; }
+.activity svg { animation: spin 1.5s linear infinite; }
+.track { height: 3px; border-radius: 4px; overflow: hidden; background: #f0eaf8; margin: 20px auto 0; max-width: 210px; }
+.track span { display: block; width: 45%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ded0f5, #a378de, #ded0f5); animation: travel 2.3s ease-in-out infinite; }
+@keyframes float { 0%, 100% { transform: translateY(2px); } 50% { transform: translateY(-4px); } }
+@keyframes shimmer { 0%, 15% { transform: translateX(-110%); } 85%, 100% { transform: translateX(110%); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes travel { 0% { transform: translateX(-110%); } 100% { transform: translateX(330%); } }
+@keyframes enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 380px) { .surface { padding: 16px; } .panel { padding: 25px 20px; } .title { font-size: 23px; } }
+@media (max-height: 520px) { .surface { padding-block: 16px; } .panel { padding-block: 20px; } .scene { height: 130px; margin-bottom: 6px; transform: scale(.68); transform-origin: center top; } .description { margin-block: 8px 12px; } }
+@media (prefers-reduced-motion: reduce) { .panel, .paper, .paper::after, .chartBadge, .historyBadge, .activity svg, .track span { animation: none; } .track span { margin-inline: auto; } }

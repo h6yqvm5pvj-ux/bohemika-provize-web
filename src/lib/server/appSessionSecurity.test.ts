@@ -209,6 +209,36 @@ describe("statement calculator frame policy", () => {
   });
 });
 
+describe("statement contract detail frame policy", () => {
+  const path = "/smlouvy/adviser%40example.test___test-contract?from=commission-statements&embedded=1";
+
+  it.each(["0", "1"])("allows the embedded detail inside the same app with strict enforcement %s", async (strict) => {
+    vi.stubEnv("CSP_STRICT_ENFORCE", strict);
+    const cookie = await issue();
+    const response = await middleware(request(path, cookie.value));
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+    expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+    if (strict === "0") {
+      expect(response.headers.get("Content-Security-Policy-Report-Only")).toContain("frame-ancestors 'self'");
+    }
+
+    const ordinary = await middleware(request(path.replace("&embedded=1", ""), cookie.value));
+    expect(ordinary.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(ordinary.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
+  });
+
+  it.each(["missing", "revoked"])("still requires an active session for the embedded detail (%s)", async (kind) => {
+    const cookie = await issue();
+    if (kind === "revoked") mocks.store.get(sessionPath("current"))!.revokedAtMs = nowMs;
+    const response = await middleware(request(path, kind === "missing" ? undefined : cookie.value));
+    expect(response.status).toBe(307);
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/login");
+    expect(new URL(response.headers.get("location")!).searchParams.get("next")).toBe(path);
+    expect(response.headers.get("x-middleware-next")).toBeNull();
+  });
+});
+
 describe("fresh reauthentication for signing out other devices", () => {
   it("cannot turn a bearer token without a matching cookie into a new session", async () => {
     for (const action of ["prepareRevokeOthers", "revokeOthers"]) {
