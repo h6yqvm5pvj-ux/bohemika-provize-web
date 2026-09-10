@@ -47,6 +47,9 @@ describe("vehicle lookup flow", () => {
     expect(mocks.fetch.mock.calls[0][1]).toBe("/api/autokuk/vehicle");
     expect(JSON.parse(mocks.fetch.mock.calls[0][2].body)).toEqual({ query: "5K15233" });
     expect(container.textContent).toContain(sample.data.vin);
+    const logo = new URL(container.querySelector('img[alt="Logo SKODA"]')!.getAttribute("src")!, window.location.href);
+    expect(logo.origin).toBe(window.location.origin);
+    expect(logo.pathname).toBe("/vehicle-brands/skoda.svg");
     expect(button("ORV").textContent).toContain("ORV456");
     expect(button("TP").textContent).toContain("TP123");
     expect(container.textContent).toContain("Vlastníci a provozovatelé");
@@ -72,6 +75,9 @@ describe("vehicle lookup flow", () => {
     expect(container.textContent).toContain("Historie tachometru zatím není dostupná");
     expect(container.textContent).toContain("Záznam STK není dostupný");
     expect(button("TP").disabled).toBe(true);
+    await act(async () => button("STK a emise").click());
+    expect(container.textContent).toContain("Žádné kontroly nejsou dostupné.");
+    expect(container.textContent).not.toContain("Bez závad");
   });
 
   it("keeps market pricing on demand and sends the manually corrected mileage to SAUTO", async () => {

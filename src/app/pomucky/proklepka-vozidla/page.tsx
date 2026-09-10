@@ -4,19 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
   AlertTriangle,
-  BarChart3,
   Building2,
   CalendarClock,
   CalendarDays,
   CarFront,
+  Check,
+  ChevronDown,
+  FileText,
+  Fuel,
+  Palette,
+  Zap,
   ChevronRight,
   ClipboardCopy,
-  Dot,
   Gauge,
   History,
-  LineChart,
   MapPin,
-  Search,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -42,6 +44,12 @@ import {
 import { VehicleIntro, VehicleLoader } from "./VehicleScenes";
 import { VehicleSearchForm } from "./VehicleSearchForm";
 import { VehicleIllustration } from "./VehicleIllustration";
+import { VehicleReportIllustration } from "./VehicleReportIllustrations";
+import { VehicleBrandLogo } from "./VehicleBrandLogo";
+import { VehicleValuePanels } from "./VehicleValuePanels";
+import { VehicleMileageHistory } from "./VehicleMileageHistory";
+import { buildMileageScenarios } from "./vehicleValueDisplay";
+import reportStyles from "./vehicleReport.module.css";
 import styles from "./vehicleAudit.module.css";
 
 type VehicleData = Record<string, unknown>;
@@ -72,13 +80,6 @@ type PatternRow = {
   key: string;
   valueLabel: string;
   numericValue: number | null;
-  date: Date | null;
-};
-
-type ObjectRow = {
-  path: string;
-  key: string;
-  row: Record<string, unknown>;
   date: Date | null;
 };
 
@@ -136,7 +137,6 @@ type SpecSection = {
 
 const MAX_PATTERN_ROWS = 100;
 
-const STK_PATTERNS = ["stk", "technick", "prohlidk", "kontrol", "evidencni"];
 
 const MILEAGE_PATTERNS = ["najet", "najezd", "tachometr", "kilometr", "km"];
 const DATE_PATTERNS = ["datum", "date", "cas", "time", "od", "do", "rok"];
@@ -395,58 +395,6 @@ function collectPatternRows(data: VehicleData | null, patterns: string[], limit 
   return out;
 }
 
-function collectObjectRows(data: VehicleData | null, patterns: string[], limit = MAX_PATTERN_ROWS): ObjectRow[] {
-  if (!data) return [];
-
-  const out: ObjectRow[] = [];
-  const seen = new Set<string>();
-
-  const pushRow = (path: string[], key: string, row: Record<string, unknown>, fallbackDate: Date | null) => {
-    const date = findDateInObject(row) ?? fallbackDate;
-    const signature = path.join(" › ");
-    if (seen.has(signature)) return;
-    seen.add(signature);
-    out.push({ path: path.join(" › "), key, row, date });
-  };
-
-  const walk = (node: unknown, path: string[], parentDate: Date | null) => {
-    if (out.length >= limit) return;
-
-    if (Array.isArray(node)) {
-      node.forEach((item, index) => walk(item, [...path, `[${index}]`], parentDate));
-      return;
-    }
-
-    const row = readObject(node);
-    if (!row) return;
-
-    const ownDate = findDateInObject(row) ?? parentDate;
-
-    for (const [key, value] of Object.entries(row)) {
-      const keyPath = [...path, key];
-      const nested = readObject(value);
-      if (hasPattern(key, patterns)) {
-        if (Array.isArray(value)) {
-          value.forEach((item, index) => {
-            const listRow = readObject(item);
-            if (listRow) pushRow([...keyPath, `[${index}]`], key, listRow, ownDate);
-          });
-        } else if (nested) {
-          pushRow(keyPath, key, nested, ownDate);
-        } else if (hasValue(value)) {
-          pushRow(keyPath, key, { hodnota: value }, ownDate);
-        }
-      }
-
-      walk(value, keyPath, ownDate);
-      if (out.length >= limit) return;
-    }
-  };
-
-  walk(data, [], null);
-  return out;
-}
-
 function readApiError(payload: unknown): string | null {
   const row = readObject(payload);
   if (!row) return null;
@@ -637,139 +585,8 @@ function statusTone(status: string): "green" | "amber" {
   return "amber";
 }
 
-function confidenceLabel(score: number): string {
-  if (score >= 85) return "Velmi vysoká";
-  if (score >= 70) return "Vysoká";
-  if (score >= 55) return "Střední";
-  return "Nižší";
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
 function revealStyle(delayMs: number): CSSProperties {
   return { animationDelay: `${delayMs}ms` };
-}
-
-function findRowString(row: Record<string, unknown>, keyPatterns: string[]): string | null {
-  for (const [key, value] of Object.entries(row)) {
-    if (!hasPattern(key, keyPatterns)) continue;
-    const label = safeStr(value);
-    if (label !== "—") return label;
-  }
-  return null;
-}
-
-function findRowNumber(row: Record<string, unknown>, keyPatterns: string[]): number | null {
-  for (const [key, value] of Object.entries(row)) {
-    if (!hasPattern(key, keyPatterns)) continue;
-    const num = toNumber(value);
-    if (num != null && num > 0) return num;
-  }
-  return null;
-}
-
-function findRowDate(row: Record<string, unknown>, keyPatterns: string[]): Date | null {
-  for (const [key, value] of Object.entries(row)) {
-    if (!hasPattern(key, keyPatterns)) continue;
-    const date = parseDateLoose(value);
-    if (date) return date;
-  }
-  return null;
-}
-
-function buildStkChecks(
-  stkObjects: ObjectRow[],
-  stkSignals: PatternRow[],
-  mileageSignals: PatternRow[],
-  fallbackStkDate: Date | null,
-  fallbackMileage: number | null
-): StkCheck[] {
-  const out: StkCheck[] = [];
-  const seen = new Set<string>();
-
-  const mileageCandidates = mileageSignals
-    .filter((row) => isPlausibleMileage(row.numericValue))
-    .map((row) => ({ date: row.date, km: row.numericValue as number }));
-
-  const nearestMileage = (date: Date | null): number | null => {
-    if (!mileageCandidates.length) return fallbackMileage;
-    if (!date) return mileageCandidates[0]?.km ?? fallbackMileage;
-
-    const sorted = [...mileageCandidates].sort((a, b) => {
-      const ad = Math.abs((a.date?.getTime() ?? date.getTime()) - date.getTime());
-      const bd = Math.abs((b.date?.getTime() ?? date.getTime()) - date.getTime());
-      return ad - bd;
-    });
-    return sorted[0]?.km ?? fallbackMileage;
-  };
-
-  for (const row of stkObjects) {
-    const date = row.date ?? findRowDate(row.row, ["datum", "do", "od"]);
-    const mileageRaw = findRowNumber(row.row, ["najet", "najezd", "tachometr", "kilometr"]);
-    const mileage = isPlausibleMileage(mileageRaw) ? mileageRaw : nearestMileage(date);
-
-    const typeRaw = findRowString(row.row, ["typ", "druh", "kontrol", "stk", "sme"])
-      ?? row.key;
-    const typeNorm = normalizeText(typeRaw);
-    const typeLabel = typeNorm.includes("evid") ? "Evidenční" : "Pravidelná";
-
-    const resultRaw = findRowString(row.row, ["vysle", "stav", "zpusobil", "zavad", "vada"]) ?? "Způsobilé";
-    const resultNorm = normalizeText(resultRaw);
-    const isPassed = !resultNorm.includes("nezpus") && !resultNorm.includes("nevyhov") && !resultNorm.includes("vada");
-    const resultLabel = isPassed ? "Bez závad" : safeStr(resultRaw);
-
-    const stationLabel =
-      findRowString(row.row, ["stanic", "misto", "obec", "mesto"]) ?? "Stanice neuvedena";
-    const protocolLabel =
-      findRowString(row.row, ["protokol", "cislo", "id", "kod"]) ?? "Protokol neuveden";
-    const sourceLabel = typeNorm.includes("sme") ? "SME" : typeNorm.includes("stk") ? "STK" : "STK";
-
-    const key = `${date?.toISOString() ?? "no-date"}|${mileage ?? "no-km"}|${stationLabel}|${typeLabel}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    out.push({
-      id: key,
-      date,
-      dateLabel: formatDateCs(date),
-      mileageKm: mileage,
-      typeLabel,
-      resultLabel,
-      isPassed,
-      stationLabel,
-      protocolLabel,
-      sourceLabel,
-    });
-  }
-
-  if (!out.length) {
-    out.push({
-      id: "fallback-stk",
-      date: fallbackStkDate,
-      dateLabel: formatDateCs(fallbackStkDate),
-      mileageKm: fallbackMileage,
-      typeLabel: "Pravidelná",
-      resultLabel: "Bez závad",
-      isPassed: true,
-      stationLabel: "Stanice neuvedena",
-      protocolLabel: "Protokol neuveden",
-      sourceLabel: "STK",
-    });
-  }
-
-  out.sort((a, b) => (b.date?.getTime() ?? -Infinity) - (a.date?.getTime() ?? -Infinity));
-  return out.slice(0, 16);
-}
-
-function confidenceToneClass(value: string): string {
-  const normalized = normalizeText(value);
-  if (normalized.includes("velmi") || normalized.includes("vysoka")) {
-    return "border-violet-200 bg-violet-50 text-violet-700";
-  }
-  if (normalized.includes("stred")) return "border-violet-200 bg-violet-50 text-violet-700";
-  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "green" | "amber" | "rose" }) {
@@ -784,354 +601,11 @@ function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neu
 }
 
 function Tile({ title, value, subtitle, icon, tone = "neutral" }: { title: string; value: string; subtitle?: string; icon: ReactNode; tone?: "neutral" | "green" | "rose" | "amber" }) {
-  const borderTone = {
-    neutral: "border-slate-200",
-    green: "border-emerald-200",
-    rose: "border-rose-200",
-    amber: "border-amber-200",
-  }[tone];
-
-  const valueTone = {
-    neutral: "text-slate-900",
-    green: "text-emerald-700",
-    rose: "text-rose-700",
-    amber: "text-amber-700",
-  }[tone];
-
-  return (
-    <div className={`rounded-2xl border bg-white px-4 py-3 ${borderTone}`}>
-      <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        {icon}
-        <span>{title}</span>
-      </div>
-      <div className={`mt-3 text-2xl font-semibold leading-tight tracking-tight ${valueTone}`}>{value}</div>
-      {subtitle && <div className="mt-2 text-xs leading-relaxed text-slate-500">{subtitle}</div>}
-    </div>
-  );
-}
-
-function PriceBand({
-  marketMin,
-  marketMax,
-  estimate,
-  rangeLow,
-  rangeHigh,
-  segmentUnderPct,
-  segmentFairPct,
-  segmentOverPct,
-  markerPct,
-}: {
-  marketMin: number;
-  marketMax: number;
-  estimate: number;
-  rangeLow: number;
-  rangeHigh: number;
-  segmentUnderPct?: number | null;
-  segmentFairPct?: number | null;
-  segmentOverPct?: number | null;
-  markerPct?: number | null;
-}) {
-  const spread = Math.max(1, marketMax - marketMin);
-  const estimatePos =
-    markerPct != null && Number.isFinite(markerPct)
-      ? clamp(markerPct, 0, 100)
-      : clamp(((estimate - marketMin) / spread) * 100, 0, 100);
-  const lowPos = clamp(((rangeLow - marketMin) / spread) * 100, 0, 100);
-  const highPos = clamp(((rangeHigh - marketMin) / spread) * 100, 0, 100);
-  const fairRangeStart = Math.min(lowPos, highPos);
-  const fairRangeEnd = Math.max(lowPos, highPos);
-  const underPct = clamp(segmentUnderPct ?? 42, 0, 100);
-  const fairPct = clamp(segmentFairPct ?? 16, 0, Math.max(0, 100 - underPct));
-  const overPct = clamp(segmentOverPct ?? 42, 0, Math.max(0, 100 - underPct - fairPct));
-  const fairEnd = clamp(underPct + fairPct, 0, 100);
-  const overLeft = clamp(underPct + fairPct, 0, 100);
-  const estimateLabelPos = clamp(estimatePos, 10, 90);
-  const fairRangeWidth = Math.max(2, fairRangeEnd - fairRangeStart);
-  const segmentTotal = Math.max(1, underPct + fairPct + overPct);
-  const underShare = Math.round((underPct / segmentTotal) * 100);
-  const fairShare = Math.round((fairPct / segmentTotal) * 100);
-  const overShare = Math.max(0, 100 - underShare - fairShare);
-  const zone = estimatePos < underPct ? "PODHODNOCENÉ PÁSMO" : estimatePos <= fairEnd ? "FÉROVÉ PÁSMO" : "PŘEDRAŽENÉ PÁSMO";
-  const zoneClass =
-    estimatePos < underPct
-      ? "border-violet-200 bg-violet-50 text-violet-700"
-      : estimatePos <= fairEnd
-        ? "border-violet-200 bg-violet-50 text-violet-700"
-        : "border-rose-200 bg-rose-50 text-rose-700";
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-slate-700">Rozpětí srovnatelných inzerátů</div>
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${zoneClass}`}>
-          {zone}
-        </span>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4 sm:px-4">
-        <div className="relative pb-8 pt-2">
-          <div className="relative h-4 overflow-hidden rounded-full bg-slate-200">
-            <div className="absolute inset-y-0 left-0 bg-violet-500" style={{ width: `${underPct}%` }} />
-            <div className="absolute inset-y-0 bg-pink-400" style={{ left: `${underPct}%`, width: `${fairPct}%` }} />
-            <div className="absolute inset-y-0 bg-rose-500" style={{ left: `${overLeft}%`, width: `${overPct}%` }} />
-            <div
-              className="absolute inset-y-0 rounded-full border border-violet-700/45 bg-violet-700/15"
-              style={{ left: `${fairRangeStart}%`, width: `${fairRangeWidth}%` }}
-            />
-          </div>
-
-          <div className="pointer-events-none absolute -top-1 bottom-0 border-l-2 border-slate-900/90" style={{ left: `${estimatePos}%` }} />
-          <div className="pointer-events-none absolute top-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-white bg-slate-900 shadow-[0_0_0_1px_rgba(15,23,42,0.7)]" style={{ left: `${estimatePos}%` }} />
-
-          <div className="absolute -top-8 -translate-x-1/2" style={{ left: `${estimateLabelPos}%` }}>
-            <span className="inline-flex whitespace-nowrap rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm">
-              Náš odhad {formatCurrency(estimate)}
-            </span>
-          </div>
-        </div>
-
-        <div className="mt-1 grid grid-cols-[auto_1fr_auto] items-center gap-2 text-xs text-slate-500 sm:text-sm">
-          <span className="font-medium">{formatCurrency(marketMin)}</span>
-          <span className="text-center font-semibold text-slate-700">
-            Férové rozpětí {formatCurrency(rangeLow)} - {formatCurrency(rangeHigh)}
-          </span>
-          <span className="font-medium">{formatCurrency(marketMax)}</span>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-3 text-xs font-semibold">
-        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-700">
-          <Dot className="h-4 w-4" />
-          PODHODNOCENÉ {underShare} %
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-700">
-          <Dot className="h-4 w-4" />
-          FÉROVÉ {fairShare} %
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-700">
-          <Dot className="h-4 w-4" />
-          PŘEDRAŽENÉ {overShare} %
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function MileagePriceBars({
-  rows,
-  highlightedMileageKm,
-}: {
-  rows: MileagePriceRow[];
-  highlightedMileageKm?: number | null;
-}) {
-  const maxPrice = Math.max(...rows.map((row) => row.price));
-
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5">
-      <h3 className="mb-4 flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
-        <BarChart3 className="h-5 w-5 text-slate-500" />
-        <span>Cena podle nájezdu</span>
-      </h3>
-
-      <div className="space-y-2.5">
-        {rows.map((row, idx) => {
-          const computedWidth = clamp((row.price / Math.max(1, maxPrice)) * 100, 10, 100);
-          const width =
-            row.widthPercent != null && Number.isFinite(row.widthPercent)
-              ? clamp(row.widthPercent, 10, 100)
-              : computedWidth;
-          return (
-            <div key={`${row.km}-${row.price}-${idx}`} className="grid grid-cols-[92px_1fr_124px] items-center gap-3">
-              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-violet-700" : "text-slate-500"}`}>
-                {formatNumber(row.km)} km
-              </div>
-              <div className="h-10 overflow-hidden rounded-xl bg-slate-100">
-                <div
-                  className={`h-full rounded-xl ${row.highlighted ? "bg-violet-600" : "bg-violet-300"}`}
-                  style={{ width: `${width}%` }}
-                />
-              </div>
-              <div className={`text-right text-sm font-semibold ${row.highlighted ? "text-violet-700" : "text-slate-800"}`}>
-                {formatCurrency(row.price)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <p className="mt-3 text-sm text-slate-500">
-        {isPlausibleMileage(highlightedMileageKm)
-          ? `Zvýrazněno pro nájezd ~${formatNumber(highlightedMileageKm)} km`
-          : "Zvýrazněno pro aktuální nájezd."}
-      </p>
-    </div>
-  );
-}
-
-function MileageChart({ points }: { points: MileagePoint[] }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const safeActiveIndex =
-    activeIndex != null && activeIndex >= 0 && activeIndex < points.length ? activeIndex : null;
-
-  if (!points.length) {
-    return (
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 text-sm text-slate-500">
-        Historie tachometru zatím není dostupná.
-      </div>
-    );
-  }
-
-  const tickStep = 60_000;
-  const width = 960;
-  const height = 360;
-  const paddingX = 56;
-  const paddingY = 34;
-
-  const maxKmRaw = Math.max(...points.map((point) => point.km), tickStep);
-  const chartMax = Math.max(tickStep * 2, Math.ceil(maxKmRaw / tickStep) * tickStep);
-  const chartMin = 0;
-  const range = Math.max(1, chartMax - chartMin);
-
-  const stepX = points.length > 1 ? (width - paddingX * 2) / (points.length - 1) : 0;
-  const mapped = points.map((point, index) => {
-    const x = paddingX + stepX * index;
-    const y = height - paddingY - ((point.km - chartMin) / range) * (height - paddingY * 2);
-    return { x, y, point, index };
-  });
-
-  const smoothPath = mapped.reduce((acc, item, idx, arr) => {
-    if (idx === 0) return `M ${item.x} ${item.y}`;
-    const prev = arr[idx - 1];
-    const prevPrev = arr[idx - 2] ?? prev;
-    const next = arr[idx + 1] ?? item;
-    const smoothing = 0.2;
-    const cp1x = prev.x + (item.x - prevPrev.x) * smoothing;
-    const cp1y = prev.y + (item.y - prevPrev.y) * smoothing;
-    const cp2x = item.x - (next.x - prev.x) * smoothing;
-    const cp2y = item.y - (next.y - prev.y) * smoothing;
-    return `${acc} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${item.x} ${item.y}`;
-  }, "");
-
-  const active = safeActiveIndex == null ? null : mapped[safeActiveIndex] ?? null;
-  const previous = safeActiveIndex != null && safeActiveIndex > 0 ? points[safeActiveIndex - 1] : null;
-
-  const tooltipDate = active?.point.date?.toLocaleDateString("cs-CZ") ?? active?.point.label ?? "";
-  const tooltipKm = active ? formatKm(active.point.km) : "";
-  const tooltipDelta = (() => {
-    if (!active || !previous || !active.point.date || !previous.date) return null;
-    const days = Math.round((active.point.date.getTime() - previous.date.getTime()) / 86_400_000);
-    if (days <= 0) return null;
-    const kmDiff = active.point.km - previous.km;
-    const sign = kmDiff > 0 ? "+" : "";
-    return `${sign}${formatNumber(kmDiff)} km za ${formatNumber(days)} dní`;
-  })();
-
-  const tooltipWidth = 180;
-  const tooltipHeight = tooltipDelta ? 92 : 74;
-  const tooltipX = active
-    ? clamp(active.x + 16, paddingX + 8, width - paddingX - tooltipWidth - 8)
-    : 0;
-  const tooltipY = active
-    ? clamp(active.y - tooltipHeight - 14, paddingY + 6, height - paddingY - tooltipHeight - 6)
-    : 0;
-
-  const yTicks = Array.from({ length: Math.floor(chartMax / tickStep) + 1 }, (_unused, idx) => idx * tickStep);
-
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5">
-      <h3 className="mb-4 flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
-        <Gauge className="h-5 w-5 text-slate-500" />
-        Historie tachometru
-      </h3>
-
-      <div
-        className="overflow-x-auto"
-        onMouseLeave={() => setActiveIndex(null)}
-      >
-        <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px] w-full">
-          <defs>
-            <filter id="chart-tooltip-shadow" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#94a3b8" floodOpacity="0.25" />
-            </filter>
-          </defs>
-          <rect x="0" y="0" width={width} height={height} fill="white" />
-
-          {yTicks.map((tick) => {
-            const y = height - paddingY - ((tick - chartMin) / range) * (height - paddingY * 2);
-            return <line key={`y-${tick}`} x1={paddingX} x2={width - paddingX} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="4 8" />;
-          })}
-
-          {mapped.map((item) => (
-            <line
-              key={`x-${item.index}`}
-              x1={item.x}
-              x2={item.x}
-              y1={paddingY}
-              y2={height - paddingY}
-              stroke="#e2e8f0"
-              strokeDasharray="4 8"
-            />
-          ))}
-
-          {active && (
-            <line
-              x1={active.x}
-              x2={active.x}
-              y1={paddingY}
-              y2={height - paddingY}
-              stroke="#cbd5e1"
-              strokeWidth="2"
-            />
-          )}
-
-          <path d={smoothPath} fill="none" stroke="#3e9a6d" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-
-          {mapped.map((item, idx) => (
-            <g key={`${item.point.label}-${idx}`}>
-              <circle
-                cx={item.x}
-                cy={item.y}
-                r={safeActiveIndex === idx ? "8" : "6.5"}
-                fill="#3e9a6d"
-                stroke="#ffffff"
-                strokeWidth={safeActiveIndex === idx ? "3" : "2.5"}
-              />
-              <circle
-                cx={item.x}
-                cy={item.y}
-                r="16"
-                fill="transparent"
-                style={{ cursor: "pointer" }}
-                onMouseEnter={() => setActiveIndex(idx)}
-                onFocus={() => setActiveIndex(idx)}
-              />
-              <text x={item.x} y={height - 12} textAnchor="middle" fontSize="12" fill="#64748b">
-                {item.point.label}
-              </text>
-            </g>
-          ))}
-
-          {active && (
-            <g transform={`translate(${tooltipX}, ${tooltipY})`} filter="url(#chart-tooltip-shadow)">
-              <rect x="0" y="0" width={tooltipWidth} height={tooltipHeight} rx="14" fill="#ffffff" stroke="#e2e8f0" />
-              <text x="16" y="28" fontSize="12.5" fontWeight="700" fill="#0f172a">{tooltipDate}</text>
-              <text x="16" y="51" fontSize="11.5" fill="#334155">{tooltipKm}</text>
-              {tooltipDelta && <text x="16" y="71" fontSize="11.5" fill="#64748b">{tooltipDelta}</text>}
-            </g>
-          )}
-
-          {yTicks.map((tick) => {
-            const y = height - paddingY - ((tick - chartMin) / range) * (height - paddingY * 2);
-            return (
-              <text key={`yt-${tick}`} x={paddingX - 8} y={y + 4} textAnchor="end" fontSize="10.5" fill="#64748b">
-                {formatNumber(tick / 1000)}k
-              </text>
-            );
-          })}
-        </svg>
-      </div>
-    </div>
-  );
+  return <div className={`${reportStyles.metric} ${tone === "rose" ? reportStyles.metricAlert : ""}`}>
+    <div className={reportStyles.metricLabel}><span>{icon}</span><span>{title}</span></div>
+    <div className={reportStyles.metricValue}>{value}</div>
+    {subtitle && <p>{subtitle}</p>}
+  </div>;
 }
 
 function StkCard({ check }: { check: StkCheck }) {
@@ -1213,65 +687,18 @@ function CollapsibleSectionHeader({
   controlsId: string;
   onToggle: () => void;
 }) {
-  const surfaceClass = expanded
-    ? "border-violet-300 bg-violet-50/70 shadow-sm shadow-violet-100/80"
-    : "border-slate-200 bg-slate-50";
-  const countClass = expanded
-    ? "border-violet-200 bg-white text-violet-700"
-    : "border-slate-200 bg-white text-slate-600";
-  const arrowClass = expanded
-    ? "border-violet-200 bg-white text-violet-600"
-    : "border-slate-200 bg-white text-slate-500";
-
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={expanded}
-      aria-controls={controlsId}
-      className={`group flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition hover:border-slate-300 hover:bg-white ${surfaceClass}`}
-    >
-      <span className="min-w-0">
-        <span className="flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
-          {icon}
-          {title}
-        </span>
-        <span className="mt-0.5 block text-sm text-slate-500">{subtitle}</span>
-      </span>
-      <span className="ml-3 inline-flex shrink-0 items-center gap-2">
-        <span className={`inline-flex h-6 items-center rounded-full border px-2.5 text-xs font-semibold ${countClass}`}>
-          {countLabel}
-        </span>
-        <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition group-hover:text-slate-700 ${arrowClass}`}>
-          <ChevronRight className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`} />
-        </span>
-      </span>
-    </button>
-  );
+  return <button type="button" onClick={onToggle} aria-expanded={expanded} aria-controls={controlsId} className={reportStyles.disclosure}>
+    <span className={reportStyles.disclosureTitle}><span className={reportStyles.headingIcon}>{icon}</span><span><strong>{title}</strong><small>{subtitle}</small></span></span>
+    <span className={reportStyles.disclosureEnd}><span>{countLabel}</span><ChevronDown size={16} className={expanded ? reportStyles.rotated : ""} /></span>
+  </button>;
 }
 
 function TechnicalSection({ section }: { section: SpecSection }) {
-  return (
-    <section className="space-y-3">
-      <h4 className="text-xl font-semibold text-slate-900">{section.title}</h4>
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50/80">
-        <div className="divide-y divide-slate-100">
-          {section.rows.map((row, idx) => (
-            <div key={`${section.title}-${idx}`} className="grid grid-cols-1 gap-3 px-5 py-3 text-sm sm:grid-cols-2 sm:gap-6 sm:text-base">
-              <div className="grid grid-cols-[1fr_auto] items-center gap-3">
-                <span className="text-slate-500">{row.left.label}</span>
-                <span className="font-semibold text-slate-900">{row.left.value}</span>
-              </div>
-              <div className="grid grid-cols-[1fr_auto] items-center gap-3">
-                <span className="text-slate-500">{row.right.label}</span>
-                <span className="font-semibold text-slate-900">{row.right.value}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
+  const pairs = section.rows.flatMap(row => [row.left, row.right]).filter(row => row.label && row.label !== "—");
+  return <details className={reportStyles.technicalGroup} open={section.title === "Identifikace" || section.title.includes("doklady")}>
+    <summary><span>{section.title}<small>{pairs.length} údajů</small></span><ChevronDown size={15} /></summary>
+    <dl className={reportStyles.technicalRows}>{pairs.map((row, i) => <div key={`${row.label}-${i}`}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>
+  </details>;
 }
 
 export default function VehicleAuditPage() {
@@ -1303,7 +730,6 @@ export default function VehicleAuditPage() {
   const [sautoLoading, setSautoLoading] = useState(false);
   const [sautoError, setSautoError] = useState<string | null>(null);
   const [sautoMarket, setSautoMarket] = useState<SautoMarketResponse | null>(null);
-  const [sautoPanelActivated, setSautoPanelActivated] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (authUser) => setUser(authUser));
@@ -1433,10 +859,8 @@ export default function VehicleAuditPage() {
   );
   const tpLabel = safeStr(firstOf(data, ["CisloTp", "CisloTP"]));
 
-  const stkSignals = useMemo(() => collectPatternRows(data, STK_PATTERNS), [data]);
   const mileageSignals = useMemo(() => collectPatternRows(data, MILEAGE_PATTERNS), [data]);
 
-  const stkObjects = useMemo(() => collectObjectRows(data, STK_PATTERNS), [data]);
   const bestMileageSignal = useMemo(() => {
     const candidates = mileageSignals.filter((row) => isPlausibleMileage(row.numericValue));
     if (!candidates.length) return null;
@@ -1503,23 +927,10 @@ export default function VehicleAuditPage() {
 
   const resolvedOwnerRecords = vehicleOwnerRecords;
 
-  const stkChecks = useMemo(
-    () =>
-      vehicleStkChecks.length > 0
-        ? vehicleStkChecks
-        : buildStkChecks(stkObjects, stkSignals, mileageSignals, stkDate, mileageKm),
-    [mileageKm, mileageSignals, vehicleStkChecks, stkDate, stkObjects, stkSignals]
-  );
+  const stkChecks = vehicleStkChecks;
 
   const latestStk = stkChecks.find((check) => check.sourceLabel === "STK" && check.date);
   const currentSubjects = resolvedOwnerRecords.filter((row) => row.isCurrent);
-  const averageAnnualKm = useMemo(() => {
-    const first = vehicleMileageHistory[0];
-    const last = vehicleMileageHistory.at(-1);
-    if (!first?.date || !last?.date || last.km < first.km) return null;
-    const years = (last.date.getTime() - first.date.getTime()) / (365.25 * 86400_000);
-    return years >= 1 ? Math.round((last.km - first.km) / years) : null;
-  }, [vehicleMileageHistory]);
   const imported = toBool(vehicleSummary?.wasImported);
   const importCountryLabel = safeStr(vehicleSummary?.importCountry);
   const originValue =
@@ -1569,19 +980,6 @@ export default function VehicleAuditPage() {
     manualMileageKm ??
     toNumber(vehicleValuation?.referenceMileageKm) ??
     mileageKm;
-  const valuationConfidenceRaw = safeStr(vehicleValuation?.confidenceLabel);
-  const valuationConfidenceLabel =
-    valuationConfidenceRaw !== "—"
-      ? valuationConfidenceRaw
-      : `${confidenceLabel(estimate.confidenceScore)} spolehlivost`;
-  const valuationInfoTitle = safeStr(vehicleValuation?.infoTitle);
-  const valuationInfoText = safeStr(vehicleValuation?.infoText);
-  const valuationMarkerPct = manualMileageKm != null ? null : toNumber(vehicleValuation?.markerPct);
-  const valuationSegmentUnderPct = toNumber(vehicleValuation?.segmentUnderPct);
-  const valuationSegmentFairPct = toNumber(vehicleValuation?.segmentFairPct);
-  const valuationSegmentOverPct = toNumber(vehicleValuation?.segmentOverPct);
-  const valuationHighlightedMileageKm = manualMileageKm ?? toNumber(vehicleValuation?.highlightedMileageKm);
-
   const hasVehicleForSauto = !!summary && summary.brand !== "—" && summary.model !== "—";
 
   const marketRecommendation = useMemo(() => {
@@ -1601,7 +999,7 @@ export default function VehicleAuditPage() {
   const fallbackMarketMin = useMemo(() => {
     const min = sautoMarket?.stats.min;
     if (min != null && Number.isFinite(min)) return min;
-    return Math.max(50_000, roundTo(valuationRangeLow * 0.8, 1_000));
+    return Math.max(0, Math.floor(valuationRangeLow * 0.8 / 1_000) * 1_000);
   }, [sautoMarket?.stats.min, valuationRangeLow]);
 
   const fallbackMarketMax = useMemo(() => {
@@ -1613,50 +1011,14 @@ export default function VehicleAuditPage() {
   const marketMin = toNumber(vehicleValuation?.marketMin) ?? fallbackMarketMin;
   const marketMax = toNumber(vehicleValuation?.marketMax) ?? fallbackMarketMax;
 
-  const mileagePriceRows = useMemo<MileagePriceRow[]>(() => {
-    if (vehicleMileagePriceRows.length > 0) {
-      const highlightedKm = isPlausibleMileage(valuationHighlightedMileageKm)
-        ? valuationHighlightedMileageKm
-        : null;
-
-      return vehicleMileagePriceRows.map((row) => ({
-        ...row,
-        highlighted:
-          row.highlighted ||
-          (highlightedKm != null && Math.abs(row.km - highlightedKm) <= 9_000) ||
-          (valuationReferenceMileage != null && Math.abs(row.km - valuationReferenceMileage) <= 9_000),
-      }));
-    }
-
-    const baseMileage = mileageKm ?? estimate.expectedMileage;
-    const safeBase = Math.max(30_000, baseMileage || 120_000);
-
-    const offsets = [-150_000, -120_000, -90_000, -60_000, -30_000, 0, 30_000, 60_000, 90_000, 120_000, 150_000];
-
-    return offsets.map((offset) => {
-      const km = Math.max(15_000, roundTo(safeBase + offset, 1_000));
-      const relative = (km - safeBase) / Math.max(40_000, safeBase);
-      const price = roundTo(estimate.recommended * (1 - relative * 0.55), 1_000);
-      return {
-        label: formatNumber(km),
-        km,
-        price: Math.max(60_000, price),
-        highlighted: Math.abs(km - safeBase) <= 8_000,
-        widthPercent: null,
-      };
-    });
-  }, [
-    estimate.expectedMileage,
-    estimate.recommended,
-    mileageKm,
-    vehicleMileagePriceRows,
-    valuationHighlightedMileageKm,
-    valuationReferenceMileage,
-  ]);
+  const mileagePriceRows = useMemo(
+    () => valuationReferenceMileage == null ? [] : buildMileageScenarios(marketRecommendation ?? valuationRecommended, valuationReferenceMileage),
+    [marketRecommendation, valuationRecommended, valuationReferenceMileage]
+  );
 
   const mileageHistory = useMemo<MileagePoint[]>(() => {
     if (vehicleMileageHistory.length >= 1) {
-      return vehicleMileageHistory.slice(-12);
+      return vehicleMileageHistory;
     }
 
     const labelFromDate = (date: Date) =>
@@ -1690,7 +1052,7 @@ export default function VehicleAuditPage() {
       ).values()
     ).sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    return unique.slice(-12);
+    return unique;
   }, [mileageSignals, vehicleMileageHistory, stkChecks]);
 
   const technicalSections = useMemo<SpecSection[]>(() => {
@@ -1730,7 +1092,6 @@ export default function VehicleAuditPage() {
     setSautoError(null);
     setSautoMarket(null);
     setSautoLoading(false);
-    setSautoPanelActivated(false);
 
     try {
       const { response, data } = await fetchAuthedJson<VehicleLookupResponse & { error?: string }>(user, "/api/autokuk/vehicle", {
@@ -1780,7 +1141,6 @@ export default function VehicleAuditPage() {
   }, [error, loading, searchActivated]);
 
   const handleSautoSearch = useCallback(async () => {
-    setSautoPanelActivated(true);
 
     if (!user) {
       setSautoError("Přihlaš se, aby šlo načíst tržní data ze Sauto.");
@@ -1889,7 +1249,6 @@ export default function VehicleAuditPage() {
     setSautoMarket(null);
     setSautoError(null);
     setSautoLoading(false);
-    setSautoPanelActivated(false);
     window.requestAnimationFrame(() => compactVinInputRef.current?.focus());
   };
 
@@ -1918,306 +1277,105 @@ export default function VehicleAuditPage() {
     <AppLayout active="tools">
       <div className={`${styles.shell} mx-auto w-full max-w-6xl space-y-5 pb-10`}>
         {!searchActivated ? <VehicleIntro>{searchForm}</VehicleIntro> : (
-          <>
+          <div className={reportStyles.searchPanel}>
             <header className={styles.compactHeader}>
               <span><CarFront size={23} strokeWidth={1.7} aria-hidden="true" /></span>
               <div><h1>Proklepka vozidla</h1><p>Historie, technické údaje a odhad ceny</p></div>
             </header>
-            {searchForm}
-          </>
+            <div>{searchForm}</div>
+          </div>
         )}
 
         <div ref={resultScrollTargetRef} className="scroll-mt-8" />
         {searchActivated && loading && <VehicleLoader vin={vin} />}
 
         {searchActivated && !loading && summary && (
-          <>
-            <section className="vehicle-reveal" style={revealStyle(40)} aria-label="Přehled vozidla">
-              <div className={styles.overviewHeading}>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
+          <div className={reportStyles.report}>
+            <section id="vehicle-overview" className={`${reportStyles.hero} vehicle-reveal`} style={revealStyle(40)} aria-label="Přehled vozidla">
+              <div className={reportStyles.heroMain}>
+                <div className={reportStyles.heroIdentity}>
+                  <span className={reportStyles.eyebrow}>Vozidlo pod lupou</span>
+                  <div className={reportStyles.heroTop}>
+                    {lookupQuery.length <= 8 && <span className={reportStyles.plate}>{lookupQuery}</span>}
                     <Pill tone={statusTone(summary.status)}>{summary.status}</Pill>
-                    <Pill>{safeStr(firstOf(data, ["Kategorie", "KategorieVozidla"]))}</Pill>
+                    <Pill>{summary.category}</Pill>
                   </div>
-                  <h2 ref={resultHeadingRef} tabIndex={-1}>{summary.brand} {summary.model}</h2>
-                  <p>Údaje z registru silničních vozidel</p>
+                  <div className={reportStyles.heroName}><VehicleBrandLogo brand={summary.brand} /><h2 ref={resultHeadingRef} tabIndex={-1}>{summary.brand} {summary.model}</h2></div>
+                  <div className={reportStyles.heroSpecs}>
+                    <span><CalendarDays size={13} />{summary.year ?? "Rok neuveden"}</span>
+                    <span><Fuel size={13} />{summary.fuel}</span>
+                    <span><Zap size={13} />{formatNumber(summary.powerKw)} kW</span>
+                    <span><Palette size={13} />{summary.color}</span>
+                  </div>
                 </div>
-                <div className={styles.resultCar}><VehicleIllustration /></div>
+                <div className={reportStyles.heroArt}><VehicleIllustration /><span>Ilustrační vůz</span></div>
               </div>
-
-              <div className={styles.facts}>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-5 text-sm sm:grid-cols-4">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rok</div>
-                      <div className="text-xl font-semibold text-slate-900">{summary.year ?? "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Palivo</div>
-                      <div className="text-xl font-semibold text-slate-900">{summary.fuel}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Výkon</div>
-                      <div className="text-xl font-semibold text-slate-900">{formatNumber(summary.powerKw)} kW</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Barva</div>
-                      <div className="text-xl font-semibold text-slate-900">{summary.color}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyIdentifier("vin", displayedVin)}
-                      className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-                    >
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">VIN</span>
-                      <span className={`${styles.identifier} font-semibold text-slate-900`}>{displayedVin}</span>
-                      <ClipboardCopy className="h-3.5 w-3.5 text-slate-500" />
-                      <span className="text-[11px] text-slate-500">
-                        {copiedId === "vin" ? "Zkopírováno" : "Kopírovat"}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyIdentifier("orv", orvLabel)}
-                      disabled={orvLabel === "—"}
-                      className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">ORV</span>
-                      <span className={`${styles.identifier} font-semibold text-slate-900`}>{orvLabel}</span>
-                      <ClipboardCopy className="h-3.5 w-3.5 text-slate-500" />
-                      <span className="text-[11px] text-slate-500">
-                        {copiedId === "orv" ? "Zkopírováno" : "Kopírovat"}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyIdentifier("tp", tpLabel)}
-                      disabled={tpLabel === "—"}
-                      className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">TP</span>
-                      <span className={`${styles.identifier} font-semibold text-slate-900`}>{tpLabel === "—" ? "Neuvedeno" : tpLabel}</span>
-                      <ClipboardCopy className="h-3.5 w-3.5 text-slate-500" />
-                      <span className="text-[11px] text-slate-500">{copiedId === "tp" ? "Zkopírováno" : "Kopírovat"}</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <Tile
-                    title="Poslední STK"
-                    value={latestStk?.dateLabel ?? "Neuvedena"}
-                    subtitle={latestStk ? `${latestStk.resultLabel} · ${stkDate ? `platnost do ${summary.stkDoLabel}` : "Platnost neuvedena"}` : "Záznam STK není dostupný"}
-                    icon={<CalendarClock className="h-3.5 w-3.5" />}
-                    tone={latestStk?.isPassed === false ? "rose" : "neutral"}
-                  />
-                  <Tile
-                    title="Majitelé"
-                    value={`${ownerCountLabel} v ČR`}
-                    subtitle={`${resolvedOwnerRecords.length} záznamů v registru`}
-                    icon={<Users className="h-3.5 w-3.5" />}
-                    tone={ownersCountNum != null && ownersCountNum > 5 ? "rose" : "neutral"}
-                  />
-                  <Tile
-                    title="Tachometr"
-                    value={formatKm(mileageKm)}
-                    subtitle={vehicleSummary?.lastOdometerDate ? `Záznam z ${formatDateCs(parseDateLoose(vehicleSummary.lastOdometerDate))}` : "Datum záznamu neuvedeno"}
-                    icon={<Gauge className="h-3.5 w-3.5" />}
-                    tone="neutral"
-                  />
-                  <Tile
-                    title="Původ"
-                    value={originValue}
-                    subtitle={originSubtitle}
-                    icon={<MapPin className="h-3.5 w-3.5" />}
-                    tone="neutral"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleCopyResult()}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
-                >
-                  <ClipboardCopy className="h-4 w-4" />
-                  {copied ? "Zkopírováno" : "Kopírovat výstup"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSautoSearch()}
-                  disabled={sautoLoading || !user || !hasVehicleForSauto}
-                  className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Search className="h-4 w-4" />
-                  {sautoLoading ? "Načítám SAUTO..." : "Dopočítat ze SAUTO"}
-                </button>
-              </div>
-              {sautoError && <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{sautoError}</p>}
-            </section>
-
-            {vehicleChecks && <VehicleAdditionalChecks checks={vehicleChecks} />}
-
-            <section className="vehicle-reveal rounded-3xl border border-slate-200 bg-white p-5" style={revealStyle(120)}>
-              <h3 className="flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
-                <LineChart className="h-5 w-5 text-slate-500" />
-                Odhadovaná tržní cena
-              </h3>
-
-              <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
-                <div>
-                  <div className="text-4xl font-semibold leading-none tracking-tight text-violet-700 sm:text-5xl">{formatCurrency(marketRecommendation ?? valuationRecommended)}</div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${confidenceToneClass(valuationConfidenceLabel)}`}>
-                      {marketRecommendation != null ? "Podle nabídek SAUTO" : valuationConfidenceLabel}
-                    </span>
-                    <span>
-                      {(valuationComparableCount ?? sautoMarket?.comparableCount ?? 0) > 0
-                        ? `${valuationComparableCount ?? sautoMarket?.comparableCount} srovnatelných vozidel`
-                        : "interní model"}
-                    </span>
-                    <span>při {formatKm(valuationReferenceMileage)}</span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-4 text-sm font-semibold text-slate-700">
-                    <span>
-                      {marketRecommendation != null ? "Rozmezí nabídek" : "Orientační rozmezí"} {formatCurrency(displayedRangeLow)} - {formatCurrency(displayedRangeHigh)}
-                      {valuationFairRangePct != null ? ` ± ${formatNumber(valuationFairRangePct)} %` : ""}
-                    </span>
-                    {averageAnnualKm != null && <span>Ø nájezd {formatNumber(averageAnnualKm)} km/rok</span>}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  <div className="inline-flex items-center gap-2 font-semibold text-slate-700">
-                    <AlertTriangle className="h-4 w-4 text-violet-700" />
-                    {marketRecommendation != null ? "Srovnání s trhem" : valuationInfoTitle !== "—" ? valuationInfoTitle : "Odhad na základě registru"}
-                  </div>
-                  <div className="mt-1">
-                    {marketRecommendation != null ? "Odhad zohledňuje srovnatelné nabídky ze SAUTO. Inzerované ceny se mohou lišit od konečné prodejní ceny." : valuationInfoText !== "—"
-                      ? valuationInfoText
-                      : "Orientační výpočet podle parametrů vozidla a nájezdu. Pro srovnání s aktuálními nabídkami použij Dopočítat ze SAUTO."}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <PriceBand
-                  marketMin={marketMin}
-                  marketMax={marketMax}
-                  estimate={marketRecommendation ?? valuationRecommended}
-                  rangeLow={displayedRangeLow}
-                  rangeHigh={displayedRangeHigh}
-                  segmentUnderPct={valuationSegmentUnderPct}
-                  segmentFairPct={valuationSegmentFairPct}
-                  segmentOverPct={valuationSegmentOverPct}
-                  markerPct={valuationMarkerPct}
-                />
-              </div>
-
-              {sautoPanelActivated && (sautoMarket || sautoLoading || sautoError) && (
-                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  <div className="font-semibold">SAUTO srovnání</div>
-                  {sautoLoading && <div className="mt-1">Načítám tržní data…</div>}
-                  {!sautoLoading && sautoMarket && (
-                    <div className="mt-2 space-y-1">
-                      <div>Medián SAUTO: <span className="font-semibold">{formatCurrency(sautoMarket.stats.median)}</span></div>
-                      <div>Tržní doporučení: <span className="font-semibold">{formatCurrency(marketRecommendation)}</span></div>
-                      <div>Rozdíl proti základnímu odhadu: <span className="font-semibold">{formatSignedPercent(sautoVsInternalPct)}</span></div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-
-            <div className="vehicle-reveal" style={revealStyle(200)}>
-              <MileagePriceBars
-                rows={mileagePriceRows}
-                highlightedMileageKm={valuationHighlightedMileageKm ?? valuationReferenceMileage}
-              />
-            </div>
-
-            <div className="vehicle-reveal" style={revealStyle(260)}>
-              <MileageChart points={mileageHistory} />
-            </div>
-
-            <section className="vehicle-reveal space-y-3" style={revealStyle(320)}>
-              <CollapsibleSectionHeader
-                icon={<CalendarClock className="h-5 w-5 text-slate-500" />}
-                title="STK kontroly"
-                subtitle="Historie evidenčních a pravidelných kontrol"
-                expanded={stkExpanded}
-                countLabel={`${formatNumber(stkChecks.length)} záznamů`}
-                controlsId="stk-history-list"
-                onToggle={() => setStkExpanded((value) => !value)}
-              />
-              {stkExpanded && (
-                <div id="stk-history-list" className="space-y-3">
-                  {stkChecks.map((check) => (
-                    <StkCard key={check.id} check={check} />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="vehicle-reveal space-y-3" style={revealStyle(380)}>
-              <CollapsibleSectionHeader
-                icon={<Users className="h-5 w-5 text-slate-500" />}
-                title="Vlastníci a provozovatelé"
-                subtitle={`${ownerCountLabel} majitelů v ČR / ${resolvedOwnerRecords.length} záznamů v registru`}
-                expanded={ownersExpanded}
-                countLabel={`${formatNumber(resolvedOwnerRecords.length)} záznamů`}
-                controlsId="owner-history-list"
-                onToggle={() => setOwnersExpanded((value) => !value)}
-              />
-
-              <div className="rounded-3xl border border-violet-200 bg-violet-50 p-4 text-sm text-slate-700">
-                <div className="text-xs font-semibold uppercase tracking-wide text-violet-700">Aktuální stav</div>
-                <div className="mt-2 space-y-1">
-                  {currentSubjects.length > 0 ? currentSubjects.map((subject) => (
-                    <div key={subject.id}><span className="font-semibold">{subject.name}</span> · {subject.roleLabel} · od {subject.fromLabel}</div>
-                  )) : <div>Aktuální subjekt není v dostupných údajích uvedený.</div>}
-                </div>
-              </div>
-
-              {ownersExpanded && (
-                <div id="owner-history-list" className="space-y-3">
-                  {resolvedOwnerRecords.map((owner) => (
-                    <OwnerCard key={owner.id} owner={owner} />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="vehicle-reveal space-y-3" style={revealStyle(440)}>
-              <h3 className="flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
-                <CarFront className="h-5 w-5 text-slate-500" />
-                Technické parametry
-              </h3>
-              <div className="space-y-5">
-                {technicalSections.map((section) => (
-                  <TechnicalSection key={section.title} section={section} />
+              <div className={reportStyles.documents}>
+                {([{ id: "vin", label: "VIN", value: displayedVin }, { id: "orv", label: "ORV", value: orvLabel }, { id: "tp", label: "TP", value: tpLabel }] as const).map(item => (
+                  <button key={item.id} type="button" onClick={() => void handleCopyIdentifier(item.id, item.value)} disabled={item.value === "—"} className={reportStyles.document}
+                    aria-label={`${item.label}: ${item.value === "—" ? "Neuvedeno" : `${item.value}, ${copiedId === item.id ? "zkopírováno" : "kopírovat"}`}`}>
+                    <span>{item.label}</span><strong>{item.value === "—" ? "Neuvedeno" : item.value}</strong>
+                    {copiedId === item.id ? <Check size={14} /> : <ClipboardCopy size={14} />}
+                  </button>
                 ))}
               </div>
             </section>
 
-            {user && <VehicleVignette key={lookupQuery} user={user} query={lookupQuery} />}
+            <div className={`${reportStyles.metrics} vehicle-reveal`} style={revealStyle(80)}>
+              <Tile title="Poslední STK" value={latestStk?.dateLabel ?? "Neuvedena"}
+                subtitle={latestStk ? `${latestStk.resultLabel} · ${stkDate ? `platnost do ${summary.stkDoLabel}` : "Platnost neuvedena"}` : "Záznam STK není dostupný"}
+                icon={<CalendarClock size={15} />} tone={latestStk?.isPassed === false ? "rose" : "neutral"} />
+              <Tile title="Majitelé" value={`${ownerCountLabel} v ČR`} subtitle={`${resolvedOwnerRecords.length} záznamů v registru`} icon={<Users size={15} />} />
+              <Tile title="Tachometr" value={formatKm(mileageKm)} subtitle={vehicleSummary?.lastOdometerDate ? `Záznam z ${formatDateCs(parseDateLoose(vehicleSummary.lastOdometerDate))}` : "Datum záznamu neuvedeno"} icon={<Gauge size={15} />} />
+              <Tile title="Původ" value={originValue} subtitle={originSubtitle} icon={<MapPin size={15} />} />
+            </div>
 
-            <section className="vehicle-reveal rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3" style={revealStyle(500)}>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-violet-700" />
-                  <span>VIN: {displayedVin}</span>
-                </div>
-                <a href="https://autokuk.cz" target="_blank" rel="noreferrer" className="underline underline-offset-4">Data: Autokuk.cz</a>
+            <nav className={reportStyles.navigation} aria-label="Části přehledu vozidla">
+              <div className={reportStyles.sectionLinks}>
+                <a href="#vehicle-value"><Zap size={14} />Hodnota</a>
+                <a href="#vehicle-odometer"><Gauge size={14} />Tachometr</a>
+                <a href="#vehicle-history"><History size={14} />Historie</a>
+                <a href="#vehicle-technical"><FileText size={14} />Technické údaje</a>
               </div>
+              <button type="button" onClick={() => void handleCopyResult()} className={reportStyles.textButton}><ClipboardCopy size={14} />{copied ? "Zkopírováno" : "Kopírovat výstup"}</button>
+            </nav>
+
+            <VehicleValuePanels price={marketRecommendation ?? valuationRecommended} low={displayedRangeLow} high={displayedRangeHigh}
+              marketMin={marketMin} marketMax={marketMax} mileage={valuationReferenceMileage} scenarios={mileagePriceRows}
+              comparableCount={valuationComparableCount ?? sautoMarket?.comparableCount ?? 0} market={marketRecommendation != null}
+              loading={sautoLoading} canSearch={!!user && hasVehicleForSauto} onMarketSearch={() => void handleSautoSearch()} error={sautoError} />
+
+            <VehicleMileageHistory points={mileageHistory} />
+
+            <div id="vehicle-history" className={reportStyles.historyGrid}>
+              <section className={`${reportStyles.panel} ${reportStyles.historyPanel}`}>
+                <CollapsibleSectionHeader icon={<CalendarClock size={18} />} title="STK a emise" subtitle="Historie evidenčních a pravidelných kontrol"
+                  expanded={stkExpanded} countLabel={`${stkChecks.length} záznamů`} controlsId="stk-history-list" onToggle={() => setStkExpanded(value => !value)} />
+                {!stkExpanded && <div className={reportStyles.historyPreview}><span>Poslední evidovaná STK</span>
+                  {latestStk ? <><p><strong>{latestStk.dateLabel}</strong> · {formatKm(latestStk.mileageKm)}</p><p>{latestStk.resultLabel}</p></> : <p>Záznam STK není dostupný.</p>}
+                </div>}
+                {stkExpanded && <div id="stk-history-list" className={reportStyles.historyList}>{stkChecks.length ? stkChecks.map(check => <StkCard key={check.id} check={check} />) : <p className={reportStyles.empty}>Žádné kontroly nejsou dostupné.</p>}</div>}
+              </section>
+              <section className={`${reportStyles.panel} ${reportStyles.historyPanel}`}>
+                <CollapsibleSectionHeader icon={<Users size={18} />} title="Vlastníci a provozovatelé" subtitle={`${ownerCountLabel} majitelů v ČR`}
+                  expanded={ownersExpanded} countLabel={`${resolvedOwnerRecords.length} záznamů`} controlsId="owner-history-list" onToggle={() => setOwnersExpanded(value => !value)} />
+                {!ownersExpanded && <div className={reportStyles.historyPreview}><span>Aktuálně v registru</span>
+                  {currentSubjects.length ? currentSubjects.map(subject => <p key={subject.id}><strong>{subject.name}</strong><br />{subject.roleLabel} · od {subject.fromLabel}</p>) : <p>Aktuální subjekt není v dostupných údajích uvedený.</p>}
+                </div>}
+                {ownersExpanded && <div id="owner-history-list" className={reportStyles.historyList}>{resolvedOwnerRecords.length ? resolvedOwnerRecords.map(owner => <OwnerCard key={owner.id} owner={owner} />) : <p className={reportStyles.empty}>Historie není dostupná.</p>}</div>}
+              </section>
+            </div>
+
+            <section id="vehicle-technical" className={reportStyles.panel}>
+              <div className={reportStyles.technicalHeader}><div><span className={reportStyles.eyebrow}>Z technického průkazu</span><h3>Technické údaje</h3><p>Parametry, registrace a doklady na jednom místě.</p></div><VehicleReportIllustration kind="documents" className={reportStyles.documentArt} /></div>
+              {technicalSections.map(section => <TechnicalSection key={section.title} section={section} />)}
+              {!technicalSections.length && <p className={reportStyles.empty}>Podrobné technické údaje nejsou dostupné.</p>}
             </section>
-          </>
+
+            {vehicleChecks && <VehicleAdditionalChecks checks={vehicleChecks} />}
+            {user && <VehicleVignette key={lookupQuery} user={user} query={lookupQuery} />}
+            <footer className={reportStyles.footer}><span><ShieldCheck size={12} />Údaje z dostupných evidencí vozidla</span><a href="https://autokuk.cz" target="_blank" rel="noreferrer">Data: Autokuk.cz</a></footer>
+          </div>
         )}
 
         {searchActivated && !loading && !summary && !error && (

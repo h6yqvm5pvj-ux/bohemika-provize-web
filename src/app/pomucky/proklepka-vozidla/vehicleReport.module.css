@@ -1,0 +1,222 @@
+.report { --ink: #2c243a; --muted: #8d8299; --line: #ebe5f1; --accent: #8052b7; color: var(--ink); display: grid; gap: 20px; }
+.report h3 { color: var(--ink); font-size: 19px; font-weight: 680; line-height: 1.3; letter-spacing: -.035em; }
+.eyebrow { display: block; margin-bottom: 11px; color: #957cae; font-size: 11px; font-weight: 650; letter-spacing: .15em; text-transform: uppercase; }
+.muted { color: var(--muted); font-size: 12px; line-height: 1.65; }
+.searchPanel { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 28px; align-items: start; margin: 8px 0 25px; padding-bottom: 22px; border-bottom: 1px solid #eee9f3; }
+.searchPanel > header { padding-top: 28px; }
+.searchPanel > header h1 { font-size: 18px; }
+.searchPanel > header p { max-width: 170px; font-size: 12px; line-height: 1.6; }
+.hero { position: relative; overflow: hidden; padding: 28px 30px 0; border: 1px solid #e7dfee; border-radius: 25px; background: linear-gradient(115deg, #fff 0%, #fcfaff 45%, #f1eaf9 100%); }
+.heroMain { display: grid; grid-template-columns: minmax(0, 1fr) 330px; align-items: center; min-height: 218px; }
+.heroIdentity { min-width: 0; z-index: 1; padding-bottom: 18px; }
+.heroTop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 23px; }
+.plate { display: inline-flex; align-items: center; overflow: hidden; border: 1px solid #d8d1e4; border-radius: 5px; background: #fff; color: #51425e; font-size: 12px; font-weight: 650; letter-spacing: .08em; padding-right: 10px; gap: 9px; box-shadow: 0 2px 2px #3c255508; }
+.plate::before { content: 'CZ'; display: grid; place-items: center; align-self: stretch; padding: 6px 4px; background: #8d79b1; color: white; font-size: 7px; letter-spacing: .03em; }
+.hero h2 { font-size: clamp(30px, 4cqi, 46px); line-height: 1.16; font-weight: 720; letter-spacing: -.05em; overflow-wrap: anywhere; outline: none; scroll-margin-top: 25px; }
+.heroName { display: flex; align-items: center; gap: 15px; }
+.brandLogo { display: grid; place-items: center; flex: 0 0 62px; width: 62px; height: 62px; border: 1px solid #e5dcec; border-radius: 17px; background: #fff; color: #a68abf; box-shadow: 0 4px 8px #67498006; }
+.brandLogo img { width: 40px; height: 40px; object-fit: contain; opacity: .78; }
+.heroSpecs { display: flex; flex-wrap: wrap; gap: 7px 0; margin-top: 17px; color: #7a6b89; font-size: 12px; }
+.heroSpecs > span { display: inline-flex; align-items: center; gap: 6px; }
+.heroSpecs > span + span::before { content: ''; width: 3px; height: 3px; margin: 0 12px; border-radius: 50%; background: #ccbddb; }
+.heroSpecs svg { color: #ad94c5; }
+.heroArt { position: relative; height: 218px; display: grid; place-items: center; }
+.heroArt::before { content: ''; position: absolute; width: 246px; height: 246px; border: 1px solid #e5daef; border-radius: 50%; box-shadow: 0 0 0 26px #f6f0fb80, 0 0 0 27px #e8ddf250; }
+.heroArt > svg { position: relative; width: 365px; max-width: none; transform: translateY(-4px); }
+.heroArt > span { position: absolute; right: 1px; bottom: 8px; font-size: 10px; letter-spacing: .03em; color: #aa99b9; }
+.documents { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 10px; padding: 20px 0 23px; border-top: 1px solid #e9e0f0; }
+.document { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border: 1px solid #e5dceb; border-radius: 12px; background: #ffffffc9; text-align: left; transition: border-color .2s, background .2s; }
+.document > span:first-child { font-size: 10px; font-weight: 700; letter-spacing: .09em; color: #a18cb3; }
+.document strong { flex: 1; font-size: 12px; font-weight: 600; color: #51425f; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.document svg { flex: 0 0 auto; color: #a38eb5; }
+.document:hover:not(:disabled) { border-color: #bba1d5; background: white; }
+.document:disabled { opacity: .6; cursor: not-allowed; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.metric { min-width: 0; border: 1px solid var(--line); border-radius: 17px; background: #fff; padding: 17px 18px; }
+.metricLabel { display: flex; align-items: center; gap: 8px; color: #8c7b9c; font-size: 11px; font-weight: 600; }
+.metricLabel > span:first-child { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 9px; background: #f5f0fa; color: #a388bb; }
+.metricValue { margin-top: 12px; color: #393046; font-size: clamp(18px, 2.3cqi, 25px); line-height: 1.25; font-weight: 650; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.metric p { color: #8a7798; font-size: 11px; line-height: 1.6; margin-top: 6px; }
+.metricAlert { border-color: #ebccd4; }
+.metricAlert .metricValue { color: #b05370; }
+.navigation { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 0 1px 3px; }
+.sectionLinks { display: flex; flex-wrap: wrap; gap: 5px; }
+.sectionLinks a { display: inline-flex; align-items: center; gap: 7px; border-radius: 8px; padding: 8px 10px; color: #8b799d; font-size: 12px; transition: background .2s; }
+.sectionLinks a:hover { background: #f4eefb; color: var(--accent); }
+.textButton { display: inline-flex; justify-content: center; align-items: center; gap: 7px; font-size: 12px; font-weight: 550; color: #9378aa; border-radius: 6px; padding: 5px 0; }
+.textButton:hover { color: #6d459b; }
+.report button:focus-visible, .report a:focus-visible, .report summary:focus-visible { outline: 3px solid #cdb4e8; outline-offset: 4px; }
+.panel { min-width: 0; border: 1px solid var(--line); border-radius: 21px; background: white; padding: 25px; scroll-margin-top: 25px; }
+.valueGrid { display: grid; grid-template-columns: 1.12fr 1fr; gap: 18px; scroll-margin-top: 25px; }
+.valuePanel { display: flex; flex-direction: column; background: linear-gradient(160deg, #faf7fd, #fff 65%); }
+.valueTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.valueTop > div { z-index: 1; min-width: 0; }
+.valueTop h3 { font-size: 15px; letter-spacing: -.025em; }
+.price { margin: 14px 0 8px; font-size: clamp(28px, 4cqi, 43px); font-weight: 680; line-height: 1; letter-spacing: -.05em; color: #64428a; white-space: nowrap; }
+.valueArt { flex: 0 0 140px; width: 140px; margin: -7px -9px 0 -30px; }
+.priceSource { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: #9a88ad; margin-top: 17px; }
+.priceSource > span:last-child:not(.sourceDot) { color: #a195ac; }
+.sourceDot { width: 5px; height: 5px; border-radius: 50%; background: #ac90ce; }
+.priceRange { margin: 22px 0 20px; padding: 17px 0; border-block: 1px solid #eee7f4; }
+.priceRange > div:first-child { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 6px; color: #887295; font-size: 11px; }
+.priceRange strong { color: #7c668f; font-size: 12px; font-weight: 550; }
+.rangeTrack { position: relative; margin-top: 18px; height: 7px; border-radius: 4px; background: #ece5f3; }
+.rangeFill { position: absolute; inset-block: 0; border-radius: 4px; background: #b398d3; }
+.rangeMarker { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 13px; height: 13px; border: 3px solid white; border-radius: 50%; background: #754ba6; box-shadow: 0 0 0 1px #ac8ecd; }
+.rangeLabels { display: flex; justify-content: space-between; margin-top: 10px; color: #a195ac; font-size: 10px; font-variant-numeric: tabular-nums; }
+.marketAction { margin-top: auto; display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+.marketAction p { color: #97889f; font-size: 11px; line-height: 1.65; max-width: 180px; }
+.primaryButton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0; padding: 11px 14px; border-radius: 10px; background: #8254b4; color: white; font-size: 12px; font-weight: 550; box-shadow: 0 3px 6px #62338b14; transition: background .2s; }
+.primaryButton:hover:not(:disabled) { background: #70439f; }
+.primaryButton:disabled { opacity: .5; cursor: not-allowed; }
+.panelHeading { display: flex; align-items: center; gap: 12px; }
+.panelHeading h3 { font-size: 16px; }
+.panelHeading p { margin-top: 4px; font-size: 11px; color: #8e789e; }
+.headingIcon { display: grid; flex-shrink: 0; place-items: center; width: 36px; height: 36px; border-radius: 11px; border: 1px solid #e9e0f2; background: #f8f4fc; color: #b196cc; }
+.scenarios { display: grid; gap: 13px; margin-top: 24px; }
+.scenarioRow { padding: 0 7px; }
+.scenarioLabel { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: #8a7699; font-variant-numeric: tabular-nums; }
+.scenarioLabel > span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px; }
+.scenarioLabel small { font-size: 10px; color: #afa1b9; }
+.scenarioLabel strong { color: #796986; font-size: 12px; font-weight: 550; white-space: nowrap; }
+.scenarioLabel em { font-style: normal; font-size: 8px; padding: 2px 6px; margin-left: 4px; border-radius: 4px; background: #eee5f8; color: #9b7cb7; }
+.scenarioTrack { height: 5px; margin-top: 7px; border-radius: 4px; background: #f5f1f9; }
+.scenarioTrack span { display: block; height: 100%; border-radius: inherit; background: #ddd0ed; }
+.scenarioActive { padding: 10px 8px; margin: -2px -1px; border-radius: 9px; background: #fbf8fe; }
+.scenarioActive .scenarioLabel, .scenarioActive .scenarioLabel strong { color: #8458b2; font-weight: 650; }
+.scenarioActive .scenarioTrack span { background: #ac87d3; }
+.scenarioLegend { margin-top: 17px; display: flex; justify-content: space-between; color: #b09fbc; font-size: 10px; }
+.scenarioLegend span { display: flex; align-items: center; gap: 4px; }
+.footnote { color: #8d789d; font-size: 10px; line-height: 1.6; margin-top: 9px; }
+.error { padding: 10px; margin-top: 10px; font-size: 12px; color: #a16e35; background: #fff8ed; border-radius: 8px; }
+.empty { font-size: 12px; color: #9b8da7; line-height: 1.7; margin: 14px 0; }
+.mileagePanel { display: grid; grid-template-columns: 240px minmax(0, 1fr); padding: 0; overflow: hidden; }
+.mileageAside { padding: 25px; background: #fdfbff; position: relative; }
+.mileageAside h3 { font-size: 17px; }
+.mileageNumber { margin: 21px 0 5px; font-size: 29px; color: #635071; letter-spacing: -.035em; font-weight: 600; }
+.mileageNumber span { font-size: 14px; font-weight: 400; color: #b09ac0; }
+.mileageAside .muted { font-size: 11px; }
+.recordCount { display: inline-block; margin-top: 12px; color: #8f779f; font-size: 10px; }
+.journeyArt { width: 120px; margin: 0 0 -15px auto; opacity: .9; }
+.mileageContent { min-width: 0; padding: 35px 22px 18px; }
+.mileageChart { width: 100%; height: auto; overflow: visible; }
+.chartPoint { cursor: pointer; outline: none; }
+.chartPoint:focus-visible > circle:last-child { stroke: #512b7c; stroke-width: 4px; }
+.chartFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; margin-top: 14px; }
+.chartFooter > span { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #9079a0; }
+.chartFooter button { font-size: 11px; }
+.rotated { transform: rotate(180deg); }
+.mileageRecords { max-height: 245px; overflow-y: auto; margin-top: 14px; border-top: 1px solid var(--line); }
+.mileageRecords > div { display: flex; justify-content: space-between; padding: 10px 3px; border-bottom: 1px solid #f2edf6; color: #9a88a7; font-size: 12px; }
+.mileageRecords strong { color: #796987; font-weight: 550; }
+.chartEmpty { height: 100%; min-height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #c8b8d7; }
+.chartEmpty span { color: #b4a2bf; text-align: center; font-size: 12px; line-height: 1.7; }
+.historyGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; scroll-margin-top: 25px; }
+.historyPanel { padding: 0; overflow: hidden; }
+.disclosure { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 22px; text-align: left; }
+.disclosureTitle { display: flex; gap: 11px; align-items: center; }
+.disclosureTitle strong { display: block; font-size: 15px; font-weight: 620; letter-spacing: -.025em; }
+.disclosureTitle small { display: block; margin-top: 5px; font-size: 11px; font-weight: 400; line-height: 1.6; color: #8f789f; }
+.disclosureEnd { display: flex; align-items: center; gap: 8px; color: #b7a0c8; }
+.disclosureEnd > span { padding: 4px 7px; border-radius: 5px; background: #f7f3fb; font-size: 10px; white-space: nowrap; }
+.historyPreview { margin: 0 22px 22px; padding: 14px; border-radius: 11px; background: #faf7fd; }
+.historyPreview > span { font-size: 10px; color: #9077a2; }
+.historyPreview p { color: #82728f; font-size: 12px; line-height: 1.65; margin-top: 5px; }
+.historyPreview strong { font-weight: 550; color: #665475; }
+.historyList { padding: 0 22px 20px; display: grid; gap: 11px; }
+.historyList > article { border-radius: 13px; padding: 13px; }
+.historyList > article > div:first-child > div:first-child > div:first-child { font-size: 17px; }
+.technicalHeader { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding-bottom: 20px; }
+.technicalHeader h3 { font-size: 21px; }
+.technicalHeader p { color: #8e789e; font-size: 12px; margin-top: 7px; }
+.documentArt { width: 140px; flex-shrink: 0; margin: -20px 0; }
+.technicalGroup { border-top: 1px solid #eee8f3; }
+.technicalGroup > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; padding: 16px 2px; list-style: none; color: #6f5d7e; font-size: 12px; font-weight: 550; }
+.technicalGroup > summary::-webkit-details-marker { display: none; }
+.technicalGroup > summary > span { display: flex; align-items: center; gap: 8px; }
+.technicalGroup > summary small { display: inline-block; color: #8f779f; font-size: 10px; font-weight: 400; padding: 2px 6px; background: #faf6fd; border-radius: 5px; }
+.technicalGroup > summary svg { color: #bba6cc; transition: transform .2s; }
+.technicalGroup[open] > summary svg { transform: rotate(180deg); }
+.technicalRows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 35px; padding: 0 2px 17px; }
+.technicalRows > div { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 14px; padding: 9px 0; font-size: 12px; line-height: 1.5; }
+.technicalRows dt { color: #8e789e; }
+.technicalRows dd { color: #756283; font-weight: 550; text-align: right; overflow-wrap: anywhere; }
+.footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; color: #9a86a9; font-size: 10px; padding: 0 4px; }
+.footer > span { display: flex; gap: 6px; align-items: center; }
+.footer a:hover { color: #795099; }
+
+@container (max-width: 960px) {
+  .searchPanel { grid-template-columns: 190px minmax(0, 1fr); gap: 20px; }
+  .heroMain { grid-template-columns: minmax(0, 1fr) 280px; }
+  .heroArt > svg { width: 310px; }
+  .marketAction { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .marketAction p { max-width: none; }
+  .valueArt { width: 110px; flex-basis: 110px; margin-left: -40px; }
+  .mileagePanel { grid-template-columns: 210px minmax(0, 1fr); }
+  .disclosure { padding: 18px; }
+  .disclosureEnd > span { display: none; }
+}
+@container (max-width: 730px) {
+  .searchPanel { grid-template-columns: 1fr; gap: 12px; }
+  .searchPanel > header { padding-top: 8px; }
+  .searchPanel > header p { max-width: none; }
+  .hero { padding: 22px 22px 0; }
+  .heroMain { grid-template-columns: minmax(0, 1fr) 210px; min-height: 200px; }
+  .heroArt { height: 190px; }
+  .heroArt > svg { width: 265px; }
+  .heroArt::before { width: 180px; height: 180px; box-shadow: 0 0 0 17px #f6f0fb80; }
+  .heroSpecs > span + span::before { margin: 0 6px; }
+  .documents { grid-template-columns: 1fr 1fr; }
+  .documents > :first-child { grid-column: 1/-1; }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .valueGrid, .historyGrid { grid-template-columns: 1fr; }
+  .marketAction { flex-direction: row; align-items: center; }
+  .valueArt { width: 145px; flex-basis: 145px; margin-left: 0; }
+  .mileagePanel { grid-template-columns: 1fr; }
+  .mileageAside { padding-bottom: 20px; }
+  .journeyArt { position: absolute; right: 20px; bottom: 15px; width: 135px; margin: 0; }
+  .mileageContent { padding: 20px 17px 17px; }
+  .technicalRows { grid-template-columns: 1fr; }
+  .disclosureEnd > span { display: block; }
+}
+@container (max-width: 450px) {
+  .report { gap: 15px; }
+  .heroMain { display: block; }
+  .heroIdentity { padding-bottom: 0; }
+  .heroTop { margin-bottom: 16px; }
+  .heroArt { height: 185px; margin: 0 -12px; }
+  .heroArt > svg { width: 270px; }
+  .heroArt::before { width: 156px; height: 156px; box-shadow: 0 0 0 17px #f6f0fb80; }
+  .heroArt > span { bottom: 12px; right: 12px; }
+  .hero h2 { font-size: 33px; }
+  .heroName { gap: 12px; }
+  .brandLogo { width: 51px; height: 51px; flex-basis: 51px; border-radius: 14px; }
+  .brandLogo img { width: 33px; height: 33px; }
+  .heroSpecs { margin-top: 12px; gap: 8px 0; font-size: 12px; }
+  .documents { padding-top: 16px; gap: 7px; }
+  .document { padding: 11px 9px; gap: 8px; }
+  .document strong { font-size: 11px; }
+  .metric { padding: 14px; }
+  .metricValue { font-size: 23px; }
+  .metric p { font-size: 11px; }
+  .navigation { gap: 6px; }
+  .sectionLinks { gap: 0; }
+  .sectionLinks a { font-size: 11px; padding: 7px; }
+  .panel { padding: 20px; }
+  .valueArt { width: 110px; flex-basis: 110px; margin: 2px -10px 0 -35px; opacity: .8; }
+  .price { font-size: 36px; }
+  .marketAction { flex-direction: column; align-items: stretch; }
+  .marketAction p { max-width: none; }
+  .primaryButton { padding: 12px; }
+  .mileagePanel, .historyPanel { padding: 0; }
+  .journeyArt { width: 105px; right: 10px; opacity: .65; }
+  .mileageAside { padding: 22px; }
+  .mileageAside .muted { max-width: 200px; }
+  .mileageNumber { font-size: 28px; }
+  .chartFooter { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .documentArt { width: 105px; margin-right: -10px; }
+  .technicalHeader h3 { font-size: 19px; }
+  .technicalHeader p { max-width: 190px; font-size: 11px; }
+  .disclosureEnd > span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .report *, .report *::before, .report *::after { transition: none !important; scroll-behavior: auto !important; } }
