@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Banknote,
   Building2,
@@ -25,8 +26,8 @@ import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 
 type StrategyKey = "efektika" | "realitniFond" | "sporiciUcet";
 type LogoKey = "efektika" | "investika";
-type TaxMode = "securities" | "withholding";
-type SecuritiesTaxReason = "timeTest" | "lowProceeds" | "taxed" | "none";
+import { calculateMortgageTarget, effectiveAnnualReturnPct, getLiquidationValue, monthsToTarget, monthsToGrossTarget, requiredMonthlyContribution, type TaxMode, type SecuritiesTaxReason } from "./mortgageMath";
+import styles from "./mortgage.module.css";
 
 type StrategyInput = {
   key: StrategyKey;
@@ -55,14 +56,6 @@ type StrategyResult = StrategyInput & {
   effectiveAnnualReturn: number;
   withdrawalTax: number | null;
   taxReason: SecuritiesTaxReason | null;
-};
-
-type LiquidationValue = {
-  grossValue: number;
-  netValue: number;
-  tax: number;
-  taxableGain: number;
-  reason: SecuritiesTaxReason;
 };
 
 type Html2CanvasFn = (
@@ -101,10 +94,6 @@ type JsPdfInstance = {
 
 type JsPdfCtor = new (options: Record<string, unknown>) => JsPdfInstance;
 
-const INVESTMENT_TIME_TEST_MONTHS = 36;
-const WITHHOLDING_TAX_RATE = 0.15;
-const SECURITIES_TAX_RATE = 0.15;
-const SECURITIES_LOW_PROCEEDS_LIMIT = 100_000;
 let html2canvasProPromise: Promise<Html2CanvasFn> | null = null;
 let jsPdfCtorPromise: Promise<JsPdfCtor> | null = null;
 
@@ -113,7 +102,7 @@ const STRATEGIES: StrategyInput[] = [
     key: "efektika",
     label: "INVESTIKA EFEKTIKA",
     shortLabel: "EFEKTIKA",
-    description: "Akciový fond kopírující přes ETF index S&P 500. Modelově vhodnější pro delší horizont.",
+    description: "Akciový fond využívající ETF na index S&P 500. Vyšší kolísání, pro delší horizont.",
     annualReturn: 9,
     minYears: 5,
     sourceLabel: "INVESTIKA EFEKTIKA",
@@ -121,7 +110,7 @@ const STRATEGIES: StrategyInput[] = [
     logoKey: "efektika",
     logoAlt: "EFEKTIKA",
     taxMode: "securities",
-    taxLabel: "3 roky nebo roční výběr/prodej do 100 000 Kč",
+    taxLabel: "Časový test každého nákupu samostatně",
     accentClass: "border-blue-200 bg-blue-50 text-blue-800",
     icon: TrendingUp,
   },
@@ -137,13 +126,13 @@ const STRATEGIES: StrategyInput[] = [
     logoKey: "investika",
     logoAlt: "INVESTIKA",
     taxMode: "securities",
-    taxLabel: "3 roky nebo roční výběr/prodej do 100 000 Kč",
+    taxLabel: "Časový test každého nákupu samostatně",
     accentClass: "border-emerald-200 bg-emerald-50 text-emerald-800",
     icon: Building2,
   },
   {
     key: "sporiciUcet",
-    label: "Průměrný spořicí účet",
+    label: "Spořicí účet",
     shortLabel: "Spořicí účet",
     description: "Modelová bankovní varianta pro peníze, které mají zůstat nízce kolísavé a rychle dostupné.",
     annualReturn: 3,
@@ -159,7 +148,7 @@ const STRATEGIES: StrategyInput[] = [
 
 const CNB_SOURCE_URL =
   "https://www.cnb.cz/cs/financni-stabilita/makroobezretnostni-politika/stanoveni-horni-hranice-uverovych-ukazatelu/";
-const INCOME_TAX_SOURCE_URL = "https://www.zakonyprolidi.cz/cs/1992-586";
+const INCOME_TAX_SOURCE_URL = "https://financnisprava.gov.cz/cs/dane/dane/dan-z-prijmu/fyzicke-osoby/ostatni";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -206,63 +195,9 @@ function waitForNextFrame(): Promise<void> {
   });
 }
 
-function StrategyLogo({ logoKey, label }: { logoKey: LogoKey; label: string }) {
-  if (logoKey === "efektika") {
-    return (
-      <svg
-        viewBox="0 0 420 50"
-        role="img"
-        aria-label={label}
-        className="h-auto w-full max-w-[168px]"
-        preserveAspectRatio="xMinYMid meet"
-      >
-        <path
-          fill="#ffffff"
-          d="M298.5 0h-11.7l-16.5 39.5-14-16.5 21.5-23h-15.2l-17.8 20.3h-.2V0H233c1.2 2 1.8 4.3 1.8 6.7 0 2.7-.7 5-2 7.2V50h11.8V27h.2l18.3 23h15.7l3.7-9.8h19.3l3.8 9.8H319L298.5 0zm-12.3 30.5 6.3-17.2 6.3 17.2h-12.6zM169.3 0v10.3h14V50h12V10.3H208c-.3-1.2-.5-2.3-.5-3.5 0-2.5.7-4.7 1.8-6.7.2-.1-40-.1-40-.1zM215 18.8V50h12.2V18.8c-1.8.8-3.8 1.3-5.8 1.3-2.4.1-4.4-.4-6.4-1.3"
-        />
-        <path
-          fill="#ff2b78"
-          d="M214.5 6.7a6.7 6.7 0 1 0 13.4 0 6.7 6.7 0 0 0-13.4 0"
-        />
-        <path
-          fill="#ffffff"
-          d="M0 50V.2h33.5v10.2h-22v9.3h20.7v9.7H11.5v10.3h23.2V50H0zm40.2 0V.2h33.5v10.2h-22v9.3h20.7v9.7H51.7V50H40.2zm51.6-20.7h20.7v-9.7H91.8v-9.3h22V.2H80.3V50h34.8V39.8H91.8V29.3zM165.5.2h-15l-18 20.3h-.2V.2h-11.8V50h11.8V27L151 50h15.7L144 23.2l21.5-23z"
-        />
-      </svg>
-    );
-  }
-
-  return (
-    <svg
-      viewBox="0 0 420 50"
-      role="img"
-      aria-label={label}
-      className="h-auto w-full max-w-[168px]"
-      preserveAspectRatio="xMinYMid meet"
-    >
-      <path
-        fill="#ffffff"
-        d="M92.8 48.8H81.3L63.2 1.2h13L87.3 35h.3l11-33.8h12.7L92.8 48.8zm20.4 0V1.2h32v9.7h-20.8v9h19.8V29h-19.8v9.8h22.2v9.8l-33.4.2zm64.5-35.1c-2-2.5-5.5-4.2-8.5-4.2s-6.7 1-6.7 4.8c0 3.2 2.8 4.2 7.3 5.5 6.5 2 14.8 4.8 14.8 14.3 0 11-8.8 15.8-18.2 15.8-6.8 0-13.7-2.5-17.8-6.8l7.5-7.7c2.3 2.8 6.5 5 10.3 5 3.5 0 6.5-1.3 6.5-5.2 0-3.7-3.7-4.8-9.8-6.8-6-2-12.2-5-12.2-13.7C151 4.3 160.7 0 169.5 0c5.3 0 11.5 2 15.7 5.8l-7.5 7.9zM.8 19.2v29.7h11.7V19c-1.8 1-3.8 1.5-5.8 1.5S2.5 20 .8 19.2zm49-18 .3 31.2H50L30.8 1.2H17.7c1.2 2 1.7 4 1.7 6.5s-.7 4.5-1.7 6.5V49h11.2l-.3-31.2h.2l19 31.2H61V1.2H49.8z"
-      />
-      <path
-        fill="#fde200"
-        d="M13 7.5C13 11 10.2 14 6.5 14S0 11.2 0 7.5 2.8 1 6.5 1 13 4 13 7.5z"
-      />
-      <path
-        fill="#ffffff"
-        d="M310.2 1.2H299L283.2 39l-13.5-15.7 20.5-22h-14.3l-17.2 19.3h-.2V1.2h-11.2c1 2 1.7 4 1.7 6.5s-.7 4.8-2 6.7v34.5h11.3v-22h.2l17.7 22h15l3.5-9.3h18.7l3.7 9.3h12.8L310.2 1.2zm-11.9 29.1 6-16.3 6 16.3h-12zM186.8 1.2V11h13.5v37.8h11.5V11.2H224c-.3-1.2-.5-2.2-.5-3.5 0-2.3.5-4.5 1.7-6.5h-38.4zM230.3 19v29.8H242V19.2c-1.7.8-3.7 1.3-5.7 1.3s-4.1-.5-6-1.5z"
-      />
-      <path
-        fill="#fde200"
-        d="M242.8 7.5c0-3.5-2.8-6.5-6.5-6.5s-6.5 2.8-6.5 6.5 2.8 6.5 6.5 6.5 6.5-2.8 6.5-6.5z"
-      />
-    </svg>
-  );
-}
-
 function parseInputNumber(value: string): number | null {
   if (!value.trim()) return null;
-  const parsed = Number(value.replace(",", "."));
+  const parsed = Number(value.replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -292,6 +227,7 @@ function formatRateLabel(result: StrategyResult): string {
 function formatTaxStatus(result: StrategyResult): string {
   if (result.taxMode === "withholding") return result.taxLabel;
   if (result.taxReason === "timeTest") return "osvobozeno časovým testem";
+  if (result.taxReason === "none") return "bez zdanitelného zisku v modelu";
   if (result.taxReason === "lowProceeds") return "osvobozeno do 100 000 Kč ročního výběru/prodeje";
   if (result.taxReason === "taxed" && result.withdrawalTax != null && result.withdrawalTax > 0) {
     return `daň z výnosu ${formatMoney(result.withdrawalTax)}`;
@@ -300,7 +236,7 @@ function formatTaxStatus(result: StrategyResult): string {
 }
 
 function formatDuration(months: number | null): string {
-  if (months == null) return "Nelze dopočítat";
+  if (months == null) return "Nedosaženo do 50 let";
   if (months <= 0) return "Už splněno";
 
   const years = Math.floor(months / 12);
@@ -309,171 +245,6 @@ function formatDuration(months: number | null): string {
   if (years === 0) return `${restMonths} měs.`;
   if (restMonths === 0) return `${years} ${years === 1 ? "rok" : years < 5 ? "roky" : "let"}`;
   return `${years} ${years === 1 ? "rok" : years < 5 ? "roky" : "let"} a ${restMonths} měs.`;
-}
-
-function monthlyRate(annualRatePct: number): number {
-  return Math.pow(1 + Math.max(annualRatePct, -99) / 100, 1 / 12) - 1;
-}
-
-function monthlyRateAfterTax(annualRatePct: number, taxMode: TaxMode): number {
-  const grossMonthlyRate = monthlyRate(annualRatePct);
-  return taxMode === "withholding" ? grossMonthlyRate * (1 - WITHHOLDING_TAX_RATE) : grossMonthlyRate;
-}
-
-function effectiveAnnualReturnPct(annualRatePct: number, taxMode: TaxMode): number {
-  return (Math.pow(1 + monthlyRateAfterTax(annualRatePct, taxMode), 12) - 1) * 100;
-}
-
-function getSecuritiesLiquidationValue(grossValue: number, totalContributed: number, months: number): LiquidationValue {
-  if (months >= INVESTMENT_TIME_TEST_MONTHS) {
-    return {
-      grossValue,
-      netValue: grossValue,
-      tax: 0,
-      taxableGain: 0,
-      reason: "timeTest",
-    };
-  }
-
-  if (grossValue <= SECURITIES_LOW_PROCEEDS_LIMIT) {
-    return {
-      grossValue,
-      netValue: grossValue,
-      tax: 0,
-      taxableGain: 0,
-      reason: "lowProceeds",
-    };
-  }
-
-  const taxableGain = Math.max(0, grossValue - totalContributed);
-  const tax = taxableGain * SECURITIES_TAX_RATE;
-
-  return {
-    grossValue,
-    netValue: grossValue - tax,
-    tax,
-    taxableGain,
-    reason: tax > 0 ? "taxed" : "none",
-  };
-}
-
-function getLiquidationValue(
-  currentSavings: number,
-  monthlyContribution: number,
-  annualRatePct: number,
-  months: number,
-  taxMode: TaxMode
-): LiquidationValue {
-  const grossValue = futureValue(currentSavings, monthlyContribution, annualRatePct, months, taxMode);
-  const totalContributed = currentSavings + monthlyContribution * months;
-
-  if (taxMode === "securities") {
-    return getSecuritiesLiquidationValue(grossValue, totalContributed, months);
-  }
-
-  return {
-    grossValue,
-    netValue: grossValue,
-    tax: 0,
-    taxableGain: 0,
-    reason: "none",
-  };
-}
-
-function futureValue(
-  currentSavings: number,
-  monthlyContribution: number,
-  annualRatePct: number,
-  months: number,
-  taxMode: TaxMode
-): number {
-  const rate = monthlyRateAfterTax(annualRatePct, taxMode);
-  if (months <= 0) return currentSavings;
-  if (Math.abs(rate) < 0.0000001) return currentSavings + monthlyContribution * months;
-
-  const factor = Math.pow(1 + rate, months);
-  return currentSavings * factor + monthlyContribution * ((factor - 1) / rate);
-}
-
-function monthsToTarget(
-  target: number,
-  currentSavings: number,
-  monthlyContribution: number,
-  annualRatePct: number,
-  taxMode: TaxMode
-): number | null {
-  if (currentSavings >= target) return 0;
-  if (monthlyContribution <= 0 && (currentSavings <= 0 || annualRatePct <= 0)) return null;
-
-  for (let months = 1; months <= 600; months += 1) {
-    if (
-      getLiquidationValue(
-        currentSavings,
-        monthlyContribution,
-        annualRatePct,
-        months,
-        taxMode
-      ).netValue >= target
-    ) {
-      return months;
-    }
-  }
-
-  return null;
-}
-
-function monthsToGrossTarget(
-  target: number,
-  currentSavings: number,
-  monthlyContribution: number,
-  annualRatePct: number,
-  taxMode: TaxMode
-): number | null {
-  if (currentSavings >= target) return 0;
-  if (monthlyContribution <= 0 && (currentSavings <= 0 || annualRatePct <= 0)) return null;
-
-  for (let months = 1; months <= 600; months += 1) {
-    if (futureValue(currentSavings, monthlyContribution, annualRatePct, months, taxMode) >= target) {
-      return months;
-    }
-  }
-
-  return null;
-}
-
-function requiredMonthlyContribution(
-  target: number,
-  currentSavings: number,
-  annualRatePct: number,
-  months: number,
-  taxMode: TaxMode
-): number | null {
-  if (getLiquidationValue(currentSavings, 0, annualRatePct, months, taxMode).netValue >= target) return 0;
-  if (months <= 0) return null;
-
-  let low = 0;
-  let high = Math.max(1_000, target / months);
-
-  for (let guard = 0; guard < 30; guard += 1) {
-    if (getLiquidationValue(currentSavings, high, annualRatePct, months, taxMode).netValue >= target) {
-      break;
-    }
-    high *= 2;
-  }
-
-  if (getLiquidationValue(currentSavings, high, annualRatePct, months, taxMode).netValue < target) return null;
-
-  for (let i = 0; i < 48; i += 1) {
-    const mid = (low + high) / 2;
-    const netValue = getLiquidationValue(currentSavings, mid, annualRatePct, months, taxMode).netValue;
-    if (netValue >= target) {
-      high = mid;
-    } else {
-      low = mid;
-    }
-  }
-
-  return Math.max(0, high);
 }
 
 function NumberStepper({
@@ -515,7 +286,7 @@ function NumberStepper({
         {help ? <span className="text-right text-xs text-slate-500">{help}</span> : null}
       </div>
 
-      <div className="grid grid-cols-[42px_1fr_42px] overflow-hidden rounded-lg border border-slate-300 bg-white">
+      <div className="grid grid-cols-[36px_minmax(0,1fr)_36px] overflow-hidden rounded-lg border border-slate-300 bg-white">
         <button
           type="button"
           onClick={() => setSafeValue((numericValue ?? min) - step)}
@@ -540,9 +311,9 @@ function NumberStepper({
                 onChange("");
                 return;
               }
-              const parsed = Number(nextValue);
-              onChange(Number.isFinite(parsed) ? String(clamp(parsed, min, max)) : nextValue);
+              onChange(nextValue);
             }}
+            onBlur={() => { if (numericValue != null) setSafeValue(numericValue); }}
             className="h-11 w-full bg-white px-3 pr-12 text-center text-base font-semibold text-slate-950 outline-none placeholder:text-slate-400"
           />
           {suffix ? (
@@ -571,7 +342,13 @@ export default function MortgageOwnFundsPage() {
   const [currentSavings, setCurrentSavings] = useState("");
   const [monthlyContribution, setMonthlyContribution] = useState("");
   const [targetYears, setTargetYears] = useState("");
-  const [selectedStrategy, setSelectedStrategy] = useState<StrategyKey>("efektika");
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyKey>("sporiciUcet");
+  const [purpose, setPurpose] = useState("home");
+  const [appraisal, setAppraisal] = useState("");
+  const [reserve, setReserve] = useState("0");
+  const [otherSales, setOtherSales] = useState("0");
+  const [entryFee, setEntryFee] = useState("0");
+  const [taxRate, setTaxRate] = useState(.15);
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [rates, setRates] = useState<Record<StrategyKey, number>>({
@@ -585,19 +362,21 @@ export default function MortgageOwnFundsPage() {
   const currentSavingsValue = parseInputNumber(currentSavings);
   const monthlyContributionValue = parseInputNumber(monthlyContribution);
   const targetYearsValue = parseInputNumber(targetYears);
-  const ownFundsPct = ageValue == null ? null : ageValue < 36 ? 10 : 20;
-  const ownFundsTarget =
-    propertyPriceValue == null || ownFundsPct == null ? null : propertyPriceValue * (ownFundsPct / 100);
-  const mortgageAmount =
-    propertyPriceValue == null || ownFundsTarget == null ? null : Math.max(0, propertyPriceValue - ownFundsTarget);
-  const missingAmount =
-    ownFundsTarget == null || currentSavingsValue == null ? null : Math.max(0, ownFundsTarget - currentSavingsValue);
+  const appraisalValue = appraisal.trim() ? parseInputNumber(appraisal) : propertyPriceValue;
+  const reserveValue = parseInputNumber(reserve);
+  const entryFeeValue = parseInputNumber(entryFee);
+  const plannedAge = ageValue == null || targetYearsValue == null ? null : ageValue + targetYearsValue;
+  const ownFundsPct = purpose === "investment" ? 30 : plannedAge == null ? null : plannedAge < 36 ? 10 : 20;
+  const mortgageAmount = propertyPriceValue == null || appraisalValue == null || ownFundsPct == null ? null : calculateMortgageTarget(propertyPriceValue, appraisalValue, plannedAge ?? 36, purpose === "investment", reserveValue ?? 0).mortgage;
+  const ownFundsTarget = mortgageAmount == null || propertyPriceValue == null || reserveValue == null ? null : propertyPriceValue - mortgageAmount + reserveValue;
+  const missingAmount = ownFundsTarget == null || currentSavingsValue == null ? null : Math.max(0, ownFundsTarget - currentSavingsValue);
   const horizonMonths = targetYearsValue == null ? null : Math.round(targetYearsValue * 12);
-  const canCalculate =
-    ownFundsTarget != null &&
-    currentSavingsValue != null &&
-    monthlyContributionValue != null &&
-    horizonMonths != null;
+  const canCalculate = ownFundsTarget != null && propertyPriceValue != null && propertyPriceValue >= 500000 && propertyPriceValue <= 50000000 &&
+    appraisalValue != null && appraisalValue > 0 && appraisalValue <= 50000000 && ageValue != null && ageValue >= 18 && ageValue <= 75 &&
+    currentSavingsValue != null && currentSavingsValue >= 0 && currentSavingsValue <= 50000000 &&
+    monthlyContributionValue != null && monthlyContributionValue >= 0 && monthlyContributionValue <= 500000 &&
+    horizonMonths != null && horizonMonths >= 12 && horizonMonths <= 360 && reserveValue != null && reserveValue >= 0 && reserveValue <= 10000000 &&
+    entryFeeValue != null && entryFeeValue >= 0 && entryFeeValue <= 10 && parseInputNumber(otherSales) != null && (parseInputNumber(otherSales) ?? -1) >= 0;
 
   const results = useMemo<StrategyResult[]>(
     () =>
@@ -624,30 +403,34 @@ export default function MortgageOwnFundsPage() {
           currentSavingsValue,
           monthlyContributionValue,
           annualReturn,
-          strategy.taxMode
+          strategy.taxMode,
+          { otherSaleProceeds: parseInputNumber(otherSales) ?? 0, taxRate, entryFeePct: entryFeeValue ?? 0 }
         );
         const months = monthsToTarget(
           ownFundsTarget,
           currentSavingsValue,
           monthlyContributionValue,
           annualReturn,
-          strategy.taxMode
+          strategy.taxMode,
+          { otherSaleProceeds: parseInputNumber(otherSales) ?? 0, taxRate, entryFeePct: entryFeeValue ?? 0 }
         );
         const horizonLiquidation = getLiquidationValue(
           currentSavingsValue,
           monthlyContributionValue,
           annualReturn,
           horizonMonths,
-          strategy.taxMode
+          strategy.taxMode,
+          { otherSaleProceeds: parseInputNumber(otherSales) ?? 0, taxRate, entryFeePct: entryFeeValue ?? 0 }
         );
-        const detailMonths = months ?? horizonMonths;
+        const detailMonths = horizonMonths;
         const totalContributed = currentSavingsValue + monthlyContributionValue * detailMonths;
         const reachedLiquidation = getLiquidationValue(
           currentSavingsValue,
           monthlyContributionValue,
           annualReturn,
           detailMonths,
-          strategy.taxMode
+          strategy.taxMode,
+          { otherSaleProceeds: parseInputNumber(otherSales) ?? 0, taxRate, entryFeePct: entryFeeValue ?? 0 }
         );
 
         return {
@@ -656,29 +439,26 @@ export default function MortgageOwnFundsPage() {
           monthsToTarget: months,
           rawMonthsToTarget: grossMonths,
           totalContributed,
-          growth: Math.max(0, reachedLiquidation.netValue - totalContributed),
+          growth: reachedLiquidation.netValue - totalContributed,
           valueAtHorizon: horizonLiquidation.netValue,
           requiredMonthlyForHorizon: requiredMonthlyContribution(
             ownFundsTarget,
             currentSavingsValue,
             annualReturn,
             horizonMonths,
-            strategy.taxMode
+            strategy.taxMode,
+          { otherSaleProceeds: parseInputNumber(otherSales) ?? 0, taxRate, entryFeePct: entryFeeValue ?? 0 }
           ),
           effectiveAnnualReturn: effectiveAnnualReturnPct(annualReturn, strategy.taxMode),
           withdrawalTax: reachedLiquidation.tax,
           taxReason: reachedLiquidation.reason,
         };
       }),
-    [canCalculate, currentSavingsValue, horizonMonths, monthlyContributionValue, ownFundsTarget, rates]
+    [canCalculate, currentSavingsValue, horizonMonths, monthlyContributionValue, ownFundsTarget, rates, otherSales, taxRate, entryFeeValue]
   );
 
   const selectedResult = results.find((result) => result.key === selectedStrategy) ?? results[0];
   const SelectedIcon = selectedResult.icon;
-  const bestResult = results
-    .filter((result) => canCalculate && result.monthsToTarget != null)
-    .sort((a, b) => (a.monthsToTarget ?? 9999) - (b.monthsToTarget ?? 9999))[0];
-
   const handleDownloadPdf = async () => {
     const source = pdfContentRef.current;
     if (!source) return;
@@ -747,9 +527,9 @@ export default function MortgageOwnFundsPage() {
 
   return (
     <AppLayout active="tools">
-      <main ref={pdfContentRef} data-mortgage-pdf="1" className="w-full bg-white px-2 pb-10 pt-8 sm:px-4">
+      <main ref={pdfContentRef} data-mortgage-pdf="1" className={styles.page}>
         <div className="mx-auto w-full max-w-7xl space-y-5">
-          <section className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(330px,0.9fr)] lg:items-end">
+          <section className={styles.hero}>
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-700">
                 <Home className="h-3.5 w-3.5" aria-hidden="true" />
@@ -757,23 +537,23 @@ export default function MortgageOwnFundsPage() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold tracking-normal text-slate-950 sm:text-4xl">
-                  Kolik naspořit na budoucí hypotéku
+                  Blíž k vlastnímu bydlení.
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
-                  Pomůcka počítá potřebné vlastní prostředky podle věku klienta a porovná, za jak dlouho se cíl dá dosáhnout při pravidelné investici nebo spoření.
+                  Spočítej vlastní zdroje, rezervu a měsíční vklad pro plánovanou koupi. Porovnej, jak se výsledek změní při různém výnosu.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2" data-pdf-ignore="1">
                 <button
                   type="button"
                   onClick={handleDownloadPdf}
-                  disabled={pdfGenerating}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-4 py-2 text-sm font-semibold !text-white shadow-[0_12px_26px_rgba(124,58,237,0.24)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={pdfGenerating || !canCalculate}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-violet-300 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-4 py-2 text-sm font-semibold text-inherit shadow-[0_12px_26px_rgba(124,58,237,0.24)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {pdfGenerating ? (
-                    <Loader2 className="h-4 w-4 animate-spin !text-white" aria-hidden="true" />
+                    <Loader2 className="h-4 w-4 animate-spin text-inherit" aria-hidden="true" />
                   ) : (
-                    <FileDown className="h-4 w-4 !text-white" aria-hidden="true" />
+                    <FileDown className="h-4 w-4 text-inherit" aria-hidden="true" />
                   )}
                   {pdfGenerating ? "Připravuji PDF" : "Tisk do PDF"}
                 </button>
@@ -788,7 +568,7 @@ export default function MortgageOwnFundsPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-950">Pravidlo ČNB pro LTV</p>
                   <p className="mt-1 text-sm leading-5 text-slate-600">
-                    Aktuální horní hranice LTV je 80 %, resp. 90 % pro žadatele mladší 36 let u pořízení obytné nemovitosti k vlastnímu bydlení.
+                    Pro vlastní bydlení je limit LTV 80 %, do 36 let 90 %. U pronájmu nebo třetí a další obytné nemovitosti ČNB od 1. 4. 2026 doporučuje LTV 70 % a DTI 7. LTV vychází z hodnoty zajištění.
                   </p>
                   <Link
                     href={CNB_SOURCE_URL}
@@ -814,27 +594,22 @@ export default function MortgageOwnFundsPage() {
           ) : null}
 
           <section className="grid gap-5 lg:grid-cols-[292px_minmax(0,1fr)] xl:grid-cols-[310px_minmax(0,1fr)]">
-            <div className="w-full max-w-[310px] space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)] sm:p-5 lg:sticky lg:top-4">
+            <div className={styles.inputs}>
               <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
                 <Calculator className="h-5 w-5 text-slate-700" aria-hidden="true" />
                 <h2 className="text-base font-semibold text-slate-950">Vstupy</h2>
               </div>
 
+              <label className={styles.selectLabel}>Účel koupě<select value={purpose} onChange={e => setPurpose(e.target.value)}><option value="home">Vlastní bydlení (1. nebo 2. nemovitost)</option><option value="investment">Pronájem / 3. a další nemovitost</option></select></label>
               <NumberStepper
                 id="client-age"
-                label="Věk klienta"
+                label="Současný věk klienta"
                 value={age}
                 min={18}
                 max={75}
                 step={1}
                 suffix="let"
-                help={
-                  ageValue == null
-                    ? "doplň věk"
-                    : ageValue < 36
-                      ? "10 % vlastních zdrojů"
-                      : "20 % vlastních zdrojů"
-                }
+                help={plannedAge == null ? "doplň věk a horizont" : `Při koupi cca ${plannedAge} let`}
                 placeholder="Věk"
                 onChange={setAge}
               />
@@ -851,6 +626,8 @@ export default function MortgageOwnFundsPage() {
                 onChange={setPropertyPrice}
               />
 
+              <NumberStepper id="bank-appraisal" label="Bankovní odhad" value={appraisal} min={1} max={50000000} step={100000} suffix="Kč" placeholder="Stejný jako cena" help="prázdné = kupní cena" onChange={setAppraisal}/>
+              <NumberStepper id="purchase-reserve" label="Rezerva a vedlejší náklady" value={reserve} min={0} max={10000000} step={10000} suffix="Kč" help="nad rámec akontace" onChange={setReserve}/>
               <NumberStepper
                 id="current-savings"
                 label="Již naspořeno"
@@ -898,7 +675,7 @@ export default function MortgageOwnFundsPage() {
                   </div>
                   <p className="mt-2 text-2xl font-bold text-slate-950">{formatNullableMoney(ownFundsTarget)}</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {ownFundsPct == null ? "doplň věk a cenu nemovitosti" : `${ownFundsPct} % z ceny nemovitosti`}
+                    {ownFundsPct == null ? "doplň věk, horizont a cenu" : `Kupní cena − úvěr + rezerva`}
                   </p>
                 </div>
 
@@ -923,6 +700,12 @@ export default function MortgageOwnFundsPage() {
                 </div>
               </section>
 
+              {canCalculate && <section className={styles.plan}>
+                <span className={styles.eyebrow}>Tvůj plán za {targetYearsValue} let</span><h2>{(selectedResult.valueAtHorizon ?? 0) >= ownFundsTarget ? "Cíl podle modelu vychází." : `Do cíle zbývá ${formatMoney(ownFundsTarget - (selectedResult.valueAtHorizon ?? 0))}.`}</h2><p>Čistá hodnota {formatNullableMoney(selectedResult.valueAtHorizon)} z cíle {formatMoney(ownFundsTarget)}. Výnos i dostupnost peněz se mohou změnit.</p>
+                <div className={styles.progress} role="progressbar" aria-label="Pokrytí cíle v plánovaném horizontu" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(100, ownFundsTarget > 0 ? (selectedResult.valueAtHorizon ?? 0) / ownFundsTarget * 100 : 100))}><span style={{width:`${Math.min(100, ownFundsTarget > 0 ? (selectedResult.valueAtHorizon ?? 0) / ownFundsTarget * 100 : 100)}%`}}/></div>
+                {targetYearsValue != null && (selectedResult.minYears > targetYearsValue || (selectedResult.monthsToTarget != null && selectedResult.monthsToTarget > 0 && selectedResult.monthsToTarget < selectedResult.minYears * 12)) && <p className={styles.notice}>Plánovaný termín nebo modelové dosažení cíle je dříve než doporučený horizont této varianty. Kolísání investice může koupi odložit; porovnej i spořicí účet.</p>}
+                <p className={styles.note}>Počítám s dnešními pravidly, věkem při plánované koupi a zadanou cenou v době koupě. Čas dosažení níže se vztahuje k tomuto pevnému cíli. Schválení úvěru závisí také na příjmech a závazcích.</p>
+              </section>}
               <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)] sm:p-5">
                 <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -931,11 +714,7 @@ export default function MortgageOwnFundsPage() {
                       Výnosy jsou modelové a můžeš je upravit podle konkrétní nabídky nebo profilu klienta.
                     </p>
                   </div>
-                  {bestResult ? (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                      Nejrychleji: <strong>{bestResult.shortLabel}</strong> za {formatDuration(bestResult.monthsToTarget)}
-                    </div>
-                  ) : null}
+
                 </div>
 
                 <div className="mt-4 grid gap-3 xl:grid-cols-3">
@@ -948,45 +727,27 @@ export default function MortgageOwnFundsPage() {
                         key={result.key}
                         type="button"
                         onClick={() => setSelectedStrategy(result.key)}
-                        className={[
-                          "flex h-full min-h-[398px] flex-col rounded-lg border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400",
-                          selected
-                            ? "border-violet-500 bg-[linear-gradient(145deg,#6d28d9_0%,#7c3aed_46%,#4c1d95_100%)] !text-white shadow-[0_18px_38px_rgba(109,40,217,0.32)] ring-1 ring-violet-200/60 [&_*]:!text-white"
-                            : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50",
-                        ].join(" ")}
+                        aria-pressed={selected}
+                        className={styles.strategy}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <span className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border ${selected ? "border-white/25 bg-white/15 text-white" : result.accentClass}`}>
                             <Icon className="h-5 w-5" aria-hidden="true" />
                           </span>
-                          <span className={`rounded-md px-2 py-1 text-xs font-semibold ${selected ? "bg-white/15 !text-white" : "bg-slate-100 text-slate-700"}`}>
+                          <span className={`rounded-md px-2 py-1 text-xs font-semibold ${selected ? "bg-white/15 text-inherit" : "bg-slate-100 text-slate-700"}`}>
                             {formatRateLabel(result)}
                           </span>
                         </div>
 
-                        <div className="mt-4 h-12">
-                          {result.logoKey ? (
-                            <div
-                              className={[
-                                "flex h-12 items-center rounded-lg px-4",
-                                selected
-                                  ? "border border-slate-900 bg-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
-                                  : "border border-slate-900 bg-slate-950",
-                              ].join(" ")}
-                            >
-                              <StrategyLogo logoKey={result.logoKey} label={result.logoAlt ?? result.label} />
-                            </div>
-                          ) : null}
-                        </div>
-
+                        {result.logoKey && <span className={styles.brandLogo}><Image src={`/icons/logo-${result.logoKey}-inverzni.svg`} alt={result.logoAlt || result.label} width={210} height={25} unoptimized /></span>}
                         <div className="mt-3 min-h-[116px]">
-                          <h3 className={selected ? "text-lg font-semibold !text-white" : "text-lg font-semibold"}>
+                          <h3 className={selected ? "text-lg font-semibold text-inherit" : "text-lg font-semibold"}>
                             {result.label}
                           </h3>
                           <p
                             className={[
                               "mt-2 text-sm leading-5",
-                              selected ? "!text-white opacity-90" : "text-slate-600",
+                              selected ? "text-inherit opacity-90" : "text-slate-600",
                             ].join(" ")}
                           >
                             {result.description}
@@ -998,7 +759,7 @@ export default function MortgageOwnFundsPage() {
                             <p
                               className={[
                                 "text-xs font-semibold",
-                                selected ? "!text-white opacity-80" : "text-slate-500",
+                                selected ? "text-inherit opacity-80" : "text-slate-500",
                               ].join(" ")}
                             >
                               Doporučený horizont {result.minYears}+ let
@@ -1010,16 +771,16 @@ export default function MortgageOwnFundsPage() {
                             className={[
                               "mt-2 rounded-md px-2.5 py-1.5 text-xs font-semibold",
                               selected
-                                ? "bg-white/15 !text-white"
+                                ? "bg-white/15 text-inherit"
                                 : result.taxMode === "withholding"
                                   ? "bg-amber-50 text-amber-800"
                                   : "bg-emerald-50 text-emerald-800",
                             ].join(" ")}
                           >
-                            {canCalculate ? formatTaxStatus(result) : result.taxLabel}
+                            {canCalculate ? `V cílovém horizontu: ${formatTaxStatus(result)}` : result.taxLabel}
                           </p>
                           {result.taxMode === "withholding" ? (
-                            <p className={`mt-1 text-xs ${selected ? "!text-white opacity-80" : "text-slate-500"}`}>
+                            <p className={`mt-1 text-xs ${selected ? "text-inherit opacity-80" : "text-slate-500"}`}>
                               Čistý modelový výnos cca {formatPercent(result.effectiveAnnualReturn)} p.a.
                             </p>
                           ) : null}
@@ -1029,7 +790,7 @@ export default function MortgageOwnFundsPage() {
                           result.rawMonthsToTarget != null &&
                           result.monthsToTarget != null &&
                           result.rawMonthsToTarget < result.monthsToTarget ? (
-                            <p className={`mt-1 text-xs ${selected ? "!text-white opacity-80" : "text-slate-500"}`}>
+                            <p className={`mt-1 text-xs ${selected ? "text-inherit opacity-80" : "text-slate-500"}`}>
                               Hrubě za {formatDuration(result.rawMonthsToTarget)}, čistě po dani za {formatDuration(result.monthsToTarget)}.
                             </p>
                           ) : null}
@@ -1037,21 +798,21 @@ export default function MortgageOwnFundsPage() {
 
                         <div className="mt-auto grid grid-cols-2 gap-2 pt-4 text-sm">
                           <div>
-                            <p className={selected ? "!text-white opacity-80" : "text-slate-500"}>Dosažení cíle</p>
-                            <p className={selected ? "mt-1 font-semibold !text-white" : "mt-1 font-semibold"}>
+                            <p className={selected ? "text-inherit opacity-80" : "text-slate-500"}>Dosažení pevného cíle</p>
+                            <p className={selected ? "mt-1 font-semibold text-inherit" : "mt-1 font-semibold"}>
                               {canCalculate ? formatDuration(result.monthsToTarget) : "Doplň vstupy"}
                             </p>
                           </div>
                           <div>
-                            <p className={selected ? "!text-white opacity-80" : "text-slate-500"}>
+                            <p className={selected ? "text-inherit opacity-80" : "text-slate-500"}>
                               Vklad pro {targetYearsValue == null ? "horizont" : `${targetYearsValue} let`}
                             </p>
-                            <p className={selected ? "mt-1 font-semibold !text-white" : "mt-1 font-semibold"}>
+                            <p className={selected ? "mt-1 font-semibold text-inherit" : "mt-1 font-semibold"}>
                               {!canCalculate
                                 ? "Doplň vstupy"
                                 : result.requiredMonthlyForHorizon == null
                                 ? "Nelze"
-                                : `${formatMoney(result.requiredMonthlyForHorizon)} / měs.`}
+                                : `${formatMoney(Math.ceil(result.requiredMonthlyForHorizon))} / měs.`}
                             </p>
                           </div>
                         </div>
@@ -1063,10 +824,11 @@ export default function MortgageOwnFundsPage() {
             </div>
           </section>
 
-          <section className="grid gap-5 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+          <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
             <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
+                  {selectedResult.logoKey && <span className={styles.brandLogo}><Image src={`/icons/logo-${selectedResult.logoKey}-inverzni.svg`} alt={selectedResult.logoAlt || selectedResult.label} width={210} height={25} unoptimized /></span>}
                   <p className="text-sm font-semibold text-slate-500">Vybraná varianta</p>
                   <h2 className="mt-1 text-2xl font-bold text-slate-950">{selectedResult.label}</h2>
                 </div>
@@ -1109,7 +871,7 @@ export default function MortgageOwnFundsPage() {
                       ? "Doplň vstupy"
                       : selectedResult.requiredMonthlyForHorizon == null
                       ? "Nelze"
-                      : formatMoney(selectedResult.requiredMonthlyForHorizon)}
+                      : formatMoney(Math.ceil(selectedResult.requiredMonthlyForHorizon))}
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
                     měsíčně pro horizont {targetYearsValue == null ? "po doplnění" : `${targetYearsValue} let`}
@@ -1121,7 +883,7 @@ export default function MortgageOwnFundsPage() {
                   ) : null}
                   {canCalculate && selectedResult.taxMode === "securities" ? (
                     <p className="mt-2 text-xs leading-5 text-slate-500">
-                      Daňový režim: {formatTaxStatus(selectedResult)}.
+                      Daňový model v zadaném horizontu: {formatTaxStatus(selectedResult)}.
                     </p>
                   ) : null}
                 </div>
@@ -1129,11 +891,11 @@ export default function MortgageOwnFundsPage() {
 
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-lg border border-slate-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Vloženo</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Vloženo v horizontu</p>
                   <p className="mt-1 text-lg font-semibold text-slate-950">{formatNullableMoney(selectedResult.totalContributed)}</p>
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Čisté zhodnocení</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Zhodnocení v horizontu</p>
                   <p className="mt-1 text-lg font-semibold text-emerald-700">{formatNullableMoney(selectedResult.growth)}</p>
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
@@ -1214,15 +976,20 @@ export default function MortgageOwnFundsPage() {
                 })}
               </div>
 
+              <div className={styles.taxOptions}>
+                <NumberStepper id="entry-fee" label="Vstupní poplatek fondů" value={entryFee} min={0} max={10} step={.25} suffix="%" help="z každého vkladu" onChange={setEntryFee}/>
+                <NumberStepper id="other-sales" label="Další prodeje cenných papírů v roce výběru" value={otherSales} min={0} max={100000000} step={10000} suffix="Kč" help="celková tržba, ne zisk" onChange={setOtherSales}/>
+                <label>Modelová sazba daně ze zdanitelného zisku <select value={taxRate} onChange={e => setTaxRate(Number(e.target.value))}><option value={.15}>15 %</option><option value={.23}>23 % (vyšší daňové pásmo)</option></select></label>
+              </div>
               <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
-                Výpočet je orientační, pracuje s pravidelným měsíčním vkladem na konci měsíce a se složeným úročením. U spořicího účtu model odečítá 15% srážkovou daň z připsaných úroků. U fondových variant model počítá s osvobozením po 3letém časovém testu nebo při ročním úhrnu výběrů/prodejů cenných papírů do 100 000 Kč za zdaňovací období; tento limit se vztahuje na částku výběru/prodeje, ne na zisk. Při prodeji před 3 roky nad tento limit model orientačně odečítá 15 % z výnosu. Nezahrnuje vstupní poplatky, inflaci ani změny ceny nemovitosti.
+                Model předpokládá investování dosavadních úspor dnes a další vklady na konci měsíce. Časový test se posuzuje po jednotlivých nákupech, v měsíčním modelu až po více než 36 měsících. Limit 100 000 Kč platí pro celkové roční prodeje všech cenných papírů, nikoli pro zisk. K tomuto výběru přičítáme zadané tržby z dalších prodejů ve stejném roce. Skutečná daň může kombinovat sazby 15 % a 23 % podle celkového základu daně. Výnosy fondů zadávej po průběžných nákladech, vstupní poplatek se odečítá zvlášť. U účtu počítáme nominální sazbu / 12 a 15% daň z kladných úroků. Model nezahrnuje růst ceny nemovitosti ani lhůty odkupu investic. Cena a odhad mají odpovídat plánované koupi.
                 <Link
                   href={INCOME_TAX_SOURCE_URL}
                   target="_blank"
                   rel="noreferrer"
                   className="ml-1 font-semibold text-blue-700 hover:text-blue-900"
                 >
-                  Zákon o daních z příjmů
+                  Pravidla Finanční správy
                 </Link>
               </p>
             </div>

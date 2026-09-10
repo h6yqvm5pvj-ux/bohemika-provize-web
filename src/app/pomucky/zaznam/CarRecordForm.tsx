@@ -1,6 +1,8 @@
 // src/app/pomucky/zaznam/CarRecordForm.tsx
 "use client";
 
+import styles from "./record.module.css";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -84,6 +86,7 @@ function GlassSwitch({ label, checked, onChange }: GlassSwitchProps) {
   return (
     <button
       type="button"
+      aria-pressed={checked}
       onClick={() => onChange(!checked)}
       className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
         checked
@@ -721,11 +724,12 @@ export function CarRecordForm() {
       </section>
 
       {/* Tlačítko Výsledky */}
-      <div className="flex justify-end pt-2">
+      <div className={styles.actionBar}>
+        <div><strong>Připravit výstup z jednání</strong><p>Z nastaveného pojištění sestavíme texty ke zkopírování.</p></div>
         <button
           type="button"
           onClick={handleGoToResults}
-          className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700 bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(16,185,129,0.35)] hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+          className={styles.primaryAction}
         >
           Výsledky
         </button>

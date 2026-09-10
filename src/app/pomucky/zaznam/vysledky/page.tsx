@@ -1,4 +1,7 @@
 "use client";
+
+import styles from "../record.module.css";
+import { RecordIllustration } from "../RecordIllustration";
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
@@ -552,7 +555,7 @@ function ResultTextRow({
   copyable?: boolean;
 }) {
   return (
-    <article className="grid gap-3 rounded-[22px] border border-violet-200/70 bg-white/95 p-3 shadow-[0_8px_22px_rgba(42,20,72,0.08)] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start">
+    <article className={`${styles.resultRow} grid gap-3 rounded-[22px] border border-violet-200/70 bg-white/95 p-3 shadow-[0_8px_22px_rgba(42,20,72,0.08)] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start`}>
       <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-[11px] font-black text-violet-900">
         {formatLineNumber(index)}
       </span>
@@ -588,39 +591,15 @@ function ProductRecommendationCard({
   onCopy: CopyHandler;
 }) {
   return (
-    <section className="relative isolate flex min-h-[230px] flex-col overflow-hidden rounded-[26px] border border-[#653493] bg-[#150e1f] px-4 py-5 shadow-[0_18px_34px_rgba(20,8,32,0.38)] ring-1 ring-[#7a35a7]/22">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.54)_0%,rgba(29,18,45,0.8)_44%,rgba(18,12,27,0.99)_100%)]" />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-8 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
-      />
-      <div className="relative z-[1] flex h-full flex-col">
-        <span className="inline-flex w-fit items-center rounded-xl border border-violet-200/70 bg-[linear-gradient(135deg,#c084fc_0%,#a855f7_100%)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#1d1138] shadow-[0_10px_24px_rgba(168,85,247,0.38)]">
-          Produkt
-        </span>
-        <h3 className="mt-3 text-lg font-semibold leading-tight text-[#fbf7ff]">
-          {label}
-        </h3>
-        {text ? (
-          <>
-            <p className="mt-3 flex-1 text-sm leading-relaxed text-violet-100/82">
-              {text}
-            </p>
-            <div className="mt-5">
-              <CopyAction
-                text={text}
-                copiedText={copiedText}
-                onCopy={onCopy}
-                variant="dark"
-              />
-            </div>
-          </>
-        ) : (
-          <p className="mt-3 flex-1 text-sm leading-relaxed text-violet-100/62">
-            Doplníme po zadání parametrů této pojišťovny.
-          </p>
-        )}
-      </div>
+    <section className={styles.productRecommendation}>
+      <span className={styles.eyebrow}>Doporučení produktu</span>
+      <h3>{label}</h3>
+      {text ? (
+        <>
+          <p>{text}</p>
+          <div className="mt-5"><CopyAction text={text} copiedText={copiedText} onCopy={onCopy} /></div>
+        </>
+      ) : <p>Doplníme po zadání parametrů této pojišťovny.</p>}
     </section>
   );
 }
@@ -836,66 +815,22 @@ export default function RecordResultsPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6">
-        <header className="relative isolate overflow-hidden rounded-[32px] border border-[#653493] bg-[#150e1f] px-5 py-5 text-white shadow-[0_24px_64px_rgba(20,8,32,0.42)] ring-1 ring-[#7a35a7]/22 sm:px-7 sm:py-6">
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(66,30,100,0.58)_0%,rgba(29,18,45,0.82)_44%,rgba(18,12,27,0.99)_100%)]" />
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.13)_0%,rgba(190,92,255,0)_42%,rgba(99,102,241,0.12)_100%)]" />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-10 top-0 z-[1] h-[2px] rounded-b-full bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(192,132,252,0.74),rgba(217,180,254,0.9),rgba(192,132,252,0.74),rgba(168,85,247,0))]"
-          />
-          <div className="relative z-[1]">
-            <button
-              type="button"
-              onClick={() => router.push("/pomucky/zaznam")}
-              className="inline-flex items-center gap-2 rounded-full border border-violet-300/45 bg-white/[0.08] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:border-violet-200/70 hover:bg-white/[0.14]"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Zpět na záznam
-            </button>
-            <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
-              <div>
-                <p className="inline-flex items-center gap-2 rounded-full border border-violet-300/35 bg-white/[0.06] px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-violet-100">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Výstup pro jednání
-                </p>
-                <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#fbf7ff] sm:text-4xl">
-                  Doporučení do dopadů
-                </h1>
-                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-violet-100/78 sm:text-base">
-                  Texty připravené pro část „Dopady na klienta“. Kopíruj celé
-                  sekce nebo jednotlivé věty podle toho, co chceš do záznamu
-                  vložit.
-                </p>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-2xl border border-violet-300/25 bg-white/[0.06] px-3 py-3">
-                  <div className="text-2xl font-black text-[#fbf7ff]">
-                    {additional === null ? "…" : additionalCount}
-                  </div>
-                  <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-100/70">
-                    Cíle
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-violet-300/25 bg-white/[0.06] px-3 py-3">
-                  <div className="text-2xl font-black text-[#fbf7ff]">
-                    {lines === null ? "…" : impactTextCount}
-                  </div>
-                  <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-100/70">
-                    Dopady
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-violet-300/25 bg-white/[0.06] px-3 py-3">
-                  <div className="text-2xl font-black text-[#fbf7ff]">
-                    {productTextCount}
-                  </div>
-                  <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-100/70">
-                    Produkty
-                  </div>
-                </div>
-              </div>
+      <div className={`${styles.page} ${styles.results}`}>
+        <button type="button" onClick={() => router.push("/pomucky/zaznam")} className={styles.back}>
+          <ArrowLeft size={15} /> Zpět na záznam
+        </button>
+        <header className={styles.hero}>
+          <div>
+            <span className={styles.eyebrow}><Sparkles size={14} /> Výstup pro jednání</span>
+            <h1>Doporučení do dopadů</h1>
+            <p>Texty pro část „Dopady na klienta“. Zkopíruj celou sekci nebo jednotlivé věty podle toho, co do záznamu potřebuješ.</p>
+            <div className={styles.stats}>
+              <span><b>{additional === null ? "…" : additionalCount}</b><small>Cíle</small></span>
+              <span><b>{lines === null ? "…" : impactTextCount}</b><small>Dopady</small></span>
+              <span><b>{productTextCount}</b><small>Produkty</small></span>
             </div>
           </div>
+          <div className={styles.illustration}><RecordIllustration complete /></div>
         </header>
 
         <ResultSection

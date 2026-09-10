@@ -1,6 +1,8 @@
 // src/app/pomucky/zaznam/LifeRecordForm.tsx
 "use client";
 
+import styles from "./record.module.css";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -2286,11 +2288,12 @@ export function LifeRecordForm() {
       </div>
 
       {/* ZELENÉ GLASSY TLAČÍTKO VÝSLEDKY */}
-      <div className="pt-4 flex justify-center">
+      <div className={styles.actionBar}>
+        <div><strong>Připravit výstup z jednání</strong><p>Z vybraných krytí sestavíme texty ke zkopírování.</p></div>
         <button
           type="button"
           onClick={handleResultsClick}
-          className="inline-flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-600 px-8 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(5,150,105,0.35)] transition hover:bg-emerald-500 hover:shadow-[0_18px_34px_rgba(5,150,105,0.45)] sm:text-base"
+          className={styles.primaryAction}
         >
           <FileCheck2 className="h-4 w-4 sm:h-5 sm:w-5" />
           <span>Výsledky</span>
@@ -2400,6 +2403,7 @@ type BenefitCardProps = {
 
 function BenefitCard({
   title,
+  subtitle,
   enabled,
   onToggle,
   children,
@@ -2408,7 +2412,8 @@ function BenefitCard({
 
   return (
     <section
-      className={`rounded-[22px] border bg-white/95 p-4 shadow-[0_8px_22px_rgba(42,20,72,0.08)] transition-[transform,border-color,box-shadow] duration-200 sm:p-5 ${
+      data-active={enabled}
+      className={`${styles.risk} rounded-[22px] border bg-white/95 p-4 shadow-[0_8px_22px_rgba(42,20,72,0.08)] transition-[transform,border-color,box-shadow] duration-200 sm:p-5 ${
         enabled
           ? "border-violet-300 shadow-[0_16px_34px_rgba(88,28,135,0.14)]"
           : "border-violet-200/70 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_16px_34px_rgba(88,28,135,0.12)]"
@@ -2417,6 +2422,8 @@ function BenefitCard({
       <button
         type="button"
         onClick={onToggle}
+        aria-pressed={enabled}
+        aria-label={title}
         className="group flex w-full items-center gap-3 text-left"
       >
         <div
@@ -2441,6 +2448,7 @@ function BenefitCard({
           <h3 className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
             {title}
           </h3>
+          {subtitle && <p className={styles.riskHint}>{subtitle}</p>}
         </div>
         {enabled ? (
           <span className="inline-flex shrink-0 rounded-full border border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-white shadow-[0_7px_14px_rgba(109,40,217,0.22)]">
@@ -2473,6 +2481,9 @@ function ToggleRow({ label, checked, onChange }: ToggleRowProps) {
       <button
         type="button"
         onClick={() => onChange(!checked)}
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
         className={`relative inline-flex h-6 w-10 items-center rounded-full border p-0.5 transition ${
           checked
             ? "border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] shadow-[0_6px_14px_rgba(109,40,217,0.28)]"
@@ -2498,6 +2509,7 @@ type ChipButtonProps = {
 function ChipButton({ active, children, onClick }: ChipButtonProps) {
   return (
     <button
+      aria-pressed={active}
       type="button"
       onClick={onClick}
       className={`whitespace-nowrap rounded-full px-3.5 py-1.5 font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 ${

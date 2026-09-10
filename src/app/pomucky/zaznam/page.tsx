@@ -2,6 +2,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { RecordIllustration } from "./RecordIllustration";
+import styles from "./record.module.css";
 import { AppLayout } from "@/components/AppLayout";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -11,7 +14,9 @@ import {
   Home,
   Plane,
   ShieldCheck,
-  Sparkles,
+  ArrowLeft,
+  Check,
+  FilePenLine,
 } from "lucide-react";
 import {
   type RecordInsuranceType,
@@ -41,50 +46,36 @@ export default function RecordOfMeetingPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-6xl space-y-4 px-0 py-0 font-mono text-slate-900 sm:space-y-7 sm:px-2 sm:py-2">
-        <header className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-[linear-gradient(165deg,#ffffff_0%,#f8fbff_56%,#edf6ff_100%)] px-3.5 py-3.5 shadow-[0_14px_30px_rgba(15,23,42,0.06)] sm:rounded-3xl sm:px-5 sm:py-5 sm:shadow-[0_20px_40px_rgba(15,23,42,0.08)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-300 via-sky-400 to-indigo-500" />
-          <div className="relative space-y-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-800 sm:px-3 sm:text-xs">
-              <Sparkles className="h-3.5 w-3.5" />
-              Klientský záznam
-            </span>
-            <h1 className="text-[2.35rem] font-semibold leading-[0.98] tracking-tight text-slate-900 sm:text-6xl">
-              Záznam z jednání
-            </h1>
-            <p className="max-w-3xl text-xs text-slate-600 sm:text-sm">
-              Vyber typ pojištění, zaklikni řešená rizika a doplň částky. Formulář je připravený
-              jako tahák pro rychlé vyplnění výstupu z jednání.
-            </p>
+      <div className={styles.page}>
+        <Link href="/pomucky" className={styles.back}><ArrowLeft size={15} /> Zpět na pomůcky</Link>
+        <header className={styles.hero}>
+          <div>
+            <span className={styles.eyebrow}><FilePenLine size={14} /> Podklady pro jednání</span>
+            <h1>Záznam z jednání</h1>
+            <p>Od potřeb klienta k přehlednému zápisu. Vyber oblast pojištění a připrav si texty pro záznam z jednání.</p>
+            <div className={styles.steps} aria-label="Jak postupovat">
+              <span><b>1</b> Vyber oblast</span><span><b>2</b> Doplň podklady</span><span><b>3</b> Zkopíruj texty</span>
+            </div>
           </div>
+          <div className={styles.illustration}><RecordIllustration /></div>
         </header>
-
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-          Oblast jednání
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1.5 sm:gap-2.5">
+        <div className={styles.pickerHeader}><h2>Co s klientem řešíš?</h2><span>Vyber oblast jednání</span></div>
+        <div className={styles.picker} role="group" aria-label="Oblast jednání">
           {RECORD_INSURANCE_TYPES.map((t: RecordInsuranceTypeConfig) => {
             const active = t.id === selectedType;
             const Icon = INSURANCE_TYPE_ICONS[t.id];
             return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setSelectedType(t.id)}
-                className={`inline-flex min-w-[118px] items-center justify-center gap-1.5 rounded-[16px] border px-3 py-2 text-sm font-semibold tracking-tight transition-all sm:min-w-[170px] sm:gap-2.5 sm:rounded-[22px] sm:px-5 sm:py-3.5 sm:text-lg ${
-                  active
-                    ? "border-blue-500 bg-[linear-gradient(135deg,#60a5fa_0%,#2563eb_100%)] text-white shadow-[0_14px_32px_rgba(37,99,235,0.34)]"
-                    : "border-slate-300 bg-white text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.08)] hover:-translate-y-[1px] hover:border-slate-400 hover:bg-slate-50/60 hover:text-slate-900"
-                }`}
-              >
-                <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${active ? "text-white" : "text-slate-600"}`} />
-                <span>{t.shortTitle}</span>
+              <button key={t.id} type="button" onClick={() => setSelectedType(t.id)}
+                aria-pressed={active} aria-controls="record-form" className={styles.type}>
+                <span className={styles.typeIcon}><Icon size={19} strokeWidth={1.7} /></span>
+                {active && <Check size={13} className={styles.selectedMark} />}
+                <strong>{t.shortTitle}</strong><small>{t.subtitle}</small>
               </button>
             );
           })}
         </div>
 
-        <section className="space-y-4">
+        <section id="record-form" className={styles.form} aria-label={RECORD_INSURANCE_TYPES.find((type) => type.id === selectedType)?.title}>
           {selectedType === "life" && <LifeRecordForm />}
           {selectedType === "car" && <CarRecordForm />}
           {selectedType === "property" && <PropertyRecordForm />}

@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Sigma, X, FileText, Loader2 } from "lucide-react";
+
+import styles from "./CalculatorCoefficientModal.module.css";
 
 import type { CommissionMode, Product } from "../types/domain";
 
@@ -286,6 +288,27 @@ export function CalculatorCoefficientModal({
   onCoefficientViewChange,
   onNeonDocumentAction,
 }: CalculatorCoefficientModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panelRef.current?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeRef.current(); }
+      if (event.key !== "Tab") return;
+      const items = Array.from(panelRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex="0"]') ?? []).filter(item => item.getClientRects().length > 0);
+      const first = items[0], last = items.at(-1);
+      if (!first || !last) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panelRef.current)) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", handleKey); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, [isOpen]);
   if (!isOpen) return null;
 
   const hasCoefficientViewToggle =
@@ -400,57 +423,63 @@ export function CalculatorCoefficientModal({
         : "aktuální podmínky"
       : product === "domexneuron"
       ? "aktuální podmínky"
-      : `režim ${mode}`;
+      : (mode === "accelerated" ? "Zrychlený režim" : "Běžný režim");
   const autoTermsPreviewIsPdf = /\.pdf(?:[?#]|$)/i.test(
     autoTermsPreviewUrl ?? ""
   );
 
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto px-4 py-6">
+    <div className={styles.overlay}>
       <button
         type="button"
-        className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+        className={styles.backdrop}
+        tabIndex={-1}
         aria-label="Zavřít koeficienty"
         onClick={onClose}
       />
       <div
-        className={`relative z-50 w-full max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-black/30 ${
-          showAutoTermsPreview || showNeonTermsPreview ? "max-w-6xl" : "max-w-md"
-        }`}
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="coefficient-dialog-title"
+        tabIndex={-1}
+        className={styles.dialog}
+        data-wide={showAutoTermsPreview || showNeonTermsPreview || undefined}
       >
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="text-lg font-semibold text-slate-900">Koeficienty</h3>
+        <div className={styles.header}>
+          <div className={styles.heading}><span className={styles.headingIcon}><Sigma size={23} /></span><div><p className={styles.eyebrow}>Přehled provizí</p><h3 id="coefficient-dialog-title">Koeficienty</h3></div></div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full px-2 text-slate-500 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+            className={styles.close}
             aria-label="Zavřít"
           >
-            ×
+            <X size={19} />
           </button>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+        <div className={styles.toolbar}>
           <div className="space-y-1">
             <p className="text-sm text-slate-600">
               {productLabel} · pozice {positionLabel} · {productModeText}
             </p>
             {productPeriodText && (
-              <p className="text-xs font-semibold text-rose-700">
+              <p className={styles.notice}>
                 {productPeriodText}
               </p>
             )}
             {showAutoTermsValidityNote && (
-              <p className="text-xs font-semibold text-rose-700">
+              <p className={styles.notice}>
                 Provizní podmínky aktuální od 01.04.2026
               </p>
             )}
           </div>
 
           {hasCoefficientViewToggle && (
-            <div className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-slate-50 p-1">
+            <div className={styles.tabs}>
               <button
                 type="button"
+                aria-pressed={coefficientView === "current"}
                 onClick={() => onCoefficientViewChange("current")}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                   coefficientView === "current"
@@ -462,6 +491,7 @@ export function CalculatorCoefficientModal({
               </button>
               <button
                 type="button"
+                aria-pressed={coefficientView === "historical"}
                 onClick={() => onCoefficientViewChange("historical")}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                   coefficientView === "historical"
@@ -478,7 +508,8 @@ export function CalculatorCoefficientModal({
               {(product === "uniqaAuto" || product === "domex") && (
                 <button
                   type="button"
-                  onClick={() => onCoefficientViewChange("olderHistorical")}
+                  aria-pressed={coefficientView === "olderHistorical"}
+                onClick={() => onCoefficientViewChange("olderHistorical")}
                   className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                     coefficientView === "olderHistorical"
                       ? "bg-slate-900 text-white"
@@ -493,17 +524,14 @@ export function CalculatorCoefficientModal({
         </div>
 
         <div
-          className={`mt-4 ${
-            showNeonTermsPreview
-              ? "grid gap-4 lg:grid-cols-[minmax(320px,0.68fr)_minmax(620px,1.32fr)]"
-              : ""
-          }`}
+          className={styles.content}
+          data-preview={showNeonTermsPreview || undefined}
         >
-          <section className="order-1 rounded-xl border border-slate-300 bg-slate-50 p-3 space-y-3">
+          <section className={styles.summary}>
             {product === "neon" ? (
-              <div className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs leading-relaxed text-slate-700">
+              <div className={styles.explanation}>
                 <p className="font-bold uppercase tracking-wide text-slate-900">
-                  JAK FUNGUJE VÝPOČET?
+                  Jak se provize počítá
                 </p>
                 <p className="mt-1">
                   Měsíční pojistné x 12 x doba trvání smlouvy (maximálně{" "}
@@ -526,7 +554,7 @@ export function CalculatorCoefficientModal({
               product === "flexi" ||
               product === "maximaMaxEfekt" ||
               product === "pillowInjury") && (
-              <p className="text-xs font-semibold text-rose-700">
+              <p className={styles.notice}>
                 UPOZORNĚNÍ: Výpočet okamžité provize počítá s tím, že je
                 zpracována karta klienta dle podmínek!
               </p>
@@ -537,12 +565,12 @@ export function CalculatorCoefficientModal({
               </p>
             )}
 
-            <div className="space-y-2 pt-1">
+            <div className={styles.rates}>
               {coefList.length > 0 ? (
                 coefList.map((c, idx) => (
                   <div
                     key={`${c.label}-${idx}`}
-                    className="flex w-full max-w-[500px] items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                    className={styles.rate}
                   >
                     <span className="min-w-0 pr-3 text-slate-600">{c.label}</span>
                     <span className="shrink-0 font-semibold">
@@ -558,8 +586,8 @@ export function CalculatorCoefficientModal({
             </div>
 
             {showAutoTermsPreview && autoTermsPreviewUrl && (
-              <div className="rounded-xl border border-slate-300 bg-slate-50 p-2 sm:p-3">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className={styles.document}>
+                <div className={styles.documentHeader}>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                     Provizní podmínky {productLabel || "Auto"} (náhled)
                   </p>
@@ -572,7 +600,7 @@ export function CalculatorCoefficientModal({
                     Otevřít v nové kartě
                   </a>
                 </div>
-                <div className="h-[62vh] min-h-[460px] overflow-auto rounded-lg border border-slate-300 bg-slate-100 p-2">
+                <div className={styles.autoPreview}>
                   {autoTermsPreviewIsPdf ? (
                     <PdfTermsPreview
                       url={autoTermsPreviewUrl}
@@ -595,10 +623,10 @@ export function CalculatorCoefficientModal({
           </section>
 
           {showNeonTermsPreview && neonTermsPreviewUrl && (
-            <aside className="order-2 rounded-xl border border-slate-300 bg-slate-50 p-2 sm:p-3">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <aside className={styles.document}>
+              <div className={styles.documentHeader}>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  Provizní podmínky NEON
+                  <FileText size={16} /> Provizní podmínky NEON
                 </p>
                 <button
                   type="button"
@@ -614,7 +642,7 @@ export function CalculatorCoefficientModal({
                   />
                   {neonDocAction === "download"
                     ? "Stahuji..."
-                    : "Stáhnout provizní podmínky"}
+                    : "Stáhnout PDF"}
                 </button>
               </div>
               <div className="mb-2 text-[11px] text-slate-600">
@@ -626,7 +654,7 @@ export function CalculatorCoefficientModal({
                 >
                   {neonDocAction === "open"
                     ? "Otevírám PDF..."
-                    : "Kompletní PDF: Otevřít v nové kartě"}
+                    : "Otevřít celé PDF v nové kartě"}
                 </button>
               </div>
 
@@ -636,10 +664,10 @@ export function CalculatorCoefficientModal({
                 </p>
               )}
 
-              <div className="relative h-[70vh] min-h-[540px] overflow-hidden rounded-lg border border-slate-300 bg-white">
+              <div className={styles.neonPreview}>
                 {neonPreviewLoading ? (
                   <div className="flex h-full items-center justify-center px-4 text-sm text-slate-600">
-                    Načítám náhled provizních podmínek...
+                    <Loader2 size={22} className="mr-3 animate-spin motion-reduce:animate-none" /> Načítám provizní podmínky…
                   </div>
                 ) : neonPreviewBlobUrl ? (
                   <Image

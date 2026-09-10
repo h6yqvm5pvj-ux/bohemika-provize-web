@@ -1,6 +1,9 @@
 // src/app/pomucky/zaznam/vysledky-auto/page.tsx
 "use client";
 
+import styles from "../record.module.css";
+import { RecordIllustration } from "../RecordIllustration";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
@@ -358,7 +361,16 @@ export default function CarResultsPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-4xl space-y-6">
+      <div className={`${styles.page} ${styles.results}`}>
+        <Link href="/pomucky/zaznam" className={styles.back}>← Zpět na záznam</Link>
+        <header className={styles.hero}>
+          <div>
+            <span className={styles.eyebrow}>Výstup pro jednání · Vozidla</span>
+            <h1>Doporučení do dopadů</h1>
+            <p>Texty podle nastaveného pojištění vozidla. Vyber pojišťovnu a zkopíruj doporučení, která odpovídají jednání s klientem.</p>
+          </div>
+          <div className={styles.illustration}><RecordIllustration complete /></div>
+        </header>
         {/* Přepínač pojišťovny – nahoře */}
         <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-4 sm:px-8 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
           <h2 className="text-sm font-semibold text-slate-900">
@@ -370,6 +382,7 @@ export default function CarResultsPage() {
               return (
                 <button
                   key={opt.id}
+                  aria-pressed={active}
                   type="button"
                   onClick={() =>
                     setCurrentInsurer(
@@ -378,7 +391,7 @@ export default function CarResultsPage() {
                   }
                   className={`px-3.5 py-1.5 rounded-2xl text-xs sm:text-sm border transition ${
                     active
-                      ? "bg-emerald-500/20 border-emerald-400 text-emerald-800 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                      ? "bg-violet-50 border-violet-300 text-violet-800"
                       : "bg-white border-slate-300 text-slate-900 hover:bg-slate-100"
                   }`}
                 >
@@ -389,16 +402,7 @@ export default function CarResultsPage() {
           </div>
         </section>
 
-        {/* Header */}
-        <header className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-            Doporučení do dopadů – Vozidla
-          </h1>
-          <p className="text-sm text-slate-600 max-w-2xl">
-            Texty, které můžeš zapsat do dopadů / záznamu z jednání podle toho,
-            jak má klient nastavené pojištění vozidla.
-          </p>
-        </header>
+
 
         {/* Výsledky – hlavní doporučení */}
         <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
@@ -435,7 +439,7 @@ export default function CarResultsPage() {
                 Níže máš hotové věty, které můžeš použít v dopadech nebo v
                 záznamu z jednání:
               </p>
-              <ul className="space-y-2 text-sm text-slate-900">
+              <ul className={`${styles.resultList} space-y-2 text-sm text-slate-900`}>
                 {recs.map((rec, idx) => (
                   <li
                     key={idx}
@@ -482,6 +486,7 @@ export default function CarResultsPage() {
               return (
                 <button
                   key={opt.id}
+                  aria-pressed={active}
                   type="button"
                   onClick={() =>
                     setRecommendedInsurer(
@@ -490,7 +495,7 @@ export default function CarResultsPage() {
                   }
                   className={`px-3.5 py-1.5 rounded-2xl text-xs sm:text-sm border transition ${
                     active
-                      ? "bg-emerald-500/20 border-emerald-400 text-emerald-800 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                      ? "bg-violet-50 border-violet-300 text-violet-800"
                       : "bg-white border-slate-300 text-slate-900 hover:bg-slate-100"
                   }`}
                 >
