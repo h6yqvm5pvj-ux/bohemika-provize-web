@@ -46,8 +46,10 @@ export type EntryDoc = {
   }[] | null;
 
   userEmail?: string | null;
+  acquisitionType?: "inherited" | null;
   originalAdviserEmail?: string | null;
   originalPosition?: Position | null;
+  transferEffectiveDate?: string | null;
   servicingOwnerEmail?: string | null;
   commissionOwnerEmail?: string | null;
   contractSignedDate?: unknown;

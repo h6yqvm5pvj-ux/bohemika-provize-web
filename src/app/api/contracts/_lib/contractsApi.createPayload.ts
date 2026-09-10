@@ -1,3 +1,6 @@
+import { POSITION_ORDER } from "@/app/kalkulacka/calculatorHelpers";
+import type { InheritedContractFields } from "@/app/lib/inheritedContracts";
+import { normalizeTransferEffectiveDate } from "./contractsApi.transfer";
 import { toDate } from "@/app/lib/formatters";
 import {
   isAutoProduct,
@@ -34,6 +37,10 @@ const TIP_CONTRACT_PERCENT_STEP = 5;
 const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "productKey",
   "entryType",
+  "acquisitionType",
+  "originalPosition",
+  "originalAdviserName",
+  "transferEffectiveDate",
   "commissionMode",
   "inputAmount",
   "effectiveInputAmount",
@@ -646,7 +653,7 @@ export type RefreshCommissionBasePayload = {
   calculationAnnualPremium: number;
 };
 
-export type NormalizedCreateEntryPayload = {
+export type NormalizedCreateEntryPayload = InheritedContractFields & {
   productKey: Product;
   entryType: "contract" | "endorsement";
   position: Position;
@@ -812,6 +819,25 @@ export const normalizeCreateEntryPayload = ({
       ok: false,
       error: `Nepovolená pole v entry: ${unknownFields.join(", ")}.`,
     };
+  }
+
+  if (raw.acquisitionType != null && raw.acquisitionType !== "inherited") {
+    return { ok: false, error: "Neplatný způsob převzetí smlouvy." };
+  }
+  const inherited = raw.acquisitionType === "inherited";
+  const originalPosition = inherited && POSITION_ORDER.includes(raw.originalPosition as Position)
+    ? raw.originalPosition as Position : null;
+  const originalAdviserNameParsed = parseOptionalTrimmedText(raw.originalAdviserName, "originalAdviserName", 200);
+  if (!originalAdviserNameParsed.ok) return originalAdviserNameParsed;
+  const transferEffectiveDate = normalizeTransferEffectiveDate(raw.transferEffectiveDate);
+  if (inherited && (!originalPosition || !transferEffectiveDate)) {
+    return { ok: false, error: "U převzaté smlouvy vyber původní kariérní pozici a platné datum převzetí." };
+  }
+  if (!inherited && (raw.originalPosition != null || raw.originalAdviserName != null || raw.transferEffectiveDate != null)) {
+    return { ok: false, error: "Údaje původního sjednatele patří pouze k převzaté smlouvě." };
+  }
+  if (inherited && (raw.entryType === "endorsement" || raw.isRefresh === true || raw.tipContractTipsterPercent != null || raw.tipContractTipsterEmail != null)) {
+    return { ok: false, error: "Převzatou smlouvu přidej samostatně, bez dodatku, náhrady a tipařské odměny." };
   }
 
   const entryTypeParsed = parseEntryType(raw.entryType);
@@ -1153,6 +1179,9 @@ export const normalizeCreateEntryPayload = ({
 
   const signedDateParsed = parseRequiredDateField(raw.contractSignedDate, "contractSignedDate");
   if (!signedDateParsed.ok) return signedDateParsed;
+  if (inherited && transferEffectiveDate && transferEffectiveDate < toIsoDay(signedDateParsed.value)) {
+    return { ok: false, error: "Datum převzetí nesmí být před původním sjednáním smlouvy." };
+  }
   const policyStartParsed = parseRequiredDateField(raw.policyStartDate, "policyStartDate");
   if (!policyStartParsed.ok) return policyStartParsed;
   const policyEndParsed = parseOptionalDateField(raw.policyEndDate, "policyEndDate");
@@ -1450,6 +1479,12 @@ export const normalizeCreateEntryPayload = ({
   return {
     ok: true,
     payload: {
+      ...(inherited ? {
+        acquisitionType: "inherited" as const,
+        originalPosition,
+        originalAdviserName: originalAdviserNameParsed.value,
+        transferEffectiveDate,
+      } : {}),
       productKey: productParsed.value,
       entryType: entryTypeParsed.value,
       position: "poradce1",

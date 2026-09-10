@@ -1,9 +1,11 @@
 // src/app/smlouvy/[id]/page.tsx
 "use client";
 
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ContractDetailLoader } from "./ContractDetailLoader";
+import actionStyles from "./contractDetailActions.module.css";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -4689,23 +4691,23 @@ export default function ContractDetailPage() {
   const contractAuthorName = nameFromEmail(
     contract?.userEmail ?? ownerEmail ?? normalizedEffectiveUserEmail
   );
+  const contractIsInherited = isInheritedContract(contract);
   const contractOriginalAdviserEmail =
     normalizeEmail(contract?.originalAdviserEmail) ||
-    normalizeEmail(contract?.userEmail) ||
-    normalizeEmail(ownerEmail);
+    (contractIsInherited ? "" : normalizeEmail(contract?.userEmail) || normalizeEmail(ownerEmail));
   const contractServicingOwnerEmail =
     normalizeEmail(contract?.servicingOwnerEmail) ||
     normalizeEmail(contract?.commissionOwnerEmail) ||
     normalizeEmail(contract?.userEmail) ||
     normalizeEmail(ownerEmail);
-  const contractWasTransferred = Boolean(
+  const contractWasTransferred = contractIsInherited || Boolean(
     contractOriginalAdviserEmail &&
       contractServicingOwnerEmail &&
       contractOriginalAdviserEmail !== contractServicingOwnerEmail
   );
   const contractOriginalAdviserName =
     contract?.originalAdviserName?.trim() ||
-    nameFromEmail(contractOriginalAdviserEmail);
+    (contractOriginalAdviserEmail ? nameFromEmail(contractOriginalAdviserEmail) : "Neuvedený");
   const contractServicingOwnerName =
     contract?.servicingOwnerName?.trim() ||
     contract?.adviserName?.trim() ||
@@ -5399,6 +5401,11 @@ export default function ContractDetailPage() {
                   </Link>
                 )}
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  {contractIsInherited && (
+                    <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                      Převzatá
+                    </span>
+                  )}
                   {isEndorsement && (
                     <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
                       Dodatek
@@ -5463,13 +5470,12 @@ export default function ContractDetailPage() {
                     type="button"
                     onClick={handleTogglePaid}
                     disabled={updatingPaid}
-                    className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-semibold tracking-tight shadow-sm transition ${
-                      contract?.paid
-                        ? "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
-                        : "border-rose-700 bg-rose-600 text-white hover:bg-rose-700"
-                    } ${updatingPaid ? "opacity-60" : ""}`}
+                    className={actionStyles.payment}
+                    data-paid={contract?.paid === true}
+                    aria-pressed={contract?.paid === true}
+                    title={contract?.paid ? "Označit jako nezaplacené" : "Označit jako zaplacené"}
                   >
-                    {updatingPaid && <Spinner className="h-4 w-4 border-2 border-white/70 border-t-slate-500" />}
+                    {updatingPaid ? <Spinner className="h-4 w-4" /> : <span className={actionStyles.paymentDot} aria-hidden="true" />}
                     <span>{contract?.paid ? "Zaplaceno" : "Nezaplaceno"}</span>
                   </button>
                 )}
@@ -5483,7 +5489,7 @@ export default function ContractDetailPage() {
                       aria-expanded={
                         contractPdfOptions.length > 1 ? showContractPdfOptions : undefined
                       }
-                      className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-violet-700 bg-violet-700 px-3 text-xs font-semibold font-mono tracking-tight text-white shadow-[0_8px_18px_rgba(109,40,217,0.22)] transition hover:border-violet-800 hover:bg-violet-800 disabled:opacity-60 ${contractPdfLoading ? "opacity-60" : ""}`}
+                      className={`${actionStyles.button} ${actionStyles.primary}`}
                     >
                       <Eye size={14} strokeWidth={2} aria-hidden="true" />
                       <span>
@@ -5538,7 +5544,7 @@ export default function ContractDetailPage() {
                     }}
                     aria-controls="contract-actions-menu"
                     aria-expanded={showContractActionsMenu}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-slate-950 bg-[linear-gradient(135deg,#020617_0%,#312e81_100%)] px-3 text-xs font-semibold font-mono tracking-tight text-white shadow-[0_8px_18px_rgba(15,23,42,0.22)] transition hover:border-violet-800 hover:from-slate-900 hover:to-violet-900"
+                    className={actionStyles.button}
                   >
                     <Menu size={14} strokeWidth={2.2} aria-hidden="true" />
                     <span>Menu</span>
@@ -6016,13 +6022,13 @@ export default function ContractDetailPage() {
                           <dd className="text-base font-semibold text-slate-900">
                             {contractServicingOwnerName}
                             <span className="block text-sm font-normal text-slate-600">
-                              Čerpá dosud nevyplacené a budoucí provize
+                              {contractIsInherited ? "Čerpá následné provize od převzetí" : "Čerpá dosud nevyplacené a budoucí provize"}
                             </span>
                           </dd>
 
                           {contractTransferDate && (
                             <>
-                              <dt className={keyValueLabelClass}>Převedeno</dt>
+                              <dt className={keyValueLabelClass}>{contractIsInherited ? "Převzato" : "Převedeno"}</dt>
                               <dd className="text-base font-semibold text-slate-900">
                                 {contractTransferDate.toLocaleDateString("cs-CZ")}
                               </dd>
@@ -6047,7 +6053,9 @@ export default function ContractDetailPage() {
                     </dl>
                     {contractWasTransferred && (
                       <p className="mt-3 max-w-[620px] rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm leading-relaxed text-violet-950">
-                        Již vyplacené provize zůstávají původnímu sjednateli. Správce čerpá pouze dosud nevyplacené a budoucí provize, vždy podle pozice při sjednání uvedené výše.
+                        {contractIsInherited
+                          ? "Následné provize se předpovídají od data převzetí, podle původního počátku smlouvy a pozice při sjednání. Pořizovací provize ani jejich odložené splátky se nezapočítávají."
+                          : "Již vyplacené provize zůstávají původnímu sjednateli. Správce čerpá pouze dosud nevyplacené a budoucí provize, vždy podle pozice při sjednání uvedené výše."}
                       </p>
                     )}
                   </section>
@@ -6593,7 +6601,7 @@ export default function ContractDetailPage() {
                 product={prod}
                 isOwnContract={isOwnContract}
                 isPaymentBasedProduct={isPaymentBasedProduct}
-                hideAnnualAutoTotals={hideSeparatedPeriodTotals}
+                hideAnnualAutoTotals={contractIsInherited || hideSeparatedPeriodTotals}
                 showAnyMeziprovision={showAnyMeziprovision}
                 meziprovisionCards={meziprovisionCards}
                 expandedMeziprovisionKeys={expandedMeziprovisionKeys}

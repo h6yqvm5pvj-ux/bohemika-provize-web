@@ -10,6 +10,13 @@ const entry = (productKey: Product, inputAmount: number, frequencyRaw?: PaymentF
 });
 
 describe("production premium summary", () => {
+  it("excludes inherited premiums even when the original signing date is in this production month", () => {
+    expect(summarizeProductionPremiums([
+      { ...entry("neon", 1000), acquisitionType: "inherited" },
+      { ...entry("domex", 2000, "quarterly"), acquisitionType: "inherited" },
+      entry("neon", 500),
+    ], start, end)).toEqual({ lifeMonthly: 500, otherAnnual: 0 });
+  });
   it("keeps life premiums monthly and sums all four life products", () => {
     expect(summarizeProductionPremiums([
       entry("neon", 1500, "monthly"), entry("flexi", 2000),

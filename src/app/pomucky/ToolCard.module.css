@@ -7,7 +7,7 @@
   flex-direction: column;
   height: 100%;
   min-width: 0;
-  min-height: 236px;
+  min-height: 184px;
   padding: 18px 22px 0;
   border: 1px solid #e5e7ee;
   border-radius: 22px;
@@ -58,17 +58,6 @@
   background: var(--category-surface);
 }
 
-.category {
-  flex: 1;
-  min-width: 0;
-  color: #697386;
-  font-size: 10px;
-  font-weight: 650;
-  line-height: 1.5;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
 .favorite {
   position: relative;
   z-index: 2;
@@ -78,6 +67,7 @@
   justify-content: center;
   width: 44px;
   height: 44px;
+  margin-left: auto;
   margin-right: -8px;
   border: 1px solid transparent;
   border-radius: 13px;
@@ -102,14 +92,6 @@
   font-weight: 650;
   line-height: 1.35;
   letter-spacing: -0.025em;
-  overflow-wrap: anywhere;
-}
-
-.description {
-  margin: 9px 0 0;
-  color: #667085;
-  font-size: 13px;
-  line-height: 1.7;
   overflow-wrap: anywhere;
 }
 
@@ -208,13 +190,12 @@
 }
 
 @media (max-width: 639px) {
-  .card { min-height: 212px; padding: 16px 18px 0; border-radius: 19px; }
+  .card { min-height: 180px; padding: 16px 18px 0; border-radius: 19px; }
   .card::before { border-bottom-right-radius: 18px; }
   .footer { margin-inline: -18px; }
   .news { margin-left: 18px; }
   .body { padding: 11px 0 13px; }
   .title { font-size: 18px; }
-  .description { font-size: 13px; line-height: 1.65; }
   .open::after { border-radius: 19px; }
 }
 

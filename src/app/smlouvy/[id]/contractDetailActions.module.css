@@ -1,0 +1,54 @@
+.button, .payment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid #dfe3ec;
+  border-radius: 11px;
+  color: #4c556b;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.button:hover {
+  border-color: #c7bcdb;
+  color: #65399a;
+  background: #faf8fd;
+}
+
+.primary {
+  border-color: #7943b4;
+  color: #fff;
+  background: #7943b4;
+  box-shadow: 0 3px 7px rgb(109 40 175 / 12%);
+}
+
+.primary:hover {
+  border-color: #68359f;
+  color: #fff;
+  background: #68359f;
+  box-shadow: 0 4px 10px rgb(109 40 175 / 18%);
+}
+
+.payment { border-color: #f2d8df; color: #ae3755; background: #fff4f6; }
+.payment:hover { border-color: #e9b9c6; background: #ffeaf0; }
+.payment[data-paid="true"] { border-color: #cdeadc; color: #157554; background: #edf9f2; }
+.payment[data-paid="true"]:hover { border-color: #a9d9c3; background: #e1f5e9; }
+.paymentDot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+.button:disabled, .payment:disabled { opacity: 0.6; cursor: wait; }
+.button:focus-visible, .payment:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 3px; }
+
+@media (max-width: 639px) {
+  .button, .payment { min-height: 42px; padding: 9px 12px; gap: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button, .payment { transition: none; }
+}

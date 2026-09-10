@@ -577,3 +577,37 @@ describe("contracts create payload parsing", () => {
     });
   });
 });
+
+
+describe("inherited contract creation", () => {
+  const inherited = (overrides: Record<string, unknown> = {}) => baseEntry({
+    acquisitionType: "inherited", originalPosition: "poradce4",
+    originalAdviserName: "  Původní Sjednatel  ", transferEffectiveDate: "2026-09-10", ...overrides,
+  });
+
+  it("stores manual original adviser details and original policy dates under the new owner", () => {
+    expect(normalizedPayload(inherited())).toMatchObject({
+      acquisitionType: "inherited", originalPosition: "poradce4",
+      originalAdviserName: "Původní Sjednatel", transferEffectiveDate: "2026-09-10",
+      userEmail: ownerEmail, contractSignedDate: new Date("2026-01-10"), policyStartDate: new Date("2026-02-01"),
+    });
+  });
+
+  it("allows an unknown original adviser name and a same-day acquisition", () => {
+    expect(normalizedPayload(inherited({ originalAdviserName: "", transferEffectiveDate: "2026-01-10" })))
+      .toMatchObject({ originalAdviserName: null, transferEffectiveDate: "2026-01-10" });
+  });
+
+  it.each([
+    { originalPosition: null }, { originalPosition: "unknown" },
+    { transferEffectiveDate: null }, { transferEffectiveDate: "2026-02-30" },
+    { transferEffectiveDate: "2026-01-09" }, { originalAdviserName: "x".repeat(201) },
+    { entryType: "endorsement" }, { isRefresh: true }, { tipContractTipsterPercent: 20 },
+  ])("rejects invalid or conflicting acquisition metadata: %j", (overrides) => {
+    expect(normalizeCreateEntryPayload({ raw: inherited(overrides), ownerEmail, ownerUid }).ok).toBe(false);
+  });
+
+  it("does not allow manual career-position metadata on an ordinary contract", () => {
+    expect(normalizeCreateEntryPayload({ raw: baseEntry({ originalPosition: "manazer8" }), ownerEmail, ownerUid }).ok).toBe(false);
+  });
+});

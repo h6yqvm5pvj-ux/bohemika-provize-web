@@ -37,6 +37,8 @@ type TipContractConfigSummary = {
 
 type CalculatorResultsSectionProps = {
   topTools?: ReactNode;
+  inheritedContract?: boolean;
+  inheritedCalculationReady?: boolean;
   tipsterModeEnabled: boolean;
   showSaveActions?: boolean;
   tipsterPercentPanelOpen: boolean;
@@ -193,6 +195,8 @@ function AnimatedMoneyValue({
 
 export function CalculatorResultsSection({
   topTools,
+  inheritedContract = false,
+  inheritedCalculationReady = false,
   tipsterModeEnabled,
   showSaveActions = true,
   tipsterPercentPanelOpen,
@@ -249,7 +253,7 @@ export function CalculatorResultsSection({
         <div className={styles.resultsHeader}>
           <h2 className={styles.resultsTitle}>
             <span className={styles.sectionIcon}><BarChart3 size={19} strokeWidth={1.7} aria-hidden="true" /></span>
-            Výsledky
+            {inheritedContract ? "Následné provize" : "Výsledky"}
           </h2>
           <div className={styles.resultsTools}>
             <button
@@ -379,6 +383,11 @@ export function CalculatorResultsSection({
           </p>
         )}
 
+        {inheritedContract && items.length > 0 && (
+          <p className="text-sm leading-6 text-slate-600">
+            Výše následných provizí podle původní pozice. Termíny a zbývající nárok od převzetí uvidíš po uložení v cashflow.
+          </p>
+        )}
         {!unsupported && items.length === 0 && (
           <div className={styles.emptyResults}>
             <div className={styles.emptyScene} aria-hidden="true">
@@ -386,8 +395,11 @@ export function CalculatorResultsSection({
               <span className={styles.emptySheet}><i /><i /><i /></span>
               <span className={styles.emptyCalculator}><Calculator size={35} strokeWidth={1.3} /></span>
             </div>
-            <h3>Tady uvidíš svou provizi</h3>
-            <p>Vyplň částku a ostatní parametry smlouvy. Výpočet se zobrazí automaticky.</p>
+            <h3>{inheritedContract && inheritedCalculationReady ? "Bez následných provizí" : "Tady uvidíš svou provizi"}</h3>
+            <p>{inheritedContract && inheritedCalculationReady
+              ? "Tento výpočet nemá následné provize. Smlouvu můžeš uložit do evidence; výplaty se doplní z provizních výpisů."
+              : inheritedContract ? "Vyber původní pozici a vyplň parametry smlouvy. Výpočet se zobrazí automaticky."
+              : "Vyplň částku a ostatní parametry smlouvy. Výpočet se zobrazí automaticky."}</p>
           </div>
         )}
 

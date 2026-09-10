@@ -1,3 +1,4 @@
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
@@ -387,6 +388,7 @@ async function loadWeeklyOwnerTotals(
 
       docsByPath.forEach((docSnap) => {
         const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+        if (isInheritedContract(data)) return;
         const effectiveDate = toDate(data.contractSignedDate ?? data.createdAt);
         const effectiveMs = effectiveDate?.getTime() ?? null;
         if (effectiveMs == null || effectiveMs < sinceMs || effectiveMs > untilMs) {

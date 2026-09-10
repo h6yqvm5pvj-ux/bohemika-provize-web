@@ -10,6 +10,17 @@ import {
 } from "./contractsApi.transfer";
 
 describe("contract ownership transfer", () => {
+  it("never assigns the new owner as the unknown original adviser of an inherited contract", () => {
+    const contract = { acquisitionType: "inherited" as const, originalPosition: "poradce4" as const,
+      transferEffectiveDate: "2026-01-01", userEmail: "owner@example.cz" };
+    expect(originalAdviserEmailForContract(contract, "owner@example.cz")).toBe("");
+    expect(contractWasTransferred(contract)).toBe(true);
+    const transferred = buildTransferredContractData({ contract, fromOwnerEmail: "owner@example.cz",
+      toOwnerEmail: "next@example.cz", toOwnerUserId: null, actorEmail: "owner@example.cz",
+      transferredAt: new Date("2026-09-10T10:00:00Z"), fromOwnerName: "Současný správce" });
+    expect(transferred).toMatchObject({ originalAdviserEmail: "", originalAdviserName: null,
+      originalPosition: "poradce4", acquisitionType: "inherited", transferEffectiveDate: "2026-09-10" });
+  });
   it("keeps the original adviser and signing position across repeated transfers", () => {
     const firstTransferAt = new Date("2026-08-28T10:00:00.000Z");
     const first = buildTransferredContractData({

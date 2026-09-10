@@ -1,3 +1,4 @@
+import { isInheritedContract, isSubsequentCommissionItem } from "../lib/inheritedContracts";
 import type { PaymentFrequency } from "../types/domain";
 import { lifeRiskAnnualPremiumBase, payoutHasSmallLifeSubsequentBase } from "../lib/commissionPayoutRules";
 import { cppBytexSubsequentPayoutYears } from "../lib/productFormulas/cppbytex";
@@ -554,7 +555,23 @@ export function generateCashflow(
       toDate(entry.createdAt) ??
       start;
 
-    const items = (entry.items ?? []).map((it) => ({
+    const inherited = isInheritedContract(entry);
+    const inheritedFrom = entry.transferEffectiveDate;
+    // Entitlement follows the premium period, not the later statement/payout date.
+    const commissionPeriods = new Map<number, Date>();
+    const periodAfterMonths = (months: number) => {
+      const monthStart = new Date(start.getFullYear(), start.getMonth() + months, 1);
+      const lastDay = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+      return new Date(monthStart.getFullYear(), monthStart.getMonth(), Math.min(start.getDate(), lastDay));
+    };
+    const rememberRecurringPeriod = (payout: Date, firstPayout: Date) => {
+      const period = periodAfterMonths(monthSerial(payout) - monthSerial(firstPayout));
+      commissionPeriods.set(payout.getTime(), period);
+      return period;
+    };
+    const items = (entry.items ?? [])
+      .filter((item) => !inherited || isSubsequentCommissionItem(item))
+      .map((it) => ({
       title: (it.title ?? "").toLowerCase(),
       amount: it.amount ?? 0,
       code: it.code ?? null,
@@ -640,6 +657,11 @@ export function generateCashflow(
       > = {}
     ) => {
       if (!Number.isFinite(amount) || amount === 0) return;
+      if (inherited) {
+        const period = commissionPeriods.get(date.getTime());
+        const periodDay = dateToIsoDay(period);
+        if (!inheritedFrom || !periodDay || periodDay < inheritedFrom) return;
+      }
       if (date > horizonLimit) return;
       if (stornoCutoffDate && isFromStornoMonth(date, stornoCutoffDate)) return;
 
@@ -795,14 +817,14 @@ export function generateCashflow(
       }
     };
 
-    const annPlusYears = (years: number) =>
-      estimatePayoutDate(
-        new Date(
-          start.getFullYear() + years,
-          start.getMonth(),
-          start.getDate()
-        )
-      );
+    const annPlusYears = (years: number) => {
+      const period = inherited
+        ? periodAfterMonths(years * 12)
+        : new Date(start.getFullYear() + years, start.getMonth(), start.getDate());
+      const payout = estimatePayoutDate(period);
+      commissionPeriods.set(payout.getTime(), period);
+      return payout;
+    };
 
     switch (product) {
       case "neon":
@@ -1014,6 +1036,7 @@ export function generateCashflow(
         let immediateDomexInstallmentIndex = 0;
         let subsequentDomexInstallmentIndex = 0;
         while (payout <= entryHorizonEnd) {
+          rememberRecurringPeriod(payout, firstPayout);
           const isImmediatePayout = payout < subsequentStart;
           const isWithinSubsequentWindow =
             subsequentEnd == null || payout < subsequentEnd;
@@ -1119,9 +1142,9 @@ export function generateCashflow(
       }
 
       case "maxdomov": {
-        if (!immediate) break;
+        if (!immediate && !naslMaxdomov) break;
 
-        const perPaymentImmediate = immediate.amount;
+        const perPaymentImmediate = immediate?.amount ?? 0;
         const perPaymentSub = naslMaxdomov?.amount;
         const subsequentMaxdomovMetadata = naslMaxdomov
           ? commissionMetadataFromCode(naslMaxdomov.code, "Následná provize")
@@ -1129,8 +1152,10 @@ export function generateCashflow(
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
         const endFirstYear = annPlusYears(1);
 
-        let payout = estimatePayoutDate(start, agreement);
+        const firstPayout = estimatePayoutDate(start, agreement);
+        let payout = firstPayout;
         while (payout <= entryHorizonEnd) {
+          rememberRecurringPeriod(payout, firstPayout);
           if (payout < endFirstYear) {
             pushItem(
               perPaymentImmediate,
@@ -1197,8 +1222,8 @@ export function generateCashflow(
       case "pillowAuto":
       case "uniqaAuto":
       case "uniqaflotila": {
-        if (!immediate) break;
-        const anniversaryAmount = naslGeneric?.amount ?? immediate.amount;
+        if (!immediate && !naslGeneric) break;
+        const anniversaryAmount = naslGeneric?.amount ?? immediate?.amount ?? 0;
         const anniversaryNote = naslGeneric
           ? "roční následná provize"
           : "ročně k výročí";
@@ -1209,7 +1234,7 @@ export function generateCashflow(
         const first = isAutoCashflowProduct(product)
           ? estimateAutoFirstPayoutDate(start, agreement)
           : estimatePayoutDate(start, agreement);
-        if (first <= entryHorizonEnd) {
+        if (immediate && first <= entryHorizonEnd) {
           pushItem(
             immediate.amount,
             first,
@@ -1244,7 +1269,7 @@ export function generateCashflow(
       case "csobAuto":
       case "kooperativaAuto":
       case "koopflotila": {
-        if (!immediate) break;
+        if (!immediate && !naslGeneric) break;
 
         const subsequentMetadata = naslGeneric
           ? commissionMetadataFromCode(naslGeneric.code, "Následná provize")
@@ -1255,20 +1280,24 @@ export function generateCashflow(
           start.getDate()
         );
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
-        let payout = isAutoCashflowProduct(product)
+        const firstPayout = isAutoCashflowProduct(product)
           ? estimateAutoFirstPayoutDate(start, agreement)
           : estimatePayoutDate(start, agreement);
+        let payout = firstPayout;
         let firstYearInstallmentIndex = 0;
         let subsequentInstallmentIndex = 0;
 
         while (payout <= entryHorizonEnd) {
-          const isSubsequent = monthSerial(payout) >= monthSerial(firstAnniversary);
+          const period = rememberRecurringPeriod(payout, firstPayout);
+          const isSubsequent = inherited
+            ? period >= periodAfterMonths(12)
+            : monthSerial(payout) >= monthSerial(firstAnniversary);
           if (isSubsequent) {
             subsequentInstallmentIndex += 1;
           } else {
             firstYearInstallmentIndex += 1;
           }
-          const amount = isSubsequent ? naslGeneric?.amount ?? immediate.amount : immediate.amount;
+          const amount = isSubsequent ? naslGeneric?.amount ?? immediate?.amount ?? 0 : immediate?.amount ?? 0;
           const immediateInstallmentCode = isSubsequent
             ? null
             : firstYearInstallmentCommissionCode("A", firstYearInstallmentIndex);
@@ -1322,6 +1351,7 @@ export function generateCashflow(
         }
 
         if (subsequentComfort && first <= entryHorizonEnd) {
+          rememberRecurringPeriod(first, first);
           // 1. výplatní měsíc: následná jde zároveň s okamžitou
           pushItem(
             subsequentComfort.amount,
@@ -1336,6 +1366,7 @@ export function generateCashflow(
             first.getDate()
           );
           while (payout <= entryHorizonEnd) {
+            rememberRecurringPeriod(payout, first);
             pushItem(
               subsequentComfort.amount,
               payout,

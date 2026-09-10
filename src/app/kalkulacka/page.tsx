@@ -138,6 +138,8 @@ import { CalculatorAmountAndActionsSection } from "./CalculatorAmountAndActionsS
 import { useClientNameLookup } from "./useClientNameLookup";
 import { CalculatorContractDetailsSection } from "./CalculatorContractDetailsSection";
 import { CalculatorPositionModeSection } from "./CalculatorPositionModeSection";
+import { CalculatorInheritedContractSection } from "./CalculatorInheritedContractSection";
+import { inheritedCommissionResult } from "@/app/lib/inheritedContracts";
 import {
   CalculatorAutoPdfDetailSummary,
   type AutoPdfHullSumPrompt,
@@ -644,7 +646,7 @@ const shouldAutoMarkPaidByPolicyStartDate = (policyStartDateIso: string): boolea
   return policyStart.getTime() <= cutoff.getTime();
 };
 
-type CalculatorViewMode = "addContract" | "commissionOnly";
+type CalculatorViewMode = "addContract" | "inheritedContract" | "commissionOnly";
 
 type AutoBulkImportRowStatus =
   | "queued"
@@ -694,6 +696,15 @@ export default function CalculatorPage() {
   const [tipsterModeSaving, setTipsterModeSaving] = useState(false);
   const [calculatorViewMode, setCalculatorViewMode] =
     useState<CalculatorViewMode>("addContract");
+  const isInheritedContractMode = calculatorViewMode === "inheritedContract";
+  const [inheritedOriginalMode, setInheritedOriginalMode] = useState<CommissionMode>("standard");
+  const calculationMode = isInheritedContractMode ? inheritedOriginalMode : mode;
+  const [inheritedOriginalPosition, setInheritedOriginalPosition] = useState<Position | "">("");
+  const [inheritedOriginalAdviserName, setInheritedOriginalAdviserName] = useState("");
+  const [inheritedEffectiveDate, setInheritedEffectiveDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  });
   const [tipsterPercent, setTipsterPercent] = useState(100);
   const [tipsterPercentPanelOpen, setTipsterPercentPanelOpen] = useState(false);
   const [tipContractModalOpen, setTipContractModalOpen] = useState(false);
@@ -1852,7 +1863,7 @@ export default function CalculatorPage() {
   }, [subordinatePickerOpen]);
 
   useEffect(() => {
-    if (!canOverrideOwnerOnSave) return;
+    if (!canOverrideOwnerOnSave || isInheritedContractMode) return;
 
     if (!selectedSubordinateEmail) {
       if (userCommissionMode) {
@@ -1870,6 +1881,7 @@ export default function CalculatorPage() {
     }
   }, [
     canOverrideOwnerOnSave,
+    isInheritedContractMode,
     selectedSubordinateEmail,
     subordinateOptionsByEmail,
     userCommissionMode,
@@ -2079,7 +2091,7 @@ export default function CalculatorPage() {
   }, [user, activeProfileEmail, impersonatedUserEmail, normalizedUserEmail]);
 
   useEffect(() => {
-    if (calculatorViewMode === "commissionOnly") {
+    if (calculatorViewMode === "commissionOnly" || calculatorViewMode === "inheritedContract") {
       setTimelineMatchedPosition(null);
       return;
     }
@@ -2127,6 +2139,21 @@ export default function CalculatorPage() {
   ]);
 
   const validateTimelineBeforeSave = (): boolean => {
+    if (isInheritedContractMode) {
+      const message = !inheritedOriginalPosition
+        ? "Vyber původní kariérní pozici sjednatele."
+        : !isIsoDay(inheritedEffectiveDate)
+          ? "Vyplň platné datum převzetí smlouvy."
+          : inheritedEffectiveDate < contractSignedDate.trim()
+            ? "Datum převzetí nesmí být před původním sjednáním smlouvy."
+            : null;
+      if (message) {
+        setSaveMessage(message);
+        setValidationError(message);
+        return false;
+      }
+      return true;
+    }
     if (effectivePositionTimelineLoading) {
       const msg = isSavingForSubordinate
         ? "Načítám kariérní historii vybraného poradce. Zkus uložení za chvíli."
@@ -3343,7 +3370,7 @@ export default function CalculatorPage() {
           original: null,
         });
       }
-      if (supportsOriginalContractReplacement(importProduct)) {
+      if (!isInheritedContractMode && supportsOriginalContractReplacement(importProduct)) {
         const parsedRefreshOriginalContractNumber =
           "refreshOriginalContractNumber" in parsed &&
           typeof parsed.refreshOriginalContractNumber === "string"
@@ -3852,7 +3879,7 @@ export default function CalculatorPage() {
         if (addon) applied += 1;
       }
 
-      if (parsedIsEndorsement) {
+      if (parsedIsEndorsement && !isInheritedContractMode) {
         setEndorsementWorkflowActive(true);
         const parsedContractNumber =
           typeof parsed.contractNumber === "string" ? parsed.contractNumber.trim() : "";
@@ -3961,7 +3988,7 @@ export default function CalculatorPage() {
       void handlePdfImport(files[0]);
       return;
     }
-    if (!hasSelectedProduct || !isBulkImportProduct(product) || tipsterModeEnabled || tipContractConfig) {
+    if (isInheritedContractMode || !hasSelectedProduct || !isBulkImportProduct(product) || tipsterModeEnabled || tipContractConfig) {
       setPdfImportError("Pro tento produkt nebo režim nahraj smlouvy po jedné.");
       return;
     }
@@ -5175,6 +5202,7 @@ export default function CalculatorPage() {
   const recalc = () => {
     const val = parseNumber(amountText);
     const positionForCalc =
+      isInheritedContractMode ? inheritedOriginalPosition || null :
       calculatorViewMode === "commissionOnly"
         ? position
         : timelineMatchedPosition?.position ??
@@ -5197,7 +5225,7 @@ export default function CalculatorPage() {
     const result = calculateCommission({
       productKey: product,
       position: positionForCalc,
-      commissionMode: mode,
+      commissionMode: calculationMode,
       contractSignedDateIso: contractSignedDateForNeon,
       inputAmount:
         product === "neon"
@@ -5219,8 +5247,9 @@ export default function CalculatorPage() {
       return;
     }
 
-    setItems(result.items);
-    setTotal(result.total);
+    const entitledResult = isInheritedContractMode ? inheritedCommissionResult(result) : result;
+    setItems(entitledResult.items);
+    setTotal(entitledResult.total);
     setUnsupported(false);
   };
 
@@ -5235,6 +5264,10 @@ export default function CalculatorPage() {
     effectivePositionTimeline,
     effectivePositionTimelineLoading,
     isSavingForSubordinate,
+    calculatorViewMode,
+    isInheritedContractMode,
+    inheritedOriginalPosition,
+    calculationMode,
     mode,
     frequency,
     durationYears,
@@ -5415,6 +5448,7 @@ export default function CalculatorPage() {
   };
 
   const endorsementDuplicateCandidateActive =
+    !isInheritedContractMode &&
     !originalReplacementWorkflowActive &&
     !endorsementWorkflowActive &&
     !endorsementDraft &&
@@ -6008,7 +6042,7 @@ export default function CalculatorPage() {
       missing.push("číslo původní smlouvy");
     }
 
-    if (missing.length > 0 || items.length === 0) {
+    if (missing.length > 0 || (items.length === 0 && !isInheritedContractMode) || unsupported) {
       const msg =
         items.length === 0 && missing.length === 0
           ? "Doplň částku a produkt, aby šlo uložit."
@@ -6267,7 +6301,7 @@ export default function CalculatorPage() {
     setSaveMessage("Ukládám smlouvu…");
 
     try {
-      if (!isSavingForSubordinate) {
+      if (!isSavingForSubordinate && !isInheritedContractMode) {
         const signedDateIso = contractSignedDate.trim() || null;
 
         // Snapshot chainu nadřízených k datu sjednání (timeline) – uložíme k záznamu
@@ -6316,9 +6350,15 @@ export default function CalculatorPage() {
       const trimmedStornoDate = stornoDate.trim();
 
       const contractEntryPayload = {
+            ...(isInheritedContractMode ? {
+              acquisitionType: "inherited",
+              originalPosition: inheritedOriginalPosition,
+              originalAdviserName: inheritedOriginalAdviserName.trim() || null,
+              transferEffectiveDate: inheritedEffectiveDate,
+            } : {}),
             productKey: product,
             entryType: "contract" as ContractEntryType,
-            commissionMode: canChooseMode ? mode : null,
+            commissionMode: canChooseMode ? calculationMode : null,
             inputAmount: product === "comfortcc" ? value : value,
             calculationInputAmount,
             effectiveInputAmount: value,
@@ -6952,12 +6992,14 @@ export default function CalculatorPage() {
   }
 
   const allowed = allowedFrequencies(product);
-  const isAddContractMode = calculatorViewMode === "addContract";
+  const isAddContractMode = calculatorViewMode === "addContract" || isInheritedContractMode;
   const isCommissionOnlyMode = calculatorViewMode === "commissionOnly";
   const canChoosePositionManually = isCommissionOnlyMode;
   const headerTitle = tipsterModeEnabled
     ? "Kalkulačka - TIPAŘ"
-    : isAddContractMode
+    : isInheritedContractMode
+      ? "Přidat převzatou smlouvu"
+      : isAddContractMode
       ? "Přidat smlouvu"
       : "Kalkulačka provizí";
   const showAddContractHelp = isAddContractMode || tipsterModeEnabled;
@@ -8089,7 +8131,7 @@ export default function CalculatorPage() {
     const val =
       amountOverride == null ? parseNumber(amountText) : toNonNegativeNumber(amountOverride);
     const years = durationYearsOverride ?? durationYears;
-    const usedMode = (customMode ?? mode) as CommissionMode;
+    const usedMode = (customMode ?? calculationMode) as CommissionMode;
     const targetProduct = productOverride ?? product;
     const signedDateForCalculation =
       contractSignedDateOverride ?? contractSignedDateForNeon;
@@ -8282,7 +8324,7 @@ export default function CalculatorPage() {
     );
   })();
   const showAutoBulkImport =
-    hasSelectedProduct && isBulkImportProduct(product) && isAddContractMode && canImportFromPdf;
+    hasSelectedProduct && isBulkImportProduct(product) && isAddContractMode && !isInheritedContractMode && canImportFromPdf;
   const autoBulkImportCounts = autoBulkImportRows.reduce(
     (acc, row) => {
       if (row.status === "success" || row.status === "warning") acc.saved += 1;
@@ -8436,7 +8478,7 @@ export default function CalculatorPage() {
         onFileInputChange={(file) => {
           if (file) handlePdfFiles([file]);
         }}
-        allowMultiplePdf={showAutoBulkImport && !tipsterModeEnabled && !tipContractConfig}
+        allowMultiplePdf={showAutoBulkImport && !isInheritedContractMode && !tipsterModeEnabled && !tipContractConfig}
         onFilesInputChange={(files) => {
           resetPdfDropState();
           handlePdfFiles(files);
@@ -8719,7 +8761,8 @@ export default function CalculatorPage() {
               <div role="group" aria-label="Režim kalkulačky" className={entryStyles.modeSwitch}>
                 <button
                   type="button"
-                  aria-pressed={isAddContractMode}
+                  aria-pressed={calculatorViewMode === "addContract"}
+                  disabled={saving || pdfImporting || autoBulkImporting}
                   onClick={() => setCalculatorViewMode("addContract")}
                   className={entryStyles.modeButton}
                 >
@@ -8727,7 +8770,30 @@ export default function CalculatorPage() {
                 </button>
                 <button
                   type="button"
+                  aria-pressed={isInheritedContractMode}
+                  disabled={saving || pdfImporting || autoBulkImporting || statementEmbedMode}
+                  onClick={() => {
+                    setCalculatorViewMode("inheritedContract");
+                    setRefreshOriginalOpen(false);
+                    setRefreshOriginalContractNumber("");
+                    setRefreshOriginalMissingInSystem(false);
+                    setTipContractConfig(null);
+                    setEndorsementDraft(null);
+                    setEndorsementDraftModalOpen(false);
+                    setEndorsementWorkflowActive(false);
+                    setEndorsementPreviewSource(null);
+                    setEndorsementDurationManualOverride(false);
+                    setValidationError(null);
+                    setSaveMessage(null);
+                  }}
+                  className={entryStyles.modeButton}
+                >
+                  Převzatá smlouva
+                </button>
+                <button
+                  type="button"
                   aria-pressed={isCommissionOnlyMode}
+                  disabled={saving || pdfImporting || autoBulkImporting}
                   onClick={() => setCalculatorViewMode("commissionOnly")}
                   className={entryStyles.modeButton}
                 >
@@ -8765,6 +8831,23 @@ export default function CalculatorPage() {
               </button>
             </div>
           </div>
+        )}
+
+        {isInheritedContractMode && !tipsterModeEnabled && (
+          <CalculatorInheritedContractSection
+            originalPosition={inheritedOriginalPosition}
+            originalAdviserName={inheritedOriginalAdviserName}
+            effectiveDate={inheritedEffectiveDate}
+            canChooseMode={hasSelectedProduct && canChooseMode}
+            mode={inheritedOriginalMode}
+            onModeChange={setInheritedOriginalMode}
+            onPositionChange={(value) => {
+              setInheritedOriginalPosition(value);
+              if (value) setPosition(value);
+            }}
+            onNameChange={setInheritedOriginalAdviserName}
+            onDateChange={setInheritedEffectiveDate}
+          />
         )}
 
         {!hasSelectedProduct ? (
@@ -8825,7 +8908,7 @@ export default function CalculatorPage() {
                 frequency={frequency}
                 isLifeProduct={isLifeProduct}
                 tipsterModeEnabled={tipsterModeEnabled}
-                showContractActions={isAddContractMode}
+                showContractActions={isAddContractMode && !isInheritedContractMode}
                 showManualEntryOption={isCommissionOnlyMode}
                 comfortGradual={comfortGradual}
                 amountText={amountText}
@@ -8944,7 +9027,7 @@ export default function CalculatorPage() {
             />
 
             <CalculatorPositionModeSection
-              isVisible={!tipsterModeEnabled}
+              isVisible={!tipsterModeEnabled && !isInheritedContractMode}
               product={product}
               position={position}
               allowedPositions={allowedPositionOptions}
@@ -8974,6 +9057,8 @@ export default function CalculatorPage() {
           </div>
 
           <CalculatorResultsSection
+            inheritedContract={isInheritedContractMode}
+            inheritedCalculationReady={Boolean(inheritedOriginalPosition) && parseNumber(amountText) > 0 && !autoHullSumNeedsInput}
             topTools={
               canOverrideOwnerOnSave && isAddContractMode ? (
                 <div className={formStyles.ownerCard}>
@@ -9019,9 +9104,10 @@ export default function CalculatorPage() {
             items={displayedCommissionItems}
             tipsterImmediateCommission={displayedTipsterImmediateCommission}
             product={product}
-            position={position}
-            mode={mode}
+            position={isInheritedContractMode ? inheritedOriginalPosition || position : position}
+            mode={calculationMode}
             hideAnnualAutoTotals={
+              isInheritedContractMode ||
               (isAutoProduct(product) &&
                 (frequency === "annual" || !isFrequencyAutoPayoutProduct(product))) ||
               ((product === "domex" ||
@@ -9043,12 +9129,13 @@ export default function CalculatorPage() {
               !autoBulkImporting &&
               parseNumber(amountText) > 0 &&
               !autoHullSumNeedsInput &&
-              !effectivePositionTimelineLoading &&
-              effectivePositionTimeline.length > 0 &&
-              (endorsementPreviewContextActive ? Boolean(endorsementDraft) : items.length > 0)
+              (isInheritedContractMode
+                ? Boolean(inheritedOriginalPosition) && isIsoDay(inheritedEffectiveDate) && !unsupported
+                : !effectivePositionTimelineLoading && effectivePositionTimeline.length > 0 &&
+                  (endorsementPreviewContextActive ? Boolean(endorsementDraft) : items.length > 0))
             }
             saveButtonLabel={
-              endorsementDraft
+              isInheritedContractMode ? "Uložit převzatou smlouvu" : endorsementDraft
                 ? "Uložit dodatek jako sepsáno"
                 : endorsementPreviewContextActive
                 ? "Nejdřív klikni na Změna"
@@ -9057,7 +9144,7 @@ export default function CalculatorPage() {
             savingButtonLabel={endorsementDraft ? "Ukládám dodatek…" : "Ukládám smlouvu…"}
             lastSavedContractHref={lastSavedContractHref}
             showAddToQueue={
-              statementEmbedMode &&
+              !isInheritedContractMode && statementEmbedMode &&
               statementEmbedParentAvailable &&
               statementCppA101QueueEligible &&
               isAddContractMode &&
@@ -9087,8 +9174,8 @@ export default function CalculatorPage() {
         isOpen={showCoefModal}
         product={product}
         productLabel={productLabel(product)}
-        positionLabel={positionLabel(position)}
-        mode={mode}
+        positionLabel={positionLabel(isInheritedContractMode ? inheritedOriginalPosition || null : position)}
+        mode={calculationMode}
         coefficientView={neonCoefficientView}
         isNeonHistorical={isNeonHistoricalInCoefModal}
         isCppAutoHistorical={isCppAutoHistoricalInCoefModal}

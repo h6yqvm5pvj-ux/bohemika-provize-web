@@ -1,6 +1,7 @@
 // src/app/smlouvy/page.tsx
 "use client";
 
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import {
   Suspense,
   useCallback,
@@ -2880,18 +2881,17 @@ function ContractsPageContent() {
                   showTeam && ownerEmail
                     ? cleanDisplayName(c.adviserName) || adviserNameFromEmail(ownerEmail)
                     : "";
+                const inherited = isInheritedContract(c);
                 const originalAdviserEmail =
-                  normalizeEmail(c.originalAdviserEmail) || ownerEmail;
-                const originalAdviserName = originalAdviserEmail
-                  ? cleanDisplayName(c.originalAdviserName) ||
-                    adviserNameFromEmail(originalAdviserEmail)
-                  : "";
+                  normalizeEmail(c.originalAdviserEmail) || (inherited ? "" : ownerEmail);
+                const originalAdviserName = cleanDisplayName(c.originalAdviserName) ||
+                  (originalAdviserEmail ? adviserNameFromEmail(originalAdviserEmail) : "Neuvedený");
                 const servicingAdviserName = ownerEmail
                   ? cleanDisplayName(c.servicingOwnerName) ||
                     cleanDisplayName(c.adviserName) ||
                     adviserNameFromEmail(ownerEmail)
                   : "";
-                const wasTransferred = Boolean(
+                const wasTransferred = inherited || Boolean(
                   originalAdviserEmail &&
                     ownerEmail &&
                     originalAdviserEmail !== ownerEmail
@@ -2978,6 +2978,9 @@ function ContractsPageContent() {
                               <span className="min-w-0 truncate text-[15px] font-bold leading-tight text-slate-950 lg:text-base">
                                 {displayProductName}
                               </span>
+                              {inherited && (
+                                <span className="shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">Převzatá</span>
+                              )}
                               {isEndorsement ? (
                                 <span className="hidden shrink-0 items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 sm:inline-flex">
                                   Dodatek

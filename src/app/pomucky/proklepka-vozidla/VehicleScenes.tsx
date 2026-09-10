@@ -18,9 +18,8 @@ export function VehicleIntro({ children }: { children: ReactNode }) {
     <ToolIntro
       name="Proklepka vozidla"
       icon={CarFront}
-      title={<>Zadej VIN.<br /><span>Poznej vozidlo.</span></>}
+      title={<>Zadej SPZ nebo VIN.<br /><span>Poznej vozidlo.</span></>}
       description="Od historie a technických údajů až k odhadu ceny. Vše důležité o autě na jednom místě."
-      source="Údaje z registru silničních vozidel"
       features={FEATURES}
       scene={
         <div className={introStyles.illustration} aria-hidden="true">
@@ -45,20 +44,20 @@ export function VehicleLoader({ vin }: { vin: string }) {
       title={<>Načítáme<br /><span>příběh vozidla.</span></>}
       description="Připravujeme přehled historie, technických údajů a podklady pro odhad ceny tvého auta."
       query={vin}
-      queryLabel="VIN vozidla"
+      queryLabel="SPZ nebo VIN"
       queryIcon={CarFront}
       status="Načítáme dostupné záznamy o vozidle…"
       features={FEATURES}
       scene={
         <div className={loaderStyles.scene} aria-hidden="true">
-          <div className={loaderStyles.sceneHeading}><span><ScanLine size={15} /> Od VIN k detailům</span><CarFront size={17} /></div>
+          <div className={loaderStyles.sceneHeading}><span><ScanLine size={15} /> Od vozidla k detailům</span><CarFront size={17} /></div>
           <VehicleIllustration animated className={styles.car} />
           <div className={loaderStyles.sceneCard}>
             <span className={loaderStyles.sceneCardIcon}><History size={19} strokeWidth={1.7} /></span>
             <div><strong>Skládáme přehled vozidla</strong><span className={loaderStyles.skeletonLine} /></div>
             <span className={loaderStyles.miniSpinner} />
           </div>
-          <div className={loaderStyles.sceneFooter}><span><i /> Ilustrační pohled</span><span>Registr vozidel</span></div>
+          <div className={loaderStyles.sceneFooter}><span><i /> Ilustrační pohled</span><span>Autokuk.cz</span></div>
         </div>
       }
     />

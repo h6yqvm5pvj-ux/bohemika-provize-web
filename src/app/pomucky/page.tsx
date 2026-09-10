@@ -17,7 +17,6 @@ import {
   BanknoteArrowDown,
   BarChart3,
   Bike,
-  Bot,
   Building2,
   CalendarClock,
   CarFront,
@@ -60,9 +59,8 @@ import {
   useEffectiveUserEmail,
 } from "@/app/lib/useAdminImpersonation";
 import {
-  compareToolHubUsage,
+  compareToolHubTools,
   normalizeToolHubUsageMetric,
-  type ToolHubSortMode,
   type ToolHubToolKey,
   type ToolHubUsageMetric,
 } from "./toolHub";
@@ -98,16 +96,6 @@ const FILTER_TAB_LABEL: Record<FilterKey, string> = {
   Finance: "Finance",
   Investice: "Investice",
   Obecné: "Obecné",
-};
-
-const CATEGORY_RANK: Record<ToolCategory, number> = {
-  "Životní pojištění": 0,
-  "Pojištění majetku": 1,
-  "Pojištění vozidel": 2,
-  "Cestovní pojištění": 3,
-  Finance: 4,
-  Investice: 5,
-  Obecné: 6,
 };
 
 type FilterVisual = {
@@ -235,7 +223,6 @@ const TOOL_ICON_BY_KEY: Record<ToolHubToolKey, LucideIcon> = {
   "nahrada-smlouvy": RefreshCcw,
   "radar-vyroci": CalendarClock,
   tvorba: PenTool,
-  "ai-asistent": Bot,
   "online-vizitka": WalletCards,
   "hypoteka-vlastni-zdroje": PiggyBank,
   statistika: BarChart3,
@@ -253,7 +240,6 @@ const TOOL_ICON_BY_KEY: Record<ToolHubToolKey, LucideIcon> = {
   "nastaveni-zivotniho-pojisteni": HeartPulse,
   "srovnavac-trvalych-nasledku": Bike,
   "srovnavac-pracovni-neschopnosti": HeartPulse,
-  "srovnavac-zivotniho-pojisteni": ShieldCheck,
   "neon-life-vs-metlife-oneguard": ChartNoAxesColumn,
 };
 
@@ -262,12 +248,6 @@ type ToolHubUsageResponse = {
   usage?: Partial<Record<ToolHubToolKey, ToolHubUsageMetric>>;
   error?: string;
 };
-
-const SORT_OPTIONS: Array<{ key: ToolHubSortMode; label: string }> = [
-  { key: "personal", label: "Pro mě" },
-  { key: "popular", label: "Nejpoužívanější" },
-  { key: "alphabetical", label: "A–Z" },
-];
 
 export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
@@ -281,7 +261,6 @@ export default function ToolsPage() {
   const [usageByKey, setUsageByKey] = useState<
     Partial<Record<ToolHubToolKey, ToolHubUsageMetric>>
   >({});
-  const [sortMode, setSortMode] = useState<ToolHubSortMode>("popular");
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [favoritePendingKeys, setFavoritePendingKeys] = useState<
@@ -345,7 +324,7 @@ export default function ToolsPage() {
       .catch((error) => {
         if (cancelled) return;
         console.warn("Načtení používání pomůcek selhalo:", error);
-        setUsageError("Oblíbené a historie se teď nepodařily načíst.");
+        setUsageError("Oblíbené pomůcky se teď nepodařilo načíst.");
       })
       .finally(() => {
         if (!cancelled) setUsageLoading(false);
@@ -358,7 +337,7 @@ export default function ToolsPage() {
 
   const tools: Tool[] = useMemo(
     () =>
-      TOOL_CATALOG.map((entry) => {
+      TOOL_CATALOG.filter((entry) => !entry.hiddenFromHub).map((entry) => {
         const baseTool: Tool = {
           ...entry,
           icon: TOOL_ICON_BY_KEY[entry.key],
@@ -512,27 +491,9 @@ export default function ToolsPage() {
         return toolMatchesSearchQuery(tool, searchQuery);
       });
 
-      return filtered.sort((a, b) => {
-        if (sortMode === "alphabetical") {
-          return a.title.localeCompare(b.title, "cs");
-        }
-
-        const usageDiff = compareToolHubUsage(
-          usageByKey[a.key],
-          usageByKey[b.key],
-          sortMode,
-          sortMode === "personal" && activeFilter === "Všechny"
-        );
-        if (usageDiff !== 0) return usageDiff;
-
-        if (activeFilter === "Všechny") {
-          const rankDiff = CATEGORY_RANK[a.category] - CATEGORY_RANK[b.category];
-          if (rankDiff !== 0) return rankDiff;
-        }
-        return a.title.localeCompare(b.title, "cs");
-      });
+      return filtered.sort((a, b) => compareToolHubTools(a, b, usageByKey));
     },
-    [activeFilter, searchQuery, sortMode, tools, usageByKey]
+    [activeFilter, searchQuery, tools, usageByKey]
   );
 
   return (
@@ -575,51 +536,11 @@ export default function ToolsPage() {
             }))}
           />
 
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-slate-200/85 bg-white/90 px-3.5 py-3 shadow-[0_10px_26px_rgba(15,23,42,0.06)] sm:px-4">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">
-                Řazení katalogu
-              </p>
-              <p className="mt-0.5 text-sm text-slate-600">
-                {sortMode === "personal"
-                  ? activeFilter === "Všechny"
-                    ? "Oblíbené pomůcky jsou vždy první, ostatní řadíme podle tvého používání."
-                    : "Pořadí vychází z tvého používání pomůcek v této kategorii."
-                  : sortMode === "popular"
-                    ? "Pomůcky se automaticky řadí od nejpoužívanějších podle celkového počtu otevření."
-                    : "Pomůcky jsou seřazené podle názvu."}
-              </p>
-            </div>
-            <div className="flex max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
-              {SORT_OPTIONS.map((option) => {
-                const active = option.key === sortMode;
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => setSortMode(option.key)}
-                    className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
-                      active
-                        ? "bg-slate-950 text-white shadow-[0_8px_18px_rgba(15,23,42,0.24)]"
-                        : "bg-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                    }`}
-                    aria-pressed={active}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            {usageLoading ? (
-              <p className="w-full text-xs font-medium text-slate-500">
-                Načítám používání pomůcek…
-              </p>
-            ) : usageError ? (
-              <p className="w-full text-xs font-semibold text-rose-700">
-                {usageError}
-              </p>
-            ) : null}
-          </section>
+          {usageLoading || usageError ? (
+            <p role="status" className={`text-xs font-medium ${usageLoading ? "text-slate-500" : "text-rose-700"}`}>
+              {usageLoading ? "Načítám oblíbené pomůcky…" : usageError}
+            </p>
+          ) : null}
 
           {filteredTools.length === 0 ? (
             <div className="rounded-[30px] border border-slate-200/80 bg-white/82 px-6 py-10 text-center shadow-[0_20px_58px_rgba(15,23,42,0.1)] backdrop-blur-xl">

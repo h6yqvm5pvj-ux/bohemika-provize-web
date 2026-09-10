@@ -1,3 +1,5 @@
+import type { ToolCatalogEntry } from "./toolCatalog";
+
 export const TOOL_HUB_TOOL_KEYS = [
   "argumenty",
   "kontakty",
@@ -8,7 +10,6 @@ export const TOOL_HUB_TOOL_KEYS = [
   "nahrada-smlouvy",
   "radar-vyroci",
   "tvorba",
-  "ai-asistent",
   "online-vizitka",
   "hypoteka-vlastni-zdroje",
   "statistika",
@@ -26,12 +27,10 @@ export const TOOL_HUB_TOOL_KEYS = [
   "nastaveni-zivotniho-pojisteni",
   "srovnavac-trvalych-nasledku",
   "srovnavac-pracovni-neschopnosti",
-  "srovnavac-zivotniho-pojisteni",
   "neon-life-vs-metlife-oneguard",
 ] as const;
 
 export type ToolHubToolKey = (typeof TOOL_HUB_TOOL_KEYS)[number];
-export type ToolHubSortMode = "personal" | "popular" | "alphabetical";
 
 export type ToolHubUsageMetric = {
   personalOpens: number;
@@ -64,32 +63,25 @@ export const normalizeToolHubUsageMetric = (
   favorite: value?.favorite === true,
 });
 
-export const compareToolHubUsage = (
-  leftRaw: ToolHubUsageMetric | undefined,
-  rightRaw: ToolHubUsageMetric | undefined,
-  mode: ToolHubSortMode,
-  prioritizeFavorites = mode === "personal"
+const CATEGORY_RANK: Record<ToolCatalogEntry["category"], number> = {
+  "Životní pojištění": 0,
+  "Pojištění majetku": 1,
+  "Pojištění vozidel": 2,
+  "Cestovní pojištění": 3,
+  Finance: 4,
+  Investice: 5,
+  Obecné: 6,
+};
+
+export const compareToolHubTools = (
+  left: Pick<ToolCatalogEntry, "key" | "category" | "title">,
+  right: Pick<ToolCatalogEntry, "key" | "category" | "title">,
+  usageByKey: Partial<Record<ToolHubToolKey, ToolHubUsageMetric>>
 ): number => {
-  const left = normalizeToolHubUsageMetric(leftRaw);
-  const right = normalizeToolHubUsageMetric(rightRaw);
-  const favoriteDiff = prioritizeFavorites
-    ? Number(right.favorite) - Number(left.favorite)
-    : 0;
-  if (favoriteDiff !== 0) return favoriteDiff;
-
-  if (mode === "alphabetical") return 0;
-
-  if (mode === "popular") {
-    return (
-      right.globalOpens - left.globalOpens ||
-      right.personalOpens - left.personalOpens ||
-      (right.lastOpenedAtMs ?? 0) - (left.lastOpenedAtMs ?? 0)
-    );
-  }
-
   return (
-    (right.lastOpenedAtMs ?? 0) - (left.lastOpenedAtMs ?? 0) ||
-    right.personalOpens - left.personalOpens ||
-    right.globalOpens - left.globalOpens
+    Number(usageByKey[right.key]?.favorite === true) -
+      Number(usageByKey[left.key]?.favorite === true) ||
+    CATEGORY_RANK[left.category] - CATEGORY_RANK[right.category] ||
+    left.title.localeCompare(right.title, "cs")
   );
 };

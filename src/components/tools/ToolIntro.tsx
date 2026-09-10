@@ -12,7 +12,7 @@ export function ToolIntro({ name, icon: Icon, title, titleId, description, sourc
   title: ReactNode;
   titleId?: string;
   description: string;
-  source: string;
+  source?: string;
   features: readonly ToolFeature[];
   scene: ReactNode;
   children: ReactNode;
@@ -27,7 +27,7 @@ export function ToolIntro({ name, icon: Icon, title, titleId, description, sourc
           <h1 id={headingId}>{title}</h1>
           <p className={styles.description}>{description}</p>
           <div className={styles.searchArea}>{children}</div>
-          <p className={styles.source}><span />{source}</p>
+          {source && <p className={styles.source}><span />{source}</p>}
         </div>
         {scene}
       </div>

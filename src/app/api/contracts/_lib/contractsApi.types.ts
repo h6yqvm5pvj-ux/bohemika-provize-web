@@ -213,6 +213,7 @@ export type ContractDoc = {
   }[] | null;
 
   userEmail?: string | null;
+  acquisitionType?: "inherited" | null;
   originalAdviserEmail?: string | null;
   originalAdviserName?: string | null;
   originalPosition?: Position | null;

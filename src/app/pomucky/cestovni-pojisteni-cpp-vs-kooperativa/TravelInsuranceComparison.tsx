@@ -3508,7 +3508,7 @@ export default function TravelInsuranceComparisonPage() {
             <Plane className="h-3.5 w-3.5" /> Srovnání cestovního pojištění
           </div>
           <h1 className="mt-4 max-w-4xl text-3xl font-black leading-[1.02] tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-            ČPP vs. Kooperativa vs. AXA
+            Srovnání Cestovka
           </h1>
           <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
             Vyber varianty a porovnej, jak každá pojišťovna řeší konkrétní situace klienta. Verdikt platí vždy jen pro danou situaci; u každého krytí vidíš způsob sjednání i přesný zdroj v dodaných podmínkách.

@@ -1,3 +1,4 @@
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useEffect, useRef, useState } from "react";
 
 import { summarizeProductionPremiums, type ProductionPremiums } from "./productionPremiums";
@@ -23,6 +24,7 @@ import {
 } from "./homeCacheStorage";
 
 export type EntryDoc = {
+  acquisitionType?: "inherited" | null;
   id: string;
   userEmail?: string | null;
   adviserName?: string | null;
@@ -667,6 +669,7 @@ export function useHomeData({
           let count = 0;
           let immediate = 0;
           entries.forEach((data) => {
+            if (isInheritedContract(data)) return;
             const signed = entrySignedDate(data);
             if (!signed) return;
             if (signed < rangeStart || signed >= rangeEnd) return;
@@ -687,6 +690,7 @@ export function useHomeData({
           let count = 0;
           let immediate = 0;
           entries.forEach((data) => {
+            if (isInheritedContract(data)) return;
             const signed = entrySignedDate(data);
             if (!signed) return;
             if (!(signed >= rangeStart && signed < rangeEnd)) return;

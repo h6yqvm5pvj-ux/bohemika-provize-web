@@ -1,3 +1,4 @@
+import { isInheritedContract, inheritedCommissionResult, withInheritedCommissionItems } from "@/app/lib/inheritedContracts";
 // src/app/api/contracts/route.ts
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
@@ -611,6 +612,7 @@ const contractTransferResponseFields = (
   );
   const normalizedOwnerName = normalizeOptionalDisplayName(ownerName) ?? null;
   return {
+    acquisitionType: data.acquisitionType ?? null,
     originalAdviserEmail,
     originalAdviserName:
       normalizeOptionalDisplayName(data.originalAdviserName) ??
@@ -638,6 +640,7 @@ const toContractResponseItem = (
   adviserName?: string | null,
   ownerContext?: ContractOwnerPositionContext | null
 ): ContractResponseItem => {
+  data = withInheritedCommissionItems(data);
   const normalizedOwner = normalizeEmail(ownerEmail);
   const signedDate = toDate(data.contractSignedDate);
   const signedDateIso = signedDate ? toIsoDay(signedDate) : null;
@@ -737,6 +740,7 @@ const toContractListResponseItem = ({
   adviserName?: string | null;
   ownerContext?: ContractOwnerPositionContext | null;
 }): ContractResponseItem => {
+  data = withInheritedCommissionItems(data);
   const normalizedAdviserName = normalizeOptionalDisplayName(adviserName) ?? null;
   const signedDate = toDate(data.contractSignedDate);
   const signedDateIso = signedDate ? toIsoDay(signedDate) : null;
@@ -5032,7 +5036,10 @@ export async function handleContractsCreate(req: NextRequest) {
       : null;
 
     const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
-    const trustedPosition = resolveTimelinePositionForSignedDate(trustedProfile, signedDateIso);
+    const inherited = isInheritedContract(normalizedEntry.payload);
+    const trustedPosition = inherited
+      ? normalizedEntry.payload.originalPosition
+      : resolveTimelinePositionForSignedDate(trustedProfile, signedDateIso);
     if (!trustedPosition) {
       return NextResponse.json(
         {
@@ -5045,7 +5052,7 @@ export async function handleContractsCreate(req: NextRequest) {
     }
 
     const profileTrustedMode = trustedProfile.commissionMode ?? "standard";
-    const trustedMode = trustedCreateCommissionMode({
+    const trustedMode = inherited ? normalizedEntry.payload.commissionMode ?? "standard" : trustedCreateCommissionMode({
       productKey: normalizedEntry.payload.productKey,
       profileMode: profileTrustedMode,
       requestedMode: normalizedEntry.payload.commissionMode,
@@ -5059,7 +5066,7 @@ export async function handleContractsCreate(req: NextRequest) {
     const trustedManagerEmail = normalizeEmail(trustedProfile.managerEmail) || null;
     let trustedManagerChain = await buildTrustedManagerChainForSignedDate({
       directManagerEmail: trustedManagerEmail,
-      signedDateIso,
+      signedDateIso: inherited ? normalizedEntry.payload.transferEffectiveDate ?? signedDateIso : signedDateIso,
     });
 
     trustedManagerChain = ensureManagerChainWithDirectManager(
@@ -5073,7 +5080,7 @@ export async function handleContractsCreate(req: NextRequest) {
       normalizedEntry.payload.productKey
     );
 
-    if (!hasResolvedTopManagerPosition(trustedManagerChain, trustedManagerEmail)) {
+    if (!inherited && !hasResolvedTopManagerPosition(trustedManagerChain, trustedManagerEmail)) {
       return NextResponse.json(
         {
           ok: false,
@@ -5389,8 +5396,9 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
 
-    let trustedItems = trustedResult.items;
-    let trustedTotal = trustedResult.total;
+    const entitledResult = inherited ? inheritedCommissionResult(trustedResult) : trustedResult;
+    let trustedItems = entitledResult.items;
+    let trustedTotal = entitledResult.total;
     let tipContractTipsterName: string | null = null;
     let tipContractImmediateFirstYearGross: number | null = null;
     let tipContractImmediateFirstYearNet: number | null = null;
@@ -5466,7 +5474,7 @@ export async function handleContractsCreate(req: NextRequest) {
       tipContractTipsterAmountFirstYear = tipAdjusted.tipsterAmount;
     }
 
-    let trustedManagerOverrides = computeManagerOverridesForChain({
+    let trustedManagerOverrides = inherited ? [] : computeManagerOverridesForChain({
       managerChain: trustedManagerChain,
       adviserPosition: trustedPosition,
       adviserMode: effectiveTrustedMode,
@@ -5556,6 +5564,7 @@ export async function handleContractsCreate(req: NextRequest) {
     });
     const contractActivityPushRecipients =
       ENABLE_CONTRACT_CREATE_PUSH &&
+      !inherited &&
       contractActivityNotificationKind &&
       isRecentEnoughForContractActivityPush(trustedPayload.contractSignedDate)
         ? collectManagerNotificationEmailsForContractActivity({

@@ -20,6 +20,7 @@ export type ToolCatalogEntry = {
   title: string;
   description: string;
   href: string;
+  hiddenFromHub?: boolean;
   news?: ToolCatalogNews;
 };
 
@@ -83,7 +84,6 @@ const TOOL_SEARCH_KEYWORDS: Record<ToolHubToolKey, readonly string[]> = {
   ],
   "radar-vyroci": ["retence", "obvolání", "konec smlouvy", "klienti", "servis"],
   tvorba: ["editor", "dopis", "formulář", "šablona", "pdf"],
-  "ai-asistent": ["chat", "dotaz", "rada", "poradce", "umělá inteligence"],
   "online-vizitka": ["profil", "web", "qr", "kontakt", "osobní stránka"],
   "hypoteka-vlastni-zdroje": [
     "hypo",
@@ -171,16 +171,6 @@ const TOOL_SEARCH_KEYWORDS: Record<ToolHubToolKey, readonly string[]> = {
     "porovnání",
     "životko",
   ],
-  "srovnavac-zivotniho-pojisteni": [
-    "životko",
-    "srovnání",
-    "porovnání",
-    "pojišťovna",
-    "podmínky",
-    "invalidita",
-    "smrt",
-    "úraz",
-  ],
   "neon-life-vs-metlife-oneguard": [
     "čpp",
     "česká podnikatelská pojišťovna",
@@ -237,6 +227,7 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     description:
       "Přímé kontakty na obchodní a administrativní podporu partnerských institucí.",
     href: "/?contacts=1",
+    hiddenFromHub: true,
   },
   {
     key: "dokumenty",
@@ -294,14 +285,6 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     description:
       "Interaktivní A4 editor dokumentu s pevnou hlavičkou, patičkou a stažením do PDF.",
     href: "/pomucky/tvorba",
-  },
-  {
-    key: "ai-asistent",
-    category: "Obecné",
-    title: "AI Asistent",
-    description:
-      "Bohemka Asistent jako interní pomocník pro pojištění, investice a investiční zlato (bez přístupu ke smlouvám).",
-    href: "/pomucky/ai-asistent",
   },
   {
     key: "online-vizitka",
@@ -384,6 +367,7 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     title: "Odkazy",
     description: "Odkazy na portály institucí.",
     href: "/pomucky?open=odkazy-instituce",
+    hiddenFromHub: true,
   },
   {
     key: "ares",
@@ -402,7 +386,7 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
   {
     key: "cestovni-pojisteni-cpp-vs-kooperativa",
     category: "Cestovní pojištění",
-    title: "ČPP vs. Kooperativa vs. AXA — cestovní pojištění",
+    title: "Srovnání Cestovka",
     description:
       "Interaktivní porovnání variant, limitů, výluk a připojištění tří cestovních pojištění.",
     href: "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
@@ -433,14 +417,6 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     title: "Srovnavač Pracovní neschopnosti",
     description: "Výběr produktů pro srovnání pracovní neschopnosti.",
     href: "/pomucky/srovnavac-pracovni-neschopnosti",
-  },
-  {
-    key: "srovnavac-zivotniho-pojisteni",
-    category: "Životní pojištění",
-    title: "Srovnavač životního pojištění",
-    description:
-      "Porovnání produktových podmínek životního pojištění podle pojišťoven a kategorií.",
-    href: "/pomucky/srovnavac-zivotniho-pojisteni",
   },
   {
     key: "neon-life-vs-metlife-oneguard",

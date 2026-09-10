@@ -2,6 +2,7 @@
 "use client";
 
 import homeWidgetStyles from "./home/components/homeWidgets.module.css";
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -388,7 +389,6 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "zaznam", title: "Záznam z jednání", href: "/pomucky/zaznam", category: "Obecné" },
   { key: "nahrada-smlouvy", title: "Náhrada smlouvy", href: "/pomucky/nahrada-smlouvy", category: "Obecné" },
   { key: "tvorba", title: "Tvorba", href: "/pomucky/tvorba", category: "Obecné" },
-  { key: "ai-asistent", title: "AI Asistent", href: "/pomucky/ai-asistent", category: "Obecné" },
   { key: "hypoteka-vlastni-zdroje", title: "Hypotéka: vlastní zdroje", href: "/pomucky/hypoteka-vlastni-zdroje", category: "Investice" },
   { key: "statistika", title: "Statistika", href: "/pomucky/statistika", category: "Finance" },
   { key: "export-produkce", title: "Export produkce", href: "/pomucky/export-produkce", category: "Finance" },
@@ -399,7 +399,6 @@ const QUICK_ACTION_OPTIONS: QuickAction[] = [
   { key: "projekce-vykonu", title: "Projekce výkonu", href: "/pomucky/projekce-vykonu", category: "Finance" },
   { key: "pracovni-neschopenka", title: "Pracovní neschopnost", href: "/pomucky/pracovni-neschopenka", category: "Životní pojištění" },
   { key: "invalidita", title: "Invalidita", href: "/pomucky/invalidita", category: "Životní pojištění" },
-  { key: "srovnavac-zivotniho-pojisteni", title: "Srovnavač životního pojištění", href: "/pomucky/srovnavac-zivotniho-pojisteni", category: "Životní pojištění" },
 ];
 const QUICK_ACTION_OPTIONS_BY_KEY = new Map<string, QuickAction>(
   QUICK_ACTION_OPTIONS.map((option) => [option.key, option])
@@ -1484,6 +1483,7 @@ export default function HomePage() {
     const monthIndex = new Map(months.map((m, idx) => [m.key, idx]));
 
     for (const entry of chartEntries) {
+      if (isInheritedContract(entry)) continue;
       const signed = entrySignedDate(entry);
       if (!signed) continue;
 
@@ -1542,6 +1542,7 @@ export default function HomePage() {
     const names = new Map<string, string>();
 
     for (const entry of teamEntries) {
+      if (isInheritedContract(entry)) continue;
       const signed = entrySignedDate(entry);
       if (!signed) continue;
 

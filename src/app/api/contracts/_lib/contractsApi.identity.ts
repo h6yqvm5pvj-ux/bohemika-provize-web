@@ -88,7 +88,8 @@ export const createReplayComparableJson = (
 ): string => {
   const out: Record<string, unknown> = {};
   Object.keys(expected)
-    .filter((key) => !CREATE_REPLAY_IGNORED_FIELDS.has(key))
+    .filter((key) => !CREATE_REPLAY_IGNORED_FIELDS.has(key) ||
+      (key === "commissionMode" && expected.acquisitionType === "inherited"))
     .sort()
     .forEach((key) => {
       out[key] = normalizeCreateReplayValue(source[key]);

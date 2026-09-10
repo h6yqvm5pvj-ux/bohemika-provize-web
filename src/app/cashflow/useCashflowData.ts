@@ -1,5 +1,7 @@
 "use client";
 
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
+
 import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../firebase";
@@ -917,6 +919,7 @@ export function useCashflowData({
 
     const email = snapshot.email;
     const entryWasTransferred = (entry: EntryDoc): boolean => {
+      if (isInheritedContract(entry)) return true;
       const originalOwner = normalizeEmail(entry.originalAdviserEmail);
       const currentOwner = normalizeEmail(
         entry.servicingOwnerEmail ?? entry.commissionOwnerEmail ?? entry.userEmail

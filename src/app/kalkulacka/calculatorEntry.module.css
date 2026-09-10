@@ -12,7 +12,7 @@
 .actions { display: flex; flex-shrink: 0; align-items: center; gap: 10px; }
 .helpButton { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid #e8e1ef; border-radius: 11px; background: #fff; color: #8f7ba8; cursor: pointer; transition: border-color 160ms, background 160ms; }
 .helpButton:hover { border-color: #cdb8e8; background: #f8f4fe; }
-.modeSwitch { display: flex; gap: 3px; padding: 4px; border: 1px solid #eae4f0; border-radius: 13px; background: #f5f2f9; }
+.modeSwitch { display: flex; flex-wrap: wrap; gap: 3px; padding: 4px; border: 1px solid #eae4f0; border-radius: 13px; background: #f5f2f9; }
 .modeButton { min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #81738e; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 160ms, box-shadow 160ms; }
 .modeButton[aria-pressed="true"] { border-color: #eae0f6; background: #fff; color: #7746b1; box-shadow: 0 2px 5px #40256209; }
 .modeButton:hover { color: #6f42a4; }

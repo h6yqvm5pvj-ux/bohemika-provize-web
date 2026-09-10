@@ -242,6 +242,7 @@ export type ContractDoc = {
   userEmail?: string | null;
   adviserEmail?: string | null;
   adviserName?: string | null;
+  acquisitionType?: "inherited" | null;
   originalAdviserEmail?: string | null;
   originalAdviserName?: string | null;
   originalPosition?: Position | null;

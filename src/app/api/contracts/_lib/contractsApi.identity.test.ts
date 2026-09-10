@@ -16,6 +16,15 @@ import {
 } from "./contractsApi.identity";
 
 describe("contracts create identity helpers", () => {
+  it("does not replay an inherited contract with changed entitlement metadata", () => {
+    const expected = { acquisitionType: "inherited", originalPosition: "poradce4", originalAdviserName: "Jan Novák",
+      transferEffectiveDate: "2026-09-10", commissionMode: "standard" };
+    expect(idempotentReplayMatchesPayload(expected, expected)).toBe(true);
+    for (const change of [{ originalPosition: "manazer8" }, { transferEffectiveDate: "2026-10-01" },
+      { acquisitionType: null }, { commissionMode: "accelerated" }]) {
+      expect(idempotentReplayMatchesPayload({ ...expected, ...change }, expected)).toBe(false);
+    }
+  });
   it("builds stable idempotent entry IDs from normalized owner email", () => {
     expect(buildIdempotentEntryId(" Advisor@Example.COM ", "key-1")).toBe(
       buildIdempotentEntryId("advisor@example.com", "key-1")

@@ -1,0 +1,247 @@
+{
+  "status": "ok",
+  "data": {
+    "query": "TMBXXX12X34567890",
+    "vin": "TMBXXX12X34567890",
+    "searched_by_spz": false,
+    "vehicle": {
+      "vin": "TMBXXX12X34567890",
+      "brand": "SKODA",
+      "model": "OCTAVIA",
+      "type": "OCTAVIA",
+      "category": "M1",
+      "body_type": "Kombi",
+      "first_registration": "2012-06-27",
+      "manufacture_year": 2012,
+      "engine_capacity_cc": 1968,
+      "power_kw": 81,
+      "power_hp": 110.1,
+      "fuel": "Nafta",
+      "status": "Provozovane",
+      "color": "BILA"
+    },
+    "vehicle_records": {
+      "count": 1,
+      "ambiguous": false,
+      "selected_strategy": "latest_record"
+    },
+    "technical": {
+      "specification": {
+        "brand": "SKODA",
+        "model": "OCTAVIA",
+        "type": "OCTAVIA",
+        "variant": "ABCD",
+        "version": "EFG",
+        "vehicle_kind": "OSOBNI AUTOMOBIL",
+        "category": "M1",
+        "body_type": "Kombi",
+        "manufacture_year": 2012,
+        "vehicle_manufacturer": "SKODA AUTO A.S.",
+        "color": "BILA"
+      },
+      "registration": {
+        "first_registration": "2012-06-27",
+        "first_registration_cz": "2015-04-12",
+        "status": "Provozovane",
+        "type_approval_number": "e8*2001/116*0123",
+        "technical_certificate_number": "UE123456"
+      },
+      "engine": {
+        "manufacturer": "SKODA AUTO A.S.",
+        "type": "CAYC",
+        "fuel": "Nafta",
+        "displacement_cc": 1968,
+        "max_power_kw": 81,
+        "max_power_hp": 110.1,
+        "max_power_rpm": 4200,
+        "power_to_weight_kw_per_tonne": 55.86,
+        "power_to_weight_hp_per_tonne": 75.94,
+        "max_speed_kmh": 194
+      },
+      "dimensions": {
+        "length_mm": 4659,
+        "width_mm": 1814,
+        "height_mm": 1461,
+        "wheelbase_mm": 2686
+      },
+      "weights": {
+        "operating_weight_kg": 1450,
+        "max_technically_permissible_weight_kg": 1970,
+        "max_permitted_weight_kg": 1970
+      },
+      "towing": {
+        "braked_trailer_technically_permissible_kg": 1600,
+        "unbraked_trailer_technically_permissible_kg": 690,
+        "coupling_device": true
+      },
+      "wheels_and_tyres": {
+        "axles_count": 2,
+        "powered_axles": "1",
+        "tyres": [
+          {
+            "axle": 1,
+            "value": "205/55 R16"
+          }
+        ],
+        "wheels": [
+          {
+            "axle": 1,
+            "value": "6.5Jx16"
+          }
+        ]
+      },
+      "emissions_consumption": {
+        "fuel_consumption_combined_l_100km": 4.5,
+        "co2_g_km": 119,
+        "emission_level": "EURO 5"
+      },
+      "safety_brakes": {
+        "abs": true,
+        "airbag": true,
+        "asr": true
+      },
+      "noise": {
+        "stationary_db": 74,
+        "stationary_rpm": 3000,
+        "drive_by_db": 70
+      },
+      "capacity": {
+        "seats_total": 5,
+        "seats_sitting": 5
+      },
+      "notes": {
+        "additional_records": [
+          "Tazne zarizeni"
+        ],
+        "technical_certificate_text": "Doplnkovy text TP"
+      }
+    },
+    "inspections": [
+      {
+        "vin": "TMBXXX12X34567890",
+        "datum": "2024-06-28",
+        "cislo_protokolu": "STK123455",
+        "typ": "pravidelna",
+        "km": 133700,
+        "kategorie_vozidla": "M1",
+        "tovarni_znacka": "SKODA",
+        "obchodni_oznaceni": "OCTAVIA",
+        "zpusobilost": "zpusobile",
+        "seznam_zavad_text": null,
+        "source": "STK"
+      }
+    ],
+    "mileage": {
+      "points": [
+        {
+          "date": "2022-06-15",
+          "mileage": 115000,
+          "source": "stk"
+        },
+        {
+          "date": "2024-06-28",
+          "mileage": 133700,
+          "source": "stk"
+        }
+      ],
+      "last": 133700,
+      "is_manipulated": false,
+      "extra_mileage": null
+    },
+    "imports": [
+      {
+        "country": "DE",
+        "imported_at": "2015-04-12"
+      }
+    ],
+    "deregistrations": [],
+    "owners": {
+      "count": 2,
+      "records": [
+        {
+          "from": "2018-01-01",
+          "to": null,
+          "subject_type": "FO",
+          "vehicle_relation": "1",
+          "current": "1",
+          "ico": null,
+          "name": "Jan Novak",
+          "address": "Praha"
+        }
+      ]
+    },
+    "insurance": [
+      {
+        "insurer_code": "001",
+        "insurer_name": "Generali Ceska pojistovna, a.s.",
+        "valid_from": "2024-01-01"
+      }
+    ],
+    "additional_equipment": [
+      {
+        "type": "Tazne zarizeni",
+        "from": "2018-01-01",
+        "to": null
+      }
+    ],
+    "manufacturer_notes": [
+      "Svolavaci akce vyrobce"
+    ],
+    "history": [
+      {
+        "category": "kostka_vozidla_dovoz",
+        "date": "2015-04-12",
+        "data": {
+          "country": "DE",
+          "imported_at": "2015-04-12"
+        }
+      }
+    ],
+    "theft": {
+      "status": "partial",
+      "checks": [
+        {
+          "country_code": "CZ",
+          "status": "not_found"
+        },
+        {
+          "country_code": "SK",
+          "status": "unknown",
+          "reason": "timeout"
+        }
+      ]
+    },
+    "vignette": {
+      "status": "ok",
+      "exempt": false,
+      "valid": false,
+      "valid_from": null,
+      "valid_until": null
+    }
+  },
+  "meta": {
+    "sections": [
+      "basic",
+      "vehicle_records",
+      "technical",
+      "inspections",
+      "mileage",
+      "imports",
+      "deregistrations",
+      "owners",
+      "insurance",
+      "additional_equipment",
+      "manufacturer_notes",
+      "history",
+      "theft",
+      "vignette"
+    ],
+    "quota": {
+      "daily_limit": 500,
+      "used_today": 1,
+      "remaining_today": 499,
+      "search_date": "2026-05-29"
+    }
+  },
+  "error": null
+}

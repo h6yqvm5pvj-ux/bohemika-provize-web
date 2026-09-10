@@ -1,3 +1,4 @@
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import type { PaymentFrequency, Product } from "@/app/types/domain";
 import { productCategory } from "@/app/lib/productCatalog";
 import { entrySignedDate, normalizeToAnnual } from "./homeUtils";
@@ -8,6 +9,7 @@ export type ProductionPremiums = {
 };
 
 type PremiumEntry = Parameters<typeof entrySignedDate>[0] & {
+  acquisitionType?: "inherited" | null;
   productKey?: Product;
   inputAmount?: number | null;
   frequencyRaw?: PaymentFrequency | null;
@@ -21,6 +23,7 @@ export function summarizeProductionPremiums(
 ): ProductionPremiums {
   const totals: ProductionPremiums = { lifeMonthly: 0, otherAnnual: 0 };
   for (const entry of entries) {
+    if (isInheritedContract(entry)) continue;
     const signed = entrySignedDate(entry);
     if (!signed || signed < rangeStart || signed >= rangeEnd) continue;
     const amount = entry.inputAmount;

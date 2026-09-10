@@ -39,7 +39,6 @@ export const ADMIN_BROADCAST_TOOL_TARGETS = [
   },
   { path: "/pomucky/nahrada-smlouvy", label: "Náhrada smlouvy" },
   { path: "/pomucky/tvorba", label: "Tvorba PDF" },
-  { path: "/pomucky/ai-asistent", label: "AI Asistent" },
   { path: "/nastaveni?tab=onlineCard", label: "Online Vizitka" },
   { path: "/pomucky/hypoteka-vlastni-zdroje", label: "Hypotéka: vlastní zdroje" },
   { path: "/pomucky/statistika", label: "Statistika" },
@@ -61,10 +60,6 @@ export const ADMIN_BROADCAST_TOOL_TARGETS = [
   {
     path: "/pomucky/srovnavac-pracovni-neschopnosti",
     label: "Srovnávač pracovní neschopnosti",
-  },
-  {
-    path: "/pomucky/srovnavac-zivotniho-pojisteni",
-    label: "Srovnávač životního pojištění",
   },
   {
     path: "/pomucky/neon-life-vs-metlife-oneguard",

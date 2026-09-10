@@ -1,3 +1,4 @@
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import type { Position } from "@/app/types/domain";
 
 import type { ContractDoc } from "./contractsApi.types";
@@ -56,12 +57,11 @@ export const pragueIsoDay = (value: Date): string => {
 };
 
 export const originalAdviserEmailForContract = (
-  contract: Pick<ContractDoc, "originalAdviserEmail" | "userEmail">,
+  contract: Pick<ContractDoc, "originalAdviserEmail" | "userEmail" | "acquisitionType">,
   fallbackOwnerEmail?: string | null
 ): string =>
   normalizeEmail(contract.originalAdviserEmail) ||
-  normalizeEmail(contract.userEmail) ||
-  normalizeEmail(fallbackOwnerEmail);
+  (isInheritedContract(contract) ? "" : normalizeEmail(contract.userEmail) || normalizeEmail(fallbackOwnerEmail));
 
 export const servicingOwnerEmailForContract = (
   contract: Pick<
@@ -78,6 +78,7 @@ export const servicingOwnerEmailForContract = (
 export const contractWasTransferred = (
   contract: Pick<
     ContractDoc,
+    | "acquisitionType"
     | "originalAdviserEmail"
     | "servicingOwnerEmail"
     | "commissionOwnerEmail"
@@ -87,7 +88,7 @@ export const contractWasTransferred = (
 ): boolean => {
   const originalEmail = originalAdviserEmailForContract(contract, fallbackOwnerEmail);
   const servicingEmail = servicingOwnerEmailForContract(contract, fallbackOwnerEmail);
-  return Boolean(originalEmail && servicingEmail && originalEmail !== servicingEmail);
+  return isInheritedContract(contract) || Boolean(originalEmail && servicingEmail && originalEmail !== servicingEmail);
 };
 
 export const buildTransferredContractData = ({
@@ -156,7 +157,7 @@ export const buildTransferredContractData = ({
     transferFromEmail: normalizedFrom,
     transferToEmail: normalizedTo,
     transferAt: transferredAt,
-    transferEffectiveDate: effectiveDate,
+    transferEffectiveDate: effectiveDate ?? (isInheritedContract(contract) ? pragueIsoDay(transferredAt) : null),
     transferredByEmail: normalizedActor,
     ownershipTransfer: transfer,
     ownershipTransferHistory: [...previousHistory, transfer],

@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
 
+import { TOOL_CATALOG } from "./toolCatalog";
 import {
-  compareToolHubUsage,
+  compareToolHubTools,
   isToolHubToolKey,
   normalizeToolHubUsageMetric,
+  type ToolHubToolKey,
+  type ToolHubUsageMetric,
 } from "./toolHub";
+
+const sortedToolKeys = (
+  keys: ToolHubToolKey[],
+  usage: Partial<Record<ToolHubToolKey, ToolHubUsageMetric>> = {}
+) => TOOL_CATALOG
+  .filter((tool) => keys.includes(tool.key))
+  .sort((a, b) => compareToolHubTools(a, b, usage))
+  .map((tool) => tool.key);
 
 describe("tool hub usage helpers", () => {
   it("accepts only catalogued tool keys", () => {
@@ -31,85 +42,56 @@ describe("tool hub usage helpers", () => {
     });
   });
 
-  it("prioritizes favorites and recency for personal sorting", () => {
+  it("pins favorites above every category", () => {
     expect(
-      compareToolHubUsage(
+      sortedToolKeys(
+        ["argumenty", "zlato", "srovnavac-trvalych-nasledku", "proklepka-vozidla"],
         {
-          personalOpens: 100,
-          globalOpens: 100,
-          lastOpenedAtMs: 100,
-          favorite: false,
-        },
-        {
-          personalOpens: 1,
-          globalOpens: 1,
-          lastOpenedAtMs: 1,
-          favorite: true,
-        },
-        "personal"
+          argumenty: normalizeToolHubUsageMetric({ favorite: true }),
+          zlato: normalizeToolHubUsageMetric({ favorite: true }),
+        }
       )
-    ).toBeGreaterThan(0);
+    ).toEqual(["zlato", "argumenty", "srovnavac-trvalych-nasledku", "proklepka-vozidla"]);
   });
 
-  it("uses aggregate opens for popular sorting", () => {
+  it("orders categories consistently without favorites", () => {
     expect(
-      compareToolHubUsage(
-        {
-          personalOpens: 50,
-          globalOpens: 10,
-          lastOpenedAtMs: 500,
-          favorite: true,
-        },
-        {
-          personalOpens: 1,
-          globalOpens: 20,
-          lastOpenedAtMs: 1,
-          favorite: false,
-        },
-        "popular"
-      )
-    ).toBeGreaterThan(0);
+      sortedToolKeys([
+        "argumenty", "zlato", "statistika", "cestovni-pojisteni-cpp-vs-kooperativa",
+        "proklepka-vozidla", "katastr", "srovnavac-trvalych-nasledku",
+      ])
+    ).toEqual([
+      "srovnavac-trvalych-nasledku", "katastr", "proklepka-vozidla",
+      "cestovni-pojisteni-cpp-vs-kooperativa", "statistika", "zlato", "argumenty",
+    ]);
   });
 
-  it("can pin favorites before alphabetical results", () => {
+  it("keeps favorites first inside a selected category and restores name order when unstarred", () => {
+    const keys: ToolHubToolKey[] = ["argumenty", "dokumenty", "zaznam"];
     expect(
-      compareToolHubUsage(
-        {
-          personalOpens: 10,
-          globalOpens: 10,
-          lastOpenedAtMs: 10,
-          favorite: false,
-        },
-        {
-          personalOpens: 0,
-          globalOpens: 0,
-          lastOpenedAtMs: null,
-          favorite: true,
-        },
-        "alphabetical",
-        true
-      )
-    ).toBeGreaterThan(0);
+      sortedToolKeys(keys, {
+        zaznam: normalizeToolHubUsageMetric({ favorite: true }),
+      })
+    ).toEqual(["zaznam", "argumenty", "dokumenty"]);
+    expect(
+      sortedToolKeys(keys, {
+        zaznam: normalizeToolHubUsageMetric({ favorite: false }),
+      })
+    ).toEqual(["argumenty", "dokumenty", "zaznam"]);
   });
 
-  it("can ignore favorites when sorting inside a category", () => {
+  it("ignores popularity and recency when ordering tools", () => {
     expect(
-      compareToolHubUsage(
+      sortedToolKeys(
+        ["argumenty", "dokumenty", "srovnavac-trvalych-nasledku"],
         {
-          personalOpens: 10,
-          globalOpens: 10,
-          lastOpenedAtMs: 10,
-          favorite: false,
-        },
-        {
-          personalOpens: 0,
-          globalOpens: 0,
-          lastOpenedAtMs: 1,
-          favorite: true,
-        },
-        "personal",
-        false
+          dokumenty: normalizeToolHubUsageMetric({
+            personalOpens: 100,
+            globalOpens: 1000,
+            lastOpenedAtMs: 1_000_000,
+          }),
+        }
       )
-    ).toBeLessThan(0);
+    ).toEqual(["srovnavac-trvalych-nasledku", "argumenty", "dokumenty"]);
   });
 });

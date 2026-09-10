@@ -1,3 +1,4 @@
+import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
@@ -1153,7 +1154,7 @@ function accumulateContractEntry({
   byInstitutionForCategory.monthlyPremium += monthlyPremium;
   current.institutionByCategory[category][institution] = byInstitutionForCategory;
 
-  const signed = toDate(data.contractSignedDate ?? data.createdAt);
+  const signed = isInheritedContract(data) ? null : toDate(data.contractSignedDate ?? data.createdAt);
   const ts = signed?.getTime();
   if (ts != null && ts >= monthStart && ts <= currentMonthToDateEnd) {
     current.month += 1;

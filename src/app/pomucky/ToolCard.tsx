@@ -17,16 +17,6 @@ export type ToolCardData = {
   news?: ToolCatalogNews;
 };
 
-const CATEGORY_LABELS: Record<ToolCatalogCategory, string> = {
-  "Pojištění vozidel": "Auto",
-  "Životní pojištění": "Životní pojištění",
-  "Pojištění majetku": "Majetek",
-  "Cestovní pojištění": "Cestovní pojištění",
-  Finance: "Finance",
-  Investice: "Investice",
-  Obecné: "Obecné",
-};
-
 type ToolCardProps = {
   tool: ToolCardData;
   favorite: boolean;
@@ -54,7 +44,6 @@ export function ToolCard({ tool, favorite, favoriteDisabled, onToggleFavorite, o
     <article className={styles.card} data-category={tool.category} data-favorite={favorite} aria-labelledby={titleId}>
       <div className={styles.header}>
         <span className={styles.icon}><Icon size={23} strokeWidth={1.7} aria-hidden="true" /></span>
-        <span className={styles.category}>{CATEGORY_LABELS[tool.category]}</span>
         <button
           type="button"
           className={styles.favorite}
@@ -70,7 +59,6 @@ export function ToolCard({ tool, favorite, favoriteDisabled, onToggleFavorite, o
 
       <div className={styles.body}>
         <h2 id={titleId} className={`${styles.title} tool-card-title`}>{tool.title}</h2>
-        <p className={styles.description}>{tool.description}</p>
       </div>
 
       <div className={styles.footer}>

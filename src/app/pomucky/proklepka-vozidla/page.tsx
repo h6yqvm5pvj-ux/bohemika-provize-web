@@ -24,7 +24,15 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJson } from "@/app/lib/authenticatedApi";
-import { rsvVehicleLookupByVin } from "@/app/lib/rsv";
+import { isValidVehicleQuery, normalizeVehicleQuery } from "@/app/lib/vehicleLookupQuery";
+import { VehicleAdditionalChecks } from "./VehicleAdditionalChecks";
+import { VehicleVignette } from "./VehicleVignette";
+import type {
+  VehicleLookupResponse, VehicleChecks, VehicleReportPayload, VehicleReportSummary,
+  VehicleReportStkStatus, VehicleReportHero, VehicleReportValuation, VehicleReportTechnical,
+  VehicleReportTechnicalSection, VehicleReportOwnerRow, VehicleReportInspectionRow,
+  VehicleReportOdometerRow, VehicleReportValuationMileageRow, VehicleReportTechnicalRow,
+} from "@/app/lib/vehicleReport";
 import { type SautoMarketResponse } from "../naceneni-vozidla/types";
 import {
   buildVehicleValuationEstimate,
@@ -81,7 +89,8 @@ type StkCheck = {
   mileageKm: number | null;
   typeLabel: string;
   resultLabel: string;
-  isPassed: boolean;
+  isPassed: boolean | null;
+  defectsText?: string;
   stationLabel: string;
   protocolLabel: string;
   sourceLabel: string;
@@ -99,147 +108,6 @@ type OwnerRecord = {
   fromLabel: string;
   toLabel: string;
   isCurrent: boolean;
-};
-
-type ProklepniOwnerRow = {
-  name?: unknown;
-  roleLabel?: unknown;
-  icoLabel?: unknown;
-  addressLabel?: unknown;
-  fromIso?: unknown;
-  toIso?: unknown;
-  isCurrent?: unknown;
-};
-
-type ProklepniOwnersResponse = {
-  ok?: unknown;
-  recordCount?: unknown;
-  records?: unknown;
-};
-
-type ProklepniReportSummary = {
-  ownerCount?: unknown;
-  ownerRecordCount?: unknown;
-  ownerPartyCount?: unknown;
-  wasImported?: unknown;
-  importCountry?: unknown;
-  importDate?: unknown;
-  totalDefects?: unknown;
-  lastOdometerKm?: unknown;
-  lastOdometerDate?: unknown;
-  avgAnnualKm?: unknown;
-};
-
-type ProklepniReportStkStatus = {
-  state?: unknown;
-  nextDue?: unknown;
-  daysRemaining?: unknown;
-  note?: unknown;
-  scorePenalty?: unknown;
-};
-
-type ProklepniReportHero = {
-  score?: unknown;
-  letter?: unknown;
-  label?: unknown;
-  yearLabel?: unknown;
-  fuelLabel?: unknown;
-  powerLabel?: unknown;
-  colorLabel?: unknown;
-};
-
-type ProklepniReportOdometerRow = {
-  dateIso?: unknown;
-  km?: unknown;
-  deltaKm?: unknown;
-  deltaDays?: unknown;
-  protocolLabel?: unknown;
-  result?: unknown;
-  quality?: unknown;
-};
-
-type ProklepniReportInspectionRow = {
-  protocolLabel?: unknown;
-  dateIso?: unknown;
-  stationNumber?: unknown;
-  stationTown?: unknown;
-  inspectionType?: unknown;
-  inspectionTypeLabel?: unknown;
-  result?: unknown;
-  resultLabel?: unknown;
-  mileageKm?: unknown;
-  durationMin?: unknown;
-  defectCount?: unknown;
-  worstSeverity?: unknown;
-  sameDayGroupId?: unknown;
-};
-
-type ProklepniReportOwnerRow = {
-  roleLabel?: unknown;
-  isCurrent?: unknown;
-  name?: unknown;
-  icoLabel?: unknown;
-  addressLabel?: unknown;
-  fromIso?: unknown;
-  toIso?: unknown;
-};
-
-type ProklepniReportValuationMileageRow = {
-  km?: unknown;
-  price?: unknown;
-  widthPercent?: unknown;
-  highlighted?: unknown;
-};
-
-type ProklepniReportValuation = {
-  estimatedPrice?: unknown;
-  confidenceLabel?: unknown;
-  comparableCount?: unknown;
-  referenceMileageKm?: unknown;
-  fairRangeLow?: unknown;
-  fairRangeHigh?: unknown;
-  fairRangePct?: unknown;
-  marketMin?: unknown;
-  marketMax?: unknown;
-  segmentUnderPct?: unknown;
-  segmentFairPct?: unknown;
-  segmentOverPct?: unknown;
-  markerPct?: unknown;
-  infoTitle?: unknown;
-  infoText?: unknown;
-  highlightedMileageKm?: unknown;
-  mileagePriceRows?: unknown;
-};
-
-type ProklepniReportTechnicalRow = {
-  label?: unknown;
-  value?: unknown;
-};
-
-type ProklepniReportTechnicalSection = {
-  title?: unknown;
-  rows?: unknown;
-};
-
-type ProklepniReportTechnical = {
-  sections?: unknown;
-};
-
-type ProklepniReportPayload = {
-  status?: unknown;
-  summary?: unknown;
-  stkStatus?: unknown;
-  hero?: unknown;
-  valuation?: unknown;
-  technical?: unknown;
-  odometerHistory?: unknown;
-  inspections?: unknown;
-  owners?: unknown;
-};
-
-type ProklepniReportResponse = {
-  ok?: unknown;
-  report?: unknown;
 };
 
 type MileagePoint = {
@@ -269,18 +137,7 @@ type SpecSection = {
 const MAX_PATTERN_ROWS = 100;
 
 const STK_PATTERNS = ["stk", "technick", "prohlidk", "kontrol", "evidencni"];
-const OWNER_PATTERNS = [
-  "vlastnik",
-  "vlastnici",
-  "vlastnictv",
-  "provozovatel",
-  "provozovatele",
-  "owner",
-  "owners",
-  "drzitel",
-  "majitel",
-  "subjekt",
-];
+
 const MILEAGE_PATTERNS = ["najet", "najezd", "tachometr", "kilometr", "km"];
 const DATE_PATTERNS = ["datum", "date", "cas", "time", "od", "do", "rok"];
 
@@ -303,10 +160,7 @@ function normalizeText(value: string): string {
     .toLowerCase();
 }
 
-function normalizeVinInput(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.trim().toUpperCase().replace(/\s+/g, "");
-}
+const normalizeVinInput = normalizeVehicleQuery;
 
 function toNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -593,92 +447,6 @@ function collectObjectRows(data: VehicleData | null, patterns: string[], limit =
   return out;
 }
 
-function hasRowHint(row: Record<string, unknown>, hints: string[]): boolean {
-  return Object.keys(row).some((key) => hasPattern(key, hints));
-}
-
-function hasValueHint(row: Record<string, unknown>, hints: string[]): boolean {
-  return Object.values(row).some((value) => {
-    if (value == null) return false;
-    if (typeof value === "string") return hasPattern(value, hints);
-    if (typeof value === "number" || typeof value === "boolean") return false;
-    if (Array.isArray(value)) {
-      return value.some((item) => typeof item === "string" && hasPattern(item, hints));
-    }
-    const nested = readObject(value);
-    if (!nested) return false;
-    return hasRowHint(nested, hints) || hasValueHint(nested, hints);
-  });
-}
-
-function collectAllObjectRows(data: VehicleData | null, limit = MAX_PATTERN_ROWS): ObjectRow[] {
-  if (!data) return [];
-
-  const out: ObjectRow[] = [];
-  const seen = new Set<string>();
-
-  const pushRow = (path: string[], key: string, row: Record<string, unknown>, fallbackDate: Date | null) => {
-    if (!path.length) return;
-    const signature = path.join(" › ");
-    if (seen.has(signature)) return;
-    seen.add(signature);
-    const date = findDateInObject(row) ?? fallbackDate;
-    out.push({ path: signature, key, row, date });
-  };
-
-  const walk = (node: unknown, path: string[], parentDate: Date | null) => {
-    if (out.length >= limit) return;
-
-    if (Array.isArray(node)) {
-      node.forEach((item, index) => {
-        const itemPath = [...path, `[${index}]`];
-        const itemRow = readObject(item);
-        if (itemRow) {
-          pushRow(itemPath, path[path.length - 1] ?? "item", itemRow, parentDate);
-        }
-        walk(item, itemPath, parentDate);
-      });
-      return;
-    }
-
-    const row = readObject(node);
-    if (!row) return;
-
-    const ownDate = findDateInObject(row) ?? parentDate;
-    if (path.length) {
-      pushRow(path, path[path.length - 1] ?? "obj", row, ownDate);
-    }
-
-    for (const [key, value] of Object.entries(row)) {
-      walk(value, [...path, key], ownDate);
-      if (out.length >= limit) return;
-    }
-  };
-
-  walk(data, [], null);
-  return out;
-}
-
-function looksLikeOwnerObject(item: ObjectRow): boolean {
-  const roleHints = ["vlast", "provoz", "owner", "drzitel", "majitel"];
-  const identityHints = ["nazev", "jmeno", "firma", "subjekt", "ico", "adresa", "ulice", "mesto", "obec", "psc", "sidlo"];
-  const periodHints = ["od", "do", "datum", "from", "to", "platnost"];
-
-  const pathNorm = normalizeText(`${item.key} ${item.path}`);
-  const hasSubjectInPath = pathNorm.includes("subjekt");
-  const hasRoleInPath = roleHints.some((hint) => pathNorm.includes(hint));
-  const hasRoleInRow = hasRowHint(item.row, roleHints);
-  const hasRoleInValues = hasValueHint(item.row, roleHints);
-  const hasIdentityInRow = hasRowHint(item.row, identityHints);
-  const hasIdentityInValues = hasValueHint(item.row, identityHints);
-  const hasPeriodInRow = hasRowHint(item.row, periodHints) || item.date != null;
-
-  const hasRoleSignal = hasRoleInPath || hasRoleInRow || hasRoleInValues || hasSubjectInPath;
-  const hasIdentityOrPeriod = hasIdentityInRow || hasIdentityInValues || hasPeriodInRow;
-
-  return hasRoleSignal && hasIdentityOrPeriod;
-}
-
 function readApiError(payload: unknown): string | null {
   const row = readObject(payload);
   if (!row) return null;
@@ -692,11 +460,6 @@ function isSautoMarketResponse(payload: unknown): payload is SautoMarketResponse
   return row?.ok === true && row.source === "sauto" && Array.isArray(row.listings) && readObject(row.stats) != null;
 }
 
-function isProklepniReportResponse(payload: unknown): payload is ProklepniReportResponse {
-  const row = readObject(payload);
-  return row?.ok === true && readObject(row.report) != null;
-}
-
 function parsePowerKwFromLabel(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const match = value.match(/(\d+(?:[.,]\d+)?)\s*kW/i);
@@ -705,18 +468,10 @@ function parsePowerKwFromLabel(value: unknown): number | null {
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
 }
 
-function resolveStkToneWithState(stateRaw: unknown, nextDueRaw: unknown): "green" | "amber" | "rose" {
-  const state = normalizeText(safeStr(stateRaw));
-  if (state.includes("expired") || state.includes("invalid") || state.includes("neplat")) return "rose";
-  if (state.includes("expiring") || state.includes("soon")) return "amber";
-  if (state.includes("valid") || state.includes("pending")) return "green";
-  return stkTone(nextDueRaw);
-}
-
-function normalizeProklepniOwnerRecords(rows: ProklepniReportOwnerRow[]): OwnerRecord[] {
+function normalizeVehicleOwnerRecords(rows: VehicleReportOwnerRow[]): OwnerRecord[] {
   const mapped = rows
     .map((raw, idx, arr) => {
-      const row = raw as ProklepniReportOwnerRow;
+      const row = raw as VehicleReportOwnerRow;
       const fromDate = parseDateLoose(row.fromIso);
       const toDate = parseDateLoose(row.toIso);
       const name = safeStr(row.name);
@@ -725,17 +480,17 @@ function normalizeProklepniOwnerRecords(rows: ProklepniReportOwnerRow[]): OwnerR
       const addressLabel = safeStr(row.addressLabel);
 
       return {
-        id: `proklepni-owner-${idx}-${name}-${roleLabel}-${formatDateCs(fromDate)}-${formatDateCs(toDate)}`,
+        id: `vehicle-owner-${idx}-${name}-${roleLabel}-${formatDateCs(fromDate)}-${formatDateCs(toDate)}`,
         order: arr.length - idx,
         name: name === "—" ? "Neuvedený subjekt" : name,
-        roleLabel: roleLabel === "—" ? "vlastník + provozovatel" : roleLabel,
+        roleLabel: roleLabel === "—" ? "Evidovaný subjekt" : roleLabel,
         icoLabel: icoLabel === "—" ? "IČO neuvedeno" : icoLabel,
         addressLabel: addressLabel === "—" ? "Adresa neuvedena" : addressLabel,
         fromDate,
         toDate,
         fromLabel: formatDateCs(fromDate),
-        toLabel: toDate ? formatDateCs(toDate) : "dosud",
-        isCurrent: row.isCurrent === true || toDate == null,
+        toLabel: toDate ? formatDateCs(toDate) : row.isCurrent === true ? "dosud" : "Neuvedeno",
+        isCurrent: row.isCurrent === true,
       } satisfies OwnerRecord;
     })
     .filter((row) => row.fromDate != null || row.toDate != null || row.name !== "Neuvedený subjekt");
@@ -745,7 +500,7 @@ function normalizeProklepniOwnerRecords(rows: ProklepniReportOwnerRow[]): OwnerR
     .map((row, idx, arr) => ({ ...row, order: arr.length - idx }));
 }
 
-function normalizeProklepniStkChecks(rows: ProklepniReportInspectionRow[]): StkCheck[] {
+function normalizeVehicleStkChecks(rows: VehicleReportInspectionRow[]): StkCheck[] {
   type ParsedStkRow = StkCheck & {
     groupKey: string;
     _defectCount: number | null;
@@ -753,28 +508,23 @@ function normalizeProklepniStkChecks(rows: ProklepniReportInspectionRow[]): StkC
   };
 
   const mapped: ParsedStkRow[] = rows.map((raw, idx) => {
-    const row = raw as ProklepniReportInspectionRow;
+    const row = raw as VehicleReportInspectionRow;
     const date = parseDateLoose(row.dateIso);
     const mileageRaw = toNumber(row.mileageKm);
     const mileage = isPlausibleMileage(mileageRaw) ? mileageRaw : null;
     const resultText = safeStr(row.resultLabel);
     const resultNum = toNumber(row.result);
     const resultNorm = normalizeText(resultText);
-    const isPassed =
-      resultNum === 1 ||
-      (!resultNorm.includes("nezpus") && !resultNorm.includes("nevyhov") && !resultNorm.includes("zavada"));
+    const isPassed = resultNum === 1 ? true
+      : /nezpus|nevyhov/.test(resultNorm) ? false
+      : /zpusob|vyhov/.test(resultNorm) ? true : null;
 
     const typeLabelRaw = safeStr(row.inspectionTypeLabel);
     const typeNorm = normalizeText(typeLabelRaw);
-    const typeLabel =
-      typeLabelRaw === "—"
-        ? "Pravidelná"
-        : typeNorm.includes("evidenc")
-          ? "Evidenční"
-          : "Pravidelná";
+    const typeLabel = typeLabelRaw === "—" ? "Typ neuveden" : typeLabelRaw;
 
     const sourceLabel =
-      typeNorm.includes("sme") || safeStr(row.protocolLabel).startsWith("CZ-440")
+      normalizeText(safeStr(row.sourceLabel)).includes("sme") || typeNorm.includes("sme") || safeStr(row.protocolLabel).startsWith("CZ-440")
         ? "SME"
         : "STK";
 
@@ -795,12 +545,13 @@ function normalizeProklepniStkChecks(rows: ProklepniReportInspectionRow[]): StkC
         : (date?.toISOString().slice(0, 10) ?? `fallback-${idx}`);
 
     return {
-      id: `proklepni-stk-${idx}-${protocolLabel}-${formatDateCs(date)}-${mileage ?? "no-km"}`,
+      id: `vehicle-stk-${idx}-${protocolLabel}-${formatDateCs(date)}-${mileage ?? "no-km"}`,
       date,
       dateLabel: formatDateCs(date),
       mileageKm: mileage,
       typeLabel,
-      resultLabel: isPassed ? "Bez závad" : (resultText === "—" ? "Nezpůsobilé" : resultText),
+      resultLabel: resultText === "—" ? "Výsledek neuveden" : resultText,
+      defectsText: safeStr(row.defectsText) === "—" ? undefined : safeStr(row.defectsText),
       isPassed,
       stationLabel,
       protocolLabel,
@@ -811,80 +562,13 @@ function normalizeProklepniStkChecks(rows: ProklepniReportInspectionRow[]): StkC
     };
   });
 
-  const groupedMap = new Map<string, ParsedStkRow[]>();
-  for (const row of mapped) {
-    const bucket = groupedMap.get(row.groupKey);
-    if (bucket) bucket.push(row);
-    else groupedMap.set(row.groupKey, [row]);
-  }
-
-  const grouped = Array.from(groupedMap.values()).map((group, idx) => {
-    const primary = [...group].sort((a, b) => {
-      const score = (row: ParsedStkRow) => {
-        let points = 0;
-        if (row.sourceLabel === "STK") points += 2;
-        if (row.stationLabel !== "Stanice neuvedena") points += 1;
-        if (row.protocolLabel !== "Protokol neuveden") points += 1;
-        return points;
-      };
-      return score(b) - score(a);
-    })[0];
-
-    const hasSme = group.some((row) => row.sourceLabel === "SME");
-    const hasStk = group.some((row) => row.sourceLabel === "STK");
-    const sourceLabel = hasSme && hasStk ? "STK + SME" : hasSme ? "SME" : "STK";
-    const typeLabel = group.some((row) => row.typeLabel === "Evidenční") ? "Evidenční" : "Pravidelná";
-    const isPassed = group.every((row) => row.isPassed);
-    const firstFailed = group.find((row) => !row.isPassed);
-    const mileageCandidates = group
-      .map((row) => row.mileageKm)
-      .filter((value): value is number => isPlausibleMileage(value));
-    const mileageKm =
-      mileageCandidates.length > 0 ? Math.max(...mileageCandidates) : primary.mileageKm;
-    const defectCount = group.reduce((sum, row) => sum + (row._defectCount != null && row._defectCount > 0 ? row._defectCount : 0), 0);
-    const severity =
-      group.map((row) => row._severity).find((label) => label && label !== "—") ?? "—";
-
-    return {
-      ...primary,
-      id: `proklepni-stk-group-${idx}-${primary.groupKey}`,
-      mileageKm,
-      typeLabel,
-      isPassed,
-      resultLabel: isPassed ? "Bez závad" : (firstFailed?.resultLabel ?? "Nezpůsobilé"),
-      sourceLabel,
-      stationLabel:
-        group.length > 1 && primary.stationLabel !== "Stanice neuvedena"
-          ? `${primary.stationLabel} (+${group.length - 1})`
-          : primary.stationLabel,
-      protocolLabel:
-        group.length > 1 && primary.protocolLabel !== "Protokol neuveden"
-          ? `${primary.protocolLabel} (+${group.length - 1})`
-          : primary.protocolLabel,
-      _defectCount: defectCount > 0 ? defectCount : null,
-      _severity: severity,
-    } satisfies ParsedStkRow;
-  });
-
-  return grouped
-    .sort((a, b) => (b.date?.getTime() ?? -Infinity) - (a.date?.getTime() ?? -Infinity))
-    .map((row) => {
-      const defectCount = row._defectCount;
-      const severity = row._severity;
-      if (!row.isPassed && defectCount != null && defectCount > 0) {
-        return {
-          ...row,
-          resultLabel: `Závady: ${formatNumber(defectCount)}${severity && severity !== "—" ? ` (${severity})` : ""}`,
-        };
-      }
-      return row;
-    });
+  return mapped.sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0));
 }
 
-function normalizeProklepniMileageHistory(rows: ProklepniReportOdometerRow[]): MileagePoint[] {
+function normalizeVehicleMileageHistory(rows: VehicleReportOdometerRow[]): MileagePoint[] {
   const points = rows
     .map((raw) => {
-      const row = raw as ProklepniReportOdometerRow;
+      const row = raw as VehicleReportOdometerRow;
       const date = parseDateLoose(row.dateIso);
       const km = toNumber(row.km);
       if (!(date instanceof Date) || !isPlausibleMileage(km)) return null;
@@ -906,10 +590,10 @@ function normalizeProklepniMileageHistory(rows: ProklepniReportOdometerRow[]): M
   }));
 }
 
-function normalizeProklepniMileagePriceRows(rows: ProklepniReportValuationMileageRow[]): MileagePriceRow[] {
+function normalizeVehicleMileagePriceRows(rows: VehicleReportValuationMileageRow[]): MileagePriceRow[] {
   const out: MileagePriceRow[] = [];
   for (const raw of rows) {
-    const row = raw as ProklepniReportValuationMileageRow;
+    const row = raw as VehicleReportValuationMileageRow;
     const km = toNumber(row.km);
     const price = toNumber(row.price);
     if (!isPlausibleMileage(km) || price == null || !Number.isFinite(price) || price <= 0) continue;
@@ -951,22 +635,6 @@ function statusTone(status: string): "green" | "amber" {
   const normalized = status.toUpperCase();
   if (normalized.includes("PROVOZ") || normalized.includes("AKTIV")) return "green";
   return "amber";
-}
-
-function stkTone(stkDateRaw: unknown): "green" | "amber" | "rose" {
-  const date = parseDateLoose(stkDateRaw);
-  if (!date) return "amber";
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-
-  const diffDays = Math.floor((target.getTime() - today.getTime()) / 86400000);
-  if (diffDays < 0) return "rose";
-  if (diffDays <= 60) return "amber";
-  return "green";
 }
 
 function confidenceLabel(score: number): string {
@@ -1093,118 +761,6 @@ function buildStkChecks(
 
   out.sort((a, b) => (b.date?.getTime() ?? -Infinity) - (a.date?.getTime() ?? -Infinity));
   return out.slice(0, 16);
-}
-
-function buildOwnerRecords(objects: ObjectRow[], ownerCount: number | null): OwnerRecord[] {
-  const out: OwnerRecord[] = [];
-  const seen = new Set<string>();
-
-  for (const item of objects) {
-    if (!looksLikeOwnerObject(item)) continue;
-
-    const roleFromValue = findRowString(item.row, ["role", "typ", "druh", "postaveni", "vztah", "subjekt"]);
-    const roleRaw = `${item.key} ${item.path} ${roleFromValue ?? ""}`;
-    const roleNorm = normalizeText(roleRaw);
-    let roleLabel = "vlastník + provozovatel";
-    if (roleNorm.includes("vlast") && !roleNorm.includes("provoz")) roleLabel = "vlastník";
-    if (!roleNorm.includes("vlast") && roleNorm.includes("provoz")) roleLabel = "provozovatel";
-
-    const fromDate = findRowDate(item.row, ["od", "datumod", "from", "platnostod"]) ?? item.date;
-    const toDate = findRowDate(item.row, ["do", "datumdo", "to", "platnostdo"]);
-
-    const nameFromKeys =
-      findRowString(item.row, ["nazev", "jmeno", "subjekt", "firma", "vlastnik", "provozovatel", "name"]);
-    const nameFallback = Object.values(item.row)
-      .map((value) => safeStr(value))
-      .find((value) => value !== "—" && value.length > 2 && !/^\d+$/.test(value));
-
-    const name = nameFromKeys ?? nameFallback ?? "Neuvedený subjekt";
-
-    const icoLabel = findRowString(item.row, ["ico", "ic", "ident"]) ?? "IČO neuvedeno";
-    const addressLabel =
-      findRowString(item.row, ["adresa", "ulice", "mesto", "obec", "sidlo", "psc"]) ?? "Adresa neuvedena";
-
-    const id = `${name}|${roleLabel}|${formatDateCs(fromDate)}|${formatDateCs(toDate)}|${icoLabel}|${addressLabel}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-
-    out.push({
-      id,
-      order: out.length + 1,
-      name,
-      roleLabel,
-      icoLabel,
-      addressLabel,
-      fromDate,
-      toDate,
-      fromLabel: formatDateCs(fromDate),
-      toLabel: toDate ? formatDateCs(toDate) : "dosud",
-      isCurrent: toDate == null,
-    });
-  }
-
-  out.sort((a, b) => (b.fromDate?.getTime() ?? -Infinity) - (a.fromDate?.getTime() ?? -Infinity));
-
-  if (!out.length) {
-    const fallbackCount = Math.max(1, ownerCount ?? 1);
-    for (let i = 0; i < Math.min(10, fallbackCount); i += 1) {
-      out.push({
-        id: `fallback-owner-${i}`,
-        order: fallbackCount - i,
-        name: "Neuvedený subjekt",
-        roleLabel: "vlastník + provozovatel",
-        icoLabel: "IČO neuvedeno",
-        addressLabel: "Adresa neuvedena",
-        fromDate: null,
-        toDate: i === 0 ? null : null,
-        fromLabel: "—",
-        toLabel: i === 0 ? "dosud" : "—",
-        isCurrent: i === 0,
-      });
-    }
-  }
-
-  return out.slice(0, 20).map((row, idx) => ({ ...row, order: out.length - idx }));
-}
-
-function ownerHistoryKey(row: OwnerRecord): string {
-  const role = normalizeText(row.roleLabel);
-  const from = row.fromDate ? row.fromDate.toISOString().slice(0, 10) : row.fromLabel;
-  const to = row.toDate ? row.toDate.toISOString().slice(0, 10) : row.toLabel;
-  return `${role}|${from}|${to}`;
-}
-
-function ownerDataScore(row: OwnerRecord): number {
-  let score = 0;
-  if (row.name !== "Neuvedený subjekt") score += 3;
-  if (row.icoLabel !== "IČO neuvedeno") score += 2;
-  if (row.addressLabel !== "Adresa neuvedena") score += 2;
-  if (row.fromDate) score += 1;
-  if (row.toDate) score += 1;
-  if (row.roleLabel.includes("vlast") || row.roleLabel.includes("provoz")) score += 1;
-  return score;
-}
-
-function mergeOwnerHistory(primary: OwnerRecord[], fallback: OwnerRecord[]): OwnerRecord[] {
-  const merged = new Map<string, OwnerRecord>();
-
-  for (const row of [...primary, ...fallback]) {
-    const key = ownerHistoryKey(row);
-    const existing = merged.get(key);
-    if (!existing) {
-      merged.set(key, row);
-      continue;
-    }
-
-    if (ownerDataScore(row) > ownerDataScore(existing)) {
-      merged.set(key, row);
-    }
-  }
-
-  return Array.from(merged.values())
-    .sort((a, b) => (b.fromDate?.getTime() ?? -Infinity) - (a.fromDate?.getTime() ?? -Infinity))
-    .slice(0, 30)
-    .map((row, idx, arr) => ({ ...row, order: arr.length - idx }));
 }
 
 function confidenceToneClass(value: string): string {
@@ -1589,7 +1145,7 @@ function StkCard({ check }: { check: StkCheck }) {
         <div className="flex flex-wrap items-center gap-2">
           <Pill tone={check.sourceLabel === "SME" ? "amber" : "green"}>{check.sourceLabel}</Pill>
           <Pill>{check.typeLabel}</Pill>
-          <Pill tone={check.isPassed ? "green" : "rose"}>{check.resultLabel}</Pill>
+          <Pill tone={check.isPassed === true ? "green" : check.isPassed === false ? "rose" : "neutral"}>{check.resultLabel}</Pill>
         </div>
       </div>
 
@@ -1602,6 +1158,7 @@ function StkCard({ check }: { check: StkCheck }) {
           <History className="h-4 w-4 text-slate-400" />
           {check.protocolLabel}
         </div>
+        {check.defectsText && <p className="sm:col-span-2 whitespace-pre-wrap">Závady: {check.defectsText}</p>}
       </div>
     </article>
   );
@@ -1726,10 +1283,11 @@ export default function VehicleAuditPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LookupResult | null>(null);
-  const [proklepniReport, setProklepniReport] = useState<ProklepniReportPayload | null>(null);
-  const [ownerFallbackRecords, setOwnerFallbackRecords] = useState<OwnerRecord[] | null>(null);
+  const [vehicleReport, setVehicleReport] = useState<VehicleReportPayload | null>(null);
+  const [vehicleChecks, setVehicleChecks] = useState<VehicleChecks | null>(null);
+  const [lookupQuery, setLookupQuery] = useState("");
   const [copied, setCopied] = useState(false);
-  const [copiedId, setCopiedId] = useState<"vin" | "orv" | null>(null);
+  const [copiedId, setCopiedId] = useState<"vin" | "orv" | "tp" | null>(null);
   const [searchActivated, setSearchActivated] = useState(false);
   const [stkExpanded, setStkExpanded] = useState(false);
   const [ownersExpanded, setOwnersExpanded] = useState(false);
@@ -1765,45 +1323,45 @@ export default function VehicleAuditPage() {
 
   const data = (result?.payload?.Data ?? null) as VehicleData | null;
   const displayedVin = safeStr(result?.vin ?? vin);
-  const proklepniSummary = (readObject(proklepniReport?.summary) ?? null) as ProklepniReportSummary | null;
-  const proklepniStkStatus = (readObject(proklepniReport?.stkStatus) ?? null) as ProklepniReportStkStatus | null;
-  const proklepniHero = (readObject(proklepniReport?.hero) ?? null) as ProklepniReportHero | null;
-  const proklepniValuation = (readObject(proklepniReport?.valuation) ?? null) as ProklepniReportValuation | null;
-  const proklepniTechnical = (readObject(proklepniReport?.technical) ?? null) as ProklepniReportTechnical | null;
-  const proklepniTechnicalSectionsRaw = useMemo(
+  const vehicleSummary = (readObject(vehicleReport?.summary) ?? null) as VehicleReportSummary | null;
+  const vehicleStkStatus = (readObject(vehicleReport?.stkStatus) ?? null) as VehicleReportStkStatus | null;
+  const vehicleHero = (readObject(vehicleReport?.hero) ?? null) as VehicleReportHero | null;
+  const vehicleValuation = (readObject(vehicleReport?.valuation) ?? null) as VehicleReportValuation | null;
+  const vehicleTechnical = (readObject(vehicleReport?.technical) ?? null) as VehicleReportTechnical | null;
+  const vehicleTechnicalSectionsRaw = useMemo(
     () =>
-      Array.isArray(proklepniTechnical?.sections)
-        ? (proklepniTechnical.sections as ProklepniReportTechnicalSection[])
+      Array.isArray(vehicleTechnical?.sections)
+        ? (vehicleTechnical.sections as VehicleReportTechnicalSection[])
         : [],
-    [proklepniTechnical?.sections]
+    [vehicleTechnical?.sections]
   );
-  const proklepniOwnersRaw = useMemo(
+  const vehicleOwnersRaw = useMemo(
     () =>
-      Array.isArray(proklepniReport?.owners)
-        ? (proklepniReport.owners as ProklepniReportOwnerRow[])
+      Array.isArray(vehicleReport?.owners)
+        ? (vehicleReport.owners as VehicleReportOwnerRow[])
         : [],
-    [proklepniReport?.owners]
+    [vehicleReport?.owners]
   );
-  const proklepniInspectionsRaw = useMemo(
+  const vehicleInspectionsRaw = useMemo(
     () =>
-      Array.isArray(proklepniReport?.inspections)
-        ? (proklepniReport.inspections as ProklepniReportInspectionRow[])
+      Array.isArray(vehicleReport?.inspections)
+        ? (vehicleReport.inspections as VehicleReportInspectionRow[])
         : [],
-    [proklepniReport?.inspections]
+    [vehicleReport?.inspections]
   );
-  const proklepniOdometerRaw = useMemo(
+  const vehicleOdometerRaw = useMemo(
     () =>
-      Array.isArray(proklepniReport?.odometerHistory)
-        ? (proklepniReport.odometerHistory as ProklepniReportOdometerRow[])
+      Array.isArray(vehicleReport?.odometerHistory)
+        ? (vehicleReport.odometerHistory as VehicleReportOdometerRow[])
         : [],
-    [proklepniReport?.odometerHistory]
+    [vehicleReport?.odometerHistory]
   );
-  const proklepniValuationRowsRaw = useMemo(
+  const vehicleValuationRowsRaw = useMemo(
     () =>
-      Array.isArray(proklepniValuation?.mileagePriceRows)
-        ? (proklepniValuation.mileagePriceRows as ProklepniReportValuationMileageRow[])
+      Array.isArray(vehicleValuation?.mileagePriceRows)
+        ? (vehicleValuation.mileagePriceRows as VehicleReportValuationMileageRow[])
         : [],
-    [proklepniValuation?.mileagePriceRows]
+    [vehicleValuation?.mileagePriceRows]
   );
 
   const summary = useMemo<VehicleSummary | null>(() => {
@@ -1812,10 +1370,10 @@ export default function VehicleAuditPage() {
     const firstRegistrationRaw = firstOf(data, ["DatumPrvniRegistrace", "PrvniRegistrace"]);
     const firstRegistration = parseDateLoose(firstRegistrationRaw);
     const yearFromApi = toNumber(firstOf(data, ["RokVyroby", "VozidloRokVyroby"]));
-    const yearFromProklepni = toNumber(proklepniHero?.yearLabel);
-    const year = yearFromProklepni ?? yearFromApi ?? firstRegistration?.getFullYear() ?? null;
+    const yearFromVehicle = toNumber(vehicleHero?.yearLabel);
+    const year = yearFromVehicle ?? yearFromApi ?? firstRegistration?.getFullYear() ?? null;
 
-    const stkRaw = proklepniStkStatus?.nextDue ?? firstOf(data, [
+    const stkRaw = vehicleStkStatus?.nextDue ?? firstOf(data, [
       "PravidelnaTechnickaProhlidkaDo",
       "StkDo",
       "STKDo",
@@ -1825,15 +1383,15 @@ export default function VehicleAuditPage() {
     ]);
 
     const category = safeStr(firstOf(data, ["Kategorie", "KategorieVozidla"]));
-    const body = safeStr(firstOf(data, ["DruhVozidla", "Typ", "VozidloKaroserieDruh"]));
-    const fuelFromProklepni = safeStr(proklepniHero?.fuelLabel);
-    const powerFromProklepni = parsePowerKwFromLabel(proklepniHero?.powerLabel);
-    const colorFromProklepni = safeStr(proklepniHero?.colorLabel);
-    const ownerCountFromProklepni = toNumber(proklepniSummary?.ownerCount);
+    const body = safeStr(firstOf(data, ["VozidloKaroserieDruh", "DruhVozidla", "Typ"]));
+    const fuelFromVehicle = safeStr(vehicleHero?.fuelLabel);
+    const powerFromVehicle = parsePowerKwFromLabel(vehicleHero?.powerLabel);
+    const colorFromVehicle = safeStr(vehicleHero?.colorLabel);
+    const ownerCountFromVehicle = toNumber(vehicleSummary?.ownerCount);
     const ownerCountFromApi = toNumber(firstOf(data, ["PocetVlastniku"]));
-    const ownerCount = ownerCountFromProklepni ?? ownerCountFromApi;
+    const ownerCount = ownerCountFromVehicle ?? ownerCountFromApi;
     const ownerCountLabel = ownerCount != null ? formatNumber(ownerCount) : safeStr(firstOf(data, ["PocetVlastniku"]));
-    const statusFromProklepni = safeStr(proklepniReport?.status);
+    const statusFromVehicle = safeStr(vehicleReport?.status);
 
     return {
       brand: safeStr(firstOf(data, ["TovarniZnacka", "Znacka", "ZnackaVozidla"])),
@@ -1841,24 +1399,24 @@ export default function VehicleAuditPage() {
       year,
       firstRegistration,
       firstRegistrationLabel: formatDateCs(firstRegistration),
-      fuel: fuelFromProklepni !== "—" ? fuelFromProklepni : safeStr(firstOf(data, ["Palivo", "DruhPaliva"])),
-      powerKw: powerFromProklepni ?? toNumber(firstOf(data, ["MotorMaxVykon", "Vykon", "MaxVykon"])),
+      fuel: fuelFromVehicle !== "—" ? fuelFromVehicle : safeStr(firstOf(data, ["Palivo", "DruhPaliva"])),
+      powerKw: powerFromVehicle ?? toNumber(firstOf(data, ["MotorMaxVykon", "Vykon", "MaxVykon"])),
       displacement: toNumber(firstOf(data, ["MotorZdvihObjem", "ZdvihovyObjem", "ObjemMotoru"])),
       category,
       body,
-      color: colorFromProklepni !== "—" ? colorFromProklepni : safeStr(firstOf(data, ["VozidloKaroserieBarva", "Barva", "BarvaVozidla"])),
+      color: colorFromVehicle !== "—" ? colorFromVehicle : safeStr(firstOf(data, ["VozidloKaroserieBarva", "Barva", "BarvaVozidla"])),
       ownerCount,
-      status: statusFromProklepni !== "—" ? statusFromProklepni : statusLabel(data),
+      status: statusFromVehicle !== "—" ? statusFromVehicle : statusLabel(data),
       categoryLabel: [category, body].filter((value) => value !== "—").join(" · ") || "—",
       stkDoLabel: formatDateCs(parseDateLoose(stkRaw)),
       ownerCountLabel,
       operatorCountLabel: safeStr(firstOf(data, ["PocetProvozovatelu"])),
     };
-  }, [data, proklepniHero, proklepniReport?.status, proklepniStkStatus?.nextDue, proklepniSummary?.ownerCount]);
+  }, [data, vehicleHero, vehicleReport?.status, vehicleStkStatus?.nextDue, vehicleSummary?.ownerCount]);
 
   const stkRaw = useMemo(
     () =>
-      proklepniStkStatus?.nextDue ?? firstOf(data, [
+      vehicleStkStatus?.nextDue ?? firstOf(data, [
         "PravidelnaTechnickaProhlidkaDo",
         "StkDo",
         "STKDo",
@@ -1866,29 +1424,19 @@ export default function VehicleAuditPage() {
         "TechnickaProhlidkaDo",
         "PlatnostStkDo",
       ]),
-    [data, proklepniStkStatus?.nextDue]
+    [data, vehicleStkStatus?.nextDue]
   );
   const stkDate = useMemo(() => parseDateLoose(stkRaw), [stkRaw]);
-  const stkState = useMemo(
-    () => resolveStkToneWithState(proklepniStkStatus?.state, stkRaw),
-    [proklepniStkStatus?.state, stkRaw]
-  );
   const orvLabel = useMemo(
     () => safeStr(firstOf(data, ["CisloOrv", "CisloORV"])),
     [data]
   );
+  const tpLabel = safeStr(firstOf(data, ["CisloTp", "CisloTP"]));
 
   const stkSignals = useMemo(() => collectPatternRows(data, STK_PATTERNS), [data]);
   const mileageSignals = useMemo(() => collectPatternRows(data, MILEAGE_PATTERNS), [data]);
 
   const stkObjects = useMemo(() => collectObjectRows(data, STK_PATTERNS), [data]);
-  const ownerObjects = useMemo(() => {
-    const byKey = collectObjectRows(data, OWNER_PATTERNS, 400);
-    const byStructure = collectAllObjectRows(data, 900);
-    const merged = Array.from(new Map([...byKey, ...byStructure].map((row) => [row.path, row])).values());
-    return merged;
-  }, [data]);
-
   const bestMileageSignal = useMemo(() => {
     const candidates = mileageSignals.filter((row) => isPlausibleMileage(row.numericValue));
     if (!candidates.length) return null;
@@ -1903,37 +1451,42 @@ export default function VehicleAuditPage() {
     return ordered[0] ?? null;
   }, [mileageSignals]);
 
-  const proklepniOwnerRecords = useMemo(
-    () => normalizeProklepniOwnerRecords(proklepniOwnersRaw),
-    [proklepniOwnersRaw]
+  const vehicleOwnerRecords = useMemo(
+    () => normalizeVehicleOwnerRecords(vehicleOwnersRaw),
+    [vehicleOwnersRaw]
   );
-  const proklepniStkChecks = useMemo(
-    () => normalizeProklepniStkChecks(proklepniInspectionsRaw),
-    [proklepniInspectionsRaw]
+  const vehicleStkChecks = useMemo(
+    () => normalizeVehicleStkChecks(vehicleInspectionsRaw),
+    [vehicleInspectionsRaw]
   );
-  const proklepniMileageHistory = useMemo(
-    () => normalizeProklepniMileageHistory(proklepniOdometerRaw),
-    [proklepniOdometerRaw]
+  const vehicleMileageHistory = useMemo(
+    () => normalizeVehicleMileageHistory(vehicleOdometerRaw),
+    [vehicleOdometerRaw]
   );
-  const proklepniMileagePriceRows = useMemo(
-    () => normalizeProklepniMileagePriceRows(proklepniValuationRowsRaw),
-    [proklepniValuationRowsRaw]
+  const vehicleMileagePriceRows = useMemo(
+    () => normalizeVehicleMileagePriceRows(vehicleValuationRowsRaw),
+    [vehicleValuationRowsRaw]
   );
 
   const mileageKm = useMemo(() => {
-    const fromProklepni = toNumber(proklepniSummary?.lastOdometerKm);
-    if (isPlausibleMileage(fromProklepni)) return fromProklepni;
-    const fromValuation = toNumber(proklepniValuation?.referenceMileageKm);
+    const fromVehicle = toNumber(vehicleSummary?.lastOdometerKm);
+    if (isPlausibleMileage(fromVehicle)) return fromVehicle;
+    const fromValuation = toNumber(vehicleValuation?.referenceMileageKm);
     if (isPlausibleMileage(fromValuation)) return fromValuation;
     if (isPlausibleMileage(bestMileageSignal?.numericValue)) return bestMileageSignal.numericValue;
     return null;
-  }, [bestMileageSignal?.numericValue, proklepniSummary?.lastOdometerKm, proklepniValuation?.referenceMileageKm]);
+  }, [bestMileageSignal?.numericValue, vehicleSummary?.lastOdometerKm, vehicleValuation?.referenceMileageKm]);
+
+  const manualMileageKm = useMemo(() => {
+    const parsed = toNumber(refineMileage);
+    return isPlausibleMileage(parsed) ? parsed : null;
+  }, [refineMileage]);
 
   const estimate = useMemo(
     () =>
       buildVehicleValuationEstimate({
         summary,
-        mileageKm,
+        mileageKm: manualMileageKm ?? mileageKm,
         newPrice: null,
         condition: "good",
         serviceHistory: "unknown",
@@ -1942,131 +1495,45 @@ export default function VehicleAuditPage() {
         damage: "none",
         usage: "private",
       }),
-    [mileageKm, summary]
+    [manualMileageKm, mileageKm, summary]
   );
 
-  const ownersCountNum = toNumber(proklepniSummary?.ownerCount) ?? toNumber(summary?.ownerCountLabel);
+  const ownersCountNum = toNumber(vehicleSummary?.ownerCount) ?? toNumber(summary?.ownerCountLabel);
   const ownerCountLabel = ownersCountNum != null ? formatNumber(ownersCountNum) : safeStr(summary?.ownerCountLabel);
 
-  const ownerRecords = useMemo(
-    () => buildOwnerRecords(ownerObjects, ownersCountNum),
-    [ownerObjects, ownersCountNum]
-  );
-
-  useEffect(() => {
-    setOwnerFallbackRecords(null);
-  }, [displayedVin]);
-
-  useEffect(() => {
-    const queryVin = normalizeVinInput(displayedVin);
-    const expectedCount = ownersCountNum ?? summary?.ownerCount ?? null;
-    const historicalCount = ownerRecords.filter((row) => row.toDate != null || !row.isCurrent).length;
-    const needsFallback =
-      ownerRecords.length <= 2
-      || (expectedCount != null && ownerRecords.length < expectedCount)
-      || (historicalCount === 0 && (expectedCount == null || expectedCount > 2));
-
-    if (!result || !summary || loading) return;
-    if (!queryVin || queryVin.length < 11) return;
-    if (proklepniOwnerRecords.length > 0) return;
-    if (!needsFallback) return;
-    if (ownerFallbackRecords && ownerFallbackRecords.length >= ownerRecords.length) return;
-    if (!user) return;
-
-    const controller = new AbortController();
-    let cancelled = false;
-
-    const loadFallbackOwners = async () => {
-      try {
-        const { response, data } = await fetchAuthedJson<ProklepniOwnersResponse>(user, `/api/proklepni/owners?vin=${encodeURIComponent(queryVin)}`, {
-          method: "GET",
-          signal: controller.signal,
-        });
-        if (!response.ok) return;
-
-        const payload = data;
-        if (!payload || payload.ok !== true || !Array.isArray(payload.records) || cancelled) return;
-
-        const mapped = payload.records
-          .map((item, idx, arr) => {
-            const row = item as ProklepniOwnerRow;
-            const fromDate = parseDateLoose(row.fromIso);
-            const toDate = parseDateLoose(row.toIso);
-            const name = safeStr(row.name);
-            const roleLabel = safeStr(row.roleLabel);
-            const icoLabel = safeStr(row.icoLabel);
-            const addressLabel = safeStr(row.addressLabel);
-
-            return {
-              id: `fallback-proklepni-${idx}-${name}-${roleLabel}-${formatDateCs(fromDate)}-${formatDateCs(toDate)}`,
-              order: arr.length - idx,
-              name: name === "—" ? "Neuvedený subjekt" : name,
-              roleLabel: roleLabel === "—" ? "vlastník + provozovatel" : roleLabel,
-              icoLabel: icoLabel === "—" ? "IČO neuvedeno" : icoLabel,
-              addressLabel: addressLabel === "—" ? "Adresa neuvedena" : addressLabel,
-              fromDate,
-              toDate,
-              fromLabel: formatDateCs(fromDate),
-              toLabel: toDate ? formatDateCs(toDate) : "dosud",
-              isCurrent: row.isCurrent === true || toDate == null,
-            } satisfies OwnerRecord;
-          })
-          .filter((row) => row.fromDate != null || row.toDate != null || row.name !== "Neuvedený subjekt");
-
-        if (mapped.length > 0 && !cancelled) {
-          setOwnerFallbackRecords(mapped);
-        }
-      } catch (err: any) {
-        if (err?.name === "AbortError") return;
-      }
-    };
-
-    void loadFallbackOwners();
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [displayedVin, loading, ownerFallbackRecords, ownerRecords, ownersCountNum, proklepniOwnerRecords.length, result, summary, user]);
-
-  const resolvedOwnerRecords = useMemo(() => {
-    if (proklepniOwnerRecords.length > 0) return proklepniOwnerRecords;
-    return mergeOwnerHistory(ownerRecords, ownerFallbackRecords ?? []);
-  }, [ownerFallbackRecords, ownerRecords, proklepniOwnerRecords]);
+  const resolvedOwnerRecords = vehicleOwnerRecords;
 
   const stkChecks = useMemo(
     () =>
-      proklepniStkChecks.length > 0
-        ? proklepniStkChecks
+      vehicleStkChecks.length > 0
+        ? vehicleStkChecks
         : buildStkChecks(stkObjects, stkSignals, mileageSignals, stkDate, mileageKm),
-    [mileageKm, mileageSignals, proklepniStkChecks, stkDate, stkObjects, stkSignals]
+    [mileageKm, mileageSignals, vehicleStkChecks, stkDate, stkObjects, stkSignals]
   );
 
-  const currentOwner = resolvedOwnerRecords.find((row) => row.roleLabel.includes("vlast") && row.isCurrent) ?? resolvedOwnerRecords[0] ?? null;
-  const currentOperator =
-    resolvedOwnerRecords.find((row) => row.roleLabel.includes("provoz") && row.isCurrent) ?? resolvedOwnerRecords[1] ?? resolvedOwnerRecords[0] ?? null;
-  const averageAnnualKm =
-    toNumber(proklepniSummary?.avgAnnualKm) ??
-    Math.round(estimate.expectedMileage / Math.max(1, estimate.ageYears || 1));
-  const stkNoteLabel = safeStr(proklepniStkStatus?.note);
-  const imported = toBool(proklepniSummary?.wasImported);
-  const importCountryLabel = safeStr(proklepniSummary?.importCountry);
+  const latestStk = stkChecks.find((check) => check.sourceLabel === "STK" && check.date);
+  const currentSubjects = resolvedOwnerRecords.filter((row) => row.isCurrent);
+  const averageAnnualKm = useMemo(() => {
+    const first = vehicleMileageHistory[0];
+    const last = vehicleMileageHistory.at(-1);
+    if (!first?.date || !last?.date || last.km < first.km) return null;
+    const years = (last.date.getTime() - first.date.getTime()) / (365.25 * 86400_000);
+    return years >= 1 ? Math.round((last.km - first.km) / years) : null;
+  }, [vehicleMileageHistory]);
+  const imported = toBool(vehicleSummary?.wasImported);
+  const importCountryLabel = safeStr(vehicleSummary?.importCountry);
   const originValue =
-    imported === true ? "Dovoz" : imported === false ? "ČR" : (summary?.categoryLabel ?? "—");
+    imported === true ? "Dovoz" : imported === false ? "ČR" : "Původ neuvedený";
   const originSubtitle =
     imported === true
       ? (importCountryLabel !== "—" ? importCountryLabel : "Původ neuveden")
       : (summary?.status ?? "—");
 
-  const manualMileageKm = useMemo(() => {
-    const parsed = toNumber(refineMileage);
-    return isPlausibleMileage(parsed) ? parsed : null;
-  }, [refineMileage]);
-
-  const proklepniInterpolatedPrice = useMemo(() => {
+  const vehicleInterpolatedPrice = useMemo(() => {
     if (!isPlausibleMileage(manualMileageKm)) return null;
-    if (proklepniMileagePriceRows.length === 0) return null;
+    if (vehicleMileagePriceRows.length === 0) return null;
 
-    const sorted = [...proklepniMileagePriceRows].sort((a, b) => a.km - b.km);
+    const sorted = [...vehicleMileagePriceRows].sort((a, b) => a.km - b.km);
     if (manualMileageKm <= sorted[0].km) return sorted[0].price;
     if (manualMileageKm >= sorted[sorted.length - 1].km) return sorted[sorted.length - 1].price;
 
@@ -2080,40 +1547,40 @@ export default function VehicleAuditPage() {
     }
 
     return null;
-  }, [manualMileageKm, proklepniMileagePriceRows]);
+  }, [manualMileageKm, vehicleMileagePriceRows]);
 
   const valuationRecommended =
-    proklepniInterpolatedPrice ??
-    toNumber(proklepniValuation?.estimatedPrice) ??
+    vehicleInterpolatedPrice ??
+    toNumber(vehicleValuation?.estimatedPrice) ??
     estimate.recommended;
-  const baseValuationRangeLow = toNumber(proklepniValuation?.fairRangeLow) ?? estimate.rangeLow;
-  const baseValuationRangeHigh = toNumber(proklepniValuation?.fairRangeHigh) ?? estimate.rangeHigh;
-  const valuationFairRangePct = toNumber(proklepniValuation?.fairRangePct);
+  const baseValuationRangeLow = toNumber(vehicleValuation?.fairRangeLow) ?? estimate.rangeLow;
+  const baseValuationRangeHigh = toNumber(vehicleValuation?.fairRangeHigh) ?? estimate.rangeHigh;
+  const valuationFairRangePct = toNumber(vehicleValuation?.fairRangePct);
   const valuationRangeLow = useMemo(() => {
-    if (proklepniInterpolatedPrice == null || valuationFairRangePct == null) return baseValuationRangeLow;
-    return roundTo(proklepniInterpolatedPrice * (1 - valuationFairRangePct / 100), 1_000);
-  }, [baseValuationRangeLow, proklepniInterpolatedPrice, valuationFairRangePct]);
+    if (vehicleInterpolatedPrice == null || valuationFairRangePct == null) return baseValuationRangeLow;
+    return roundTo(vehicleInterpolatedPrice * (1 - valuationFairRangePct / 100), 1_000);
+  }, [baseValuationRangeLow, vehicleInterpolatedPrice, valuationFairRangePct]);
   const valuationRangeHigh = useMemo(() => {
-    if (proklepniInterpolatedPrice == null || valuationFairRangePct == null) return baseValuationRangeHigh;
-    return roundTo(proklepniInterpolatedPrice * (1 + valuationFairRangePct / 100), 1_000);
-  }, [baseValuationRangeHigh, proklepniInterpolatedPrice, valuationFairRangePct]);
-  const valuationComparableCount = toNumber(proklepniValuation?.comparableCount);
+    if (vehicleInterpolatedPrice == null || valuationFairRangePct == null) return baseValuationRangeHigh;
+    return roundTo(vehicleInterpolatedPrice * (1 + valuationFairRangePct / 100), 1_000);
+  }, [baseValuationRangeHigh, vehicleInterpolatedPrice, valuationFairRangePct]);
+  const valuationComparableCount = toNumber(vehicleValuation?.comparableCount);
   const valuationReferenceMileage =
     manualMileageKm ??
-    toNumber(proklepniValuation?.referenceMileageKm) ??
+    toNumber(vehicleValuation?.referenceMileageKm) ??
     mileageKm;
-  const valuationConfidenceRaw = safeStr(proklepniValuation?.confidenceLabel);
+  const valuationConfidenceRaw = safeStr(vehicleValuation?.confidenceLabel);
   const valuationConfidenceLabel =
     valuationConfidenceRaw !== "—"
       ? valuationConfidenceRaw
       : `${confidenceLabel(estimate.confidenceScore)} spolehlivost`;
-  const valuationInfoTitle = safeStr(proklepniValuation?.infoTitle);
-  const valuationInfoText = safeStr(proklepniValuation?.infoText);
-  const valuationMarkerPct = manualMileageKm != null ? null : toNumber(proklepniValuation?.markerPct);
-  const valuationSegmentUnderPct = toNumber(proklepniValuation?.segmentUnderPct);
-  const valuationSegmentFairPct = toNumber(proklepniValuation?.segmentFairPct);
-  const valuationSegmentOverPct = toNumber(proklepniValuation?.segmentOverPct);
-  const valuationHighlightedMileageKm = manualMileageKm ?? toNumber(proklepniValuation?.highlightedMileageKm);
+  const valuationInfoTitle = safeStr(vehicleValuation?.infoTitle);
+  const valuationInfoText = safeStr(vehicleValuation?.infoText);
+  const valuationMarkerPct = manualMileageKm != null ? null : toNumber(vehicleValuation?.markerPct);
+  const valuationSegmentUnderPct = toNumber(vehicleValuation?.segmentUnderPct);
+  const valuationSegmentFairPct = toNumber(vehicleValuation?.segmentFairPct);
+  const valuationSegmentOverPct = toNumber(vehicleValuation?.segmentOverPct);
+  const valuationHighlightedMileageKm = manualMileageKm ?? toNumber(vehicleValuation?.highlightedMileageKm);
 
   const hasVehicleForSauto = !!summary && summary.brand !== "—" && summary.model !== "—";
 
@@ -2122,6 +1589,8 @@ export default function VehicleAuditPage() {
     if (marketPrice == null || !Number.isFinite(marketPrice)) return null;
     return roundTo(marketPrice * 0.7 + valuationRecommended * 0.3, 5_000);
   }, [sautoMarket?.stats.recommended, valuationRecommended]);
+  const displayedRangeLow = marketRecommendation != null ? sautoMarket?.stats.q1 ?? valuationRangeLow : valuationRangeLow;
+  const displayedRangeHigh = marketRecommendation != null ? sautoMarket?.stats.q3 ?? valuationRangeHigh : valuationRangeHigh;
 
   const sautoVsInternalPct = useMemo(() => {
     const marketPrice = sautoMarket?.stats.recommended;
@@ -2141,16 +1610,16 @@ export default function VehicleAuditPage() {
     return roundTo(valuationRangeHigh * 1.25, 1_000);
   }, [sautoMarket?.stats.max, valuationRangeHigh]);
 
-  const marketMin = toNumber(proklepniValuation?.marketMin) ?? fallbackMarketMin;
-  const marketMax = toNumber(proklepniValuation?.marketMax) ?? fallbackMarketMax;
+  const marketMin = toNumber(vehicleValuation?.marketMin) ?? fallbackMarketMin;
+  const marketMax = toNumber(vehicleValuation?.marketMax) ?? fallbackMarketMax;
 
   const mileagePriceRows = useMemo<MileagePriceRow[]>(() => {
-    if (proklepniMileagePriceRows.length > 0) {
+    if (vehicleMileagePriceRows.length > 0) {
       const highlightedKm = isPlausibleMileage(valuationHighlightedMileageKm)
         ? valuationHighlightedMileageKm
         : null;
 
-      return proklepniMileagePriceRows.map((row) => ({
+      return vehicleMileagePriceRows.map((row) => ({
         ...row,
         highlighted:
           row.highlighted ||
@@ -2180,14 +1649,14 @@ export default function VehicleAuditPage() {
     estimate.expectedMileage,
     estimate.recommended,
     mileageKm,
-    proklepniMileagePriceRows,
+    vehicleMileagePriceRows,
     valuationHighlightedMileageKm,
     valuationReferenceMileage,
   ]);
 
   const mileageHistory = useMemo<MileagePoint[]>(() => {
-    if (proklepniMileageHistory.length >= 1) {
-      return proklepniMileageHistory.slice(-12);
+    if (vehicleMileageHistory.length >= 1) {
+      return vehicleMileageHistory.slice(-12);
     }
 
     const labelFromDate = (date: Date) =>
@@ -2221,280 +1690,25 @@ export default function VehicleAuditPage() {
       ).values()
     ).sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    if (unique.length >= 2) return unique.slice(-12);
-
-    const fallbackBase = mileageKm ?? estimate.expectedMileage ?? 120_000;
-    const now = new Date();
-    const generated: MileagePoint[] = [];
-    for (let i = 0; i < 8; i += 1) {
-      const dt = new Date(now.getFullYear() - (7 - i), 1, 1);
-      const km = Math.max(20_000, Math.round(fallbackBase * (0.45 + i * 0.09)));
-      generated.push({
-        label: dt.toLocaleDateString("cs-CZ", { month: "short", year: "2-digit" }),
-        date: dt,
-        km,
-      });
-    }
-    return generated;
-  }, [estimate.expectedMileage, mileageKm, mileageSignals, proklepniMileageHistory, stkChecks]);
+    return unique.slice(-12);
+  }, [mileageSignals, vehicleMileageHistory, stkChecks]);
 
   const technicalSections = useMemo<SpecSection[]>(() => {
-    const lookupKey = (value: string) =>
-      normalizeText(value)
-        .replace(/[^a-z0-9]+/g, " ")
-        .trim();
-
-    const proklepniLookup = new Map<string, Map<string, string>>();
-    for (const sectionRaw of proklepniTechnicalSectionsRaw) {
-      const sectionObj = readObject(sectionRaw);
-      const sectionTitle = safeStr(sectionObj?.title);
-      if (sectionTitle === "—") continue;
-
-      const rowMap = new Map<string, string>();
-      const rowsRaw = Array.isArray(sectionObj?.rows)
-        ? (sectionObj?.rows as ProklepniReportTechnicalRow[])
-        : [];
-
-      for (const rowRaw of rowsRaw) {
-        const rowObj = readObject(rowRaw);
-        const label = safeStr(rowObj?.label);
-        const value = safeStr(rowObj?.value);
-        if (label === "—" || value === "—") continue;
-        rowMap.set(lookupKey(label), value);
+    return vehicleTechnicalSectionsRaw.flatMap((section) => {
+      const title = safeStr(section.title);
+      const values = Array.isArray(section.rows) ? section.rows as VehicleReportTechnicalRow[] : [];
+      const rows: SpecSection["rows"] = [];
+      for (let index = 0; index < values.length; index += 2) {
+        rows.push({
+          left: { label: safeStr(values[index].label), value: safeStr(values[index].value) },
+          right: { label: values[index + 1] ? safeStr(values[index + 1].label) : "", value: values[index + 1] ? safeStr(values[index + 1].value) : "" },
+        });
       }
+      return rows.length ? [{ title, rows }] : [];
+    });
+  }, [vehicleTechnicalSectionsRaw]);
 
-      if (rowMap.size > 0) {
-        proklepniLookup.set(lookupKey(sectionTitle), rowMap);
-      }
-    }
-
-    const fromProklepni = (sectionTitles: string[], labels: string[]): string | null => {
-      for (const sectionTitle of sectionTitles) {
-        const sectionRows = proklepniLookup.get(lookupKey(sectionTitle));
-        if (!sectionRows) continue;
-        for (const label of labels) {
-          const value = sectionRows.get(lookupKey(label));
-          if (value && value !== "—") return value;
-        }
-      }
-      return null;
-    };
-
-    const v = (
-      keys: string[],
-      fallback?: { sectionTitles: string[]; labels: string[] }
-    ) => {
-      const dataValue = safeStr(firstOf(data, keys));
-      if (dataValue !== "—") return dataValue;
-      if (!fallback) return "—";
-      return fromProklepni(fallback.sectionTitles, fallback.labels) ?? "—";
-    };
-
-    const vn = (
-      keys: string[],
-      fallback?: { sectionTitles: string[]; labels: string[] }
-    ) => {
-      const dataNumber = toNumber(firstOf(data, keys));
-      if (dataNumber != null) return formatNumber(dataNumber);
-      if (!fallback) return "—";
-      const fallbackValue = fromProklepni(fallback.sectionTitles, fallback.labels);
-      const fallbackNumber = toNumber(fallbackValue);
-      return fallbackNumber != null ? formatNumber(fallbackNumber) : "—";
-    };
-
-    const vnUnit = (
-      keys: string[],
-      unit: string,
-      fallback?: { sectionTitles: string[]; labels: string[] }
-    ) => {
-      const numeric = vn(keys, fallback);
-      return numeric === "—" ? "—" : `${numeric} ${unit}`;
-    };
-
-    return [
-      {
-        title: "Motor a výkon",
-        rows: [
-          {
-            left: { label: "Palivo", value: summary?.fuel ?? "—" },
-            right: { label: "Výkon", value: summary?.powerKw != null ? `${formatNumber(summary.powerKw)} kW` : "—" },
-          },
-          {
-            left: {
-              label: "Otáčky max. výkonu",
-              value: v(
-                ["MotorOtackyMaxVykon", "OtackyMaxVykon"],
-                { sectionTitles: ["Motor a výkon"], labels: ["Otáčky max. výkonu"] }
-              ),
-            },
-            right: { label: "Objem motoru", value: summary?.displacement != null ? `${formatNumber(summary.displacement)} cm³` : "—" },
-          },
-          {
-            left: {
-              label: "Kód motoru",
-              value: v(
-                ["CisloMotoru", "KodMotoru", "MotorKod"],
-                { sectionTitles: ["Motor a výkon"], labels: ["Kód motoru"] }
-              ),
-            },
-            right: {
-              label: "Max. rychlost",
-              value: vnUnit(
-                ["NejvyssiRychlost", "MaxRychlost"],
-                "km/h",
-                { sectionTitles: ["Motor a výkon"], labels: ["Max. rychlost"] }
-              ),
-            },
-          },
-        ],
-      },
-      {
-        title: "Spotřeba a emise",
-        rows: [
-          {
-            left: {
-              label: "Město",
-              value: v(
-                ["SpotrebaMesto", "SpotrebaMestska"],
-                { sectionTitles: ["Spotřeba paliva (l/100 km)"], labels: ["Město"] }
-              ),
-            },
-            right: {
-              label: "Mimo město",
-              value: v(
-                ["SpotrebaMimoMesto", "SpotrebaMimomestska"],
-                { sectionTitles: ["Spotřeba paliva (l/100 km)"], labels: ["Mimo město"] }
-              ),
-            },
-          },
-          {
-            left: {
-              label: "Kombinovaná",
-              value: v(
-                ["SpotrebaKomb", "SpotrebaKombinovana", "Spotreba"],
-                { sectionTitles: ["Spotřeba paliva (l/100 km)"], labels: ["Kombinovaná"] }
-              ),
-            },
-            right: {
-              label: "CO₂ kombinované",
-              value: v(
-                ["EmiseCo2Komb", "Co2", "CO2"],
-                { sectionTitles: ["Emise CO₂ (g/km)"], labels: ["Kombinované"] }
-              ),
-            },
-          },
-          {
-            left: {
-              label: "CO₂ město",
-              value: v(
-                ["EmiseCo2Mesto"],
-                { sectionTitles: ["Emise CO₂ (g/km)"], labels: ["Město"] }
-              ),
-            },
-            right: {
-              label: "CO₂ mimo město",
-              value: v(
-                ["EmiseCo2MimoMesto"],
-                { sectionTitles: ["Emise CO₂ (g/km)"], labels: ["Mimo město"] }
-              ),
-            },
-          },
-        ],
-      },
-      {
-        title: "Rozměry a hmotnost",
-        rows: [
-          {
-            left: {
-              label: "Délka",
-              value: vnUnit(
-                ["Delka", "VozidloDelka", "RozmeryDelka", "DelkaVozidla"],
-                "mm",
-                { sectionTitles: ["Rozměry a hmotnost"], labels: ["Délka"] }
-              ),
-            },
-            right: {
-              label: "Šířka",
-              value: vnUnit(
-                ["Sirka", "VozidloSirka", "RozmerySirka", "SirkaVozidla"],
-                "mm",
-                { sectionTitles: ["Rozměry a hmotnost"], labels: ["Šířka"] }
-              ),
-            },
-          },
-          {
-            left: {
-              label: "Výška",
-              value: vnUnit(
-                ["Vyska", "VozidloVyska", "RozmeryVyska", "VyskaVozidla"],
-                "mm",
-                { sectionTitles: ["Rozměry a hmotnost"], labels: ["Výška"] }
-              ),
-            },
-            right: {
-              label: "Provozní hmotnost",
-              value: vnUnit(
-                ["HmotnostiProvozni", "ProvozniHmotnost"],
-                "kg",
-                { sectionTitles: ["Rozměry a hmotnost"], labels: ["Provozní hmotnost"] }
-              ),
-            },
-          },
-          {
-            left: {
-              label: "Počet náprav",
-              value: v(
-                ["PocetNaprav"],
-                { sectionTitles: ["Rozměry a hmotnost"], labels: ["Počet náprav"] }
-              ),
-            },
-            right: {
-              label: "Nejv. povolená hmotnost",
-              value: vnUnit(
-                ["HmotnostiPripPov", "HmotnostiPripPovJS", "NejvetsiPovolenaHmotnost"],
-                "kg"
-              ),
-            },
-          },
-        ],
-      },
-      {
-        title: "Obsaditelnost a identifikace",
-        rows: [
-          {
-            left: {
-              label: "Počet míst celkem",
-              value: v(
-                ["VozidloKaroserieMist", "PocetMist"],
-                { sectionTitles: ["Obsaditelnost"], labels: ["Počet míst celkem"] }
-              ),
-            },
-            right: {
-              label: "Míst k sezení",
-              value: v(
-                ["PocetMistSezeni", "MistaKSezeni"],
-                { sectionTitles: ["Obsaditelnost"], labels: ["Míst k sezení"] }
-              ),
-            },
-          },
-          {
-            left: { label: "Rok výroby", value: summary?.year != null ? String(summary.year) : "—" },
-            right: { label: "1. registrace", value: summary?.firstRegistrationLabel ?? "—" },
-          },
-          {
-            left: { label: "1. registrace v ČR", value: formatDateCs(parseDateLoose(firstOf(data, ["DatumPrvniRegistraceVCr", "PrvniRegistraceVCr"]))) },
-            right: { label: "Barva", value: summary?.color ?? "—" },
-          },
-          {
-            left: { label: "Typ / varianta", value: `${v(["Typ"], { sectionTitles: ["Identifikace"], labels: ["Typ"] })} / ${v(["Varianta"], { sectionTitles: ["Identifikace"], labels: ["Varianta"] })}` },
-            right: { label: "Kategorie / status", value: `${v(["Kategorie", "KategorieVozidla"])} / ${summary?.status ?? "—"}` },
-          },
-        ],
-      },
-    ];
-  }, [data, proklepniTechnicalSectionsRaw, summary]);
-
-  const canSearch = !!user && vin.trim().length >= 11;
+  const canSearch = !!user && isValidVehicleQuery(normalizeVehicleQuery(vin));
 
   const handleSearchByVin = useCallback(async (value: string) => {
     if (!user) {
@@ -2503,13 +1717,14 @@ export default function VehicleAuditPage() {
     }
 
     const queryVin = normalizeVinInput(value);
-    if (lookupInFlightRef.current || queryVin.length < 11) return;
+    if (lookupInFlightRef.current || !isValidVehicleQuery(queryVin)) return;
     lookupInFlightRef.current = true;
     lookupVersionRef.current += 1;
     setLoading(true);
     setError(null);
     setResult(null);
-    setProklepniReport(null);
+    setVehicleReport(null);
+    setVehicleChecks(null);
     setStkExpanded(false);
     setOwnersExpanded(false);
     setSautoError(null);
@@ -2518,28 +1733,18 @@ export default function VehicleAuditPage() {
     setSautoPanelActivated(false);
 
     try {
-      const [rsvResult, proklepniResult] = await Promise.allSettled([
-        rsvVehicleLookupByVin(queryVin),
-        fetchAuthedJson<ProklepniReportResponse>(user, `/api/proklepni/report?vin=${encodeURIComponent(queryVin)}`, {
-          method: "GET",
-        }),
-      ]);
-
-      if (proklepniResult.status === "fulfilled") {
-        const { response, data } = proklepniResult.value;
-        if (response.ok) {
-          const payload = data;
-          if (isProklepniReportResponse(payload)) {
-            setProklepniReport(payload.report as ProklepniReportPayload);
-          }
-        }
+      const { response, data } = await fetchAuthedJson<VehicleLookupResponse & { error?: string }>(user, "/api/autokuk/vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: queryVin }),
+      });
+      if (!response.ok || data?.ok !== true || !data.result?.vin || !data.report) {
+        throw new Error(data?.error || "Nepodařilo se načíst údaje vozidla.");
       }
-
-      if (rsvResult.status !== "fulfilled") {
-        throw rsvResult.reason;
-      }
-
-      setResult(rsvResult.value as LookupResult);
+      setResult(data.result);
+      setVehicleReport(data.report);
+      setVehicleChecks(data.checks);
+      setLookupQuery(queryVin);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Nepodařilo se načíst data vozidla.");
     } finally {
@@ -2556,7 +1761,7 @@ export default function VehicleAuditPage() {
 
   useEffect(() => {
     if (!user) return;
-    if (vinFromQuery.length < 11) return;
+    if (!isValidVehicleQuery(vinFromQuery)) return;
     if (autoLookupVinRef.current === vinFromQuery) return;
     autoLookupVinRef.current = vinFromQuery;
     setSearchActivated(true);
@@ -2583,7 +1788,7 @@ export default function VehicleAuditPage() {
     }
 
     if (!summary || !hasVehicleForSauto) {
-      setSautoError("Nejdřív načti VIN, aby bylo jasné, jakou značku a model hledat.");
+      setSautoError("Nejdřív načti vozidlo, aby bylo jasné, jakou značku a model hledat.");
       return;
     }
 
@@ -2604,7 +1809,7 @@ export default function VehicleAuditPage() {
           brand: summary.brand,
           model: summary.model,
           year: summary.year,
-          mileageKm,
+          mileageKm: manualMileageKm ?? mileageKm,
           fuel: summary.fuel,
           powerKw: summary.powerKw,
           displacement: summary.displacement,
@@ -2623,7 +1828,7 @@ export default function VehicleAuditPage() {
     } finally {
       if (lookupVersion === lookupVersionRef.current) setSautoLoading(false);
     }
-  }, [hasVehicleForSauto, mileageKm, summary, user]);
+  }, [hasVehicleForSauto, manualMileageKm, mileageKm, summary, user]);
 
   const handleCopyResult = async () => {
     const text = [
@@ -2655,7 +1860,7 @@ export default function VehicleAuditPage() {
   };
 
   const handleCopyIdentifier = async (
-    id: "vin" | "orv",
+    id: "vin" | "orv" | "tp",
     value: string
   ) => {
     if (!value || value === "—") return;
@@ -2679,7 +1884,8 @@ export default function VehicleAuditPage() {
     setShowRefineInputs(false);
     setResult(null);
     setError(null);
-    setProklepniReport(null);
+    setVehicleReport(null);
+    setVehicleChecks(null);
     setSautoMarket(null);
     setSautoError(null);
     setSautoLoading(false);
@@ -2787,16 +1993,28 @@ export default function VehicleAuditPage() {
                         {copiedId === "orv" ? "Zkopírováno" : "Kopírovat"}
                       </span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyIdentifier("tp", tpLabel)}
+                      disabled={tpLabel === "—"}
+                      className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">TP</span>
+                      <span className={`${styles.identifier} font-semibold text-slate-900`}>{tpLabel === "—" ? "Neuvedeno" : tpLabel}</span>
+                      <ClipboardCopy className="h-3.5 w-3.5 text-slate-500" />
+                      <span className="text-[11px] text-slate-500">{copiedId === "tp" ? "Zkopírováno" : "Kopírovat"}</span>
+                    </button>
                   </div>
                 </div>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <Tile
-                    title="STK kontroly"
-                    value={summary.stkDoLabel}
-                    subtitle={stkNoteLabel !== "—" ? stkNoteLabel : stkState === "rose" ? "Po termínu" : stkState === "amber" ? "Brzy končí" : "Platná"}
+                    title="Poslední STK"
+                    value={latestStk?.dateLabel ?? "Neuvedena"}
+                    subtitle={latestStk ? `${latestStk.resultLabel} · ${stkDate ? `platnost do ${summary.stkDoLabel}` : "Platnost neuvedena"}` : "Záznam STK není dostupný"}
                     icon={<CalendarClock className="h-3.5 w-3.5" />}
-                    tone={stkState === "green" ? "green" : stkState === "rose" ? "rose" : "amber"}
+                    tone={latestStk?.isPassed === false ? "rose" : "neutral"}
                   />
                   <Tile
                     title="Majitelé"
@@ -2808,7 +2026,7 @@ export default function VehicleAuditPage() {
                   <Tile
                     title="Tachometr"
                     value={formatKm(mileageKm)}
-                    subtitle={`Ø ${formatNumber(averageAnnualKm)} km/rok`}
+                    subtitle={vehicleSummary?.lastOdometerDate ? `Záznam z ${formatDateCs(parseDateLoose(vehicleSummary.lastOdometerDate))}` : "Datum záznamu neuvedeno"}
                     icon={<Gauge className="h-3.5 w-3.5" />}
                     tone="neutral"
                   />
@@ -2844,6 +2062,8 @@ export default function VehicleAuditPage() {
               {sautoError && <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">{sautoError}</p>}
             </section>
 
+            {vehicleChecks && <VehicleAdditionalChecks checks={vehicleChecks} />}
+
             <section className="vehicle-reveal rounded-3xl border border-slate-200 bg-white p-5" style={revealStyle(120)}>
               <h3 className="flex items-center gap-2 text-xl font-semibold text-slate-900 sm:text-2xl">
                 <LineChart className="h-5 w-5 text-slate-500" />
@@ -2852,10 +2072,10 @@ export default function VehicleAuditPage() {
 
               <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
                 <div>
-                  <div className="text-4xl font-semibold leading-none tracking-tight text-violet-700 sm:text-5xl">{formatCurrency(valuationRecommended)}</div>
+                  <div className="text-4xl font-semibold leading-none tracking-tight text-violet-700 sm:text-5xl">{formatCurrency(marketRecommendation ?? valuationRecommended)}</div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                     <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${confidenceToneClass(valuationConfidenceLabel)}`}>
-                      {valuationConfidenceLabel}
+                      {marketRecommendation != null ? "Podle nabídek SAUTO" : valuationConfidenceLabel}
                     </span>
                     <span>
                       {(valuationComparableCount ?? sautoMarket?.comparableCount ?? 0) > 0
@@ -2866,22 +2086,22 @@ export default function VehicleAuditPage() {
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-4 text-sm font-semibold text-slate-700">
                     <span>
-                      Férové rozmezí {formatCurrency(valuationRangeLow)} - {formatCurrency(valuationRangeHigh)}
+                      {marketRecommendation != null ? "Rozmezí nabídek" : "Orientační rozmezí"} {formatCurrency(displayedRangeLow)} - {formatCurrency(displayedRangeHigh)}
                       {valuationFairRangePct != null ? ` ± ${formatNumber(valuationFairRangePct)} %` : ""}
                     </span>
-                    <span>Ø nájezd {formatNumber(averageAnnualKm)} km/rok</span>
+                    {averageAnnualKm != null && <span>Ø nájezd {formatNumber(averageAnnualKm)} km/rok</span>}
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   <div className="inline-flex items-center gap-2 font-semibold text-slate-700">
                     <AlertTriangle className="h-4 w-4 text-violet-700" />
-                    {valuationInfoTitle !== "—" ? valuationInfoTitle : "Odhad na základě registru"}
+                    {marketRecommendation != null ? "Srovnání s trhem" : valuationInfoTitle !== "—" ? valuationInfoTitle : "Odhad na základě registru"}
                   </div>
                   <div className="mt-1">
-                    {valuationInfoText !== "—"
+                    {marketRecommendation != null ? "Odhad zohledňuje srovnatelné nabídky ze SAUTO. Inzerované ceny se mohou lišit od konečné prodejní ceny." : valuationInfoText !== "—"
                       ? valuationInfoText
-                      : "Výpočet používá poslední známý nájezd a historii STK. Po ruční korekci nájezdu bude výsledek přesnější."}
+                      : "Orientační výpočet podle parametrů vozidla a nájezdu. Pro srovnání s aktuálními nabídkami použij Dopočítat ze SAUTO."}
                   </div>
                 </div>
               </div>
@@ -2891,8 +2111,8 @@ export default function VehicleAuditPage() {
                   marketMin={marketMin}
                   marketMax={marketMax}
                   estimate={marketRecommendation ?? valuationRecommended}
-                  rangeLow={valuationRangeLow}
-                  rangeHigh={valuationRangeHigh}
+                  rangeLow={displayedRangeLow}
+                  rangeHigh={displayedRangeHigh}
                   segmentUnderPct={valuationSegmentUnderPct}
                   segmentFairPct={valuationSegmentFairPct}
                   segmentOverPct={valuationSegmentOverPct}
@@ -2948,7 +2168,7 @@ export default function VehicleAuditPage() {
             <section className="vehicle-reveal space-y-3" style={revealStyle(380)}>
               <CollapsibleSectionHeader
                 icon={<Users className="h-5 w-5 text-slate-500" />}
-                title="Vlastníci"
+                title="Vlastníci a provozovatelé"
                 subtitle={`${ownerCountLabel} majitelů v ČR / ${resolvedOwnerRecords.length} záznamů v registru`}
                 expanded={ownersExpanded}
                 countLabel={`${formatNumber(resolvedOwnerRecords.length)} záznamů`}
@@ -2959,8 +2179,9 @@ export default function VehicleAuditPage() {
               <div className="rounded-3xl border border-violet-200 bg-violet-50 p-4 text-sm text-slate-700">
                 <div className="text-xs font-semibold uppercase tracking-wide text-violet-700">Aktuální stav</div>
                 <div className="mt-2 space-y-1">
-                  <div><span className="font-semibold">Vlastník:</span> {currentOwner?.name ?? "Neuvedený subjekt"} ({currentOwner?.fromLabel ?? "—"})</div>
-                  <div><span className="font-semibold">Provozovatel:</span> {currentOperator?.name ?? "Neuvedený subjekt"} ({currentOperator?.fromLabel ?? "—"})</div>
+                  {currentSubjects.length > 0 ? currentSubjects.map((subject) => (
+                    <div key={subject.id}><span className="font-semibold">{subject.name}</span> · {subject.roleLabel} · od {subject.fromLabel}</div>
+                  )) : <div>Aktuální subjekt není v dostupných údajích uvedený.</div>}
                 </div>
               </div>
 
@@ -2985,14 +2206,15 @@ export default function VehicleAuditPage() {
               </div>
             </section>
 
+            {user && <VehicleVignette key={lookupQuery} user={user} query={lookupQuery} />}
+
             <section className="vehicle-reveal rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3" style={revealStyle(500)}>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-violet-700" />
                   <span>VIN: {displayedVin}</span>
                 </div>
-                <span>Registr silničních vozidel</span>
-                <span>Status odpovědi: {safeStr(result?.payload?.Status)}</span>
+                <a href="https://autokuk.cz" target="_blank" rel="noreferrer" className="underline underline-offset-4">Data: Autokuk.cz</a>
               </div>
             </section>
           </>
@@ -3000,7 +2222,7 @@ export default function VehicleAuditPage() {
 
         {searchActivated && !loading && !summary && !error && (
           <section role="status" className="vehicle-reveal rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600" style={revealStyle(60)}>
-            Pro tento VIN nemáme dostupné údaje. Zkontroluj zadané VIN a zkus vyhledat znovu.
+            Pro tuto SPZ nebo VIN nemáme dostupné údaje. Zkontroluj zadání a zkus vyhledat znovu.
           </section>
         )}
       </div>

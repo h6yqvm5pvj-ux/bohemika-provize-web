@@ -55,7 +55,6 @@ describe("globalSearchData", () => {
     expect(vehicleKeys).toContain("proklepka-vozidla");
     expect(vehicleKeys).toContain("nahrat-tachometr");
     expect(disabilityKeys).toContain("nastaveni-zivotniho-pojisteni");
-    expect(disabilityKeys).toContain("srovnavac-zivotniho-pojisteni");
     expect(comparisonKeys).toContain(
       "cestovni-pojisteni-cpp-vs-kooperativa",
     );
