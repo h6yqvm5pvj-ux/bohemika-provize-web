@@ -67,6 +67,7 @@ type GlobalSearchCommandProps = {
   user: FirebaseUser;
   compact?: boolean;
   dialogBelowDesktopHeader?: boolean;
+  triggerClassName?: string;
 };
 
 const SEARCH_DEBOUNCE_MS = 70;
@@ -153,6 +154,7 @@ export function GlobalSearchCommand({
   user,
   compact = false,
   dialogBelowDesktopHeader = true,
+  triggerClassName,
 }: GlobalSearchCommandProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -349,11 +351,11 @@ export function GlobalSearchCommand({
         type="button"
         onClick={handleOpen}
         aria-label="Globální vyhledávání"
-        className={
+        className={triggerClassName ?? (
           compact
             ? "inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
             : "flex h-10 w-full max-w-xl items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 text-left text-sm text-slate-500 shadow-sm transition hover:border-violet-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-        }
+        )}
       >
         <Search className="h-4 w-4 shrink-0" strokeWidth={2.1} aria-hidden="true" />
         {!compact ? (

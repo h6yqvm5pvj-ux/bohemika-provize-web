@@ -1,0 +1,112 @@
+.shell {
+  container: production / inline-size;
+  width: 100%;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #e6ddec;
+  border-radius: 27px;
+  background: linear-gradient(120deg, #faf7fd, #f1ebf7);
+  color: #473652;
+}
+.elevated { box-shadow: 0 12px 35px #3d20520a; }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 3px 16px; }
+.header > div { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; font-size: 13px; font-weight: 650; }
+.header svg { color: #9b7db6; flex-shrink: 0; }
+.period { border-left: 1px solid #dcd0e5; margin-left: 3px; padding-left: 12px; font-size: 11px; font-weight: 450; color: #8a7599; }
+.helpButton { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 11px; border: 1px solid #dfd2e9; background: #ffffffb3; }
+.helpButton:hover { background: #eee4f7; }
+.desktop { display: grid; gap: 13px; }
+.desktop[data-columns="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.desktop[data-columns="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.desktop[data-columns="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.column {
+  --text: #3a2849;
+  --muted: #8d799c;
+  --accent: #8e6cab;
+  --border: #eee5f4;
+  --surface: #faf7fd;
+  --money: #49315f;
+  container: production-card / inline-size;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  padding: 24px;
+  overflow: hidden;
+  border: 1px solid #e8dfef;
+  border-radius: 20px;
+  background: #fff;
+  color: var(--text);
+}
+.column[data-tone="total"] {
+  --text: #f6efff;
+  --muted: #c3afda;
+  --accent: #c9b0e4;
+  --border: #c7a9e12e;
+  --surface: #ffffff09;
+  --money: #b8ebd5;
+  border-color: #5b3a77;
+  background: radial-gradient(ellipse at 100% 0%, #67458d80, transparent 70%), linear-gradient(150deg, #462760, #28183f);
+}
+.column[data-tone="tip"] { background: #fdf9fd; }
+.cardHeader { position: relative; min-height: 105px; padding-top: 5px; }
+.cardIcon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; border: 1px solid var(--border); background: var(--surface); color: var(--accent); }
+.illustration { position: absolute; width: 136px; right: -5px; top: -15px; pointer-events: none; }
+.cardHeader h2 { position: relative; margin: 25px 0 0; font-size: 21px; line-height: 1.25; font-weight: 720; letter-spacing: -.035em; color: var(--text); }
+.description { min-height: 38px; margin-top: 4px; max-width: 310px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.commission { padding-top: 21px; padding-bottom: 20px; }
+.label { font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .15em; color: var(--muted); }
+.amount { margin-top: 7px; margin-bottom: 11px; font-size: clamp(24px, 10cqi, 38px); line-height: 1.2; font-weight: 760; letter-spacing: -.045em; color: var(--money); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.trend { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; border-radius: 7px; padding: 4px 6px; font-size: 10px; line-height: 1.5; font-weight: 650; color: #8c779b; background: #f5eff9; }
+.trend[data-direction="up"] { color: #598b76; background: #edf6f1; }
+.trend[data-direction="down"] { color: #b16f86; background: #fbf0f3; }
+.trendCaption { color: var(--muted); font-weight: 450; margin-left: 2px; }
+.column[data-tone="total"] .trend { background: #ffffff0b; color: #cbb6df; }
+.column[data-tone="total"] .trend[data-direction="up"] { color: #b8ebd5; }
+.column[data-tone="total"] .trend[data-direction="down"] { color: #e8b9cb; }
+.contractCount { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding-top: 15px; margin-top: 0; }
+.contractCount > span { color: var(--muted); font-size: 12px; }
+.contractCount strong { display: inline-grid; place-items: center; min-width: 31px; padding: 2px 9px; background: var(--surface); border-radius: 9px; font-size: 18px; font-weight: 700; color: var(--text); }
+.premiums { display: flex; flex-direction: column; gap: 13px; margin-top: 17px; padding: 14px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 13px; }
+.premiumRow { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.premiumRow dt { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 11px; line-height: 1.5; }
+.premiumRow dt svg { color: var(--accent); flex-shrink: 0; }
+.premiumRow small { display: block; color: var(--muted); font-size: 9px; }
+.premiumRow dd { margin: 0; color: var(--text); font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; text-align: right; }
+.mobile { display: none; }
+.carousel { overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; border-radius: 20px; }
+.carousel::-webkit-scrollbar { display: none; }
+.track { display: flex; }
+.slide { width: 100%; flex-shrink: 0; scroll-snap-align: start; }
+.pagination { display: flex; justify-content: center; align-items: center; margin-top: 9px; }
+.pagination button { display: grid; place-items: center; width: 34px; height: 30px; border-radius: 8px; }
+.pagination span { width: 5px; height: 5px; background: #d6c5e2; border-radius: 5px; transition: width .2s; }
+.pagination [aria-current="true"] span { width: 19px; background: #9f7bb9; }
+.shell :is(button, a):focus-visible { outline: 2px solid #a680c4; outline-offset: 3px; }
+@container production (max-width: 1000px) {
+  .desktop[data-columns="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .column { padding: 19px; }
+}
+@container production (max-width: 650px) {
+  .desktop { display: none; }
+  .mobile { display: block; }
+}
+@container production-card (max-width: 225px) {
+  .cardHeader h2 { font-size: 19px; }
+  .premiumRow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .premiumRow dd { text-align: left; padding-left: 23px; }
+  .illustration { width: 109px; right: -12px; top: -8px; }
+  .description { min-height: 58px; }
+}
+@media (max-width: 450px) {
+  .shell { padding: 12px; border-radius: 22px; }
+  .header { margin-bottom: 12px; }
+  .header > div { font-size: 12px; }
+  .period { font-size: 10px; padding-left: 0; margin: 0; border: 0; flex-basis: 100%; padding-left: 25px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pagination span { transition: none; }
+}
+
+.loading { padding: 22px; border-radius: 20px; background: linear-gradient(150deg, #462760, #28183f); }

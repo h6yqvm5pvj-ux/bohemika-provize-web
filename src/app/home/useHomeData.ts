@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import { summarizeProductionPremiums, type ProductionPremiums } from "./productionPremiums";
+
 import { auth } from "@/app/firebase";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
@@ -64,6 +66,8 @@ type HomeCachePayload = {
   myEntries: EntryDoc[];
   teamEntries: EntryDoc[];
   hasTeam: boolean;
+  myPremiums: ProductionPremiums;
+  teamPremiums: ProductionPremiums;
   myContractsCount: number;
   myImmediateSum: number;
   myImmediatePrevSum: number;
@@ -81,6 +85,8 @@ export type HomeDataState = {
   myEntries: EntryDoc[];
   teamEntries: EntryDoc[];
   hasTeam: boolean;
+  myPremiums: ProductionPremiums;
+  teamPremiums: ProductionPremiums;
   myContractsCount: number;
   myImmediateSum: number;
   myImmediatePrevSum: number;
@@ -145,7 +151,7 @@ type UserProfileApiResponse = {
 };
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
-const HOME_CACHE_VERSION = "v4-range-aware";
+const HOME_CACHE_VERSION = "v5-production-premiums";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 const TEAM_HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamHistoryRangeCache = new Map<
@@ -297,6 +303,8 @@ export function useHomeData({
   const [myEntries, setMyEntries] = useState<EntryDoc[]>([]);
   const [teamEntries, setTeamEntries] = useState<EntryDoc[]>([]);
   const [hasTeam, setHasTeam] = useState(false);
+  const [myPremiums, setMyPremiums] = useState<ProductionPremiums>({ lifeMonthly: 0, otherAnnual: 0 });
+  const [teamPremiums, setTeamPremiums] = useState<ProductionPremiums>({ lifeMonthly: 0, otherAnnual: 0 });
   const [myContractsCount, setMyContractsCount] = useState(0);
   const [myImmediateSum, setMyImmediateSum] = useState(0);
   const [myImmediatePrevSum, setMyImmediatePrevSum] = useState(0);
@@ -373,6 +381,8 @@ export function useHomeData({
       setMyEntries(payload.myEntries);
       setTeamEntries(payload.teamEntries);
       setHasTeam(payload.hasTeam);
+      setMyPremiums(payload.myPremiums);
+      setTeamPremiums(payload.teamPremiums);
       setMyContractsCount(payload.myContractsCount);
       setMyImmediateSum(payload.myImmediateSum);
       setMyImmediatePrevSum(payload.myImmediatePrevSum ?? 0);
@@ -756,10 +766,14 @@ export function useHomeData({
           previousMonthStart,
           monthStart
         );
+        const ownPremiums = summarizeProductionPremiums(ownSummaryResult.entries, monthStart, nextMonthStart);
+        const teamPremiums = summarizeProductionPremiums(teamSummaryEntries, monthStart, nextMonthStart);
         const tipSummary = await tipSummaryPromise;
 
         if (!cancelled) {
           setHasTeam(hasTeamValue);
+          setMyPremiums(ownPremiums);
+          setTeamPremiums(teamPremiums);
           setMyContractsCount(ownMonth.count);
           setMyImmediateSum(ownMonth.immediate);
           setMyImmediatePrevSum(ownPrevMonth.immediate);
@@ -811,6 +825,8 @@ export function useHomeData({
           myEntries: loadPersonalHistory ? ownHistoryResult.entries : [],
           teamEntries: filteredTeamEntries,
           hasTeam: hasTeamValue,
+          myPremiums: ownPremiums,
+          teamPremiums,
           myContractsCount: ownMonth.count,
           myImmediateSum: ownMonth.immediate,
           myImmediatePrevSum: ownPrevMonth.immediate,
@@ -957,6 +973,8 @@ export function useHomeData({
     myEntries,
     teamEntries,
     hasTeam,
+    myPremiums,
+    teamPremiums,
     myContractsCount,
     myImmediateSum,
     myImmediatePrevSum,

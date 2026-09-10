@@ -1,6 +1,7 @@
 // src/app/page.tsx
 "use client";
 
+import homeWidgetStyles from "./home/components/homeWidgets.module.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -50,6 +51,7 @@ import {
 } from "@/lib/appLanguage";
 
 import { AppLayout } from "@/components/AppLayout";
+import headerStyles from "./home/components/homeHeader.module.css";
 import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
 import { invalidateHomeCache, useHomeData } from "./home/useHomeData";
 import { type PaymentFrequency, type Product } from "./types/domain";
@@ -146,55 +148,6 @@ const resolveEffectiveAdvisorEmail = (
   const userEmail = normalizeEmail(user?.email);
   return userEmail || null;
 };
-
-function SplitTextHeading({ text }: { text: string }) {
-  const words = text.split(" ").filter(Boolean);
-  return (
-    <div className="flex flex-wrap text-5xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-6xl">
-      <style jsx>{`
-        @keyframes splitRise {
-          0% {
-            opacity: 0;
-            transform: translateY(110%) skewY(6deg);
-            filter: blur(6px);
-          }
-          60% {
-            opacity: 1;
-            transform: translateY(-6%) skewY(0deg);
-            filter: blur(0);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) skewY(0deg);
-            filter: blur(0);
-          }
-        }
-      `}</style>
-      {words.map((word, idx) => (
-        <span
-          key={`${word}-${idx}`}
-          className="relative flex overflow-hidden mr-4 last:mr-0 gap-[2px]"
-        >
-          {Array.from(word).map((char, charIdx) => (
-            <span
-              key={`${word}-${idx}-${char}-${charIdx}`}
-              className="inline-block text-slate-900"
-              style={{
-                animation:
-                  "splitRise 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
-                animationDelay: `${(idx * 8 + charIdx) * 38}ms`,
-                transform: "translateY(120%) skewY(8deg)",
-                opacity: 0,
-              }}
-            >
-              {char}
-            </span>
-          ))}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 function cleanDisplayName(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -650,6 +603,8 @@ export default function HomePage() {
     myEntries,
     teamEntries,
     hasTeam,
+    myPremiums,
+    teamPremiums,
     myContractsCount,
     myImmediateSum,
     myImmediatePrevSum,
@@ -1254,6 +1209,8 @@ export default function HomePage() {
             loading={summaryLoading}
             showTeamBox={showTeamBox}
             showOnlyTeamProduction={showOnlyTeamProduction}
+            myPremiums={myPremiums}
+            teamPremiums={teamPremiums}
             myContractsCount={myContractsCount}
             myImmediateSum={myImmediateSum}
             myImmediatePrevSum={myImmediatePrevSum}
@@ -1315,9 +1272,7 @@ export default function HomePage() {
         const availableQA = QUICK_ACTION_OPTIONS.filter(
           (opt) => !quickActions.some((q) => q.key === opt.key)
         );
-        const quickActionsCardClass = isLiteUI
-          ? "relative z-30 min-w-0 h-full rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 focus-within:border-violet-200/60 focus-within:shadow-[0_0_0_1px_rgba(221,214,254,0.3)] sm:px-7 sm:py-6"
-          : "relative z-30 min-w-0 h-full rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-5 py-5 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.24)] focus-within:border-violet-200/60 focus-within:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.3)] sm:px-7 sm:py-6";
+        const quickActionsCardClass = `${homeWidgetStyles.card} ${homeWidgetStyles.quick} ${isLiteUI ? "" : homeWidgetStyles.elevated}`;
         return (
           <section
             className={`${quickActionsCardClass} ${
@@ -1328,11 +1283,11 @@ export default function HomePage() {
             onDragOver={(e) => handleSectionDragOver(e, id)}
             onDragEnd={handleSectionDragEnd}
           >
-            <div className="relative z-10 flex items-center justify-between gap-3">
+            <div className={homeWidgetStyles.quickHeader}>
               <div className="min-w-0">
-                <h2 className="flex max-w-full items-center gap-3 text-2xl font-extrabold leading-tight tracking-[-0.02em] text-violet-50 sm:text-3xl">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
-                    <Zap className="h-4.5 w-4.5 text-amber-200" strokeWidth={2.2} aria-hidden="true" />
+                <h2 className={homeWidgetStyles.title}>
+                  <span className={homeWidgetStyles.icon}>
+                    <Zap className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                   </span>
                   <span className="min-w-0">{copy.quickActions.title}</span>
                 </h2>
@@ -1342,13 +1297,14 @@ export default function HomePage() {
                   type="button"
                   ref={qaButtonRef}
                   onClick={() => setQaPickerOpen((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-violet-100/35 bg-white/10 px-3 py-1.5 text-xs font-semibold text-violet-50 shadow-sm backdrop-blur-sm transition hover:border-violet-100/60 hover:bg-white/16"
+                  className={homeWidgetStyles.button}
+                  aria-expanded={qaPickerOpen}
                 >
                   {copy.quickActions.add}
                 </button>
                 {qaPickerOpen && (
                   <div
-                    className="absolute right-0 top-full z-50 mt-2 max-h-[320px] w-72 space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]"
+                    className="absolute right-0 top-full z-50 mt-2 max-h-[320px] w-72 max-w-[calc(100vw-64px)] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]"
                   >
                     <div className="flex items-center justify-between">
                       <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
@@ -1391,19 +1347,19 @@ export default function HomePage() {
             </div>
 
             {quickActions.length === 0 ? (
-              <p className="relative z-10 mt-4 text-sm leading-6 text-violet-100/72">
+              <p className={homeWidgetStyles.quickEmpty}>
                 {copy.quickActions.empty}
               </p>
             ) : (
-              <div className="relative z-10 mt-5 flex flex-wrap gap-2">
+              <div className={homeWidgetStyles.quickList}>
                 {quickActions.map((qa) => {
                   const actionText = resolveQuickActionText(qa, language);
                   return (
                     <div
                       key={qa.key}
-                      className="inline-flex items-center gap-2 rounded-full border border-violet-100/28 bg-white/9 px-3 py-1.5 text-sm font-medium text-violet-50 shadow-sm backdrop-blur-sm transition hover:border-violet-100/50 hover:bg-white/14"
+                      className={homeWidgetStyles.quickChip}
                     >
-                      <Link href={qa.href} className="transition hover:text-amber-200">
+                      <Link href={qa.href} className="transition">
                         {actionText.title}
                       </Link>
                       <button
@@ -1411,7 +1367,7 @@ export default function HomePage() {
                         onClick={() =>
                           persistQuickActions((prev) => prev.filter((item) => item.key !== qa.key))
                         }
-                        className="text-[12px] text-violet-100/55 transition hover:text-rose-300"
+                        className="text-xs transition"
                         aria-label={`${copy.quickActions.removeAriaPrefix} ${actionText.title}`}
                       >
                         ×
@@ -1734,15 +1690,18 @@ export default function HomePage() {
       <div className="relative isolate w-full overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_52%,#f8fafc_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <HomeBackgroundLines />
         <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
-        <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <SplitTextHeading text={`${copy.homeHeadingPrefix} ${monthLabelCapitalized} ${year}`} />
-          <div className="self-start w-full sm:w-[29.5rem]">
-            <div className="flex flex-wrap items-center justify-end gap-3">
+        <header className={headerStyles.header}>
+          <div className={headerStyles.top}>
+            <div className={headerStyles.heading}>
+              <h1>{copy.homeHeadingPrefix}</h1>
+              <span className={headerStyles.period}>{monthLabelCapitalized} {year}</span>
+            </div>
+            <div className={headerStyles.utilities}>
             <button
               type="button"
               onClick={refreshHomeData}
               disabled={!advisorDataEmail || homeRefreshBusy}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-900 bg-white text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.12)] transition hover:scale-[1.03] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 sm:hidden"
+              className={headerStyles.utilityButton}
               aria-label={copy.reloadData}
               title={copy.reloadData}
             >
@@ -1753,69 +1712,21 @@ export default function HomePage() {
               />
             </button>
 
-            <button
-              type="button"
-              onClick={() => setPortalLinksModalOpen(true)}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-pink-500 bg-gradient-to-br from-pink-500 to-rose-600 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(219,39,119,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
-              aria-label="Portály"
-              title="Portály"
-            >
-              <Globe2 size={20} aria-hidden="true" />
-              <span>Portály</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setContactsTargetId(null);
-                setContactsModalOpen(true);
-              }}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-cyan-600 bg-gradient-to-br from-cyan-500 to-sky-700 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(8,145,178,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
-              aria-label="Kontakty"
-              title="Kontakty"
-            >
-              <Smartphone size={20} aria-hidden="true" />
-              <span>Kontakty</span>
-            </button>
-
-            <Link
-              href="/pomucky/radar-vyroci"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-violet-600 bg-gradient-to-br from-violet-600 to-indigo-700 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(109,40,217,0.32)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
-              aria-label="Radar výročí"
-              title="Radar výročí"
-            >
-              <Radar size={20} aria-hidden="true" />
-              <span>Výročí</span>
-            </Link>
-
-            <Link
-              href="/posta"
-              className="relative inline-flex h-12 items-center justify-center gap-2 rounded-full border border-blue-700 bg-gradient-to-br from-blue-600 to-indigo-700 px-4 text-sm font-bold !text-white shadow-[0_12px_24px_rgba(37,99,235,0.35)] transition hover:scale-[1.03] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
-              aria-label={copy.mail}
-              title={copy.mail}
-            >
-              <Mail size={21} aria-hidden="true" />
-              <span>{copy.mail}</span>
-              {mailUnreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1 inline-flex min-w-[22px] items-center justify-center rounded-full border border-white bg-rose-600 px-1.5 text-[10px] font-bold leading-5 !text-white shadow-[0_5px_12px_rgba(190,18,60,0.4)]">
-                  {mailUnreadCount > 99 ? "99+" : mailUnreadCount}
-                </span>
-              ) : null}
-            </Link>
-
             <div className="relative z-[100]">
               <button
                 type="button"
                 onClick={() => setWidgetPanelOpen((prev) => !prev)}
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-900 bg-slate-900 !text-white shadow-[0_12px_24px_rgba(15,23,42,0.28)] transition hover:scale-[1.03] hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 [&_svg]:!stroke-white"
+                className={headerStyles.utilityButton}
+                aria-expanded={widgetPanelOpen}
                 aria-label={copy.customizeHomeAria}
                 title={copy.customizeButtonTitle}
               >
-                <SlidersHorizontal size={21} aria-hidden="true" className="opacity-90" />
+                <SlidersHorizontal size={18} aria-hidden="true" />
+                <span className={headerStyles.utilityLabel}>Upravit přehled</span>
               </button>
 
               {widgetPanelOpen && (
-                <div className="fixed left-1/2 top-[min(42vh,22rem)] z-[110] max-h-[calc(100vh-7rem)] w-[calc(100vw-2rem)] max-w-[24rem] -translate-x-1/2 overflow-y-auto rounded-[26px] border border-violet-100 bg-white p-2 shadow-[0_24px_70px_rgba(49,25,105,0.28)] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:z-[110] sm:mt-3 sm:w-[23rem] sm:max-w-none sm:translate-x-0">
+                <div className="fixed left-1/2 top-20 z-[110] max-h-[calc(100dvh-6rem)] w-[calc(100vw-2rem)] max-w-[24rem] -translate-x-1/2 overflow-y-auto rounded-[26px] border border-violet-100 bg-white p-2 shadow-[0_24px_70px_rgba(49,25,105,0.28)] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:z-[110] sm:mt-3 sm:w-[23rem] sm:max-w-none sm:translate-x-0">
                   <div className="rounded-[20px] bg-gradient-to-br from-violet-700 via-violet-600 to-indigo-800 px-4 py-4 !text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
@@ -1908,12 +1819,66 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-            <div className="mt-3 w-full">
-              <GlobalSearchCommand user={user} dialogBelowDesktopHeader={false} />
             </div>
           </div>
-        </div>
-        </div>
+          <div className={headerStyles.toolbar}>
+            <div className={headerStyles.search}>
+              <GlobalSearchCommand user={user} dialogBelowDesktopHeader={false} triggerClassName={headerStyles.searchTrigger} />
+            </div>
+            <nav className={headerStyles.actions} aria-label="Rychlé odkazy">
+            <button
+              type="button"
+              onClick={() => setPortalLinksModalOpen(true)}
+              className={headerStyles.action}
+              aria-label="Portály"
+              title="Portály"
+            >
+              <Globe2 size={20} aria-hidden="true" />
+              <span>Portály</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setContactsTargetId(null);
+                setContactsModalOpen(true);
+              }}
+              className={headerStyles.action}
+              aria-label="Kontakty"
+              title="Kontakty"
+            >
+              <Smartphone size={20} aria-hidden="true" />
+              <span>Kontakty</span>
+            </button>
+
+            <Link
+              href="/pomucky/radar-vyroci"
+              className={headerStyles.action}
+              aria-label="Radar výročí"
+              title="Radar výročí"
+            >
+              <Radar size={20} aria-hidden="true" />
+              <span>Výročí</span>
+            </Link>
+
+            <Link
+              href="/posta"
+              className={headerStyles.action}
+              aria-label={copy.mail}
+              title={copy.mail}
+            >
+              <Mail size={21} aria-hidden="true" />
+              <span>{copy.mail}</span>
+              {mailUnreadCount > 0 ? (
+                <span className={headerStyles.badge}>
+                  {mailUnreadCount > 99 ? "99+" : mailUnreadCount}
+                </span>
+              ) : null}
+            </Link>
+
+            </nav>
+          </div>
+        </header>
 
         <div className="columns-1 md:columns-2 [column-gap:1rem] sm:[column-gap:1.25rem]">
           {visibleSections.map((sec) => {

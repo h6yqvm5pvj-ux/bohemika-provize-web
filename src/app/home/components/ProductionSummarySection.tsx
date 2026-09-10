@@ -4,6 +4,8 @@ import {
   ArrowUpRight,
   BarChart3,
   CircleHelp,
+  HeartPulse,
+  ShieldCheck,
   Minus,
   Tag,
   UserRound,
@@ -15,11 +17,17 @@ import { HelpDialog } from "@/components/HelpDialog";
 import { AnimatedMoney, AnimatedNumber } from "./AnimatedNumbers";
 import { LoadingProgressPanel } from "./LoadingProgressPanel";
 
+import { ProductionIllustration } from "./ProductionIllustration";
+import styles from "./ProductionSummarySection.module.css";
+import type { ProductionPremiums } from "../productionPremiums";
+
 type Props = {
   language: AppLanguage;
   loading: boolean;
   showTeamBox: boolean;
   showOnlyTeamProduction?: boolean;
+  myPremiums: ProductionPremiums;
+  teamPremiums: ProductionPremiums;
   myContractsCount: number;
   myImmediateSum: number;
   myImmediatePrevSum: number;
@@ -37,45 +45,6 @@ type Props = {
 
 type ProductionTone = "own" | "team" | "tip" | "total";
 
-type ProductionToneTheme = {
-  iconClass: string;
-  headingClass: string;
-  amountClass: string;
-  countClass: string;
-  arrowClass: string;
-};
-
-const PRODUCTION_THEME: Record<ProductionTone, ProductionToneTheme> = {
-  own: {
-    iconClass: "text-emerald-200",
-    headingClass: "text-violet-50",
-    amountClass: "text-violet-100",
-    countClass: "text-emerald-200",
-    arrowClass: "text-emerald-200/90",
-  },
-  team: {
-    iconClass: "text-indigo-200",
-    headingClass: "text-violet-50",
-    amountClass: "text-violet-100",
-    countClass: "text-indigo-200",
-    arrowClass: "text-indigo-200/90",
-  },
-  tip: {
-    iconClass: "text-fuchsia-200",
-    headingClass: "text-violet-50",
-    amountClass: "text-violet-100",
-    countClass: "text-fuchsia-200",
-    arrowClass: "text-fuchsia-200/90",
-  },
-  total: {
-    iconClass: "text-emerald-200",
-    headingClass: "text-violet-50",
-    amountClass: "text-emerald-200",
-    countClass: "text-emerald-200",
-    arrowClass: "text-emerald-200/90",
-  },
-};
-
 const PRODUCTION_SUMMARY_COPY: Record<
   AppLanguage,
   {
@@ -90,7 +59,7 @@ const PRODUCTION_SUMMARY_COPY: Record<
       {
         titleTop: string;
         titleBottom: string;
-        description: string;
+        description?: string;
         countLabel: string;
       }
     >;
@@ -107,13 +76,11 @@ const PRODUCTION_SUMMARY_COPY: Record<
       own: {
         titleTop: "Vlastní",
         titleBottom: "produkce",
-        description: "Aktuální osobní výkon za vybrané období.",
         countLabel: "Počet smluv",
       },
       team: {
         titleTop: "Týmová",
         titleBottom: "produkce",
-        description: "Součet produkce podřízené týmové struktury.",
         countLabel: "Počet smluv",
       },
       tip: {
@@ -125,7 +92,6 @@ const PRODUCTION_SUMMARY_COPY: Record<
       total: {
         titleTop: "Celková",
         titleBottom: "produkce",
-        description: "Vlastní a týmová produkce v jednom součtu.",
         countLabel: "Počet smluv",
       },
     },
@@ -168,12 +134,6 @@ function TrendInline({
   previousMonthLabel: string;
 }) {
   const trend = buildTrend(currentValue, previousValue);
-  const trendClass =
-    trend.direction === "up"
-      ? "border-emerald-300/45 bg-emerald-300/14 text-emerald-100"
-      : trend.direction === "down"
-        ? "border-rose-300/45 bg-rose-300/14 text-rose-100"
-        : "border-violet-200/45 bg-violet-200/14 text-violet-100";
   const ArrowIcon =
     trend.direction === "up"
       ? ArrowUpRight
@@ -183,40 +143,12 @@ function TrendInline({
 
   return (
     <div
-      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:px-2.5 sm:py-1 sm:text-[11px] ${trendClass}`}
+      className={styles.trend}
+      data-direction={trend.direction}
     >
       <ArrowIcon className="h-3.5 w-3.5" strokeWidth={2.1} aria-hidden="true" />
       <span>{trend.label}</span>
-      <span className="hidden text-violet-100/60 sm:inline">{previousMonthLabel}</span>
-    </div>
-  );
-}
-
-function ShortDividerLines({
-  columns,
-  visibilityClass,
-}: {
-  columns: 2 | 3 | 4;
-  visibilityClass: string;
-}) {
-  const positions =
-    columns === 2
-      ? ["50%"]
-      : columns === 3
-        ? ["33.3333%", "66.6667%"]
-        : ["25%", "50%", "75%"];
-
-  return (
-    <div
-      className={`pointer-events-none absolute inset-0 z-0 hidden ${visibilityClass}`}
-      aria-hidden="true"
-    >
-      {positions.map((left) => (
-        <div key={left} className="absolute top-1/2 -translate-y-1/2" style={{ left }}>
-          <div className="h-[72%] w-px bg-gradient-to-b from-transparent via-violet-100/38 to-transparent" />
-          <div className="absolute left-0 top-1/2 h-[48%] w-px -translate-y-1/2 bg-gradient-to-b from-transparent via-fuchsia-200/20 to-transparent blur-[0.5px]" />
-        </div>
-      ))}
+      <span className={styles.trendCaption}>{previousMonthLabel}</span>
     </div>
   );
 }
@@ -225,7 +157,7 @@ type ProductionColumnProps = {
   tone: ProductionTone;
   titleTop: string;
   titleBottom: string;
-  description: string;
+  description?: string;
   icon: LucideIcon;
   countLabel: string;
   commissionLabel: string;
@@ -233,6 +165,7 @@ type ProductionColumnProps = {
   countValue: number;
   amountValue: number;
   previousAmountValue: number;
+  premiums?: ProductionPremiums;
 };
 
 type ProductionCard = ProductionColumnProps & {
@@ -251,43 +184,36 @@ function ProductionColumn({
   countValue,
   amountValue,
   previousAmountValue,
+  premiums,
 }: ProductionColumnProps) {
-  const theme = PRODUCTION_THEME[tone];
-
   return (
-    <article className="relative flex h-full min-h-[182px] flex-col px-3 py-2 text-left sm:min-h-[198px] sm:px-5 sm:py-3">
-      <div className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100/48 bg-violet-300/18">
-        <Icon className={`h-4.5 w-4.5 ${theme.iconClass}`} strokeWidth={2.25} aria-hidden="true" />
+    <article className={styles.column} data-tone={tone}>
+      <div className={styles.cardHeader}>
+        <span className={styles.cardIcon}><Icon size={18} strokeWidth={1.8} aria-hidden="true" /></span>
+        <div className={styles.illustration}><ProductionIllustration tone={tone} /></div>
+        <h2>{titleTop} {titleBottom}</h2>
       </div>
-
-      <h2 className={`mt-3 text-[1.65rem] font-extrabold leading-[1.03] tracking-[-0.02em] sm:text-[2rem] ${theme.headingClass}`}>
-        <span className="block">{titleTop}</span>
-        <span className="block">{titleBottom}</span>
-      </h2>
-
-      <p className="mt-2 text-sm leading-5 text-violet-100/72">{description}</p>
-
-      <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-100/70">{commissionLabel}</p>
-      <div className="mt-1 flex items-end justify-between gap-2">
-        <p className={`whitespace-nowrap text-[2rem] font-black leading-none tracking-[-0.03em] sm:text-[2.45rem] ${theme.amountClass}`}>
-          <AnimatedMoney value={amountValue} />
-        </p>
-        <ArrowUpRight className={`h-8 w-8 shrink-0 ${theme.arrowClass}`} strokeWidth={2.2} aria-hidden="true" />
+      {description && <p className={styles.description}>{description}</p>}
+      <div className={styles.commission}>
+        <p className={styles.label}>{commissionLabel}</p>
+        <p className={styles.amount}><AnimatedMoney value={amountValue} /></p>
+        <TrendInline currentValue={amountValue} previousValue={previousAmountValue} previousMonthLabel={previousMonthLabel} />
       </div>
-
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.16em] text-violet-100/70">{countLabel}</p>
-          <p className={`mt-1 text-[2rem] font-bold leading-none tracking-[-0.01em] sm:text-[2.2rem] ${theme.countClass}`}>
-            <AnimatedNumber value={countValue} />
-          </p>
-        </div>
-        <TrendInline
-          currentValue={amountValue}
-          previousValue={previousAmountValue}
-          previousMonthLabel={previousMonthLabel}
-        />
+      <div className={styles.contractCount}>
+        <span>{countLabel}</span><strong><AnimatedNumber value={countValue} /></strong>
       </div>
+      {premiums && (
+        <dl aria-label="Pojistné sjednaných smluv" className={styles.premiums}>
+          <div className={styles.premiumRow}>
+            <dt><HeartPulse size={15} aria-hidden="true" /><span>Životní<small>Měsíční pojistné</small></span></dt>
+            <dd><AnimatedMoney value={premiums.lifeMonthly} /></dd>
+          </div>
+          <div className={styles.premiumRow}>
+            <dt><ShieldCheck size={15} aria-hidden="true" /><span>Vedlejší<small>Roční pojistné</small></span></dt>
+            <dd><AnimatedMoney value={premiums.otherAnnual} /></dd>
+          </div>
+        </dl>
+      )}
     </article>
   );
 }
@@ -297,6 +223,8 @@ export function ProductionSummarySection({
   loading,
   showTeamBox,
   showOnlyTeamProduction = false,
+  myPremiums,
+  teamPremiums,
   myContractsCount,
   myImmediateSum,
   myImmediatePrevSum,
@@ -315,9 +243,7 @@ export function ProductionSummarySection({
   const [mobileCardIndex, setMobileCardIndex] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const mobileCarouselRef = useRef<HTMLDivElement | null>(null);
-  const containerShellClass = isLiteUI
-    ? "relative h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-3 py-3 text-white transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 focus-within:border-violet-200/60 focus-within:shadow-[0_0_0_1px_rgba(221,214,254,0.3)] sm:px-4 sm:py-4"
-    : "relative h-full overflow-hidden rounded-[30px] border border-violet-300/35 bg-[radial-gradient(circle_at_14%_0%,rgba(168,85,247,0.26),transparent_42%),linear-gradient(165deg,#261048_0%,#160934_58%,#0d0521_100%)] px-3 py-3 text-white shadow-[0_20px_44px_rgba(11,3,33,0.5)] transition-[border-color,box-shadow] duration-200 hover:border-violet-200/60 hover:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.24)] focus-within:border-violet-200/60 focus-within:shadow-[0_26px_54px_rgba(11,3,33,0.56),0_0_0_1px_rgba(221,214,254,0.3)] sm:px-4 sm:py-4";
+  const containerShellClass = `${styles.shell} ${isLiteUI ? "" : styles.elevated}`;
   // Karta tipařské produkce má být viditelná už od první tipařské smlouvy,
   // i kdyby její provize byla zatím nulová.
   const hasTipContract = myTipContractsCount > 0;
@@ -334,6 +260,7 @@ export function ProductionSummarySection({
     countValue: myContractsCount,
     amountValue: myImmediateSum,
     previousAmountValue: myImmediatePrevSum,
+    premiums: myPremiums,
   };
   const teamCard: ProductionCard = {
     id: "team",
@@ -348,6 +275,7 @@ export function ProductionSummarySection({
     countValue: teamContractsCount,
     amountValue: teamImmediateSum,
     previousAmountValue: teamImmediatePrevSum,
+    premiums: teamPremiums,
   };
   const tipCard: ProductionCard = {
     id: "tip",
@@ -376,6 +304,10 @@ export function ProductionSummarySection({
     countValue: totalContractsCount,
     amountValue: totalWithTeam,
     previousAmountValue: totalPrevWithTeam,
+    premiums: {
+      lifeMonthly: myPremiums.lifeMonthly + teamPremiums.lifeMonthly,
+      otherAnnual: myPremiums.otherAnnual + teamPremiums.otherAnnual,
+    },
   };
   const desktopCards = showOnlyTeamProduction
     ? [teamCard]
@@ -386,15 +318,7 @@ export function ProductionSummarySection({
       : hasTipContract
         ? [ownCard, teamCard, tipCard, totalCard]
         : [ownCard, teamCard, totalCard];
-  const mobileCards = showOnlyTeamProduction
-    ? [teamCard]
-    : !showTeamBox
-      ? hasTipContract
-        ? [ownCard, tipCard]
-        : [ownCard]
-      : hasTipContract
-        ? [ownCard, teamCard, tipCard, totalCard]
-        : [ownCard, teamCard, totalCard];
+  const mobileCards = desktopCards;
 
   useEffect(() => {
     if (mobileCarouselRef.current) {
@@ -402,7 +326,7 @@ export function ProductionSummarySection({
     }
     const resetFrame = window.requestAnimationFrame(() => setMobileCardIndex(0));
     return () => window.cancelAnimationFrame(resetFrame);
-  }, [showOnlyTeamProduction, showTeamBox, mobileCards.length]);
+  }, [showOnlyTeamProduction, showTeamBox, mobileCards.length, loading]);
 
   const handleMobileCarouselScroll = (event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
@@ -429,7 +353,7 @@ export function ProductionSummarySection({
       onClick={() => setHelpOpen(true)}
       aria-label="Otevřít nápovědu k produkci"
       title="Nápověda"
-      className="absolute right-4 top-4 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-violet-100/42 bg-violet-100/12 text-violet-50 shadow-[0_10px_24px_rgba(11,3,33,0.32)] backdrop-blur-md transition hover:border-violet-100/72 hover:bg-violet-100/20 focus:outline-none focus:ring-2 focus:ring-violet-100/70"
+      className={styles.helpButton}
     >
       <CircleHelp className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
     </button>
@@ -451,6 +375,18 @@ export function ProductionSummarySection({
             přehled nerozhoduje.
           </p>
         </div>
+
+        <section>
+          <h3 className="text-base font-bold text-slate-950">Pojistné sjednaných smluv</h3>
+          <p className="mt-1">
+            Životní pojištění ukazuje součet měsíčního pojistného. Vedlejší produkty
+            ukazují součet ročního pojistného ostatních pojištění; splátky se přepočítávají
+            podle frekvence placení. Jde o pojistné evidované u stejných smluv jako počet
+            smluv výše, nikoli o provize nebo upravenou provizní základnu.
+            Tým zahrnuje celé pojistné podřízených smluv, celkem je součet vlastní a týmové části.
+            Samostatné TIP výplaty ani nákupy zlata se do pojistného nepřičítají.
+          </p>
+        </section>
 
         {!showOnlyTeamProduction ? (
           <>
@@ -504,135 +440,38 @@ export function ProductionSummarySection({
     </HelpDialog>
   );
 
-  if (loading) {
-    return (
-      <section className={containerShellClass} data-fixed-box-theme="slate">
-        {helpButton}
-        {helpDialog}
-        <div className="relative z-10 flex h-full items-center">
-          <LoadingProgressPanel
-            title={copy.loadingTitle}
-            description={
-              showOnlyTeamProduction
-                ? "Připravuji přehled týmových smluv a provizí."
-                : copy.loadingDescription
-            }
-            accentLabel={copy.loadingAccent}
-            visual="production"
-          />
-        </div>
-      </section>
-    );
-  }
-
-  if (!showTeamBox) {
-    return (
-      <section className={containerShellClass} data-fixed-box-theme="slate">
-        {helpButton}
-        {helpDialog}
-        <div className="relative z-10 md:hidden">
-          <div
-            ref={mobileCarouselRef}
-            onScroll={handleMobileCarouselScroll}
-            className="overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-          >
-            <div className="flex">
-              {mobileCards.map((card) => (
-                <div key={card.id} className="w-full shrink-0 snap-start">
-                  <ProductionColumn {...card} />
-                </div>
-              ))}
-            </div>
-          </div>
-          {mobileCards.length > 1 ? (
-            <>
-              <div className="mt-2 flex items-center justify-center gap-1.5">
-                {mobileCards.map((card, index) => (
-                  <span
-                    key={card.id}
-                    className={`h-1.5 rounded-full transition-all ${
-                      index === mobileCardIndex ? "w-5 bg-violet-100/90" : "w-1.5 bg-violet-100/35"
-                    }`}
-                  />
-                ))}
-              </div>
-              <p className="mt-2 text-center text-[11px] font-medium text-violet-100/68">
-                {copy.swipeHint}
-              </p>
-            </>
-          ) : null}
-        </div>
-
-        <div className={`relative z-10 hidden gap-3 md:grid ${hasTipContract ? "md:grid-cols-2" : ""}`}>
-          {hasTipContract ? <ShortDividerLines columns={2} visibilityClass="md:block" /> : null}
-          {desktopCards.map((card) => (
-            <ProductionColumn key={card.id} {...card} />
-          ))}
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section className={containerShellClass} data-fixed-box-theme="slate">
-      {helpButton}
+    <section className={containerShellClass} data-fixed-box-theme="slate" aria-label="Přehled produkce">
+      <div className={styles.header}>
+        <div><BarChart3 size={16} aria-hidden="true" /><span>Přehled produkce</span><span className={styles.period}>Aktuální měsíc</span></div>
+        {helpButton}
+      </div>
       {helpDialog}
-      <div className="relative z-10 md:hidden">
-        <div
-          ref={mobileCarouselRef}
-          onScroll={handleMobileCarouselScroll}
-          className="overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <div className="flex">
-            {mobileCards.map((card) => (
-              <div key={card.id} className="w-full shrink-0 snap-start">
-                <ProductionColumn {...card} />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {mobileCards.length > 1 ? (
-          <>
-            <div className="mt-2 flex items-center justify-center gap-1.5">
-              {mobileCards.map((card, index) => (
-                <span
-                  key={card.id}
-                  className={`h-1.5 rounded-full transition-all ${
-                    index === mobileCardIndex ? "w-5 bg-violet-100/90" : "w-1.5 bg-violet-100/35"
-                  }`}
-                />
-              ))}
+      {loading ? (
+        <div className={styles.loading}><LoadingProgressPanel title={copy.loadingTitle}
+          description={showOnlyTeamProduction ? "Připravuji přehled týmových smluv a provizí." : copy.loadingDescription}
+          accentLabel={copy.loadingAccent} visual="production" /></div>
+      ) : <>
+        <div className={styles.mobile}>
+          <div ref={mobileCarouselRef} onScroll={handleMobileCarouselScroll} className={styles.carousel}>
+            <div className={styles.track}>
+              {mobileCards.map(card => <div key={card.id} className={styles.slide}><ProductionColumn {...card} /></div>)}
             </div>
-            <p className="mt-2 text-center text-[11px] font-medium text-violet-100/68">
-              {copy.swipeHint}
-            </p>
-          </>
-        ) : null}
-      </div>
-
-      <div
-        className={`relative z-10 hidden gap-3 md:grid ${
-          showOnlyTeamProduction
-            ? "md:grid-cols-1"
-            : hasTipContract
-              ? "md:grid-cols-2 xl:grid-cols-4"
-              : "md:grid-cols-3"
-        }`}
-      >
-        {showOnlyTeamProduction ? null : hasTipContract ? (
-          <>
-            <ShortDividerLines columns={2} visibilityClass="md:block xl:hidden" />
-            <ShortDividerLines columns={4} visibilityClass="xl:block" />
-          </>
-        ) : (
-          <ShortDividerLines columns={3} visibilityClass="md:block" />
-        )}
-
-        {desktopCards.map((card) => (
-          <ProductionColumn key={card.id} {...card} />
-        ))}
-      </div>
+          </div>
+          {mobileCards.length > 1 && <div className={styles.pagination} aria-label="Výběr produkce">
+            {mobileCards.map((card, index) => <button type="button" key={card.id}
+              aria-label={`Zobrazit: ${card.titleTop} ${card.titleBottom}`}
+              aria-current={index === mobileCardIndex ? "true" : undefined}
+              onClick={() => {
+                const carousel = mobileCarouselRef.current;
+                carousel?.scrollTo({ left: carousel.clientWidth * index, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+              }}><span /></button>)}
+          </div>}
+        </div>
+        <div className={styles.desktop} data-columns={desktopCards.length}>
+          {desktopCards.map(card => <ProductionColumn key={card.id} {...card} />)}
+        </div>
+      </>}
     </section>
   );
 }
