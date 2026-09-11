@@ -5,9 +5,11 @@ import {
   AUTOMATED_PDF_PRODUCTS,
   BULK_PDF_PRODUCTS,
   hasAutomatedPdfImport,
+  buildPdfImportIssueMessage,
 } from "./calculatorPdfImport";
 
 const PRODUCTS_WITH_CONTRACT_PDF_PARSER: Product[] = [
+  "conseqzenit",
   "cppAuto",
   "slaviaauto",
   "allianzAuto",
@@ -52,5 +54,23 @@ describe("AUTOMATED_PDF_PRODUCTS", () => {
     expect(hasAutomatedPdfImport("comfortcc")).toBe(true);
     expect(BULK_PDF_PRODUCTS).not.toContain("comfortcc");
     expect(BULK_PDF_PRODUCTS).toHaveLength(AUTOMATED_PDF_PRODUCTS.length - 1);
+  });
+});
+
+describe("PDF import missing amounts", () => {
+  const parsed = {
+    clientName: "Jan Novák", contractNumber: "9512345678", contractSignedDate: "2024-11-04",
+    policyStartDate: "2025-01-01", policyEndDate: "2040-04-12", frequency: "monthly",
+  };
+
+  it.each([null, undefined, "", " "])("reports an unread amount as missing: %s", (amount) => {
+    const message = buildPdfImportIssueMessage({ product: "conseqzenit", parsed: { ...parsed, amount } });
+    expect(message).toContain("Nenašel jsem výši příspěvku klienta");
+    expect(message).not.toContain("není kladná");
+  });
+
+  it("still warns about a contribution actually read as zero", () => {
+    const message = buildPdfImportIssueMessage({ product: "conseqzenit", parsed: { ...parsed, amount: 0 } });
+    expect(message).toContain("Částka: není kladná");
   });
 });

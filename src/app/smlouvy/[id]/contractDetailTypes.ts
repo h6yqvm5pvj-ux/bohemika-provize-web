@@ -274,6 +274,7 @@ export type ContractDoc = {
 
   policyStartDate?: FirestoreTimestamp | Date | string | null;
   policyEndDate?: FirestoreTimestamp | Date | string | null;
+  pensionTargetAge?: number | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
   createdAt?: FirestoreTimestamp | Date | string | null;
 

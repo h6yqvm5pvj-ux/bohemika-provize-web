@@ -608,6 +608,10 @@ export async function calculateResultForPosition(
       const { calculateZamex } = await import("../../lib/productFormulas/zamex");
       return calculateZamex(amount, freq, position);
     }
+    case "conseqzenit": {
+      const { calculateConseqZenit } = await import("../../lib/productFormulas/conseqzenit");
+      return calculateConseqZenit(amount, position);
+    }
     case "cppcestovko": {
       const { calculateCppCestovko } = await import(
         "../../lib/productFormulas/cppcestovko"

@@ -124,7 +124,9 @@ export async function markExpiredPolicyEndContractsDozita(
   if (!adminDb) throw new Error("Missing Firebase Admin configuration.");
 
   const now = options.now ?? new Date();
-  const cutoffExclusive = startOfUtcDay(now);
+  // Include today's maturities; the product lifecycle decides whether the
+  // contract matures on this day (DPS birthday) or after it (insurance).
+  const cutoffExclusive = new Date(startOfUtcDay(now).getTime() + 24 * 60 * 60 * 1000);
   const write = options.write === true;
   const limit = Math.max(0, Math.floor(Number(options.limit) || 0));
   const ownerFilter = normalizeEmail(options.ownerEmail);

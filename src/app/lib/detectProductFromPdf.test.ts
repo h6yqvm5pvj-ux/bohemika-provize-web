@@ -43,6 +43,15 @@ const makePdfFile = () =>
   new File(["pdf fixture"], "fixture.pdf", { type: "application/pdf" });
 
 describe("detectProductFromPdf", () => {
+  it("detects CONSEQ Zenit when both terms appear, including on different pages", async () => {
+    pdfState.pages = [["CONSEQ"], ["Penzijní program Zenit"]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({ product: "conseqzenit", confidence: "high" });
+  });
+
+  it.each(["Conseq", "Zenit"])("does not detect DPS from only %s", async (term) => {
+    pdfState.pages = [[term]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toBeNull();
+  });
   beforeEach(() => {
     pdfState.pages = [];
   });

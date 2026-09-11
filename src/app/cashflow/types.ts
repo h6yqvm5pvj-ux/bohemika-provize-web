@@ -218,6 +218,7 @@ export type YearGroup = {
 };
 
 export type ProductFilter =
+  | "pension"
   | "all"
   | "tip"
   | "subscription"

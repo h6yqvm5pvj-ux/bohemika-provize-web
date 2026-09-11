@@ -41,6 +41,7 @@ export const POSITION_ORDER: Position[] = [
 ];
 
 const POLICY_END_DATE_PRODUCTS = new Set<Product>([
+  "conseqzenit",
   "cppcestovko",
   "axacestovko",
   "koopcestovko",
@@ -549,6 +550,8 @@ export function normalizedDurationMonths(
 
 export function allowedFrequencies(product: Product): PaymentFrequency[] {
   switch (product) {
+    case "conseqzenit":
+      return ["monthly"];
     case "neon":
     case "flexi":
     case "pillowInjury":
@@ -628,6 +631,7 @@ export function placeholderForAmount(
   product: Product,
   freq: PaymentFrequency
 ): string {
+  if (product === "conseqzenit") return "Zadejte výši příspěvku klienta v Kč";
   if (product === "comfortcc") {
     return "Zadejte výši poplatku / platby";
   }

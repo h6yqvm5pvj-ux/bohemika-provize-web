@@ -10,6 +10,24 @@ import {
 } from "./contractDetailPdfReimport";
 
 describe("PDF reimport detailu smlouvy", () => {
+  it("doplní cílový věk z PDF i do dříve uložené DPS smlouvy", () => {
+    const contract = { id: "dps-1", productKey: "conseqzenit", policyEndDate: "2040-04-12" } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, { targetAge: 65, policyEndDate: "2040-04-12" })).toEqual({
+      updates: { pensionTargetAge: 65 }, appliedCount: 1,
+    });
+    expect(mergeEmptyContractFields({ ...contract, pensionTargetAge: 60 }, { targetAge: 65 })).toEqual({
+      updates: {}, appliedCount: 0,
+    });
+    expect(mergeEmptyContractFields({ ...contract, productKey: "neon" }, { targetAge: 65 })).toEqual({
+      updates: {}, appliedCount: 0,
+    });
+  });
+
+  it.each([null, 0, 121, 65.5])("nedoplní neplatný cílový věk z PDF: %s", (targetAge) => {
+    const contract = { id: "dps-1", productKey: "conseqzenit" } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, { targetAge })).toEqual({ updates: {}, appliedCount: 0 });
+  });
+
   it("doplní pouze prázdná pole smlouvy a normalizuje číselné hodnoty", () => {
     const contract = {
       id: "contract-1",

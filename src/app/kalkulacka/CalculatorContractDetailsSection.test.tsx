@@ -24,13 +24,14 @@ describe("client name field", () => {
   let container: HTMLDivElement;
   const selected = vi.fn();
   const retry = vi.fn();
-  function Harness({ initialName = "Jan Buček", source = "pdf", status = "ready" }: {
-    initialName?: string; source?: Props["clientNameSource"]; status?: ClientNameLookupStatus;
+  function Harness({ initialName = "Jan Buček", source = "pdf", status = "ready", pension = false }: {
+    initialName?: string; source?: Props["clientNameSource"]; status?: ClientNameLookupStatus; pension?: boolean;
   }) {
     const [name, setName] = useState(initialName);
     const [currentSource, setSource] = useState(source);
     const [open, setOpen] = useState(true);
     return <CalculatorContractDetailsSection {...fixedProps}
+      pensionProduct={pension} showPolicyEndDateField={pension}
       clientName={name} clientNameSource={currentSource} clientLookupStatus={status}
       clientNameMatches={status === "ready" ? matchClientName(name, directory) : []}
       clientSuggestionsOpen={open} onRetryClientLookup={retry}
@@ -71,6 +72,15 @@ describe("client name field", () => {
       expect(container.textContent).toContain("Jméno načteno z výpisu.");
       expect(container.textContent).not.toContain("PDF");
     }
+  });
+
+  it("shows DPS identity, signing date and optional end date with a separate start date", async () => {
+    await act(async () => root.render(<Harness pension />));
+    expect(container.querySelector('[aria-label="Datum sjednání smlouvy"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Číslo smlouvy"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Datum konce (volitelné)"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Datum počátku smlouvy"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Datum storna (volitelné)"]')).toBeNull();
   });
 
   it("requires a choice between accent variants and supports arrow keys and Enter", async () => {

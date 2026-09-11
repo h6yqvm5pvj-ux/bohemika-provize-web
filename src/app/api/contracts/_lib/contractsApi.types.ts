@@ -428,6 +428,7 @@ export type ContractDoc = {
   contractSignedDate?: FirestoreTimestamp | Date | string | number | null;
   policyStartDate?: FirestoreTimestamp | Date | string | number | null;
   policyEndDate?: FirestoreTimestamp | Date | string | number | null;
+  pensionTargetAge?: number | null;
 };
 
 export type ContractLifePremiumChange = {
@@ -586,6 +587,7 @@ export type ContractListResponseShape =
   | "contractList"
   | "cashflow";
 export type ContractListProductCategory =
+  | "pension"
   | "life"
   | "auto"
   | "property"

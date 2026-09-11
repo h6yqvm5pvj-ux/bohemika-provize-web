@@ -4,6 +4,7 @@ import {
   type CommissionMode,
   type MaxCizinKomplexVariant,
 } from "../types/domain";
+import { calculateConseqZenit, CONSEQ_ZENIT_BANDS, CONSEQ_ZENIT_COMMISSIONS } from "./productFormulas/conseqzenit";
 
 import {
   calculateNeon,
@@ -204,6 +205,7 @@ import {
 } from "./productFormulas/comfortcc";
 
 export {
+  calculateConseqZenit,
   calculateNeon,
   isNeonHistoricalPeriod,
   neonMaxDurationYears,
@@ -284,6 +286,7 @@ export {
 } from "./productFormulas/coefficientSets";
 
 export const SUPPORTED_PRODUCTS: Product[] = [
+  "conseqzenit",
   "neon",
   "flexi",
   "maximaMaxEfekt",
@@ -336,6 +339,11 @@ export function getCoefficientSummary(
   const m = mode ?? "accelerated";
 
   switch (product) {
+    case "conseqzenit":
+      return CONSEQ_ZENIT_BANDS.map((band, index) => ({
+        label: `A101 · příspěvek ${band} · provize v Kč`,
+        value: CONSEQ_ZENIT_COMMISSIONS[position][index],
+      }));
     case "neon": {
       const k = neonCoefficients(position, m, contractSignedDateIso);
       const immediate = neonImmediateCoefficientParts(position, m, contractSignedDateIso);

@@ -1,4 +1,5 @@
 import { type Product } from "../types/domain";
+import type { ConseqZenitPdfOptions } from "./parseConseqZenitPdf";
 
 export type PdfProductDetection = {
   product: Product;
@@ -40,6 +41,15 @@ const normalizeLooseText = (text: string) =>
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const DETECTION_RULES: DetectionRule[] = [
+  {
+    product: "conseqzenit",
+    mustContain: [
+      { page: "any", text: normalizeText("Conseq") },
+      { page: "any", text: normalizeText("Zenit") },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „Conseq“ a „Zenit“.",
+  },
   {
     product: "cppAuto",
     page: 1,
@@ -470,7 +480,7 @@ const looksLikeOldMaxdomov3Layout = async (
   );
 };
 
-export async function detectProductFromPdf(file: File): Promise<PdfProductDetection | null> {
+export async function detectProductFromPdf(file: File, options: ConseqZenitPdfOptions = {}): Promise<PdfProductDetection | null> {
   if (!file) return null;
 
   const buffer = await file.arrayBuffer();
@@ -594,6 +604,14 @@ export async function detectProductFromPdf(file: File): Promise<PdfProductDetect
       reason:
         "PDF odpovídá staršímu formuláři MAXDOMOV 3 podle vyplněných polí.",
     };
+  }
+
+  if (typeof document !== "undefined" && [...pageTextByNumber.values()].every((page) => page.strict.length < 80)) {
+    const { parseConseqZenitPdf } = await import("./parseConseqZenitPdf");
+    const scanned = await parseConseqZenitPdf(file, options);
+    if (scanned.productDetected) {
+      return { product: "conseqzenit", confidence: "high", reason: "Ve skenovaném PDF jsou přes OCR nalezeny texty „Conseq“ a „Zenit“." };
+    }
   }
 
   return null;

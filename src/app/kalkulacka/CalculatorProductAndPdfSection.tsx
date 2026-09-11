@@ -8,6 +8,7 @@ import { type DragEvent, type ReactNode, type RefObject } from "react";
 
 type CalculatorProductAndPdfSectionProps = {
   canImportFromPdf: boolean;
+  pdfAttachmentOnly?: boolean;
   productOpen: boolean;
   productSelected?: boolean;
   large?: boolean;
@@ -35,6 +36,7 @@ type CalculatorProductAndPdfSectionProps = {
 
 export function CalculatorProductAndPdfSection({
   canImportFromPdf,
+  pdfAttachmentOnly = false,
   productOpen,
   productSelected = true,
   large = false,
@@ -88,7 +90,7 @@ export function CalculatorProductAndPdfSection({
             >
               <div className={entryStyles.cardTop}>
                 <span className={entryStyles.eyebrow}>Ze smlouvy v PDF</span>
-                <span className={entryStyles.recommended}>Automatické načtení</span>
+                <span className={entryStyles.recommended}>{pdfAttachmentOnly ? "Příloha smlouvy" : "Automatické načtení"}</span>
               </div>
               <div className={entryStyles.uploadContent}>
                 <div className={entryStyles.paperScene} aria-hidden="true">
@@ -108,6 +110,7 @@ export function CalculatorProductAndPdfSection({
                 </h2>
                 <p className={entryStyles.cardDescription}>
                   {pdfImporting ? "Rozpoznávám produkt a hledám údaje ve smlouvě."
+                    : pdfAttachmentOnly ? "PDF přiložíme ke smlouvě. Údaje vyplň ručně."
                     : "Z PDF zkusíme rozpoznat produkt a předvyplnit údaje za tebe."}
                 </p>
                 <button
@@ -228,7 +231,7 @@ export function CalculatorProductAndPdfSection({
             </span>
             <span className={styles.pdfCopy}>
               <strong>{pdfImporting ? "Zpracovávám PDF…" : pdfDropActive ? "Sem pusť PDF" : allowMultiplePdf ? "Jedna smlouva, nebo více najednou" : "Máš smlouvu v PDF?"}</strong>
-              <span>{allowMultiplePdf ? "Jedno PDF předvyplní formulář. Více PDF se zpracuje a uloží hromadně." : "Nahraj ji nebo přetáhni sem."}</span>
+              <span>{pdfAttachmentOnly ? "PDF přiložíme ke smlouvě. Údaje vyplň ručně." : allowMultiplePdf ? "Jedno PDF předvyplní formulář. Více PDF se zpracuje a uloží hromadně." : "Nahraj ji nebo přetáhni sem."}</span>
             </span>
             <button type="button" onClick={onOpenFileDialog} disabled={pdfImporting} className={styles.secondaryButton}>
               {pdfImporting ? "Zpracovávám…" : "Vybrat PDF"}

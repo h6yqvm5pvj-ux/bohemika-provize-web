@@ -14,6 +14,7 @@ import {
   calculateAllianzMujDomov,
   calculateAxaCestovko,
   calculateComfortCC,
+  calculateConseqZenit,
   calculateCppAuto,
   calculateCppBytex,
   calculateCppCestovko,
@@ -114,6 +115,8 @@ const normalizedDurationYears = (
 
 const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
   switch (product) {
+    case "conseqzenit":
+      return ["monthly"];
     case "neon":
     case "flexi":
     case "pillowInjury":
@@ -222,6 +225,8 @@ export function calculateCommission({
   });
 
   switch (productKey) {
+    case "conseqzenit":
+      return calculateConseqZenit(safeAmount, position);
     case "neon": {
       const years = normalizeNeonDurationYears(
         durationYears,

@@ -1,4 +1,5 @@
 import type { Product } from "../../types/domain";
+import { parseConseqZenitPdf } from "@/app/lib/parseConseqZenitPdf";
 import type { ContractDoc } from "./contractDetailTypes";
 import { parseAllianzAutoPdf } from "@/app/lib/parseAllianzAutoPdf";
 import { parseComfortPdf } from "@/app/lib/parseComfortPdf";
@@ -30,6 +31,7 @@ type SlaviaAutoDetailField = keyof SlaviaAutoDetail;
 type ContractUpdateField = keyof ContractDoc;
 
 export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
+  conseqzenit: parseConseqZenitPdf,
   cppAuto: parseCppAutoPdf,
   slaviaauto: parseSlaviaAutoPdf,
   allianzAuto: parseAllianzAutoPdf,
@@ -57,6 +59,7 @@ const PDF_CONTRACT_FIELD_MAP = [
   ["clientName", "clientName"],
   ["policyStartDate", "policyStartDate"],
   ["policyEndDate", "policyEndDate"],
+  ["targetAge", "pensionTargetAge"],
   ["contractSignedDate", "contractSignedDate"],
   ["durationYears", "durationYears"],
   ["durationMonths", "durationMonths"],
@@ -302,6 +305,12 @@ const parsedPdfValueForContractField = (
 ): string | number | boolean | null => {
   if (rawValue == null) return null;
 
+  if (field === "pensionTargetAge") {
+    return typeof rawValue === "number" && Number.isInteger(rawValue) && rawValue >= 1 && rawValue <= 120
+      ? rawValue
+      : null;
+  }
+
   if (NUMBER_CONTRACT_UPDATE_FIELDS.has(field)) {
     const value =
       typeof rawValue === "number"
@@ -397,6 +406,7 @@ export const mergeEmptyContractFields = (
   let appliedCount = 0;
 
   for (const [parsedKey, contractField] of PDF_CONTRACT_FIELD_MAP) {
+    if (contractField === "pensionTargetAge" && currentContract.productKey !== "conseqzenit") continue;
     if (!isEmptyReimportValue(currentContract[contractField])) continue;
 
     const parsedValue = parsedPdfValueForContractField(contractField, parsed[parsedKey]);

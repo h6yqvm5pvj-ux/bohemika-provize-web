@@ -19,6 +19,7 @@ const SECTION_ICONS: Record<MonthSectionId, LucideIcon> = {
   entrepreneurs: BriefcaseBusiness,
   travel: Plane,
   gold: Coins,
+  pension: Coins,
   foreigners: Globe2,
   auto: CarFront,
   tip: Tags,

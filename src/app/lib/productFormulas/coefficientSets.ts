@@ -2,6 +2,7 @@ import {
   type CommissionCoefficientSet,
   type Product,
 } from "../../types/domain";
+import { CONSEQ_ZENIT_COEFFICIENT_VALID_FROM } from "./conseqzenit";
 import {
   ALLIANZ_MUJ_DOMOV_COEFFICIENT_VALID_FROM,
 } from "./allianzMujDomov";
@@ -96,6 +97,7 @@ import {
 } from "./zamex";
 
 const PRODUCT_MINIMUM_COEFFICIENT_VALID_FROM: Partial<Record<Product, string>> = {
+  conseqzenit: CONSEQ_ZENIT_COEFFICIENT_VALID_FROM,
   neon: NEON_HISTORICAL_VALID_FROM,
   maximaMaxEfekt: MAXEFEKT5_VALID_FROM,
   pillowInjury: PILLOW_INJURY_COEFFICIENT_VALID_FROM,

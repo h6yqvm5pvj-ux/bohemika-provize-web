@@ -52,6 +52,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "contractSignedDate",
   "policyStartDate",
   "policyEndDate",
+  "pensionTargetAge",
   "status",
   "stornoDate",
   "durationYears",
@@ -148,6 +149,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
 
 const SUPPORTED_ENTRY_TYPES = new Set(["contract", "endorsement"] as const);
 export const SUPPORTED_PRODUCTS = new Set<Product>([
+  "conseqzenit",
   "neon",
   "flexi",
   "maximaMaxEfekt",
@@ -675,6 +677,7 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   contractSignedDate: Date;
   policyStartDate: Date;
   policyEndDate: Date | null;
+  pensionTargetAge?: number | null;
   status: "active" | "storno";
   stornoDate: Date | null;
   durationYears: number | null;
@@ -1186,6 +1189,8 @@ export const normalizeCreateEntryPayload = ({
   if (!policyStartParsed.ok) return policyStartParsed;
   const policyEndParsed = parseOptionalDateField(raw.policyEndDate, "policyEndDate");
   if (!policyEndParsed.ok) return policyEndParsed;
+  const pensionTargetAgeParsed = parseOptionalInteger(raw.pensionTargetAge, "pensionTargetAge", { min: 1, max: 120 });
+  if (!pensionTargetAgeParsed.ok) return pensionTargetAgeParsed;
   const statusParsed = parseOptionalContractStatus(raw.status, "status");
   if (!statusParsed.ok) return statusParsed;
   const stornoDateParsed = parseOptionalDateField(raw.stornoDate, "stornoDate");
@@ -1506,6 +1511,7 @@ export const normalizeCreateEntryPayload = ({
       contractSignedDate: signedDateParsed.value,
       policyStartDate: policyStartParsed.value,
       policyEndDate: policyEndParsed.value,
+      pensionTargetAge: productParsed.value === "conseqzenit" ? pensionTargetAgeParsed.value : null,
       status: lifecycleStatus,
       stornoDate: stornoDateParsed.value,
       durationYears: durationYearsParsed.value,

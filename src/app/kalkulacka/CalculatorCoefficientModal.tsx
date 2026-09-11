@@ -323,7 +323,9 @@ export function CalculatorCoefficientModal({
     product === "pillowAuto" ||
     product === "kooperativaAuto";
   const productPeriodText =
-    product === "neon"
+    product === "conseqzenit"
+      ? "CONSEQ Zenit DPS – platnost od 01.08.2024"
+      : product === "neon"
       ? isNeonHistorical
         ? "Historické koeficienty – platnost 01.10.2019 až 30.06.2024"
         : "Aktuální koeficienty – platnost od 01.07.2024"
@@ -397,7 +399,9 @@ export function CalculatorCoefficientModal({
       ? "MAXEFEKT 7 – platnost od 23.04.2026"
       : null;
   const productModeText =
-    product === "neon" && isNeonHistorical
+    product === "conseqzenit"
+      ? "jednorázová provize A101"
+      : product === "neon" && isNeonHistorical
       ? "historické podmínky (bez režimu)"
       : product === "cppAuto" ||
         product === "slaviaauto" ||
@@ -585,6 +589,23 @@ export function CalculatorCoefficientModal({
               )}
             </div>
 
+            {product === "conseqzenit" && (
+              <div className="space-y-4">
+                <p className="text-xs text-slate-600">Tabulky z podkladů. Hodnoty v kalkulačce jsou pevné částky v Kč ve všech pásmech.</p>
+                {([
+                  ["poradci", "Poradci", 1154, 684],
+                  ["manazeri", "Manažeři", 1152, 684],
+                ] as const).map(([key, label, width, height]) => (
+                  <div key={key} className={styles.document}>
+                    <div className={styles.documentHeader}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{label} · A101</p>
+                      <a href={`/provize/conseqzenit-${key}.png`} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold underline">Otevřít tabulku</a>
+                    </div>
+                    <Image src={`/provize/conseqzenit-${key}.png`} alt={`CONSEQ Zenit DPS – tabulka provizí A101 – ${label}`} width={width} height={height} sizes="(max-width: 768px) 100vw, 900px" className="h-auto w-full" />
+                  </div>
+                ))}
+              </div>
+            )}
             {showAutoTermsPreview && autoTermsPreviewUrl && (
               <div className={styles.document}>
                 <div className={styles.documentHeader}>

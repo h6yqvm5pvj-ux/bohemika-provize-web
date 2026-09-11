@@ -85,10 +85,12 @@ export function CalculatorDurationAndFrequencySection({
   const pairAmountWithDuration = isLifeProduct && showDurationYears;
   const showDurationYearsInContractFields = showDurationYears && !pairAmountWithDuration;
   const hasContractParameterFields = showDurationYearsInContractFields || showMaxCizinVariant || showDurationMonths;
-  const showFrequencyValue = hasFrequencyPicker || !isLifeProduct;
+  const showFrequencyValue = product !== "conseqzenit" && (hasFrequencyPicker || !isLifeProduct);
   const hasPaymentCompanionField = pairAmountWithDuration || showFrequencyValue;
   const amountLabel =
-    product === "comfortcc"
+    product === "conseqzenit"
+      ? "Výše příspěvku klienta v Kč"
+      : product === "comfortcc"
       ? comfortGradual
         ? "1% z Poplatku v 1. platbě"
         : "Poplatek"

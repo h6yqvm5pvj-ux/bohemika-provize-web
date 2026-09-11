@@ -16,7 +16,7 @@ describe("cashflow month sections", () => {
     const groups = PRODUCT_ORDER.map((product, index) => group(product, index + 1));
     const sections = buildCashflowMonthSections(groups);
     expect(sections.map((section) => section.id)).toEqual([
-      "life", "property", "entrepreneurs", "travel", "gold", "foreigners", "auto",
+      "life", "property", "entrepreneurs", "travel", "gold", "pension", "foreigners", "auto",
     ]);
     const assigned = sections.flatMap((section) => section.groups);
     expect(assigned).toHaveLength(groups.length);

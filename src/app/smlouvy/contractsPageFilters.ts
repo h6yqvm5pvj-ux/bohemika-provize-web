@@ -2,6 +2,7 @@ import type { Product } from "@/app/types/domain";
 import {
   AUTO_PRODUCTS,
   COMFORT_PRODUCTS,
+  PENSION_PRODUCTS,
   INSTITUTION_CATALOG,
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   LIABILITY_PRODUCTS,
@@ -41,6 +42,7 @@ export const CONTRACT_PROPERTY_LIABILITY_PRODUCTS: Product[] = uniqueProducts([
 );
 
 export const PRODUCT_CATEGORY_MAP: Record<ProductCategory, Product[]> = {
+  pension: PENSION_PRODUCTS,
   life: LIFE_PRODUCTS_LIST,
   auto: AUTO_PRODUCTS,
   property: CONTRACT_PROPERTY_LIABILITY_PRODUCTS,
@@ -51,6 +53,7 @@ export const PRODUCT_CATEGORY_MAP: Record<ProductCategory, Product[]> = {
 };
 
 export const CATEGORY_DEFS: { id: ProductCategory; label: string }[] = [
+  { id: "pension", label: "Penzijáky" },
   { id: "life", label: "Životní pojištění" },
   { id: "auto", label: "Auto" },
   { id: "property", label: "Majetek a odpovědnost" },

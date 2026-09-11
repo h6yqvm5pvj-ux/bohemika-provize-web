@@ -156,6 +156,10 @@ describe("contracts API list filters", () => {
   });
 
   it("derives stored index fields from the same category rules as list filters", () => {
+    expect(contractListProductCategoryForProduct("conseqzenit")).toBe("pension");
+    expect(productMatchesListCategory("conseqzenit", new Set(["pension"]))).toBe(true);
+    expect(productMatchesListInstitution("conseqzenit", new Set(["conseq"]))).toBe(true);
+    expect([...parseContractListFilters(new URLSearchParams({ categories: "pension" })).categories]).toEqual(["pension"]);
     expect(contractListProductCategoryForProduct("cppsimplex")).toBe("business");
     expect(contractListProductCategoryForProduct("zamex")).toBe("property");
     expect(productMatchesListInstitution("neon", new Set(["cpp"]))).toBe(true);

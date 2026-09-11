@@ -38,6 +38,42 @@ const normalizedPayload = (raw: unknown = baseEntry()) => {
 };
 
 describe("contracts create payload parsing", () => {
+  it("accepts CONSEQ Zenit with only its requested fields and an optional end date", () => {
+    const payload = normalizedPayload(baseEntry({
+      productKey: "conseqzenit", contractSignedDate: "2024-08-01",
+      policyStartDate: "2025-01-01", policyEndDate: "2044-08-01", neonDetail: null,
+      inputAmount: 500,
+    }));
+    expect(payload).toMatchObject({ productKey: "conseqzenit", inputAmount: 500, frequencyRaw: "monthly" });
+    expect(payload.policyStartDate.toISOString().slice(0, 10)).toBe("2025-01-01");
+    expect(payload.policyEndDate?.toISOString().slice(0, 10)).toBe("2044-08-01");
+  });
+
+  it("rejects CONSEQ Zenit before the supplied validity date", () => {
+    const result = normalizeCreateEntryPayload({
+      raw: baseEntry({ productKey: "conseqzenit", contractSignedDate: "2024-07-31" }), ownerEmail, ownerUid,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("01. 08. 2024");
+  });
+
+  it("persists the DPS target age independently of its maturity date", () => {
+    const payload = normalizedPayload(baseEntry({
+      productKey: "conseqzenit", pensionTargetAge: 65, policyEndDate: "2040-04-12",
+    }));
+    expect(payload.pensionTargetAge).toBe(65);
+    expect(payload.policyEndDate?.toISOString().slice(0, 10)).toBe("2040-04-12");
+    expect(normalizedPayload(baseEntry({ productKey: "conseqzenit" })).pensionTargetAge).toBeNull();
+    expect(normalizedPayload(baseEntry({ pensionTargetAge: 65 })).pensionTargetAge).toBeNull();
+  });
+
+  it.each([0, -1, 121, 65.5, "65", true])("rejects an invalid DPS target age: %s", (pensionTargetAge) => {
+    const result = normalizeCreateEntryPayload({
+      raw: baseEntry({ productKey: "conseqzenit", pensionTargetAge }), ownerEmail, ownerUid,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("pensionTargetAge");
+  });
   it("normalizes a minimal contract create payload", () => {
     const payload = normalizedPayload();
 

@@ -335,6 +335,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "durationYears",
   "durationMonths",
   "maxCizinKomplexVariant",
+  "pensionTargetAge",
   "note",
   "status",
   "stornoDate",
@@ -2674,7 +2675,7 @@ const normalizePatchUpdates = (
       continue;
     }
 
-    if (field === "durationYears") {
+    if (field === "durationYears" || field === "pensionTargetAge") {
       const parsed = parseOptionalInteger(rawValue, field, { min: 1, max: 120 });
       if (!parsed.ok) return parsed;
       normalized[field] = parsed.value;

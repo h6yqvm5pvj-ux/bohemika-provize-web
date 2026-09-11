@@ -10,6 +10,7 @@ import { toDate } from "@/app/lib/formatters";
 import {
   AUTO_PRODUCTS,
   COMFORT_PRODUCTS,
+  PENSION_PRODUCTS,
   INSTITUTION_CATALOG,
   LIFE_PRODUCTS,
   LIABILITY_PRODUCTS,
@@ -52,6 +53,7 @@ const CONTRACT_LIST_PRODUCT_CATEGORY_MAP: Record<
   ContractListProductCategory,
   Product[]
 > = {
+  pension: PENSION_PRODUCTS,
   life: LIFE_PRODUCTS,
   auto: AUTO_PRODUCTS,
   property: CONTRACT_LIST_PROPERTY_LIABILITY_PRODUCTS,
@@ -61,6 +63,7 @@ const CONTRACT_LIST_PRODUCT_CATEGORY_MAP: Record<
   foreigners: CONTRACT_LIST_FOREIGNER_PRODUCTS,
 };
 const CONTRACT_LIST_PRODUCT_CATEGORY_SET = new Set<ContractListProductCategory>([
+  "pension",
   "life",
   "auto",
   "property",

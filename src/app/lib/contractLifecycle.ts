@@ -75,6 +75,9 @@ export function isContractDozita(
 ): boolean {
   const explicitEndDate = toDate(contract?.policyEndDate);
   if (explicitEndDate) {
+    if (contract?.productKey === "conseqzenit") {
+      return startOfDay(now).getTime() >= startOfDay(explicitEndDate).getTime();
+    }
     // Smlouva je "dožitá" až po uplynutí dne "Pojištění do".
     return startOfDay(now).getTime() > startOfDay(explicitEndDate).getTime();
   }

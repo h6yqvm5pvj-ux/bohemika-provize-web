@@ -31,6 +31,7 @@ const parsedTextValue = (parsed: ParsedContractPdf, key: string): string => {
 
 const parsedNumberValue = (parsed: ParsedContractPdf, key: string): number | null => {
   if (!(key in parsed)) return null;
+  if (parsed[key] == null || (typeof parsed[key] === "string" && !parsed[key].trim())) return null;
   const value = Number(parsed[key]);
   return Number.isFinite(value) ? value : null;
 };
@@ -60,6 +61,10 @@ export function buildPdfImportIssueMessage({
     isIsoDay(policyStartDate) &&
     contractSignedDate > policyStartDate;
 
+  const requiredFieldMessages: Record<string, string> = product === "conseqzenit"
+    ? { ...PDF_IMPORT_REQUIRED_FIELD_MESSAGES, clientName: "jméno klienta", policyStartDate: "počátek smlouvy", amount: "výši příspěvku klienta" }
+    : PDF_IMPORT_REQUIRED_FIELD_MESSAGES;
+
   const missing = [
     ["clientName", clientName],
     ["contractNumber", contractNumber],
@@ -69,7 +74,7 @@ export function buildPdfImportIssueMessage({
     ["amount", amount == null ? "" : String(amount)],
   ]
     .filter(([, value]) => !value)
-    .map(([key]) => PDF_IMPORT_REQUIRED_FIELD_MESSAGES[key])
+    .map(([key]) => requiredFieldMessages[key])
     .filter((value): value is string => Boolean(value));
 
   const warnings: string[] = [];
@@ -95,6 +100,9 @@ export function buildPdfImportIssueMessage({
   }
 
   const parts: string[] = [];
+  if (product === "conseqzenit" && !parsed.policyEndDate) {
+    missing.push("datum konce (datum narození klienta a cílový věk strategie spoření)");
+  }
   if (missing.length > 0) {
     parts.push(`Nenašel jsem ${missing.join(", ")}.`);
   }
@@ -118,9 +126,9 @@ export function unreadablePdfImportMessage({
   return `${productPart} nenašel jsem čitelné hodnoty smlouvy. Zkontroluj vybraný produkt, případně údaje doplň ručně.`;
 }
 
-export async function detectProductFromPdfLazy(file: File) {
+export async function detectProductFromPdfLazy(file: File, options: PdfParserOptions = {}) {
   const { detectProductFromPdf } = await import("../lib/detectProductFromPdf");
-  return detectProductFromPdf(file);
+  return detectProductFromPdf(file, options);
 }
 
 export async function parseMaxCizinKomplexPdfLazy(file: File): Promise<ParsedContractPdf> {
@@ -136,6 +144,10 @@ export async function parseContractPdfByProduct(
   options: PdfParserOptions = {}
 ): Promise<ParsedContractPdf | null> {
   switch (product) {
+    case "conseqzenit": {
+      const { parseConseqZenitPdf } = await import("../lib/parseConseqZenitPdf");
+      return parseConseqZenitPdf(file, options);
+    }
     case "cppAuto": {
       const { parseCppAutoPdf } = await import("../lib/parseCppAutoPdf");
       return parseCppAutoPdf(file);
@@ -234,6 +246,7 @@ export async function parseContractPdfByProduct(
  * accidentally available only for single-PDF import.
  */
 export const AUTOMATED_PDF_PRODUCTS: readonly Product[] = [
+  "conseqzenit",
   "cppAuto",
   "slaviaauto",
   "allianzAuto",

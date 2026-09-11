@@ -1,6 +1,7 @@
 import { type Product } from "@/app/types/domain";
 
 export type ProductInstitutionId =
+  | "conseq"
   | "cpp"
   | "kooperativa"
   | "maxima"
@@ -13,6 +14,7 @@ export type ProductInstitutionId =
   | "comfort";
 
 export type ProductPrimaryCategory =
+  | "pension"
   | "life"
   | "auto"
   | "property"
@@ -47,6 +49,7 @@ export type ProductMetadata = {
 };
 
 const INSTITUTIONS: Record<ProductInstitutionId, ProductInstitutionMeta> = {
+  conseq: { id: "conseq", label: "CONSEQ", logoPath: "/icons/conseq.png" },
   cpp: { id: "cpp", label: "ČPP", logoPath: "/icons/cpp.png" },
   kooperativa: { id: "kooperativa", label: "Kooperativa", logoPath: "/icons/koop-v2.png" },
   maxima: { id: "maxima", label: "Maxima", logoPath: "/icons/maxima.png" },
@@ -96,9 +99,16 @@ export const PRODUCT_ORDER: Product[] = [
   "axacestovko",
   "maxcizinkomplex",
   "comfortcc",
+  "conseqzenit",
 ];
 
 const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
+  conseqzenit: {
+    label: "CONSEQ Zenit DPS",
+    icon: "/icons/conseq.png",
+    institutionId: "conseq",
+    category: "pension",
+  },
   neon: {
     label: "ČPP ŽP NEON",
     icon: "/icons/zivot.webp",
@@ -347,6 +357,7 @@ export const AUTO_PRODUCTS = byCategory("auto");
 export const PROPERTY_PRODUCTS = byCategory("property");
 export const TRAVEL_PRODUCTS = byCategory("travel");
 export const COMFORT_PRODUCTS = byCategory("comfort");
+export const PENSION_PRODUCTS = byCategory("pension");
 export const LIABILITY_PRODUCTS = PRODUCT_ORDER.filter((product) =>
   PRODUCT_CATALOG[product].groups.includes("liability")
 );

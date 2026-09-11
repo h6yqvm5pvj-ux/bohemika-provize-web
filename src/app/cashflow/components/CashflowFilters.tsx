@@ -55,6 +55,7 @@ const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "travel", label: "Cestovní" },
   { value: "foreigners", label: "Cizinci" },
   { value: "gold", label: "Zlato" },
+  { value: "pension", label: "Penzijáky" },
 ];
 
 const PRODUCT_FILTER_ICONS: Partial<Record<ProductFilter, LucideIcon>> = {
@@ -68,6 +69,7 @@ const PRODUCT_FILTER_ICONS: Partial<Record<ProductFilter, LucideIcon>> = {
   travel: Plane,
   foreigners: Globe2,
   gold: Landmark,
+  pension: Landmark,
 };
 
 function formatCount(count: number, singular: string, few: string, many: string): string {

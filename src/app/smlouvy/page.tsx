@@ -198,6 +198,7 @@ const CONTRACT_SEARCH_CACHE_TTL_MS = 60_000;
 const CONTRACT_SEARCH_CACHE_MAX_ENTRIES = 24;
 const GOLD_PRODUCT: Product = "comfortcc";
 const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
+  conseqzenit: "Zenit DPS",
   neon: "Životní pojištění NEON",
   flexi: "Životní pojištění FLEXI",
   maximaMaxEfekt: "Životní pojištění MaxEfekt",
@@ -235,6 +236,7 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
 };
 
 const CATEGORY_ICON_BY_ID: Record<ProductCategory, LucideIcon> = {
+  pension: CircleDollarSign,
   life: HeartPulse,
   auto: Car,
   property: Home,
@@ -245,6 +247,7 @@ const CATEGORY_ICON_BY_ID: Record<ProductCategory, LucideIcon> = {
 };
 
 const CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
+  pension: "border-cyan-200 bg-cyan-50 text-cyan-700",
   life: "border-rose-200 bg-rose-50 text-rose-700",
   auto: "border-sky-200 bg-sky-50 text-sky-700",
   property: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -255,6 +258,7 @@ const CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
 };
 
 const CONTRACT_CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
+  pension: "border-cyan-200 bg-cyan-50 text-cyan-600",
   life: "border-rose-200 bg-rose-50 text-rose-600",
   auto: "border-sky-200 bg-sky-50 text-sky-600",
   property: "border-emerald-200 bg-emerald-50 text-emerald-600",
@@ -265,6 +269,7 @@ const CONTRACT_CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
 };
 
 const CONTRACT_CATEGORY_CARD_TONE_BY_ID: Record<ProductCategory, string> = {
+  pension: "border-cyan-300/35 bg-cyan-300/15 text-cyan-200",
   life: "border-rose-300/35 bg-rose-300/15 text-rose-200",
   auto: "border-sky-300/35 bg-sky-300/15 text-sky-200",
   property: "border-emerald-300/35 bg-emerald-300/15 text-emerald-200",

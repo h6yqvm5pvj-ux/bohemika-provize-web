@@ -29,4 +29,10 @@ describe("contract lifecycle status", () => {
       contractLifecycleStatus({ status: "active", policyEndDate: "2026-07-23" }, now)
     ).toBe("active");
   });
+
+  it("marks CONSEQ Zenit mature on the target birthday itself", () => {
+    const contract = { productKey: "conseqzenit" as const, status: "active", policyEndDate: "2035-03-31" };
+    expect(contractLifecycleStatus(contract, new Date(2035, 2, 30))).toBe("active");
+    expect(contractLifecycleStatus(contract, new Date(2035, 2, 31))).toBe("dozita");
+  });
 });

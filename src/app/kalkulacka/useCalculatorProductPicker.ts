@@ -5,6 +5,7 @@ import { productLabel as productLabelFromCatalog } from "@/app/lib/productCatalo
 import { productInstitutionLabel } from "./calculatorHelpers";
 
 export type ProductPickerSectionKey =
+  | "pension"
   | "life"
   | "property"
   | "auto"
@@ -79,6 +80,11 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
     title: "Investice",
     products: [],
     emptyText: "Zatím bez produktů.",
+  },
+  {
+    key: "pension",
+    title: "Penzijáky",
+    products: ["conseqzenit"],
   },
   {
     key: "gold",

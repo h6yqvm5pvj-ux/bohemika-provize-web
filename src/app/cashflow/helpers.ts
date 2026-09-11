@@ -34,6 +34,7 @@ export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
   Exclude<ProductFilter, "all" | "tip" | "subscription">,
   readonly Product[]
 > = {
+  pension: ["conseqzenit"],
   life: ["neon", "flexi", "maximaMaxEfekt", "pillowInjury"],
   auto: [
     "cppAuto",

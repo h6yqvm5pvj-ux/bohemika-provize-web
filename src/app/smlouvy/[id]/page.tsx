@@ -6085,7 +6085,7 @@ export default function ContractDetailPage() {
                       </div>
                       <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>
-                          {isEndorsement
+                          {contract.productKey === "conseqzenit" ? "Výše příspěvku klienta" : isEndorsement
                             ? "Nové pojistné"
                             : isShowingLatestTimelinePremium
                               ? "Aktuální pojistné"
@@ -6125,7 +6125,7 @@ export default function ContractDetailPage() {
                         </dd>
                       </div>
                       <div className={contractOverviewRowClass}>
-                        <dt className={keyValueLabelClass}>Roční pojistné</dt>
+                        <dt className={keyValueLabelClass}>{contract.productKey === "conseqzenit" ? "Roční příspěvek klienta" : "Roční pojistné"}</dt>
                         <dd className={contractOverviewValueClass}>
                           {displayedAnnualPremium != null
                             ? formatMoney(displayedAnnualPremium)
@@ -6422,7 +6422,7 @@ export default function ContractDetailPage() {
                         </dd>
                       </div>
                       <div className={contractOverviewRowClass}>
-                        <dt className={keyValueLabelClass}>Pojištění do</dt>
+                        <dt className={keyValueLabelClass}>{contract.productKey === "conseqzenit" ? "Datum konce" : "Pojištění do"}</dt>
                         <dd className={contractOverviewValueClass}>
                           {editMode && !isStornoContract ? (
                             <input
@@ -6436,6 +6436,14 @@ export default function ContractDetailPage() {
                           )}
                         </dd>
                       </div>
+                      {contract.productKey === "conseqzenit" && (
+                        <div className={contractOverviewRowClass}>
+                          <dt className={keyValueLabelClass}>Smlouva do věku</dt>
+                          <dd className={contractOverviewValueClass}>
+                            {contract.pensionTargetAge != null ? `${contract.pensionTargetAge} let` : "—"}
+                          </dd>
+                        </div>
+                      )}
                       {showDurationForProduct && (
                         <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Doba trvání (provize)</dt>

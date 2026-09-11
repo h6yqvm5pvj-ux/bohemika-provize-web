@@ -16,6 +16,7 @@ type ContractNumberLiveCheckStatus =
   | "error";
 
 type CalculatorContractDetailsSectionProps = {
+  pensionProduct?: boolean;
   isVisible: boolean;
   missingFields: string[];
   clientName: string;
@@ -47,6 +48,7 @@ type CalculatorContractDetailsSectionProps = {
 };
 
 export function CalculatorContractDetailsSection({
+  pensionProduct = false,
   isVisible,
   missingFields,
   clientName,
@@ -263,21 +265,20 @@ export function CalculatorContractDetailsSection({
             <p className="text-[11px] text-amber-700">{contractDateWarningText}</p>
           )}
         </div>
-
         {showPolicyEndDateField && (
           <div className="space-y-1">
-            <label className="block text-sm font-semibold text-slate-800">Pojištění do (volitelné)</label>
+            <label className="block text-sm font-semibold text-slate-800">{pensionProduct ? "Datum konce (volitelné)" : "Pojištění do (volitelné)"}</label>
             <input
               type="date"
               className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
-              aria-label="Pojištění do (volitelné)"
-            value={policyEndDate}
+              aria-label={pensionProduct ? "Datum konce (volitelné)" : "Pojištění do (volitelné)"}
+              value={policyEndDate}
               onChange={(event) => onPolicyEndDateChange(event.target.value)}
             />
           </div>
         )}
 
-        {contractNumberLiveCheckMode !== "endorsement" && (
+        {!pensionProduct && contractNumberLiveCheckMode !== "endorsement" && (
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-slate-800">Datum storna (volitelné)</label>
             <input

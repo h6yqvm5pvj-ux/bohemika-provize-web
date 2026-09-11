@@ -14,6 +14,7 @@ import {
   Clock3,
   FileText,
   HandCoins,
+  PiggyBank,
   HeartPulse,
   Info,
   Loader2,
@@ -97,6 +98,11 @@ const GROUP_VISUALS: Record<
     iconTint: string;
   }
 > = {
+  pension: {
+    icon: PiggyBank,
+    tint: "from-cyan-50 via-white to-violet-50",
+    iconTint: "bg-cyan-50 text-cyan-700 ring-cyan-100",
+  },
   life: {
     icon: HeartPulse,
     tint: "from-rose-50 via-white to-violet-50",
@@ -130,6 +136,7 @@ const GROUP_VISUALS: Record<
 };
 
 const PRINT_GROUP_LABELS: Record<TipOfferGroupId, string> = {
+  pension: "PENZIJÁKY",
   life: "ŽIVOTNÍ POJIŠTĚNÍ",
   auto: "POJIŠTĚNÍ VOZIDEL",
   property: "POJIŠTĚNÍ MAJETKU A ODPOVĚDNOSTI OBČANŮ",

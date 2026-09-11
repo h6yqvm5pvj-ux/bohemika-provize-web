@@ -3,7 +3,7 @@
 import Image from "next/image";
 import {
   ArrowRight, BriefcaseBusiness, CarFront, Check, ChartNoAxesCombined,
-  Coins, Globe2, HeartPulse, House, Package, Plane, Search, SearchX, X,
+  Coins, Globe2, HeartPulse, House, Package, PiggyBank, Plane, Search, SearchX, X,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -27,6 +27,7 @@ const PRODUCT_OPTION_BY_ID = new Map<Product, { id: Product; label: string }>(
 );
 
 const SECTION_ICONS = {
+  pension: PiggyBank,
   life: HeartPulse,
   property: House,
   auto: CarFront,

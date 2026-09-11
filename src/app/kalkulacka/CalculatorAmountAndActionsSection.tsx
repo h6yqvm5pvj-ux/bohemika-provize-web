@@ -158,7 +158,7 @@ export function CalculatorAmountAndActionsSection({
                 ? comfortGradual
                   ? "1% z Poplatku v 1. platbě"
                   : "Poplatek (zde se určuje provize z poplatku klienta)"
-                : "Částka"}
+                : product === "conseqzenit" ? "Výše příspěvku klienta v Kč" : "Částka"}
             </label>
             <input
               type="number"

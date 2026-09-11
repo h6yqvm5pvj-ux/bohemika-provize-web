@@ -302,6 +302,7 @@ service cloud.firestore {
         "cppcestovko",
         "axacestovko",
         "comfortcc",
+        "conseqzenit",
         "cppPPRs",
         "cppPPRbez"
       ];

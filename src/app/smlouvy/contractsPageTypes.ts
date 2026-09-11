@@ -126,6 +126,7 @@ export type FilterMode = "latest" | "anniversary";
 export type CommissionAuditFilterMode = CommissionAuditMode;
 export type CommissionAuditFilterCode = CommissionAuditCodeFilter;
 export type ProductCategory =
+  | "pension"
   | "life"
   | "auto"
   | "property"

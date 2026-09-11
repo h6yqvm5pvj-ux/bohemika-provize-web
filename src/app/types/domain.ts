@@ -1,6 +1,7 @@
 // src/types/domain.ts
 
 export type Product =
+  | "conseqzenit"
   | "neon"
   | "flexi"
   | "maximaMaxEfekt"

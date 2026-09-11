@@ -239,6 +239,7 @@ const SETTINGS_KEYS = {
 };
 const PDF_PRODUCT_DETECTION_TIMEOUT_MS = 8_000;
 const PDF_DATA_IMPORT_TIMEOUT_MS = 15_000;
+const PDF_OCR_IMPORT_TIMEOUT_MS = 120_000;
 const PDF_IMPORT_TIMEOUT_ERROR_NAME = "PdfImportTimeoutError";
 const AUTO_BULK_IMPORT_MAX_FILES = 25;
 const DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE = "2025-01-01";
@@ -512,14 +513,20 @@ const notifyStatementParentContractEvent = ({
 const withPdfImportTimeout = async <T,>(
   promise: Promise<T>,
   timeoutMs: number,
-  timeoutMessage: string
+  timeoutMessage: string,
+  isOcrActive?: () => boolean
 ): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
+    const rejectTimeout = () => {
       const error = new Error(timeoutMessage);
       error.name = PDF_IMPORT_TIMEOUT_ERROR_NAME;
       reject(error);
+    };
+    timeoutId = setTimeout(() => {
+      if (isOcrActive?.()) {
+        timeoutId = setTimeout(rejectTimeout, Math.max(1, PDF_OCR_IMPORT_TIMEOUT_MS - timeoutMs));
+      } else rejectTimeout();
     }, timeoutMs);
   });
 
@@ -740,7 +747,9 @@ export default function CalculatorPage() {
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
   const [policyEndDate, setPolicyEndDate] = useState<string>("");
-  const [stornoDate, setStornoDate] = useState<string>("");
+  const [pensionTargetAge, setPensionTargetAge] = useState<number | null>(null);
+  const [enteredStornoDate, setStornoDate] = useState<string>("");
+  const stornoDate = product === "conseqzenit" ? "" : enteredStornoDate;
   const [contractNumber, setContractNumber] = useState<string>("");
   const [autoCarMake, setAutoCarMake] = useState<string>("");
   const [autoCarPlate, setAutoCarPlate] = useState<string>("");
@@ -1557,6 +1566,8 @@ export default function CalculatorPage() {
     const payLabel = frequencyLabel(frequency);
     const payPerYear = paymentsPerYear(frequency);
     switch (product) {
+      case "conseqzenit":
+        return "Provize A101 je pevná částka v Kč z tabulky pro zvolenou pozici a pásmo příspěvku klienta. Ve všech třech pásmech se použije částka přímo, bez násobení příspěvkem či procentem. Vyplácí se jednou, bez následných provizí. Platnost od 01.08.2024.";
       case "neon":
         return "Výpočet: měsíční pojistné × 12 × doba trvání × koeficient. Následné provize jsou roční: roční pojistné × koeficient (2.–5. rok a 5.–10. rok).";
       case "flexi":
@@ -3127,8 +3138,10 @@ export default function CalculatorPage() {
     pdfImportRunIdRef.current = importRunId;
     const isCurrentPdfImport = () => pdfImportRunIdRef.current === importRunId;
     let allowPdfImportProgress = true;
+    let ocrActive = false;
 
     setPdfImporting(true);
+    setPensionTargetAge(null);
     setPdfImportError(null);
     setPdfImportStatus(
       "PDF je připravené k přiložení. Zkouším z něj načíst data…"
@@ -3140,9 +3153,18 @@ export default function CalculatorPage() {
     let productDetected = false;
     try {
       const detected = await withPdfImportTimeout(
-        detectProductFromPdfLazy(file),
+        detectProductFromPdfLazy(file, {
+          onOcrStart: () => {
+            ocrActive = true;
+            if (isCurrentPdfImport()) setPdfImportStatus("PDF je sken. Rozpoznávám produkt a údaje přes OCR…");
+          },
+          onOcrProgress: (progress) => {
+            if (isCurrentPdfImport()) setPdfImportStatus(`Rozpoznávám sken: strana ${progress.page}/${progress.totalPages} (${Math.round(progress.progress * 100)} %)…`);
+          },
+        }),
         PDF_PRODUCT_DETECTION_TIMEOUT_MS,
-        "Automatické rozpoznání produktu z PDF trvá moc dlouho."
+        "Automatické rozpoznání produktu z PDF trvá moc dlouho.",
+        () => ocrActive
       );
       if (!isCurrentPdfImport()) return;
       if (detected) {
@@ -3292,6 +3314,7 @@ export default function CalculatorPage() {
       const parsed = await withPdfImportTimeout(
         parseContractPdfByProduct(importProduct, file, {
           onOcrStart: () => {
+            ocrActive = true;
             if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
             setPdfImportStatus("PDF vypadá jako sken. Spouštím OCR…");
           },
@@ -3309,7 +3332,8 @@ export default function CalculatorPage() {
           },
         }),
         PDF_DATA_IMPORT_TIMEOUT_MS,
-        "Automatické čtení dat z PDF trvá moc dlouho."
+        "Automatické čtení dat z PDF trvá moc dlouho.",
+        () => ocrActive
       );
       if (!isCurrentPdfImport()) return;
       allowPdfImportProgress = false;
@@ -3324,6 +3348,14 @@ export default function CalculatorPage() {
         return;
       }
       const importIssueMessage = buildPdfImportIssueMessage({ product: importProduct, parsed });
+      setPensionTargetAge(importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null);
+      if (importProduct === "conseqzenit") {
+        if (!parsed.contractNumber) setContractNumber("");
+        if (!parsed.clientName) setClientName("");
+        if (!parsed.policyStartDate) setPolicyStartDate("");
+        if (!parsed.contractSignedDate) setContractSignedDate("");
+        if (typeof parsed.amount !== "number") setAmountText("");
+      }
 
       let applied = 0;
       const parsedIsEndorsement =
@@ -3346,9 +3378,9 @@ export default function CalculatorPage() {
         setPolicyStartDate(parsed.policyStartDate);
         applied += 1;
       }
-      if ("policyEndDate" in parsed && typeof parsed.policyEndDate === "string") {
-        setPolicyEndDate(parsed.policyEndDate);
-        applied += 1;
+      if ("policyEndDate" in parsed && (typeof parsed.policyEndDate === "string" || importProduct === "conseqzenit")) {
+        setPolicyEndDate(typeof parsed.policyEndDate === "string" ? parsed.policyEndDate : "");
+        if (parsed.policyEndDate) applied += 1;
       }
       if (parsed.contractSignedDate) {
         setContractSignedDate(parsed.contractSignedDate);
@@ -4086,6 +4118,7 @@ export default function CalculatorPage() {
     setClientName(parsedPdfTextValue(parsed, "clientName"));
     setPolicyStartDate(parsedPdfTextValue(parsed, "policyStartDate"));
     setPolicyEndDate(parsedPdfTextValue(parsed, "policyEndDate"));
+    setPensionTargetAge(reviewProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null);
     setContractSignedDate(parsedPdfTextValue(parsed, "contractSignedDate"));
     setStornoDate("");
     setAmountText(amount != null ? String(amount) : "");
@@ -4355,10 +4388,18 @@ export default function CalculatorPage() {
         setAutoBulkImportStatus(`Zpracovávám ${processedCount + 1}/${files.length}`);
 
         try {
+          let batchOcrActive = false;
+          const batchOcrOptions = {
+            onOcrStart: () => {
+              batchOcrActive = true;
+              setAutoBulkImportStatus(`Zpracovávám ${processedCount + 1}/${files.length}: čtu sken přes OCR…`);
+            },
+          };
           const detected = await withPdfImportTimeout(
-            detectProductFromPdfLazy(file),
+            detectProductFromPdfLazy(file, batchOcrOptions),
             PDF_PRODUCT_DETECTION_TIMEOUT_MS,
-            "Rozpoznání produktu z PDF trvá moc dlouho."
+            "Rozpoznání produktu z PDF trvá moc dlouho.",
+            () => batchOcrActive
           ).catch((detectErr) => {
             console.warn("Batch import: detekce produktu selhala", detectErr);
             return null;
@@ -4413,9 +4454,10 @@ export default function CalculatorPage() {
           });
 
           const parsed = await withPdfImportTimeout(
-            parseContractPdfByProduct(importProduct, file),
+            parseContractPdfByProduct(importProduct, file, batchOcrOptions),
             PDF_DATA_IMPORT_TIMEOUT_MS,
-            "Automatické čtení dat z PDF trvá moc dlouho."
+            "Automatické čtení dat z PDF trvá moc dlouho.",
+            () => batchOcrActive
           );
 
           if (!parsed) {
@@ -4916,6 +4958,7 @@ export default function CalculatorPage() {
             contractSignedDate: signedDateIso,
             policyStartDate: policyStartDateIso,
             policyEndDate: policyEndDateIso || null,
+            pensionTargetAge: importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null,
             status: "active",
             stornoDate: null,
             durationYears:
@@ -5299,6 +5342,7 @@ export default function CalculatorPage() {
     if (!supportsPolicyEndDate(product)) {
       setPolicyEndDate("");
     }
+    if (product !== "conseqzenit") setPensionTargetAge(null);
   }, [product]);
 
   useEffect(() => {
@@ -5324,6 +5368,7 @@ export default function CalculatorPage() {
     setPolicyStartDate("");
     setPolicyEndDate("");
     setStornoDate("");
+    setPensionTargetAge(null);
     setContractNumber("");
     setContractNumberLiveCheck({ status: "idle" });
 
@@ -6374,6 +6419,7 @@ export default function CalculatorPage() {
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
             policyEndDate: policyEndDate.trim() || null,
+            pensionTargetAge: product === "conseqzenit" ? pensionTargetAge : null,
             status: trimmedStornoDate ? "storno" : "active",
             stornoDate: trimmedStornoDate || null,
             durationYears: shouldShowDuration(product) ? durationYears : null,
@@ -8999,6 +9045,7 @@ export default function CalculatorPage() {
                 endorsementWorkflowActive ? "endorsement" : "newContract"
               }
               policyStartDate={policyStartDate}
+              pensionProduct={product === "conseqzenit"}
               contractDateErrorText={contractDateErrorText}
               contractDateWarningText={contractDateWarningText}
               showPolicyEndDateField={showPolicyEndDateField}

@@ -9,6 +9,7 @@ import type {
 export type TipOfferProductId = Product | "auto" | "life" | "travel";
 
 export type TipOfferGroupId =
+  | "pension"
   | "life"
   | "property"
   | "auto"
@@ -51,6 +52,11 @@ const product = (
 });
 
 export const TIP_OFFER_GROUPS: readonly TipOfferGroup[] = [
+  {
+    id: "pension",
+    label: "Penzijáky",
+    products: [product("conseqzenit", { premiumLabel: "Výše příspěvku klienta v Kč", premiumPeriodLabel: "měsíčně" })],
+  },
   {
     id: "life",
     label: "Životní pojištění",
