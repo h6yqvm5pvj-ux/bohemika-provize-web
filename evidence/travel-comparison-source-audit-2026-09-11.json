@@ -1,0 +1,250 @@
+{
+  "checkedAt": "2026-09-11",
+  "method": "SHA-256 of downloaded official PDFs; extracted text compared where binary hashes differ. This is a dated source audit, not confirmation of every future contract.",
+  "officialDocuments": [
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/vppcp_1_18.pdf",
+      "sha256": "1f4ae344b34af9d5fd215807aa4c1fe83481ce24b1695be8578a715d80533125",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/VPPCP.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v7_p14_dppcov-1_23.pdf",
+      "sha256": "a38e4d5a50d45708bff23ac137b6df95587919e06de1f535772124af8a91c1aa",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPCOV_1_23.pdf",
+      "binaryMatch": false,
+      "finding": "Public URL labelled 1/23 delivers DPPCOV 1/21, MAXI 20000+20000; stored 1/23 has MAXI 25000+25000. Conflict disclosed; 1/23 figures retained as a labelled version."
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/dppap_1_18.pdf",
+      "sha256": "ca97d92d50952769638b70f6c70382eee3f568b3860d4011ee2d7dd7a71db548",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPAP.pdf",
+      "binaryMatch": false,
+      "finding": "Only effective date differs (stored 2018-05-01; public 2018-09-01)."
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v5_p6_dppcp-1_22.pdf",
+      "sha256": "2f788691db482f1c2034627c268bcd6bd035d7130513723fb69a2a33ae5a525a",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPCP_2022_06.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v5_p10_dppgp-1_22.pdf",
+      "sha256": "c3f3f1dc9e73321b032cb981d629393f89b69cc5c454bd86786f836e1403ee87",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPGP_2022_06.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/dppgup-1_20_myriad.pdf",
+      "sha256": "e1928384518efbf22ee84586204482ad14a616a58560409130babe3761a84119",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPGUP.pdf",
+      "binaryMatch": false,
+      "finding": "Same coverage wording and limits after whitespace and line-break hyphen normalization; effective date differs (stored 2020-06-01; public 2020-11-01)."
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/dppletp_1_18.pdf",
+      "sha256": "ab1096d7e425c1305bb94e3cac4305a2756ac4ae1e87964a66472a5c9696154e",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPLETP.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v7_p8_dpplp-1_23.docx.pdf",
+      "sha256": "002872de9490166d63b2a9f065b89cb94ed0aad281bf4d99448d823d51e88caa",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPLP_1_23.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v7_p1_dpplv-1_23.pdf",
+      "sha256": "5bd88754d1c06a137bfcf4bec40f9e5cf4ec70889c242c2cb2eebf145a6e9b19",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPLV_1_23.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/dppodc_1_18.pdf",
+      "sha256": "2d920cbe7fc075746fe6547436679c1a133b063ac84c0d15913937c95d7a89b3",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPODC.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v7_p5_dppstp-1_23.pdf",
+      "sha256": "249d75bf51aa1473b84986711817187b106e09e853a8bd25247fe2713ae1dda2",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPSTP_1_23.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v5_p4_dppzav-1_22.pdf",
+      "sha256": "22345af4032818f4caec71cc8786f435325ba416f5dcc9dd368ea4a19b6cf4f7",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPZAV_2022_06.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v7_p3_dppurc-1_23.pdf",
+      "sha256": "94712b766666060691ceef613d2ec1c203a4d794f6cb8ad066c446b7e5b94297",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPURC_1_23.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/pp12020utp_nzp_v7_p9_dppzp-1_23.pdf",
+      "sha256": "2b1f27436afd46b46c44390b9053ca9ae7d3b2cc6189f19e93f03e77e5956c6f",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPZP_1_23.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/smluvni-dokumentace/dppzvp_1_18.pdf",
+      "sha256": "bb49147fa0d9b9cc1ec5b94d907dbe2a92676b18fda94a59c2ca252434825db3",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/DPPZVP.pdf",
+      "binaryMatch": false,
+      "finding": "Effective date and animal competition coverage differ; displayed limits, species, age and deductible agree."
+    },
+    {
+      "url": "https://www.cpp.cz/file/edee/dokumenty/cestovni-pojisteni/ipid/pp12020utp_nzp_v7_p26_idd_nezivot_cp2_1_23.pdf",
+      "sha256": "181b26f1d1625b3503020e10fda7ff2b3eb5381e30265fd2aa351c8aa3ec79ca",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/cpp/IPID_Cestovni_pojisteni_CPP_1_23.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF"
+    },
+    {
+      "url": "https://www.koop.cz/cestovni-pojisteni/attachments/koop-cestovni-pojisteni-kolumbus-012-11-2025.pdf",
+      "sha256": "2998b8d1446a65be66430a0d7372ced7edfd26ed5ba7f7363d53516dd5bb2fca",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/kooperativa/koopkolumbus.pdf",
+      "binaryMatch": true,
+      "finding": "Identical PDF; M-750/23, 63 pages, issue 11/2025."
+    },
+    {
+      "url": "https://www.axa-assistance.cz/documents-to-download/Pojistne-podminky/Vseobecne-pojistne-podminky-cp?disposition=inline",
+      "sha256": "54c12bf9af7e67dbbcb904f6ba81b9c169e50b8d629db0d5e5e75977ce67bfbe",
+      "storedFile": "private/dokumenty/cestovni-pojisteni/axa/AXA_VPPCP_2026-06-15.pdf",
+      "binaryMatch": false,
+      "finding": "Extracted text identical after whitespace normalization; 31 pages, dated 2026-06-15."
+    }
+  ],
+  "storedDocuments": [
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Autoasistence.pdf",
+      "sha256": "115867c38ca616086cbb449637ee78cc79d7065261bd1e977a7bde3b28ee6de3"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Cestovani_letadlem.pdf",
+      "sha256": "bc4e075810134e134ca4e8be83eaeba1b49937fd34664744e55d16548ce21440"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Domaci_mazlicci.pdf",
+      "sha256": "e58fff103b96f656aa142c1b29e9e214ae0efb8048bad6196b71cd6a142268cb"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Drink_povolen.pdf",
+      "sha256": "a80372e54eb45e1b4961e38c7aaacb74f1e0b434d28727170555f8d60194c2b8"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_IPID.pdf",
+      "sha256": "3886b2981e80f814743e5f5aa0894960246c8bda586a6676f5ebadfdb2d3f4b7"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Manualni_prace.pdf",
+      "sha256": "9bc29c67cb46c784e9df8955fcc3fe065b00139756a1bd0a1b41fe2e005185db"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Pujcene_vozidlo.pdf",
+      "sha256": "c9dcc80653e3c3299013786c6349d26e1d4d1343aa1ba50b0c00651635da6e37"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Rizikove_sporty.pdf",
+      "sha256": "9dedc616d21c9cd6ee95d14e816e3d0848c7f6e13cd6a85c2dfb58ec0f4e8ecd"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Storno_cesty.pdf",
+      "sha256": "c0901ad13f706d17df33c16087fae5761bfc01c8a311b549e102e4228a9f10db"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_VPPCP_2026-06-15.pdf",
+      "sha256": "612eb762a2af0f7286c7371382eceedded9de6c318efdb463622150b9668cc07"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/axa/AXA_Zakladni_informace.pdf",
+      "sha256": "f82b7736a7e91a4f8b010a473a6cc3bce49432bbafc6ea8cabb763067e99d5ce"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPAP.pdf",
+      "sha256": "4b4f0587b3e79a0d6a917d2aceb992d7e79b76b1d21c2b57d92ee117b5c67980"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPCOV_1_23.pdf",
+      "sha256": "0fd2d1a5a09e6bd20080c3a41b86df90f6c72a549926b171c730e87197ae70d7"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPCP_2022_06.pdf",
+      "sha256": "2f788691db482f1c2034627c268bcd6bd035d7130513723fb69a2a33ae5a525a"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPGP_2022_06.pdf",
+      "sha256": "c3f3f1dc9e73321b032cb981d629393f89b69cc5c454bd86786f836e1403ee87"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPGUP.pdf",
+      "sha256": "935b24c1ae356989e170fa2ced6067aaaeca1de7a1bce3744d5123915f13add9"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPLETP.pdf",
+      "sha256": "ab1096d7e425c1305bb94e3cac4305a2756ac4ae1e87964a66472a5c9696154e"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPLP_1_23.pdf",
+      "sha256": "002872de9490166d63b2a9f065b89cb94ed0aad281bf4d99448d823d51e88caa"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPLV_1_23.pdf",
+      "sha256": "5bd88754d1c06a137bfcf4bec40f9e5cf4ec70889c242c2cb2eebf145a6e9b19"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPODC.pdf",
+      "sha256": "2d920cbe7fc075746fe6547436679c1a133b063ac84c0d15913937c95d7a89b3"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPSTP_1_23.pdf",
+      "sha256": "249d75bf51aa1473b84986711817187b106e09e853a8bd25247fe2713ae1dda2"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPURC_1_23.pdf",
+      "sha256": "94712b766666060691ceef613d2ec1c203a4d794f6cb8ad066c446b7e5b94297"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPZAV_2022_06.pdf",
+      "sha256": "22345af4032818f4caec71cc8786f435325ba416f5dcc9dd368ea4a19b6cf4f7"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPZP_1_23.pdf",
+      "sha256": "2b1f27436afd46b46c44390b9053ca9ae7d3b2cc6189f19e93f03e77e5956c6f"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/DPPZVP.pdf",
+      "sha256": "57026c16039a6874358b6e1a34fb9eca1e279cab177efca3c212f6186f5e6b00"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/IPID_Cestovni_pojisteni_CPP_1_23.pdf",
+      "sha256": "181b26f1d1625b3503020e10fda7ff2b3eb5381e30265fd2aa351c8aa3ec79ca"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/cpp/VPPCP.pdf",
+      "sha256": "1f4ae344b34af9d5fd215807aa4c1fe83481ce24b1695be8578a715d80533125"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/kooperativa/IPID_Kolumbus_07_2023.pdf",
+      "sha256": "36d37895205807329b9f7b2f4350ae8671c1af7efe64114e98caf48250d59149"
+    },
+    {
+      "file": "private/dokumenty/cestovni-pojisteni/kooperativa/koopkolumbus.pdf",
+      "sha256": "2998b8d1446a65be66430a0d7372ced7edfd26ed5ba7f7363d53516dd5bb2fca"
+    }
+  ]
+}

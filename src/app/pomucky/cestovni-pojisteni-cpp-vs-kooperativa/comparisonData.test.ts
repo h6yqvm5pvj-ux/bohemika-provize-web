@@ -1,11 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@/app/firebase-auth", () => ({
-  auth: { currentUser: null },
-}));
+import { describe, expect, it } from "vitest";
 
 import {
   AXA_TERMS_DOCUMENTS,
@@ -15,9 +11,14 @@ import {
   KOOP_TERMS_DOCUMENTS,
   KOOP_VARIANTS,
   buildRows,
-} from "./TravelInsuranceComparison";
+} from "./comparisonData";
+import { sourceReferences, normalizeSearch } from "./comparisonSources";
 
 const EXPECTED_ROW_IDS = [
+  "marine-sailing",
+  "marine-cruise",
+  "marine-rescue",
+  "marine-liability",
   "territorial-scope",
   "insurance-duration",
   "payment-and-cover-start",
@@ -87,7 +88,7 @@ const extractPdfText = async (filePath: string, pages?: number[]) => {
 };
 
 describe("travel insurance comparison data", () => {
-  it("keeps the ČPP and Kooperativa core benefit matrices unchanged", () => {
+  it("matches the ČPP and Kooperativa core benefit matrices in the supplied terms", () => {
     expect(CPP_VARIANTS).toEqual({
       mini: {
         label: "MINI", helper: "Základní limity", treatment: 2_500_000, rescue: 2_500_000,
@@ -185,9 +186,9 @@ describe("travel insurance comparison data", () => {
             expect(row.description.trim()).not.toBe("");
             expect(row.verdict.label.trim()).not.toBe("");
             expect(row.verdict.detail.trim()).not.toBe("");
-            expect(row.cpp.source?.trim(), `${row.id}: missing ČPP source`).not.toBe("");
-            expect(row.koop.source?.trim(), `${row.id}: missing Kooperativa source`).not.toBe("");
-            expect(row.axa.source?.trim(), `${row.id}: missing AXA source`).not.toBe("");
+            expect(row.cpp.source, `${row.id}: missing ČPP source`).toEqual(expect.stringMatching(/\S/));
+            expect(row.koop.source, `${row.id}: missing Kooperativa source`).toEqual(expect.stringMatching(/\S/));
+            expect(row.axa.source, `${row.id}: missing AXA source`).toEqual(expect.stringMatching(/\S/));
             expect(JSON.stringify(row)).not.toMatch(/undefined|NaN/);
           }
         }
@@ -200,8 +201,9 @@ describe("travel insurance comparison data", () => {
       ...new Set(getRows("excelent").map((row) => row.section)),
     ];
 
-    expect(sectionOrder.slice(0, 3)).toEqual([
+    expect(sectionOrder.slice(0, 4)).toEqual([
       "Léčebné výlohy",
+      "Plavby a jachting",
       "Odpovědnost",
       "Obecné informace",
     ]);
@@ -463,4 +465,176 @@ describe("travel insurance comparison data", () => {
     }
     expect(termsText).not.toContain("kompenzace pobytu v nemocnici");
   }, 20_000);
+});
+
+describe("marine insurance distinctions verified in the policy wording", () => {
+  it("grounds the 3 / 12 / 200 mile bands and cruise exception in the source PDFs", async () => {
+    const root = join(process.cwd(), "private/dokumenty/cestovni-pojisteni");
+    const cpp = await extractPdfText(join(root, "cpp/VPPCP.pdf"), [4]);
+    expect(cpp).toContain("max. 3 námořní míle");
+    expect(cpp).toContain("200 námoř");
+    expect(cpp).toContain("pevniny nebo pobřežních ostrovů");
+    expect(cpp).toContain("cruise ship");
+    expect(cpp).toContain("oceánské plavby");
+    const axa = await extractPdfText(join(root, "axa/AXA_VPPCP_2026-06-15.pdf"), [22, 23, 24]);
+    expect(axa).toContain("do 12 námořních mil");
+    expect(axa).toContain("od 12 do 200 námořních mil");
+    expect(axa).toContain("jachting – oceánská plavba");
+    const row = getRows("excelent").find(row => row.id === "marine-sailing")!;
+    expect(row.differences).toHaveLength(4);
+    expect(row.cpp.headline).toContain("3 míle");
+    expect(row.axa.headline).toContain("12 mil");
+    expect(row.koop.caution).toContain("území států");
+    expect(row.koop.caution).toContain("písemně potvrdit");
+    expect(getRows("excelent").find(row => row.id === "marine-cruise")!.cpp.detail).toContain("cruise ship");
+  });
+
+  it("does not promise worldwide sailing from Kooperativa's absence of a mileage limit", async () => {
+    const pdf = await extractPdfText(join(process.cwd(), "private/dokumenty/cestovni-pojisteni/kooperativa/koopkolumbus.pdf"), [24, 25, 51]);
+    expect(pdf).toContain("aktivní sport");
+    expect(pdf).toContain("jachting (plachetnice, jachta)");
+    expect(pdf).toContain("námořní záchranná služba");
+    expect(pdf).toContain("na území států");
+    const row = getRows("excelent").find(row => row.id === "marine-sailing")!;
+    expect(row.verdict.tone).toBe("attention");
+    expect(row.differences![3].koop).toContain("Písemně ověřit");
+  });
+
+  it("keeps Reference's sports restriction and the marine rescue scope visible across variants", () => {
+    for (const koop of Object.values(KOOP_VARIANTS)) {
+      for (const axa of Object.values(AXA_VARIANTS)) {
+        const rows = buildRows(CPP_VARIANTS.maxi, koop, axa);
+        const sailing = rows.find(row => row.id === "marine-sailing")!;
+        const rescue = rows.find(row => row.id === "marine-rescue")!;
+        expect(sailing.differences![2].axa).toContain(axa.label);
+        if (axa.label === "REFERENCE") expect(sailing.differences![2].axa).toContain("nelze připojistit");
+        else expect(sailing.differences![2].axa).toContain("nutné připojištění");
+        expect(rescue.koop.headline.replaceAll("\u00a0", " ")).toContain(koop.label === "PLUS" ? "1 mil. Kč" : "500 000 Kč");
+        expect(rescue.axa.caution).toContain("vyloučené bez ohrožení");
+        expect(rescue.cpp.caution).toContain("není pojmenována výslovně");
+        expect(rescue.verdict.tone).toBe("balanced");
+        for (const insurer of ["cpp", "koop", "axa"] as const) expect(rescue[insurer].metric).toBeUndefined();
+      }
+    }
+  });
+
+  it("separates skipper and vessel exclusions from the covered sport", () => {
+    const row = getRows("excelent").find(row => row.id === "marine-liability")!;
+    expect(row.cpp.detail).toContain("vnitrozemské");
+    expect(row.koop.detail).toContain("průkaz způsobilosti");
+    expect(row.koop.points!.join(" ")).toContain("při ubytování");
+    expect(row.axa.detail).toContain("používáním plavidel");
+    expect(row.axa.caution).toContain("výluky neruší");
+    expect(getRows("reference").find(row => row.id === "marine-liability")!.axa.headline).toContain("odpovědnost neobsahuje");
+  });
+});
+
+
+describe("source audit corrections, 11 September 2026", () => {
+  it("uses the selected Kooperativa limit for a missed return, and distinguishes the outbound AXA benefit", async () => {
+    for (const key of ["klasik", "plus"] as const) {
+      const row = buildRows(CPP_VARIANTS.maxi, KOOP_VARIANTS[key], AXA_VARIANTS.reference).find(row => row.id === "missed-departure")!;
+      expect(row.koop.metric).toBe(key === "plus" ? 10_000 : 5_000);
+      expect(row.koop.detail).toContain("zpět do ČR");
+      expect(row.axa.metric).toBe(0);
+      expect(row.verdict.tone).toBe("balanced");
+      expect(row.verdict.detail).toContain("REFERENCE zmeškaný odjezd neobsahuje");
+    }
+    const pdf = await extractPdfText(join(process.cwd(), "private/dokumenty/cestovni-pojisteni/kooperativa/koopkolumbus.pdf"), [10]);
+    expect(pdf).toContain("náklady na přepravu při zmeškání odjezdu do ČR 5 000 10 000");
+  });
+
+  it("distinguishes Kooperativa accident reduction from medical and liability exclusions", async () => {
+    const row = getRows("excelent").find(row => row.id === "alcohol")!;
+    expect(row.koop.headline).toContain("úraz lze krátit");
+    expect(row.koop.detail).toContain("až na polovinu");
+    expect(row.koop.points?.join(" ")).toContain("dopravního úrazu");
+    const pdf = await extractPdfText(join(process.cwd(), "private/dokumenty/cestovni-pojisteni/kooperativa/koopkolumbus.pdf"), [30]);
+    expect(pdf).toContain("můžeme snížit až na polovinu");
+    expect(pdf).toContain("Pokud však v důsledku svého jednání podle tohoto odstavce pojištěný zemřel");
+  });
+
+  it("includes Kooperativa telemedicine in both selected variants", async () => {
+    for (const variant of Object.values(KOOP_VARIANTS)) {
+      const row = buildRows(CPP_VARIANTS.maxi, variant, AXA_VARIANTS.reference).find(row => row.id === "doctor-on-phone")!;
+      expect(row.koop.headline).toBe("Telefonická i video konzultace");
+      expect(row.koop.detail).toContain(variant.label);
+      expect(row.verdict.tone).toBe("balanced");
+    }
+    const pdf = await extractPdfText(join(process.cwd(), "private/dokumenty/cestovni-pojisteni/kooperativa/koopkolumbus.pdf"), [26, 27]);
+    expect(pdf).toContain("telefonická, příp. video konzultace");
+    expect(pdf).toContain("česky komunikujícím lékařem");
+  });
+
+  it("keeps the late-purchase cancellation reduction and its same-day exception visible", async () => {
+    const row = getRows("excelent").find(row => row.id === "cancellation")!;
+    const text = row.koop.points!.join(" ");
+    expect(text).toContain("méně než 14 dní");
+    expect(text).toContain("o 50 %");
+    expect(text).toContain("v den objednání a zaplacení");
+    expect(text).toContain("jen částku doplatku");
+    expect(row.cpp.points!.join(" ")).toContain("celkového uhrazení");
+    expect(row.verdict.tone).toBe("balanced");
+    const pdf = await extractPdfText(join(process.cwd(), "private/dokumenty/cestovni-pojisteni/kooperativa/koopkolumbus.pdf"), [43]);
+    expect(pdf).toContain("snížit pojistné plnění o 50 %");
+    expect(pdf).toContain("To neplatí, je-li pojištění STORNO sjednáno v den");
+  });
+
+  it("separates ordinary sports exclusions from specifically agreed organized and extreme sports", async () => {
+    const row = getRows("excelent").find(row => row.id === "sports-scope")!;
+    expect(row.cpp.points!.join(" ")).toContain("ferraty do B");
+    expect(row.koop.points!.join(" ")).toContain("ferraty do C");
+    expect(row.koop.points!.join(" ")).toContain("organizovaný sport");
+    expect(row.koop.points!.join(" ")).toContain("jmenovitě uvedené ve smlouvě");
+    const pdf = await extractPdfText(join(process.cwd(), "private/dokumenty/cestovni-pojisteni/kooperativa/koopkolumbus.pdf"), [24]);
+    expect(pdf).toContain("organizovaný sport");
+    expect(pdf).toContain("extrémní sport");
+    expect(pdf).toContain("jmenovitě uvedených v pojistné smlouvě");
+  });
+
+  it("keeps version conflicts visible and attributes the reported rental-car confirmation without extending it to sea charters", () => {
+    for (const cpp of Object.values(CPP_VARIANTS)) {
+      const rows = buildRows(cpp, KOOP_VARIANTS.plus, AXA_VARIANTS.excelent);
+      const quarantine = rows.find(row => row.id === "quarantine")!;
+      expect(quarantine.cpp.caution).toContain("DPPCOV 1/21");
+      expect(quarantine.cpp.caution).toContain("25 000 + 25 000");
+      const source = sourceReferences("cpp", quarantine.cpp.source)[0];
+      expect(source.label).toContain("1/21");
+      expect(source.note).toContain("1/23");
+      const rental = rows.find(row => row.id === "rental-car-liability")!;
+      expect(rental.cpp.headline.replace(/\s/g, " ")).toContain(cpp.label === "MINI" ? "250 000 Kč" : "500 000 Kč");
+      expect(rental.cpp.badge).toBe("Auto z půjčovny potvrzeno ČPP");
+      expect(rental.cpp.points!.join(" ")).toContain("podle informace správce srovnání");
+      expect(rental.cpp.points!.join(" ")).toContain("sportovní vybavení");
+      expect(rental.cpp.caution).toContain("zákonnou odpovědnost");
+      expect(rental.cpp.caution).toContain("smluvní spoluúčasti");
+      expect(rental.cpp.metric).toBeNull();
+      const marine = rows.find(row => row.id === "marine-liability")!;
+      expect(marine.cpp.detail).toContain("vnitrozemské");
+      expect(marine.cpp.points!.join(" ")).toContain("plošnou výluku každé pronajaté lodi");
+      expect(marine.cpp.caution).toContain("nepřenáší na námořní charter");
+    }
+  });
+
+  it("links every cell to documents from the correct insurer", () => {
+    const domains = { cpp: "www.cpp.cz", koop: "www.koop.cz", axa: "www.axa-assistance.cz" };
+    for (const row of getRows("excelent")) {
+      for (const tone of ["cpp", "koop", "axa"] as const) {
+        const references = sourceReferences(tone, row[tone].source);
+        expect(references.length, `${row.id}: ${tone} needs an official source`).toBeGreaterThan(0);
+        for (const reference of references) {
+          expect(reference.insurer).toBe(tone);
+          expect(new URL(reference.url).hostname).toBe(domains[tone]);
+          expect(new URL(reference.url).protocol).toBe("https:");
+        }
+      }
+    }
+  });
+
+  it("supports Czech search without diacritics and preserves comparable liability ties", () => {
+    expect(normalizeSearch("PŮJČENÉ vozidlo, léčebné výlohy")).toBe("pujcene vozidlo, lecebne vylohy");
+    const row = buildRows(CPP_VARIANTS.opti, KOOP_VARIANTS.klasik, AXA_VARIANTS.reference).find(row => row.id === "liability")!;
+    expect(row.verdict.tone).toBe("balanced");
+    expect(row.cpp.headline).toBe(row.koop.headline);
+  });
 });
